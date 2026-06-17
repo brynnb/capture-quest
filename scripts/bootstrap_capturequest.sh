@@ -271,7 +271,11 @@ render_extractor_audio() {
 render_extractor_audio
 
 echo "Syncing extractor assets into CaptureQuest..."
-python3 "${REPO_ROOT}/scripts/sync_extractor_assets.py" \
+SYNC_PYTHON_BIN="${EXTRACTOR_ROOT}/.venv/bin/python"
+if [[ ! -x "${SYNC_PYTHON_BIN}" ]]; then
+  SYNC_PYTHON_BIN="$(command -v python3)"
+fi
+"${SYNC_PYTHON_BIN}" "${REPO_ROOT}/scripts/sync_extractor_assets.py" \
   --extractor-root "${EXTRACTOR_ROOT}" \
   --repo-root "${REPO_ROOT}"
 
