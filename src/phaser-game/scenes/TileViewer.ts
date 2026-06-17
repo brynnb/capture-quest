@@ -534,6 +534,7 @@ export class TileViewer extends Scene {
     this.cameraController.configureIgnoreElements(
       this.uiManager.getUiElements(),
       this.mapContainer,
+      this.uiManager.getWorldOverlayElements(),
     );
 
     this.debugOverlay.register();

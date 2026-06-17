@@ -37,9 +37,8 @@ export class UiManager {
     ];
 
     for (const name of uiElementNames) {
-      const existingElement = this.scene.children.getByName(name);
-      if (existingElement) {
-        console.log(`Found existing UI element: ${name}, destroying it`);
+      for (const existingElement of this.scene.children.getChildren()) {
+        if (existingElement.name !== name) continue;
         existingElement.destroy();
       }
     }
@@ -348,6 +347,10 @@ export class UiManager {
       this.modeText,
       this.loadingText,
     ];
+  }
+
+  getWorldOverlayElements() {
+    return [this.tileHighlight];
   }
 
   handleResize() {

@@ -151,13 +151,14 @@ export class CameraController {
 
   configureIgnoreElements(
     uiElements: Phaser.GameObjects.GameObject[],
-    mapContainer: Phaser.GameObjects.Container
+    mapContainer: Phaser.GameObjects.Container,
+    worldOverlayElements: Phaser.GameObjects.GameObject[] = [],
   ) {
     // Main camera should show the map container but ignore UI elements
     this.mainCamera.ignore(uiElements);
 
-    // UI camera should only show UI elements and ignore the map
-    this.uiCamera.ignore([mapContainer]);
+    // UI camera should only show UI elements and ignore the map/world overlays.
+    this.uiCamera.ignore([mapContainer, ...worldOverlayElements]);
   }
 
   cleanup() {
