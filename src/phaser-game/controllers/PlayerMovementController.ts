@@ -310,6 +310,11 @@ export class PlayerMovementController {
     return !warpDirection || warpDirection === direction;
   }
 
+  private isCurrentTileDirectionalWarp(warp: PhaserWarp): boolean {
+    const warpType = warp.warpType?.trim().toLowerCase();
+    return warpType === "carpet" || warpType === "directional";
+  }
+
   private requestWarpActivationFromCurrentTile(
     warp: PhaserWarp,
     direction: MovementDirection,
@@ -1458,6 +1463,7 @@ export class PlayerMovementController {
       );
       if (
         currentWarp &&
+        this.isCurrentTileDirectionalWarp(currentWarp) &&
         this.canActivateWarpWithDirection(currentWarp, direction)
       ) {
         return this.requestWarpActivationFromCurrentTile(currentWarp, direction);

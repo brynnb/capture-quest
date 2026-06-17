@@ -273,6 +273,130 @@ func TestPredictedRequestedWarpQueuesActivation(t *testing.T) {
 	}
 }
 
+func TestWarpLandingNudgesOutdoorDoorExitAwayFromDoor(t *testing.T) {
+	actorManager := &PhaserActorManager{
+		collisionMap: map[int]map[string]int{
+			UnifiedOverworldMapID: {
+				"5,5": collisionLand,
+				"5,6": collisionLand,
+			},
+		},
+		overworldMapIds: map[int]bool{0: true},
+	}
+	exteriorDoor := &phaserMapWarp{
+		ID:          393,
+		SourceMapID: 0,
+		X:           5,
+		Y:           5,
+		DestMapID:   37,
+		DestX:       2,
+		DestY:       7,
+		WarpType:    "door",
+	}
+	warpManager := newPhaserWarpManager(nil)
+	addPhaserWarpIndex(warpManager.byMap, UnifiedOverworldMapID, exteriorDoor)
+
+	manager := &PlayerMovementManager{
+		wh: &WorldHandler{
+			ActorManager: actorManager,
+			phaserWarps:  warpManager,
+		},
+		actorManager: actorManager,
+	}
+	interiorExit := &phaserMapWarp{
+		ID:          10,
+		SourceMapID: 37,
+		X:           2,
+		Y:           7,
+		DestMapID:   0,
+		DestX:       5,
+		DestY:       5,
+		WarpType:    "carpet",
+	}
+
+	x, y := manager.warpLandingPosition(37, UnifiedOverworldMapID, interiorExit, "DOWN")
+	if x != 5 || y != 6 {
+		t.Fatalf("landing = (%d,%d), want one tile down at (5,6)", x, y)
+	}
+}
+
+func TestWarpLandingKeepsOriginalWhenExitStepIsBlocked(t *testing.T) {
+	actorManager := &PhaserActorManager{
+		collisionMap: map[int]map[string]int{
+			UnifiedOverworldMapID: {
+				"5,5": collisionLand,
+				"5,6": collisionBlocked,
+			},
+		},
+		overworldMapIds: map[int]bool{0: true},
+	}
+	exteriorDoor := &phaserMapWarp{
+		ID:          393,
+		SourceMapID: 0,
+		X:           5,
+		Y:           5,
+		DestMapID:   37,
+		DestX:       2,
+		DestY:       7,
+		WarpType:    "door",
+	}
+	warpManager := newPhaserWarpManager(nil)
+	addPhaserWarpIndex(warpManager.byMap, UnifiedOverworldMapID, exteriorDoor)
+
+	manager := &PlayerMovementManager{
+		wh: &WorldHandler{
+			ActorManager: actorManager,
+			phaserWarps:  warpManager,
+		},
+		actorManager: actorManager,
+	}
+	interiorExit := &phaserMapWarp{
+		ID:          10,
+		SourceMapID: 37,
+		X:           2,
+		Y:           7,
+		DestMapID:   0,
+		DestX:       5,
+		DestY:       5,
+		WarpType:    "carpet",
+	}
+
+	x, y := manager.warpLandingPosition(37, UnifiedOverworldMapID, interiorExit, "DOWN")
+	if x != 5 || y != 5 {
+		t.Fatalf("landing = (%d,%d), want original door tile when exit step is blocked", x, y)
+	}
+}
+
+func TestWarpLandingDoesNotNudgeOverworldEntryIntoInterior(t *testing.T) {
+	actorManager := &PhaserActorManager{
+		collisionMap:    map[int]map[string]int{UnifiedOverworldMapID: {"5,5": collisionLand, "5,6": collisionLand}},
+		overworldMapIds: map[int]bool{0: true},
+	}
+	warpManager := newPhaserWarpManager(nil)
+	manager := &PlayerMovementManager{
+		wh: &WorldHandler{
+			ActorManager: actorManager,
+			phaserWarps:  warpManager,
+		},
+		actorManager: actorManager,
+	}
+	overworldEntry := &phaserMapWarp{
+		ID:          393,
+		SourceMapID: 0,
+		X:           5,
+		Y:           5,
+		DestMapID:   37,
+		DestX:       2,
+		DestY:       7,
+		WarpType:    "door",
+	}
+
+	x, y := manager.warpLandingPosition(UnifiedOverworldMapID, 37, overworldEntry, "UP")
+	if x != 2 || y != 7 {
+		t.Fatalf("landing = (%d,%d), want unchanged interior destination", x, y)
+	}
+}
+
 func newPredictionTestMovementManager() *PlayerMovementManager {
 	actorManager := NewPhaserActorManager(nil)
 	actorManager.collisionMap[1] = map[string]int{

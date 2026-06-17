@@ -1023,11 +1023,12 @@ func (m *PlayerMovementManager) activateWarpForState(state *PlayerMovementState,
 		warp.DestMapID, warp.DestX, warp.DestY)
 
 	previousMapID := state.MapID
+	landingX, landingY := m.warpLandingPosition(previousMapID, normalizedMapID, warp, direction)
 
 	endSafariSessionIfLeavingMap(int64(state.CharacterID), state.MapID, warp.DestMapID, m.wh)
 
-	state.CurrentX = warp.DestX
-	state.CurrentY = warp.DestY
+	state.CurrentX = landingX
+	state.CurrentY = landingY
 	state.MapID = normalizedMapID
 	state.Direction = direction
 	state.Path = nil
@@ -1036,13 +1037,13 @@ func (m *PlayerMovementManager) activateWarpForState(state *PlayerMovementState,
 	m.applyBicycleMapRules(state)
 
 	if hasSession && ses.HasValidClient() {
-		ses.X = float32(warp.DestX)
-		ses.Y = float32(warp.DestY)
+		ses.X = float32(landingX)
+		ses.Y = float32(landingY)
 		ses.MapID = normalizedMapID
 
 		if char := ses.Client.CharData(); char != nil {
-			char.X = float64(warp.DestX)
-			char.Y = float64(warp.DestY)
+			char.X = float64(landingX)
+			char.Y = float64(landingY)
 			char.MapID = uint32(normalizedMapID)
 		}
 
@@ -1050,14 +1051,44 @@ func (m *PlayerMovementManager) activateWarpForState(state *PlayerMovementState,
 
 		ses.SendStreamJSON(map[string]interface{}{
 			"mapId":     warp.DestMapID,
-			"x":         warp.DestX,
-			"y":         warp.DestY,
+			"x":         landingX,
+			"y":         landingY,
 			"direction": direction,
 		}, opcodes.WarpTileTeleportNotify)
 	}
 
 	m.savePosition(state)
 	return true
+}
+
+func (m *PlayerMovementManager) warpLandingPosition(sourceMapID, normalizedDestMapID int, warp *phaserMapWarp, direction string) (int, int) {
+	if warp == nil {
+		return 0, 0
+	}
+	landingX, landingY := warp.DestX, warp.DestY
+	if m == nil {
+		return landingX, landingY
+	}
+	if m.wh == nil || m.wh.phaserWarps == nil || m.actorManager == nil {
+		return landingX, landingY
+	}
+	if normalizedDestMapID != UnifiedOverworldMapID || m.isOverworldMovementMap(sourceMapID) {
+		return landingX, landingY
+	}
+	if m.wh.phaserWarps.warpAt(UnifiedOverworldMapID, landingX, landingY) == nil {
+		return landingX, landingY
+	}
+	dx, dy, ok := warpDirectionDelta(direction)
+	if !ok {
+		return landingX, landingY
+	}
+	nextX := landingX + dx
+	nextY := landingY + dy
+	collisionType, exists := m.actorManager.CollisionTypeAt(UnifiedOverworldMapID, nextX, nextY)
+	if !exists || collisionType != collisionLand {
+		return landingX, landingY
+	}
+	return nextX, nextY
 }
 
 func (m *PlayerMovementManager) isSafariEntryWarpBlocked(charID int64, sourceMapID, destMapID int, ses *session.Session) bool {
