@@ -15,15 +15,21 @@ Initial state
     none
 
 Resolved script
-  label: CeladonDinerCoinCase
+  label: CeladonDinerGymGuideTextGift
   map: CELADON_DINER
   trigger: npc_click
 
 Actions
-  - dialogue: MAN [I am flat out busted. No more slots for me! Here, you can have this.]
-  - playSFX: SFX_GET_KEY_ITEM
+  - lockInput
+  - dialogue:  [Go ahead! Laugh! I'm flat out
+busted! No more slots for
+me! I'm going straight! Here! I won't be
+needing this any- more! I always thought
+I was going to win it back...]
   - giveItem *: COIN CASE x1 added
+  - playSFX: SFX_GET_KEY_ITEM
   - setFlag *: EVENT_GOT_COIN_CASE
+  - unlockInput
 
 Final state
   location: CELADON_DINER[138] (1,2)

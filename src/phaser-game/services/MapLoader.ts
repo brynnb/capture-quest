@@ -134,6 +134,7 @@ export class MapLoader {
       }
 
       this.setState({ mapInfo });
+      void useGameStatusStore.getState().setCurrentMap(mapId);
 
       this.uiManager.setLoadingText("Loading tiles...");
 
@@ -346,6 +347,7 @@ export class MapLoader {
       const warpDY = sceneForDest.warpDestY ?? undefined;
       const mapInfo = await this.mapDataService.fetchMapInfo(mapId, warpDX, warpDY);
       this.setState({ mapInfo });
+      void useGameStatusStore.getState().setCurrentMap(mapId);
 
       this.uiManager.setLoadingText("Loading tiles...");
 

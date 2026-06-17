@@ -1,0 +1,26 @@
+{
+  "name": "debug_warp_viridian_mart_exit_mat",
+  "description": "Debug setup: stand on Viridian Mart's left exit mat.",
+  "fixture": {
+    "characterName": "DebugWarpViridianMartExitMat",
+    "mapName": "VIRIDIAN_MART",
+    "x": 3,
+    "y": 7,
+    "direction": "DOWN",
+    "flags": ["EVENT_GOT_OAKS_PARCEL"],
+    "party": [{ "speciesId": 25, "level": 25 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "fixture_state",
+    "mapName": "VIRIDIAN_MART"
+  },
+  "expect": {
+    "scriptLabel": "FixtureState",
+    "finalX": 3,
+    "finalY": 7,
+    "finalDirection": "DOWN",
+    "activeBattleAbsent": true
+  }
+}

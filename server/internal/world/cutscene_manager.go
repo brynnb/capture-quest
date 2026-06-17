@@ -395,14 +395,38 @@ func (m *CutsceneManager) FindEligibleCoordCutsceneForTrigger(trigger Coordinate
 
 	sortCutscenesBySpecificity(mapped)
 	for _, cs := range mapped {
-		if cs.TriggerType == "coord" && m.CheckEligible(cs, charID, efm, playerFacing...) {
+		if m.checkEligibleCoordinateCutscene(cs, trigger, charID, efm, playerFacing...) {
 			return cs
 		}
 	}
-	if direct != nil && direct.TriggerType == "coord" && m.CheckEligible(direct, charID, efm, playerFacing...) {
+	if m.checkEligibleCoordinateCutscene(direct, trigger, charID, efm, playerFacing...) {
 		return direct
 	}
 	return nil
+}
+
+func (m *CutsceneManager) checkEligibleCoordinateCutscene(cs *CutsceneScript, trigger CoordinateTrigger, charID int64, efm *EventFlagManager, playerFacing ...string) bool {
+	if cs == nil {
+		return false
+	}
+	if cs.TriggerType != "coord" && cs.TriggerType != "npc_click" {
+		return false
+	}
+	if trigger.MapName != "" && cs.MapName != "" && !sameMapName(cs.MapName, trigger.MapName) {
+		return false
+	}
+	return m.CheckEligible(cs, charID, efm, playerFacing...)
+}
+
+func sameMapName(a, b string) bool {
+	return normalizeCutsceneMapName(a) == normalizeCutsceneMapName(b)
+}
+
+func normalizeCutsceneMapName(name string) string {
+	name = strings.TrimSpace(name)
+	name = strings.ReplaceAll(name, "_", "")
+	name = strings.ReplaceAll(name, "-", "")
+	return strings.ToUpper(name)
 }
 
 // FindEligibleClickCutscene resolves an actor/object click to a cutscene.

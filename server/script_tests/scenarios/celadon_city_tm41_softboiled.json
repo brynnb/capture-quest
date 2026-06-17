@@ -18,7 +18,7 @@
     "textConstant": "TEXT_CELADONCITY_GRAMPS3"
   },
   "expect": {
-    "scriptLabel": "CeladonCityTM41Softboiled",
+    "scriptLabel": "CeladonCityGramps3TextGift",
     "flagsPresent": ["EVENT_GOT_TM41"],
     "inventoryContains": [{ "itemId": 129, "quantity": 1 }],
     "actionTypesContains": ["dialogue", "setFlag", "giveItem"],

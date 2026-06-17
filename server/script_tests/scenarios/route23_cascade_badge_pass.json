@@ -23,7 +23,7 @@
     "finalX": 8,
     "finalY": 136,
     "flagsPresent": ["EVENT_GOT_CASCADEBADGE", "EVENT_ROUTE23_BADGE2_CHECKED"],
-    "actionTypesContains": ["dialogue", "setsFlags"],
+    "actionTypesContains": ["dialogue", "setFlag"],
     "activeBattleAbsent": true
   }
 }

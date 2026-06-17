@@ -18,7 +18,7 @@
     "textConstant": "TEXT_MRPSYCHICSHOUSE_MR_PSYCHIC"
   },
   "expect": {
-    "scriptLabel": "MrPsychicsHouseTM29",
+    "scriptLabel": "MrPsychicsHouseMrPsychicTextGift",
     "flagsPresent": ["EVENT_GOT_TM29"],
     "inventoryContains": [{ "itemId": 117, "quantity": 1 }],
     "actionTypesContains": ["dialogue", "setFlag", "giveItem"],

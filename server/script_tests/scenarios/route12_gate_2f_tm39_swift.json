@@ -18,7 +18,7 @@
     "textConstant": "TEXT_ROUTE12GATE2F_BRUNETTE_GIRL"
   },
   "expect": {
-    "scriptLabel": "Route12Gate2FTM39Swift",
+    "scriptLabel": "Route12Gate2FBrunetteGirlTextGift",
     "flagsPresent": ["EVENT_GOT_TM39"],
     "inventoryContains": [{ "itemId": 127, "quantity": 1 }],
     "actionTypesContains": ["dialogue", "setFlag", "giveItem"],

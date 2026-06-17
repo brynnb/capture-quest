@@ -24,7 +24,9 @@ Resolved script
 Actions
   - lockInput
   - facePlayer
-  - dialogue: RIVAL [Hey, {PLAYER}! What brings you here? Your POKéMON don't look dead! I can at least make them faint! Let's go, pal!]
+  - dialogue: RIVAL [{RIVAL}: Hey,
+(PLAYER)! What brings you here? Your POKÉMON don't look dead! I can at least
+make them faint! Let's go, pal!]
   - startTrainerBattle *: RIVAL2 party=5 enemy=[#17 PIDGEOTTO L25 #130 GYARADOS L23 #58 GROWLITHE L22 #64 KADABRA L20 #2 IVYSAUR L25] winFlag=EVENT_BEAT_POKEMON_TOWER_RIVAL
   - unlockInput
 

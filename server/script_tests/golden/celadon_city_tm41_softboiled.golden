@@ -15,18 +15,19 @@ Initial state
     none
 
 Resolved script
-  label: CeladonCityTM41Softboiled
+  label: CeladonCityGramps3TextGift
   map: CELADON_CITY
   trigger: npc_click
 
 Actions
   - lockInput
-  - dialogue:  [{PLAYER} received TM41! TM41 teaches SOFTBOILED! Only one POKéMON can use it! That POKéMON is CHANSEY!]
-  - setFlag *: EVENT_GOT_TM41
-  - playSFX: SFX_GET_ITEM_1
-  - unlockInput
+  - dialogue:  [Hello, there! I've seen you,
+but I never had a chance to talk! Here's a gift for
+dropping by!]
   - giveItem *: TM41 x1 added
-  - setsFlags *: EVENT_GOT_TM41
+  - playSFX: SFX_GET_ITEM_1
+  - setFlag *: EVENT_GOT_TM41
+  - unlockInput
 
 Final state
   location: CELADON_CITY[9999] (122,-110)

@@ -6,6 +6,8 @@ import { PlayerMovementController } from "../../controllers/PlayerMovementContro
 import { MapRenderer } from "../../renderers/MapRenderer";
 import { MapDataService } from "../../services/MapDataService";
 import * as PhaserNet from "../../services/PhaserNetworkService";
+import AudioManager from "@/services/audio/AudioManager";
+import { sfxPathForConstant } from "@/services/audio/pokemonMusic";
 
 interface WarpTileTeleportDetail {
   mapId: number;
@@ -100,10 +102,20 @@ export class TileViewerWarpEvents {
       animationStartY,
     } = event.detail;
     console.log(`[WarpTile] Teleporting to map ${mapId} (${x}, ${y})`);
-
     const normalizedPlayerMapId = this.deps.mapDataService.isOverworld(mapId)
       ? UNIFIED_OVERWORLD_MAP_ID
       : mapId;
+    const warpSfx = sfxPathForConstant(
+      normalizedPlayerMapId === UNIFIED_OVERWORLD_MAP_ID
+        ? "SFX_GO_OUTSIDE"
+        : "SFX_GO_INSIDE",
+    );
+    if (warpSfx) {
+      void AudioManager.playSFX(warpSfx, 0.85);
+    } else {
+      void AudioManager.playGeneratedSFX("warp", 0.85);
+    }
+
     PhaserNet.sendPlayerPosition(
       x,
       y,

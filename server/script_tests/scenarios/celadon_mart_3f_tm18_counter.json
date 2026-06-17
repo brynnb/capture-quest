@@ -18,7 +18,7 @@
     "textConstant": "TEXT_CELADONMART3F_CLERK"
   },
   "expect": {
-    "scriptLabel": "CeladonMart3FTM18Counter",
+    "scriptLabel": "CeladonMart3FClerkTextGift",
     "flagsPresent": ["EVENT_GOT_TM18"],
     "inventoryContains": [{ "itemId": 106, "quantity": 1 }],
     "actionTypesContains": ["dialogue", "setFlag", "giveItem"],

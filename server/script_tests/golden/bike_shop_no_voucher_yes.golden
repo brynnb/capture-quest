@@ -21,9 +21,14 @@ Resolved script
 
 Actions
   - lockInput
-  - dialogue: BIKE SHOP CLERK [Hi! Welcome to our BIKE SHOP. Have we got just the BIKE for you!]
+  - dialogue: BIKE SHOP CLERK [Hi! Welcome to
+our BIKE SHOP. Have we got just
+the BIKE for you!]
   - choice: TEXT_BIKESHOP_CLERK "It's a cool BIKE!\nDo you want it?" choice=true
-  - dialogue: BIKE SHOP CLERK [Sorry! You can't afford it! Come back again some time!]
+  - dialogue: BIKE SHOP CLERK [Sorry! You can't
+afford it!]
+  - dialogue: BIKE SHOP CLERK [Come back again
+some time!]
   - unlockInput
 
 Final state

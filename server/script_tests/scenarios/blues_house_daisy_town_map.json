@@ -18,7 +18,7 @@
     "textConstant": "TEXT_BLUESHOUSE_DAISY_SITTING"
   },
   "expect": {
-    "scriptLabel": "BluesHouseDaisyTownMap",
+    "scriptLabel": "BluesHouseDaisyTownMapReward",
     "flagsPresent": ["EVENT_GOT_POKEDEX", "EVENT_GOT_TOWN_MAP"],
     "inventoryContains": [{ "itemId": 5, "quantity": 1 }],
     "actionTypesContains": ["dialogue", "setFlag", "giveItem"],

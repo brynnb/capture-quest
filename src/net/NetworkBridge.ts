@@ -570,11 +570,24 @@ export class NetworkBridge {
     // Clear any pending TM/HM state on success
     store.setPendingTMHM(null);
 
-    const bicycle = data.bicycle as { activeRiding?: boolean } | undefined;
+    const bicycle = data.bicycle as
+      | {
+          wantsRiding?: boolean;
+          activeRiding?: boolean;
+          forcedRiding?: boolean;
+          WantsRiding?: boolean;
+          ActiveRiding?: boolean;
+          ForcedRiding?: boolean;
+        }
+      | undefined;
     if (bicycle) {
       useAudioActivityStore
         .getState()
-        .setBicycleActive(Boolean(bicycle.activeRiding));
+        .setBicycleState({
+          wantsRiding: Boolean(bicycle.wantsRiding ?? bicycle.WantsRiding),
+          activeRiding: Boolean(bicycle.activeRiding ?? bicycle.ActiveRiding),
+          forcedRiding: Boolean(bicycle.forcedRiding ?? bicycle.ForcedRiding),
+        });
     }
 
     if (data.message) {
@@ -897,11 +910,6 @@ export class NetworkBridge {
     animationStartY?: number;
   }) {
     console.log("[NetworkBridge] Warp tile teleport:", data);
-    this.playSourceSFX(
-      data.mapId === 9999 ? "SFX_GO_OUTSIDE" : "SFX_GO_INSIDE",
-      0.85,
-      "warp",
-    );
     // Dispatch a custom event that TileViewer listens for
     window.dispatchEvent(
       new CustomEvent("warpTileTeleport", { detail: data })
@@ -998,6 +1006,13 @@ export class NetworkBridge {
       if (battleStore.isInBattle) {
         battleStore.closeBattle();
       }
+      import("@/stores/DebugSceneStore").then(({ default: useDebugSceneStore }) => {
+        useDebugSceneStore.getState().setLastAppliedScenario({
+          label: (data.label as string) || null,
+          scenarioName: (data.scenarioName as string) || null,
+          scriptLabel: (data.scriptLabel as string) || null,
+        });
+      });
       console.log(`[DebugScene] Applied scenario: ${data.label}`);
     } else {
       console.error(`[DebugScene] Jump failed: ${data.error}`);

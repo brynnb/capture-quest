@@ -1,0 +1,25 @@
+{
+  "name": "debug_warp_route11_gate_1f_center",
+  "description": "Debug setup: stand in Route 11 Gate 1F for left/right exit checks.",
+  "fixture": {
+    "characterName": "DebugWarpRoute11GateCenter",
+    "mapName": "ROUTE_11_GATE_1F",
+    "x": 3,
+    "y": 4,
+    "direction": "LEFT",
+    "party": [{ "speciesId": 25, "level": 25 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "fixture_state",
+    "mapName": "ROUTE_11_GATE_1F"
+  },
+  "expect": {
+    "scriptLabel": "FixtureState",
+    "finalX": 3,
+    "finalY": 4,
+    "finalDirection": "LEFT",
+    "activeBattleAbsent": true
+  }
+}

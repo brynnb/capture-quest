@@ -21,7 +21,10 @@ Resolved script
 
 Actions
   - lockInput
-  - dialogue: BIKE SHOP CLERK [How do you like your new BICYCLE? You can take it on CYCLING ROAD and in caves!]
+  - dialogue: BIKE SHOP CLERK [How do you like
+your new BICYCLE? You can take it
+on CYCLING ROAD
+and in caves!]
   - unlockInput
 
 Final state

@@ -3,7 +3,7 @@ Description: Telling the Viridian old man you are not in a hurry starts the Red/
 Character: ScriptSimViridianOldManTutorial
 
 Initial state
-  location: VIRIDIAN_CITY[9999] (21,9)
+  location: VIRIDIAN_CITY[9999] (18,5)
   flags: EVENT_GOT_POKEDEX
   party:
     slot 0: #25 PIKACHU L10 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
@@ -35,7 +35,7 @@ how to then.]
   - unlockInput
 
 Final state
-  location: VIRIDIAN_CITY[9999] (21,9)
+  location: VIRIDIAN_CITY[9999] (18,5)
   flags: EVENT_GOT_POKEDEX
   party:
     slot 0: #25 PIKACHU L10 moves THUNDERSHOCK, GROWL, THUNDER_WAVE

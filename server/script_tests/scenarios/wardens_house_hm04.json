@@ -18,7 +18,7 @@
     "textConstant": "TEXT_WARDENSHOUSE_WARDEN"
   },
   "expect": {
-    "scriptLabel": "WardensHouseHM04",
+    "scriptLabel": "WardensHouseWardenHM04Reward",
     "flagsPresent": ["EVENT_GOT_GOLD_TEETH", "EVENT_GOT_HM04"],
     "inventoryContains": [{ "itemId": 87, "quantity": 1 }],
     "inventoryAbsent": [{ "itemId": 64 }],

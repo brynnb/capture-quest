@@ -22,10 +22,13 @@ Resolved script
 
 Actions
   - lockInput
-  - dialogue: SAFARI ZONE WORKER [Welcome to the SAFARI ZONE!]
-  - dialogue: SAFARI ZONE WORKER [For just 500 Pokedollars, you can catch all the POKEMON you want in the park!]
-  - choice:  "Would you like to join the hunt?" choice=false
-  - dialogue: SAFARI ZONE WORKER [OK! Please come again!]
+  - dialogue: SAFARI ZONE WORKER [Welcome to the
+SAFARI ZONE!]
+  - dialogue: SAFARI ZONE WORKER [For just 500 Pokedollars,
+you can catch all the POKÉMON you want in the park!]
+  - choice:  "Would you like to\njoin the hunt?" choice=false
+  - dialogue: SAFARI ZONE WORKER [OK! Please come
+again!]
 
 Final state
   location: SAFARI_ZONE_GATE[156] (4,2)

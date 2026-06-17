@@ -23,7 +23,7 @@
     "finalX": 8,
     "finalY": 119,
     "flagsPresent": ["EVENT_GOT_THUNDERBADGE", "EVENT_ROUTE23_BADGE3_CHECKED"],
-    "actionTypesContains": ["dialogue", "setsFlags"],
+    "actionTypesContains": ["dialogue", "setFlag"],
     "activeBattleAbsent": true
   }
 }

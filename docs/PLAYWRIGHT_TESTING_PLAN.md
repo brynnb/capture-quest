@@ -35,6 +35,44 @@ diagnostic state, and server-visible gameplay state.
 - Keep browser tests broad but not exhaustive. Use Go/script scenario tests for
   exhaustive flag/item/script combinations.
 
+## Current Implementation Status
+
+Implemented:
+
+- Test-only browser diagnostics bridge behind `VITE_TEST_MODE=true`.
+- Stable Playwright transport flag, `VITE_FORCE_WEBSOCKET=true`, for Docker
+  browser runs.
+- Shared helpers for guest login, character creation, state polling, tile
+  clicking, dialogue dismissal, console error collection, and Scenario Debugger
+  jumps.
+- Login/title tests covering title entry points, guest login, character
+  creation, character select, and entering the game.
+- Multiplayer visibility test covering actor removal when another player
+  changes maps.
+- Door/warp test covering real tile clicks through Red's House warps.
+- Field move tests covering Scenario Debugger Surf and Cut setups through real
+  player input.
+- Battle keyboard test covering Space/arrow navigation through an active wild
+  battle fixture.
+- Scripted-event browser test covering a real Viridian Mart parcel interaction
+  and its persistent UI result.
+- Asset/bootstrap smoke test covering the generated database, tile images,
+  Pokémon sprites, player sprites, fonts, audio manifest, and extractor
+  submodule entrypoint.
+- Debug scene fixtures now preserve direction and can seed active battles for
+  browser tests.
+- The suite has been verified with two consecutive Docker Playwright runs
+  against one local `dev:test` server.
+
+Still good next targets:
+
+- More scripted-event browser coverage for Oak intro/lab flow and the old man
+  tutorial, using the same state/DOM assertion style.
+- Dialogue choice selection diagnostics if we want to assert the selected
+  Yes/No option directly instead of asserting the resulting state.
+- More movement coverage around bike speed, surf transitions, and exit
+  animations once those systems settle further.
+
 ## Test Diagnostics Bridge
 
 Add a test-only browser bridge, available only when `VITE_TEST_MODE=true`, such
@@ -240,7 +278,21 @@ Assertions:
 
 Add `tests/e2e/scripted-events.spec.ts`.
 
-Tests:
+Implemented tests:
+
+- Viridian Mart parcel fixture can be jumped to through Scenario Debugger.
+- The clerk interaction runs through real browser input.
+- The persistent item-receipt UI result appears.
+- The scripted event does not leave the player in battle or stuck in dialogue.
+
+Assertions:
+
+- persistent UI result text
+- dialogue closed after script progression
+- battle remains closed
+- no severe console errors
+
+Future candidates:
 
 - Oak grass intro starts when walking into grass.
 - Oak/player movement cutscene completes.
@@ -249,29 +301,28 @@ Tests:
 - Game Corner prize room NPCs/vendors route to distinct behavior.
 - Yes/No prompts respond to Space and arrow/WASD selection.
 
-Assertions:
-
-- dialogue text
-- cutscene start/end events
-- event flags through server/test diagnostics where available
-- visible actors and map state
-
 ## Phase 7: Asset And Bootstrap Smoke
 
-These do not need full browser rendering.
+Implemented in `tests/e2e/assets-smoke.spec.ts`. These do not need full browser
+rendering.
 
 Tests:
 
 - Required generated assets exist after bootstrap.
-- Key map data exists:
-  - Kanto/overworld map
-  - Red's House 1F/2F
-  - Pallet Town warps
+- Key generated files exist and are non-empty:
+  - `public/phaser/pokemon.db`
   - player sprites
-  - battle sprites
+  - trainer back sprite
+  - Pokémon front/back sprite directories
+  - map tile images
+  - Pokémon font
   - audio manifest
+  - extractor submodule entrypoint
+
+Future candidate:
+
 - `npm run bootstrap:assets` can be run in a temporary clean checkout once the
-  public repo process is stable.
+  public repo process is stable enough for a longer integration test.
 
 ## Overnight Run Strategy
 

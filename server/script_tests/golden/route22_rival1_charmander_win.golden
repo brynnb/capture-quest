@@ -24,10 +24,20 @@ Actions
   - showActor
   - move: RIVAL [LEFT LEFT LEFT LEFT]
   - facePlayer
-  - dialogue: RIVAL [Hey! {PLAYER}! You're going to POKéMON LEAGUE? Forget it! You probably don't have any BADGEs! The guard won't let you through! By the way, did your POKéMON get any stronger?]
+  - dialogue: RIVAL [{RIVAL}: Hey!
+(PLAYER)! You're going to
+POKÉMON LEAGUE? Forget it! You
+probably don't have any BADGEs! The guard won't
+let you through! By the way, did
+your POKÉMON get any stronger?]
   - startTrainerBattle *: RIVAL1 party=4 enemy=[#16 PIDGEY L9 #7 SQUIRTLE L8] winFlag=EVENT_ROUTE22_RIVAL_1
   - unlockInput
   - resolveBattle *: win trainer=RIVAL1 winFlag=EVENT_ROUTE22_RIVAL_1
+  - dialogue: RIVAL [Awww!
+You just lucked out! I heard POKÉMON
+LEAGUE has many tough trainers! I have to figure
+out how to get past them! You should quit
+dawdling and get a move on!]
   - move: RIVAL [RIGHT RIGHT DOWN DOWN DOWN DOWN DOWN]
   - hideObject *: objects=[TEXT_ROUTE22_RIVAL1]
   - resetFlag *: EVENT_1ST_ROUTE22_RIVAL_BATTLE

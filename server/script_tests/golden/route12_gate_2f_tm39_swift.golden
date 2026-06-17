@@ -15,18 +15,19 @@ Initial state
     none
 
 Resolved script
-  label: Route12Gate2FTM39Swift
+  label: Route12Gate2FBrunetteGirlTextGift
   map: ROUTE_12_GATE_2F
   trigger: npc_click
 
 Actions
   - lockInput
-  - dialogue:  [{PLAYER} received TM39! TM39 is a move called SWIFT. It's very accurate, so use it during battles you can't afford to lose.]
-  - setFlag *: EVENT_GOT_TM39
-  - playSFX: SFX_GET_ITEM_1
-  - unlockInput
+  - dialogue:  [My POKÉMON's
+ashes are stored in POKÉMON TOWER. You can have this
+TM. I don't need it any more...]
   - giveItem *: TM39 x1 added
-  - setsFlags *: EVENT_GOT_TM39
+  - playSFX: SFX_GET_ITEM_1
+  - setFlag *: EVENT_GOT_TM39
+  - unlockInput
 
 Final state
   location: ROUTE_12_GATE_2F[195] (3,5)

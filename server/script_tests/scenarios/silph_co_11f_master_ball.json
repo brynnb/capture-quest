@@ -18,7 +18,7 @@
     "textConstant": "TEXT_SILPHCO11F_SILPH_PRESIDENT"
   },
   "expect": {
-    "scriptLabel": "SilphCo11FMasterBall",
+    "scriptLabel": "SilphCo11FSilphPresidentTextGift",
     "flagsPresent": ["EVENT_BEAT_SILPH_CO_GIOVANNI", "EVENT_GOT_MASTER_BALL"],
     "inventoryContains": [{ "itemId": 1, "quantity": 1 }],
     "actionTypesContains": ["dialogue", "setFlag", "giveItem"],

@@ -1,0 +1,25 @@
+{
+  "name": "debug_warp_reds_house_1f_exit_mat",
+  "description": "Debug setup: stand on Red's House 1F exit mat.",
+  "fixture": {
+    "characterName": "DebugWarpRedsHouseExitMat",
+    "mapName": "REDS_HOUSE_1F",
+    "x": 2,
+    "y": 7,
+    "direction": "DOWN",
+    "party": [{ "speciesId": 25, "level": 25 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "fixture_state",
+    "mapName": "REDS_HOUSE_1F"
+  },
+  "expect": {
+    "scriptLabel": "FixtureState",
+    "finalX": 2,
+    "finalY": 7,
+    "finalDirection": "DOWN",
+    "activeBattleAbsent": true
+  }
+}

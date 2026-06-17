@@ -14,7 +14,7 @@
     "textConstant": "TEXT_CELADONDINER_GYM_GUIDE"
   },
   "expect": {
-    "scriptLabel": "CeladonDinerCoinCase",
+    "scriptLabel": "CeladonDinerGymGuideTextGift",
     "flagsPresent": ["EVENT_GOT_COIN_CASE"],
     "inventoryContains": [{ "itemId": 69, "quantity": 1 }],
     "actionTypesContains": ["dialogue", "giveItem", "setFlag"],

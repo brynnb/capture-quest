@@ -23,7 +23,7 @@
     "finalX": 10,
     "finalY": 56,
     "flagsPresent": ["EVENT_GOT_VOLCANOBADGE", "EVENT_ROUTE23_BADGE7_CHECKED"],
-    "actionTypesContains": ["dialogue", "setsFlags"],
+    "actionTypesContains": ["dialogue", "setFlag"],
     "activeBattleAbsent": true
   }
 }

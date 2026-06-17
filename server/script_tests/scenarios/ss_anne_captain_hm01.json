@@ -18,7 +18,7 @@
     "textConstant": "TEXT_SSANNECAPTAINSROOM_CAPTAIN"
   },
   "expect": {
-    "scriptLabel": "SSAnneCaptainHM01",
+    "scriptLabel": "SSAnneCaptainsRoomCaptainHM01Reward",
     "flagsPresent": ["EVENT_GOT_SS_TICKET", "EVENT_GOT_HM01"],
     "inventoryContains": [{ "itemId": 84, "quantity": 1 }],
     "actionTypesContains": ["dialogue", "setFlag", "giveItem"],

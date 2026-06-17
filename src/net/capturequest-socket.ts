@@ -1,6 +1,6 @@
 import * as OpCodes from "./generated/opcodes";
 import type { OpCode } from "./generated/opcodes";
-import { getApiUrl, getWsUrl } from "@/config";
+import { FORCE_WEBSOCKET, getApiUrl, getWsUrl } from "@/config";
 
 interface WebTransportOptions {
   serverCertificateHashes?: Array<{
@@ -117,6 +117,11 @@ export class CaptureQuestSocket {
     };
 
     console.log(`[CaptureQuestSocket] Environment check: SecureContext=${window.isSecureContext}, WebTransportSupport=${!!WT}, Host=${window.location.hostname}`);
+
+    if (FORCE_WEBSOCKET) {
+      console.log("[CaptureQuestSocket] VITE_FORCE_WEBSOCKET=true, using WebSocket transport");
+      return this.connectWebSocket(onClose);
+    }
 
     if (!WT) {
       console.warn("[CaptureQuestSocket] WebTransport not supported, falling back to WebSocket");

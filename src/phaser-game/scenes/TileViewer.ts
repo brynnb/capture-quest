@@ -24,6 +24,7 @@ import {
 import useGameStatusStore from "@/stores/GameStatusStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import usePokeBattleStore from "@/stores/PokeBattleStore";
+import useAudioActivityStore from "@/stores/AudioActivityStore";
 import {
   getWorldInputFreezeReason,
 } from "../utils/worldInputGuard";
@@ -36,6 +37,12 @@ import { TileViewerInteractionController } from "./tile-viewer/TileViewerInterac
 import { TileViewerOverlays } from "./tile-viewer/TileViewerOverlays";
 import { TileViewerWarpEvents } from "./tile-viewer/TileViewerWarpEvents";
 import { TrainerEncounterPresenter } from "./tile-viewer/TrainerEncounterPresenter";
+import {
+  clearCaptureQuestTileViewerDiagnostics,
+  emitCaptureQuestTestEvent,
+  setCaptureQuestTileViewerDiagnostics,
+  type CaptureQuestTestActor,
+} from "@/testing/capturequestTestBridge";
 
 export interface TileUpdateEvent {
   tileId: number;
@@ -86,6 +93,7 @@ export class TileViewer extends Scene {
   private actorsUnsubscribe: (() => void) | null = null;
   private gameStatusUnsubscribe: (() => void) | null = null;
   private battleInputFreezeUnsubscribe: (() => void) | null = null;
+  private bicycleStateUnsubscribe: (() => void) | null = null;
   private trainerEncounterUnsubscribe: (() => void) | null = null;
   private surfSuccessHandler: ((event: Event) => void) | null = null;
   private cutsceneInputLocked: boolean = false;
@@ -113,6 +121,135 @@ export class TileViewer extends Scene {
     super("TileViewer");
     this.mapDataService = new MapDataService();
 
+  }
+
+  private toTestActor(actor: PhaserActor): CaptureQuestTestActor {
+    return {
+      id: actor.id,
+      internalId: actor.internalId ?? null,
+      name: actor.name ?? null,
+      text: actor.text ?? null,
+      type: actor.objectType,
+      mapId: actor.mapId ?? null,
+      x: actor.x ?? null,
+      y: actor.y ?? null,
+      direction: actor.actionDirection ?? null,
+    };
+  }
+
+  private updateLocalPlayerBicycleSprite(isBicycleActive: boolean): void {
+    if (!this.playerActor || !this.mapRenderer) return;
+    if (this.playerMovementController?.getIsSurfing()) return;
+
+    const spriteName = isBicycleActive
+      ? "SPRITE_RED_BIKE"
+      : this.defaultPlayerSpriteName();
+    const nextActor = this.mapRenderer.updateActorSpriteName(
+      this.playerActor.id,
+      spriteName,
+      this.playerActor.actionDirection ?? undefined,
+    );
+    if (!nextActor) return;
+
+    this.playerActor = nextActor;
+    const actorIndex = this.actors.findIndex(
+      (actor) => actor.id === nextActor.id,
+    );
+    if (actorIndex !== -1) {
+      this.actors[actorIndex] = nextActor;
+    }
+  }
+
+  private defaultPlayerSpriteName(): string {
+    const gender = Number(
+      usePlayerCharacterStore.getState().characterProfile?.gender ?? 0,
+    );
+    if (gender === 1) return "SPRITE_BEAUTY";
+    if (gender === 2) return "SPRITE_BLUENB";
+    return "SPRITE_BLUE";
+  }
+
+  private installTestDiagnostics(): void {
+    setCaptureQuestTileViewerDiagnostics({
+      getState: () => {
+        const position = this.playerMovementController?.getCurrentPosition();
+        const playerMapId = this.playerMovementController?.getCurrentMapId();
+        const playerDirection =
+          this.playerMovementController?.getCurrentDirection() ??
+          this.playerActor?.actionDirection ??
+          null;
+        const playerSpriteName = this.playerActor?.id
+          ? this.mapRenderer?.getActorSpriteName(this.playerActor.id)
+          : this.playerActor?.spriteName;
+        const mapId =
+          this.mapInfo?.id ??
+          this.game.registry.get("currentMapId") ??
+          playerMapId ??
+          null;
+
+        return {
+          map: {
+            id: mapId,
+            name: this.mapInfo?.name ?? null,
+            isLoading: this.mapLoadInProgress,
+          },
+          player: {
+            id: this.playerActor?.id ?? null,
+            internalId: this.playerActor?.internalId ?? null,
+            name: this.playerActor?.name ?? null,
+            x: position?.x ?? this.playerActor?.x ?? null,
+            y: position?.y ?? this.playerActor?.y ?? null,
+            direction: playerDirection,
+            isSurfing: this.playerMovementController?.getIsSurfing() ?? false,
+            isCycling: playerSpriteName?.includes("BIKE") ?? false,
+            isMoving: this.playerMovementController?.getIsMoving() ?? false,
+          },
+          visibleActors: this.actors.map((actor) => this.toTestActor(actor)),
+          warps: this.warps.map((warp) => ({
+            id: warp.id,
+            x: warp.x,
+            y: warp.y,
+            sourceMapId: warp.sourceMapId,
+            destinationMapId: warp.destinationMapId ?? null,
+            destinationMap: warp.destinationMap ?? null,
+            destinationX: warp.destinationX ?? null,
+            destinationY: warp.destinationY ?? null,
+            warpType: warp.warpType,
+            warpDirection: warp.warpDirection ?? null,
+          })),
+          worldInput: {
+            frozen: this.isWorldInputFrozen(),
+            reason: this.getWorldInputFreezeReason(),
+          },
+        };
+      },
+      tileToViewport: (tileX, tileY) => {
+        const camera = this.cameras.main;
+        const canvas = this.game.canvas;
+        if (!camera || !canvas) return null;
+
+        const worldX = tileX * TILE_SIZE + TILE_SIZE / 2;
+        const worldY = tileY * TILE_SIZE + TILE_SIZE / 2;
+        const worldAtOrigin = camera.getWorldPoint(0, 0);
+        const worldAtScreenX = camera.getWorldPoint(1, 0);
+        const worldAtScreenY = camera.getWorldPoint(0, 1);
+        const worldPerScreenX = worldAtScreenX.x - worldAtOrigin.x;
+        const worldPerScreenY = worldAtScreenY.y - worldAtOrigin.y;
+        if (worldPerScreenX === 0 || worldPerScreenY === 0) return null;
+
+        const screenX = (worldX - worldAtOrigin.x) / worldPerScreenX;
+        const screenY = (worldY - worldAtOrigin.y) / worldPerScreenY;
+        const rect = canvas.getBoundingClientRect();
+        const gameWidth = canvas.width || this.scale.gameSize.width || rect.width;
+        const gameHeight =
+          canvas.height || this.scale.gameSize.height || rect.height;
+
+        return {
+          x: rect.left + screenX * (rect.width / gameWidth),
+          y: rect.top + screenY * (rect.height / gameHeight),
+        };
+      },
+    });
   }
 
   preload() {
@@ -279,6 +416,9 @@ export class TileViewer extends Scene {
       }
       wasInBattle = state.isInBattle;
     });
+    this.bicycleStateUnsubscribe = useAudioActivityStore.subscribe((state) => {
+      this.updateLocalPlayerBicycleSprite(state.isBicycleActive);
+    });
 
     this.warpEvents = new TileViewerWarpEvents({
       scene: this,
@@ -395,6 +535,9 @@ export class TileViewer extends Scene {
             });
           }
         });
+        emitCaptureQuestTestEvent("cq:actorsChanged", {
+          actors: this.actors.map((actor) => this.toTestActor(actor)),
+        });
       }
     });
 
@@ -504,6 +647,7 @@ export class TileViewer extends Scene {
           viewedMapIds: this.viewedMapIds,
         }),
         setState: (partial) => {
+          const previousMapId = this.mapInfo?.id ?? null;
           if (partial.tiles !== undefined) {
             this.proceduralOverworldPreview?.clear();
             this.tiles = partial.tiles;
@@ -516,9 +660,20 @@ export class TileViewer extends Scene {
           if (partial.warps !== undefined) {
             this.warps = partial.warps;
             this.warpManager.setWarps(partial.warps);
+            emitCaptureQuestTestEvent("cq:warpsChanged", {
+              count: partial.warps.length,
+            });
           }
           if (partial.actors !== undefined) this.actors = partial.actors;
-          if (partial.mapInfo !== undefined) this.mapInfo = partial.mapInfo;
+          if (partial.mapInfo !== undefined) {
+            this.mapInfo = partial.mapInfo;
+            if (partial.mapInfo && partial.mapInfo.id !== previousMapId) {
+              emitCaptureQuestTestEvent("cq:mapChanged", {
+                id: partial.mapInfo.id,
+                name: partial.mapInfo.name,
+              });
+            }
+          }
           if (partial.isOverworldMode !== undefined)
             this.isOverworldMode = partial.isOverworldMode;
           if (partial.viewedMapIds !== undefined)
@@ -532,6 +687,7 @@ export class TileViewer extends Scene {
           this.prepareActorsForLoadedView(actors),
       },
     );
+    this.installTestDiagnostics();
 
     // Try to refresh UI elements if the font is already loaded
     try {
@@ -1171,6 +1327,11 @@ export class TileViewer extends Scene {
     if (this.playerActor && this.playerActor.id === actorId) {
       this.playerActor = null;
     }
+
+    emitCaptureQuestTestEvent("cq:actorDespawned", { id: actorId });
+    emitCaptureQuestTestEvent("cq:actorsChanged", {
+      actors: this.actors.map((actor) => this.toTestActor(actor)),
+    });
   }
 
   handleActorUpdate(event: ActorUpdateEvent) {
@@ -1202,6 +1363,15 @@ export class TileViewer extends Scene {
           (existingActor) => existingActor.id !== actor.id,
         );
         this.mapRenderer.removeActor(actor.id);
+        emitCaptureQuestTestEvent("cq:actorDespawned", {
+          id: actor.id,
+          reason: "leftLoadedView",
+        });
+        emitCaptureQuestTestEvent("cq:actorsChanged", {
+          actors: this.actors.map((existingActor) =>
+            this.toTestActor(existingActor),
+          ),
+        });
       }
       this.playerMovementController.removeBlockingActor(actor.id);
       return;
@@ -1224,6 +1394,12 @@ export class TileViewer extends Scene {
       if (this.isLocalPlayerActor(actor)) {
         this.playerActor = actor;
       }
+      emitCaptureQuestTestEvent("cq:actorUpdated", this.toTestActor(actor));
+      emitCaptureQuestTestEvent("cq:actorsChanged", {
+        actors: this.actors.map((existingActor) =>
+          this.toTestActor(existingActor),
+        ),
+      });
       if (oldSpriteName !== actor.spriteName) {
         this.mapRenderer.refreshActorSprite(actor);
       }
@@ -1264,6 +1440,12 @@ export class TileViewer extends Scene {
       // If the actor isn't in our local data, it might be a new actor moving into view
       this.actors.push(actor);
       this.playerMovementController.updateBlockingActor(actor);
+      emitCaptureQuestTestEvent("cq:actorSpawned", this.toTestActor(actor));
+      emitCaptureQuestTestEvent("cq:actorsChanged", {
+        actors: this.actors.map((existingActor) =>
+          this.toTestActor(existingActor),
+        ),
+      });
 
       // Preload the actor sprite and then render it
       this.actorManager.preloadActorSprites([actor]).then(() => {
@@ -1390,6 +1572,7 @@ export class TileViewer extends Scene {
 
   cleanupResources() {
     this.warpExitInputLocked = false;
+    clearCaptureQuestTileViewerDiagnostics();
 
     // Reduced logging
     if (process.env.NODE_ENV === "development") {
@@ -1430,6 +1613,11 @@ export class TileViewer extends Scene {
     if (this.battleInputFreezeUnsubscribe) {
       this.battleInputFreezeUnsubscribe();
       this.battleInputFreezeUnsubscribe = null;
+    }
+
+    if (this.bicycleStateUnsubscribe) {
+      this.bicycleStateUnsubscribe();
+      this.bicycleStateUnsubscribe = null;
     }
 
     if (this.trainerEncounterUnsubscribe) {

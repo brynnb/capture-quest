@@ -8,7 +8,7 @@ Initial state
   party:
     slot 0: #25 PIKACHU L50 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
   inventory:
-    none
+    #73 POKé FLUTE x1
   hidden objects:
     none
   active battle:
@@ -17,11 +17,13 @@ Initial state
 Resolved script
   label: Route16SnorlaxEncounter
   map: ROUTE_16
-  trigger: coord
+  trigger: npc_click
 
 Actions
   - lockInput
-  - dialogue:  [A huge POKéMON is blocking the way! It's a sleeping SNORLAX! The POKé FLUTE woke it up! The SNORLAX attacked!]
+  - dialogue:  [A sleeping POKÉMON
+blocks the way! SNORLAX woke up! It attacked in a
+grumpy rage!]
   - unlockInput
   - startWildBattle *: #143 SNORLAX L30 winFlag=EVENT_BEAT_ROUTE16_SNORLAX
 
@@ -31,7 +33,7 @@ Final state
   party:
     slot 0: #25 PIKACHU L50 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
   inventory:
-    none
+    #73 POKé FLUTE x1
   hidden objects:
     none
   active battle:

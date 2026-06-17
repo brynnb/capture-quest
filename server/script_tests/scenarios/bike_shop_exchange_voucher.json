@@ -18,7 +18,7 @@
     "textConstant": "TEXT_BIKESHOP_CLERK"
   },
   "expect": {
-    "scriptLabel": "BikeShopExchangeVoucher",
+    "scriptLabel": "BikeShopClerkVoucherExchange",
     "flagsPresent": ["EVENT_GOT_BIKE_VOUCHER", "EVENT_GOT_BICYCLE"],
     "inventoryContains": [{ "itemId": 6, "quantity": 1 }],
     "inventoryAbsent": [{ "itemId": 45 }],

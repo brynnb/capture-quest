@@ -682,8 +682,9 @@ type extractorTriggerKey struct {
 
 func deleteStaleExtractorTriggerScripts(db pokebattle.DBTX, events []EventFile) (int, error) {
 	labelsByTrigger := make(map[extractorTriggerKey][]string)
+	hasExtractorTrigger := make(map[extractorTriggerKey]bool)
 	for _, event := range events {
-		if event.Trigger.Source != extractorSource || event.Trigger.Label == "" {
+		if event.Trigger.Label == "" {
 			continue
 		}
 		key := extractorTriggerKey{
@@ -692,10 +693,16 @@ func deleteStaleExtractorTriggerScripts(db pokebattle.DBTX, events []EventFile) 
 			TriggerLabel: event.Trigger.Label,
 		}
 		labelsByTrigger[key] = append(labelsByTrigger[key], event.ScriptLabel)
+		if event.Trigger.Source == extractorSource {
+			hasExtractorTrigger[key] = true
+		}
 	}
 
 	total := 0
 	for key, labels := range labelsByTrigger {
+		if !hasExtractorTrigger[key] {
+			continue
+		}
 		query, args := staleExtractorDeleteQuery(key, labels)
 		result, err := db.Exec(query, args...)
 		if err != nil {

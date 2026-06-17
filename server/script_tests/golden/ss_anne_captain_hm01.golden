@@ -15,24 +15,34 @@ Initial state
     none
 
 Resolved script
-  label: SSAnneCaptainHM01
+  label: SSAnneCaptainsRoomCaptainHM01Reward
   map: SS_ANNE_CAPTAINS_ROOM
   trigger: npc_click
 
 Actions
   - lockInput
-  - dialogue: CAPTAIN [Urrp! I feel seasick... Ohh... Thank you! I feel much better now! You want to see my CUT technique? Ahh, I see! Here, take this!]
-  - dialogue:  [{PLAYER} received HM01! Use CUT to chop down small trees that block your way! But CUT can only be used if you have the CASCADEBADGE!]
-  - setFlag *: EVENT_GOT_HM01
+  - dialogue:  [CAPTAIN: Ooargh...
+I feel hideous... Urrp! Seasick... (PLAYER) rubbed
+the CAPTAIN's back! Rub-rub...
+Rub-rub...]
   - playSFX: SFX_STOP_ALL_MUSIC
-  - playSFX: SFX_GET_KEY_ITEM
+  - setFlag *: EVENT_RUBBED_CAPTAINS_BACK
+  - dialogue:  [CAPTAIN: Whew!
+Thank you! I feel much better! You want to see
+my CUT technique? I could show you
+if I wasn't ill... I know! You can
+have this! Teach it to your
+POKÉMON and you can see it CUT any time!]
   - giveItem *: HM01 x1 added
+  - dialogue:  [(PLAYER) got
+!]
+  - playSFX: SFX_GET_KEY_ITEM
+  - setFlag *: EVENT_GOT_HM01
   - unlockInput
-  - setsFlags *: EVENT_GOT_HM01
 
 Final state
   location: SS_ANNE_CAPTAINS_ROOM[101] (4,5)
-  flags: EVENT_GOT_HM01, EVENT_GOT_SS_TICKET
+  flags: EVENT_GOT_HM01, EVENT_GOT_SS_TICKET, EVENT_RUBBED_CAPTAINS_BACK
   party:
     slot 0: #5 CHARMELEON L30 moves EMBER, EMBER, LEER, RAGE
   inventory:

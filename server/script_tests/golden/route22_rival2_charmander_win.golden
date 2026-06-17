@@ -24,10 +24,19 @@ Actions
   - showActor
   - move: RIVAL2 [LEFT LEFT LEFT LEFT]
   - facePlayer
-  - dialogue: RIVAL [What? {PLAYER}! What a surprise to see you here! So you're going to POKéMON LEAGUE? You collected all the BADGEs too? That's cool! Then I'll whip you {PLAYER} as a warm up for POKéMON LEAGUE!]
+  - dialogue: RIVAL [{RIVAL}: What?
+(PLAYER)! What a surprise to see you here! So you're going to
+POKÉMON LEAGUE? You collected all
+the BADGEs too? That's cool! Then I'll whip you
+(PLAYER) as a warm up for POKÉMON LEAGUE! Come on!]
   - startTrainerBattle *: RIVAL2 party=10 enemy=[#18 PIDGEOT L47 #111 RHYHORN L45 #58 GROWLITHE L45 #102 EXEGGCUTE L47 #65 ALAKAZAM L50 #9 BLASTOISE L53] winFlag=EVENT_ROUTE22_RIVAL_2
   - unlockInput
   - resolveBattle *: win trainer=RIVAL2 winFlag=EVENT_ROUTE22_RIVAL_2
+  - dialogue: RIVAL [What!? I was just
+careless! That loosened me
+up! I'm ready for POKÉMON LEAGUE! (PLAYER), you need
+more practice! But hey, you know
+that! I'm out of here. Smell ya!]
   - move: RIVAL2 [LEFT LEFT LEFT]
   - hideObject *: objects=[TEXT_ROUTE22_RIVAL2]
   - resetFlag *: EVENT_2ND_ROUTE22_RIVAL_BATTLE

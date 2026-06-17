@@ -15,21 +15,27 @@ Initial state
     none
 
 Resolved script
-  label: BillsHouseSSTicket
+  label: BillsHouseBillSSTicketReward
   map: BILLS_HOUSE
   trigger: npc_click
 
 Actions
   - lockInput
-  - dialogue: BILL [That cruise ship, S.S.ANNE, is in VERMILION CITY. Its passengers are all trainers! They invited me to their party, but I can't stand fancy do's. Why don't you go instead of me?]
-  - dialogue:  [{PLAYER} received an S.S.TICKET!]
+  - dialogue:  [BILL: Yeehah!
+Thanks, bud! I owe you one! So, did you come
+to see my POKÉMON collection? You didn't? That's a bummer. I've got to thank
+you... Oh here, maybe this'll do.]
+  - giveItem *: S.S.TICKET x1 added
+  - dialogue:  [(PLAYER) received
+an S.S.TICKET!]
+  - playSFX: SFX_GET_KEY_ITEM
   - setFlag *: EVENT_GOT_SS_TICKET
   - showObject *: objects=[TEXT_CERULEANCITY_GUARD1]
   - hideObject *: objects=[TEXT_CERULEANCITY_GUARD2]
-  - playSFX: SFX_GET_KEY_ITEM
+  - dialogue:  [That cruise ship,
+S.S.ANNE, is in VERMILION CITY. Its passengers are all trainers! They invited me
+to their party, but I can't stand fancy do's. Why don't you go instead of me?]
   - unlockInput
-  - giveItem *: S.S.TICKET x1 added
-  - setsFlags *: EVENT_GOT_SS_TICKET
 
 Final state
   location: BILLS_HOUSE[88] (4,5)

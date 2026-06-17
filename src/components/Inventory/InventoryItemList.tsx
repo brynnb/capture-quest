@@ -14,6 +14,12 @@ import usePlayerCharacterStore from "@stores/PlayerCharacterStore";
 import { sendCQInventoryRequest } from "@/phaser-game/services/PhaserNetworkService";
 import type { Item } from "@/entities/Item";
 
+const inventoryItemTestId = (item: CQInventoryItem) =>
+  `inventory-item-${item.item.shortName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")}`;
+
 const FilterBar = styled.div`
   width: 232px;
   height: 24px;
@@ -279,6 +285,9 @@ const InventoryItemList: React.FC<InventoryItemListProps> = ({
       <ItemRow
         key={`item-${invItem.instance.id}`}
         $isSelected={selectedInstanceId === invItem.instance.id}
+        data-testid={inventoryItemTestId(invItem)}
+        data-item-id={invItem.item.id}
+        data-instance-id={invItem.instance.id}
         title={moveTooltip}
         onPointerDown={(e) => {
           if (selectedInstanceId !== null && onItemSelect) {

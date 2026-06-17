@@ -18,7 +18,7 @@
     "textConstant": "TEXT_VIRIDIANCITY_FISHER"
   },
   "expect": {
-    "scriptLabel": "ViridianCityTM42DreamEater",
+    "scriptLabel": "ViridianCityFisherTextGift",
     "flagsPresent": ["EVENT_GOT_TM42"],
     "inventoryContains": [{ "itemId": 130, "quantity": 1 }],
     "actionTypesContains": ["dialogue", "setFlag", "giveItem"],

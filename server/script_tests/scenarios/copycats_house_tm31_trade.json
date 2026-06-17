@@ -15,15 +15,14 @@
   "trigger": {
     "type": "npc_click",
     "mapName": "COPYCATS_HOUSE_2F",
-    "textConstant": "TEXT_COPYCATSHOUSE2F_COPYCAT",
-    "choice": true
+    "textConstant": "TEXT_COPYCATSHOUSE2F_COPYCAT"
   },
   "expect": {
-    "scriptLabel": "CopycatsHouseTM31",
+    "scriptLabel": "CopycatsHouse2FCopycatTM31Reward",
     "flagsPresent": ["EVENT_GOT_TM31"],
     "inventoryContains": [{ "itemId": 119, "quantity": 1 }],
     "inventoryAbsent": [{ "itemId": 51 }],
-    "actionTypesContains": ["dialogue", "choice", "takeItem", "giveItem", "setsFlags"],
+    "actionTypesContains": ["dialogue", "takeItem", "giveItem", "setFlag"],
     "activeBattleAbsent": true
   }
 }

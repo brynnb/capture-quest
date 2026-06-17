@@ -24,7 +24,12 @@ Actions
   - showActor
   - move: RIVAL [LEFT LEFT LEFT LEFT]
   - facePlayer
-  - dialogue: RIVAL [Hey! {PLAYER}! You're going to POKéMON LEAGUE? Forget it! You probably don't have any BADGEs! The guard won't let you through! By the way, did your POKéMON get any stronger?]
+  - dialogue: RIVAL [{RIVAL}: Hey!
+(PLAYER)! You're going to
+POKÉMON LEAGUE? Forget it! You
+probably don't have any BADGEs! The guard won't
+let you through! By the way, did
+your POKÉMON get any stronger?]
   - startTrainerBattle *: RIVAL1 party=5 enemy=[#16 PIDGEY L9 #1 BULBASAUR L8] winFlag=EVENT_ROUTE22_RIVAL_1
   - unlockInput
 

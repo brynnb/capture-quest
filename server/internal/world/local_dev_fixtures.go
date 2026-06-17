@@ -41,8 +41,12 @@ func ensureLocalDevFixtures(charID int64) {
 }
 
 func localDevFixturesEnabled() bool {
-	return os.Getenv("CAPTUREQUEST_TEST_MODE") == "true" ||
+	return captureQuestTestModeEnabled() ||
 		os.Getenv("CAPTUREQUEST_LOCAL_FIXTURES") == "true"
+}
+
+func captureQuestTestModeEnabled() bool {
+	return os.Getenv("CAPTUREQUEST_TEST_MODE") == "true"
 }
 
 func ensureLocalDevPokemonParty(myDB *sql.DB, charID int64) error {

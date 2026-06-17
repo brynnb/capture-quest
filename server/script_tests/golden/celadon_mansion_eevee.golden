@@ -15,18 +15,16 @@ Initial state
     none
 
 Resolved script
-  label: CeladonMansionEevee
+  label: CeladonMansionRoofHouseEeveePokeballTextPokemonGift
   map: CELADON_MANSION_ROOF_HOUSE
   trigger: npc_click
 
 Actions
   - lockInput
-  - dialogue:  [There's a POKé BALL on the table! {PLAYER} received EEVEE!]
-  - setFlag *: EVENT_GOT_EEVEE
-  - unlockInput
   - givePokemon *: EEVEE L25 added to party
+  - setFlag *: EVENT_GOT_EEVEE
   - hideObject *: objects=[TEXT_CELADONMANSION_ROOF_HOUSE_EEVEE_POKEBALL]
-  - setsFlags *: EVENT_GOT_EEVEE
+  - unlockInput
 
 Final state
   location: CELADON_MANSION_ROOF_HOUSE[132] (4,4)

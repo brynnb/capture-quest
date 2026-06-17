@@ -21,15 +21,26 @@ Resolved script
 
 Actions
   - lockInput
-  - showActor
+  - showObject *: objects=[TEXT_SSANNE2F_RIVAL]
   - move: RIVAL [DOWN DOWN DOWN DOWN]
-  - facePlayer
-  - dialogue: RIVAL [Bonjour! {PLAYER}! Imagine seeing you here! {PLAYER}, were you really invited? So how's your POKéDEX coming? I already caught 40 kinds, pal! Different kinds are everywhere! Crawl around in grassy areas!]
+  - dialogue: RIVAL [{RIVAL}: Bonjour!
+(PLAYER)! Imagine seeing
+you here! (PLAYER), were you
+really invited? So how's your
+POKÉDEX coming? I already caught
+40 kinds, pal! Different kinds
+are everywhere! Crawl around in
+grassy areas!]
   - startTrainerBattle *: RIVAL2 party=1 enemy=[#17 PIDGEOTTO L19 #20 RATICATE L16 #64 KADABRA L18 #8 WARTORTLE L20] winFlag=EVENT_BEAT_SS_ANNE_RIVAL
   - unlockInput
   - resolveBattle *: win trainer=RIVAL2 winFlag=EVENT_BEAT_SS_ANNE_RIVAL
-  - dialogue: RIVAL [Humph! At least you're raising your POKéMON! I heard there was a CUT master on board. But, he was just a seasick, old man! But, CUT itself is really useful! You should go see him! Smell ya!]
-  - move: RIVAL [RIGHT DOWN DOWN DOWN DOWN]
+  - dialogue: RIVAL [Humph! At least you're
+raising your POKÉMON! {RIVAL}: I heard
+there was a CUT master on board. But, he was just a
+seasick, old man! But, CUT itself is
+really useful! You should go see
+him! Smell ya!]
+  - move: RIVAL [RIGHT DOWN DOWN DOWN DOWN DOWN]
   - hideObject *: objects=[TEXT_SSANNE2F_RIVAL]
   - setFlag *: EVENT_SS_ANNE_RIVAL_LEFT
 

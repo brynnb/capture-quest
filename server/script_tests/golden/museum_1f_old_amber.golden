@@ -15,20 +15,25 @@ Initial state
     none
 
 Resolved script
-  label: Museum1FOldAmber
+  label: Museum1FScientist2OldAmberReward
   map: MUSEUM_1F
   trigger: npc_click
 
 Actions
   - lockInput
-  - dialogue: SCIENTIST [Ssh! I think that this chunk of AMBER contains POKéMON DNA! It would be great if POKéMON could be resurrected from it! But, my colleagues just ignore me!]
-  - dialogue: SCIENTIST [So I have a favor to ask! Take this to a POKéMON LAB and get it examined!]
-  - dialogue:  [{PLAYER} received OLD AMBER!]
+  - dialogue:  [Ssh! I think that
+this chunk of AMBER contains POKÉMON DNA! It would be great
+if POKÉMON could be resurrected from it! But, my colleagues
+just ignore me! So I have a favor
+to ask! Take this to a
+POKÉMON LAB and get it examined!]
+  - giveItem *: OLD AMBER x1 added
   - setFlag *: EVENT_GOT_OLD_AMBER
+  - hideObject *: objects=[TEXT_MUSEUM1F_OLD_AMBER]
+  - dialogue:  [(PLAYER) received
+OLD AMBER!]
   - playSFX: SFX_GET_ITEM_1
   - unlockInput
-  - giveItem *: OLD AMBER x1 added
-  - setsFlags *: EVENT_GOT_OLD_AMBER
 
 Final state
   location: MUSEUM_1F[52] (15,3)
@@ -38,6 +43,6 @@ Final state
   inventory:
     #31 OLD AMBER x1
   hidden objects:
-    none
+    TEXT_MUSEUM1F_OLD_AMBER
   active battle:
     none

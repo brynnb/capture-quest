@@ -18,7 +18,8 @@
     "type": "coord",
     "mapName": "SAFARI_ZONE_GATE",
     "x": 4,
-    "y": 2
+    "y": 2,
+    "choice": true
   },
   "expect": {
     "scriptLabel": "SafariZoneGateExit",

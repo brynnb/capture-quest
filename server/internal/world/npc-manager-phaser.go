@@ -400,6 +400,10 @@ func (m *PhaserActorManager) simulateMovement() {
 	// Process A*-pathed actors first (cutscene NPCs, scripted movement)
 	m.processPathedMovement(now)
 
+	if captureQuestTestModeEnabled() {
+		return
+	}
+
 	m.mu.Lock()
 	actorsToUpdate := make([]*PhaserActor, 0)
 

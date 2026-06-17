@@ -18,7 +18,7 @@
     "textConstant": "TEXT_MUSEUM1F_SCIENTIST2"
   },
   "expect": {
-    "scriptLabel": "Museum1FOldAmber",
+    "scriptLabel": "Museum1FScientist2OldAmberReward",
     "flagsPresent": ["EVENT_GOT_OLD_AMBER"],
     "inventoryContains": [{ "itemId": 31, "quantity": 1 }],
     "actionTypesContains": ["dialogue", "setFlag", "giveItem"],

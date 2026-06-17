@@ -6,6 +6,7 @@ import { UiManager } from "./UiManager";
 import useChatStore, { MessageType } from "@/stores/ChatStore";
 import type { PhaserActor, PhaserWarp } from "@/net/generated/world_api";
 import { isWorldInputFrozen } from "../utils/worldInputGuard";
+import AudioManager from "@/services/audio/AudioManager";
 
 export class WarpManager {
   private scene: Scene;
@@ -235,7 +236,9 @@ export class WarpManager {
     }
 
     const playerActor = this.getPlayerActor();
-    const sourceMapId = playerActor?.mapId ?? this.scene.game.registry.get("currentMapId");
+    const currentMapId = this.scene.game.registry.get("currentMapId");
+    const sourceMapId =
+      typeof currentMapId === "number" ? currentMapId : playerActor?.mapId;
     const normalizedDirection =
       direction?.trim().toUpperCase() ||
       this.directionFromPositionToWarp(
@@ -272,6 +275,7 @@ export class WarpManager {
       detail.animationStartY = warp.destinationY;
     }
 
+    void AudioManager.playGeneratedSFX("warp", 0.85);
     window.dispatchEvent(
       new CustomEvent("warpTileTeleport", {
         detail,

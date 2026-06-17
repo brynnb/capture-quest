@@ -1,0 +1,34 @@
+Scenario: debug_warp_cerulean_trashed_house_upper_exit
+Description: Debug setup: stand on Cerulean Trashed House's upper exit tile.
+Character: DebugWarpCeruleanTrashedHouseUpperExit
+
+Initial state
+  location: CERULEAN_TRASHED_HOUSE[62] (3,0)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L25 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FixtureState
+  map: CERULEAN_TRASHED_HOUSE
+  trigger: fixture_state
+
+Actions
+
+Final state
+  location: CERULEAN_TRASHED_HOUSE[62] (3,0)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L25 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

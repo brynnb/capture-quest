@@ -15,19 +15,19 @@ Initial state
     none
 
 Resolved script
-  label: Route16FlyHouseHM02
+  label: Route16FlyHouseBrunetteGirlTextGift
   map: ROUTE_16_FLY_HOUSE
   trigger: npc_click
 
 Actions
   - lockInput
-  - dialogue:  [Oh, you found my secret retreat! Please don't tell anyone I'm here. I'll make it up to you with this!]
-  - dialogue:  [{PLAYER} received HM02! HM02 is FLY. It will take you back to any town. Put it to good use!]
-  - setFlag *: EVENT_GOT_HM02
-  - playSFX: SFX_GET_KEY_ITEM
-  - unlockInput
+  - dialogue:  [Oh, you found my
+secret retreat! Please don't tell
+anyone I'm here. I'll make it up to you with this!]
   - giveItem *: HM02 x1 added
-  - setsFlags *: EVENT_GOT_HM02
+  - playSFX: SFX_GET_KEY_ITEM
+  - setFlag *: EVENT_GOT_HM02
+  - unlockInput
 
 Final state
   location: ROUTE_16_FLY_HOUSE[188] (2,4)

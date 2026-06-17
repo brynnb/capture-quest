@@ -2414,8 +2414,8 @@ func mapStartTrainerBattleAction(action candidateAction) (json.RawMessage, error
 		"partyByFlag":      action.PartyByFlag,
 		"trainerName":      action.TrainerName,
 		"trainerObjectId":  action.TrainerObjectID,
-		"winFlag":          action.WinFlag,
-		"loseFlag":         action.LoseFlag,
+		"winFlag":          mapEventName(action.WinFlag),
+		"loseFlag":         mapEventName(action.LoseFlag),
 		"lossMessage":      action.LossMessage,
 		"noBlackoutOnLoss": action.NoBlackoutOnLoss,
 		"postWinActions":   postWinActions,
@@ -2445,7 +2445,7 @@ func mapStartWildBattleAction(action candidateAction) (json.RawMessage, error) {
 	mapped := map[string]any{
 		"type":           "startWildBattle",
 		"level":          action.Level,
-		"winFlag":        action.WinFlag,
+		"winFlag":        mapEventName(action.WinFlag),
 		"postWinActions": postWinActions,
 	}
 	if len(action.AllowedActions) > 0 {
@@ -2609,7 +2609,7 @@ func setFlagsForAction(action candidateAction) []string {
 		}
 	case "startTrainerBattle", "startWildBattle":
 		if action.WinFlag != "" {
-			flags = append(flags, action.WinFlag)
+			flags = append(flags, mapEventName(action.WinFlag))
 		}
 		for _, nested := range action.PostWinActions {
 			flags = append(flags, setFlagsForAction(nested)...)

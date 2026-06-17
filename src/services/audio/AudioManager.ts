@@ -38,6 +38,8 @@ class AudioManager {
     private masterGainNode: GainNode | null = null;
     private currentMusicTrack: string | null = null;
     private requestedMusicTrack: string | null = null; // What we WANT to play, even if it failed
+    private lastSFXTrack: string | null = null;
+    private lastGeneratedSFXName: GeneratedSFXName | null = null;
     private currentTrackMultiplier: number = 1.0;
     private initialized: boolean = false;
     private isMuted: boolean = false;
@@ -147,6 +149,14 @@ class AudioManager {
         return this.requestedMusicTrack;
     }
 
+    public getLastSFXTrack(): string | null {
+        return this.lastSFXTrack;
+    }
+
+    public getLastGeneratedSFXName(): GeneratedSFXName | null {
+        return this.lastGeneratedSFXName;
+    }
+
     private async loadGlobalSounds() {
         const globalSounds = audioManifest.global || [];
         await Promise.all(globalSounds.map((s: string) => this.preloadSFX(s, true)));
@@ -222,6 +232,8 @@ class AudioManager {
      * Plays a one-shot sound effect.
      */
     public async playSFX(filename: string, volume: number = 0.5) {
+        this.lastSFXTrack = filename;
+
         if (!this.initialized || !this.audioCtx) {
             console.warn(`[AudioManager] playSFX(${filename}): Not initialized`);
             return;
@@ -270,6 +282,8 @@ class AudioManager {
     }
 
     public async playGeneratedSFX(name: GeneratedSFXName, volume: number = 1) {
+        this.lastGeneratedSFXName = name;
+
         if (!this.initialized || !this.audioCtx || this.isMuted) {
             return;
         }

@@ -9,6 +9,7 @@ import (
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
+	db_character "capturequest/internal/db/character"
 	"capturequest/internal/db/cqitems"
 	"capturequest/internal/pokebattle"
 	"capturequest/internal/session"
@@ -587,6 +588,19 @@ func setCutscenePlayerPosition(ses *session.Session, wh *WorldHandler, charID in
 		if wh != nil && wh.PlayerMovement != nil {
 			wh.PlayerMovement.UpdatePosition(int(charID), x, y, sessionMapID, direction)
 			wh.PlayerMovement.FlushPlayerPosition(int(charID))
+		}
+		if db.GlobalWorldDB != nil && db.GlobalWorldDB.DB != nil {
+			if err := db_character.UpdateCharacterPosition(
+				int32(charID),
+				uint32(sessionMapID),
+				float64(x),
+				float64(y),
+				0,
+				0,
+			); err != nil {
+				log.Printf("[Cutscene] Failed to save moved player %d at map %d (%d,%d): %v",
+					charID, sessionMapID, x, y, err)
+			}
 		}
 		return
 	}

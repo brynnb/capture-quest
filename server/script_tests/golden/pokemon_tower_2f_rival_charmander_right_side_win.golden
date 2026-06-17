@@ -24,11 +24,18 @@ Resolved script
 Actions
   - lockInput
   - facePlayer
-  - dialogue: RIVAL [Hey, {PLAYER}! What brings you here? Your POKéMON don't look dead! I can at least make them faint! Let's go, pal!]
+  - dialogue: RIVAL [{RIVAL}: Hey,
+(PLAYER)! What brings you here? Your POKÉMON don't look dead! I can at least
+make them faint! Let's go, pal!]
   - startTrainerBattle *: RIVAL2 party=4 enemy=[#17 PIDGEOTTO L25 #58 GROWLITHE L23 #102 EXEGGCUTE L22 #64 KADABRA L20 #8 WARTORTLE L25] winFlag=EVENT_BEAT_POKEMON_TOWER_RIVAL
   - unlockInput
   - resolveBattle *: win trainer=RIVAL2 winFlag=EVENT_BEAT_POKEMON_TOWER_RIVAL
-  - dialogue: RIVAL [How's your POKéDEX coming, pal? I just caught a CUBONE! I can't find the grown-up MAROWAK yet! I doubt there are any left! Well, I better get going! I've got a lot to accomplish, pal! Smell ya later!]
+  - dialogue: RIVAL [What?
+You stinker! I took it easy on
+you too! How's your POKÉDEX
+coming, pal? I just caught a CUBONE! I can't find the
+grown-up MAROWAK yet! I doubt there are
+any left! Well, I better get going! I've got a lot to accomplish, pal! Smell ya later!]
   - move: RIVAL [DOWN DOWN RIGHT RIGHT RIGHT RIGHT DOWN DOWN]
   - hideObject *: objects=[TEXT_POKEMONTOWER2F_RIVAL]
   - setFlag *: EVENT_POKEMON_TOWER_RIVAL_LEFT

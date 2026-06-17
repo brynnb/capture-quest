@@ -21,9 +21,9 @@ Resolved script
 
 Actions
   - lockInput
-  - dialogue: GUARD [You can pass here only if you have the THUNDERBADGE! Oh! That is the THUNDERBADGE! OK then! Please, go right ahead!]
+  - dialogue:  [You can pass here only if you have the THUNDERBADGE! Oh! That is the THUNDERBADGE! OK then! Please, go right ahead!]
+  - setFlag *: EVENT_ROUTE23_BADGE3_CHECKED
   - unlockInput
-  - setsFlags *: EVENT_ROUTE23_BADGE3_CHECKED
 
 Final state
   location: ROUTE_23[34] (8,119)

@@ -10,6 +10,7 @@ interface ImportMetaEnv {
     readonly VITE_HASH_PORT?: string;
     readonly VITE_DEV_PORT?: string;
     readonly VITE_LOCAL_DEV?: string;
+    readonly VITE_FORCE_WEBSOCKET?: string;
 }
 
 interface ImportMeta {

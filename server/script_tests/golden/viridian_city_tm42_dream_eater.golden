@@ -15,18 +15,20 @@ Initial state
     none
 
 Resolved script
-  label: ViridianCityTM42DreamEater
+  label: ViridianCityFisherTextGift
   map: VIRIDIAN_CITY
   trigger: npc_click
 
 Actions
   - lockInput
-  - dialogue:  [{PLAYER} received TM42! TM42 contains DREAM EATER... ...Snore...]
-  - setFlag *: EVENT_GOT_TM42
-  - playSFX: SFX_GET_ITEM_2
-  - unlockInput
+  - dialogue:  [Yawn!
+I must have dozed off in the sun. I had this dream
+about a DROWZEE eating my dream. What's this? Where did this TM come from? This is spooky!
+Here, you can have this TM.]
   - giveItem *: TM42 x1 added
-  - setsFlags *: EVENT_GOT_TM42
+  - playSFX: SFX_GET_ITEM_2
+  - setFlag *: EVENT_GOT_TM42
+  - unlockInput
 
 Final state
   location: VIRIDIAN_CITY[9999] (-4,-49)

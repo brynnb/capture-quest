@@ -15,19 +15,21 @@ Initial state
     none
 
 Resolved script
-  label: BluesHouseDaisyTownMap
+  label: BluesHouseDaisyTownMapReward
   map: BLUES_HOUSE
   trigger: npc_click
 
 Actions
   - lockInput
-  - dialogue: DAISY [Grandpa asked you to run an errand? Here, this will help you!]
-  - dialogue:  [{PLAYER} received a TOWN MAP! Use the TOWN MAP to find out where you are.]
-  - setFlag *: EVENT_GOT_TOWN_MAP
-  - playSFX: SFX_GET_KEY_ITEM
-  - unlockInput
+  - dialogue:  [Grandpa asked you
+to run an errand? Here, this will help you!]
   - giveItem *: TOWN MAP x1 added
-  - setsFlags *: EVENT_GOT_TOWN_MAP
+  - hideObject *: objects=[TEXT_BLUESHOUSE_TOWN_MAP]
+  - dialogue:  [(PLAYER) got a
+!]
+  - playSFX: SFX_GET_KEY_ITEM
+  - setFlag *: EVENT_GOT_TOWN_MAP
+  - unlockInput
 
 Final state
   location: BLUES_HOUSE[39] (4,4)
@@ -37,6 +39,6 @@ Final state
   inventory:
     #5 TOWN MAP x1
   hidden objects:
-    none
+    TEXT_BLUESHOUSE_TOWN_MAP
   active battle:
     none

@@ -21,9 +21,9 @@ Resolved script
 
 Actions
   - lockInput
-  - dialogue: GUARD [You can pass here only if you have the EARTHBADGE! Oh! That is the EARTHBADGE! OK then! Please, go right ahead!]
+  - dialogue:  [You can pass here only if you have the EARTHBADGE! Oh! That is the EARTHBADGE! OK then! Please, go right ahead!]
+  - setFlag *: EVENT_ROUTE23_BADGE8_CHECKED
   - unlockInput
-  - setsFlags *: EVENT_ROUTE23_BADGE8_CHECKED
 
 Final state
   location: ROUTE_23[34] (4,35)

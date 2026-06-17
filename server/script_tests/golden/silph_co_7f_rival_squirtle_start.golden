@@ -24,9 +24,13 @@ Resolved script
 
 Actions
   - lockInput
-  - dialogue: RIVAL [{RIVAL}: What kept you {PLAYER}?]
+  - dialogue: RIVAL [{RIVAL}: What
+kept you (PLAYER)?]
   - move: RIVAL [UP UP UP UP]
-  - dialogue: RIVAL [Hahaha! I thought you'd turn up if I waited here! I guess TEAM ROCKET slowed you down! Not that I care! I saw you in SAFFRON, so I decided to see if you got better!]
+  - dialogue: RIVAL [{RIVAL}: Hahaha!
+I thought you'd turn up if I waited here! I guess TEAM
+ROCKET slowed you down! Not that I care! I saw you in
+SAFFRON, so I decided to see if you got better!]
   - startTrainerBattle *: RIVAL2 party=8 enemy=[#18 PIDGEOT L37 #130 GYARADOS L38 #58 GROWLITHE L35 #65 ALAKAZAM L35 #3 VENUSAUR L40] winFlag=EVENT_BEAT_SILPH_CO_RIVAL
   - unlockInput
 

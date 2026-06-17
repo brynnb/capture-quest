@@ -21,8 +21,10 @@ Resolved script
 
 Actions
   - lockInput
-  - dialogue: SAFARI ZONE WORKER [Leaving early? Please return any SAFARI BALLs you have left.]
-  - dialogue: SAFARI ZONE WORKER [Did you get a good haul? Come again!]
+  - choice:  "Leaving early?" choice=true
+  - dialogue: SAFARI ZONE WORKER [Please return any
+SAFARI BALLs you have left. Did you get a
+good haul? Come again!]
   - endSafariSession *: active=true balls=17 steps=321 ended=true
   - unlockInput
 

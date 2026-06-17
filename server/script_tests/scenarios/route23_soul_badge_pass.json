@@ -23,7 +23,7 @@
     "finalX": 11,
     "finalY": 96,
     "flagsPresent": ["EVENT_GOT_SOULBADGE", "EVENT_ROUTE23_BADGE5_CHECKED"],
-    "actionTypesContains": ["dialogue", "setsFlags"],
+    "actionTypesContains": ["dialogue", "setFlag"],
     "activeBattleAbsent": true
   }
 }

@@ -4,8 +4,8 @@
   "fixture": {
     "characterName": "ScriptSimViridianOldManTutorial",
     "mapName": "VIRIDIAN_CITY",
-    "x": 21,
-    "y": 9,
+    "x": 18,
+    "y": 5,
     "direction": "LEFT",
     "flags": ["EVENT_GOT_POKEDEX"],
     "party": [{ "speciesId": 25, "level": 10 }],

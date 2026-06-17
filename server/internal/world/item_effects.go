@@ -567,7 +567,7 @@ func sendCQItemUseSuccess(ses *session.Session, found *cqitems.CQInventoryItem, 
 	}
 	for _, fields := range extra {
 		for key, value := range fields {
-			payload[key] = value
+			payload[key] = StructToMap(value)
 		}
 	}
 	ses.SendStreamJSON(payload, opcodes.CQItemUseResponse)

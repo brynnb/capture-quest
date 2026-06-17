@@ -23,7 +23,7 @@
     "finalX": 4,
     "finalY": 35,
     "flagsPresent": ["EVENT_GOT_EARTHBADGE", "EVENT_ROUTE23_BADGE8_CHECKED"],
-    "actionTypesContains": ["dialogue", "setsFlags"],
+    "actionTypesContains": ["dialogue", "setFlag"],
     "activeBattleAbsent": true
   }
 }

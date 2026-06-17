@@ -15,6 +15,24 @@ import {
 import usePokeBattleStore from "@stores/PokeBattleStore";
 import useAudioActivityStore from "@stores/AudioActivityStore";
 
+function isClassicOutdoorMapId(mapId: number): boolean {
+  // Map IDs 0-36 are the original Red/Blue outdoor maps before CaptureQuest
+  // stitches them into Kanto (9999). Static map metadata usually carries this,
+  // but keeping the fallback here prevents bike state from flickering while the
+  // metadata store catches up during tests and fast reconnects.
+  return mapId === 9999 || (mapId >= 0 && mapId <= 36);
+}
+
+function isOutdoorMap(
+  mapId: number,
+  maps: ReturnType<typeof useStaticDataStore.getState>["maps"],
+): boolean {
+  return (
+    isClassicOutdoorMapId(mapId) ||
+    maps.some((map) => map.id === mapId && Boolean(map.isOverworld))
+  );
+}
+
 /**
  * AudioService bridges the Zustand stores with the static AudioManager.
  * It's implemented as a "headless" component that lives at the top level of the app.
@@ -33,6 +51,7 @@ const AudioService = () => {
   );
   const isMapLoading = useGameStatusStore((state) => state.isMapLoading);
   const isStaticDataLoaded = useStaticDataStore((state) => state.isLoaded);
+  const maps = useStaticDataStore((state) => state.maps);
   const isCharCreateDataLoaded = useStaticDataStore(
     (state) => state.isCharCreateLoaded,
   );
@@ -44,6 +63,9 @@ const AudioService = () => {
   const trainerClass = usePokeBattleStore((state) => state.trainerClass);
   const isSurfing = useAudioActivityStore((state) => state.isSurfing);
   const isBicycleActive = useAudioActivityStore((state) => state.isBicycleActive);
+  const wantsBicycle = useAudioActivityStore((state) => state.wantsBicycle);
+  const forcedBicycle = useAudioActivityStore((state) => state.forcedBicycle);
+  const setBicycleActive = useAudioActivityStore((state) => state.setBicycleActive);
   const travelMapId = useAudioActivityStore((state) => state.travelMapId);
   const battleVictoryTrack = useAudioActivityStore(
     (state) => state.battleVictoryTrack,
@@ -151,6 +173,24 @@ const AudioService = () => {
     }
   }, [currentMapId, getMapNameById]);
 
+  useEffect(() => {
+    if (currentScreen !== "game" || currentMapId === null) return;
+
+    const isOverworldMap = isOutdoorMap(currentMapId, maps);
+    const shouldRide = isOverworldMap && (wantsBicycle || forcedBicycle);
+    if (isBicycleActive !== shouldRide) {
+      setBicycleActive(shouldRide);
+    }
+  }, [
+    currentMapId,
+    currentScreen,
+    forcedBicycle,
+    isBicycleActive,
+    maps,
+    setBicycleActive,
+    wantsBicycle,
+  ]);
+
   // Handle travel/map music from imported Red/Blue metadata.
   useEffect(() => {
     if (!AudioManager.isInitialized()) return;
@@ -171,7 +211,9 @@ const AudioService = () => {
       return;
     }
 
-    if (isBicycleActive && currentMapId === 9999) {
+    const isOverworldMap = isOutdoorMap(currentMapId, maps);
+
+    if (isBicycleActive && isOverworldMap) {
       AudioManager.playMusic(bikeMusicTrack());
       return;
     }
@@ -186,6 +228,7 @@ const AudioService = () => {
     isInBattle,
     isMapLoading,
     isSurfing,
+    maps,
     setBattleVictoryTrack,
     travelMapId,
   ]);

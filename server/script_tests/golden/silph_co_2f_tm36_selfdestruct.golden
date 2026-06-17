@@ -15,18 +15,19 @@ Initial state
     none
 
 Resolved script
-  label: SilphCo2FTM36Selfdestruct
+  label: SilphCo2FSilphWorkerFTextGift
   map: SILPH_CO_2F
   trigger: npc_click
 
 Actions
   - lockInput
-  - dialogue:  [{PLAYER} got TM36! TM36 is SELFDESTRUCT! It's powerful, but the POKéMON that uses it faints! Be careful.]
-  - setFlag *: EVENT_GOT_TM36
-  - playSFX: SFX_GET_ITEM_1
-  - unlockInput
+  - dialogue:  [Eeek!
+No! Stop! Help! Oh, you're not
+with TEAM ROCKET. I thought... I'm sorry. Here, please take this!]
   - giveItem *: TM36 x1 added
-  - setsFlags *: EVENT_GOT_TM36
+  - playSFX: SFX_GET_ITEM_1
+  - setFlag *: EVENT_GOT_TM36
+  - unlockInput
 
 Final state
   location: SILPH_CO_2F[207] (10,2)

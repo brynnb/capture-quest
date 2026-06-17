@@ -7,6 +7,7 @@ import usePokemonDialogueStore from "@/stores/PokemonDialogueStore";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import useAudioActivityStore from "@/stores/AudioActivityStore";
+import { emitCaptureQuestTestEvent } from "@/testing/capturequestTestBridge";
 
 type MovementDirection = "UP" | "DOWN" | "LEFT" | "RIGHT";
 
@@ -146,6 +147,17 @@ export class PlayerMovementController {
     provider: () => MovementDirection | null,
   ): void {
     this.heldKeyboardDirectionProvider = provider;
+  }
+
+  private emitPlayerPositionChanged(): void {
+    emitCaptureQuestTestEvent("cq:playerPositionChanged", {
+      x: this.currentTileX,
+      y: this.currentTileY,
+      mapId: this.currentMapId,
+      direction: this.currentDirection,
+      isMoving: this.isMoving,
+      isSurfing: this.isSurfing,
+    });
   }
 
   /**
@@ -1173,6 +1185,18 @@ export class PlayerMovementController {
     }
 
     const targetWarp = this.warpAtProvider(targetTileX, targetTileY);
+    if (
+      targetWarp &&
+      targetTileX === this.currentTileX &&
+      targetTileY === this.currentTileY
+    ) {
+      const direction =
+        this.normalizeDirection(targetWarp.warpDirection ?? "") ??
+        this.normalizeDirection(this.currentDirection) ??
+        "DOWN";
+      this.requestWarpActivationFromCurrentTile(targetWarp, direction);
+      return;
+    }
 
     // Check if target is walkable
     if (!walkable) {
@@ -1195,6 +1219,20 @@ export class PlayerMovementController {
           this.currentMapId,
           "click",
         );
+        return;
+      }
+      const currentWarp = this.warpAtProvider(
+        this.currentTileX,
+        this.currentTileY,
+      );
+      if (
+        direction &&
+        currentWarp &&
+        (this.isCurrentTileDirectionalWarp(currentWarp) ||
+          !this.collisionMap.has(key)) &&
+        this.canActivateWarpWithDirection(currentWarp, direction)
+      ) {
+        this.requestWarpActivationFromCurrentTile(currentWarp, direction);
         return;
       }
       if (
@@ -1266,6 +1304,7 @@ export class PlayerMovementController {
       this.currentTileY = y;
       this.updateSurfingStateForTile(x, y);
       this.updateTravelMapForTile(x, y);
+      this.emitPlayerPositionChanged();
       PhaserNet.sendPlayerPosition(
         x,
         y,
@@ -1472,23 +1511,29 @@ export class PlayerMovementController {
     const dy = direction === "UP" ? -1 : direction === "DOWN" ? 1 : 0;
     const targetX = this.currentTileX + dx;
     const targetY = this.currentTileY + dy;
+    const targetKey = `${targetX},${targetY}`;
+    const targetWarp = this.warpAtProvider(targetX, targetY);
 
     // Update facing direction even if we can't move
     this.currentDirection = direction;
 
-    if (!this.isWalkable(targetX, targetY)) {
-      const frontWarp = this.warpAtProvider(targetX, targetY);
-      if (frontWarp && this.canActivateWarpWithDirection(frontWarp, direction)) {
-        return this.requestWarpActivationFromCurrentTile(frontWarp, direction);
-      }
+    if (
+      targetWarp &&
+      !this.isCurrentTileDirectionalWarp(targetWarp) &&
+      this.canActivateWarpWithDirection(targetWarp, direction)
+    ) {
+      return this.requestWarpActivationFromCurrentTile(targetWarp, direction);
+    }
 
+    if (!this.isWalkable(targetX, targetY)) {
       const currentWarp = this.warpAtProvider(
         this.currentTileX,
         this.currentTileY,
       );
       if (
         currentWarp &&
-        this.isCurrentTileDirectionalWarp(currentWarp) &&
+        (this.isCurrentTileDirectionalWarp(currentWarp) ||
+          !this.collisionMap.has(targetKey)) &&
         this.canActivateWarpWithDirection(currentWarp, direction)
       ) {
         return this.requestWarpActivationFromCurrentTile(currentWarp, direction);
@@ -1551,7 +1596,6 @@ export class PlayerMovementController {
       return false;
     }
 
-    const targetWarp = this.warpAtProvider(targetX, targetY);
     this.queuePredictedKeyboardMove(
       targetX,
       targetY,
@@ -1573,6 +1617,10 @@ export class PlayerMovementController {
     return this.isMoving;
   }
 
+  getIsSurfing(): boolean {
+    return this.isSurfing;
+  }
+
   getCurrentPosition(): { x: number; y: number } {
     return { x: this.currentTileX, y: this.currentTileY };
   }
@@ -1590,6 +1638,7 @@ export class PlayerMovementController {
     this.currentTileY = y;
     this.updateSurfingStateForTile(x, y);
     this.updateTravelMapForTile(x, y);
+    this.emitPlayerPositionChanged();
   }
 
   syncMapId(mapId: number): void {
@@ -1628,6 +1677,7 @@ export class PlayerMovementController {
     if (this.currentTileX === x && this.currentTileY === y) {
       this.isMoving = false;
       this.activeMoveDestination = null;
+      this.emitPlayerPositionChanged();
       return;
     }
 
@@ -1658,6 +1708,7 @@ export class PlayerMovementController {
     );
     this.updateSurfingStateForTile(x, y);
     this.updateTravelMapForTile(x, y);
+    this.emitPlayerPositionChanged();
   }
 
   /**
@@ -1742,6 +1793,7 @@ export class PlayerMovementController {
           resolved = true;
           this.currentTileX = stepX;
           this.currentTileY = stepY;
+          this.emitPlayerPositionChanged();
           resolve();
         }
       }, 1000);
@@ -1762,6 +1814,7 @@ export class PlayerMovementController {
             );
             this.currentTileX = stepX;
             this.currentTileY = stepY;
+            this.emitPlayerPositionChanged();
             resolve();
           }
         },

@@ -15,20 +15,22 @@ Initial state
     none
 
 Resolved script
-  label: SilphCo11FMasterBall
+  label: SilphCo11FSilphPresidentTextGift
   map: SILPH_CO_11F
   trigger: npc_click
 
 Actions
   - lockInput
-  - dialogue: PRESIDENT [Thank you for saving SILPH! I will never forget you saved us in our moment of peril! I have to thank you in some way! Because I am rich, I can give you anything! Here, maybe this will do!]
-  - dialogue:  [{PLAYER} got a MASTER BALL!]
-  - dialogue: PRESIDENT [You can't buy that anywhere! It's our secret prototype MASTER BALL! It will catch any POKéMON without fail! You should be quiet about using it, though.]
-  - setFlag *: EVENT_GOT_MASTER_BALL
-  - playSFX: SFX_GET_KEY_ITEM
-  - unlockInput
+  - dialogue:  [PRESIDENT: Thank
+you for saving SILPH! I will never
+forget you saved us in our moment of peril! I have to thank
+you in some way! Because I am rich,
+I can give you anything! Here, maybe this
+will do!]
   - giveItem *: MASTER BALL x1 added
-  - setsFlags *: EVENT_GOT_MASTER_BALL
+  - playSFX: SFX_GET_KEY_ITEM
+  - setFlag *: EVENT_GOT_MASTER_BALL
+  - unlockInput
 
 Final state
   location: SILPH_CO_11F[235] (7,6)

@@ -343,6 +343,7 @@ const PokemonDialogueBox: React.FC = () => {
     <DialogueOverlay>
       <DialogueContainer>
         <DialogueBox
+          data-testid="pokemon-dialogue-box"
           onPointerDown={handleDialoguePointerDown}
           onClick={isChoicePending ? undefined : handleDialogueClick}
         >
@@ -352,6 +353,8 @@ const PokemonDialogueBox: React.FC = () => {
               <ChoiceButton
                 $variant="yes"
                 $selected={selectedChoice === "yes"}
+                data-testid="dialogue-choice-yes"
+                data-selected={selectedChoice === "yes" ? "true" : "false"}
                 onClick={(e) => handleChoiceClick(true, e)}
               >
                 YES
@@ -359,6 +362,8 @@ const PokemonDialogueBox: React.FC = () => {
               <ChoiceButton
                 $variant="no"
                 $selected={selectedChoice === "no"}
+                data-testid="dialogue-choice-no"
+                data-selected={selectedChoice === "no" ? "true" : "false"}
                 onClick={(e) => handleChoiceClick(false, e)}
               >
                 NO

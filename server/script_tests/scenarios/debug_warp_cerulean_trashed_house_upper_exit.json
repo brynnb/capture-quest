@@ -1,0 +1,25 @@
+{
+  "name": "debug_warp_cerulean_trashed_house_upper_exit",
+  "description": "Debug setup: stand on Cerulean Trashed House's upper exit tile.",
+  "fixture": {
+    "characterName": "DebugWarpCeruleanTrashedHouseUpperExit",
+    "mapName": "CERULEAN_TRASHED_HOUSE",
+    "x": 3,
+    "y": 0,
+    "direction": "UP",
+    "party": [{ "speciesId": 25, "level": 25 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "fixture_state",
+    "mapName": "CERULEAN_TRASHED_HOUSE"
+  },
+  "expect": {
+    "scriptLabel": "FixtureState",
+    "finalX": 3,
+    "finalY": 0,
+    "finalDirection": "UP",
+    "activeBattleAbsent": true
+  }
+}

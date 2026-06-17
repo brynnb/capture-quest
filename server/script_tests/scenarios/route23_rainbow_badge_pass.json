@@ -23,7 +23,7 @@
     "finalX": 12,
     "finalY": 105,
     "flagsPresent": ["EVENT_GOT_RAINBOWBADGE", "EVENT_ROUTE23_BADGE4_CHECKED"],
-    "actionTypesContains": ["dialogue", "setsFlags"],
+    "actionTypesContains": ["dialogue", "setFlag"],
     "activeBattleAbsent": true
   }
 }

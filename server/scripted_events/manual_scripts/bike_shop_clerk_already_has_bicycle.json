@@ -1,0 +1,25 @@
+{
+  "scriptLabel": "BikeShopAlreadyHasBicycle",
+  "mapName": "BIKE_SHOP",
+  "trigger": {
+    "type": "npc_click",
+    "label": "TEXT_BIKESHOP_CLERK"
+  },
+  "requiresFlag": "EVENT_GOT_BICYCLE",
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "speaker": "BIKE SHOP CLERK",
+      "lines": [
+        "How do you like\nyour new BICYCLE?",
+        "You can take it\non CYCLING ROAD\nand in caves!"
+      ]
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

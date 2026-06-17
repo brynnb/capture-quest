@@ -18,7 +18,7 @@
     "textConstant": "TEXT_CINNABARLABMETRONOMEROOM_SCIENTIST1"
   },
   "expect": {
-    "scriptLabel": "CinnabarLabTM35Metronome",
+    "scriptLabel": "CinnabarLabMetronomeRoomScientist1TextGift",
     "flagsPresent": ["EVENT_GOT_TM35"],
     "inventoryContains": [{ "itemId": 123, "quantity": 1 }],
     "actionTypesContains": ["dialogue", "setFlag", "giveItem"],

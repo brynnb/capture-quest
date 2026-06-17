@@ -75,6 +75,14 @@ func TestDeleteStaleExtractorTriggerScripts(t *testing.T) {
 				Label:  "TEXT_VERMILIONOLDRODHOUSE_FISHING_GURU",
 			},
 		},
+		{
+			ScriptLabel: "ManualSameTextBranch",
+			MapName:     "VERMILION_OLD_ROD_HOUSE",
+			Trigger: EventTrigger{
+				Type:  "npc_click",
+				Label: "TEXT_VERMILIONOLDRODHOUSE_FISHING_GURU",
+			},
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -99,7 +107,7 @@ func TestDeleteStaleExtractorTriggerScripts(t *testing.T) {
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"CaptureQuestOverride", "FishingGuruAlreadyGot", "FishingGuruGift", "OtherTrigger"}
+	want := []string{"CaptureQuestOverride", "FishingGuruAlreadyGot", "FishingGuruGift", "ManualSameTextBranch", "OtherTrigger"}
 	if len(labels) != len(want) {
 		t.Fatalf("labels = %#v, want %#v", labels, want)
 	}
@@ -527,6 +535,7 @@ func newCutsceneCleanupTestDB(t *testing.T) *sql.DB {
 		VALUES
 			('FishingGuruGift', 'VERMILION_OLD_ROD_HOUSE', 'npc_click', 'TEXT_VERMILIONOLDRODHOUSE_FISHING_GURU'),
 			('FishingGuruAlreadyGot', 'VERMILION_OLD_ROD_HOUSE', 'npc_click', 'TEXT_VERMILIONOLDRODHOUSE_FISHING_GURU'),
+			('ManualSameTextBranch', 'VERMILION_OLD_ROD_HOUSE', 'npc_click', 'TEXT_VERMILIONOLDRODHOUSE_FISHING_GURU'),
 			('OldRodSingleBranch', 'VERMILION_OLD_ROD_HOUSE', 'npc_click', 'TEXT_VERMILIONOLDRODHOUSE_FISHING_GURU'),
 			('OtherTrigger', 'VERMILION_OLD_ROD_HOUSE', 'npc_click', 'TEXT_OTHER'),
 			('CaptureQuestOverride', 'VERMILION_OLD_ROD_HOUSE', 'coord', 'TEXT_VERMILIONOLDRODHOUSE_FISHING_GURU');

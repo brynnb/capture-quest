@@ -15,20 +15,29 @@ Initial state
     none
 
 Resolved script
-  label: CopycatsHouseTM31
+  label: CopycatsHouse2FCopycatTM31Reward
   map: COPYCATS_HOUSE_2F
   trigger: npc_click
 
 Actions
   - lockInput
-  - dialogue: COPYCAT [Oh wow! A POKé DOLL! For me? Will you trade it for this? I really want it! You can have this, then!]
-  - choice: TEXT_COPYCATSHOUSE2F_COPYCAT "Trade POKé DOLL for TM31?" choice=true
-  - dialogue:  [{PLAYER} traded POKé DOLL for TM31! TM31 contains my favorite, MIMIC! Use it on a good POKéMON!]
-  - takeItem *: POKé DOLL x1 removed
-  - playSFX: SFX_GET_ITEM_1
+  - dialogue:  [(PLAYER): Hi! Do
+you like POKÉMON? (PLAYER): Uh no, I
+just asked you. (PLAYER): Huh?
+You're strange! COPYCAT: Hmm?
+Quit mimicking? But, that's my
+favorite hobby!]
+  - dialogue:  [Oh wow!
+A POKÉ DOLL! For me?
+Thank you! You can have
+this, then!]
   - giveItem *: TM31 x1 added
+  - dialogue:  [(PLAYER) received
+TM31!]
+  - playSFX: SFX_GET_ITEM_1
+  - takeItem *: POKé DOLL x1 removed
+  - setFlag *: EVENT_GOT_TM31
   - unlockInput
-  - setsFlags *: EVENT_GOT_TM31
 
 Final state
   location: COPYCATS_HOUSE_2F[176] (4,4)

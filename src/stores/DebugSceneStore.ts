@@ -16,20 +16,31 @@ interface DebugSceneState {
   scenes: DebugSceneEntry[];
   isOpen: boolean;
   powerPokemonMessage: string | null;
+  lastAppliedScenario: {
+    label: string | null;
+    scenarioName: string | null;
+    scriptLabel: string | null;
+  } | null;
   setScenes: (scenes: DebugSceneEntry[]) => void;
   toggleOpen: () => void;
   setOpen: (open: boolean) => void;
   setPowerPokemonMessage: (message: string | null) => void;
+  setLastAppliedScenario: (
+    scenario: DebugSceneState["lastAppliedScenario"],
+  ) => void;
 }
 
 const useDebugSceneStore = create<DebugSceneState>((set) => ({
   scenes: [],
   isOpen: false,
   powerPokemonMessage: null,
+  lastAppliedScenario: null,
   setScenes: (scenes) => set({ scenes }),
   toggleOpen: () => set((s) => ({ isOpen: !s.isOpen })),
   setOpen: (open) => set({ isOpen: open }),
   setPowerPokemonMessage: (message) => set({ powerPokemonMessage: message }),
+  setLastAppliedScenario: (lastAppliedScenario) =>
+    set({ lastAppliedScenario }),
 }));
 
 export default useDebugSceneStore;

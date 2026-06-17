@@ -1,0 +1,48 @@
+{
+  "scriptLabel": "BikeShopNoVoucher",
+  "mapName": "BIKE_SHOP",
+  "trigger": {
+    "type": "npc_click",
+    "label": "TEXT_BIKESHOP_CLERK"
+  },
+  "requiresFlagAbsent": "EVENT_GOT_BICYCLE",
+  "requiresItemAbsentName": "BIKE_VOUCHER",
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "speaker": "BIKE SHOP CLERK",
+      "lines": [
+        "Hi! Welcome to\nour BIKE SHOP.",
+        "Have we got just\nthe BIKE for you!"
+      ]
+    },
+    {
+      "type": "choice",
+      "textConstant": "TEXT_BIKESHOP_CLERK",
+      "prompt": "It's a cool BIKE!\nDo you want it?",
+      "noLines": [
+        "Come back again\nsome time!"
+      ]
+    },
+    {
+      "type": "dialogue",
+      "speaker": "BIKE SHOP CLERK",
+      "lines": [
+        "Sorry! You can't\nafford it!"
+      ]
+    },
+    {
+      "type": "dialogue",
+      "speaker": "BIKE SHOP CLERK",
+      "lines": [
+        "Come back again\nsome time!"
+      ]
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

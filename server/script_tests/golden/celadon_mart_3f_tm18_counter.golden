@@ -15,19 +15,19 @@ Initial state
     none
 
 Resolved script
-  label: CeladonMart3FTM18Counter
+  label: CeladonMart3FClerkTextGift
   map: CELADON_MART_3F
   trigger: npc_click
 
 Actions
   - lockInput
-  - dialogue: CLERK [Oh, hi! I finally finished POKéMON! Not done yet? This might be useful!]
-  - dialogue:  [{PLAYER} received TM18! TM18 is COUNTER! Not like the one I'm leaning on, mind you!]
-  - setFlag *: EVENT_GOT_TM18
-  - playSFX: SFX_GET_ITEM_1
-  - unlockInput
+  - dialogue:  [Oh, hi! I finally
+finished POKÉMON! Not done yet?
+This might be useful!]
   - giveItem *: TM18 x1 added
-  - setsFlags *: EVENT_GOT_TM18
+  - playSFX: SFX_GET_ITEM_1
+  - setFlag *: EVENT_GOT_TM18
+  - unlockInput
 
 Final state
   location: CELADON_MART_3F[124] (16,6)

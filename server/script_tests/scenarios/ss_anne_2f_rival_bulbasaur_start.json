@@ -31,7 +31,7 @@
     "inventoryContains": [
       { "itemId": 63, "quantity": 1 }
     ],
-    "actionTypesContains": ["showActor", "move", "dialogue", "startTrainerBattle"],
+    "actionTypesContains": ["showObject", "move", "dialogue", "startTrainerBattle"],
     "activeBattleTrainerClass": "RIVAL2",
     "activeBattleEnemySpecies": [17, 20, 64, 5]
   }

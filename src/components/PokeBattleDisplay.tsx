@@ -610,6 +610,8 @@ const ItemSelectPanel: React.FC<{
                   key={entry.inventory.instance.id}
                   $isBall={entry.kind === "ball"}
                   $selected={selectedIndex === currentIndex}
+                  data-testid={`battle-item-${currentIndex}`}
+                  data-selected={selectedIndex === currentIndex ? "true" : "false"}
                   onClick={() =>
                     entry.kind === "ball"
                       ? onUseBall(entry.inventory.item.id)
@@ -625,7 +627,12 @@ const ItemSelectPanel: React.FC<{
         ))}
       </ItemList>
 
-      <BackButton $selected={selectedIndex === itemIndex} onClick={onBack}>
+      <BackButton
+        $selected={selectedIndex === itemIndex}
+        data-testid="battle-item-back"
+        data-selected={selectedIndex === itemIndex ? "true" : "false"}
+        onClick={onBack}
+      >
         ← BACK
       </BackButton>
     </ItemGrid>
@@ -742,6 +749,8 @@ const FaintSwitchPanel: React.FC<{
             key={i}
             $isActive={isCurrent}
             $selected={selectedIndex === i}
+            data-testid={`battle-party-${i}`}
+            data-selected={selectedIndex === i ? "true" : "false"}
             disabled={isFainted || isCurrent}
             onClick={() => onSwitch(i)}
           >
@@ -758,13 +767,24 @@ const FaintSwitchPanel: React.FC<{
         );
       })}
       {isWild && (
-        <FaintRunButton $selected={selectedIndex === party.length} onClick={onRun}>
+        <FaintRunButton
+          $selected={selectedIndex === party.length}
+          data-testid="battle-party-run"
+          data-selected={selectedIndex === party.length ? "true" : "false"}
+          onClick={onRun}
+        >
           RUN
         </FaintRunButton>
       )}
       {onBack && (
         <BackButton
           $selected={selectedIndex === party.length + (isWild ? 1 : 0)}
+          data-testid="battle-party-back"
+          data-selected={
+            selectedIndex === party.length + (isWild ? 1 : 0)
+              ? "true"
+              : "false"
+          }
           onClick={onBack}
         >
           ← BACK
@@ -1506,7 +1526,7 @@ const PokeBattleDisplay: React.FC = () => {
   if (!isInBattle || !playerPokemon || !enemyPokemon) return null;
 
   return (
-    <BattleOverlay>
+    <BattleOverlay data-testid="battle-overlay">
       <BattleWindow>
         <BattleScene>
           {/* Enemy info (top-left) — hidden during trainer intro */}
@@ -1607,7 +1627,7 @@ const PokeBattleDisplay: React.FC = () => {
 
         {/* Text / Events display */}
         {phase === "animating" && (
-          <TextBox onClick={handleTextClick}>
+          <TextBox data-testid="battle-text-box" onClick={handleTextClick}>
             <MessageText>
               {displayMessage}
               <TextArrow>▼</TextArrow>
@@ -1617,11 +1637,13 @@ const PokeBattleDisplay: React.FC = () => {
 
         {/* Action select menu */}
         {phase === "action_select" && !isSafari && (
-          <ActionMenu>
+          <ActionMenu data-testid="battle-action-menu">
             {normalBattleActions.map((action, index) => (
               <ActionButton
                 key={action.id}
                 $selected={selectedActionIndex === index}
+                data-testid={`battle-action-${action.id}`}
+                data-selected={selectedActionIndex === index ? "true" : "false"}
                 onClick={action.handler}
               >
                 {action.label}
@@ -1632,17 +1654,37 @@ const PokeBattleDisplay: React.FC = () => {
 
         {/* Safari Zone action menu */}
         {phase === "action_select" && isSafari && (
-          <ActionMenu>
-            <ActionButton $selected={selectedActionIndex === 0} onClick={handleSafariBall}>
+          <ActionMenu data-testid="battle-action-menu">
+            <ActionButton
+              $selected={selectedActionIndex === 0}
+              data-testid="battle-action-safari-ball"
+              data-selected={selectedActionIndex === 0 ? "true" : "false"}
+              onClick={handleSafariBall}
+            >
               SAFARI BALL
             </ActionButton>
-            <ActionButton $selected={selectedActionIndex === 1} onClick={handleSafariBait}>
+            <ActionButton
+              $selected={selectedActionIndex === 1}
+              data-testid="battle-action-bait"
+              data-selected={selectedActionIndex === 1 ? "true" : "false"}
+              onClick={handleSafariBait}
+            >
               BAIT
             </ActionButton>
-            <ActionButton $selected={selectedActionIndex === 2} onClick={handleSafariRock}>
+            <ActionButton
+              $selected={selectedActionIndex === 2}
+              data-testid="battle-action-rock"
+              data-selected={selectedActionIndex === 2 ? "true" : "false"}
+              onClick={handleSafariRock}
+            >
               ROCK
             </ActionButton>
-            <ActionButton $selected={selectedActionIndex === 3} onClick={handleSafariRun}>
+            <ActionButton
+              $selected={selectedActionIndex === 3}
+              data-testid="battle-action-run"
+              data-selected={selectedActionIndex === 3 ? "true" : "false"}
+              onClick={handleSafariRun}
+            >
               RUN
             </ActionButton>
           </ActionMenu>
@@ -1697,7 +1739,7 @@ const PokeBattleDisplay: React.FC = () => {
 
         {/* Move select menu */}
         {phase === "move_select" && (
-          <MoveGrid>
+          <MoveGrid data-testid="battle-move-menu">
             {playerPokemon.moves.map((move, i) => {
               const color = typeColors[move.type] || "#A8A878";
               return (
@@ -1705,6 +1747,8 @@ const PokeBattleDisplay: React.FC = () => {
                   key={move.id}
                   $typeColor={color}
                   $selected={selectedMoveIndex === i}
+                  data-testid={`battle-move-${i}`}
+                  data-selected={selectedMoveIndex === i ? "true" : "false"}
                   onClick={() => handleMoveSelect(i)}
                   disabled={move.pp <= 0}
                 >
@@ -1718,6 +1762,8 @@ const PokeBattleDisplay: React.FC = () => {
             })}
             <BackButton
               $selected={selectedMoveIndex === playerPokemon.moves.length}
+              data-testid="battle-move-back"
+              data-selected={selectedMoveIndex === playerPokemon.moves.length ? "true" : "false"}
               onClick={handleBack}
             >
               ← BACK

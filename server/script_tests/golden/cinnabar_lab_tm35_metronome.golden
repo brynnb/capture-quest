@@ -15,19 +15,19 @@ Initial state
     none
 
 Resolved script
-  label: CinnabarLabTM35Metronome
+  label: CinnabarLabMetronomeRoomScientist1TextGift
   map: CINNABAR_LAB_METRONOME_ROOM
   trigger: npc_click
 
 Actions
   - lockInput
-  - dialogue: SCIENTIST [Tch-tch-tch! That's the sound of a METRONOME! It tweaks your POKéMON's brain into using moves it doesn't know!]
-  - dialogue:  [{PLAYER} received TM35!]
-  - setFlag *: EVENT_GOT_TM35
-  - playSFX: SFX_GET_ITEM_1
-  - unlockInput
+  - dialogue:  [Tch-tch-tch!
+I made a cool TM! It can cause all
+kinds of fun!]
   - giveItem *: TM35 x1 added
-  - setsFlags *: EVENT_GOT_TM35
+  - playSFX: SFX_GET_ITEM_1
+  - setFlag *: EVENT_GOT_TM35
+  - unlockInput
 
 Final state
   location: CINNABAR_LAB_METRONOME_ROOM[169] (7,3)

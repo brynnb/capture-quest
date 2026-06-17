@@ -1,0 +1,34 @@
+Scenario: debug_warp_route11_gate_1f_center
+Description: Debug setup: stand in Route 11 Gate 1F for left/right exit checks.
+Character: DebugWarpRoute11GateCenter
+
+Initial state
+  location: ROUTE_11_GATE_1F[84] (3,4)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L25 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FixtureState
+  map: ROUTE_11_GATE_1F
+  trigger: fixture_state
+
+Actions
+
+Final state
+  location: ROUTE_11_GATE_1F[84] (3,4)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L25 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

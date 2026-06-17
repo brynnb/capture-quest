@@ -23,7 +23,7 @@
     "finalX": 8,
     "finalY": 85,
     "flagsPresent": ["EVENT_GOT_MARSHBADGE", "EVENT_ROUTE23_BADGE6_CHECKED"],
-    "actionTypesContains": ["dialogue", "setsFlags"],
+    "actionTypesContains": ["dialogue", "setFlag"],
     "activeBattleAbsent": true
   }
 }

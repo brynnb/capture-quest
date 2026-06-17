@@ -18,7 +18,7 @@
     "textConstant": "TEXT_BILLSHOUSE_BILL_SS_TICKET"
   },
   "expect": {
-    "scriptLabel": "BillsHouseSSTicket",
+    "scriptLabel": "BillsHouseBillSSTicketReward",
     "flagsPresent": ["EVENT_MET_BILL", "EVENT_GOT_SS_TICKET"],
     "inventoryContains": [{ "itemId": 63, "quantity": 1 }],
     "objectStates": [

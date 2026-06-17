@@ -18,7 +18,7 @@
     "textConstant": "TEXT_SILPHCO2F_SILPH_WORKER_F"
   },
   "expect": {
-    "scriptLabel": "SilphCo2FTM36Selfdestruct",
+    "scriptLabel": "SilphCo2FSilphWorkerFTextGift",
     "flagsPresent": ["EVENT_BEAT_SILPH_CO_GIOVANNI", "EVENT_GOT_TM36"],
     "inventoryContains": [{ "itemId": 124, "quantity": 1 }],
     "actionTypesContains": ["dialogue", "setFlag", "giveItem"],

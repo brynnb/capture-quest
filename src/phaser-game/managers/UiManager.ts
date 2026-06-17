@@ -279,13 +279,15 @@ export class UiManager {
   }
 
   setLoadingText(text: string) {
-    this.loadingText.setText(text);
-    this.loadingText.setVisible(true);
+    if (!this.setTextSafely(this.loadingText, text)) {
+      return;
+    }
+    this.setVisibleSafely(this.loadingText, true);
     this.updateElementPositions();
   }
 
   hideLoadingText() {
-    this.loadingText.setVisible(false);
+    this.setVisibleSafely(this.loadingText, false);
   }
 
   setModeText(text: string) {
@@ -374,19 +376,52 @@ export class UiManager {
     // Force a redraw of text elements by setting their text again
     if (this.infoText) {
       const currentText = this.infoText.text;
-      this.infoText.setText(currentText);
+      this.setTextSafely(this.infoText, currentText);
     }
 
     if (this.modeText) {
       const currentText = this.modeText.text;
-      this.modeText.setText(currentText);
+      this.setTextSafely(this.modeText, currentText);
     }
 
     if (this.loadingText) {
       const currentText = this.loadingText.text;
-      this.loadingText.setText(currentText);
+      this.setTextSafely(this.loadingText, currentText);
     }
 
     this.positionDebugOverlay();
+  }
+
+  private setTextSafely(
+    textObject: Phaser.GameObjects.Text | undefined,
+    text: string,
+  ) {
+    if (!textObject?.active) {
+      return false;
+    }
+
+    try {
+      textObject.setText(text);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private setVisibleSafely(
+    gameObject:
+      | (Phaser.GameObjects.GameObject & { setVisible: (visible: boolean) => unknown })
+      | undefined,
+    visible: boolean,
+  ) {
+    if (!gameObject?.active) {
+      return;
+    }
+
+    try {
+      gameObject.setVisible(visible);
+    } catch {
+      // Stale Phaser objects can briefly survive scene teardown.
+    }
   }
 }

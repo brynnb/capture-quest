@@ -26,7 +26,7 @@
     "textConstant": "TEXT_CELADONMANSION_ROOF_HOUSE_EEVEE_POKEBALL"
   },
   "expect": {
-    "scriptLabel": "CeladonMansionEevee",
+    "scriptLabel": "CeladonMansionRoofHouseEeveePokeballTextPokemonGift",
     "flagsPresent": ["EVENT_GOT_EEVEE"],
     "partySpeciesAbsent": [133],
     "pcContains": [
@@ -34,7 +34,7 @@
       { "speciesId": 133, "level": 25, "box": 0, "slot": 1 }
     ],
     "hiddenObjectKeys": ["TEXT_CELADONMANSION_ROOF_HOUSE_EEVEE_POKEBALL"],
-    "actionTypesContains": ["dialogue", "setFlag", "givePokemon", "hideObject"],
+    "actionTypesContains": ["setFlag", "givePokemon", "hideObject"],
     "activeBattleAbsent": true
   }
 }

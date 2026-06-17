@@ -6,6 +6,7 @@ import useGameStatusStore from "./stores/GameStatusStore";
 import useGameScreenStore from "./stores/GameScreenStore";
 import { WorldSocket } from "./net";
 import { NetworkBridge } from "./net/NetworkBridge";
+import { installCaptureQuestTestBridge } from "./testing/capturequestTestBridge";
 
 const TileUpscaleToolPage = lazy(() => import("./pages/TileUpscaleToolPage"));
 
@@ -46,6 +47,7 @@ const App = () => {
 
 const initializeStore = async () => {
   await useGameStatusStore.persist.rehydrate();
+  installCaptureQuestTestBridge();
 
   createRoot(document.getElementById("root")!).render(<App />);
 };

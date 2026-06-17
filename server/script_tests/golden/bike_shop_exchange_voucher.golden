@@ -15,20 +15,20 @@ Initial state
     none
 
 Resolved script
-  label: BikeShopExchangeVoucher
+  label: BikeShopClerkVoucherExchange
   map: BIKE_SHOP
   trigger: npc_click
 
 Actions
   - lockInput
-  - dialogue: BIKE SHOP CLERK [Oh, that's... A BIKE VOUCHER! OK! Here you go!]
-  - dialogue:  [{PLAYER} exchanged the BIKE VOUCHER for a BICYCLE.]
+  - dialogue:  [Oh, that's... A BIKE VOUCHER! OK! Here you go!]
+  - giveItem *: BICYCLE x1 added
+  - takeItem *: BIKE VOUCHER x1 removed
   - setFlag *: EVENT_GOT_BICYCLE
+  - dialogue:  [(PLAYER) exchanged
+the BIKE VOUCHER for a BICYCLE.]
   - playSFX: SFX_GET_KEY_ITEM
   - unlockInput
-  - takeItem *: BIKE VOUCHER x1 removed
-  - giveItem *: BICYCLE x1 added
-  - setsFlags *: EVENT_GOT_BICYCLE
 
 Final state
   location: BIKE_SHOP[66] (6,4)

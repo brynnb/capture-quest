@@ -14,8 +14,9 @@ export const WT_IP = isLocalHostname
     ? window.location.hostname
     : window.location.hostname; // I.e. capturequest.net
 export const WT_PORT = import.meta.env.VITE_WT_PORT || "4433";
+export const FORCE_WEBSOCKET = import.meta.env.VITE_FORCE_WEBSOCKET === "true";
 
-console.log(`[Config] v1.0.8 - API: ${API_HOST}:${API_PORT}, WT: ${WT_IP}:${WT_PORT}, LOCAL: ${IS_LOCAL_DEV}`);
+console.log(`[Config] v1.0.8 - API: ${API_HOST}:${API_PORT}, WT: ${WT_IP}:${WT_PORT}, LOCAL: ${IS_LOCAL_DEV}, FORCE_WS: ${FORCE_WEBSOCKET}`);
 
 export const getApiUrl = (path: string) => {
     const normalizedPath = path.startsWith("/") ? path : `/${path}`;

@@ -15,18 +15,23 @@ Initial state
     none
 
 Resolved script
-  label: SilphCo7FLaprasGift
+  label: SilphCo7FSilphWorkerM1TextPokemonGift
   map: SILPH_CO_7F
   trigger: npc_click
 
 Actions
   - lockInput
-  - dialogue: SILPH EMPLOYEE [Thank you for saving SILPH CO.! I want you to have this POKéMON! It's a rare LAPRAS!]
-  - dialogue:  [{PLAYER} received LAPRAS!]
+  - dialogue:  [Oh! Hi! You're
+not a ROCKET! You came to save us? Why, thank you! I want you to
+have this POKÉMON for saving us.]
+  - givePokemon *: LAPRAS L15 added to party
+  - dialogue:  [It's LAPRAS. It's
+very intelligent. We kept it in our
+lab, but it will be much better off with you! I think you will
+be a good trainer for LAPRAS! It's a good
+swimmer. It'll give you a lift!]
   - setFlag *: EVENT_GOT_LAPRAS
   - unlockInput
-  - givePokemon *: LAPRAS L15 added to party
-  - setsFlags *: EVENT_GOT_LAPRAS
 
 Final state
   location: SILPH_CO_7F[212] (1,6)

@@ -59,6 +59,7 @@ type debugFixture struct {
 	PokedexCaught     []int                        `json:"pokedexCaught"`
 	HiddenObjects     []string                     `json:"hiddenObjects"`
 	ObjectPositions   []debugFixtureObjectPosition `json:"objectPositions,omitempty"`
+	ActiveBattle      *debugFixtureActiveBattle    `json:"activeBattle,omitempty"`
 	Safari            *debugSafariFixture          `json:"safari,omitempty"`
 	VermilionGymTrash *debugVermilionGymTrash      `json:"vermilionGymTrash,omitempty"`
 }
@@ -82,6 +83,25 @@ type debugFixtureObjectPosition struct {
 	ObjectName string `json:"objectName,omitempty"`
 	X          int    `json:"x"`
 	Y          int    `json:"y"`
+}
+
+type debugFixtureActiveBattle struct {
+	Type             string          `json:"type"`
+	PokemonID        int             `json:"pokemonId,omitempty"`
+	Level            int             `json:"level,omitempty"`
+	TrainerClass     string          `json:"trainerClass,omitempty"`
+	PartyIndex       int             `json:"partyIndex,omitempty"`
+	TrainerName      string          `json:"trainerName,omitempty"`
+	WinFlag          string          `json:"winFlag,omitempty"`
+	LoseFlag         string          `json:"loseFlag,omitempty"`
+	LossMessage      string          `json:"lossMessage,omitempty"`
+	NoBlackoutOnLoss bool            `json:"noBlackoutOnLoss,omitempty"`
+	PostWinMapName   string          `json:"postWinMapName,omitempty"`
+	PostWinActions   json.RawMessage `json:"postWinActions,omitempty"`
+	PostLoseMapName  string          `json:"postLoseMapName,omitempty"`
+	PostLoseActions  json.RawMessage `json:"postLoseActions,omitempty"`
+	AllowedActions   []string        `json:"allowedActions,omitempty"`
+	GuaranteedCatch  bool            `json:"guaranteedCatch,omitempty"`
 }
 
 type debugSafariFixture struct {
@@ -213,6 +233,14 @@ func HandleDebugSceneJumpRequest(ses *session.Session, payload []byte, wh *World
 		"scriptLabel":  scene.ScriptLabel,
 	}, opcodes.DebugSceneJumpResponse)
 
+	if err := sendDebugActiveBattle(ses, charID, scenario.Scenario.Fixture.ActiveBattle); err != nil {
+		log.Printf("[DebugScene] Failed to start active battle for %s: %v", scenario.Scenario.Name, err)
+		ses.SendStreamJSON(map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		}, opcodes.PokeBattleStartResponse)
+	}
+
 	return false
 }
 
@@ -314,9 +342,10 @@ func sendDebugSceneTeleport(ses *session.Session, wh *WorldHandler, charID int64
 	setServerTeleportedPlayerPosition(ses, wh, mapID, x, y, direction)
 
 	ses.SendStreamJSON(map[string]interface{}{
-		"mapId": mapID,
-		"x":     x,
-		"y":     y,
+		"mapId":     mapID,
+		"x":         x,
+		"y":         y,
+		"direction": direction,
 	}, opcodes.WarpTileTeleportNotify)
 }
 
@@ -481,7 +510,7 @@ func applyDebugScenarioFixture(charID int64, f debugFixture, wh *WorldHandler) (
 	if f.MapName == "" {
 		return 0, 0, 0, fmt.Errorf("fixture mapName is required")
 	}
-	mapID, err := debugMapIDForName(f.MapName)
+	mapID, x, y, err := debugMapIDAndCoordinatesForName(f.MapName, f.X, f.Y)
 	if err != nil {
 		return 0, 0, 0, err
 	}
@@ -490,7 +519,7 @@ func applyDebugScenarioFixture(charID int64, f debugFixture, wh *WorldHandler) (
 	}
 	if _, err := db.GlobalWorldDB.DB.Exec(
 		`UPDATE character_data SET map_id = $1, x = $2, y = $3 WHERE id = $4`,
-		mapID, f.X, f.Y, charID); err != nil {
+		mapID, x, y, charID); err != nil {
 		return 0, 0, 0, fmt.Errorf("set debug fixture position: %w", err)
 	}
 	if err := seedDebugFlags(charID, f.Flags, wh); err != nil {
@@ -578,7 +607,7 @@ func applyDebugScenarioFixture(charID int64, f debugFixture, wh *WorldHandler) (
 	if err := seedDebugSafariSession(charID, f.Safari, wh); err != nil {
 		return 0, 0, 0, err
 	}
-	return mapID, f.X, f.Y, nil
+	return mapID, x, y, nil
 }
 
 func seedDebugSafariSession(charID int64, fixture *debugSafariFixture, wh *WorldHandler) error {
@@ -649,6 +678,65 @@ func sendDebugSafariState(ses *session.Session, charID int64, wh *WorldHandler, 
 		"ballsLeft": session.BallsLeft,
 		"stepsLeft": session.StepsLeft,
 	}, opcodes.SafariBattleStartNotify)
+}
+
+func sendDebugActiveBattle(ses *session.Session, charID int64, fixture *debugFixtureActiveBattle) error {
+	if fixture == nil {
+		return nil
+	}
+
+	var (
+		battle *pokebattle.BattleState
+		events []pokebattle.BattleEvent
+		err    error
+	)
+
+	switch fixture.Type {
+	case "wild":
+		if fixture.PokemonID <= 0 || fixture.Level <= 0 {
+			return fmt.Errorf("activeBattle wild fixture requires pokemonId and level")
+		}
+		battle, events, err = StartScriptedWildBattle(charID, ScriptedWildBattleSpec{
+			PokemonID:       fixture.PokemonID,
+			Level:           fixture.Level,
+			WinFlag:         fixture.WinFlag,
+			PostWinMapName:  fixture.PostWinMapName,
+			PostWinActions:  fixture.PostWinActions,
+			AllowedActions:  fixture.AllowedActions,
+			GuaranteedCatch: fixture.GuaranteedCatch,
+		})
+	case "trainer":
+		if fixture.TrainerClass == "" || fixture.PartyIndex <= 0 {
+			return fmt.Errorf("activeBattle trainer fixture requires trainerClass and partyIndex")
+		}
+		battle, events, err = StartScriptedTrainerBattle(charID, ScriptedTrainerBattleSpec{
+			TrainerClass:     fixture.TrainerClass,
+			PartyIndex:       fixture.PartyIndex,
+			TrainerName:      fixture.TrainerName,
+			WinFlag:          fixture.WinFlag,
+			LoseFlag:         fixture.LoseFlag,
+			LossMessage:      fixture.LossMessage,
+			NoBlackoutOnLoss: fixture.NoBlackoutOnLoss,
+			PostWinMapName:   fixture.PostWinMapName,
+			PostWinActions:   fixture.PostWinActions,
+			PostLoseMapName:  fixture.PostLoseMapName,
+			PostLoseActions:  fixture.PostLoseActions,
+		})
+	default:
+		return fmt.Errorf("unsupported activeBattle fixture type %q", fixture.Type)
+	}
+	if err != nil {
+		return fmt.Errorf("seed %s active battle: %w", fixture.Type, err)
+	}
+
+	resp := buildBattleStateResponse(battle)
+	resp["events"] = events
+	if battle.Trainer != nil {
+		resp["trainerClass"] = battle.Trainer.ClassName
+		resp["trainerName"] = battle.Trainer.Name
+	}
+	ses.SendStreamJSON(resp, opcodes.PokeBattleStartResponse)
+	return nil
 }
 
 func resetDebugCharacterToFreshStart(charID int64, wh *WorldHandler) (int, int, int, error) {
@@ -898,7 +986,7 @@ func seedDebugObjectPosition(charID int64, defaultMapName string, pos debugFixtu
 	if mapName == "" {
 		mapName = defaultMapName
 	}
-	mapID, err := debugMapIDForName(mapName)
+	mapID, x, y, err := debugMapIDAndCoordinatesForName(mapName, pos.X, pos.Y)
 	if err != nil {
 		return err
 	}
@@ -913,7 +1001,7 @@ func seedDebugObjectPosition(charID int64, defaultMapName string, pos debugFixtu
 			map_id = EXCLUDED.map_id,
 			x = EXCLUDED.x,
 			y = EXCLUDED.y`,
-		charID, objectID, mapID, pos.X, pos.Y); err != nil {
+		charID, objectID, mapID, x, y); err != nil {
 		return fmt.Errorf("seed object position %d: %w", objectID, err)
 	}
 	return nil
@@ -1034,20 +1122,81 @@ func seedDebugVermilionGymTrash(charID int64, fixture *debugVermilionGymTrash) e
 	return nil
 }
 
+type debugMapInfo struct {
+	ID          int
+	IsOverworld bool
+	Width       int
+	Height      int
+}
+
+func debugMapIDAndCoordinatesForName(mapName string, x, y int) (int, int, int, error) {
+	info, err := debugMapInfoForName(mapName)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	if !info.IsOverworld || info.ID == UnifiedOverworldMapID {
+		return info.ID, x, y, nil
+	}
+
+	// Script simulator fixtures usually use original per-map coordinates. The
+	// client renders the stitched Kanto map, so translate local overworld
+	// coordinates into global coordinates. Hand-authored debug fixtures that
+	// already use global coordinates usually sit outside the source map bounds
+	// and are left untouched.
+	if x < 0 || y < 0 {
+		return UnifiedOverworldMapID, x, y, nil
+	}
+
+	offsetX, offsetY, err := debugOverworldMapOffset(info.ID)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	return UnifiedOverworldMapID, x + offsetX, y + offsetY, nil
+}
+
 func debugMapIDForName(mapName string) (int, error) {
-	if mapName == "" {
-		return 0, fmt.Errorf("mapName is required")
+	info, err := debugMapInfoForName(mapName)
+	if err != nil {
+		return 0, err
 	}
-	var id int
-	var isOverworld bool
-	if err := db.GlobalWorldDB.DB.QueryRow(
-		`SELECT id, is_overworld FROM phaser_maps WHERE name = $1`, mapName).Scan(&id, &isOverworld); err != nil {
-		return 0, fmt.Errorf("lookup map %s: %w", mapName, err)
-	}
-	if isOverworld && id != UnifiedOverworldMapID {
+	if info.IsOverworld && info.ID != UnifiedOverworldMapID {
 		return UnifiedOverworldMapID, nil
 	}
-	return id, nil
+	return info.ID, nil
+}
+
+func debugMapInfoForName(mapName string) (debugMapInfo, error) {
+	if mapName == "" {
+		return debugMapInfo{}, fmt.Errorf("mapName is required")
+	}
+	var info debugMapInfo
+	if err := db.GlobalWorldDB.DB.QueryRow(
+		`SELECT id, is_overworld = 1, width, height FROM phaser_maps WHERE name = $1`, mapName).Scan(
+		&info.ID,
+		&info.IsOverworld,
+		&info.Width,
+		&info.Height,
+	); err != nil {
+		return debugMapInfo{}, fmt.Errorf("lookup map %s: %w", mapName, err)
+	}
+	return info, nil
+}
+
+func debugOverworldMapOffset(mapID int) (int, int, error) {
+	var offsetX, offsetY int
+	if err := db.GlobalWorldDB.DB.QueryRow(`
+		SELECT
+			COALESCE(MIN(x) - MIN(local_x), 0),
+			COALESCE(MIN(y) - MIN(local_y), 0)
+		FROM phaser_tiles
+		WHERE source_map_id = $1
+		  AND local_x IS NOT NULL
+		  AND local_y IS NOT NULL`,
+		mapID,
+	).Scan(&offsetX, &offsetY); err != nil {
+		return 0, 0, fmt.Errorf("lookup overworld offset for map %d: %w", mapID, err)
+	}
+	return offsetX, offsetY, nil
 }
 
 func debugIsOverworldMapName(mapName string) bool {
@@ -1056,6 +1205,6 @@ func debugIsOverworldMapName(mapName string) bool {
 	}
 	var isOverworld bool
 	err := db.GlobalWorldDB.DB.QueryRow(
-		`SELECT is_overworld FROM phaser_maps WHERE name = $1`, mapName).Scan(&isOverworld)
+		`SELECT is_overworld = 1 FROM phaser_maps WHERE name = $1`, mapName).Scan(&isOverworld)
 	return err == nil && isOverworld
 }
