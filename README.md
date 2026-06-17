@@ -4,6 +4,10 @@
 
 CaptureQuest is an MMO based on the original Pokémon GameBoy games from 1996. It uses data extracted directly from the original game cartridges and source-derived project data to rebuild Kanto as a multiplayer world, with a Go server authoritatively managing gameplay state and a Phaser/TypeScript client rendering the experience. The project aims to preserve the shape of the Red/Blue adventure while adding MMO-style persistence, chat, shared spaces, scripted events, expanded world systems, and eventually player-driven features like land ownership and dynamic map growth.
 
+<h2 align="center">
+  <a href="https://capturequest.net/">Play it now!</a>
+</h2>
+
 <p align="center">
   <img width="900" alt="CaptureQuest gameplay screenshot" src="public/assets/capturequest.png" />
 </p>
