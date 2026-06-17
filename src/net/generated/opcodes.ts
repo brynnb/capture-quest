@@ -60,7 +60,6 @@ export const PhaserWarpsRequest: OpCode = 42;
 export const PhaserWarpsResponse: OpCode = 43;
 export const PhaserActorPositionUpdate: OpCode = 44;
 export const PhaserPlayerPositionUpdate: OpCode = 45;
-export const PhaserPlayerMoveRequest: OpCode = 46;
 export const PhaserActorDespawn: OpCode = 47;
 export const PhaserDialogueRequest: OpCode = 48;
 export const PhaserDialogueResponse: OpCode = 49;

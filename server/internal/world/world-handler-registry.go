@@ -43,7 +43,6 @@ func NewWorldOpCodeRegistry() *HandlerRegistry {
 
 		opcodes.PhaserWarpsRequest:         HandlePhaserWarpsRequest,
 		opcodes.PhaserPlayerPositionUpdate: HandlePhaserPlayerPositionUpdate,
-		opcodes.PhaserPlayerMoveRequest:    HandlePhaserPlayerMoveRequest,
 		// Phaser data endpoints (Phase 2.4)
 		opcodes.PhaserDialogueRequest:       HandlePhaserDialogueRequest,
 		opcodes.PhaserWildEncountersRequest: HandlePhaserWildEncountersRequest,

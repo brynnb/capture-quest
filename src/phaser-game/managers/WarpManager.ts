@@ -9,6 +9,7 @@ import { isWorldInputFrozen } from "../utils/worldInputGuard";
 
 export class WarpManager {
   private scene: Scene;
+  private mapDataService: MapDataService;
   private playerMovementController: PlayerMovementController;
   private uiManager: UiManager;
 
@@ -24,7 +25,7 @@ export class WarpManager {
 
   constructor(
     scene: Scene,
-    _mapDataService: MapDataService,
+    mapDataService: MapDataService,
     _cameraController: CameraController,
     playerMovementController: PlayerMovementController,
     uiManager: UiManager,
@@ -36,6 +37,7 @@ export class WarpManager {
     },
   ) {
     this.scene = scene;
+    this.mapDataService = mapDataService;
     this.playerMovementController = playerMovementController;
     this.uiManager = uiManager;
     this.getPlayerActor = callbacks.getPlayerActor;
@@ -55,7 +57,7 @@ export class WarpManager {
   }
 
   cancelPendingWarp(): void {
-    // Server-authoritative normal warps do not keep client-side pending state.
+    // Normal warps are activated immediately from loaded client warp data.
   }
 
   private isWorldInputFrozen(): boolean {
@@ -99,12 +101,31 @@ export class WarpManager {
   }
 
   /**
-   * Normal warp activation is server-authoritative. Keyboard movement sends
-   * movement/facing requests, and the server decides whether a door or mat warp
-   * should fire.
+   * Normal warp activation is client-owned. The client already has the loaded
+   * warp data, so it transitions immediately and reports the final position.
    */
   setupKeyboardWarpHandlers() {
-    // Kept as a setup hook for TileViewer; no client-side listeners needed.
+    this.scene.events.on(
+      "playerSteppedOnTile",
+      (
+        x: number,
+        y: number,
+        _inputSource: "click" | "keyboard",
+        direction: string,
+        reachedMoveDestination: boolean,
+      ) => {
+        if (!reachedMoveDestination || this.isWorldInputFrozen()) return;
+
+        const warp = this.getWarpAt(x, y);
+        if (!warp) return;
+
+        const normalizedDirection = direction.trim().toUpperCase();
+        const warpDirection = warp.warpDirection?.trim().toUpperCase();
+        if (warpDirection && warpDirection !== normalizedDirection) return;
+
+        this.activateWarp(warp, normalizedDirection);
+      },
+    );
   }
 
   private normalizeWarpType(warp: PhaserWarp): "door" | "carpet" {
@@ -188,6 +209,76 @@ export class WarpManager {
     return candidates[0];
   }
 
+  private directionFromPositionToWarp(
+    warp: PhaserWarp,
+    playerPos: { x: number; y: number },
+  ): string | undefined {
+    if (warp.x === playerPos.x && warp.y === playerPos.y) {
+      return warp.warpDirection?.trim().toUpperCase() || undefined;
+    }
+    if (warp.x === playerPos.x && warp.y === playerPos.y - 1) return "UP";
+    if (warp.x === playerPos.x && warp.y === playerPos.y + 1) return "DOWN";
+    if (warp.x === playerPos.x - 1 && warp.y === playerPos.y) return "LEFT";
+    if (warp.x === playerPos.x + 1 && warp.y === playerPos.y) return "RIGHT";
+    return warp.warpDirection?.trim().toUpperCase() || undefined;
+  }
+
+  activateWarp(warp: PhaserWarp, direction?: string): void {
+    if (
+      !warp ||
+      warp.destinationMapId === undefined ||
+      warp.destinationMapId === null ||
+      warp.destinationX === undefined ||
+      warp.destinationY === undefined
+    ) {
+      return;
+    }
+
+    const playerActor = this.getPlayerActor();
+    const sourceMapId = playerActor?.mapId ?? this.scene.game.registry.get("currentMapId");
+    const normalizedDirection =
+      direction?.trim().toUpperCase() ||
+      this.directionFromPositionToWarp(
+        warp,
+        this.playerMovementController.getCurrentPosition(),
+      ) ||
+      "DOWN";
+
+    const destinationIsOverworld = this.mapDataService.isOverworld(
+      warp.destinationMapId,
+    );
+    const sourceIsOverworld =
+      typeof sourceMapId === "number" && this.mapDataService.isOverworld(sourceMapId);
+
+    let destinationX = warp.destinationX;
+    let destinationY = warp.destinationY;
+    const detail: Record<string, unknown> = {
+      mapId: warp.destinationMapId,
+      x: destinationX,
+      y: destinationY,
+      direction: normalizedDirection,
+    };
+
+    if (
+      destinationIsOverworld &&
+      !sourceIsOverworld &&
+      normalizedDirection === "DOWN"
+    ) {
+      destinationY += 1;
+      detail.x = destinationX;
+      detail.y = destinationY;
+      detail.animateExitStep = true;
+      detail.animationStartX = warp.destinationX;
+      detail.animationStartY = warp.destinationY;
+    }
+
+    window.dispatchEvent(
+      new CustomEvent("warpTileTeleport", {
+        detail,
+      }),
+    );
+  }
+
   setupWarpClickHandler() {
     this.scene.events.on("warpClicked", (warp: PhaserWarp) => {
       if (this.isWorldInputFrozen()) return;
@@ -215,15 +306,9 @@ export class WarpManager {
       const playerPos = this.playerMovementController.getCurrentPosition();
       if (this.canActivateWarpFromPosition(warp, playerPos.x, playerPos.y)) {
         console.log(
-          `[WarpManager] Player already near warp, requesting server activation`,
+          `[WarpManager] Player already near warp, activating locally`,
         );
-        this.playerMovementController.requestMoveTo(
-          playerPos.x,
-          playerPos.y,
-          playerActor?.mapId,
-          "click",
-          warp.id,
-        );
+        this.activateWarp(warp, this.directionFromPositionToWarp(warp, playerPos));
         return;
       }
 
@@ -236,7 +321,7 @@ export class WarpManager {
       }
 
       console.log(
-        `[WarpManager] Sending move request to tile (${walkTarget.x}, ${walkTarget.y}) near warp (${warp.x}, ${warp.y})`,
+        `[WarpManager] Pathing locally to tile (${walkTarget.x}, ${walkTarget.y}) near warp (${warp.x}, ${warp.y})`,
       );
       if (!this.playerMovementController.requestMoveTo(
         walkTarget.x,
@@ -246,6 +331,20 @@ export class WarpManager {
         warp.id,
       )) {
         return;
+      }
+      if (walkTarget.x !== warp.x || walkTarget.y !== warp.y) {
+        this.playerMovementController.setArrivalCallback((x, y) => {
+          if (x !== walkTarget.x || y !== walkTarget.y) {
+            return false;
+          }
+          if (!this.isWorldInputFrozen()) {
+            this.activateWarp(
+              warp,
+              this.directionFromPositionToWarp(warp, { x, y }),
+            );
+          }
+          return true;
+        });
       }
     });
   }

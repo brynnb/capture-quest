@@ -188,28 +188,8 @@ func (s *Server) makeCaptureQuestHandler() http.HandlerFunc {
 			s.sessions[sid] = sess
 			s.sessionsMu.Unlock()
 
-			// Open a single control stream (bidi)
-			ctrl, e := sess.OpenStream()
-			if e != nil {
-				log.Printf("Failed to open control stream: %v", e)
-				sess.CloseWithError(400, "ctrl stream failed")
-				return
-			}
-
 			log.Printf("Accepted new session %d", sid)
-			sessObj = s.sessionManager.CreateSession(s, sid, clientIP, ctrl)
-
-			// Send an initial empty frame to ensure the client sees the stream
-			// (WebTransport may not notify JS until data is sent)
-			initialFrame := make([]byte, 6)                     // 4-byte length (0) + 2-byte opcode (0)
-			binary.LittleEndian.PutUint32(initialFrame[0:4], 2) // length = 2 (just opcode)
-			binary.LittleEndian.PutUint16(initialFrame[4:6], 0) // opcode 0 = padding/noop
-			if _, err := ctrl.Write(initialFrame); err != nil {
-				log.Printf("Failed to send initial frame: %v", err)
-			}
-
-			// Start control stream reader
-			go s.handleControlStream(sessObj, ctrl, sid, clientIP)
+			sessObj = s.sessionManager.CreateSession(s, sid, clientIP, nil)
 		}
 
 		go s.acceptClientControlStreams(sessObj, sess, sessObj.SessionID, clientIP)

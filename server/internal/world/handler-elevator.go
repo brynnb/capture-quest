@@ -84,23 +84,8 @@ func HandleElevatorSelectRequest(ses *session.Session, payload []byte, wh *World
 		return false
 	}
 
-	endSafariSessionIfLeavingMap(int64(char.ID), currentMapID, req.FloorMapID, wh)
-
 	// Teleport the player to the selected floor
-	wh.PlayerMovement.UpdatePosition(int(char.ID), floor.DestX, floor.DestY, req.FloorMapID, "DOWN")
-	wh.PlayerMovement.FlushPlayerPosition(int(char.ID))
-
-	// Update session state
-	ses.X = float32(floor.DestX)
-	ses.Y = float32(floor.DestY)
-	if wh.ActorManager.IsOverworld(req.FloorMapID) {
-		ses.MapID = UnifiedOverworldMapID
-	} else {
-		ses.MapID = req.FloorMapID
-	}
-	char.X = float64(floor.DestX)
-	char.Y = float64(floor.DestY)
-	char.MapID = uint32(ses.MapID) // Use normalized ID (9999 for overworld)
+	setServerTeleportedPlayerPosition(ses, wh, req.FloorMapID, floor.DestX, floor.DestY, "DOWN")
 
 	// Send teleport notification to client
 	ses.SendStreamJSON(map[string]interface{}{

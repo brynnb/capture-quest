@@ -2,6 +2,7 @@ package world
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -142,7 +143,7 @@ func GetOrCreateGuestAccount(ctx context.Context, guestToken string) (int64, err
 		return 0, fmt.Errorf("lookup guest account: %w", err)
 	}
 
-	guestName := "Guest_" + shortTokenLabel(guestToken)
+	guestName := guestAccountName(guestToken)
 	createdAt := time.Now().Unix()
 	err = db.GlobalWorldDB.DB.QueryRowContext(ctx, `
 		INSERT INTO account (name, guest_token, discord_id, time_creation)
@@ -156,6 +157,11 @@ func GetOrCreateGuestAccount(ctx context.Context, guestToken string) (int64, err
 	log.Printf("Created new guest account %d for token %s", id, shortTokenLabel(guestToken))
 	cache.GetCache().Set(cacheKey, id)
 	return id, nil
+}
+
+func guestAccountName(guestToken string) string {
+	digest := sha256.Sum256([]byte(guestToken))
+	return fmt.Sprintf("Guest_%x", digest[:6])
 }
 
 // LoginLocalAccount authenticates a user by email/password for local development mode.

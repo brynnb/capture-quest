@@ -1,6 +1,6 @@
-Scenario: seafoam_1f_runtime_boulder_push_move_request
-Description: A runtime movement request into an adjacent Strength boulder auto-activates Strength when allowed and pushes the boulder.
-Character: SimRuntimeBoulderMoveRequest
+Scenario: seafoam_1f_runtime_boulder_push_facing_attempt
+Description: A runtime facing attempt into an adjacent Strength boulder auto-activates Strength when allowed and pushes the boulder.
+Character: SimRuntimeBoulderFacingAttempt
 
 Initial state
   location: SEAFOAM_ISLANDS_1F[192] (18,11)

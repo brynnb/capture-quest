@@ -10,6 +10,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest",
+    "test:e2e": "playwright test -c playwright.config.ts",
+    "test:e2e:docker": "node scripts/testing/run-playwright-docker.mjs",
     "terrain:generate": "node scripts/generate-overworld-preview.mjs",
     "terrain:validate": "node scripts/validate-overworld-preview.mjs",
     "terrain:test": "npm run terrain:generate && npm run terrain:validate",
@@ -41,6 +43,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.9.0",
+    "@playwright/test": "^1.61.0",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.10.10",
     "@types/react": "^18.3.3",

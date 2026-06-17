@@ -41,6 +41,10 @@ const WarpModeOverlay = styled.div`
   }
 `;
 
+const GameScreenRoot = styled.div`
+  display: contents;
+`;
+
 const MainPage: React.FC = () => {
   const { setScreen } = useGameScreenStore();
   const { characterProfile, characterProfileLoaded } = usePlayerCharacterStore(
@@ -76,7 +80,7 @@ const MainPage: React.FC = () => {
   }, [characterProfile, characterProfileLoaded, setScreen, initializeMaps]);
 
   return (
-    <>
+    <GameScreenRoot data-testid="game-screen">
       <ZoneBackground />
 
       {isWarpMode && (
@@ -97,7 +101,7 @@ const MainPage: React.FC = () => {
       <PokeMartShop />
       <PokemonPC />
       <SlotMachine />
-    </>
+    </GameScreenRoot>
   );
 };
 

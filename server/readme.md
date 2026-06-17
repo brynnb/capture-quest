@@ -1,7 +1,7 @@
 # CaptureQuest Server
 
 The Go backend for CaptureQuest, a Pokemon Red/Blue-inspired multiplayer game
-with an authoritative server and a Phaser client.
+with server-owned durable gameplay state and a Phaser client.
 
 ## Requirements
 

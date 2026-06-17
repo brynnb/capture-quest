@@ -207,7 +207,15 @@ export class NetworkBridge {
       // Warp tile teleport (Phase 9.7)
       case OpCodes.WarpTileTeleportNotify:
         this.handleWarpTileTeleport(
-          data as { mapId: number; x: number; y: number; direction?: string },
+          data as {
+            mapId: number;
+            x: number;
+            y: number;
+            direction?: string;
+            animateExitStep?: boolean;
+            animationStartX?: number;
+            animationStartY?: number;
+          },
         );
         break;
       case OpCodes.WarpHomeResponse:
@@ -879,7 +887,15 @@ export class NetworkBridge {
     });
   }
 
-  private handleWarpTileTeleport(data: { mapId: number; x: number; y: number; direction?: string }) {
+  private handleWarpTileTeleport(data: {
+    mapId: number;
+    x: number;
+    y: number;
+    direction?: string;
+    animateExitStep?: boolean;
+    animationStartX?: number;
+    animationStartY?: number;
+  }) {
     console.log("[NetworkBridge] Warp tile teleport:", data);
     this.playSourceSFX(
       data.mapId === 9999 ? "SFX_GO_OUTSIDE" : "SFX_GO_INSIDE",

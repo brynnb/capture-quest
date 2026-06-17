@@ -14,7 +14,7 @@ func runRuntimeBoulderPush(scenario *Scenario, applied *AppliedFixture, initial 
 		err       error
 	)
 	if scenario.Trigger.DestX != 0 || scenario.Trigger.DestY != 0 {
-		outcome, attempted, err = world.TryPushBoulderFromMoveRequest(
+		outcome, attempted, err = world.TryPushBoulderFromDestinationAttempt(
 			applied.CharacterID,
 			applied.MapID,
 			x,

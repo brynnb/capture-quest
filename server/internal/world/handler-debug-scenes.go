@@ -311,21 +311,7 @@ func sendDebugSceneTeleport(ses *session.Session, wh *WorldHandler, charID int64
 	if direction == "" {
 		direction = "DOWN"
 	}
-	if wh.PlayerMovement != nil {
-		wh.PlayerMovement.UpdatePosition(int(charID), x, y, mapID, direction)
-	}
-	ses.X = float32(x)
-	ses.Y = float32(y)
-	if wh.ActorManager != nil && wh.ActorManager.IsOverworld(mapID) {
-		ses.MapID = UnifiedOverworldMapID
-	} else {
-		ses.MapID = mapID
-	}
-	if char := ses.Client.CharData(); char != nil {
-		char.X = float64(x)
-		char.Y = float64(y)
-		char.MapID = uint32(ses.MapID)
-	}
+	setServerTeleportedPlayerPosition(ses, wh, mapID, x, y, direction)
 
 	ses.SendStreamJSON(map[string]interface{}{
 		"mapId": mapID,

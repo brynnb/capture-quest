@@ -25,7 +25,6 @@ type WorldHandler struct {
 	SpinTiles        *SpinTileManager          `json:"spinTiles,omitempty"`
 	WarpTiles        *WarpTileManager          `json:"warpTiles,omitempty"`
 	phaserWarps      *phaserWarpManager
-	WarpValidator    *WarpValidator     `json:"-"`
 	Safari           *SafariZoneManager `json:"-"`
 	CutTiles         *CutTileManager    `json:"-"`
 }
@@ -64,9 +63,6 @@ func NewWorldHandler(sessionManager *session.SessionManager) *WorldHandler {
 	wh.phaserWarps = newPhaserWarpManager(db.GlobalWorldDB.DB)
 	wh.phaserWarps.setActorManager(wh.ActorManager)
 	wh.phaserWarps.load()
-	wh.WarpValidator = NewWarpValidator(db.GlobalWorldDB.DB)
-	wh.WarpValidator.SetActorManager(wh.ActorManager)
-	wh.WarpValidator.Load()
 	wh.Safari = NewSafariZoneManager()
 	LoadDisallowedWords()
 	wh.StartSessionTimeoutChecker()

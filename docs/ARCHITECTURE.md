@@ -62,11 +62,12 @@ under `server/script_tests/` instead of relying only on browser inspection.
 
 We follow a **"Model-First"** architecture. Data is categorized into distinct streams to avoid massive "god-object" updates and to minimize bandwidth.
 
-### Backend Authority (The "Golden Rule")
+### Durable State Ownership
 
-**The server is the absolute source of truth.**
+**The server owns durable gameplay state.**
 
 - **Casing & Naming**: Keep server field names, database columns, and Go struct tags aligned with the runtime model.
+- **Movement**: The Phaser client owns ordinary walking/pathing responsiveness and reports its current position to the server. The server persists and relays that position to other players, while still applying durable step effects such as encounters, Safari steps, cut tiles, scripted triggers, and forced movement mechanics.
 - **Adaptation**: The client code and Tygo types adapt to the server's structure. Map location state should use `mapId`; `zoneId` only remains where older protocol/data aliases still need compatibility.
 - **Automation**: We rely on the `StructToMap` utility in Go and `tygo` in TypeScript to handle the bridge—we do not manually mangle the backend to accommodate the frontend.
 
@@ -103,7 +104,7 @@ We follow a **"Model-First"** architecture. Data is categorized into distinct st
 
 ## 2. No "Shadow Models" (DTO Tax)
 
-One of the primary goals is to keep wire types aligned with the server's authoritative runtime model.
+One of the primary goals is to keep wire types aligned with the server's runtime model.
 
 - **Anti-Pattern**: Manually building a `map[string]interface{}` or a custom struct that mirrors 90% of a server model. This introduces "Shadow Models" that drift and break.
 - **Standard**: Prefer the owned model structs under `server/internal/db/models` and the `StructToMap` utility in `world-utils.go`. `StructToMap` converts Go's `PascalCase` fields to the frontend's `camelCase` shape while respecting the model's structure.

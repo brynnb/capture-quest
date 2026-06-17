@@ -13,6 +13,8 @@ dist/
 dist-ssr/
 build/
 *.tsbuildinfo
+test-results/
+playwright-report/
 
 # Environment and local config
 .env

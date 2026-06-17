@@ -46,6 +46,12 @@ export interface ActorUpdateEvent {
   actor: PhaserActor;
 }
 
+function numberOrNull(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 export class TileViewer extends Scene {
   // Services and managers
   private mapDataService: MapDataService;
@@ -90,6 +96,12 @@ export class TileViewer extends Scene {
   public mapLoadInProgress: boolean = false;
   public warpDestX: number | null = null;
   public warpDestY: number | null = null;
+  public warpAnimationStartX: number | null = null;
+  public warpAnimationStartY: number | null = null;
+  public warpAnimationDestX: number | null = null;
+  public warpAnimationDestY: number | null = null;
+  public warpAnimationDirection: string | null = null;
+  private warpExitInputLocked: boolean = false;
 
   // Phaser elements
   private mapContainer!: Phaser.GameObjects.Container;
@@ -299,18 +311,28 @@ export class TileViewer extends Scene {
         actors.forEach((incomingActor) => {
           let actor = incomingActor as PhaserActor;
           const isLocalPlayer = this.isLocalPlayerActor(actor);
+          const isFirstLocalSpawn = isLocalPlayer && !this.playerActor;
 
           if (isLocalPlayer) {
-            // Apply pending warp position if available
-            this.warpManager.applyPendingWarpToActor(actor);
+            if (isFirstLocalSpawn) {
+              // Initial map load or warp entry uses the saved/pending spawn.
+              this.warpManager.applyPendingWarpToActor(actor);
+            } else {
+              const current = this.playerMovementController.getCurrentPosition();
+              actor = {
+                ...actor,
+                x: current.x,
+                y: current.y,
+                mapId: this.playerMovementController.getCurrentMapId(),
+              };
+            }
 
             // Store player separately so it's never lost during map clears
-            const isFirstSpawn = !this.playerActor;
             actor = this.cacheActor(actor);
             this.playerActor = actor;
 
             // Request party data on first spawn so the HUD is populated immediately
-            if (isFirstSpawn) {
+            if (isFirstLocalSpawn) {
               PhaserNet.sendPokemonPartyRequest();
             }
           } else {
@@ -345,7 +367,7 @@ export class TileViewer extends Scene {
               this.mapRenderer.renderActor(actor);
 
               // Center camera on player once when they first appear
-              if (isLocalPlayer) {
+              if (isLocalPlayer && isFirstLocalSpawn) {
                 console.log(
                   `[TileViewer] Local player spawned/updated, centering camera`,
                 );
@@ -394,6 +416,14 @@ export class TileViewer extends Scene {
         // Also store on scene directly so MapLoader can use them independently
         this.warpDestX = pendingX;
         this.warpDestY = pendingY;
+        this.warpAnimationStartX = numberOrNull(data.warpAnimationStartX);
+        this.warpAnimationStartY = numberOrNull(data.warpAnimationStartY);
+        this.warpAnimationDestX = numberOrNull(data.warpAnimationDestX);
+        this.warpAnimationDestY = numberOrNull(data.warpAnimationDestY);
+        this.warpAnimationDirection =
+          typeof data.warpAnimationDirection === "string"
+            ? data.warpAnimationDirection
+            : null;
         console.log(
           `[TileViewer] Set pending warp destination: (${pendingX}, ${pendingY})`,
         );
@@ -439,6 +469,9 @@ export class TileViewer extends Scene {
     );
     this.playerMovementController.setWarpAtProvider((x, y) =>
       this.warpManager?.getWarpAt(x, y) ?? null,
+    );
+    this.playerMovementController.setWarpActivator((warp, direction) =>
+      this.warpManager?.activateWarp(warp, direction),
     );
     this.debugOverlay = new TileViewerDebugOverlay({
       scene: this,
@@ -599,6 +632,11 @@ export class TileViewer extends Scene {
       this.game.registry.remove("destinationMapId");
       this.game.registry.remove("destinationX");
       this.game.registry.remove("destinationY");
+      this.game.registry.remove("warpAnimationStartX");
+      this.game.registry.remove("warpAnimationStartY");
+      this.game.registry.remove("warpAnimationDestX");
+      this.game.registry.remove("warpAnimationDestY");
+      this.game.registry.remove("warpAnimationDirection");
     } else {
       // Normal startup - check character's current map to decide what to load
       const profile = usePlayerCharacterStore.getState().characterProfile;
@@ -1138,30 +1176,19 @@ export class TileViewer extends Scene {
   handleActorUpdate(event: ActorUpdateEvent) {
     const incomingActor = event.actor;
     const isLocalUpdate = this.isLocalPlayerActor(incomingActor);
-    let localPositionResult: "apply" | "confirmed" | "ignore" = "apply";
+    if (isLocalUpdate && this.isWarpExitAnimationPending()) {
+      return;
+    }
     let actorForCache = incomingActor;
 
     if (isLocalUpdate && incomingActor.x != null && incomingActor.y != null) {
-      localPositionResult =
-        this.playerMovementController.reconcileAuthoritativePosition(
-          incomingActor.x,
-          incomingActor.y,
-          incomingActor.mapId,
-          incomingActor.actionDirection,
-          incomingActor.movementSeq,
-        );
-      if (localPositionResult === "ignore") {
-        return;
-      }
-      if (localPositionResult === "confirmed") {
-        const predicted = this.playerMovementController.getCurrentPosition();
-        actorForCache = {
-          ...incomingActor,
-          x: predicted.x,
-          y: predicted.y,
-          mapId: this.playerMovementController.getCurrentMapId(),
-        };
-      }
+      const current = this.playerMovementController.getCurrentPosition();
+      actorForCache = {
+        ...incomingActor,
+        x: current.x,
+        y: current.y,
+        mapId: this.playerMovementController.getCurrentMapId(),
+      };
     }
 
     const actor = this.cacheActor(actorForCache);
@@ -1202,7 +1229,7 @@ export class TileViewer extends Scene {
       }
       this.mapRenderer.getMovementController().updateActorMetadata(actor);
 
-      if (isLocalUpdate && localPositionResult === "confirmed") {
+      if (isLocalUpdate) {
         return;
       }
 
@@ -1257,7 +1284,7 @@ export class TileViewer extends Scene {
 
   public getWorldInputFreezeReason(): WorldInputFreezeReason | null {
     return getWorldInputFreezeReason({
-      cutsceneInputLocked: this.cutsceneInputLocked,
+      cutsceneInputLocked: this.cutsceneInputLocked || this.warpExitInputLocked,
     });
   }
 
@@ -1272,12 +1299,98 @@ export class TileViewer extends Scene {
     }
   }
 
+  private setWarpExitInputLocked(locked: boolean): void {
+    this.warpExitInputLocked = locked;
+    if (locked) {
+      this.cancelWorldInput();
+    }
+  }
+
+  private isWarpExitAnimationPending(): boolean {
+    return (
+      this.warpExitInputLocked ||
+      this.warpAnimationStartX != null ||
+      this.warpAnimationStartY != null
+    );
+  }
+
+  public async playPendingWarpExitAnimation(delayMs = 0): Promise<void> {
+    const startX = this.warpAnimationStartX;
+    const startY = this.warpAnimationStartY;
+    const destX = this.warpAnimationDestX;
+    const destY = this.warpAnimationDestY;
+    const direction = this.warpAnimationDirection ?? "DOWN";
+
+    this.warpAnimationStartX = null;
+    this.warpAnimationStartY = null;
+    this.warpAnimationDestX = null;
+    this.warpAnimationDestY = null;
+    this.warpAnimationDirection = null;
+
+    if (
+      startX == null ||
+      startY == null ||
+      destX == null ||
+      destY == null ||
+      !this.playerActor
+    ) {
+      return;
+    }
+
+    this.setWarpExitInputLocked(true);
+    try {
+      if (delayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+      if (!this.sys.isActive() || !this.playerActor) return;
+
+      this.playerActor.x = startX;
+      this.playerActor.y = startY;
+      this.playerActor.actionDirection = direction;
+      this.playerMovementController.syncPosition(startX, startY);
+      this.playerMovementController.syncDirection(direction);
+      this.mapRenderer.snapActorPosition(
+        this.playerActor.id,
+        startX,
+        startY,
+        direction,
+        this.playerActor,
+      );
+
+      await this.playerMovementController.animateStepToward(
+        destX,
+        destY,
+        direction,
+      );
+
+      if (!this.sys.isActive() || !this.playerActor) return;
+
+      this.playerActor.x = destX;
+      this.playerActor.y = destY;
+      this.playerActor.actionDirection = direction;
+      this.playerMovementController.syncPosition(destX, destY);
+      this.playerMovementController.syncDirection(direction);
+      this.mapRenderer.snapActorPosition(
+        this.playerActor.id,
+        destX,
+        destY,
+        direction,
+        this.playerActor,
+      );
+      this.updateCameraFollow();
+    } finally {
+      this.setWarpExitInputLocked(false);
+    }
+  }
+
   private cancelWorldInput(): void {
     this.playerMovementController?.stopMovement();
     this.warpManager?.cancelPendingWarp();
   }
 
   cleanupResources() {
+    this.warpExitInputLocked = false;
+
     // Reduced logging
     if (process.env.NODE_ENV === "development") {
       console.log("Cleaning up resources");
@@ -1404,6 +1517,11 @@ export class TileViewer extends Scene {
       ),
       destinationX: this.game.registry.get("destinationX"),
       destinationY: this.game.registry.get("destinationY"),
+      warpAnimationStartX: this.game.registry.get("warpAnimationStartX"),
+      warpAnimationStartY: this.game.registry.get("warpAnimationStartY"),
+      warpAnimationDestX: this.game.registry.get("warpAnimationDestX"),
+      warpAnimationDestY: this.game.registry.get("warpAnimationDestY"),
+      warpAnimationDirection: this.game.registry.get("warpAnimationDirection"),
     };
 
     // Only reset the camera if explicitly requested AND we're not trying to preserve state

@@ -45,8 +45,8 @@ targets, spin/arrow tile movement, and other `phaser_*` tables.
 
 ## Runtime Rules
 
-The server remains authoritative. Scripts may display dialogue and request
-client cutscene animation, but durable gameplay state is applied server-side:
+The server owns durable gameplay state. Scripts may display dialogue and request
+client cutscene animation, but lasting gameplay changes are applied server-side:
 flags, item/money/coin changes, Pokemon gifts, battles, warps, object
 visibility, tile overrides, Safari state, and progression.
 
@@ -68,7 +68,7 @@ importer instead of relying on DB ordering.
 - `requiresCoins` / `requiresCoinsBelow`: Game Corner coin gates.
 - `requiresPlayerFacing`: server-side facing gate.
 - `setsFlags`: completion flags applied after the cutscene completes.
-- `warp`: authoritative post-cutscene destination correction.
+- `warp`: post-cutscene destination update.
 
 Keep this README focused on how the pipeline works. Detailed coverage belongs
 in scenario tests, importer diagnostics, or adapter comments near the code that

@@ -24,6 +24,12 @@ export interface MapLoaderState {
   viewedMapIds: Set<number>;
 }
 
+function numberOrNull(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 export class MapLoader {
   private scene: Scene;
   private mapDataService: MapDataService;
@@ -207,16 +213,18 @@ export class MapLoader {
           sceneAny.warpDestY !== null && sceneAny.warpDestY !== undefined) {
         const warpX = sceneAny.warpDestX;
         const warpY = sceneAny.warpDestY;
+        const renderX = numberOrNull(sceneAny.warpAnimationStartX) ?? warpX;
+        const renderY = numberOrNull(sceneAny.warpAnimationStartY) ?? warpY;
         const playerInList = actors.find((a) => a.objectType === "player");
         if (playerInList) {
-          console.log(`[MapLoader] Overriding player position with warp destination: (${warpX}, ${warpY}) (was ${playerInList.x}, ${playerInList.y})`);
-          playerInList.x = warpX;
-          playerInList.y = warpY;
+          console.log(`[MapLoader] Overriding player position with warp destination: (${renderX}, ${renderY}) (was ${playerInList.x}, ${playerInList.y})`);
+          playerInList.x = renderX;
+          playerInList.y = renderY;
         }
-        // Also update the authoritative playerActor reference
+        // Also update the scene's local playerActor reference
         if (sceneAny.playerActor) {
-          sceneAny.playerActor.x = warpX;
-          sceneAny.playerActor.y = warpY;
+          sceneAny.playerActor.x = renderX;
+          sceneAny.playerActor.y = renderY;
         }
         // Clear after applying
         sceneAny.warpDestX = null;
@@ -271,12 +279,13 @@ export class MapLoader {
       // Fade in from black (matches the fade-out in WarpManager)
       this.scene.cameras.main.fadeIn(200, 0, 0, 0);
 
-	      // Hide loading text
-	      this.uiManager.hideLoadingText();
-	      if (mapInfo.name) {
-	        PhaserNet.requestMapScripts(mapInfo.name);
-	      }
-	    } catch (error: any) {
+      // Hide loading text
+      this.uiManager.hideLoadingText();
+      await (this.scene as any).playPendingWarpExitAnimation?.(200); // eslint-disable-line @typescript-eslint/no-explicit-any
+      if (mapInfo.name) {
+        PhaserNet.requestMapScripts(mapInfo.name);
+      }
+    } catch (error: any) {
       // eslint-disable-line @typescript-eslint/no-explicit-any
       console.error("Error loading map data:", error);
       this.uiManager.setLoadingText(
@@ -382,16 +391,18 @@ export class MapLoader {
           sceneAnyOW.warpDestY !== null && sceneAnyOW.warpDestY !== undefined) {
         const warpX = sceneAnyOW.warpDestX;
         const warpY = sceneAnyOW.warpDestY;
+        const renderX = numberOrNull(sceneAnyOW.warpAnimationStartX) ?? warpX;
+        const renderY = numberOrNull(sceneAnyOW.warpAnimationStartY) ?? warpY;
         const pl = actors.find((a) => a.objectType === "player");
         if (pl) {
-          console.log(`[MapLoader] Overriding player position with warp destination (overworld): (${warpX}, ${warpY}) (was ${pl.x}, ${pl.y})`);
-          pl.x = warpX;
-          pl.y = warpY;
+          console.log(`[MapLoader] Overriding player position with warp destination (overworld): (${renderX}, ${renderY}) (was ${pl.x}, ${pl.y})`);
+          pl.x = renderX;
+          pl.y = renderY;
           pl.mapId = UNIFIED_OVERWORLD_MAP_ID;
         }
         if (sceneAnyOW.playerActor) {
-          sceneAnyOW.playerActor.x = warpX;
-          sceneAnyOW.playerActor.y = warpY;
+          sceneAnyOW.playerActor.x = renderX;
+          sceneAnyOW.playerActor.y = renderY;
           sceneAnyOW.playerActor.mapId = UNIFIED_OVERWORLD_MAP_ID;
         }
         sceneAnyOW.warpDestX = null;
@@ -504,6 +515,7 @@ export class MapLoader {
 
       // Hide loading text
       this.uiManager.hideLoadingText();
+      await (this.scene as any).playPendingWarpExitAnimation?.(200); // eslint-disable-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       // eslint-disable-line @typescript-eslint/no-explicit-any
       console.error("Error loading overworld data:", error);

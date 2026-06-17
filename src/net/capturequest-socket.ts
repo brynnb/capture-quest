@@ -166,46 +166,9 @@ export class CaptureQuestSocket {
       this.datagramWriter = this.webtransport.datagrams.writable.getWriter();
       this.startDatagramLoop();
 
-      // Accept server-opened control stream(s)
-      const streamReader =
-        this.webtransport.incomingBidirectionalStreams.getReader();
-
-      // Prefer the server-opened stream, but some browser/network paths can
-      // complete WebTransport setup before surfacing that stream. If it does
-      // not arrive promptly, open the control stream from the client side.
-      const firstStreamRead = streamReader.read();
-      try {
-        const { value: firstStream, done: firstDone } = await Promise.race([
-          firstStreamRead,
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("Timed out waiting for server-opened control stream")), 2000)
-          ),
-        ]);
-        if (firstDone || !firstStream) {
-          throw new Error("Server did not open control stream");
-        }
-        this.attachControlStream(firstStream, true);
-        console.log("[CaptureQuestSocket] Control stream ready");
-        this.acceptAdditionalControlStreams(streamReader);
-      } catch (error) {
-        console.warn("[CaptureQuestSocket] Server-opened control stream unavailable, opening client control stream", error);
-        const clientStream = await this.webtransport.createBidirectionalStream();
-        this.attachControlStream(clientStream, true);
-        console.log("[CaptureQuestSocket] Client-opened control stream ready");
-
-        firstStreamRead
-          .then(({ value: stream, done }) => {
-            if (!done && stream) {
-              this.attachControlStream(stream, false);
-            }
-            this.acceptAdditionalControlStreams(streamReader);
-          })
-          .catch((streamError) => {
-            if (!this.isClosing) {
-              console.warn("[CaptureQuestSocket] Server-opened control stream never arrived", streamError);
-            }
-          });
-      }
+      const controlStream = await this.webtransport.createBidirectionalStream();
+      this.attachControlStream(controlStream);
+      console.log("[CaptureQuestSocket] Control stream ready");
 
       this.isConnected = true;
       this.isClosing = false;
@@ -556,40 +519,10 @@ export class CaptureQuestSocket {
     })();
   }
 
-  private attachControlStream(
-    stream: WebTransportBidirectionalStream,
-    useForWrites: boolean
-  ) {
-    if (useForWrites || !this.controlWriter) {
-      this.controlWriter?.releaseLock();
-      this.controlWriter = stream.writable.getWriter();
-    }
+  private attachControlStream(stream: WebTransportBidirectionalStream) {
+    this.controlWriter?.releaseLock();
+    this.controlWriter = stream.writable.getWriter();
     this.startControlReadLoop(stream.readable);
-  }
-
-  private acceptAdditionalControlStreams(
-    streamReader: ReadableStreamDefaultReader<WebTransportBidirectionalStream>
-  ) {
-    (async () => {
-      try {
-        while (true) {
-          const { value: stream, done } = await streamReader.read();
-          if (done) {
-            break;
-          }
-          if (!stream) {
-            continue;
-          }
-          this.attachControlStream(stream, false);
-        }
-      } catch (error) {
-        if (!this.isClosing) {
-          console.warn("[CaptureQuestSocket] Incoming control stream loop ended", error);
-        }
-      } finally {
-        streamReader.releaseLock();
-      }
-    })();
   }
 
   private startControlReadLoop(stream: ReadableStream<Uint8Array>) {

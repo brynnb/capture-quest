@@ -200,11 +200,16 @@ export function requestWarps(mapId: number): void {
 /**
  * Send player position update to server.
  */
-export function sendPlayerPosition(x: number, y: number, mapId: number): void {
+export function sendPlayerPosition(
+  x: number,
+  y: number,
+  mapId: number,
+  direction?: string,
+): void {
   if (!WorldSocket.isConnected) {
     return; // Silent fail for position updates
   }
-  NetworkBridge.send({ x, y, mapId: mapId }, OpCodes.PhaserPlayerPositionUpdate);
+  NetworkBridge.send({ x, y, mapId, direction }, OpCodes.PhaserPlayerPositionUpdate);
 }
 
 /**
@@ -213,41 +218,6 @@ export function sendPlayerPosition(x: number, y: number, mapId: number): void {
 export function sendDirectionUpdate(x: number, y: number, mapId: number, direction: string): void {
   if (!WorldSocket.isConnected) return;
   NetworkBridge.send({ x, y, mapId, direction }, OpCodes.PhaserPlayerPositionUpdate);
-}
-
-/**
- * Request server-side movement to a destination tile
- * The server will calculate the path and send position updates back
- */
-export function sendMoveRequest(
-  destX: number,
-  destY: number,
-  mapId?: number,
-  activateWarpId?: number,
-  inputSource?: "click" | "keyboard",
-  startX?: number,
-  startY?: number,
-  clientPath?: { x: number; y: number; seq: number }[],
-  direction?: string,
-): void {
-  if (!WorldSocket.isConnected) {
-    console.warn("[PhaserNetwork] Not connected - cannot send move request");
-    return;
-  }
-  NetworkBridge.send(
-    {
-      destX,
-      destY,
-      mapId,
-      activateWarpId,
-      inputSource,
-      startX,
-      startY,
-      clientPath,
-      direction,
-    },
-    OpCodes.PhaserPlayerMoveRequest,
-  );
 }
 
 /**

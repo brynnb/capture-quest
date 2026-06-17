@@ -2,18 +2,16 @@ package world
 
 import "testing"
 
-func TestUpdateReportedPositionPreservesPendingWarpIntentForSameTile(t *testing.T) {
-	warpID := 723
+func TestUpdateReportedPositionPreservesQueuedPathForSameTile(t *testing.T) {
 	manager := &PlayerMovementManager{
 		players: map[int]*PlayerMovementState{
 			1: {
-				CharacterID:             1,
-				CurrentX:                4,
-				CurrentY:                10,
-				MapID:                   40,
-				Direction:               "DOWN",
-				Path:                    []PathNode{{X: 4, Y: 11}},
-				PendingWarpActivationID: &warpID,
+				CharacterID: 1,
+				CurrentX:    4,
+				CurrentY:    10,
+				MapID:       40,
+				Direction:   "DOWN",
+				Path:        []PathNode{{X: 4, Y: 11}},
 			},
 		},
 	}
@@ -27,9 +25,6 @@ func TestUpdateReportedPositionPreservesPendingWarpIntentForSameTile(t *testing.
 	if len(state.Path) != 1 || state.Path[0].X != 4 || state.Path[0].Y != 11 {
 		t.Fatalf("path = %#v, want preserved path to (4,11)", state.Path)
 	}
-	if state.PendingWarpActivationID == nil || *state.PendingWarpActivationID != warpID {
-		t.Fatalf("pending warp = %v, want %d", state.PendingWarpActivationID, warpID)
-	}
 
 	manager.UpdateReportedPosition(1, 4, 10, 40, "")
 	if state.Direction != "UP" {
@@ -37,18 +32,16 @@ func TestUpdateReportedPositionPreservesPendingWarpIntentForSameTile(t *testing.
 	}
 }
 
-func TestUpdateReportedPositionClearsPendingWarpIntentForDifferentTile(t *testing.T) {
-	warpID := 723
+func TestUpdateReportedPositionClearsQueuedPathForDifferentTile(t *testing.T) {
 	manager := &PlayerMovementManager{
 		players: map[int]*PlayerMovementState{
 			1: {
-				CharacterID:             1,
-				CurrentX:                4,
-				CurrentY:                10,
-				MapID:                   40,
-				Direction:               "DOWN",
-				Path:                    []PathNode{{X: 4, Y: 11}},
-				PendingWarpActivationID: &warpID,
+				CharacterID: 1,
+				CurrentX:    4,
+				CurrentY:    10,
+				MapID:       40,
+				Direction:   "DOWN",
+				Path:        []PathNode{{X: 4, Y: 11}},
 			},
 		},
 	}
@@ -61,8 +54,5 @@ func TestUpdateReportedPositionClearsPendingWarpIntentForDifferentTile(t *testin
 	}
 	if state.Path != nil {
 		t.Fatalf("path = %#v, want cleared", state.Path)
-	}
-	if state.PendingWarpActivationID != nil {
-		t.Fatalf("pending warp = %v, want cleared", state.PendingWarpActivationID)
 	}
 }

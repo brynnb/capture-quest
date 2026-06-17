@@ -7,6 +7,16 @@ import { MapRenderer } from "../../renderers/MapRenderer";
 import { MapDataService } from "../../services/MapDataService";
 import * as PhaserNet from "../../services/PhaserNetworkService";
 
+interface WarpTileTeleportDetail {
+  mapId: number;
+  x: number;
+  y: number;
+  direction?: string;
+  animateExitStep?: boolean;
+  animationStartX?: number;
+  animationStartY?: number;
+}
+
 interface TileViewerWarpEventsDeps {
   scene: Scene;
   mapDataService: MapDataService;
@@ -58,12 +68,9 @@ export class TileViewerWarpEvents {
     );
 
     this.warpTileTeleportHandler = (event: Event) => {
-      void this.handleWarpTileTeleport(event as CustomEvent<{
-        mapId: number;
-        x: number;
-        y: number;
-        direction?: string;
-      }>);
+      void this.handleWarpTileTeleport(
+        event as CustomEvent<WarpTileTeleportDetail>,
+      );
     };
     window.addEventListener("warpTileTeleport", this.warpTileTeleportHandler);
   }
@@ -81,19 +88,28 @@ export class TileViewerWarpEvents {
   }
 
   private async handleWarpTileTeleport(
-    event: CustomEvent<{
-      mapId: number;
-      x: number;
-      y: number;
-      direction?: string;
-    }>,
+    event: CustomEvent<WarpTileTeleportDetail>,
   ): Promise<void> {
-    const { mapId, x, y, direction } = event.detail;
+    const {
+      mapId,
+      x,
+      y,
+      direction,
+      animateExitStep,
+      animationStartX,
+      animationStartY,
+    } = event.detail;
     console.log(`[WarpTile] Teleporting to map ${mapId} (${x}, ${y})`);
 
     const normalizedPlayerMapId = this.deps.mapDataService.isOverworld(mapId)
       ? UNIFIED_OVERWORLD_MAP_ID
       : mapId;
+    PhaserNet.sendPlayerPosition(
+      x,
+      y,
+      normalizedPlayerMapId,
+      direction ?? "DOWN",
+    );
     const playerActor = this.deps.getPlayerActor();
     if (playerActor?.id != null) {
       await Promise.race([
@@ -122,8 +138,49 @@ export class TileViewerWarpEvents {
       if (direction) {
         this.deps.scene.game.registry.set("destinationDirection", direction);
       }
+      if (
+        animateExitStep &&
+        animationStartX != null &&
+        animationStartY != null
+      ) {
+        this.deps.scene.game.registry.set("warpAnimationStartX", animationStartX);
+        this.deps.scene.game.registry.set("warpAnimationStartY", animationStartY);
+        this.deps.scene.game.registry.set("warpAnimationDestX", x);
+        this.deps.scene.game.registry.set("warpAnimationDestY", y);
+        if (direction) {
+          this.deps.scene.game.registry.set("warpAnimationDirection", direction);
+        }
+      } else {
+        this.deps.scene.game.registry.remove("warpAnimationStartX");
+        this.deps.scene.game.registry.remove("warpAnimationStartY");
+        this.deps.scene.game.registry.remove("warpAnimationDestX");
+        this.deps.scene.game.registry.remove("warpAnimationDestY");
+        this.deps.scene.game.registry.remove("warpAnimationDirection");
+      }
       this.deps.scene.game.registry.set("useOverworldSavedCamera", false);
       this.deps.resetScene(false);
+      return;
+    }
+
+    if (
+      animateExitStep &&
+      animationStartX != null &&
+      animationStartY != null
+    ) {
+      const sceneWithAnimation = this.deps.scene as Scene & {
+        warpAnimationStartX?: number | null;
+        warpAnimationStartY?: number | null;
+        warpAnimationDestX?: number | null;
+        warpAnimationDestY?: number | null;
+        warpAnimationDirection?: string | null;
+        playPendingWarpExitAnimation?: (delayMs?: number) => Promise<void>;
+      };
+      sceneWithAnimation.warpAnimationStartX = animationStartX;
+      sceneWithAnimation.warpAnimationStartY = animationStartY;
+      sceneWithAnimation.warpAnimationDestX = x;
+      sceneWithAnimation.warpAnimationDestY = y;
+      sceneWithAnimation.warpAnimationDirection = direction ?? null;
+      await sceneWithAnimation.playPendingWarpExitAnimation?.();
       return;
     }
 

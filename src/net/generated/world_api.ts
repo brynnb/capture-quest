@@ -853,7 +853,7 @@ export interface PhaserActor {
   trainerClass?: string; // Trainer class constant (e.g. "BUG_CATCHER")
   trainerPartyIndex?: number /* int */; // Party index within trainer class
   itemId?: number /* int */; // For item objects: the item template ID
-  movementSeq?: number /* int */; // Client prediction step acknowledged by this update
+  movementSeq?: number /* int */; // Server-driven movement step sequence
 }
 /**
  * PhaserWarp represents a warp point between maps
@@ -904,20 +904,6 @@ export interface PhaserPlayerPositionUpdateRequest {
   y: number /* int */;
   mapId: number /* int */;
   direction: string;
-}
-/**
- * PhaserPlayerMoveRequest is the request payload for movement requests
- */
-export interface PhaserPlayerMoveRequest {
-  destX: number /* int */;
-  destY: number /* int */;
-  mapId?: number /* int */;
-  activateWarpId?: number /* int */;
-  inputSource?: string;
-  direction?: string;
-  startX?: number /* int */;
-  startY?: number /* int */;
-  clientPath?: ClientMoveStep[];
 }
 
 //////////
@@ -1037,6 +1023,8 @@ export const SafariZoneGateMapID = 156; // SAFARI_ZONE_GATE
 export const SafariZoneCenterMapID = 220;
 export const SafariZoneDefaultEntryX = 14;
 export const SafariZoneDefaultEntryY = 25;
+export const SafariZoneGateReturnX = 3;
+export const SafariZoneGateReturnY = 4;
 export const EventInSafariZone = "EVENT_IN_SAFARI_ZONE";
 export const EventSafariGameOver = "EVENT_SAFARI_GAME_OVER";
 /**
@@ -1204,7 +1192,6 @@ export interface PlayerMovementState {
   mapId: number /* int */;
   direction: string;
   path: PathNode[]; // Remaining path to destination
-  pendingWarpActivationId?: number /* int */;
   isSurfing?: boolean;
   wantsBicycle?: boolean;
   forcedBicycle?: boolean;
@@ -1224,29 +1211,6 @@ export interface PathNode {
   x: number /* int */;
   y: number /* int */;
   clientSeq?: number /* int */;
-}
-/**
- * ClientMoveStep identifies a client-predicted path step so late server
- * confirmations can be matched to the exact local prediction they acknowledge.
- */
-export interface ClientMoveStep {
-  x: number /* int */;
-  y: number /* int */;
-  seq: number /* int */;
-}
-/**
- * PlayerMoveRequestResult describes how a player movement request was handled.
- */
-export type PlayerMoveRequestResult = number /* int */;
-export const PlayerMoveRequestStarted: PlayerMoveRequestResult = 0;
-export const PlayerMoveRequestNoop: PlayerMoveRequestResult = 1;
-export const PlayerMoveRequestBlocked: PlayerMoveRequestResult = 2;
-export const PlayerMoveRequestNoPath: PlayerMoveRequestResult = 3;
-export interface PlayerMoveRequestOptions {
-  activateWarpId?: number /* int */;
-  expectedStart?: PathNode;
-  clientPath: ClientMoveStep[];
-  direction: string;
 }
 /**
  * PlayerMovementManager tracks server-visible player movement for persistence,
@@ -1419,7 +1383,7 @@ export interface SpinTileManager {
 /**
  * TrainerEncounterNotifyPayload is sent to the client when a trainer spots the player.
  * The client should show "!" and animate the trainer locally to ApproachToX/Y.
- * The player position remains server-authoritative and does not get force-walked.
+ * The player position remains client-owned and does not get force-walked.
  */
 export interface TrainerEncounterNotifyPayload {
   trainerActorId: number /* int */; // Runtime actor ID (from ActorRegistry)
@@ -1513,25 +1477,6 @@ export interface WarpTile {
  * fast lookups by map ID + tile position.
  */
 export interface WarpTileManager {
-}
-
-//////////
-// source: warp_validator.go
-
-/**
- * WarpValidatorEntry represents a valid warp: source tile → destination map.
- */
-export interface WarpValidatorEntry {
-  sourceMapId: number /* int */;
-  x: number /* int */;
-  y: number /* int */;
-  destMapId: number /* int */;
-}
-/**
- * WarpValidator loads all warps into memory and provides fast validation
- * of whether a player position update constitutes a legal warp.
- */
-export interface WarpValidator {
 }
 
 //////////

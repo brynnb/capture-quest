@@ -135,7 +135,7 @@ func usePokeDollInBattle(ses *session.Session, wh *WorldHandler, charID int64, b
 func sendBattleItemSuccess(ses *session.Session, charID int64, battle *pokebattle.BattleState, events []pokebattle.BattleEvent, responseOpcode opcodes.OpCode) {
 	myDB := db.GlobalWorldDB.DB
 	if err := pokebattle.SavePokemonAfterBattle(myDB, charID, battle.PlayerParty); err != nil {
-		// Keep the battle response flowing; the caller logs the authoritative action.
+		// Keep the battle response flowing; the caller logs the durable battle action.
 	}
 
 	resp := map[string]interface{}{

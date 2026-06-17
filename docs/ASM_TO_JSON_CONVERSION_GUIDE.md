@@ -273,5 +273,5 @@ All high-priority and medium-priority scripts are complete. Remaining items are 
 3. **Missing `requires_flag_absent`** — Without this, the cutscene replays every map entry
 4. **Script chain collapse** — Group related ASM scripts into one logical cutscene
 5. **Battle splits** — Pre-battle and post-battle are always separate
-6. **Client-side movement limitations** — JSON `move`/`movePlayer` are visual-only with fixed paths. For real pathfinding and collision avoidance, add a reusable server-authoritative movement action instead of a scene-specific Go hook
+6. **Cutscene movement limitations** — JSON `move`/`movePlayer` are visual-only with fixed paths. For real cutscene pathfinding and collision avoidance, add a reusable movement action instead of a scene-specific Go hook
 7. **Multi-phase cutscenes** — Model phases as data and flags; avoid synthetic labels and one-off Go hooks

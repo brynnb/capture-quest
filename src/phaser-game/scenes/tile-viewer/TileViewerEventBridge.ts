@@ -55,7 +55,13 @@ export class TileViewerEventBridge {
     window.addEventListener("safariZoneEnter", this.safariEnterHandler);
 
     this.safariExitHandler = (event: Event) => {
-      const data = (event as CustomEvent).detail as { message?: string };
+      const data = (event as CustomEvent).detail as {
+        message?: string;
+        mapId?: number;
+        x?: number;
+        y?: number;
+        direction?: string;
+      };
       console.log("[Safari] Zone exit:", data);
       if (usePokeBattleStore.getState().isSafari) {
         usePokeBattleStore.getState().closeBattle();
@@ -68,10 +74,16 @@ export class TileViewerEventBridge {
           null,
           undefined,
           () => {
-            this.deps.scene.game.registry.set("destinationMapId", 156);
-            this.deps.scene.game.registry.set("destinationX", 3);
-            this.deps.scene.game.registry.set("destinationY", 4);
-            this.deps.resetScene(false);
+            window.dispatchEvent(
+              new CustomEvent("warpTileTeleport", {
+                detail: {
+                  mapId: data.mapId ?? 156,
+                  x: data.x ?? 3,
+                  y: data.y ?? 4,
+                  direction: data.direction ?? "DOWN",
+                },
+              }),
+            );
           },
         );
     };

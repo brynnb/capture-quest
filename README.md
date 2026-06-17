@@ -2,7 +2,7 @@
   <img width="520" alt="CaptureQuest Logo" src="public/assets/capturequestlogo.png" />
 </p>
 
-CaptureQuest is an MMO based on the original Pokémon GameBoy games from 1996. It uses data extracted directly from the original game cartridges and source-derived project data to rebuild Kanto as a multiplayer world, with a Go server authoritatively managing gameplay state and a Phaser/TypeScript client rendering the experience. The project aims to preserve the shape of the Red/Blue adventure while adding MMO-style persistence, chat, shared spaces, scripted events, expanded world systems, and eventually player-driven features like land ownership and dynamic map growth.
+CaptureQuest is an MMO based on the original Pokémon GameBoy games from 1996. It uses data extracted directly from the original game cartridges and source-derived project data to rebuild Kanto as a multiplayer world, with a Go server managing durable gameplay state and a Phaser/TypeScript client rendering responsive moment-to-moment movement. The project aims to preserve the shape of the Red/Blue adventure while adding MMO-style persistence, chat, shared spaces, scripted events, expanded world systems, and eventually player-driven features like land ownership and dynamic map growth.
 
 <h2 align="center">
   <a href="https://capturequest.net/">Play it now!</a>
@@ -62,3 +62,21 @@ file must contain both usable tile data and generated script-event tables; if
 If you want to use an external extractor checkout instead of the submodule, set
 `POKEMON_EXTRACTOR_ROOT=/path/to/pokemon-gameboy-extractor-tool` or
 `POKEMON_DB_SOURCE=/path/to/pokemon.db`.
+
+## Browser Smoke Tests
+
+CaptureQuest has a small Playwright smoke-test harness for browser-level checks.
+Start the app in one terminal:
+
+```bash
+npm run dev:test
+```
+
+Then run Playwright in Docker from another terminal:
+
+```bash
+npm run test:e2e:docker
+```
+
+Use `E2E_APP_URL=http://localhost:5174 npm run test:e2e:docker` if Vite picked
+a different port.

@@ -9,18 +9,6 @@ import (
 	"capturequest/internal/db"
 )
 
-func TryPushBoulderFromMoveRequest(charID int64, mapID, playerX, playerY, destX, destY int, activateStrength bool, efm *EventFlagManager) (BoulderPushResult, bool, error) {
-	direction := directionFromAdjacentDelta(destX-playerX, destY-playerY)
-	if direction == "" {
-		return BoulderPushResult{}, false, nil
-	}
-	result, err := TryPushBoulder(charID, mapID, playerX, playerY, direction, activateStrength, efm)
-	if err == nil && result.Message == boulderNoBoulderMessage {
-		return result, false, nil
-	}
-	return result, true, err
-}
-
 func TryPushBoulderFromFacingAttempt(charID int64, mapID, playerX, playerY int, direction string, activateStrength bool, efm *EventFlagManager) (BoulderPushResult, bool, error) {
 	if normalizeBoulderDirection(direction) == "" {
 		return BoulderPushResult{}, false, nil
@@ -32,7 +20,15 @@ func TryPushBoulderFromFacingAttempt(charID int64, mapID, playerX, playerY int, 
 	return result, true, err
 }
 
-func directionFromAdjacentDelta(dx, dy int) string {
+func TryPushBoulderFromDestinationAttempt(charID int64, mapID, playerX, playerY, destX, destY int, activateStrength bool, efm *EventFlagManager) (BoulderPushResult, bool, error) {
+	direction := directionFromAdjacentDestination(destX-playerX, destY-playerY)
+	if direction == "" {
+		return BoulderPushResult{}, false, nil
+	}
+	return TryPushBoulderFromFacingAttempt(charID, mapID, playerX, playerY, direction, activateStrength, efm)
+}
+
+func directionFromAdjacentDestination(dx, dy int) string {
 	switch {
 	case dx == 0 && dy == -1:
 		return "UP"
@@ -45,21 +41,6 @@ func directionFromAdjacentDelta(dx, dy int) string {
 	default:
 		return ""
 	}
-}
-
-func (m *PlayerMovementManager) tryPushBoulderFromMoveRequest(charID int, mapID, playerX, playerY, destX, destY int) (BoulderPushResult, bool) {
-	if m.wh == nil || m.wh.EventFlags == nil {
-		return BoulderPushResult{}, false
-	}
-	result, attempted, err := TryPushBoulderFromMoveRequest(int64(charID), mapID, playerX, playerY, destX, destY, true, m.wh.EventFlags)
-	if err != nil {
-		log.Printf("[PlayerMovement] Boulder push from move request failed for player %d: %v", charID, err)
-		return result, attempted
-	}
-	if attempted && result.Success {
-		m.broadcastBoulderPushResult(int64(charID), result)
-	}
-	return result, attempted
 }
 
 func (m *PlayerMovementManager) tryPushBoulderFromFacingAttempt(charID int, mapID, playerX, playerY int, direction string) (BoulderPushResult, bool) {

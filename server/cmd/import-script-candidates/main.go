@@ -2,7 +2,7 @@
 //
 // Reads neutral script_event_candidates rows from the extracted Pokemon SQLite
 // artifact and materializes supported candidates as file-backed CaptureQuest
-// scripted events. CaptureQuest-authored files remain authoritative overrides.
+// scripted events. CaptureQuest-authored files remain repo-owned overrides.
 package main
 
 import (

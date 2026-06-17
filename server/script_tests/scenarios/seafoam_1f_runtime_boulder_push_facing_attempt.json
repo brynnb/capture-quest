@@ -1,8 +1,8 @@
 {
-  "name": "seafoam_1f_runtime_boulder_push_move_request",
-  "description": "A runtime movement request into an adjacent Strength boulder auto-activates Strength when allowed and pushes the boulder.",
+  "name": "seafoam_1f_runtime_boulder_push_facing_attempt",
+  "description": "A runtime facing attempt into an adjacent Strength boulder auto-activates Strength when allowed and pushes the boulder.",
   "fixture": {
-    "characterName": "SimRuntimeBoulderMoveRequest",
+    "characterName": "SimRuntimeBoulderFacingAttempt",
     "mapName": "SEAFOAM_ISLANDS_1F",
     "x": 18,
     "y": 11,

@@ -18,27 +18,25 @@ const bicyclePlayerMoveSpeed = 100 * time.Millisecond
 
 // PlayerMovementState tracks a player's current movement
 type PlayerMovementState struct {
-	SessionID               int           `json:"sessionId"`
-	CharacterID             int           `json:"characterId"`
-	CurrentX                int           `json:"currentX"`
-	CurrentY                int           `json:"currentY"`
-	MapID                   int           `json:"mapId"`
-	Direction               string        `json:"direction"`
-	Path                    []PathNode    `json:"path"` // Remaining path to destination
-	PendingWarpActivationID *int          `json:"pendingWarpActivationId,omitempty"`
-	IsSurfing               bool          `json:"isSurfing,omitempty"`
-	WantsBicycle            bool          `json:"wantsBicycle,omitempty"`
-	ForcedBicycle           bool          `json:"forcedBicycle,omitempty"`
-	LastMoveTime            time.Time     `json:"lastMoveTime"`
-	LastSaveTime            time.Time     `json:"lastSaveTime"` // Last time we persisted to DB
-	MoveSpeed               time.Duration `json:"moveSpeed"`    // Time per tile, including runtime movement effects
+	SessionID     int           `json:"sessionId"`
+	CharacterID   int           `json:"characterId"`
+	CurrentX      int           `json:"currentX"`
+	CurrentY      int           `json:"currentY"`
+	MapID         int           `json:"mapId"`
+	Direction     string        `json:"direction"`
+	Path          []PathNode    `json:"path"` // Remaining path to destination
+	IsSurfing     bool          `json:"isSurfing,omitempty"`
+	WantsBicycle  bool          `json:"wantsBicycle,omitempty"`
+	ForcedBicycle bool          `json:"forcedBicycle,omitempty"`
+	LastMoveTime  time.Time     `json:"lastMoveTime"`
+	LastSaveTime  time.Time     `json:"lastSaveTime"` // Last time we persisted to DB
+	MoveSpeed     time.Duration `json:"moveSpeed"`    // Time per tile, including runtime movement effects
 }
 
 type playerMovementStep struct {
-	state                   *PlayerMovementState
-	isPathDestination       bool
-	pendingWarpActivationID *int
-	movementSeq             int
+	state             *PlayerMovementState
+	isPathDestination bool
+	movementSeq       int
 }
 
 type playerMovementSnapshot struct {
@@ -65,31 +63,6 @@ type PathNode struct {
 	X         int `json:"x"`
 	Y         int `json:"y"`
 	ClientSeq int `json:"clientSeq,omitempty"`
-}
-
-// ClientMoveStep identifies a client-predicted path step so late server
-// confirmations can be matched to the exact local prediction they acknowledge.
-type ClientMoveStep struct {
-	X   int `json:"x"`
-	Y   int `json:"y"`
-	Seq int `json:"seq"`
-}
-
-// PlayerMoveRequestResult describes how a player movement request was handled.
-type PlayerMoveRequestResult int
-
-const (
-	PlayerMoveRequestStarted PlayerMoveRequestResult = iota
-	PlayerMoveRequestNoop
-	PlayerMoveRequestBlocked
-	PlayerMoveRequestNoPath
-)
-
-type PlayerMoveRequestOptions struct {
-	ActivateWarpID *int
-	ExpectedStart  *PathNode
-	ClientPath     []ClientMoveStep
-	Direction      string
 }
 
 // PlayerMovementManager tracks server-visible player movement for persistence,
@@ -126,7 +99,7 @@ func (m *PlayerMovementManager) Start() {
 			}
 		}
 	}()
-	log.Println("[PlayerMovement] Started server-side movement manager")
+	log.Println("[PlayerMovement] Started player state manager")
 }
 
 // Stop stops the movement tick loop
@@ -218,19 +191,6 @@ func (m *PlayerMovementManager) FlushPlayerPosition(charID int) {
 	}
 }
 
-func (m *PlayerMovementManager) SendAuthoritativePosition(charID int) {
-	m.mu.RLock()
-	state, ok := m.players[charID]
-	if !ok {
-		m.mu.RUnlock()
-		return
-	}
-	snapshot := m.snapshotForState(state, 0)
-	m.mu.RUnlock()
-
-	m.sendPositionToSession(snapshot)
-}
-
 func (m *PlayerMovementManager) snapshotForState(state *PlayerMovementState, movementSeq int) playerMovementSnapshot {
 	return playerMovementSnapshot{
 		SessionID:   state.SessionID,
@@ -316,187 +276,7 @@ func (m *PlayerMovementManager) UnregisterPlayer(charID int) {
 	delete(m.players, charID)
 }
 
-// RequestMove starts a player moving to a destination.
-func (m *PlayerMovementManager) RequestMove(charID int, destX, destY int) PlayerMoveRequestResult {
-	return m.RequestMoveWithOptions(charID, destX, destY, PlayerMoveRequestOptions{})
-}
-
-// RequestMoveWithOptions starts a player moving to a destination with optional
-// interaction intent, such as clicking a warp mat/door.
-func (m *PlayerMovementManager) RequestMoveWithOptions(charID int, destX, destY int, opts PlayerMoveRequestOptions) PlayerMoveRequestResult {
-	// Block movement while in battle
-	if existing := getBattle(int64(charID)); existing != nil && !existing.IsOver() {
-		return PlayerMoveRequestBlocked
-	}
-	if m.wh != nil && m.wh.TrainerEncounter != nil && m.wh.TrainerEncounter.HasPendingEncounter(int64(charID)) {
-		return PlayerMoveRequestBlocked
-	}
-
-	m.mu.RLock()
-	state, ok := m.players[charID]
-	if !ok {
-		m.mu.RUnlock()
-		logutil.Debugf("[PlayerMovement] Player %d not registered", charID)
-		return PlayerMoveRequestBlocked
-	}
-	startX := state.CurrentX
-	startY := state.CurrentY
-	mapID := state.MapID
-	direction := state.Direction
-	if normalizedDirection := normalizeWarpDirection(opts.Direction); normalizedDirection != "" {
-		direction = normalizedDirection
-	}
-	existingPath := copyPathNodes(state.Path)
-	planningStartX := startX
-	planningStartY := startY
-	preservedPrefix := []PathNode(nil)
-	if opts.ExpectedStart != nil {
-		if opts.ExpectedStart.X == startX && opts.ExpectedStart.Y == startY {
-			planningStartX = startX
-			planningStartY = startY
-		} else if prefix, ok := pathPrefixThrough(existingPath, opts.ExpectedStart.X, opts.ExpectedStart.Y); ok {
-			preservedPrefix = prefix
-			planningStartX = opts.ExpectedStart.X
-			planningStartY = opts.ExpectedStart.Y
-		} else {
-			m.mu.RUnlock()
-			logutil.Debugf("[PlayerMovement] Rejected predicted move for player %d: expected start (%d,%d) is not current (%d,%d) or queued path %v",
-				charID, opts.ExpectedStart.X, opts.ExpectedStart.Y, startX, startY, existingPath)
-			return PlayerMoveRequestBlocked
-		}
-	}
-	m.mu.RUnlock()
-
-	if planningStartX == destX && planningStartY == destY {
-		if opts.ActivateWarpID != nil {
-			if len(preservedPrefix) > 0 {
-				m.mu.Lock()
-				defer m.mu.Unlock()
-				state, ok = m.players[charID]
-				if !ok || state.MapID != mapID || state.CurrentX != startX || state.CurrentY != startY || !samePathPrefix(state.Path, preservedPrefix) {
-					return PlayerMoveRequestBlocked
-				}
-				state.Path = preservedPrefix
-				state.PendingWarpActivationID = cloneIntPtr(opts.ActivateWarpID)
-				return PlayerMoveRequestStarted
-			}
-			if m.tryActivateRequestedWarp(charID, *opts.ActivateWarpID, mapID, planningStartX, planningStartY, direction) {
-				return PlayerMoveRequestStarted
-			}
-			return PlayerMoveRequestBlocked
-		}
-		if len(preservedPrefix) > 0 {
-			m.mu.Lock()
-			defer m.mu.Unlock()
-			state, ok = m.players[charID]
-			if !ok || state.MapID != mapID || state.CurrentX != startX || state.CurrentY != startY || !samePathPrefix(state.Path, preservedPrefix) {
-				return PlayerMoveRequestBlocked
-			}
-			state.Path = preservedPrefix
-			state.PendingWarpActivationID = nil
-			return PlayerMoveRequestStarted
-		}
-		return PlayerMoveRequestNoop
-	}
-
-	// Calculate path using A*
-	path := m.findPath(charID, mapID, planningStartX, planningStartY, destX, destY)
-	if len(path) == 0 {
-		if opts.ActivateWarpID != nil &&
-			m.canActivateRequestedWarpForDestination(*opts.ActivateWarpID, mapID, planningStartX, planningStartY, destX, destY) &&
-			m.tryActivateRequestedWarp(charID, *opts.ActivateWarpID, mapID, planningStartX, planningStartY, direction) {
-			return PlayerMoveRequestStarted
-		}
-		if result, attempted := m.tryPushBoulderFromMoveRequest(charID, mapID, planningStartX, planningStartY, destX, destY); attempted {
-			if result.Success {
-				m.queueStepAfterBoulderPush(charID, planningStartX, planningStartY, mapID, result)
-				logutil.Debugf("[PlayerMovement] Player %d pushed boulder %s from (%d,%d) to (%d,%d)",
-					charID, result.ObjectName, result.FromX, result.FromY, result.ToX, result.ToY)
-				return PlayerMoveRequestStarted
-			} else {
-				logutil.Debugf("[PlayerMovement] Boulder push attempt for player %d failed: %s", charID, result.Message)
-			}
-			return PlayerMoveRequestBlocked
-		}
-		startCollision, startExists := 0, false
-		destCollision, destExists := 0, false
-		if m.actorManager != nil {
-			startCollision, startExists = m.actorManager.CollisionTypeAt(mapID, planningStartX, planningStartY)
-			destCollision, destExists = m.actorManager.CollisionTypeAt(mapID, destX, destY)
-		}
-		logutil.Debugf("[PlayerMovement] No path found for player %d on map %d from (%d,%d exists=%t collision=%d) to (%d,%d exists=%t collision=%d)",
-			charID, mapID, planningStartX, planningStartY, startExists, startCollision, destX, destY, destExists, destCollision)
-		return PlayerMoveRequestNoPath
-	}
-	path = applyClientMoveSeqs(path, opts.ClientPath)
-	finalPath := append(copyPathNodes(preservedPrefix), path...)
-
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	state, ok = m.players[charID]
-	if !ok {
-		return PlayerMoveRequestBlocked
-	}
-	if state.MapID != mapID || state.CurrentX != startX || state.CurrentY != startY {
-		return PlayerMoveRequestBlocked
-	}
-	if len(preservedPrefix) > 0 && !samePathPrefix(state.Path, preservedPrefix) {
-		return PlayerMoveRequestBlocked
-	}
-	state.Path = finalPath
-	state.PendingWarpActivationID = cloneIntPtr(opts.ActivateWarpID)
-	logutil.Debugf("[PlayerMovement] Player %d moving from (%d,%d) to (%d,%d), %d steps",
-		charID, planningStartX, planningStartY, destX, destY, len(finalPath))
-	return PlayerMoveRequestStarted
-}
-
-func copyPathNodes(path []PathNode) []PathNode {
-	if len(path) == 0 {
-		return nil
-	}
-	copied := make([]PathNode, len(path))
-	copy(copied, path)
-	return copied
-}
-
-func pathPrefixThrough(path []PathNode, x, y int) ([]PathNode, bool) {
-	for i, step := range path {
-		if step.X == x && step.Y == y {
-			return copyPathNodes(path[:i+1]), true
-		}
-	}
-	return nil, false
-}
-
-func samePathPrefix(path []PathNode, prefix []PathNode) bool {
-	if len(prefix) > len(path) {
-		return false
-	}
-	for i, step := range prefix {
-		if path[i].X != step.X || path[i].Y != step.Y {
-			return false
-		}
-	}
-	return true
-}
-
-func applyClientMoveSeqs(path []PathNode, clientPath []ClientMoveStep) []PathNode {
-	if len(path) == 0 || len(path) != len(clientPath) {
-		return path
-	}
-	for i, clientStep := range clientPath {
-		if path[i].X != clientStep.X || path[i].Y != clientStep.Y || clientStep.Seq <= 0 {
-			return path
-		}
-	}
-	withSeqs := copyPathNodes(path)
-	for i, clientStep := range clientPath {
-		withSeqs[i].ClientSeq = clientStep.Seq
-	}
-	return withSeqs
-}
-
-// StopMovement clears any queued path for a player, halting server-side movement.
+// StopMovement clears any queued server-driven path for a player.
 func (m *PlayerMovementManager) StopMovement(charID int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -506,7 +286,6 @@ func (m *PlayerMovementManager) StopMovement(charID int) {
 		return
 	}
 	state.Path = nil
-	state.PendingWarpActivationID = nil
 }
 
 // UpdateMapID updates just the map ID for a registered player (used when client reports a different map)
@@ -525,7 +304,6 @@ func (m *PlayerMovementManager) UpdateMapID(charID int, mapID int) {
 		}
 		state.MapID = mapID
 		state.Path = nil // Clear any pending path on old map
-		state.PendingWarpActivationID = nil
 		m.applyBicycleMapRules(state)
 	}
 }
@@ -549,14 +327,11 @@ func (m *PlayerMovementManager) UpdatePosition(charID int, x, y, mapID int, dire
 	state.MapID = mapID
 	state.Direction = direction
 	state.Path = nil // Clear any pending path
-	state.PendingWarpActivationID = nil
 	state.IsSurfing = false
 	m.applyBicycleMapRules(state)
 }
 
-// UpdateReportedPosition syncs a client-reported position. If the report only
-// confirms the server's current tile, preserve any queued path and pending
-// interaction intent so multi-step click paths can still finish.
+// UpdateReportedPosition syncs the latest client-reported position.
 func (m *PlayerMovementManager) UpdateReportedPosition(charID int, x, y, mapID int, direction string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -582,12 +357,11 @@ func (m *PlayerMovementManager) UpdateReportedPosition(charID int, x, y, mapID i
 	state.CurrentY = y
 	state.MapID = mapID
 	state.Path = nil
-	state.PendingWarpActivationID = nil
-	state.IsSurfing = false
+	state.IsSurfing = isSurfableWaterTile(m.wh, mapID, x, y)
 	m.applyBicycleMapRules(state)
 }
 
-// GetPosition returns the current server-side position for a player
+// GetPosition returns the latest server-visible position reported for a player.
 func (m *PlayerMovementManager) GetPosition(charID int) (x, y, mapID int, ok bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -599,7 +373,7 @@ func (m *PlayerMovementManager) GetPosition(charID int) (x, y, mapID int, ok boo
 	return state.CurrentX, state.CurrentY, state.MapID, true
 }
 
-// GetDirection returns the current server-side facing direction for a player.
+// GetDirection returns the latest server-visible facing direction reported for a player.
 func (m *PlayerMovementManager) GetDirection(charID int) (string, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -643,7 +417,6 @@ func (m *PlayerMovementManager) processTick() {
 			log.Printf("[PlayerMovement] Stopping player %d before occupied NPC tile (%d,%d) on map %d",
 				state.CharacterID, nextTile.X, nextTile.Y, state.MapID)
 			state.Path = nil
-			state.PendingWarpActivationID = nil
 			updates = append(updates, playerMovementStep{state: state})
 			continue
 		}
@@ -675,16 +448,10 @@ func (m *PlayerMovementManager) processTick() {
 		// 1. We just finished the path
 		// 2. OR it's been more than 5 seconds since last save
 		isFinished := len(state.Path) == 0
-		var pendingWarpActivationID *int
-		if isFinished {
-			pendingWarpActivationID = cloneIntPtr(state.PendingWarpActivationID)
-			state.PendingWarpActivationID = nil
-		}
 		updates = append(updates, playerMovementStep{
-			state:                   state,
-			isPathDestination:       isFinished,
-			pendingWarpActivationID: pendingWarpActivationID,
-			movementSeq:             nextTile.ClientSeq,
+			state:             state,
+			isPathDestination: isFinished,
+			movementSeq:       nextTile.ClientSeq,
 		})
 		shouldSave := isFinished || now.Sub(state.LastSaveTime) >= 5*time.Second
 
@@ -806,10 +573,6 @@ func (m *PlayerMovementManager) processTick() {
 			}
 		}
 
-		if update.isPathDestination && m.tryActivateNormalMapWarp(state, update.pendingWarpActivationID) {
-			continue
-		}
-
 		// Check warp pad tiles only when this step is the requested destination.
 		// Keyboard moves are single-step paths, so deliberate step-on warps still
 		// fire, while long click paths can cross exit tiles without hijacking.
@@ -829,7 +592,7 @@ func (m *PlayerMovementManager) processTick() {
 
 				previousMapID := state.MapID
 
-				// Update server-side position
+				// Update the server-visible position for this forced warp tile.
 				state.CurrentX = wt.DestX
 				state.CurrentY = wt.DestY
 				state.MapID = wt.DestMapID
@@ -865,230 +628,6 @@ func (m *PlayerMovementManager) processTick() {
 			}
 		}
 	}
-}
-
-func (m *PlayerMovementManager) tryActivateNormalMapWarp(state *PlayerMovementState, activationWarpID *int) bool {
-	if m.wh == nil || m.wh.phaserWarps == nil {
-		return false
-	}
-
-	var warp *phaserMapWarp
-	if activationWarpID != nil {
-		warp = m.wh.phaserWarps.warpByID(*activationWarpID)
-		if warp == nil || !warp.canActivateByClick(state.MapID, state.CurrentX, state.CurrentY, m.wh.ActorManager) {
-			return false
-		}
-	} else {
-		warp = m.wh.phaserWarps.warpAt(state.MapID, state.CurrentX, state.CurrentY)
-		if warp == nil || !warp.canActivateOnPathDestination(state.MapID, m.wh.ActorManager) {
-			return false
-		}
-	}
-	if m.warpBlockedByNPC(state.CharacterID, state.MapID, warp) {
-		return false
-	}
-
-	direction := warp.activationFacingDirection(state.MapID, state.CurrentX, state.CurrentY, state.Direction, m.wh.ActorManager)
-	return m.activateWarpForState(state, warp, direction)
-}
-
-func (m *PlayerMovementManager) canActivateRequestedWarpForDestination(warpID, mapID, playerX, playerY, destX, destY int) bool {
-	if m.wh == nil || m.wh.phaserWarps == nil {
-		return false
-	}
-	warp := m.wh.phaserWarps.warpByID(warpID)
-	return warp != nil && warp.canActivateForRequestedDestination(mapID, playerX, playerY, destX, destY, m.wh.ActorManager)
-}
-
-func (m *PlayerMovementManager) tryActivateRequestedWarp(charID, warpID, mapID, x, y int, fallbackDirection string) bool {
-	if m.wh == nil || m.wh.phaserWarps == nil {
-		return false
-	}
-	warp := m.wh.phaserWarps.warpByID(warpID)
-	if warp == nil || !warp.canActivateByClick(mapID, x, y, m.wh.ActorManager) {
-		return false
-	}
-	if m.warpBlockedByNPC(charID, mapID, warp) {
-		return false
-	}
-
-	m.mu.RLock()
-	state, ok := m.players[charID]
-	m.mu.RUnlock()
-	if !ok || state.MapID != mapID || state.CurrentX != x || state.CurrentY != y {
-		return false
-	}
-
-	direction := warp.activationFacingDirection(mapID, x, y, fallbackDirection, m.wh.ActorManager)
-	return m.activateWarpForState(state, warp, direction)
-}
-
-func (m *PlayerMovementManager) TryActivateDirectionalWarpFromFacingAttempt(charID int, mapID, x, y int, direction string) bool {
-	if m.wh == nil || m.wh.phaserWarps == nil {
-		return false
-	}
-	warp := m.wh.phaserWarps.directionalWarpForFacingAttempt(mapID, x, y, direction, m.wh.ActorManager)
-	if warp == nil {
-		return false
-	}
-	if m.warpBlockedByNPC(charID, mapID, warp) {
-		return false
-	}
-
-	m.mu.RLock()
-	state, ok := m.players[charID]
-	m.mu.RUnlock()
-	if !ok || state.MapID != mapID || state.CurrentX != x || state.CurrentY != y {
-		return false
-	}
-
-	return m.activateWarpForState(state, warp, normalizeWarpDirection(direction))
-}
-
-func (m *PlayerMovementManager) QueueDirectionalWarpActivationAtPredictedPosition(charID int, mapID, x, y int, direction string) bool {
-	normalizedDirection := normalizeWarpDirection(direction)
-	if normalizedDirection == "" || m.wh == nil || m.wh.phaserWarps == nil {
-		return false
-	}
-
-	warp := m.wh.phaserWarps.directionalWarpForFacingAttempt(mapID, x, y, normalizedDirection, m.wh.ActorManager)
-	if warp == nil {
-		return false
-	}
-	if m.warpBlockedByNPC(charID, mapID, warp) {
-		return false
-	}
-
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	state, ok := m.players[charID]
-	if !ok || state.MapID != mapID {
-		return false
-	}
-	prefix, ok := pathPrefixThrough(state.Path, x, y)
-	if !ok {
-		return false
-	}
-	state.Path = prefix
-	state.PendingWarpActivationID = cloneIntPtr(&warp.ID)
-	state.Direction = normalizedDirection
-	return true
-}
-
-func (m *PlayerMovementManager) warpBlockedByNPC(charID, playerMapID int, warp *phaserMapWarp) bool {
-	if m == nil || m.actorManager == nil || warp == nil {
-		return false
-	}
-
-	blockerMapID := warp.SourceMapID
-	if playerMapID == UnifiedOverworldMapID && m.actorManager.IsOverworld(warp.SourceMapID) {
-		blockerMapID = UnifiedOverworldMapID
-	}
-
-	var efm *EventFlagManager
-	if m.wh != nil {
-		efm = m.wh.EventFlags
-	}
-	return m.actorManager.IsNPCBlockingTileForCharacter(
-		int64(charID),
-		blockerMapID,
-		warp.X,
-		warp.Y,
-		efm,
-	)
-}
-
-func (m *PlayerMovementManager) activateWarpForState(state *PlayerMovementState, warp *phaserMapWarp, direction string) bool {
-	if warp == nil {
-		return false
-	}
-	normalizedMapID := warp.DestMapID
-	if m.wh != nil && m.wh.ActorManager != nil && m.wh.ActorManager.IsOverworld(warp.DestMapID) {
-		normalizedMapID = UnifiedOverworldMapID
-	}
-	if normalizeWarpDirection(direction) == "" {
-		direction = "DOWN"
-	}
-
-	ses, hasSession := m.wh.sessionManager.GetSession(state.SessionID)
-	if hasSession && m.isSafariEntryWarpBlocked(int64(state.CharacterID), state.MapID, warp.DestMapID, ses) {
-		state.Path = nil
-		state.PendingWarpActivationID = nil
-		return false
-	}
-
-	logutil.Debugf("[PlayerMovement] Activating %s warp %d at (%d,%d) map %d -> map %d (%d,%d)",
-		normalizeWarpType(warp.WarpType), warp.ID, warp.X, warp.Y, state.MapID,
-		warp.DestMapID, warp.DestX, warp.DestY)
-
-	previousMapID := state.MapID
-	landingX, landingY := m.warpLandingPosition(previousMapID, normalizedMapID, warp, direction)
-
-	endSafariSessionIfLeavingMap(int64(state.CharacterID), state.MapID, warp.DestMapID, m.wh)
-
-	state.CurrentX = landingX
-	state.CurrentY = landingY
-	state.MapID = normalizedMapID
-	state.Direction = direction
-	state.Path = nil
-	state.PendingWarpActivationID = nil
-	state.IsSurfing = false
-	m.applyBicycleMapRules(state)
-
-	if hasSession && ses.HasValidClient() {
-		ses.X = float32(landingX)
-		ses.Y = float32(landingY)
-		ses.MapID = normalizedMapID
-
-		if char := ses.Client.CharData(); char != nil {
-			char.X = float64(landingX)
-			char.Y = float64(landingY)
-			char.MapID = uint32(normalizedMapID)
-		}
-
-		broadcastPlayerVisibleMapChange(ses, m.wh, previousMapID)
-
-		ses.SendStreamJSON(map[string]interface{}{
-			"mapId":     warp.DestMapID,
-			"x":         landingX,
-			"y":         landingY,
-			"direction": direction,
-		}, opcodes.WarpTileTeleportNotify)
-	}
-
-	m.savePosition(state)
-	return true
-}
-
-func (m *PlayerMovementManager) warpLandingPosition(sourceMapID, normalizedDestMapID int, warp *phaserMapWarp, direction string) (int, int) {
-	if warp == nil {
-		return 0, 0
-	}
-	landingX, landingY := warp.DestX, warp.DestY
-	if m == nil {
-		return landingX, landingY
-	}
-	if m.wh == nil || m.wh.phaserWarps == nil || m.actorManager == nil {
-		return landingX, landingY
-	}
-	if normalizedDestMapID != UnifiedOverworldMapID || m.isOverworldMovementMap(sourceMapID) {
-		return landingX, landingY
-	}
-	if m.wh.phaserWarps.warpAt(UnifiedOverworldMapID, landingX, landingY) == nil {
-		return landingX, landingY
-	}
-	dx, dy, ok := warpDirectionDelta(direction)
-	if !ok {
-		return landingX, landingY
-	}
-	nextX := landingX + dx
-	nextY := landingY + dy
-	collisionType, exists := m.actorManager.CollisionTypeAt(UnifiedOverworldMapID, nextX, nextY)
-	if !exists || collisionType != collisionLand {
-		return landingX, landingY
-	}
-	return nextX, nextY
 }
 
 func (m *PlayerMovementManager) isSafariEntryWarpBlocked(charID int64, sourceMapID, destMapID int, ses *session.Session) bool {
@@ -1130,7 +669,6 @@ func (m *PlayerMovementManager) tryTriggerCoordinateCutscene(state *PlayerMoveme
 		m.mu.Lock()
 		if ps, ok := m.players[state.CharacterID]; ok {
 			ps.Path = nil
-			ps.PendingWarpActivationID = nil
 		}
 		m.mu.Unlock()
 		return true
@@ -1195,7 +733,6 @@ func (m *PlayerMovementManager) MovePlayerTo(charID int, x, y, mapID int, direct
 	state.MapID = mapID
 	state.Direction = normalizedDirection
 	state.Path = nil
-	state.PendingWarpActivationID = nil
 	state.IsSurfing = isSurfing
 	m.applyBicycleMapRules(state)
 	m.mu.Unlock()
@@ -1240,21 +777,10 @@ func (m *PlayerMovementManager) broadcastSnapshot(snapshot playerMovementSnapsho
 		return
 	}
 
-	// Broadcast to all players (excluding the originating session to avoid rubber-banding)
+	// Broadcast to nearby players.
 	m.actorManager.broadcastActorUpdate(playerActor, ses.SessionID)
 
-	// Also send directly to the player themselves for prediction confirmation.
-	ses.SendStreamJSON(StructToMap(*playerActor), opcodes.PhaserActorPositionUpdate)
-}
-
-func (m *PlayerMovementManager) sendPositionToSession(snapshot playerMovementSnapshot) {
-	if m.wh == nil {
-		return
-	}
-	ses, playerActor, ok := m.playerActorForSnapshot(snapshot)
-	if !ok {
-		return
-	}
+	// Forced server-side movement also updates the origin client.
 	ses.SendStreamJSON(StructToMap(*playerActor), opcodes.PhaserActorPositionUpdate)
 }
 

@@ -15,15 +15,6 @@ interface InteractionTarget {
   y: number;
 }
 
-type AuthoritativePositionResult = "apply" | "confirmed" | "ignore";
-
-interface PredictedStep {
-  x: number;
-  y: number;
-  mapId: number;
-  seq: number;
-}
-
 const COLLISION_LAND = 1;
 const COLLISION_WATER = 2;
 const SURF_MOVE_ID = 57;
@@ -107,9 +98,6 @@ export class PlayerMovementController {
     mapId: number;
     activateWarpId?: number;
   } | null = null;
-  private pendingPredictedSteps: PredictedStep[] = [];
-  private nextPredictionSeq: number = 1;
-  private lastConfirmedPredictionSeq: number = 0;
 
   // Current player tile position
   private currentTileX: number = 0;
@@ -123,6 +111,10 @@ export class PlayerMovementController {
   private warpTileChecker: (x: number, y: number) => boolean = () => false;
   private warpAtProvider: (x: number, y: number) => PhaserWarp | null =
     () => null;
+  private warpActivator: (
+    warp: PhaserWarp,
+    direction?: MovementDirection,
+  ) => void = () => {};
   private heldKeyboardDirectionProvider: () => MovementDirection | null =
     () => null;
   private lastWarpActivationRequestKey: string = "";
@@ -142,6 +134,12 @@ export class PlayerMovementController {
 
   setWarpAtProvider(provider: (x: number, y: number) => PhaserWarp | null): void {
     this.warpAtProvider = provider;
+  }
+
+  setWarpActivator(
+    activator: (warp: PhaserWarp, direction?: MovementDirection) => void,
+  ): void {
+    this.warpActivator = activator;
   }
 
   setHeldKeyboardDirectionProvider(
@@ -175,41 +173,29 @@ export class PlayerMovementController {
     this.updateTravelMapForTile(this.currentTileX, this.currentTileY);
   }
 
-  private discardPendingPredictions(): void {
-    for (const step of this.pendingPredictedSteps) {
-      this.lastConfirmedPredictionSeq = Math.max(
-        this.lastConfirmedPredictionSeq,
-        step.seq,
-      );
-    }
-    this.pendingPredictedSteps = [];
-  }
-
-  private queueServerMove(
+  private queueClientMove(
     destX: number,
     destY: number,
     mapId: number,
     inputSource: "click" | "keyboard",
     activateWarpId?: number,
   ): void {
-    this.lastInputSource = inputSource;
-    this.isMoving = true;
-    this.currentPath = [];
-    this.discardPendingPredictions();
-    this.activeMoveDestination = { x: destX, y: destY, mapId, activateWarpId };
+    const path = this.findPath(this.currentTileX, this.currentTileY, destX, destY);
+    if (path.length > 0) {
+      this.queuePredictedPathMove(
+        destX,
+        destY,
+        mapId,
+        inputSource,
+        path,
+        undefined,
+        activateWarpId,
+      );
+      return;
+    }
+
     debugPlayerMovement(
-      `[PlayerMovement] Queueing ${inputSource} move on map ${mapId}: (${this.currentTileX}, ${this.currentTileY}) -> (${destX}, ${destY})`,
-    );
-    PhaserNet.sendMoveRequest(
-      destX,
-      destY,
-      mapId,
-      activateWarpId,
-      inputSource,
-      undefined,
-      undefined,
-      undefined,
-      this.currentDirection,
+      `[PlayerMovement] No client path from (${this.currentTileX}, ${this.currentTileY}) to (${destX}, ${destY}) on map ${mapId}`,
     );
   }
 
@@ -240,35 +226,16 @@ export class PlayerMovementController {
     initialDirection?: MovementDirection,
     activateWarpId?: number,
   ): void {
-    const startX = this.currentTileX;
-    const startY = this.currentTileY;
-    const predictedSteps = path.map((step) => ({
-      ...step,
-      mapId,
-      seq: this.nextPredictionSeq++,
-    }));
     const wasMoving = this.isMoving;
 
     this.lastInputSource = inputSource;
     this.isMoving = true;
     this.currentPath = path.slice();
     this.activeMoveDestination = { x: destX, y: destY, mapId, activateWarpId };
-    this.pendingPredictedSteps.push(...predictedSteps);
     if (initialDirection) {
       this.currentDirection = initialDirection;
     }
 
-    PhaserNet.sendMoveRequest(
-      destX,
-      destY,
-      mapId,
-      activateWarpId,
-      inputSource,
-      startX,
-      startY,
-      predictedSteps.map(({ x, y, seq }) => ({ x, y, seq })),
-      initialDirection ?? this.currentDirection,
-    );
     if (!wasMoving) {
       this.moveToNextTile();
     }
@@ -298,7 +265,7 @@ export class PlayerMovementController {
       return true;
     }
 
-    this.queueServerMove(destX, destY, mapId, inputSource, activateWarpId);
+    this.queueClientMove(destX, destY, mapId, inputSource, activateWarpId);
     return true;
   }
 
@@ -313,6 +280,55 @@ export class PlayerMovementController {
   private isCurrentTileDirectionalWarp(warp: PhaserWarp): boolean {
     const warpType = warp.warpType?.trim().toLowerCase();
     return warpType === "carpet" || warpType === "directional";
+  }
+
+  private isPairedWarpTileStep(
+    targetX: number,
+    targetY: number,
+    direction: MovementDirection,
+  ): boolean {
+    if (
+      Math.abs(targetX - this.currentTileX) +
+        Math.abs(targetY - this.currentTileY) !==
+      1
+    ) {
+      return false;
+    }
+
+    const currentWarp = this.warpAtProvider(
+      this.currentTileX,
+      this.currentTileY,
+    );
+    const targetWarp = this.warpAtProvider(targetX, targetY);
+    if (!currentWarp || !targetWarp) return false;
+    if (
+      !this.isCurrentTileDirectionalWarp(currentWarp) ||
+      !this.isCurrentTileDirectionalWarp(targetWarp)
+    ) {
+      return false;
+    }
+
+    const currentDirection = currentWarp.warpDirection?.trim().toUpperCase();
+    const targetDirection = targetWarp.warpDirection?.trim().toUpperCase();
+    if (!currentDirection || currentDirection !== targetDirection) {
+      return false;
+    }
+    if (direction === currentDirection) {
+      return false;
+    }
+    if (currentWarp.sourceMapId !== targetWarp.sourceMapId) {
+      return false;
+    }
+    if (currentWarp.destinationMapId !== targetWarp.destinationMapId) {
+      return false;
+    }
+    if (
+      currentWarp.destinationX !== targetWarp.destinationX ||
+      currentWarp.destinationY !== targetWarp.destinationY
+    ) {
+      return false;
+    }
+    return true;
   }
 
   private requestWarpActivationFromCurrentTile(
@@ -344,17 +360,7 @@ export class PlayerMovementController {
     this.lastWarpActivationRequestKey = requestKey;
     this.lastWarpActivationRequestAt = now;
 
-    PhaserNet.sendMoveRequest(
-      this.currentTileX,
-      this.currentTileY,
-      this.currentMapId,
-      warp.id,
-      "keyboard",
-      this.currentTileX,
-      this.currentTileY,
-      [],
-      direction,
-    );
+    this.warpActivator(warp, direction);
     return true;
   }
 
@@ -475,7 +481,10 @@ export class PlayerMovementController {
   }
 
   private isWaterTile(x: number, y: number): boolean {
-    return this.collisionMap.get(`${x},${y}`) === COLLISION_WATER;
+    return (
+      this.collisionMap.get(`${x},${y}`) === COLLISION_WATER &&
+      this.warpAtProvider(x, y) === null
+    );
   }
 
   private isCuttableTile(x: number, y: number): boolean {
@@ -487,7 +496,11 @@ export class PlayerMovementController {
       this.setSurfingActive(true);
       return;
     }
-    if (this.collisionMap.get(`${x},${y}`) === COLLISION_LAND) {
+    const collisionType = this.collisionMap.get(`${x},${y}`);
+    if (
+      collisionType === COLLISION_LAND ||
+      (collisionType === COLLISION_WATER && this.warpAtProvider(x, y) !== null)
+    ) {
       this.setSurfingActive(false);
     }
   }
@@ -695,7 +708,7 @@ export class PlayerMovementController {
       );
     }
 
-    this.queueServerMove(
+    this.queueClientMove(
       entry.shore.x,
       entry.shore.y,
       this.currentMapId,
@@ -749,7 +762,7 @@ export class PlayerMovementController {
       return false;
     }
 
-    this.queueServerMove(walkTarget.x, walkTarget.y, this.currentMapId, "click");
+    this.queueClientMove(walkTarget.x, walkTarget.y, this.currentMapId, "click");
     this.setArrivalCallback((_arrivedX, _arrivedY) => {
       const direction = this.directionToInteractionTile(targetX, targetY);
       if (!direction) {
@@ -1002,7 +1015,7 @@ export class PlayerMovementController {
       return false;
     }
 
-    this.queueServerMove(walkTarget.x, walkTarget.y, this.currentMapId, "click");
+    this.queueClientMove(walkTarget.x, walkTarget.y, this.currentMapId, "click");
     this.setArrivalCallback((_arrivedX, _arrivedY) => {
       if (
         !this.canInteractWithTile(targetX, targetY)
@@ -1042,7 +1055,7 @@ export class PlayerMovementController {
       return false;
     }
 
-    this.queueServerMove(walkTarget.x, walkTarget.y, this.currentMapId, "click");
+    this.queueClientMove(walkTarget.x, walkTarget.y, this.currentMapId, "click");
     this.setArrivalCallback((_arrivedX, _arrivedY) => {
       const latestTarget = getTarget();
       if (!latestTarget) {
@@ -1116,7 +1129,7 @@ export class PlayerMovementController {
   }
 
   /**
-   * Handle click on a tile - request server-side movement
+   * Handle click on a tile using client-side pathing.
    */
   handleTileClick(worldX: number, worldY: number): void {
     if (this.inputFrozenChecker()) {
@@ -1174,9 +1187,9 @@ export class PlayerMovementController {
       if (direction && ledgeLanding) {
         this.currentDirection = direction;
         debugPlayerMovement(
-          `[PlayerMovement] Sending ledge move request to server: destination (${ledgeLanding.x}, ${ledgeLanding.y})`,
+          `[PlayerMovement] Moving over ledge to (${ledgeLanding.x}, ${ledgeLanding.y})`,
         );
-        this.queueServerMove(
+        this.queueClientMove(
           ledgeLanding.x,
           ledgeLanding.y,
           this.currentMapId,
@@ -1214,9 +1227,8 @@ export class PlayerMovementController {
       return;
     }
 
-    // Send move request to server - server will calculate path and send position updates
     debugPlayerMovement(
-      `[PlayerMovement] Sending move request to server on map ${this.currentMapId}: destination (${targetTileX}, ${targetTileY})`,
+      `[PlayerMovement] Starting client path on map ${this.currentMapId}: destination (${targetTileX}, ${targetTileY})`,
     );
     const path = this.findPath(
       this.currentTileX,
@@ -1225,7 +1237,7 @@ export class PlayerMovementController {
       targetTileY,
     );
     if (path.length === 0) {
-      this.queueServerMove(
+      this.queueClientMove(
         targetTileX,
         targetTileY,
         this.currentMapId,
@@ -1254,6 +1266,12 @@ export class PlayerMovementController {
       this.currentTileY = y;
       this.updateSurfingStateForTile(x, y);
       this.updateTravelMapForTile(x, y);
+      PhaserNet.sendPlayerPosition(
+        x,
+        y,
+        this.currentMapId,
+        this.currentDirection,
+      );
       const reachedMoveDestination =
         this.activeMoveDestination !== null &&
         this.activeMoveDestination.x === x &&
@@ -1296,9 +1314,16 @@ export class PlayerMovementController {
   private continueHeldKeyboardMove(): void {
     if (this.lastInputSource !== "keyboard") return;
     if (this.inputFrozenChecker()) return;
-    if (this.warpTileChecker(this.currentTileX, this.currentTileY)) return;
     const heldDirection = this.heldKeyboardDirectionProvider();
     if (!heldDirection) return;
+    const currentWarp = this.warpAtProvider(this.currentTileX, this.currentTileY);
+    if (
+      currentWarp &&
+      this.isCurrentTileDirectionalWarp(currentWarp) &&
+      this.canActivateWarpWithDirection(currentWarp, heldDirection)
+    ) {
+      return;
+    }
 
     this.handleKeyboardMove(heldDirection);
   }
@@ -1469,6 +1494,16 @@ export class PlayerMovementController {
         return this.requestWarpActivationFromCurrentTile(currentWarp, direction);
       }
 
+      if (this.isPairedWarpTileStep(targetX, targetY, direction)) {
+        this.queuePredictedKeyboardMove(
+          targetX,
+          targetY,
+          this.currentMapId,
+          direction,
+        );
+        return true;
+      }
+
       if (this.warpTileChecker(targetX, targetY)) {
         this.faceDirection(direction);
         return false;
@@ -1485,7 +1520,7 @@ export class PlayerMovementController {
         targetY,
       );
       if (ledgeLanding) {
-        this.queueServerMove(
+        this.queueClientMove(
           ledgeLanding.x,
           ledgeLanding.y,
           this.currentMapId,
@@ -1532,7 +1567,6 @@ export class PlayerMovementController {
     this.isMoving = false;
     this.arrivalCallback = null;
     this.activeMoveDestination = null;
-    this.discardPendingPredictions();
   }
 
   getIsMoving(): boolean {
@@ -1551,85 +1585,6 @@ export class PlayerMovementController {
     return this.currentDirection;
   }
 
-  reconcileAuthoritativePosition(
-    x: number,
-    y: number,
-    mapId: number,
-    direction?: string,
-    movementSeq?: number,
-  ): AuthoritativePositionResult {
-    if (movementSeq != null && movementSeq > 0) {
-      if (movementSeq <= this.lastConfirmedPredictionSeq) {
-        return "ignore";
-      }
-
-      if (this.pendingPredictedSteps.length === 0) {
-        this.lastConfirmedPredictionSeq = movementSeq;
-        if (direction) {
-          this.currentDirection = direction;
-        }
-        return "apply";
-      }
-
-      const expectedIndex = this.pendingPredictedSteps.findIndex(
-        (step) => step.seq === movementSeq,
-      );
-      if (expectedIndex < 0) {
-        if (movementSeq < this.pendingPredictedSteps[0].seq) {
-          this.lastConfirmedPredictionSeq = Math.max(
-            this.lastConfirmedPredictionSeq,
-            movementSeq,
-          );
-          return "ignore";
-        }
-        this.lastConfirmedPredictionSeq = Math.max(
-          this.lastConfirmedPredictionSeq,
-          movementSeq,
-        );
-        return "ignore";
-      }
-
-      const expected = this.pendingPredictedSteps[expectedIndex];
-      if (expected.x !== x || expected.y !== y || expected.mapId !== mapId) {
-        this.lastConfirmedPredictionSeq = Math.max(
-          this.lastConfirmedPredictionSeq,
-          movementSeq,
-        );
-        return "ignore";
-      }
-
-      this.pendingPredictedSteps.splice(0, expectedIndex + 1);
-      this.lastConfirmedPredictionSeq = Math.max(
-        this.lastConfirmedPredictionSeq,
-        movementSeq,
-      );
-      return "confirmed";
-    }
-
-    if (this.pendingPredictedSteps.length === 0) {
-      if (direction) {
-        this.currentDirection = direction;
-      }
-      return "apply";
-    }
-
-    const nextPredictedStep = this.pendingPredictedSteps[0];
-    if (
-      nextPredictedStep?.x === x &&
-      nextPredictedStep.y === y &&
-      nextPredictedStep.mapId === mapId
-    ) {
-      this.pendingPredictedSteps.shift();
-      this.lastConfirmedPredictionSeq = Math.max(
-        this.lastConfirmedPredictionSeq,
-        nextPredictedStep.seq,
-      );
-      return "confirmed";
-    }
-
-    return "ignore";
-  }
-
   syncPosition(x: number, y: number): void {
     this.currentTileX = x;
     this.currentTileY = y;
@@ -1640,7 +1595,6 @@ export class PlayerMovementController {
   syncMapId(mapId: number): void {
     if (this.currentMapId !== mapId) {
       this.activeMoveDestination = null;
-      this.discardPendingPredictions();
       this.setSurfingActive(false);
     }
     this.currentMapId = mapId;
@@ -1665,7 +1619,6 @@ export class PlayerMovementController {
       this.currentDirection = normalizedDirection;
     }
 
-    this.discardPendingPredictions();
     this.currentPath = [];
     this.activeMoveDestination = { x, y, mapId };
     this.currentMapId = mapId;
@@ -1683,12 +1636,6 @@ export class PlayerMovementController {
     const isAdjacent = Math.abs(x - oldX) + Math.abs(y - oldY) === 1;
     if (isAdjacent) {
       this.isMoving = true;
-      this.pendingPredictedSteps.push({
-        x,
-        y,
-        mapId,
-        seq: this.nextPredictionSeq++,
-      });
       this.mapRenderer.updateActorPosition(
         this.playerId,
         oldX,

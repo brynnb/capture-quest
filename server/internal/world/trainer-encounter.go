@@ -18,7 +18,7 @@ import (
 
 // TrainerEncounterNotifyPayload is sent to the client when a trainer spots the player.
 // The client should show "!" and animate the trainer locally to ApproachToX/Y.
-// The player position remains server-authoritative and does not get force-walked.
+// The player position remains client-owned and does not get force-walked.
 type TrainerEncounterNotifyPayload struct {
 	TrainerActorID int    `json:"trainerActorId"` // Runtime actor ID (from ActorRegistry)
 	TrainerX       int    `json:"trainerX"`       // Trainer's current position
@@ -306,7 +306,7 @@ func (m *TrainerEncounterManager) CheckPlayerPosition(charID int64, playerX, pla
 		}
 		ses.SendStreamJSON(StructToMap(payload), opcodes.TrainerEncounterNotify)
 
-		// Stop any existing server-side path. The player stays put while
+		// Stop any queued movement helper state. The player stays put while
 		// the client animates the trainer locally.
 		m.wh.PlayerMovement.StopMovement(int(charID))
 

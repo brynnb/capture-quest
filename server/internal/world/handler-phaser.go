@@ -57,7 +57,7 @@ type PhaserActor struct {
 	TrainerClass      *string `json:"trainerClass,omitempty"`      // Trainer class constant (e.g. "BUG_CATCHER")
 	TrainerPartyIndex *int    `json:"trainerPartyIndex,omitempty"` // Party index within trainer class
 	ItemID            *int    `json:"itemId,omitempty"`            // For item objects: the item template ID
-	MovementSeq       *int    `json:"movementSeq,omitempty"`       // Client prediction step acknowledged by this update
+	MovementSeq       *int    `json:"movementSeq,omitempty"`       // Server-driven movement step sequence
 	DbID              int     `json:"-"`                           // Original database ID (not sent to client)
 }
 
@@ -244,6 +244,98 @@ func broadcastPlayerActorVisibleMapChange(ses *session.Session, wh *WorldHandler
 		wh.ActorManager.broadcastActorDespawnExcept(playerActor.ID, previousMapID, ses.SessionID)
 	}
 	wh.ActorManager.broadcastActorUpdate(playerActor, ses.SessionID)
+}
+
+func normalizedVisiblePlayerMapID(wh *WorldHandler, mapID int) int {
+	if wh != nil && wh.ActorManager != nil && wh.ActorManager.IsOverworld(mapID) {
+		return UnifiedOverworldMapID
+	}
+	return mapID
+}
+
+func currentPlayerVisibleMapID(ses *session.Session, wh *WorldHandler, charID int) int {
+	if wh != nil && wh.PlayerMovement != nil {
+		if _, _, mapID, ok := wh.PlayerMovement.GetPosition(charID); ok {
+			return normalizedVisiblePlayerMapID(wh, mapID)
+		}
+	}
+	if ses != nil && ses.HasValidClient() {
+		if char := ses.Client.CharData(); char != nil {
+			return normalizedVisiblePlayerMapID(wh, int(char.MapID))
+		}
+	}
+	if ses != nil {
+		return normalizedVisiblePlayerMapID(wh, ses.MapID)
+	}
+	return 0
+}
+
+func setServerTeleportedPlayerPosition(ses *session.Session, wh *WorldHandler, mapID, x, y int, direction string) int {
+	normalizedDirection := normalizeWarpDirection(direction)
+	if normalizedDirection == "" {
+		normalizedDirection = "DOWN"
+	}
+	normalizedMapID := normalizedVisiblePlayerMapID(wh, mapID)
+
+	if ses == nil || !ses.HasValidClient() {
+		return normalizedMapID
+	}
+	char := ses.Client.CharData()
+	if char == nil {
+		return normalizedMapID
+	}
+
+	charID := int(char.ID)
+	previousMapID := currentPlayerVisibleMapID(ses, wh, charID)
+	if previousMapID != 0 {
+		endSafariSessionIfLeavingMap(int64(char.ID), previousMapID, normalizedMapID, wh)
+	}
+
+	ses.X = float32(x)
+	ses.Y = float32(y)
+	ses.MapID = normalizedMapID
+	char.X = float64(x)
+	char.Y = float64(y)
+	char.MapID = uint32(normalizedMapID)
+
+	if wh != nil && wh.PlayerMovement != nil {
+		if _, _, _, ok := wh.PlayerMovement.GetPosition(charID); !ok {
+			wh.PlayerMovement.RegisterPlayer(ses, charID, x, y, normalizedMapID, normalizedDirection)
+		}
+		wh.PlayerMovement.UpdatePosition(charID, x, y, normalizedMapID, normalizedDirection)
+		wh.PlayerMovement.FlushPlayerPosition(charID)
+	} else if db.GlobalWorldDB != nil && db.GlobalWorldDB.DB != nil {
+		if err := db_character.UpdateCharacterPosition(
+			int32(char.ID),
+			uint32(normalizedMapID),
+			float64(x),
+			float64(y),
+			0,
+			0,
+		); err != nil {
+			log.Printf("[Phaser] Failed to save teleported player %d at map %d (%d,%d): %v",
+				char.ID, normalizedMapID, x, y, err)
+		}
+	} else {
+		log.Printf("[Phaser] Skipped saving teleported player %d at map %d (%d,%d): database unavailable",
+			int32(char.ID),
+			normalizedMapID, x, y)
+	}
+
+	if wh == nil || wh.ActorManager == nil {
+		return normalizedMapID
+	}
+	if previousMapID != 0 && previousMapID != normalizedMapID {
+		broadcastPlayerVisibleMapChange(ses, wh, previousMapID)
+		return normalizedMapID
+	}
+
+	playerActor := createPlayerActor(ses, wh)
+	if playerActor != nil {
+		playerActor.ActionDirection = &normalizedDirection
+		wh.ActorManager.broadcastActorUpdate(playerActor, ses.SessionID)
+	}
+	return normalizedMapID
 }
 
 // HandlePhaserTilesRequest returns all tiles for a map
@@ -524,117 +616,86 @@ func HandlePhaserPlayerPositionUpdate(ses *session.Session, payload []byte, wh *
 		return false
 	}
 
-	// Server-side warp validation: if the map is changing, verify the player
-	// was near a valid warp tile on their previous map that connects to the
-	// requested destination map.
 	char := ses.Client.CharData()
-	if char != nil {
-		prevMapID := int(char.MapID)
-		if prevMapID != req.MapID && wh.WarpValidator != nil {
-			// Use the movement manager's latest position rather than char.X/Y,
-			// which may be stale during movement.
-			prevX, prevY := int(char.X), int(char.Y)
-			if mx, my, _, ok := wh.PlayerMovement.GetPosition(int(char.ID)); ok {
-				prevX, prevY = mx, my
-			}
-			if !wh.WarpValidator.IsValidWarp(prevMapID, prevX, prevY, req.MapID) {
-				log.Printf("[WarpValidator] REJECTED warp for player %d: map %d (%d,%d) -> map %d (%d,%d)",
-					char.ID, prevMapID, prevX, prevY, req.MapID, req.X, req.Y)
-				return false
-			}
-			log.Printf("[WarpValidator] Validated warp for player %d: map %d -> map %d",
-				char.ID, prevMapID, req.MapID)
-		}
-	}
-
-	requestedOverworld := req.MapID == UnifiedOverworldMapID || wh.ActorManager.IsOverworld(req.MapID)
-	if !requestedOverworld && !wh.ActorManager.TileExists(req.MapID, req.X, req.Y) {
-		playerID := int64(0)
-		if char != nil {
-			playerID = int64(char.ID)
-		}
-		log.Printf("[Phaser] REJECTED out-of-bounds position for player %d: map %d (%d,%d)",
-			playerID, req.MapID, req.X, req.Y)
+	if char == nil {
 		return false
 	}
 
-	// Normalize overworld maps to the unified MapID
 	mapID := req.MapID
 	if wh.ActorManager.IsOverworld(mapID) {
 		mapID = UnifiedOverworldMapID
 	}
+
 	prevX, prevY, prevMapID, hadPrevPosition := 0, 0, 0, false
-	if char != nil {
-		prevX = int(char.X)
-		prevY = int(char.Y)
-		prevMapID = int(char.MapID)
-		if wh.ActorManager.IsOverworld(prevMapID) {
-			prevMapID = UnifiedOverworldMapID
-		}
+	prevX = int(char.X)
+	prevY = int(char.Y)
+	prevMapID = int(char.MapID)
+	if wh.ActorManager.IsOverworld(prevMapID) {
+		prevMapID = UnifiedOverworldMapID
+	}
+	if wh.PlayerMovement != nil {
 		if mx, my, mm, ok := wh.PlayerMovement.GetPosition(int(char.ID)); ok {
 			prevX, prevY, prevMapID = mx, my, mm
 			hadPrevPosition = true
 		}
 	}
-	sameTileFacing := char != nil &&
-		hadPrevPosition &&
-		prevMapID == mapID &&
-		prevX == req.X &&
-		prevY == req.Y &&
-		normalizeBoulderDirection(req.Direction) != ""
-
-	reportedSameMapMove := char != nil &&
-		hadPrevPosition &&
-		prevMapID == mapID &&
-		(prevX != req.X || prevY != req.Y)
-	mapChanged := char != nil && prevMapID != 0 && prevMapID != mapID
-	if reportedSameMapMove &&
-		wh.PlayerMovement != nil &&
-		normalizeWarpDirection(req.Direction) != "" &&
-		wh.PlayerMovement.QueueDirectionalWarpActivationAtPredictedPosition(int(char.ID), mapID, req.X, req.Y, req.Direction) {
-		return false
+	if !hadPrevPosition {
+		hadPrevPosition = true
 	}
-	// Update session position and zone (MapID)
+
+	direction := normalizeWarpDirection(req.Direction)
+	if direction == "" && wh.PlayerMovement != nil {
+		if currentDirection, ok := wh.PlayerMovement.GetDirection(int(char.ID)); ok {
+			direction = currentDirection
+		}
+	}
+	if direction == "" {
+		direction = initialPlayerDirection(int(char.MapID), int(char.X), int(char.Y))
+	}
+
+	sameTileFacing :=
+		hadPrevPosition &&
+			prevMapID == mapID &&
+			prevX == req.X &&
+			prevY == req.Y &&
+			normalizeBoulderDirection(direction) != ""
+
+	reportedMove :=
+		hadPrevPosition &&
+			(prevMapID != mapID || prevX != req.X || prevY != req.Y)
+	mapChanged := prevMapID != 0 && prevMapID != mapID
+
 	ses.X = float32(req.X)
 	ses.Y = float32(req.Y)
 	ses.MapID = mapID
 
-	// Update the server-visible character data.
-	if char := ses.Client.CharData(); char != nil {
-		char.X = float64(req.X)
-		char.Y = float64(req.Y)
-		// Store the unified overworld ID so reconnects and pathfinding use the
-		// same collision map. Interior maps keep their actual ID.
-		char.MapID = uint32(mapID)
+	char.X = float64(req.X)
+	char.Y = float64(req.Y)
+	char.MapID = uint32(mapID)
 
-		// Sync with movement manager — use the normalized mapID so the collision
-		// map lookup (stored under UnifiedOverworldMapID) works for pathfinding.
-		wh.PlayerMovement.UpdateReportedPosition(int(char.ID), req.X, req.Y, mapID, req.Direction)
-
-		// Flush immediately for instant teleports/warps
+	if wh.PlayerMovement != nil {
+		if _, _, _, ok := wh.PlayerMovement.GetPosition(int(char.ID)); !ok {
+			wh.PlayerMovement.RegisterPlayer(ses, int(char.ID), req.X, req.Y, mapID, direction)
+		}
+		wh.PlayerMovement.UpdateReportedPosition(int(char.ID), req.X, req.Y, mapID, direction)
 		wh.PlayerMovement.FlushPlayerPosition(int(char.ID))
 	}
 
-	if sameTileFacing {
+	if sameTileFacing && wh.PlayerMovement != nil {
 		charID := int(char.ID)
-		if wh.PlayerMovement.TryActivateDirectionalWarpFromFacingAttempt(charID, mapID, req.X, req.Y, req.Direction) {
-			return false
-		}
-		if result, attempted := wh.PlayerMovement.tryPushBoulderFromFacingAttempt(charID, mapID, req.X, req.Y, req.Direction); attempted {
+		if result, attempted := wh.PlayerMovement.tryPushBoulderFromFacingAttempt(charID, mapID, req.X, req.Y, direction); attempted {
 			if result.Success {
 				wh.PlayerMovement.queueStepAfterBoulderPush(charID, req.X, req.Y, mapID, result)
 				log.Printf("[PlayerMovement] Player %d pushed boulder %s from facing %s",
-					charID, result.ObjectName, req.Direction)
+					charID, result.ObjectName, direction)
 			} else {
 				log.Printf("[PlayerMovement] Boulder facing attempt for player %d failed: %s", charID, result.Message)
 			}
 		}
 	}
 
-	// Broadcast to other players in the same map/overworld
-	char = ses.Client.CharData()
-	if char == nil {
-		return false
+	if reportedMove {
+		handleClientReportedStepEffects(ses, wh, int64(char.ID), req.X, req.Y, mapID, direction, mapChanged, prevMapID)
 	}
 
 	ridingBicycle := wh.PlayerMovement != nil && wh.PlayerMovement.IsBicycleActive(int(char.ID))
@@ -652,7 +713,7 @@ func HandlePhaserPlayerPositionUpdate(ses *session.Session, payload []byte, wh *
 		SpriteName:      &spriteName,
 		Name:            &char.Name,
 		ActionType:      nil,
-		ActionDirection: &req.Direction,
+		ActionDirection: &direction,
 		MovementType:    &both,
 		MoveSpeed:       wh.PlayerMovement.GetMoveSpeed(int(char.ID)),
 	}
@@ -664,6 +725,42 @@ func HandlePhaserPlayerPositionUpdate(ses *session.Session, payload []byte, wh *
 	}
 
 	return false
+}
+
+func handleClientReportedStepEffects(ses *session.Session, wh *WorldHandler, charID int64, x, y, mapID int, direction string, mapChanged bool, previousMapID int) {
+	if ses == nil || wh == nil {
+		return
+	}
+	if mapChanged {
+		endSafariSessionIfLeavingMap(charID, previousMapID, mapID, wh)
+	}
+	state := &PlayerMovementState{
+		SessionID:   ses.SessionID,
+		CharacterID: int(charID),
+		CurrentX:    x,
+		CurrentY:    y,
+		MapID:       mapID,
+		Direction:   direction,
+	}
+
+	if wh.TrainerEncounter != nil && wh.TrainerEncounter.CheckPlayerPosition(charID, x, y, mapID, ses) {
+		return
+	}
+
+	TickDayCareStep(charID)
+
+	if wh.Safari != nil && IsInSafariZone(mapID) {
+		CheckSafariStep(charID, x, y, mapID, ses, wh)
+		return
+	}
+
+	if wh.PlayerMovement != nil && wh.PlayerMovement.tryTriggerCoordinateCutscene(state, charID, ses) {
+		return
+	}
+
+	if wh.WildEncounter != nil && (wh.PlayerMovement == nil || !wh.PlayerMovement.isWildEncounterSuppressed(state, charID)) {
+		wh.WildEncounter.CheckPlayerStep(charID, x, y, mapID, ses)
+	}
 }
 
 // SendPlayerSpawn sends the player's initial position and sprite to the client
@@ -817,119 +914,6 @@ func recoverInvalidCharacterPosition(ses *session.Session, wh *WorldHandler) boo
 		wh.PlayerMovement.UpdatePosition(int(char.ID), x, y, sessionMapID, RecoverySpawnDirection)
 	}
 	return true
-}
-
-// PhaserPlayerMoveRequest is the request payload for movement requests
-type PhaserPlayerMoveRequest struct {
-	DestX          int              `json:"destX"`
-	DestY          int              `json:"destY"`
-	MapID          *int             `json:"mapId,omitempty"`
-	ActivateWarpID *int             `json:"activateWarpId,omitempty"`
-	InputSource    string           `json:"inputSource,omitempty"`
-	Direction      string           `json:"direction,omitempty"`
-	StartX         *int             `json:"startX,omitempty"`
-	StartY         *int             `json:"startY,omitempty"`
-	ClientPath     []ClientMoveStep `json:"clientPath,omitempty"`
-}
-
-// HandlePhaserPlayerMoveRequest handles a client's request to move to a destination tile
-func HandlePhaserPlayerMoveRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	var req PhaserPlayerMoveRequest
-	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("[Phaser] Invalid PlayerMoveRequest: %v", err)
-		return false
-	}
-
-	if !ses.HasValidClient() {
-		return false
-	}
-
-	char := ses.Client.CharData()
-	if char == nil {
-		return false
-	}
-
-	charID := int(char.ID)
-	if recoverInvalidCharacterPosition(ses, wh) {
-		char = ses.Client.CharData()
-		if char == nil {
-			return false
-		}
-	}
-
-	// Determine the map ID: prefer client-provided, then session (set by MapInfo),
-	// then fall back to char DB value.
-	requestMapID := ses.MapID
-	if requestMapID <= 0 {
-		requestMapID = int(char.MapID)
-	}
-	if req.MapID != nil {
-		requestMapID = *req.MapID
-	}
-	if wh.ActorManager.IsOverworld(requestMapID) {
-		requestMapID = UnifiedOverworldMapID
-	}
-
-	// Auto-register player if not already registered (handles reconnects/server restarts)
-	if _, _, _, ok := wh.PlayerMovement.GetPosition(charID); !ok {
-		// Always use the character's persisted DB coordinates.
-		// Overworld characters store global (X,Y) regardless of which sub-map
-		// map_id they have; the sub-map ID is retained for import compatibility.
-		startX, startY := int(char.X), int(char.Y)
-		log.Printf("[PlayerMovement] Auto-registering player %d at (%d, %d) map %d",
-			charID, startX, startY, requestMapID)
-		wh.PlayerMovement.RegisterPlayer(
-			ses,
-			charID,
-			startX,
-			startY,
-			requestMapID,
-			initialPlayerDirection(int(char.MapID), startX, startY),
-		)
-	} else {
-		// Player already registered: reconcile with persisted character state when
-		// the client includes a map. Session coordinates are intentionally not the
-		// source here; a new connection starts with zero-valued session coordinates.
-		if req.MapID != nil {
-			currentX, currentY, currentMapID, ok := wh.PlayerMovement.GetPosition(charID)
-			syncMapID := int(char.MapID)
-			if wh.ActorManager.IsOverworld(syncMapID) {
-				syncMapID = UnifiedOverworldMapID
-			}
-			syncX, syncY := int(char.X), int(char.Y)
-			needsCharacterSync := ok &&
-				syncMapID == requestMapID &&
-				(currentMapID != requestMapID || currentX != syncX || currentY != syncY) &&
-				wh.ActorManager.TileExists(requestMapID, syncX, syncY)
-			if needsCharacterSync {
-				log.Printf("[PlayerMovement] Re-syncing player %d movement state from map %d (%d,%d) to character map %d (%d,%d)",
-					charID, currentMapID, currentX, currentY, requestMapID, syncX, syncY)
-				wh.PlayerMovement.UpdatePosition(charID, syncX, syncY, requestMapID, "DOWN")
-			} else {
-				wh.PlayerMovement.UpdateMapID(charID, requestMapID)
-			}
-		}
-	}
-
-	// Request the server-side movement manager to handle this move
-	var expectedStart *PathNode
-	if req.StartX != nil && req.StartY != nil {
-		expectedStart = &PathNode{X: *req.StartX, Y: *req.StartY}
-	}
-	result := wh.PlayerMovement.RequestMoveWithOptions(charID, req.DestX, req.DestY, PlayerMoveRequestOptions{
-		ActivateWarpID: req.ActivateWarpID,
-		ExpectedStart:  expectedStart,
-		ClientPath:     req.ClientPath,
-		Direction:      req.Direction,
-	})
-	switch result {
-	case PlayerMoveRequestNoPath:
-		if req.InputSource != "keyboard" {
-			SendSystemMessage(ses, "No path found to selected tile.")
-		}
-	}
-
-	return false
 }
 
 // RegisterPlayerForMovement registers a player with the movement manager when they spawn

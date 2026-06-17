@@ -119,8 +119,8 @@ func (m *PhaserActorManager) shouldSendActorToSessionMap(actor *PhaserActor, ses
 		return true
 	}
 
-	// Keep overworld NPCs warm for players in interiors. Their movement is
-	// server-authoritative and map loads read static DB defaults unless the
+	// Keep overworld NPCs warm for players in interiors. NPC movement still
+	// runs on the server, and map loads read static DB defaults unless the
 	// client has a recent runtime position.
 	return isOverworldActor && actor.ObjectType == "npc"
 }

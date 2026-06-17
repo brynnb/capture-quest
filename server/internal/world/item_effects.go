@@ -548,30 +548,8 @@ func currentTilePosition(ses *session.Session, wh *WorldHandler) (int, int, int)
 }
 
 func teleportPlayerTo(ses *session.Session, wh *WorldHandler, mapID int, x int, y int) {
-	normalizedMapID := mapID
-	if wh != nil && wh.ActorManager != nil && wh.ActorManager.IsOverworld(mapID) {
-		normalizedMapID = UnifiedOverworldMapID
-	}
-	if ses.HasValidClient() && ses.Client.CharData() != nil {
-		char := ses.Client.CharData()
-		sourceMapID := int(char.MapID)
-		if sourceMapID == 0 {
-			sourceMapID = ses.MapID
-		}
-		endSafariSessionIfLeavingMap(int64(char.ID), sourceMapID, mapID, wh)
-	}
-	if wh != nil && wh.PlayerMovement != nil && ses.HasValidClient() && ses.Client.CharData() != nil {
-		wh.PlayerMovement.UpdatePosition(int(ses.Client.CharData().ID), x, y, normalizedMapID, "DOWN")
-		wh.PlayerMovement.FlushPlayerPosition(int(ses.Client.CharData().ID))
-	}
-	ses.X = float32(x)
-	ses.Y = float32(y)
-	ses.MapID = normalizedMapID
-	if ses.HasValidClient() && ses.Client.CharData() != nil {
-		char := ses.Client.CharData()
-		char.X = float64(x)
-		char.Y = float64(y)
-		char.MapID = uint32(normalizedMapID)
+	if ses != nil && ses.HasValidClient() {
+		setServerTeleportedPlayerPosition(ses, wh, mapID, x, y, "DOWN")
 	}
 	ses.SendStreamJSON(map[string]interface{}{
 		"mapId": mapID,

@@ -207,8 +207,7 @@ func isFacingFishableWater(wh *WorldHandler, mapID, playerX, playerY int, direct
 	if !ok {
 		return false
 	}
-	collisionType, exists := wh.ActorManager.CollisionTypeAt(mapID, targetX, targetY)
-	return exists && collisionType == collisionWater
+	return isSurfableWaterTile(wh, mapID, targetX, targetY)
 }
 
 func fishingTargetTile(playerX, playerY int, direction string) (int, int, bool) {

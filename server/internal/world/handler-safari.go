@@ -22,6 +22,8 @@ const (
 	SafariZoneCenterMapID   = 220
 	SafariZoneDefaultEntryX = 14
 	SafariZoneDefaultEntryY = 25
+	SafariZoneGateReturnX   = 3
+	SafariZoneGateReturnY   = 4
 
 	EventInSafariZone   = "EVENT_IN_SAFARI_ZONE"
 	EventSafariGameOver = "EVENT_SAFARI_GAME_OVER"
@@ -415,6 +417,10 @@ func HandleSafariBattleAction(ses *session.Session, payload []byte, wh *WorldHan
 			"stepsLeft": 0,
 			"ballsLeft": 0,
 			"message":   "PA: Ding-dong! Your SAFARI GAME is over!",
+			"mapId":     SafariZoneGateMapID,
+			"x":         SafariZoneGateReturnX,
+			"y":         SafariZoneGateReturnY,
+			"direction": "DOWN",
 		}, opcodes.SafariZoneExitNotify)
 	}
 
@@ -447,6 +453,10 @@ func CheckSafariStep(charID int64, x, y, mapID int, ses *session.Session, wh *Wo
 			"stepsLeft": 0,
 			"ballsLeft": ballsLeft,
 			"message":   "PA: Ding-dong! Your SAFARI GAME is over!",
+			"mapId":     SafariZoneGateMapID,
+			"x":         SafariZoneGateReturnX,
+			"y":         SafariZoneGateReturnY,
+			"direction": "DOWN",
 		}, opcodes.SafariZoneExitNotify)
 		return true // Stop movement
 	}

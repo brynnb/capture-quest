@@ -232,8 +232,7 @@ func handlePokeSurfingTarget(
 		return false
 	}
 
-	collisionType, exists := wh.ActorManager.CollisionTypeAt(targetMapID, targetX, targetY)
-	if !exists || collisionType != collisionWater {
+	if !isSurfableWaterTile(wh, targetMapID, targetX, targetY) {
 		ses.SendStreamJSON(map[string]interface{}{
 			"success": false,
 			"error":   "You can't SURF here.",

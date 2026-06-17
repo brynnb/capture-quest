@@ -101,6 +101,34 @@ func TestRegisterLocalAccountDoesNotTransferDifferentGuestCharacters(t *testing.
 	assertAccountCharacterCount(t, registeredID, 0)
 }
 
+func TestGuestAccountNamesDoNotCollideForMatchingTokenPrefixes(t *testing.T) {
+	raw := setupAccountCreationDB(t)
+	ctx := context.Background()
+
+	firstID, err := GetOrCreateGuestAccount(ctx, "guest_abcdefgh123456")
+	if err != nil {
+		t.Fatalf("first GetOrCreateGuestAccount failed: %v", err)
+	}
+	secondID, err := GetOrCreateGuestAccount(ctx, "guest_abcdefgh999999")
+	if err != nil {
+		t.Fatalf("second GetOrCreateGuestAccount failed: %v", err)
+	}
+	if firstID == secondID {
+		t.Fatalf("guest accounts reused id %d for different tokens", firstID)
+	}
+
+	var firstName, secondName string
+	if err := raw.QueryRow(`SELECT name FROM account WHERE id = $1`, firstID).Scan(&firstName); err != nil {
+		t.Fatal(err)
+	}
+	if err := raw.QueryRow(`SELECT name FROM account WHERE id = $1`, secondID).Scan(&secondName); err != nil {
+		t.Fatal(err)
+	}
+	if firstName == secondName {
+		t.Fatalf("guest account names collided: %q", firstName)
+	}
+}
+
 func setupAccountCreationDB(t *testing.T) *sql.DB {
 	t.Helper()
 

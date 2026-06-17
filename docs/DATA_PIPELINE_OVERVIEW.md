@@ -64,7 +64,9 @@ Pokemon cry audio prefer source-derived assets when those files are present.
 
 ## Design Notes
 
-- The server remains authoritative for all durable gameplay state.
+- The server owns durable gameplay state; the client owns ordinary walking
+  responsiveness and reports position updates for persistence and multiplayer
+  visibility.
 - SQLite is an import/source artifact only, not a runtime database.
 - Generated scripted-event files should be changed in the extractor/import
   pipeline first. CaptureQuest-specific helper files under `server/scripted_events`

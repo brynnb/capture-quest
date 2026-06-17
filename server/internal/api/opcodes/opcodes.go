@@ -55,7 +55,6 @@ const (
 	PhaserWarpsResponse          OpCode = 43
 	PhaserActorPositionUpdate    OpCode = 44
 	PhaserPlayerPositionUpdate   OpCode = 45
-	PhaserPlayerMoveRequest      OpCode = 46
 	PhaserActorDespawn           OpCode = 47
 	PhaserDialogueRequest        OpCode = 48
 	PhaserDialogueResponse       OpCode = 49

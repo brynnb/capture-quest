@@ -9,7 +9,6 @@ import (
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
-	db_character "capturequest/internal/db/character"
 	"capturequest/internal/db/cqitems"
 	"capturequest/internal/pokebattle"
 	"capturequest/internal/session"
@@ -579,49 +578,20 @@ func setCutscenePlayerPosition(ses *session.Session, wh *WorldHandler, charID in
 	if direction == "" {
 		direction = "DOWN"
 	}
-	sourceMapID := 0
-	if ses != nil {
-		sourceMapID = ses.MapID
-		if ses.Client != nil {
-			if char := ses.Client.CharData(); char != nil {
-				sourceMapID = int(char.MapID)
-			}
-		}
-	}
-	endSafariSessionIfLeavingMap(charID, sourceMapID, mapID, wh)
 
 	sessionMapID := mapID
 	if wh != nil && wh.ActorManager != nil && wh.ActorManager.IsOverworld(mapID) {
 		sessionMapID = UnifiedOverworldMapID
 	}
-	if wh != nil && wh.PlayerMovement != nil {
-		wh.PlayerMovement.UpdatePosition(int(charID), x, y, sessionMapID, direction)
-	}
-	if err := db_character.UpdateCharacterPosition(
-		int32(charID),
-		uint32(sessionMapID),
-		float64(x),
-		float64(y),
-		0,
-		0,
-	); err != nil {
-		log.Printf("[Cutscene] Failed to save player %d position at map %d (%d,%d): %v",
-			charID, sessionMapID, x, y, err)
-	}
-
-	if ses == nil {
+	if ses == nil || !ses.HasValidClient() {
+		if wh != nil && wh.PlayerMovement != nil {
+			wh.PlayerMovement.UpdatePosition(int(charID), x, y, sessionMapID, direction)
+			wh.PlayerMovement.FlushPlayerPosition(int(charID))
+		}
 		return
 	}
-	ses.X = float32(x)
-	ses.Y = float32(y)
-	ses.MapID = sessionMapID
-	if ses.Client != nil {
-		if char := ses.Client.CharData(); char != nil {
-			char.X = float64(x)
-			char.Y = float64(y)
-			char.MapID = uint32(sessionMapID)
-		}
-	}
+
+	setServerTeleportedPlayerPosition(ses, wh, mapID, x, y, direction)
 }
 
 func sendCutsceneSystemMessage(ses *session.Session, message string) {
