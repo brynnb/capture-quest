@@ -21,15 +21,29 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Build Frontend
+      - name: Install extractor system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rgbds
+
+      - name: Install Node dependencies
         run: |
           npm ci
+
+      - name: Generate runtime assets
+        run: |
+          npm run bootstrap:assets -- --skip-audio-render
+
+      - name: Build Frontend
+        run: |
           npm run build
 
       - name: Setup Go
