@@ -294,16 +294,33 @@ func isDuplicateColumnError(err error) bool {
 		strings.Contains(message, "already exists")
 }
 
+type loadedEventRef struct {
+	path   string
+	index  int
+	source string
+}
+
 func LoadEvents(root string) ([]EventFile, error) {
-	scriptDirs := []string{
-		filepath.Join(root, scriptsDirName),
-		filepath.Join(root, manualScriptsDirName),
+	scriptDirs := []struct {
+		path          string
+		source        string
+		allowOverride bool
+	}{
+		{
+			path:   filepath.Join(root, scriptsDirName),
+			source: extractorSource,
+		},
+		{
+			path:          filepath.Join(root, manualScriptsDirName),
+			source:        captureQuestSource,
+			allowOverride: true,
+		},
 	}
 	events := []EventFile{}
-	seen := make(map[string]string)
+	seen := make(map[string]loadedEventRef)
 	loadedDir := false
 	for _, scriptsDir := range scriptDirs {
-		dirEvents, exists, err := loadEventDir(scriptsDir, seen)
+		exists, err := loadEventDir(scriptsDir.path, scriptsDir.source, scriptsDir.allowOverride, seen, &events)
 		if err != nil {
 			return nil, err
 		}
@@ -311,10 +328,13 @@ func LoadEvents(root string) ([]EventFile, error) {
 			continue
 		}
 		loadedDir = true
-		events = append(events, dirEvents...)
 	}
 	if !loadedDir {
-		return nil, fmt.Errorf("read scripted event dirs %s: no directory found", strings.Join(scriptDirs, ", "))
+		dirNames := make([]string, 0, len(scriptDirs))
+		for _, scriptsDir := range scriptDirs {
+			dirNames = append(dirNames, scriptsDir.path)
+		}
+		return nil, fmt.Errorf("read scripted event dirs %s: no directory found", strings.Join(dirNames, ", "))
 	}
 
 	sort.Slice(events, func(i, j int) bool {
@@ -323,16 +343,15 @@ func LoadEvents(root string) ([]EventFile, error) {
 	return events, nil
 }
 
-func loadEventDir(scriptsDir string, seen map[string]string) ([]EventFile, bool, error) {
+func loadEventDir(scriptsDir, source string, allowOverride bool, seen map[string]loadedEventRef, events *[]EventFile) (bool, error) {
 	entries, err := os.ReadDir(scriptsDir)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, false, nil
+			return false, nil
 		}
-		return nil, false, fmt.Errorf("read scripted event dir %s: %w", scriptsDir, err)
+		return false, fmt.Errorf("read scripted event dir %s: %w", scriptsDir, err)
 	}
 
-	events := make([]EventFile, 0, len(entries))
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
@@ -340,25 +359,30 @@ func loadEventDir(scriptsDir string, seen map[string]string) ([]EventFile, bool,
 		path := filepath.Join(scriptsDir, entry.Name())
 		raw, err := os.ReadFile(path)
 		if err != nil {
-			return nil, false, fmt.Errorf("read %s: %w", path, err)
+			return false, fmt.Errorf("read %s: %w", path, err)
 		}
 		var event EventFile
 		dec := json.NewDecoder(bytes.NewReader(raw))
 		dec.UseNumber()
 		if err := dec.Decode(&event); err != nil {
-			return nil, false, fmt.Errorf("decode %s: %w", path, err)
+			return false, fmt.Errorf("decode %s: %w", path, err)
 		}
 		if err := validateEvent(event, path); err != nil {
-			return nil, false, err
+			return false, err
 		}
-		if prev := seen[event.ScriptLabel]; prev != "" {
-			return nil, false, fmt.Errorf("duplicate scriptLabel %s in %s and %s", event.ScriptLabel, prev, path)
+		if prev, ok := seen[event.ScriptLabel]; ok {
+			if !allowOverride || prev.source == source {
+				return false, fmt.Errorf("duplicate scriptLabel %s in %s and %s", event.ScriptLabel, prev.path, path)
+			}
+			(*events)[prev.index] = event
+			seen[event.ScriptLabel] = loadedEventRef{path: path, index: prev.index, source: source}
+			continue
 		}
-		seen[event.ScriptLabel] = path
-		events = append(events, event)
+		seen[event.ScriptLabel] = loadedEventRef{path: path, index: len(*events), source: source}
+		*events = append(*events, event)
 	}
 
-	return events, true, nil
+	return true, nil
 }
 
 func LoadObjectVisibility(root string) ([]ObjectVisibilityRule, error) {

@@ -9,7 +9,9 @@ load, and `script-sim` runs the same sync before scenario tests.
 - `scripts/*.json` owns generated rows in `phaser_cutscene_scripts`.
 - `manual_scripts/*.json` owns CaptureQuest-authored rows in
   `phaser_cutscene_scripts`. These are tracked because they cover scenes that
-  are not generated safely from source data yet.
+  are not generated safely from source data yet. If a manual script has the
+  same `scriptLabel` as a generated script, the manual script is the source of
+  truth.
 - `object_visibility.json` owns custom rows in
   `phaser_event_object_visibility`.
 - `event_tile_overrides.json` owns hand-recovered compatibility tile rows.

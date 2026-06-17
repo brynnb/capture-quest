@@ -110,6 +110,54 @@ func TestDeleteStaleExtractorTriggerScripts(t *testing.T) {
 	}
 }
 
+func TestLoadEventsManualScriptsOverrideGeneratedScripts(t *testing.T) {
+	root := t.TempDir()
+	writeScriptedEventFile(t, root, scriptsDirName, "generated.json", `{
+		"scriptLabel": "ViridianMartOaksParcel",
+		"mapName": "GENERATED_MAP",
+		"trigger": { "type": "npc_click", "source": "extractor", "label": "TEXT_GENERATED" },
+		"actions": [{ "type": "dialogue", "text": "generated" }]
+	}`)
+	writeScriptedEventFile(t, root, manualScriptsDirName, "manual.json", `{
+		"scriptLabel": "ViridianMartOaksParcel",
+		"mapName": "MANUAL_MAP",
+		"trigger": { "type": "npc_click", "source": "extractor", "label": "TEXT_MANUAL" },
+		"actions": [{ "type": "dialogue", "text": "manual" }]
+	}`)
+
+	events, err := LoadEvents(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("events = %#v, want one manual override", events)
+	}
+	if events[0].MapName != "MANUAL_MAP" {
+		t.Fatalf("MapName = %q, want MANUAL_MAP", events[0].MapName)
+	}
+}
+
+func TestLoadEventsDuplicateManualScriptsStillFail(t *testing.T) {
+	root := t.TempDir()
+	writeScriptedEventFile(t, root, manualScriptsDirName, "first.json", `{
+		"scriptLabel": "DuplicateManual",
+		"mapName": "TEST_MAP",
+		"trigger": { "type": "npc_click", "source": "extractor", "label": "TEXT_FIRST" },
+		"actions": [{ "type": "dialogue", "text": "first" }]
+	}`)
+	writeScriptedEventFile(t, root, manualScriptsDirName, "second.json", `{
+		"scriptLabel": "DuplicateManual",
+		"mapName": "TEST_MAP",
+		"trigger": { "type": "npc_click", "source": "extractor", "label": "TEXT_SECOND" },
+		"actions": [{ "type": "dialogue", "text": "second" }]
+	}`)
+
+	_, err := LoadEvents(root)
+	if err == nil {
+		t.Fatal("expected duplicate manual script error")
+	}
+}
+
 func TestLoadEventTileOverridesExpandsBlocks(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, eventTilesFileName), []byte(`{
@@ -352,6 +400,17 @@ func TestSyncEventTileOverridesReplacesRuntimeRows(t *testing.T) {
 		if !containsEventTileRule(rows, rule) {
 			t.Fatalf("missing synced rule %#v in %#v", rule, rows)
 		}
+	}
+}
+
+func writeScriptedEventFile(t *testing.T, root, dirName, fileName, body string) {
+	t.Helper()
+	dir := filepath.Join(root, dirName)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, fileName), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 
