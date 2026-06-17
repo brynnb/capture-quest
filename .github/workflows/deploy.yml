@@ -32,7 +32,11 @@ jobs:
       - name: Install extractor system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y rgbds
+          sudo apt-get install -y build-essential bison pkg-config libpng-dev
+          git clone --depth 1 https://github.com/gbdev/rgbds.git /tmp/rgbds
+          make -C /tmp/rgbds -j"$(nproc)"
+          sudo make -C /tmp/rgbds install PREFIX=/usr/local
+          rgbgfx --version
 
       - name: Install Node dependencies
         run: |
