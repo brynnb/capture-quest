@@ -1,0 +1,36 @@
+Scenario: oak_starter_charmander_prompt
+Description: Clicking Charmander's Pokeball opens a YES/NO confirmation before granting a starter.
+Character: ScriptSimOakCharmanderPrompt
+
+Initial state
+  location: OAKS_LAB[40] (5,11)
+  flags: EVENT_OAK_ASKED_TO_CHOOSE_MON
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: OaksLabChooseCharmander
+  map: OAKS_LAB
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - choice: TEXT_OAKSLAB_CHARMANDER_POKE_BALL "So! You want CHARMANDER?"
+
+Final state
+  location: OAKS_LAB[40] (5,11)
+  flags: EVENT_OAK_ASKED_TO_CHOOSE_MON
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

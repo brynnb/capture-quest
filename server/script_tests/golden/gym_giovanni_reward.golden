@@ -1,0 +1,45 @@
+Scenario: gym_giovanni_reward
+Description: After beating Giovanni in Viridian Gym, the post-battle script grants Earthbadge state and TM27.
+Character: ScriptSimGymGiovanniReward
+
+Initial state
+  location: VIRIDIAN_GYM[45] (5,4)
+  flags: EVENT_BEAT_GIOVANNI_GYM, EVENT_GOT_BOULDERBADGE, EVENT_GOT_CASCADEBADGE, EVENT_GOT_MARSHBADGE, EVENT_GOT_RAINBOWBADGE, EVENT_GOT_SOULBADGE, EVENT_GOT_THUNDERBADGE, EVENT_GOT_VOLCANOBADGE
+  party:
+    slot 0: #6 CHARIZARD L50 moves LEER, RAGE, SLASH, FLAMETHROWER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: ViridianGymGiovanniPostBattle
+  map: VIRIDIAN_GYM
+  trigger: map_script
+
+Actions
+  - lockInput
+  - dialogue: GIOVANNI [Ha! That was a truly intense fight! You have won! As proof, here is the EARTHBADGE!]
+  - dialogue: GIOVANNI [The EARTHBADGE makes POKéMON of any level obey! It is evidence of your mastery as a POKéMON trainer! With it, you can enter the POKéMON LEAGUE!]
+  - dialogue: GIOVANNI [{PLAYER} received TM27! TM27 is FISSURE! It will take out POKéMON with just one hit! I made it when I ran the GYM here, too long ago...]
+  - dialogue: GIOVANNI [Having lost, I cannot face my underlings! TEAM ROCKET is finished forever! I will dedicate my life to the study of POKéMON! Let us meet again some day! Farewell!]
+  - setFlag *: EVENT_GOT_EARTHBADGE
+  - setFlag *: EVENT_GOT_TM27
+  - giveItem *: TM27 x1 added
+  - unlockInput
+  - setsFlags *: EVENT_GOT_EARTHBADGE
+  - setsFlags *: EVENT_GOT_TM27
+
+Final state
+  location: VIRIDIAN_GYM[45] (5,4)
+  flags: EVENT_BEAT_GIOVANNI_GYM, EVENT_GOT_BOULDERBADGE, EVENT_GOT_CASCADEBADGE, EVENT_GOT_EARTHBADGE, EVENT_GOT_MARSHBADGE, EVENT_GOT_RAINBOWBADGE, EVENT_GOT_SOULBADGE, EVENT_GOT_THUNDERBADGE, EVENT_GOT_TM27, EVENT_GOT_VOLCANOBADGE
+  party:
+    slot 0: #6 CHARIZARD L50 moves LEER, RAGE, SLASH, FLAMETHROWER
+  inventory:
+    #115 TM27 x1
+  hidden objects:
+    none
+  active battle:
+    none

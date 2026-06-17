@@ -1,0 +1,25 @@
+{
+  "name": "route16_snorlax_win",
+  "description": "Route 16 Snorlax battle win sets the beat flag and hides the Snorlax object.",
+  "fixture": {
+    "characterName": "ScriptSim_Route16_Snorlax_Win",
+    "mapName": "ROUTE_16",
+    "x": 86,
+    "y": -108,
+    "flags": ["EVENT_GOT_POKE_FLUTE"],
+    "party": [{"speciesId": 25, "level": 50}]
+  },
+  "trigger": {
+    "type": "coord",
+    "x": 86,
+    "y": -108
+  },
+  "resolveBattle": {"result": "win"},
+  "expect": {
+    "scriptLabel": "Route16SnorlaxEncounter",
+    "flagsPresent": ["EVENT_BEAT_ROUTE16_SNORLAX"],
+    "hiddenObjectKeys": ["TEXT_ROUTE16_SNORLAX"],
+    "actionTypesContains": ["startWildBattle", "resolveBattle", "hideObject"],
+    "activeBattleAbsent": true
+  }
+}

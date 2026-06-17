@@ -1,0 +1,40 @@
+Scenario: debug_field_move_cut_ready
+Description: Debug setup: stand below the Cerulean cut tree with a CUT user and Cascade Badge.
+Character: DebugFieldCutReady
+
+Initial state
+  location: CERULEAN_CITY[9999] (189,-169)
+  flags: EVENT_GOT_CASCADEBADGE
+  party:
+    slot 0: #1 BULBASAUR L16 moves CUT
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FieldMovePermission:CUT
+  map: CERULEAN_CITY
+  trigger: field_move_permission
+
+Actions
+  - fieldMovePermission: move=CUT allowed=true requiredBadge=EVENT_GOT_CASCADEBADGE knownBy=#1 BULBASAUR
+
+Final state
+  location: CERULEAN_CITY[9999] (189,-169)
+  flags: EVENT_GOT_CASCADEBADGE
+  party:
+    slot 0: #1 BULBASAUR L16 moves CUT
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Field move
+  move: CUT[15] allowed=true
+  required badge: EVENT_GOT_CASCADEBADGE
+  known by: #1 BULBASAUR

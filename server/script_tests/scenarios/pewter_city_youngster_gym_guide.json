@@ -1,0 +1,27 @@
+{
+  "name": "pewter_city_youngster_gym_guide",
+  "description": "Before Brock is beaten, stepping into Pewter City's east exit guide coords starts the source gym escort branch.",
+  "fixture": {
+    "characterName": "ScriptSimPewterGymGuide",
+    "mapName": "PEWTER_CITY",
+    "x": 25,
+    "y": -163,
+    "direction": "RIGHT",
+    "flags": [],
+    "party": [{ "speciesId": 1, "level": 12 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "PEWTER_CITY",
+    "x": 25,
+    "y": -163
+  },
+  "expect": {
+    "scriptLabel": "PewterCityYoungsterGymGuide",
+    "flagsAbsent": ["EVENT_BEAT_BROCK"],
+    "actionTypesContains": ["dialogue", "move", "hideObject", "showObject"],
+    "activeBattleAbsent": true
+  }
+}

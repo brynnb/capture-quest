@@ -1,0 +1,43 @@
+Scenario: cinnabar_gym_quiz_gates_open_after_flags
+Description: Cinnabar Gym quiz gate tiles resolve to open floor for a player with all gate flags.
+Character: ScriptSimCinnabarQuizGatesOpen
+
+Initial state
+  location: CINNABAR_GYM[166] (16,13)
+  flags: EVENT_CINNABAR_GYM_GATE1_UNLOCKED, EVENT_CINNABAR_GYM_GATE2_UNLOCKED, EVENT_CINNABAR_GYM_GATE3_UNLOCKED, EVENT_CINNABAR_GYM_GATE4_UNLOCKED, EVENT_CINNABAR_GYM_GATE5_UNLOCKED, EVENT_CINNABAR_GYM_GATE6_UNLOCKED
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: TileState:CINNABAR_GYM
+  map: CINNABAR_GYM
+  trigger: tile_state
+
+Actions
+  - tileState: 6 event tiles
+
+Final state
+  location: CINNABAR_GYM[166] (16,13)
+  flags: EVENT_CINNABAR_GYM_GATE1_UNLOCKED, EVENT_CINNABAR_GYM_GATE2_UNLOCKED, EVENT_CINNABAR_GYM_GATE3_UNLOCKED, EVENT_CINNABAR_GYM_GATE4_UNLOCKED, EVENT_CINNABAR_GYM_GATE5_UNLOCKED, EVENT_CINNABAR_GYM_GATE6_UNLOCKED
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Event tile states
+  CinnabarGymGate1Open (9,3): tile=758 collision=1
+  CinnabarGymGate2Open (6,3): tile=758 collision=1
+  CinnabarGymGate3Open (6,6): tile=758 collision=1
+  CinnabarGymGate4Open (3,8): tile=758 collision=1
+  CinnabarGymGate5Open (2,6): tile=758 collision=1
+  CinnabarGymGate6Open (2,3): tile=758 collision=1

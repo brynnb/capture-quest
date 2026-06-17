@@ -1,0 +1,44 @@
+Scenario: gym_lt_surge_reward
+Description: After beating Lt. Surge, the Vermilion Gym post-battle script grants Thunderbadge state and TM24.
+Character: ScriptSimGymLtSurgeReward
+
+Initial state
+  location: VERMILION_GYM[92] (5,3)
+  flags: EVENT_BEAT_LT_SURGE, EVENT_GOT_BOULDERBADGE, EVENT_GOT_CASCADEBADGE
+  party:
+    slot 0: #5 CHARMELEON L28 moves EMBER, EMBER, LEER, RAGE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: VermilionGymLtSurgePostBattle
+  map: VERMILION_GYM
+  trigger: map_script
+
+Actions
+  - lockInput
+  - dialogue: LT. SURGE [Whoa! You're the real deal, kid! Fine then, take the THUNDERBADGE!]
+  - dialogue: LT. SURGE [The THUNDERBADGE cranks up your POKéMON's SPEED! It also lets your POKéMON FLY any time, kid! You're special, kid! Take this!]
+  - dialogue: LT. SURGE [{PLAYER} received TM24! A little word of advice, kid! Electricity is sure powerful! But, it's useless against ground-type POKéMON!]
+  - setFlag *: EVENT_GOT_THUNDERBADGE
+  - setFlag *: EVENT_GOT_TM24
+  - giveItem *: TM24 x1 added
+  - unlockInput
+  - setsFlags *: EVENT_GOT_THUNDERBADGE
+  - setsFlags *: EVENT_GOT_TM24
+
+Final state
+  location: VERMILION_GYM[92] (5,3)
+  flags: EVENT_BEAT_LT_SURGE, EVENT_GOT_BOULDERBADGE, EVENT_GOT_CASCADEBADGE, EVENT_GOT_THUNDERBADGE, EVENT_GOT_TM24
+  party:
+    slot 0: #5 CHARMELEON L28 moves EMBER, EMBER, LEER, RAGE
+  inventory:
+    #112 TM24 x1
+  hidden objects:
+    none
+  active battle:
+    none

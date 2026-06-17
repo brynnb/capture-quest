@@ -1,0 +1,45 @@
+Scenario: lances_room_entrance_blocks_closed
+Description: Lance's entrance blocks resolve to the closed layout after the room lock flag is set.
+Character: ScriptSimLanceEntranceClosed
+
+Initial state
+  location: LANCES_ROOM[113] (5,10)
+  flags: EVENT_LANCES_ROOM_LOCK_DOOR
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: TileState:LANCES_ROOM
+  map: LANCES_ROOM
+  trigger: tile_state
+
+Actions
+  - tileState: 8 event tiles
+
+Final state
+  location: LANCES_ROOM[113] (5,10)
+  flags: EVENT_LANCES_ROOM_LOCK_DOOR
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Event tile states
+  LanceEntranceLeftClosed_0_0 (12,4): tile=255 collision=0
+  LanceEntranceLeftClosed_0_1 (12,5): tile=257 collision=0
+  LanceEntranceRightClosed_0_0 (12,6): tile=261 collision=0
+  LanceEntranceRightClosed_0_1 (12,7): tile=253 collision=1
+  LanceEntranceLeftClosed_1_0 (13,4): tile=261 collision=0
+  LanceEntranceLeftClosed_1_1 (13,5): tile=253 collision=1
+  LanceEntranceRightClosed_1_0 (13,6): tile=255 collision=0
+  LanceEntranceRightClosed_1_1 (13,7): tile=257 collision=0

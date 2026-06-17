@@ -1,0 +1,41 @@
+Scenario: vermilion_gym_trash_door_open
+Description: Vermilion Gym trash puzzle door opens after the second electric lock flag.
+Character: ScriptSimVermilionTrashDoorOpen
+
+Initial state
+  location: VERMILION_GYM[92] (4,6)
+  flags: EVENT_2ND_LOCK_OPENED
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: TileState:VERMILION_GYM
+  map: VERMILION_GYM
+  trigger: tile_state
+
+Actions
+  - tileState: 4 event tiles
+
+Final state
+  location: VERMILION_GYM[92] (4,6)
+  flags: EVENT_2ND_LOCK_OPENED
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Event tile states
+  VermilionGymTrashDoorOpen_4_4 (4,4): tile=253 collision=1
+  VermilionGymTrashDoorOpen_5_4 (5,4): tile=253 collision=1
+  VermilionGymTrashDoorOpen_4_5 (4,5): tile=253 collision=1
+  VermilionGymTrashDoorOpen_5_5 (5,5): tile=253 collision=1

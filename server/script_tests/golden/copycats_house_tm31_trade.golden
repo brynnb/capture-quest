@@ -1,0 +1,43 @@
+Scenario: copycats_house_tm31_trade
+Description: Copycat trades a Poke Doll for TM31 Mimic.
+Character: ScriptSimCopycatTM31
+
+Initial state
+  location: COPYCATS_HOUSE_2F[176] (4,4)
+  flags: none
+  party:
+    slot 0: #6 CHARIZARD L35 moves LEER, EMBER, LEER, RAGE
+  inventory:
+    #51 POKé DOLL x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: CopycatsHouseTM31
+  map: COPYCATS_HOUSE_2F
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: COPYCAT [Oh wow! A POKé DOLL! For me? Will you trade it for this? I really want it! You can have this, then!]
+  - choice: TEXT_COPYCATSHOUSE2F_COPYCAT "Trade POKé DOLL for TM31?" choice=true
+  - dialogue:  [{PLAYER} traded POKé DOLL for TM31! TM31 contains my favorite, MIMIC! Use it on a good POKéMON!]
+  - takeItem *: POKé DOLL x1 removed
+  - playSFX: SFX_GET_ITEM_1
+  - giveItem *: TM31 x1 added
+  - unlockInput
+  - setsFlags *: EVENT_GOT_TM31
+
+Final state
+  location: COPYCATS_HOUSE_2F[176] (4,4)
+  flags: EVENT_GOT_TM31
+  party:
+    slot 0: #6 CHARIZARD L35 moves LEER, EMBER, LEER, RAGE
+  inventory:
+    #119 TM31 x1
+  hidden objects:
+    none
+  active battle:
+    none

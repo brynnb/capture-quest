@@ -1,0 +1,26 @@
+{
+  "name": "vermilion_gym_guide_after_surge",
+  "description": "The Vermilion gym guide switches to post-Surge dialogue after the Thunder Badge is earned.",
+  "fixture": {
+    "characterName": "ScriptSimVermilionGuideAfterSurge",
+    "mapName": "VERMILION_GYM",
+    "x": 4,
+    "y": 15,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_THUNDERBADGE"],
+    "party": [{ "speciesId": 25, "level": 25 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "VERMILION_GYM",
+    "textConstant": "TEXT_VERMILIONGYM_GYM_GUIDE"
+  },
+  "expect": {
+    "scriptLabel": "VermilionGymGymGuideTextThunderBadgeSet",
+    "flagsPresent": ["EVENT_GOT_THUNDERBADGE"],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

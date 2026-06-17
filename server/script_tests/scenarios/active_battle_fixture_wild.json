@@ -1,0 +1,25 @@
+{
+  "name": "active_battle_fixture_wild",
+  "description": "The simulator can seed an already-active wild battle and snapshot its enemy party.",
+  "fixture": {
+    "characterName": "ScriptSimActiveWildBattle",
+    "mapName": "ROUTE_1",
+    "x": 10,
+    "y": 10,
+    "party": [{ "speciesId": 25, "level": 12 }],
+    "activeBattle": {
+      "type": "wild",
+      "pokemonId": 16,
+      "level": 3,
+      "winFlag": "EVENT_TEST_BEAT_WILD_PIDGEY"
+    }
+  },
+  "trigger": {
+    "type": "active_battle_state"
+  },
+  "expect": {
+    "scriptLabel": "ActiveBattleState",
+    "activeBattleType": "wild",
+    "activeBattleEnemySpecies": [16]
+  }
+}

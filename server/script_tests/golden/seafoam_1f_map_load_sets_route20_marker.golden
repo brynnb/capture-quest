@@ -1,0 +1,35 @@
+Scenario: seafoam_1f_map_load_sets_route20_marker
+Description: Loading Seafoam 1F sets the source EVENT_IN_SEAFOAM_ISLANDS marker consumed by Route 20.
+Character: SimSeafoam1FMapLoadMarker
+
+Initial state
+  location: SEAFOAM_ISLANDS_1F[192] (4,16)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: MapLoad:SEAFOAM_ISLANDS_1F
+  map: SEAFOAM_ISLANDS_1F
+  trigger: map_load
+
+Actions
+  - mapLoad *: SEAFOAM_ISLANDS_1F set=[EVENT_IN_SEAFOAM_ISLANDS] reset=[] affected=[]
+
+Final state
+  location: SEAFOAM_ISLANDS_1F[192] (4,16)
+  flags: EVENT_IN_SEAFOAM_ISLANDS
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

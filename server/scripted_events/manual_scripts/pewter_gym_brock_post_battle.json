@@ -1,0 +1,69 @@
+{
+  "scriptLabel": "PewterGymBrockPostBattle",
+  "mapName": "PEWTER_GYM",
+  "trigger": {
+    "type": "map_script"
+  },
+  "requiresFlag": "EVENT_BEAT_BROCK",
+  "requiresFlagAbsent": "EVENT_GOT_BOULDERBADGE",
+  "setsFlags": [
+    "EVENT_GOT_BOULDERBADGE",
+    "EVENT_GOT_TM34"
+  ],
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "I took you for granted.",
+        "As proof of your victory, here's the BOULDERBADGE!",
+        "{PLAYER} received the BOULDERBADGE!"
+      ],
+      "speaker": "BROCK"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "That's an official POKéMON LEAGUE BADGE!",
+        "Its bearer's POKéMON become more powerful!",
+        "The technique FLASH can now be used any time!"
+      ],
+      "speaker": "BROCK"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Wait! Take this with you!",
+        "{PLAYER} received TM34!"
+      ],
+      "speaker": "BROCK"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "There are all kinds of trainers in the world!",
+        "You appear to be very gifted as a POKéMON trainer!",
+        "Go to the GYM in CERULEAN and test your abilities!"
+      ],
+      "speaker": "BROCK"
+    },
+    {
+      "flag": "EVENT_GOT_BOULDERBADGE",
+      "type": "setFlag"
+    },
+    {
+      "flag": "EVENT_GOT_TM34",
+      "type": "setFlag"
+    },
+    {
+      "type": "giveItem",
+      "itemId": 122,
+      "quantity": 1
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "name": "bike_shop_no_voucher_yes",
+  "description": "The Bike Shop clerk quotes the unaffordable bike price when the player has no Bike Voucher.",
+  "fixture": {
+    "characterName": "ScriptSimBikeShopNoVoucher",
+    "mapName": "BIKE_SHOP",
+    "x": 6,
+    "y": 4,
+    "direction": "UP",
+    "flags": [],
+    "party": [{ "speciesId": 5, "level": 25 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "BIKE_SHOP",
+    "textConstant": "TEXT_BIKESHOP_CLERK",
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "BikeShopNoVoucher",
+    "flagsAbsent": ["EVENT_GOT_BICYCLE"],
+    "inventoryAbsent": [{ "itemId": 6 }, { "itemId": 45 }],
+    "actionTypesContains": ["dialogue", "choice"],
+    "activeBattleAbsent": true
+  }
+}

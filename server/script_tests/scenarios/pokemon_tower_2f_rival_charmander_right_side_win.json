@@ -1,0 +1,62 @@
+{
+  "name": "pokemon_tower_2f_rival_charmander_right_side_win",
+  "description": "Win the Pokemon Tower 2F rival battle from the right-side coordinate and verify persistent cleanup.",
+  "fixture": {
+    "characterName": "ScriptSimTowerRivalCharmanderRightWin",
+    "mapName": "POKEMON_TOWER_2F",
+    "x": 15,
+    "y": 5,
+    "direction": "LEFT",
+    "flags": [
+      "EVENT_GOT_POKEDEX",
+      "EVENT_PLAYER_CHOSE_CHARMANDER",
+      "EVENT_BEAT_CERULEAN_RIVAL",
+      "EVENT_BEAT_SS_ANNE_RIVAL",
+      "EVENT_GOT_CASCADEBADGE",
+      "EVENT_GOT_SS_TICKET",
+      "EVENT_GOT_HM01",
+      "EVENT_SS_ANNE_LEFT"
+    ],
+    "party": [
+      { "speciesId": 5, "level": 28 }
+    ],
+    "inventory": [
+      { "itemId": 9, "quantity": 1 },
+      { "itemId": 63, "quantity": 1 },
+      { "itemId": 84, "quantity": 1 }
+    ]
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "POKEMON_TOWER_2F",
+    "x": 15,
+    "y": 5
+  },
+  "resolveBattle": {
+    "result": "win"
+  },
+  "expect": {
+    "scriptLabel": "PokemonTower2FRivalEncounter",
+    "flagsPresent": [
+      "EVENT_GOT_POKEDEX",
+      "EVENT_PLAYER_CHOSE_CHARMANDER",
+      "EVENT_BEAT_CERULEAN_RIVAL",
+      "EVENT_BEAT_SS_ANNE_RIVAL",
+      "EVENT_GOT_CASCADEBADGE",
+      "EVENT_GOT_SS_TICKET",
+      "EVENT_GOT_HM01",
+      "EVENT_SS_ANNE_LEFT",
+      "EVENT_BEAT_POKEMON_TOWER_RIVAL",
+      "EVENT_POKEMON_TOWER_RIVAL_LEFT"
+    ],
+    "partySpecies": [5],
+    "inventoryContains": [
+      { "itemId": 9, "quantity": 1 },
+      { "itemId": 63, "quantity": 1 },
+      { "itemId": 84, "quantity": 1 }
+    ],
+    "hiddenObjectKeys": ["TEXT_POKEMONTOWER2F_RIVAL"],
+    "actionTypesContains": ["startTrainerBattle", "resolveBattle", "hideObject", "setFlag"],
+    "activeBattleAbsent": true
+  }
+}

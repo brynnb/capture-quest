@@ -1,0 +1,26 @@
+{
+  "name": "seafoam_1f_pathfind_avoids_visible_boulder",
+  "description": "Per-character pathfinding treats a visible Seafoam boulder as blocked actor collision.",
+  "fixture": {
+    "characterName": "SimSeafoamPathfindAvoidsBoulder",
+    "mapName": "SEAFOAM_ISLANDS_1F",
+    "x": 18,
+    "y": 11
+  },
+  "trigger": {
+    "type": "pathfind",
+    "destX": 18,
+    "destY": 9
+  },
+  "expect": {
+    "scriptLabel": "Pathfind:SEAFOAM_ISLANDS_1F",
+    "pathfind": {
+      "found": true,
+      "length": 4,
+      "avoids": [{ "x": 18, "y": 10 }],
+      "contains": [{ "x": 19, "y": 10 }]
+    },
+    "actionTypesContains": ["pathfind"],
+    "activeBattleAbsent": true
+  }
+}

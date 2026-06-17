@@ -1,0 +1,34 @@
+Scenario: cerulean_trade_house_lola_trade_ready
+Description: Cerulean Trade House Gambler is ready to trade Jynx named LOLA for Poliwhirl.
+Character: ScriptSimCeruleanLolaTrade
+
+Initial state
+  location: CERULEAN_TRADE_HOUSE[63] (1,3)
+  flags: none
+  party:
+    slot 0: #61 POLIWHIRL L25 moves BUBBLE, HYPNOSIS, HYPNOSIS, WATER_GUN
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FixtureState
+  map: CERULEAN_TRADE_HOUSE
+  trigger: fixture_state
+
+Actions
+
+Final state
+  location: CERULEAN_TRADE_HOUSE[63] (1,3)
+  flags: none
+  party:
+    slot 0: #61 POLIWHIRL L25 moves BUBBLE, HYPNOSIS, HYPNOSIS, WATER_GUN
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

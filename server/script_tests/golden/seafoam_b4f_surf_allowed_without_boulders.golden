@@ -1,0 +1,35 @@
+Scenario: seafoam_b4f_surf_allowed_without_boulders
+Description: Seafoam B4F does not apply the fast-current Surf block before both B3F boulders have fallen.
+Character: ScriptSimSeafoamB4FSurfAllowed
+
+Initial state
+  location: SEAFOAM_ISLANDS_B4F[162] (7,11)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SeafoamSurfCheck
+  map: SEAFOAM_ISLANDS_B4F
+  trigger: seafoam_surf_check
+
+Actions
+  - seafoamSurfCheck: map=SEAFOAM_ISLANDS_B4F (7,11) blocked=false
+
+Final state
+  location: SEAFOAM_ISLANDS_B4F[162] (7,11)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

@@ -1,0 +1,23 @@
+{
+  "name": "cinnabar_gym_map_load_reset",
+  "description": "The generated Cinnabar Gym map-load script resets the temporary EVENT_2A7 flag.",
+  "fixture": {
+    "characterName": "ScriptSimCinnabarGymMapLoadReset",
+    "mapName": "CINNABAR_GYM",
+    "x": 5,
+    "y": 17,
+    "direction": "UP",
+    "flags": ["EVENT_2A7"],
+    "party": [{ "speciesId": 25, "level": 35 }]
+  },
+  "trigger": {
+    "type": "map_script",
+    "mapName": "CINNABAR_GYM"
+  },
+  "expect": {
+    "scriptLabel": "CinnabarGymMapLoadReset",
+    "flagsAbsent": ["EVENT_2A7"],
+    "actionTypesContains": ["resetFlag"],
+    "activeBattleAbsent": true
+  }
+}

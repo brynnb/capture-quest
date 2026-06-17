@@ -1,0 +1,94 @@
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependencies and build output
+node_modules/
+dist/
+dist-ssr/
+build/
+*.tsbuildinfo
+
+# Environment and local config
+.env
+.env.local
+*.local
+server/internal/config/capturequest_config.local.json
+server/internal/config/key.pem
+
+# Editor, OS, and agent-local files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.claude/
+.cursor/
+.agent/
+.windsurf/
+.swc/
+.DS_Store
+*.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.code-workspace
+
+# Database dumps and generated local data
+*.sql.gz
+/data/db_backups/
+tmp/
+server/tmp/
+server/scripted_events/script_candidate_import_diagnostics.json
+
+# Reproducible extractor outputs. Run npm run bootstrap:assets or
+# npm run bootstrap:fresh to regenerate these from the extractor submodule.
+public/assets/pokemon/
+public/assets/trainers/
+public/phaser/assets/
+public/phaser/pokemon.db
+public/phaser/style.css
+public/phaser/tile_images/
+public/phaser/sprites/*
+!public/phaser/sprites/bluenb.png
+!public/phaser/sprites/cavern_sign.png
+!public/phaser/sprites/forest_sign.png
+!public/phaser/sprites/red_surf.png
+!public/phaser/sprites/red_surf_original.png
+!public/phaser/sprites/sign.png
+public/sound/pokemon/
+src/constants/audio_manifest.json
+src/constants/pokemon_audio_manifest.json
+server/scripted_events/scripts/
+server/scripted_events/*.generated.json
+
+# Go server build artifacts
+server/bin/
+server/server
+server/server_test
+server/server_cq
+server/import-phaser
+server/cmd/server/server
+server/server.pid
+server/server.log
+server/certs/
+items.dat
+
+# Python virtual environments
+venv/
+.venv/
+
+# Asset downloads and tooling output
+data/rawatlasart/*
+!data/rawatlasart/.gitkeep
+capturequest_assets/
+scripts/all_blobs.txt
+all_blobs.txt
+.vercel/
+scripts/audio_tools/output/

@@ -1,0 +1,39 @@
+Scenario: power_plant_voltorb1_start
+Description: Power Plant Voltorb 1 starts a scripted L40 wild battle from generated object-event data.
+Character: ScriptSim_Voltorb1_Start
+
+Initial state
+  location: POWER_PLANT[83] (9,20)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L50 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: PowerPlantVoltorb1Encounter
+  map: POWER_PLANT
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Bzzzt!]
+  - unlockInput
+  - startWildBattle *: #100 VOLTORB L40 winFlag=EVENT_BEAT_POWER_PLANT_VOLTORB_0
+
+Final state
+  location: POWER_PLANT[83] (9,20)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L50 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    wild phase=action_select trainer= name= winFlag=EVENT_BEAT_POWER_PLANT_VOLTORB_0
+    enemy slot 0: #100 VOLTORB L40

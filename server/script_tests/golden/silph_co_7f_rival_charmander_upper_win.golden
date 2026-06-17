@@ -1,0 +1,51 @@
+Scenario: silph_co_7f_rival_charmander_upper_win
+Description: Win the Silph Co. 7F rival battle from the upper coordinate and verify persistent cleanup.
+Character: ScriptSimSilphRivalCharmanderUpperWin
+
+Initial state
+  location: SILPH_CO_7F[212] (3,2)
+  flags: EVENT_BEAT_CERULEAN_RIVAL, EVENT_BEAT_GHOST_MAROWAK, EVENT_BEAT_POKEMON_TOWER_RIVAL, EVENT_BEAT_ROCKET_HIDEOUT_GIOVANNI, EVENT_BEAT_SS_ANNE_RIVAL, EVENT_GOT_CASCADEBADGE, EVENT_GOT_HM01, EVENT_GOT_POKEDEX, EVENT_GOT_POKE_FLUTE, EVENT_PLAYER_CHOSE_CHARMANDER, EVENT_RESCUED_MR_FUJI, EVENT_ROCKET_HIDEOUT_GIOVANNI_LEFT, EVENT_SAFFRON_GUARDS_OPENED, EVENT_SS_ANNE_LEFT
+  party:
+    slot 0: #6 CHARIZARD L42 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    #48 CARD KEY x1
+    #84 HM01 x1
+    #73 POKé FLUTE x1
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SilphCo7FRivalEncounter
+  map: SILPH_CO_7F
+  trigger: coord
+
+Actions
+  - lockInput
+  - dialogue: RIVAL [{RIVAL}: What kept you {PLAYER}?]
+  - move: RIVAL [UP UP UP]
+  - dialogue: RIVAL [Hahaha! I thought you'd turn up if I waited here! I guess TEAM ROCKET slowed you down! Not that I care! I saw you in SAFFRON, so I decided to see if you got better!]
+  - startTrainerBattle *: RIVAL2 party=7 enemy=[#18 PIDGEOT L37 #58 GROWLITHE L38 #102 EXEGGCUTE L35 #65 ALAKAZAM L35 #9 BLASTOISE L40] winFlag=EVENT_BEAT_SILPH_CO_RIVAL
+  - unlockInput
+  - resolveBattle *: win trainer=RIVAL2 winFlag=EVENT_BEAT_SILPH_CO_RIVAL
+  - dialogue: RIVAL [Well, {PLAYER}! I'm moving on up and ahead! By checking my POKéDEX, I'm starting to see what's strong and how they evolve! I'm going to the POKéMON LEAGUE to boot out the ELITE FOUR! I'll become the world's most powerful trainer! {PLAYER}, well good luck to you! Don't sweat it! Smell ya!]
+  - move: RIVAL [LEFT UP UP RIGHT RIGHT RIGHT DOWN]
+  - hideObject *: objects=[TEXT_SILPHCO7F_RIVAL]
+  - setFlag *: EVENT_SILPH_CO_RIVAL_LEFT
+
+Final state
+  location: SILPH_CO_7F[212] (3,2)
+  flags: EVENT_BEAT_CERULEAN_RIVAL, EVENT_BEAT_GHOST_MAROWAK, EVENT_BEAT_POKEMON_TOWER_RIVAL, EVENT_BEAT_ROCKET_HIDEOUT_GIOVANNI, EVENT_BEAT_SILPH_CO_RIVAL, EVENT_BEAT_SS_ANNE_RIVAL, EVENT_GOT_CASCADEBADGE, EVENT_GOT_HM01, EVENT_GOT_POKEDEX, EVENT_GOT_POKE_FLUTE, EVENT_PLAYER_CHOSE_CHARMANDER, EVENT_RESCUED_MR_FUJI, EVENT_ROCKET_HIDEOUT_GIOVANNI_LEFT, EVENT_SAFFRON_GUARDS_OPENED, EVENT_SILPH_CO_RIVAL_LEFT, EVENT_SS_ANNE_LEFT
+  party:
+    slot 0: #6 CHARIZARD L42 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    #48 CARD KEY x1
+    #84 HM01 x1
+    #73 POKé FLUTE x1
+    #9 POKéDEX x1
+  hidden objects:
+    TEXT_SILPHCO7F_RIVAL
+  active battle:
+    none

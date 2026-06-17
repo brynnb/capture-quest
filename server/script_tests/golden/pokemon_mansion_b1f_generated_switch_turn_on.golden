@@ -1,0 +1,40 @@
+Scenario: pokemon_mansion_b1f_generated_switch_turn_on
+Description: Generated Pokemon Mansion B1F switch script uses the reused 2F source script and toggles the shared Mansion switch flag on.
+Character: ScriptSimMansionB1FGeneratedSwitchOn
+
+Initial state
+  location: POKEMON_MANSION_B1F[216] (2,5)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: PokemonMansionB1FSwitchToggle
+  map: POKEMON_MANSION_B1F
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [A secret switch!]
+  - choice: TEXT_POKEMONMANSIONB1F_SWITCH "Press it?" choice=true
+  - dialogue:  [Who wouldn't?]
+  - toggleFlag *: EVENT_MANSION_SWITCH_ON=true
+  - unlockInput
+
+Final state
+  location: POKEMON_MANSION_B1F[216] (2,5)
+  flags: EVENT_MANSION_SWITCH_ON
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

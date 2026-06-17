@@ -1,0 +1,40 @@
+Scenario: fighting_dojo_hitmonlee_already_got
+Description: Clicking a Fighting Dojo prize Poké Ball after choosing a reward shows the greedy warning.
+Character: ScriptSimDojoHitmonleeAlreadyGot
+
+Initial state
+  location: FIGHTING_DOJO[177] (4,2)
+  flags: EVENT_BEAT_KARATE_MASTER, EVENT_GOT_FIGHTING_DOJO_POKEMON, EVENT_GOT_HITMONCHAN
+  party:
+    slot 0: #25 PIKACHU L35 moves THUNDER_WAVE, QUICK_ATTACK, SWIFT, AGILITY
+    slot 1: #107 HITMONCHAN L30 moves AGILITY
+  inventory:
+    none
+  hidden objects:
+    TEXT_FIGHTINGDOJO_HITMONCHAN_POKE_BALL
+  active battle:
+    none
+
+Resolved script
+  label: FightingDojoHitmonleeAlreadyGot
+  map: FIGHTING_DOJO
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Better not get
+greedy...]
+  - unlockInput
+
+Final state
+  location: FIGHTING_DOJO[177] (4,2)
+  flags: EVENT_BEAT_KARATE_MASTER, EVENT_GOT_FIGHTING_DOJO_POKEMON, EVENT_GOT_HITMONCHAN
+  party:
+    slot 0: #25 PIKACHU L35 moves THUNDER_WAVE, QUICK_ATTACK, SWIFT, AGILITY
+    slot 1: #107 HITMONCHAN L30 moves AGILITY
+  inventory:
+    none
+  hidden objects:
+    TEXT_FIGHTINGDOJO_HITMONCHAN_POKE_BALL
+  active battle:
+    none

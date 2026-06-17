@@ -1,0 +1,38 @@
+Scenario: route16_gate_cycling_road_blocked
+Description: The Route 16 Cycling Road guard blocks the player without a Bicycle.
+Character: ScriptSimRoute16BikeGate
+
+Initial state
+  location: ROUTE_16_GATE_1F[186] (4,7)
+  flags: EVENT_GOT_POKEDEX
+  party:
+    slot 0: #6 CHARIZARD L35 moves LEER, EMBER, LEER, RAGE
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: Route16Gate1FGuardBlocked
+  map: ROUTE_16_GATE_1F
+  trigger: coord
+
+Actions
+  - lockInput
+  - dialogue: GUARD [Excuse me! Wait up please! No pedestrians are allowed on CYCLING ROAD!]
+  - movePlayer *: from=(4,7) to=(5,7) steps=[RIGHT]
+  - unlockInput
+
+Final state
+  location: ROUTE_16_GATE_1F[186] (5,7)
+  flags: EVENT_GOT_POKEDEX
+  party:
+    slot 0: #6 CHARIZARD L35 moves LEER, EMBER, LEER, RAGE
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none

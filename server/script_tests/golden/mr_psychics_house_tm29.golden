@@ -1,0 +1,42 @@
+Scenario: mr_psychics_house_tm29
+Description: Mr. Psychic grants TM29 Psychic.
+Character: ScriptSimMrPsychicTM29
+
+Initial state
+  location: MR_PSYCHICS_HOUSE[183] (5,4)
+  flags: EVENT_GOT_MARSHBADGE
+  party:
+    slot 0: #6 CHARIZARD L43 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: MrPsychicsHouseTM29
+  map: MR_PSYCHICS_HOUSE
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: MR. PSYCHIC [I had a Pokemon dream! A POKéMON gave me a TM in my dream. When I woke up, I had it! I don't need it, so you can have it!]
+  - dialogue:  [{PLAYER} received TM29! TM29 is PSYCHIC! It can lower the target's SPECIAL abilities.]
+  - setFlag *: EVENT_GOT_TM29
+  - playSFX: SFX_GET_ITEM_1
+  - unlockInput
+  - giveItem *: TM29 x1 added
+  - setsFlags *: EVENT_GOT_TM29
+
+Final state
+  location: MR_PSYCHICS_HOUSE[183] (5,4)
+  flags: EVENT_GOT_MARSHBADGE, EVENT_GOT_TM29
+  party:
+    slot 0: #6 CHARIZARD L43 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    #117 TM29 x1
+  hidden objects:
+    none
+  active battle:
+    none

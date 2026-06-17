@@ -1,0 +1,46 @@
+Scenario: ss_anne_2f_rival_charmander_win
+Description: Win the S.S. Anne 2F rival battle after choosing Charmander and verify persistent cleanup.
+Character: ScriptSimSSAnneRivalCharmanderWin
+
+Initial state
+  location: SS_ANNE_2F[96] (36,8)
+  flags: EVENT_GOT_SS_TICKET, EVENT_PLAYER_CHOSE_CHARMANDER
+  party:
+    slot 0: #4 CHARMANDER L24 moves GROWL, EMBER, LEER, RAGE
+  inventory:
+    #63 S.S.TICKET x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SSAnne2FRivalEncounter
+  map: SS_ANNE_2F
+  trigger: coord
+
+Actions
+  - lockInput
+  - showActor
+  - move: RIVAL [DOWN DOWN DOWN DOWN]
+  - facePlayer
+  - dialogue: RIVAL [Bonjour! {PLAYER}! Imagine seeing you here! {PLAYER}, were you really invited? So how's your POKéDEX coming? I already caught 40 kinds, pal! Different kinds are everywhere! Crawl around in grassy areas!]
+  - startTrainerBattle *: RIVAL2 party=1 enemy=[#17 PIDGEOTTO L19 #20 RATICATE L16 #64 KADABRA L18 #8 WARTORTLE L20] winFlag=EVENT_BEAT_SS_ANNE_RIVAL
+  - unlockInput
+  - resolveBattle *: win trainer=RIVAL2 winFlag=EVENT_BEAT_SS_ANNE_RIVAL
+  - dialogue: RIVAL [Humph! At least you're raising your POKéMON! I heard there was a CUT master on board. But, he was just a seasick, old man! But, CUT itself is really useful! You should go see him! Smell ya!]
+  - move: RIVAL [RIGHT DOWN DOWN DOWN DOWN]
+  - hideObject *: objects=[TEXT_SSANNE2F_RIVAL]
+  - setFlag *: EVENT_SS_ANNE_RIVAL_LEFT
+
+Final state
+  location: SS_ANNE_2F[96] (36,8)
+  flags: EVENT_BEAT_SS_ANNE_RIVAL, EVENT_GOT_SS_TICKET, EVENT_PLAYER_CHOSE_CHARMANDER, EVENT_SS_ANNE_RIVAL_LEFT
+  party:
+    slot 0: #4 CHARMANDER L24 moves GROWL, EMBER, LEER, RAGE
+  inventory:
+    #63 S.S.TICKET x1
+  hidden objects:
+    TEXT_SSANNE2F_RIVAL
+  active battle:
+    none

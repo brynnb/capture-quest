@@ -1,0 +1,29 @@
+{
+  "name": "field_move_flash_with_boulder_badge",
+  "description": "Flash is allowed when a party Pokemon knows FLASH and the Boulder Badge is set.",
+  "fixture": {
+    "characterName": "SimFieldFlashWithBadge",
+    "mapName": "PALLET_TOWN",
+    "x": 10,
+    "y": 10,
+    "flags": ["EVENT_GOT_BOULDERBADGE"],
+    "party": [
+      { "speciesId": 25, "level": 20, "moves": ["FLASH"] }
+    ]
+  },
+  "trigger": {
+    "type": "field_move_permission",
+    "moveName": "FLASH"
+  },
+  "expect": {
+    "scriptLabel": "FieldMovePermission:FLASH",
+    "fieldMove": {
+      "allowed": true,
+      "moveName": "FLASH",
+      "requiredBadgeFlag": "EVENT_GOT_BOULDERBADGE",
+      "knownBySpeciesId": 25
+    },
+    "actionTypesContains": ["fieldMovePermission"],
+    "activeBattleAbsent": true
+  }
+}

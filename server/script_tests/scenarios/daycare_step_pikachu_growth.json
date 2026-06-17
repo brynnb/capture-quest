@@ -1,0 +1,39 @@
+{
+  "name": "daycare_step_pikachu_growth",
+  "description": "Day Care EXP advances one point per step and updates the computed growth/cost state.",
+  "fixture": {
+    "characterName": "ScriptSimDayCareStep",
+    "mapName": "ROUTE_5",
+    "x": 10,
+    "y": 20,
+    "direction": "UP",
+    "party": [{ "speciesId": 4, "level": 5 }],
+    "dayCare": {
+      "pokemon": { "speciesId": 25, "level": 5 },
+      "startLevel": 5
+    },
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "daycare_step",
+    "mapName": "ROUTE_5",
+    "repeat": 91
+  },
+  "expect": {
+    "scriptLabel": "DayCareStep",
+    "partySpecies": [4],
+    "partySpeciesAbsent": [25],
+    "dayCare": {
+      "active": true,
+      "pokemonId": 25,
+      "level": 6,
+      "startLevel": 5,
+      "levelsGrown": 1,
+      "cost": 200,
+      "exp": 216
+    },
+    "actionTypesContains": ["dayCareStep"],
+    "activeBattleAbsent": true
+  }
+}

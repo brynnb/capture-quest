@@ -1,0 +1,25 @@
+{
+  "name": "rocket_hideout_b4f_door_open_tiles",
+  "description": "Rocket Hideout B4F door resolves to the open floor block after the source unlock flag is set.",
+  "fixture": {
+    "characterName": "ScriptSimRocketHideoutB4FDoorOpenTiles",
+    "mapName": "ROCKET_HIDEOUT_B4F",
+    "x": 12,
+    "y": 5,
+    "flags": ["EVENT_ROCKET_HIDEOUT_4_DOOR_UNLOCKED"]
+  },
+  "trigger": {
+    "type": "tile_state",
+    "mapName": "ROCKET_HIDEOUT_B4F"
+  },
+  "expect": {
+    "scriptLabel": "TileState:ROCKET_HIDEOUT_B4F",
+    "tileStates": [
+      { "x": 24, "y": 10, "tileImageId": 758, "collisionType": 1, "label": "RocketHideoutB4FDoorOpen_0_0" },
+      { "x": 24, "y": 11, "tileImageId": 758, "collisionType": 1, "label": "RocketHideoutB4FDoorOpen_0_1" },
+      { "x": 25, "y": 10, "tileImageId": 758, "collisionType": 1, "label": "RocketHideoutB4FDoorOpen_1_0" },
+      { "x": 25, "y": 11, "tileImageId": 758, "collisionType": 1, "label": "RocketHideoutB4FDoorOpen_1_1" }
+    ],
+    "activeBattleAbsent": true
+  }
+}

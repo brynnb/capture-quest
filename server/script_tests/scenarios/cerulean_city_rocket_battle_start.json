@@ -1,0 +1,24 @@
+{
+  "name": "cerulean_city_rocket_battle_start",
+  "description": "The Cerulean City Rocket starts party 5 before returning TM28.",
+  "fixture": {
+    "characterName": "ScriptSimCeruleanRocketStart",
+    "mapName": "CERULEAN_CITY",
+    "x": 190,
+    "y": -188,
+    "direction": "UP",
+    "party": [{ "speciesId": 25, "level": 25 }]
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "CERULEAN_CITY",
+    "textConstant": "TEXT_CERULEANCITY_ROCKET"
+  },
+  "expect": {
+    "scriptLabel": "CeruleanCityRocketBattleTM28",
+    "flagsAbsent": ["EVENT_BEAT_CERULEAN_ROCKET_THIEF"],
+    "actionTypesContains": ["dialogue", "startTrainerBattle"],
+    "activeBattleTrainerClass": "ROCKET",
+    "activeBattleEnemySpecies": [66, 96]
+  }
+}

@@ -1,0 +1,42 @@
+Scenario: rocket_hideout_b4f_giovanni_start
+Description: Talking to Rocket Hideout B4F Giovanni starts the source-derived Giovanni battle.
+Character: ScriptSimRocketHideoutGiovanniStart
+
+Initial state
+  location: ROCKET_HIDEOUT_B4F[202] (25,4)
+  flags: EVENT_BEAT_ROCKET_HIDEOUT_4_TRAINER_0, EVENT_BEAT_ROCKET_HIDEOUT_4_TRAINER_1, EVENT_ROCKET_HIDEOUT_4_DOOR_UNLOCKED
+  party:
+    slot 0: #6 CHARIZARD L45 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    none
+  hidden objects:
+    TEXT_ROCKETHIDEOUTB4F_SILPH_SCOPE
+  active battle:
+    none
+
+Resolved script
+  label: RocketHideoutB4FGiovanniEncounter
+  map: ROCKET_HIDEOUT_B4F
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: GIOVANNI [So! I must say, I
+am impressed you got here!]
+  - startTrainerBattle *: GIOVANNI party=1 enemy=[#95 ONIX L25 #111 RHYHORN L24 #115 KANGASKHAN L29] winFlag=EVENT_BEAT_ROCKET_HIDEOUT_GIOVANNI
+  - unlockInput
+
+Final state
+  location: ROCKET_HIDEOUT_B4F[202] (25,4)
+  flags: EVENT_BEAT_ROCKET_HIDEOUT_4_TRAINER_0, EVENT_BEAT_ROCKET_HIDEOUT_4_TRAINER_1, EVENT_ROCKET_HIDEOUT_4_DOOR_UNLOCKED
+  party:
+    slot 0: #6 CHARIZARD L45 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    none
+  hidden objects:
+    TEXT_ROCKETHIDEOUTB4F_SILPH_SCOPE
+  active battle:
+    trainer phase=action_select trainer=GIOVANNI name=GIOVANNI winFlag=EVENT_BEAT_ROCKET_HIDEOUT_GIOVANNI
+    enemy slot 0: #95 ONIX L25
+    enemy slot 1: #111 RHYHORN L24
+    enemy slot 2: #115 KANGASKHAN L29

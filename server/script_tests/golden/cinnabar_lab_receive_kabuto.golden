@@ -1,0 +1,42 @@
+Scenario: cinnabar_lab_receive_kabuto
+Description: After Dome Fossil revival is ready, the scientist gives Kabuto L30 and clears the active revival state.
+Character: ScriptSimCinnabarReceiveKabuto
+
+Initial state
+  location: CINNABAR_LAB_FOSSIL_ROOM[170] (5,3)
+  flags: EVENT_GAVE_FOSSIL_TO_LAB, EVENT_LAB_REVIVING_DOME_FOSSIL
+  party:
+    slot 0: #25 PIKACHU L35 moves THUNDER_WAVE, QUICK_ATTACK, SWIFT, AGILITY
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: CinnabarLabReceiveKabuto
+  map: CINNABAR_LAB_FOSSIL_ROOM
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: DOCTOR [Where were you? Your fossil is back to life! It was KABUTO like I think!]
+  - givePokemon *: KABUTO L30 added to party
+  - resetFlag *: EVENT_GAVE_FOSSIL_TO_LAB
+  - resetFlag *: EVENT_LAB_STILL_REVIVING_FOSSIL
+  - resetFlag *: EVENT_LAB_REVIVING_DOME_FOSSIL
+  - unlockInput
+
+Final state
+  location: CINNABAR_LAB_FOSSIL_ROOM[170] (5,3)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L35 moves THUNDER_WAVE, QUICK_ATTACK, SWIFT, AGILITY
+    slot 1: #140 KABUTO L30 moves SCRATCH, HARDEN
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

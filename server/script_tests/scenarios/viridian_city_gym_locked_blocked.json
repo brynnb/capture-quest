@@ -1,0 +1,29 @@
+{
+  "name": "viridian_city_gym_locked_blocked",
+  "description": "Viridian Gym's door blocks and pushes back the player before the Earth Badge opens the gym.",
+  "fixture": {
+    "characterName": "ScriptSimViridianGymLocked",
+    "mapName": "VIRIDIAN_CITY",
+    "x": 22,
+    "y": -64,
+    "direction": "UP",
+    "flags": [],
+    "party": [{ "speciesId": 6, "level": 45 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "VIRIDIAN_CITY",
+    "x": 22,
+    "y": -64
+  },
+  "expect": {
+    "scriptLabel": "ViridianCityGymLockedBlocked",
+    "finalX": 22,
+    "finalY": -63,
+    "flagsAbsent": ["EVENT_GOT_EARTHBADGE", "EVENT_VIRIDIAN_GYM_OPEN"],
+    "actionTypesContains": ["dialogue", "movePlayer"],
+    "activeBattleAbsent": true
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "viridian_city_gambler_gym_returned_after_giovanni",
+  "description": "Viridian City's gambler says the gym leader returned after Giovanni is beaten, even before the Earth Badge flag is present.",
+  "fixture": {
+    "characterName": "ScriptSimViridianGamblerGiovanni",
+    "mapName": "VIRIDIAN_CITY",
+    "x": 12,
+    "y": 10,
+    "direction": "UP",
+    "flags": ["EVENT_BEAT_VIRIDIAN_GYM_GIOVANNI"],
+    "party": [{ "speciesId": 25, "level": 20 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "VIRIDIAN_CITY",
+    "textConstant": "TEXT_VIRIDIANCITY_GAMBLER1"
+  },
+  "expect": {
+    "scriptLabel": "ViridianCityGambler1TextEventBeatViridianGymGiovanniSetEarthBadgeAbsent",
+    "flagsPresent": ["EVENT_BEAT_VIRIDIAN_GYM_GIOVANNI"],
+    "flagsAbsent": ["EVENT_GOT_EARTHBADGE"],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

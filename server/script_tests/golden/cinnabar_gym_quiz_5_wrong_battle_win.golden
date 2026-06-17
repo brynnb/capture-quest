@@ -1,0 +1,38 @@
+Scenario: cinnabar_gym_quiz_5_wrong_battle_win
+Description: Cinnabar Gym quiz 5 wrong NO answer starts Burglar party 6 and opens gate 5 after victory.
+Character: ScriptSimCinnabarQuiz5Wrong
+
+Initial state
+  location: CINNABAR_GYM[166] (1,13)
+  flags: none
+  party:
+    slot 0: #9 BLASTOISE L50 moves WATER_GUN, BITE, WITHDRAW, SKULL_BASH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: DialogueChoice:TEXT_CINNABARGYM_QUIZ_5
+  map: CINNABAR_GYM
+  trigger: dialogue_choice
+
+Actions
+  - dialogueChoice *: TEXT_CINNABARGYM_QUIZ_5 choice=false
+  - startTrainerBattle *: BURGLAR party=6 enemy=[#37 VULPIX L37 #58 GROWLITHE L37] winFlag=EVENT_BEAT_CINNABAR_GYM_TRAINER_5
+  - resolveBattle *: win trainer=BURGLAR winFlag=EVENT_BEAT_CINNABAR_GYM_TRAINER_5
+  - setFlag *: EVENT_CINNABAR_GYM_GATE5_UNLOCKED
+
+Final state
+  location: CINNABAR_GYM[166] (1,13)
+  flags: EVENT_BEAT_CINNABAR_GYM_TRAINER_5, EVENT_CINNABAR_GYM_GATE5_UNLOCKED
+  party:
+    slot 0: #9 BLASTOISE L50 moves WATER_GUN, BITE, WITHDRAW, SKULL_BASH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

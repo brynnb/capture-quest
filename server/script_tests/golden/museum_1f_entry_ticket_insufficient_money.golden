@@ -1,0 +1,43 @@
+Scenario: museum_1f_entry_ticket_insufficient_money
+Description: Museum 1F entry refuses the ticket when the player has less than 50 Pokédollars.
+Character: ScriptSimMuseumTicketNoMoney
+
+Initial state
+  location: MUSEUM_1F[52] (9,4)
+  flags: none
+  money: 49
+  party:
+    slot 0: #25 PIKACHU L12 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: Museum1FEntryTicketInsufficientMoney
+  map: MUSEUM_1F
+  trigger: coord
+
+Actions
+  - lockInput
+  - dialogue:  [It's 50 Pokedollars for a
+child's ticket.]
+  - choice: TEXT_MUSEUM1F_SCIENTIST1 "Would you like to\ncome in?" choice=true
+  - dialogue:  [You don't have
+enough money.]
+  - unlockInput
+
+Final state
+  location: MUSEUM_1F[52] (9,4)
+  flags: none
+  money: 49
+  party:
+    slot 0: #25 PIKACHU L12 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

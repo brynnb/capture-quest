@@ -1,0 +1,23 @@
+{
+  "name": "power_plant_zapdos_win",
+  "description": "Power Plant Zapdos battle win sets the beat flag and hides the Zapdos object.",
+  "fixture": {
+    "characterName": "ScriptSim_Zapdos_Win",
+    "mapName": "POWER_PLANT",
+    "x": 4,
+    "y": 9,
+    "party": [{"speciesId": 25, "level": 60}]
+  },
+  "trigger": {
+    "type": "npc_click",
+    "textConstant": "TEXT_POWERPLANT_ZAPDOS"
+  },
+  "resolveBattle": {"result": "win"},
+  "expect": {
+    "scriptLabel": "PowerPlantZapdosEncounter",
+    "flagsPresent": ["EVENT_BEAT_ZAPDOS"],
+    "hiddenObjectKeys": ["TEXT_POWERPLANT_ZAPDOS"],
+    "actionTypesContains": ["startWildBattle", "resolveBattle", "hideObject"],
+    "activeBattleAbsent": true
+  }
+}

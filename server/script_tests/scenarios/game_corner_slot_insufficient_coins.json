@@ -1,0 +1,30 @@
+{
+  "name": "game_corner_slot_insufficient_coins",
+  "description": "Game Corner slot machines refuse a bet larger than the player's coin balance.",
+  "fixture": {
+    "characterName": "SimGameCornerSlotInsufficient",
+    "mapName": "GAME_CORNER",
+    "x": 18,
+    "y": 15,
+    "coins": 2,
+    "inventory": [
+      { "itemName": "COIN CASE", "quantity": 1 }
+    ]
+  },
+  "trigger": {
+    "type": "gamecorner_slot_play",
+    "bet": 3
+  },
+  "expect": {
+    "scriptLabel": "GameCornerSlotPlay",
+    "coins": 2,
+    "gameCornerPrizeMessage": "Not enough coins!",
+    "gameCornerSlot": {
+      "success": false,
+      "bet": 3,
+      "payout": 0
+    },
+    "actionTypesContains": ["gameCornerSlotPlay"],
+    "activeBattleAbsent": true
+  }
+}

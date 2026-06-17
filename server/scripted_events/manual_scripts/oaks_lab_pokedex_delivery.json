@@ -1,0 +1,131 @@
+{
+  "scriptLabel": "OaksLabPokedexDelivery",
+  "mapName": "OAKS_LAB",
+  "trigger": {
+    "type": "map_script"
+  },
+  "requiresFlag": "EVENT_BATTLED_RIVAL_IN_OAKS_LAB",
+  "requiresFlagAbsent": "EVENT_GOT_POKEDEX",
+  "requiresItemId": 70,
+  "setsFlags": [
+    "EVENT_OAK_GOT_PARCEL",
+    "EVENT_GOT_POKEDEX",
+    "EVENT_1ST_ROUTE22_RIVAL_BATTLE",
+    "EVENT_ROUTE22_RIVAL_WANTS_BATTLE"
+  ],
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "x": 5,
+      "y": 11,
+      "type": "showActor",
+      "actor": "RIVAL_RETURN",
+      "sprite": "SPRITE_BLUE"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Gramps!"
+      ],
+      "speaker": "RIVAL"
+    },
+    {
+      "type": "move",
+      "actor": "RIVAL_RETURN",
+      "movements": [
+        "UP",
+        "UP",
+        "UP",
+        "UP",
+        "UP"
+      ]
+    },
+    {
+      "type": "facePlayer",
+      "actor": "RIVAL_RETURN",
+      "direction": "UP"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "What did you call me for?"
+      ],
+      "speaker": "RIVAL"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Oh right! I have a request of you two."
+      ],
+      "speaker": "OAK"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "On the desk there is my invention, POKéDEX!",
+        "It automatically records data on POKéMON you've seen or caught!",
+        "It's a hi-tech encyclopedia!"
+      ],
+      "speaker": "OAK"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "{PLAYER} and {RIVAL}! Take these with you!",
+        "{PLAYER} got POKéDEX from OAK!"
+      ],
+      "speaker": "OAK"
+    },
+    {
+      "type": "takeItem",
+      "itemId": 70,
+      "quantity": 1
+    },
+    {
+      "type": "giveItem",
+      "itemId": 9,
+      "quantity": 1
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "To make a complete guide on all the POKéMON in the world...",
+        "That was my dream!",
+        "But, I'm too old! I can't do it!",
+        "So, I want you two to fulfill my dream for me!",
+        "Get moving, you two! This is a great undertaking in POKéMON history!"
+      ],
+      "speaker": "OAK"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Alright Gramps! Leave it all to me!",
+        "{PLAYER}, I hate to say it, but I don't need you!",
+        "I know! I'll borrow a TOWN MAP from my sis!",
+        "I'll tell her not to lend you one, {PLAYER}! Hahaha!"
+      ],
+      "speaker": "RIVAL"
+    },
+    {
+      "type": "move",
+      "actor": "RIVAL_RETURN",
+      "movements": [
+        "DOWN",
+        "DOWN",
+        "DOWN",
+        "DOWN",
+        "DOWN"
+      ]
+    },
+    {
+      "type": "hideActor",
+      "actor": "RIVAL_RETURN"
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "name": "field_move_surf_no_known_move",
+  "description": "Surf is blocked when the Soul Badge is set but no party Pokemon knows SURF.",
+  "fixture": {
+    "characterName": "SimFieldSurfNoKnownMove",
+    "mapName": "PALLET_TOWN",
+    "x": 10,
+    "y": 10,
+    "flags": ["EVENT_GOT_SOULBADGE"],
+    "party": [
+      { "speciesId": 7, "level": 5 }
+    ]
+  },
+  "trigger": {
+    "type": "field_move_permission",
+    "moveName": "SURF"
+  },
+  "expect": {
+    "scriptLabel": "FieldMovePermission:SURF",
+    "fieldMove": {
+      "allowed": false,
+      "message": "No POKEMON knows that move.",
+      "moveName": "SURF",
+      "requiredBadgeFlag": "EVENT_GOT_SOULBADGE"
+    },
+    "actionTypesContains": ["fieldMovePermission"],
+    "activeBattleAbsent": true
+  }
+}

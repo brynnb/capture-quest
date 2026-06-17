@@ -1,0 +1,39 @@
+Scenario: lavender_town_little_girl_ghost_yes
+Description: The Lavender Town girl gives the believer response when the player says yes.
+Character: ScriptSimLavenderGhostYes
+
+Initial state
+  location: LAVENDER_TOWN[9999] (9,8)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L20 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: LavenderTownLittleGirlTextChoice
+  map: LAVENDER_TOWN
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - choice:  "Do you believe in\nGHOSTs?" choice=true
+  - dialogue:  [Really? So there
+are believers...]
+  - unlockInput
+
+Final state
+  location: LAVENDER_TOWN[9999] (9,8)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L20 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

@@ -1,0 +1,26 @@
+{
+  "name": "cerulean_gym_guide_after_misty",
+  "description": "The Cerulean gym guide switches to post-Misty dialogue after she is beaten.",
+  "fixture": {
+    "characterName": "ScriptSimCeruleanGuideAfterMisty",
+    "mapName": "CERULEAN_GYM",
+    "x": 4,
+    "y": 13,
+    "direction": "UP",
+    "flags": ["EVENT_BEAT_MISTY"],
+    "party": [{ "speciesId": 1, "level": 20 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "CERULEAN_GYM",
+    "textConstant": "TEXT_CERULEANGYM_GYM_GUIDE"
+  },
+  "expect": {
+    "scriptLabel": "CeruleanGymGymGuideTextEventBeatMistySet",
+    "flagsPresent": ["EVENT_BEAT_MISTY"],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

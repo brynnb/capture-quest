@@ -1,0 +1,44 @@
+Scenario: pewter_gym_brock_generated_pre_battle
+Description: The generated Brock leader text branch starts the source-backed Brock battle before he is beaten.
+Character: ScriptSimBrockGeneratedPreBattle
+
+Initial state
+  location: PEWTER_GYM[54] (4,2)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L15 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: PewterGymBrockTextPreBattle
+  map: PEWTER_GYM
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [I'm BROCK!
+I'm PEWTER's GYM LEADER! I believe in rock
+hard defense and determination! That's why my
+POKÉMON are all the rock-type! Do you still want
+to challenge me? Fine then! Show me your best!]
+  - startTrainerBattle *: BROCK party=1 enemy=[#74 GEODUDE L12 #95 ONIX L14] winFlag=EVENT_BEAT_BROCK
+  - unlockInput
+
+Final state
+  location: PEWTER_GYM[54] (4,2)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L15 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    trainer phase=action_select trainer=BROCK name=BROCK winFlag=EVENT_BEAT_BROCK
+    enemy slot 0: #74 GEODUDE L12
+    enemy slot 1: #95 ONIX L14

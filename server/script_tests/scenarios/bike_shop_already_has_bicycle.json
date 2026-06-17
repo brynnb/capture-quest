@@ -1,0 +1,27 @@
+{
+  "name": "bike_shop_already_has_bicycle",
+  "description": "The Bike Shop clerk comments on the player's Bicycle after the voucher exchange is complete.",
+  "fixture": {
+    "characterName": "ScriptSimBikeShopAlreadyBike",
+    "mapName": "BIKE_SHOP",
+    "x": 6,
+    "y": 4,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_BIKE_VOUCHER", "EVENT_GOT_BICYCLE"],
+    "party": [{ "speciesId": 5, "level": 25 }],
+    "inventory": [{ "itemId": 6, "quantity": 1 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "BIKE_SHOP",
+    "textConstant": "TEXT_BIKESHOP_CLERK"
+  },
+  "expect": {
+    "scriptLabel": "BikeShopAlreadyHasBicycle",
+    "flagsPresent": ["EVENT_GOT_BICYCLE"],
+    "inventoryContains": [{ "itemId": 6, "quantity": 1 }],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

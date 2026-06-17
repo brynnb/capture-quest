@@ -1,0 +1,34 @@
+{
+  "name": "cinnabar_lab_receive_kabuto",
+  "description": "After Dome Fossil revival is ready, the scientist gives Kabuto L30 and clears the active revival state.",
+  "fixture": {
+    "characterName": "ScriptSimCinnabarReceiveKabuto",
+    "mapName": "CINNABAR_LAB_FOSSIL_ROOM",
+    "x": 5,
+    "y": 3,
+    "direction": "UP",
+    "flags": [
+      "EVENT_GAVE_FOSSIL_TO_LAB",
+      "EVENT_LAB_REVIVING_DOME_FOSSIL"
+    ],
+    "party": [{ "speciesId": 25, "level": 35 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "CINNABAR_LAB_FOSSIL_ROOM",
+    "textConstant": "TEXT_CINNABARLABFOSSILROOM_SCIENTIST1"
+  },
+  "expect": {
+    "scriptLabel": "CinnabarLabReceiveKabuto",
+    "flagsAbsent": [
+      "EVENT_GAVE_FOSSIL_TO_LAB",
+      "EVENT_LAB_STILL_REVIVING_FOSSIL",
+      "EVENT_LAB_REVIVING_DOME_FOSSIL"
+    ],
+    "partySpecies": [25, 140],
+    "actionTypesContains": ["givePokemon", "resetFlag"],
+    "activeBattleAbsent": true
+  }
+}

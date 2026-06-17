@@ -1,0 +1,38 @@
+{
+  "name": "champions_room_victory_to_hall_of_fame",
+  "description": "Run the Champions Room post-battle script and verify it completes the room and warps to Hall of Fame entry.",
+  "fixture": {
+    "characterName": "ScriptSimChampionRoomVictory",
+    "mapName": "CHAMPIONS_ROOM",
+    "x": 4,
+    "y": 3,
+    "direction": "UP",
+    "flags": [
+      "EVENT_GOT_POKEDEX",
+      "EVENT_PLAYER_CHOSE_CHARMANDER",
+      "EVENT_BEAT_CHAMPION_RIVAL"
+    ],
+    "party": [
+      { "speciesId": 6, "level": 65 }
+    ],
+    "inventory": [
+      { "itemId": 9, "quantity": 1 }
+    ]
+  },
+  "trigger": {
+    "type": "map_script",
+    "mapName": "CHAMPIONS_ROOM"
+  },
+  "expect": {
+    "scriptLabel": "ChampionsRoomVictory",
+    "flagsPresent": [
+      "EVENT_BEAT_CHAMPION_RIVAL",
+      "EVENT_CHAMPIONS_ROOM_COMPLETE"
+    ],
+    "partySpecies": [6],
+    "finalMapName": "HALL_OF_FAME",
+    "finalX": 5,
+    "finalY": 7,
+    "actionTypesContains": ["dialogue", "showActor", "move", "setsFlags", "warp"]
+  }
+}

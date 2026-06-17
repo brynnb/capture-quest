@@ -1,0 +1,10 @@
+{
+  "scriptLabel": "SilphCardKeyDoor",
+  "mapName": "SILPH_CO_2F",
+  "trigger": {
+    "type": "npc_click",
+    "label": "SilphCardKeyDoor",
+    "source": "extractor"
+  },
+  "actions": []
+}

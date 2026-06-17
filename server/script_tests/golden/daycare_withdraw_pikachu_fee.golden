@@ -1,0 +1,39 @@
+Scenario: daycare_withdraw_pikachu_fee
+Description: Retrieving a grown Day Care Pokemon deducts the level-based fee and returns the Pokemon to the party.
+Character: ScriptSimDayCareWithdraw
+
+Initial state
+  location: DAYCARE[72] (2,4)
+  flags: none
+  money: 500
+  day care: #25 PIKACHU L6 start=5 grown=1 cost=200 exp=216
+  party:
+    slot 0: #4 CHARMANDER L5 moves SCRATCH, GROWL
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: DayCareWithdraw
+  map: DAYCARE
+  trigger: daycare_withdraw
+
+Actions
+  - dayCareWithdraw *: success=true cost=200 money=300 slot=1 message="Here's your Pokémon."
+
+Final state
+  location: DAYCARE[72] (2,4)
+  flags: none
+  money: 300
+  party:
+    slot 0: #4 CHARMANDER L5 moves SCRATCH, GROWL
+    slot 1: #25 PIKACHU L6 moves THUNDERSHOCK, GROWL
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

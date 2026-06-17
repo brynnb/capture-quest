@@ -1,0 +1,37 @@
+Scenario: daycare_deposit_pikachu
+Description: Leaving a party Pokemon at the Day Care removes it from the party and stores its start level.
+Character: ScriptSimDayCareDeposit
+
+Initial state
+  location: DAYCARE[72] (2,4)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L5 moves THUNDERSHOCK, GROWL
+    slot 1: #4 CHARMANDER L5 moves SCRATCH, GROWL
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: DayCareDeposit
+  map: DAYCARE
+  trigger: daycare_deposit
+
+Actions
+  - dayCareDeposit *: success=true slot=0 pokemon=#25 L5 start=5 cost=100 message="Come see me in a while."
+
+Final state
+  location: DAYCARE[72] (2,4)
+  flags: none
+  day care: #25 PIKACHU L5 start=5 grown=0 cost=100 exp=125
+  party:
+    slot 0: #4 CHARMANDER L5 moves SCRATCH, GROWL
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

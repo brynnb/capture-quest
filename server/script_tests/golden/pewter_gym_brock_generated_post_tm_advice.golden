@@ -1,0 +1,40 @@
+Scenario: pewter_gym_brock_generated_post_tm_advice
+Description: The generated Brock leader text branch switches to post-TM advice after TM34 has been received.
+Character: ScriptSimBrockGeneratedPostTM
+
+Initial state
+  location: PEWTER_GYM[54] (4,2)
+  flags: EVENT_BEAT_BROCK, EVENT_GOT_BOULDERBADGE, EVENT_GOT_TM34
+  party:
+    slot 0: #25 PIKACHU L15 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    #122 TM34 x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: PewterGymBrockTextEventGotTm34Set
+  map: PEWTER_GYM
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [There are all
+kinds of trainers in the world! You appear to be
+very gifted as a POKÉMON trainer! Go to the GYM in
+CERULEAN and test your abilities!]
+  - unlockInput
+
+Final state
+  location: PEWTER_GYM[54] (4,2)
+  flags: EVENT_BEAT_BROCK, EVENT_GOT_BOULDERBADGE, EVENT_GOT_TM34
+  party:
+    slot 0: #25 PIKACHU L15 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    #122 TM34 x1
+  hidden objects:
+    none
+  active battle:
+    none

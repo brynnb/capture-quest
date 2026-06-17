@@ -1,0 +1,50 @@
+Scenario: oak_starter_squirtle
+Description: Confirm Squirtle from Oak's Lab after Oak asks the player to choose a starter.
+Character: ScriptSimOakSquirtle
+
+Initial state
+  location: OAKS_LAB[40] (5,11)
+  flags: EVENT_OAK_ASKED_TO_CHOOSE_MON
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: OaksLabChooseSquirtle
+  map: OAKS_LAB
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - choice: TEXT_OAKSLAB_SQUIRTLE_POKE_BALL "So! You want SQUIRTLE?" choice=true
+  - givePokemon *: SQUIRTLE L5 added to party
+  - hideObject *: objects=[TEXT_OAKSLAB_SQUIRTLE_POKE_BALL]
+  - hideObject *: objects=[TEXT_OAKSLAB_BULBASAUR_POKE_BALL]
+  - dialogue:  [{PLAYER} received SQUIRTLE!]
+  - delay: 300ms
+  - dialogue: RIVAL [I'll take this one, then! {RIVAL} received BULBASAUR!]
+  - dialogue: RIVAL [Wait {PLAYER}! Let's check out our POKEMON! Come on, I'll take you on!]
+  - startTrainerBattle *: RIVAL1 party=2 enemy=[#1 BULBASAUR L5] winFlag=EVENT_BATTLED_RIVAL_IN_OAKS_LAB
+  - unlockInput
+  - setsFlags *: EVENT_GOT_STARTER
+  - setsFlags *: EVENT_RIVAL_PICKED_STARTER
+  - setsFlags *: EVENT_PLAYER_CHOSE_SQUIRTLE
+
+Final state
+  location: OAKS_LAB[40] (5,11)
+  flags: EVENT_GOT_STARTER, EVENT_OAK_ASKED_TO_CHOOSE_MON, EVENT_PLAYER_CHOSE_SQUIRTLE, EVENT_RIVAL_PICKED_STARTER
+  party:
+    slot 0: #7 SQUIRTLE L5 moves TACKLE
+  inventory:
+    none
+  hidden objects:
+    TEXT_OAKSLAB_SQUIRTLE_POKE_BALL
+    TEXT_OAKSLAB_BULBASAUR_POKE_BALL
+  active battle:
+    trainer phase=action_select trainer=RIVAL1 name=Gary winFlag=EVENT_BATTLED_RIVAL_IN_OAKS_LAB
+    enemy slot 0: #1 BULBASAUR L5

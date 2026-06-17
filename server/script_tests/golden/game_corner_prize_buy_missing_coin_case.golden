@@ -1,0 +1,41 @@
+Scenario: game_corner_prize_buy_missing_coin_case
+Description: Game Corner prize exchange refuses a purchase without the Coin Case even if coins exist in fixture state.
+Character: SimGameCornerPrizeNoCase
+
+Initial state
+  location: GAME_CORNER_PRIZE_ROOM[137] (2,4)
+  flags: none
+  coins: 180
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: GameCornerPrizeBuy:ABRA
+  map: GAME_CORNER_PRIZE_ROOM
+  trigger: gamecorner_prize_buy
+
+Actions
+  - gameCornerPrizeBuy: success=false prize=ABRA coins=180 message="You need a COIN CASE!"
+
+Final state
+  location: GAME_CORNER_PRIZE_ROOM[137] (2,4)
+  flags: none
+  coins: 180
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Game Corner
+  purchase: success=false coins=180 message=You need a COIN CASE!
+  prize: pokemon ABRA cost=180 pokemon=63

@@ -1,0 +1,39 @@
+Scenario: mr_fujis_house_poke_flute_already_got
+Description: Mr. Fuji explains the Poke Flute after the player has already received it.
+Character: ScriptSimPokeFluteAlreadyGot
+
+Initial state
+  location: MR_FUJIS_HOUSE[149] (2,3)
+  flags: EVENT_GOT_POKE_FLUTE
+  party:
+    slot 0: #6 CHARIZARD L34 moves LEER, EMBER, LEER, RAGE
+  inventory:
+    #73 POKé FLUTE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: MrFujisHouseMrFujiTextAlreadyGot
+  map: MR_FUJIS_HOUSE
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Upon hearing POKÉ
+FLUTE, sleeping POKÉMON will spring awake. It works on all
+sleeping POKÉMON.]
+  - unlockInput
+
+Final state
+  location: MR_FUJIS_HOUSE[149] (2,3)
+  flags: EVENT_GOT_POKE_FLUTE
+  party:
+    slot 0: #6 CHARIZARD L34 moves LEER, EMBER, LEER, RAGE
+  inventory:
+    #73 POKé FLUTE x1
+  hidden objects:
+    none
+  active battle:
+    none

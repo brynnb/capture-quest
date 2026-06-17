@@ -1,0 +1,41 @@
+Scenario: game_corner_prize_buy_abra_exact_coins
+Description: Game Corner prize exchange buys Abra L9 and deducts exactly 180 coins.
+Character: SimGameCornerPrizeAbra
+
+Initial state
+  location: GAME_CORNER_PRIZE_ROOM[137] (2,4)
+  flags: none
+  coins: 180
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: GameCornerPrizeBuy:ABRA
+  map: GAME_CORNER_PRIZE_ROOM
+  trigger: gamecorner_prize_buy
+
+Actions
+  - gameCornerPrizeBuy *: success=true prize=ABRA coins=0 message="Here you go!" level=9
+
+Final state
+  location: GAME_CORNER_PRIZE_ROOM[137] (2,4)
+  flags: none
+  party:
+    slot 0: #63 ABRA L9 moves TELEPORT
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Game Corner
+  purchase: success=true coins=0 message=Here you go!
+  prize: pokemon ABRA cost=180 pokemon=63
+  pokemon: level=9 location=party

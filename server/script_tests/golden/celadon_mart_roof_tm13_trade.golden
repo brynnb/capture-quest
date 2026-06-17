@@ -1,0 +1,48 @@
+Scenario: celadon_mart_roof_tm13_trade
+Description: The Celadon Mart rooftop girl trades Fresh Water for TM13 Ice Beam.
+Character: ScriptSimCeladonRoofTM13
+
+Initial state
+  location: CELADON_MART_ROOF[126] (5,6)
+  flags: none
+  party:
+    slot 0: #6 CHARIZARD L35 moves LEER, EMBER, LEER, RAGE
+  inventory:
+    #60 FRESH WATER x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: CeladonMartRoofTM13IceBeam
+  map: CELADON_MART_ROOF
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: LITTLE GIRL [I'm thirsty!
+I want something to drink!]
+  - choice: TEXT_CELADONMARTROOF_LITTLE_GIRL "Trade FRESH WATER for TM13?" choice=true
+  - dialogue: LITTLE GIRL [Yay! FRESH WATER! Thank you! You can have this
+from me!]
+  - takeItem *: FRESH WATER x1 removed
+  - giveItem *: TM13 x1 added
+  - dialogue:  [(PLAYER) received
+TM13! TM13 contains
+ICE BEAM! It can freeze the
+target sometimes!]
+  - setFlag *: EVENT_GOT_TM13
+  - unlockInput
+
+Final state
+  location: CELADON_MART_ROOF[126] (5,6)
+  flags: EVENT_GOT_TM13
+  party:
+    slot 0: #6 CHARIZARD L35 moves LEER, EMBER, LEER, RAGE
+  inventory:
+    #101 TM13 x1
+  hidden objects:
+    none
+  active battle:
+    none

@@ -1,0 +1,45 @@
+Scenario: champions_room_rival_bulbasaur_start
+Description: Enter the Champion room with Bulbasaur chosen and verify the Charizard-path champion party.
+Character: ScriptSimChampionRivalBulbasaur
+
+Initial state
+  location: CHAMPIONS_ROOM[120] (3,7)
+  flags: EVENT_BEAT_AGATHA, EVENT_BEAT_BRUNO, EVENT_BEAT_LANCE, EVENT_BEAT_LORELEI, EVENT_GOT_BOULDERBADGE, EVENT_GOT_CASCADEBADGE, EVENT_GOT_EARTHBADGE, EVENT_GOT_MARSHBADGE, EVENT_GOT_POKEDEX, EVENT_GOT_RAINBOWBADGE, EVENT_GOT_SOULBADGE, EVENT_GOT_THUNDERBADGE, EVENT_GOT_VOLCANOBADGE, EVENT_PLAYER_CHOSE_BULBASAUR
+  party:
+    slot 0: #3 VENUSAUR L65 moves RAZOR_LEAF, GROWTH, SLEEP_POWDER, SOLARBEAM
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: ChampionsRoomRivalIntro
+  map: CHAMPIONS_ROOM
+  trigger: coord
+
+Actions
+  - lockInput
+  - movePlayer *: from=(3,7) to=(4,3) steps=[UP RIGHT UP UP UP]
+  - dialogue: RIVAL [Hey! I was looking forward to seeing you, {PLAYER}! My rival should be strong to keep me sharp! While working on POKéDEX, I looked all over for powerful POKéMON! Not only that, I assembled teams that would beat any POKéMON type! And now! I'm the POKéMON LEAGUE champion! {PLAYER}! Do you know what that means? I'll tell you! I am the most powerful trainer in the world!]
+  - startTrainerBattle *: RIVAL3 party=3 enemy=[#18 PIDGEOT L61 #65 ALAKAZAM L59 #112 RHYDON L61 #103 EXEGGUTOR L61 #130 GYARADOS L63 #6 CHARIZARD L65] winFlag=EVENT_BEAT_CHAMPION_RIVAL
+  - unlockInput
+
+Final state
+  location: CHAMPIONS_ROOM[120] (4,3)
+  flags: EVENT_BEAT_AGATHA, EVENT_BEAT_BRUNO, EVENT_BEAT_LANCE, EVENT_BEAT_LORELEI, EVENT_GOT_BOULDERBADGE, EVENT_GOT_CASCADEBADGE, EVENT_GOT_EARTHBADGE, EVENT_GOT_MARSHBADGE, EVENT_GOT_POKEDEX, EVENT_GOT_RAINBOWBADGE, EVENT_GOT_SOULBADGE, EVENT_GOT_THUNDERBADGE, EVENT_GOT_VOLCANOBADGE, EVENT_PLAYER_CHOSE_BULBASAUR
+  party:
+    slot 0: #3 VENUSAUR L65 moves RAZOR_LEAF, GROWTH, SLEEP_POWDER, SOLARBEAM
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    trainer phase=action_select trainer=RIVAL3 name=Gary winFlag=EVENT_BEAT_CHAMPION_RIVAL
+    enemy slot 0: #18 PIDGEOT L61
+    enemy slot 1: #65 ALAKAZAM L59
+    enemy slot 2: #112 RHYDON L61
+    enemy slot 3: #103 EXEGGUTOR L61
+    enemy slot 4: #130 GYARADOS L63
+    enemy slot 5: #6 CHARIZARD L65

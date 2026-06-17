@@ -1,0 +1,26 @@
+{
+  "name": "cinnabar_lab_fossil_room_sailor_trade_ready",
+  "description": "Cinnabar Lab Fossil Room scientist is ready to trade Seel named SAILOR for Ponyta.",
+  "fixture": {
+    "characterName": "ScriptSimCinnabarSailorTrade",
+    "mapName": "CINNABAR_LAB_FOSSIL_ROOM",
+    "x": 7,
+    "y": 5,
+    "direction": "DOWN",
+    "flags": [],
+    "party": [{ "speciesId": 77, "level": 25 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "fixture_state",
+    "mapName": "CINNABAR_LAB_FOSSIL_ROOM",
+    "textConstant": "TEXT_CINNABARLABFOSSILROOM_SCIENTIST2"
+  },
+  "expect": {
+    "scriptLabel": "FixtureState",
+    "finalDirection": "DOWN",
+    "partySpecies": [77],
+    "activeBattleAbsent": true
+  }
+}

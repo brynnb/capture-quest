@@ -1,0 +1,27 @@
+{
+  "name": "route5_gate_saffron_guard_drink",
+  "description": "The Route 5 Saffron guard accepts Fresh Water and opens the Saffron gates.",
+  "fixture": {
+    "characterName": "ScriptSimSaffronGuard",
+    "mapName": "ROUTE_5_GATE",
+    "x": 1,
+    "y": 4,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_FRESH_WATER"],
+    "party": [{ "speciesId": 6, "level": 38 }],
+    "inventory": [{ "itemId": 60, "quantity": 1 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "ROUTE_5_GATE",
+    "textConstant": "TEXT_ROUTE5GATE_GUARD"
+  },
+  "expect": {
+    "scriptLabel": "SaffronCityGuardDrink",
+    "flagsPresent": ["EVENT_GOT_FRESH_WATER", "EVENT_SAFFRON_GUARDS_OPENED"],
+    "inventoryAbsent": [{ "itemId": 60 }],
+    "actionTypesContains": ["dialogue", "setFlag", "takeItem"],
+    "activeBattleAbsent": true
+  }
+}

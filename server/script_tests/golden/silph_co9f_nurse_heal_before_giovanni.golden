@@ -1,0 +1,40 @@
+Scenario: silph_co9f_nurse_heal_before_giovanni
+Description: The Silph Co. 9F nurse heals the party before Giovanni is beaten.
+Character: ScriptSimSilphCo9FNurseHeal
+
+Initial state
+  location: SILPH_CO_9F[233] (8,4)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L30 moves THUNDERBOLT(3/15), QUICK_ATTACK(0/30) hp=12/69 status=PAR
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SilphCo9FNurseHeal
+  map: SILPH_CO_9F
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [You look tired!
+You should take a quick nap!]
+  - healParty *: healed 1 pokemon
+  - dialogue:  [Don't give up!]
+  - unlockInput
+
+Final state
+  location: SILPH_CO_9F[233] (8,4)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L30 moves THUNDERBOLT, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

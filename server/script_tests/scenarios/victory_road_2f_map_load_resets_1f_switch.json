@@ -1,0 +1,29 @@
+{
+  "name": "victory_road_2f_map_load_resets_1f_switch",
+  "description": "Loading Victory Road 2F from the lower floor resets the 1F boulder switch flag.",
+  "fixture": {
+    "characterName": "SimVictoryRoad2FReset1F",
+    "mapName": "VICTORY_ROAD_2F",
+    "x": 4,
+    "y": 14,
+    "flags": ["EVENT_VICTORY_ROAD_1_BOULDER_ON_SWITCH"],
+    "objectPositions": [
+      {
+        "mapName": "VICTORY_ROAD_1F",
+        "objectName": "VictoryRoad1F_NPC_5",
+        "x": 17,
+        "y": 13
+      }
+    ]
+  },
+  "trigger": {
+    "type": "map_load",
+    "mapName": "VICTORY_ROAD_2F"
+  },
+  "expect": {
+    "scriptLabel": "MapLoad:VICTORY_ROAD_2F",
+    "flagsAbsent": ["EVENT_VICTORY_ROAD_1_BOULDER_ON_SWITCH"],
+    "actionTypesContains": ["mapLoad"],
+    "activeBattleAbsent": true
+  }
+}

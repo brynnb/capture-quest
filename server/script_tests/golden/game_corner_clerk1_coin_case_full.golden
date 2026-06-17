@@ -1,0 +1,46 @@
+Scenario: game_corner_clerk1_coin_case_full
+Description: Game Corner Clerk 1 refuses a coin purchase when the Coin Case is full.
+Character: ScriptSimGameCornerClerk1CoinCaseFull
+
+Initial state
+  location: GAME_CORNER[135] (3,3)
+  flags: none
+  money: 1000
+  coins: 9990
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: GameCornerClerk1CoinCaseFull
+  map: GAME_CORNER
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Welcome to ROCKET
+GAME CORNER! Do you need some
+game coins?]
+  - choice: TEXT_GAMECORNER_CLERK1 "It's 1000 Pokedollars for 50\ncoins. Would you like some?" choice=true
+  - dialogue:  [Oops! Your COIN
+CASE is full.]
+  - unlockInput
+
+Final state
+  location: GAME_CORNER[135] (3,3)
+  flags: none
+  money: 1000
+  coins: 9990
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none

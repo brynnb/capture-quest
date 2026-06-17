@@ -1,0 +1,42 @@
+Scenario: cerulean_cave_b1f_mewtwo_catch
+Description: Catching Mewtwo resolves the scripted legendary encounter, hides the object, and records the catch.
+Character: ScriptSim_Mewtwo_Catch
+
+Initial state
+  location: CERULEAN_CAVE_B1F[227] (27,13)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L70 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: CeruleanCaveB1FMewtwoEncounter
+  map: CERULEAN_CAVE_B1F
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Mew!]
+  - unlockInput
+  - startWildBattle *: #150 MEWTWO L70 winFlag=EVENT_BEAT_MEWTWO
+  - resolveBattle *: catch type=wild target=#150 MEWTWO winFlag=EVENT_BEAT_MEWTWO
+  - catchPokemon *: #150 MEWTWO L70 party
+  - hideObject *: objects=[TEXT_CERULEANCAVEB1F_MEWTWO]
+
+Final state
+  location: CERULEAN_CAVE_B1F[227] (27,13)
+  flags: EVENT_BEAT_MEWTWO
+  party:
+    slot 0: #25 PIKACHU L70 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+    slot 1: #150 MEWTWO L70 moves SWIFT, BARRIER, PSYCHIC, RECOVER
+  inventory:
+    none
+  hidden objects:
+    TEXT_CERULEANCAVEB1F_MEWTWO
+  active battle:
+    none

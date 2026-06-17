@@ -1,0 +1,34 @@
+{
+  "name": "fighting_dojo_hitmonlee",
+  "description": "Choosing the Hitmonlee Poké Ball grants Hitmonlee L30 and records the Fighting Dojo choice.",
+  "fixture": {
+    "characterName": "ScriptSimDojoHitmonlee",
+    "mapName": "FIGHTING_DOJO",
+    "x": 4,
+    "y": 2,
+    "direction": "UP",
+    "flags": ["EVENT_BEAT_KARATE_MASTER"],
+    "party": [{ "speciesId": 25, "level": 35 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "FIGHTING_DOJO",
+    "textConstant": "TEXT_FIGHTINGDOJO_HITMONLEE_POKE_BALL",
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "FightingDojoHitmonleeChoice",
+    "flagsPresent": [
+      "EVENT_GOT_FIGHTING_DOJO_POKEMON",
+      "EVENT_GOT_HITMONLEE",
+      "EVENT_DEFEATED_FIGHTING_DOJO"
+    ],
+    "flagsAbsent": ["EVENT_GOT_HITMONCHAN"],
+    "partySpecies": [25, 106],
+    "hiddenObjectKeys": ["TEXT_FIGHTINGDOJO_HITMONLEE_POKE_BALL"],
+    "actionTypesContains": ["choice", "givePokemon", "hideObject", "setFlag"],
+    "activeBattleAbsent": true
+  }
+}

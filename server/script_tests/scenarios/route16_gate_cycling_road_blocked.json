@@ -1,0 +1,29 @@
+{
+  "name": "route16_gate_cycling_road_blocked",
+  "description": "The Route 16 Cycling Road guard blocks the player without a Bicycle.",
+  "fixture": {
+    "characterName": "ScriptSimRoute16BikeGate",
+    "mapName": "ROUTE_16_GATE_1F",
+    "x": 4,
+    "y": 7,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_POKEDEX"],
+    "party": [{ "speciesId": 6, "level": 35 }],
+    "inventory": [{ "itemId": 9, "quantity": 1 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "ROUTE_16_GATE_1F",
+    "x": 4,
+    "y": 7
+  },
+  "expect": {
+    "scriptLabel": "Route16Gate1FGuardBlocked",
+    "finalX": 5,
+    "finalY": 7,
+    "flagsAbsent": ["EVENT_GOT_BICYCLE"],
+    "actionTypesContains": ["dialogue", "movePlayer"],
+    "activeBattleAbsent": true
+  }
+}

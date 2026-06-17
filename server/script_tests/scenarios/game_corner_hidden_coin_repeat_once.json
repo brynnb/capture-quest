@@ -1,0 +1,26 @@
+{
+  "name": "game_corner_hidden_coin_repeat_once",
+  "description": "Game Corner hidden coins can only be collected once per character even if the same spot is checked again.",
+  "fixture": {
+    "characterName": "SimGameCornerHiddenRepeat",
+    "mapName": "GAME_CORNER",
+    "x": 15,
+    "y": 8,
+    "inventory": [
+      { "itemName": "COIN CASE", "quantity": 1 }
+    ]
+  },
+  "trigger": {
+    "type": "gamecorner_hidden_coin",
+    "x": 15,
+    "y": 8,
+    "repeat": 2
+  },
+  "expect": {
+    "scriptLabel": "GameCornerHiddenCoin",
+    "coins": 100,
+    "gameCornerPrizeMessage": "No hidden coins.",
+    "actionTypesContains": ["gameCornerHiddenCoin"],
+    "activeBattleAbsent": true
+  }
+}

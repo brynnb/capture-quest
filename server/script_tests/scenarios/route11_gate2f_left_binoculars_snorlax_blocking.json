@@ -1,0 +1,26 @@
+{
+  "name": "route11_gate2f_left_binoculars_snorlax_blocking",
+  "description": "The Route 11 Gate 2F left binoculars show sleeping Snorlax text before Route 12 Snorlax is beaten, when facing up.",
+  "fixture": {
+    "characterName": "ScriptSimRoute11BinocularsSnorlax",
+    "mapName": "ROUTE_11_GATE_2F",
+    "x": 1,
+    "y": 3,
+    "direction": "UP",
+    "flags": [],
+    "party": [{ "speciesId": 25, "level": 20 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "ROUTE_11_GATE_2F",
+    "textConstant": "TEXT_ROUTE11GATE2F_LEFT_BINOCULARS"
+  },
+  "expect": {
+    "scriptLabel": "Route11Gate2FLeftBinocularsTextEventBeatRoute12SnorlaxAbsentFacingUp",
+    "flagsAbsent": ["EVENT_BEAT_ROUTE12_SNORLAX"],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

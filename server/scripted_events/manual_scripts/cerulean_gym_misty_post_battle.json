@@ -1,0 +1,63 @@
+{
+  "scriptLabel": "CeruleanGymMistyPostBattle",
+  "mapName": "CERULEAN_GYM",
+  "trigger": {
+    "type": "map_script"
+  },
+  "requiresFlag": "EVENT_BEAT_MISTY",
+  "requiresFlagAbsent": "EVENT_GOT_CASCADEBADGE",
+  "setsFlags": [
+    "EVENT_GOT_CASCADEBADGE",
+    "EVENT_GOT_TM11"
+  ],
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Wow! You're too much!",
+        "All right!",
+        "You can have the CASCADEBADGE to show you beat me!"
+      ],
+      "speaker": "MISTY"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "The CASCADEBADGE makes all POKéMON up to L30 obey!",
+        "That includes even outsiders!",
+        "There's more, you can now use CUT any time!",
+        "You can CUT down small bushes to open new paths!",
+        "You can also have my favorite TM!"
+      ],
+      "speaker": "MISTY"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "{PLAYER} received TM11!",
+        "TM11 teaches BUBBLEBEAM!",
+        "Use it on an aquatic POKéMON!"
+      ],
+      "speaker": "MISTY"
+    },
+    {
+      "flag": "EVENT_GOT_CASCADEBADGE",
+      "type": "setFlag"
+    },
+    {
+      "flag": "EVENT_GOT_TM11",
+      "type": "setFlag"
+    },
+    {
+      "type": "giveItem",
+      "itemId": 99,
+      "quantity": 1
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

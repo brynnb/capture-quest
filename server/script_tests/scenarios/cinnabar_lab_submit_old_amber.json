@@ -1,0 +1,37 @@
+{
+  "name": "cinnabar_lab_submit_old_amber",
+  "description": "Submitting Old Amber removes it from inventory and starts Aerodactyl revival.",
+  "fixture": {
+    "characterName": "ScriptSimCinnabarSubmitOldAmber",
+    "mapName": "CINNABAR_LAB_FOSSIL_ROOM",
+    "x": 5,
+    "y": 3,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_OLD_AMBER"],
+    "party": [{ "speciesId": 25, "level": 35 }],
+    "inventory": [{ "itemId": 31, "quantity": 1 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "CINNABAR_LAB_FOSSIL_ROOM",
+    "textConstant": "TEXT_CINNABARLABFOSSILROOM_SCIENTIST1",
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "CinnabarLabSubmitOldAmber",
+    "flagsPresent": [
+      "EVENT_GOT_OLD_AMBER",
+      "EVENT_GAVE_FOSSIL_TO_LAB",
+      "EVENT_LAB_STILL_REVIVING_FOSSIL",
+      "EVENT_LAB_REVIVING_OLD_AMBER"
+    ],
+    "flagsAbsent": [
+      "EVENT_LAB_REVIVING_DOME_FOSSIL",
+      "EVENT_LAB_REVIVING_HELIX_FOSSIL"
+    ],
+    "inventoryAbsent": [{ "itemId": 31 }],
+    "actionTypesContains": ["choice", "takeItem", "setFlag"],
+    "activeBattleAbsent": true
+  }
+}

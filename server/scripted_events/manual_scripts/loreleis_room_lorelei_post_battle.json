@@ -1,0 +1,40 @@
+{
+  "scriptLabel": "LoreleisRoomLoreleiPostBattle",
+  "mapName": "LORELEIS_ROOM",
+  "trigger": {
+    "type": "map_script"
+  },
+  "requiresFlag": "EVENT_BEAT_LORELEI",
+  "requiresFlagAbsent": "EVENT_LORELEI_POST_BATTLE_DONE",
+  "setsFlags": [
+    "EVENT_LORELEI_POST_BATTLE_DONE"
+  ],
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "How dare you!"
+      ],
+      "speaker": "LORELEI"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "You're better than I thought!",
+        "Go on ahead!",
+        "You only got a taste of POKéMON LEAGUE power!"
+      ],
+      "speaker": "LORELEI"
+    },
+    {
+      "flag": "EVENT_LORELEI_POST_BATTLE_DONE",
+      "type": "setFlag"
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

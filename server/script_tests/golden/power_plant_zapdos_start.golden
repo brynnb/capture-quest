@@ -1,0 +1,39 @@
+Scenario: power_plant_zapdos_start
+Description: Power Plant Zapdos starts a scripted L50 wild battle without setting the beat flag at cutscene completion.
+Character: ScriptSim_Zapdos_Start
+
+Initial state
+  location: POWER_PLANT[83] (4,9)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L60 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: PowerPlantZapdosEncounter
+  map: POWER_PLANT
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Gyaoo!]
+  - unlockInput
+  - startWildBattle *: #145 ZAPDOS L50 winFlag=EVENT_BEAT_ZAPDOS
+
+Final state
+  location: POWER_PLANT[83] (4,9)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L60 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    wild phase=action_select trainer= name= winFlag=EVENT_BEAT_ZAPDOS
+    enemy slot 0: #145 ZAPDOS L50

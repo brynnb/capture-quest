@@ -1,0 +1,25 @@
+{
+  "name": "seafoam_1f_boulder2_down_hole",
+  "description": "Seafoam 1F boulder 2 drops through hole 2, hiding the 1F object and showing the B1F object.",
+  "fixture": {
+    "characterName": "ScriptSimSeafoam1FBoulder2",
+    "mapName": "SEAFOAM_ISLANDS_1F",
+    "x": 24,
+    "y": 6
+  },
+  "trigger": {
+    "type": "seafoam_boulder_hole",
+    "mapName": "SEAFOAM_ISLANDS_1F",
+    "holeIndex": 2
+  },
+  "expect": {
+    "scriptLabel": "SeafoamBoulderHole",
+    "flagsPresent": ["EVENT_SEAFOAM1_BOULDER2_DOWN_HOLE"],
+    "actionTypesContains": ["seafoamBoulderHole"],
+    "objectStates": [
+      { "mapName": "SEAFOAM_ISLANDS_1F", "name": "SeafoamIslands1F_NPC_2", "visible": false, "label": "SeafoamBoulder_1F_2_HiddenAfterDrop" },
+      { "mapName": "SEAFOAM_ISLANDS_B1F", "name": "SeafoamIslandsB1F_NPC_2", "visible": true, "label": "SeafoamBoulder_B1F_2_VisibleAfter1FDrop" }
+    ],
+    "activeBattleAbsent": true
+  }
+}

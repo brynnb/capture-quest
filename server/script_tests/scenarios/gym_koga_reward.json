@@ -1,0 +1,29 @@
+{
+  "name": "gym_koga_reward",
+  "description": "After beating Koga, the Fuchsia Gym post-battle script grants Soulbadge state and TM06.",
+  "fixture": {
+    "characterName": "ScriptSimGymKogaReward",
+    "mapName": "FUCHSIA_GYM",
+    "x": 5,
+    "y": 4,
+    "direction": "UP",
+    "flags": [
+      "EVENT_BEAT_KOGA",
+      "EVENT_GOT_BOULDERBADGE",
+      "EVENT_GOT_CASCADEBADGE",
+      "EVENT_GOT_THUNDERBADGE",
+      "EVENT_GOT_RAINBOWBADGE"
+    ],
+    "party": [{ "speciesId": 6, "level": 43 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": { "type": "map_script", "mapName": "FUCHSIA_GYM" },
+  "expect": {
+    "scriptLabel": "FuchsiaGymKogaPostBattle",
+    "flagsPresent": ["EVENT_BEAT_KOGA", "EVENT_GOT_SOULBADGE", "EVENT_GOT_TM06"],
+    "inventoryContains": [{ "itemId": 94, "quantity": 1 }],
+    "actionTypesContains": ["dialogue", "setFlag", "giveItem"],
+    "activeBattleAbsent": true
+  }
+}

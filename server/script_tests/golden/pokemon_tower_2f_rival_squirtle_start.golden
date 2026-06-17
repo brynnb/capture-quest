@@ -1,0 +1,48 @@
+Scenario: pokemon_tower_2f_rival_squirtle_start
+Description: Step into the Pokemon Tower 2F rival trigger from the below coordinate with Squirtle chosen and verify the Ivysaur-path party.
+Character: ScriptSimTowerRivalSquirtle
+
+Initial state
+  location: POKEMON_TOWER_2F[143] (14,6)
+  flags: EVENT_BEAT_CERULEAN_RIVAL, EVENT_BEAT_SS_ANNE_RIVAL, EVENT_GOT_CASCADEBADGE, EVENT_GOT_HM01, EVENT_GOT_POKEDEX, EVENT_GOT_SS_TICKET, EVENT_PLAYER_CHOSE_SQUIRTLE, EVENT_SS_ANNE_LEFT
+  party:
+    slot 0: #8 WARTORTLE L28 moves BUBBLE, BUBBLE, WATER_GUN, BITE
+  inventory:
+    #84 HM01 x1
+    #9 POKéDEX x1
+    #63 S.S.TICKET x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: PokemonTower2FRivalEncounterBelow
+  map: POKEMON_TOWER_2F
+  trigger: coord
+
+Actions
+  - lockInput
+  - facePlayer
+  - dialogue: RIVAL [Hey, {PLAYER}! What brings you here? Your POKéMON don't look dead! I can at least make them faint! Let's go, pal!]
+  - startTrainerBattle *: RIVAL2 party=5 enemy=[#17 PIDGEOTTO L25 #130 GYARADOS L23 #58 GROWLITHE L22 #64 KADABRA L20 #2 IVYSAUR L25] winFlag=EVENT_BEAT_POKEMON_TOWER_RIVAL
+  - unlockInput
+
+Final state
+  location: POKEMON_TOWER_2F[143] (14,6)
+  flags: EVENT_BEAT_CERULEAN_RIVAL, EVENT_BEAT_SS_ANNE_RIVAL, EVENT_GOT_CASCADEBADGE, EVENT_GOT_HM01, EVENT_GOT_POKEDEX, EVENT_GOT_SS_TICKET, EVENT_PLAYER_CHOSE_SQUIRTLE, EVENT_SS_ANNE_LEFT
+  party:
+    slot 0: #8 WARTORTLE L28 moves BUBBLE, BUBBLE, WATER_GUN, BITE
+  inventory:
+    #84 HM01 x1
+    #9 POKéDEX x1
+    #63 S.S.TICKET x1
+  hidden objects:
+    none
+  active battle:
+    trainer phase=action_select trainer=RIVAL2 name=Gary winFlag=EVENT_BEAT_POKEMON_TOWER_RIVAL
+    enemy slot 0: #17 PIDGEOTTO L25
+    enemy slot 1: #130 GYARADOS L23
+    enemy slot 2: #58 GROWLITHE L22
+    enemy slot 3: #64 KADABRA L20
+    enemy slot 4: #2 IVYSAUR L25

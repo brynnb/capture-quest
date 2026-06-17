@@ -1,0 +1,27 @@
+{
+  "name": "celadon_city_tm41_softboiled",
+  "description": "The Celadon City Gramps3 NPC grants TM41 Softboiled.",
+  "fixture": {
+    "characterName": "ScriptSimCeladonTM41",
+    "mapName": "CELADON_CITY",
+    "x": 122,
+    "y": -110,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_RAINBOWBADGE"],
+    "party": [{ "speciesId": 6, "level": 35 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "CELADON_CITY",
+    "textConstant": "TEXT_CELADONCITY_GRAMPS3"
+  },
+  "expect": {
+    "scriptLabel": "CeladonCityTM41Softboiled",
+    "flagsPresent": ["EVENT_GOT_TM41"],
+    "inventoryContains": [{ "itemId": 129, "quantity": 1 }],
+    "actionTypesContains": ["dialogue", "setFlag", "giveItem"],
+    "activeBattleAbsent": true
+  }
+}

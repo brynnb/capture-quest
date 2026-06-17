@@ -1,0 +1,37 @@
+{
+  "name": "seafoam_1f_boulder_push_needs_strength",
+  "description": "A Seafoam boulder cannot move until Strength is active, even with the right badge and move known.",
+  "fixture": {
+    "characterName": "SimBoulderNeedsStrength",
+    "mapName": "SEAFOAM_ISLANDS_1F",
+    "x": 18,
+    "y": 11,
+    "flags": ["EVENT_GOT_RAINBOWBADGE"],
+    "party": [
+      { "speciesId": 66, "level": 20, "moves": ["STRENGTH"] }
+    ]
+  },
+  "trigger": {
+    "type": "boulder_push",
+    "direction": "UP"
+  },
+  "expect": {
+    "scriptLabel": "BoulderPush:SEAFOAM_ISLANDS_1F",
+    "boulderPush": {
+      "success": false,
+      "message": "This requires STRENGTH to move!"
+    },
+    "flagsAbsent": ["EVENT_SEAFOAM1_BOULDER1_DOWN_HOLE"],
+    "objectStates": [
+      {
+        "mapName": "SEAFOAM_ISLANDS_1F",
+        "name": "SeafoamIslands1F_NPC_1",
+        "x": 18,
+        "y": 10,
+        "visible": true
+      }
+    ],
+    "actionTypesContains": ["boulderPush"],
+    "activeBattleAbsent": true
+  }
+}

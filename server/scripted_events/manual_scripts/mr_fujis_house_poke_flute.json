@@ -1,0 +1,50 @@
+{
+  "scriptLabel": "MrFujisHousePokeFlute",
+  "mapName": "MR_FUJIS_HOUSE",
+  "trigger": {
+    "type": "map_script"
+  },
+  "requiresFlag": "EVENT_RESCUED_MR_FUJI",
+  "requiresFlagAbsent": "EVENT_GOT_POKE_FLUTE",
+  "setsFlags": [
+    "EVENT_GOT_POKE_FLUTE"
+  ],
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Thank you for rescuing me from TEAM ROCKET!",
+        "They had me trapped in POKéMON TOWER!",
+        "I want you to have this as a token of my gratitude."
+      ],
+      "speaker": "MR. FUJI"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "{PLAYER} received a POKé FLUTE!",
+        "The POKé FLUTE can wake sleeping POKéMON!",
+        "Use it to wake that sleeping SNORLAX!"
+      ]
+    },
+    {
+      "flag": "EVENT_GOT_POKE_FLUTE",
+      "type": "setFlag"
+    },
+    {
+      "sfxConstant": "SFX_GET_KEY_ITEM",
+      "type": "playSFX"
+    },
+    {
+      "type": "unlockInput"
+    },
+    {
+      "type": "giveItem",
+      "itemId": 73,
+      "quantity": 1
+    }
+  ]
+}

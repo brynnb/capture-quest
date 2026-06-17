@@ -1,0 +1,30 @@
+{
+  "name": "safari_zone_gate_entry_offer_yes",
+  "description": "The Safari Gate counter prompt charges the entry fee and warps the player into the Safari Zone.",
+  "fixture": {
+    "characterName": "ScriptSimSafariGateYes",
+    "mapName": "SAFARI_ZONE_GATE",
+    "x": 4,
+    "y": 2,
+    "direction": "UP",
+    "money": 500
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "SAFARI_ZONE_GATE",
+    "x": 4,
+    "y": 2,
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "SafariZoneGateEntryOffer",
+    "finalMapName": "SAFARI_ZONE_CENTER",
+    "finalX": 14,
+    "finalY": 25,
+    "flagsPresent": ["EVENT_IN_SAFARI_ZONE"],
+    "flagsAbsent": ["EVENT_SAFARI_GAME_OVER"],
+    "money": 0,
+    "actionTypesContains": ["dialogue", "choice", "startSafariSession"],
+    "activeBattleAbsent": true
+  }
+}

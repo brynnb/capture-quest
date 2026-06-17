@@ -1,0 +1,30 @@
+{
+  "name": "route20_no_seafoam_marker_no_boulder_reset",
+  "description": "Loading Route 20 without the Seafoam marker leaves Seafoam boulder flags untouched.",
+  "fixture": {
+    "characterName": "SimRoute20NoSeafoamMarker",
+    "mapName": "ROUTE_20",
+    "x": 68,
+    "y": 114,
+    "flags": [
+      "EVENT_SEAFOAM1_BOULDER1_DOWN_HOLE",
+      "EVENT_SEAFOAM3_BOULDER1_DOWN_HOLE",
+      "EVENT_SEAFOAM3_BOULDER2_DOWN_HOLE"
+    ]
+  },
+  "trigger": {
+    "type": "map_load",
+    "mapName": "ROUTE_20"
+  },
+  "expect": {
+    "scriptLabel": "MapLoad:ROUTE_20",
+    "flagsPresent": [
+      "EVENT_SEAFOAM1_BOULDER1_DOWN_HOLE",
+      "EVENT_SEAFOAM3_BOULDER1_DOWN_HOLE",
+      "EVENT_SEAFOAM3_BOULDER2_DOWN_HOLE"
+    ],
+    "flagsAbsent": ["EVENT_IN_SEAFOAM_ISLANDS"],
+    "actionTypesContains": ["mapLoad"],
+    "activeBattleAbsent": true
+  }
+}

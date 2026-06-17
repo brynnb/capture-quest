@@ -1,0 +1,26 @@
+{
+  "name": "lavender_cubone_house_girl_before_fuji",
+  "description": "The Cubone house girl talks about Cubone's mother before Mr. Fuji is rescued.",
+  "fixture": {
+    "characterName": "ScriptSimCuboneGirlBeforeFuji",
+    "mapName": "LAVENDER_CUBONE_HOUSE",
+    "x": 3,
+    "y": 4,
+    "direction": "UP",
+    "flags": [],
+    "party": [{ "speciesId": 25, "level": 24 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "LAVENDER_CUBONE_HOUSE",
+    "textConstant": "TEXT_LAVENDERCUBONEHOUSE_BRUNETTE_GIRL"
+  },
+  "expect": {
+    "scriptLabel": "LavenderCuboneHouseBrunetteGirlTextEventRescuedMrFujiAbsent",
+    "flagsAbsent": ["EVENT_RESCUED_MR_FUJI"],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

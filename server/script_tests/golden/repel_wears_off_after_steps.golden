@@ -1,0 +1,42 @@
+Scenario: repel_wears_off_after_steps
+Description: A seeded repel state decrements per step and emits the wear-off state at zero steps.
+Character: ScriptSimRepelWearsOff
+
+Initial state
+  location: ROUTE_1[9999] (10,10)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L12 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: RepelStep
+  map: ROUTE_1
+  trigger: repel_step
+
+Actions
+  - repelStep *: steps=2 active=false left=0 message="REPEL's effect wore off!"
+
+Final state
+  location: ROUTE_1[9999] (10,10)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L12 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Repel
+  initial: active=true steps=2
+  final: active=false steps=0
+  success: false
+  message: REPEL's effect wore off!
+  wore off: true

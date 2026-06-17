@@ -1,0 +1,46 @@
+Scenario: victory_road_route23_reset_boulders
+Description: Loading Route 23 resets Victory Road 2F/3F boulder switch and hole flags.
+Character: SimVictoryRoadRoute23Reset
+
+Initial state
+  location: ROUTE_23[34] (15,35)
+  flags: EVENT_VICTORY_ROAD_2_BOULDER_ON_SWITCH1, EVENT_VICTORY_ROAD_2_BOULDER_ON_SWITCH2, EVENT_VICTORY_ROAD_3_BOULDER_ON_SWITCH1, EVENT_VICTORY_ROAD_3_BOULDER_ON_SWITCH2
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: MapLoad:ROUTE_23
+  map: ROUTE_23
+  trigger: map_load
+
+Actions
+  - mapLoad *: ROUTE_23 set=[] reset=[EVENT_VICTORY_ROAD_2_BOULDER_ON_SWITCH1 EVENT_VICTORY_ROAD_2_BOULDER_ON_SWITCH2 EVENT_VICTORY_ROAD_3_BOULDER_ON_SWITCH1 EVENT_VICTORY_ROAD_3_BOULDER_ON_SWITCH2] affected=[VICTORY_ROAD_2F VICTORY_ROAD_3F]
+
+Final state
+  location: ROUTE_23[34] (15,35)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Event object states
+  SourceMissableInitial:HS_VICTORY_ROAD_2F_ITEM_4 VICTORY_ROAD_2F/VictoryRoad2F_ITEM_10 (11,0): visible text=TEXT_VICTORYROAD2F_GUARD_SPEC
+  SourceMissableInitial:HS_VICTORY_ROAD_2F_ITEM_1 VICTORY_ROAD_2F/VictoryRoad2F_ITEM_7 (27,5): visible text=TEXT_VICTORYROAD2F_TM_SUBMISSION
+  SourceMissableInitial:HS_VICTORY_ROAD_2F_ITEM_2 VICTORY_ROAD_2F/VictoryRoad2F_ITEM_8 (18,9): visible text=TEXT_VICTORYROAD2F_FULL_HEAL
+  SourceMissableInitial:HS_VICTORY_ROAD_2F_ITEM_3 VICTORY_ROAD_2F/VictoryRoad2F_ITEM_9 (9,11): visible text=TEXT_VICTORYROAD2F_TM_MEGA_KICK
+  VictoryRoadBoulder_2F_Fallen3_HiddenBeforeHole VICTORY_ROAD_2F/VictoryRoad2F_NPC_13 (23,16): hidden text=TEXT_VICTORYROAD2F_BOULDER3
+  SourceMissableInitial:HS_MOLTRES VICTORY_ROAD_2F/VictoryRoad2F_NPC_6 (11,5): visible text=TEXT_VICTORYROAD2F_MOLTRES
+  SourceMissableInitial:HS_VICTORY_ROAD_3F_ITEM_1 VICTORY_ROAD_3F/VictoryRoad3F_ITEM_5 (26,5): visible text=TEXT_VICTORYROAD3F_MAX_REVIVE
+  SourceMissableInitial:HS_VICTORY_ROAD_3F_ITEM_2 VICTORY_ROAD_3F/VictoryRoad3F_ITEM_6 (7,7): visible text=TEXT_VICTORYROAD3F_TM_EXPLOSION
+  VictoryRoadBoulder_3F_Source4_VisibleBeforeHole VICTORY_ROAD_3F/VictoryRoad3F_NPC_10 (22,15): visible text=TEXT_VICTORYROAD3F_BOULDER4

@@ -1,0 +1,35 @@
+Scenario: viridian_mart_clerk_after_oak_delivery_shop_available
+Description: After delivering Oak's Parcel, no scripted event claims the Viridian Mart clerk click so the client can open the shop.
+Character: ScriptSimViridianShopAfterDelivery
+
+Initial state
+  location: VIRIDIAN_MART[42] (3,6)
+  flags: EVENT_BATTLED_RIVAL_IN_OAKS_LAB, EVENT_GOT_OAKS_PARCEL, EVENT_GOT_POKEDEX, EVENT_GOT_STARTER, EVENT_OAKS_LAB_RIVAL_EXITED, EVENT_OAK_ASKED_TO_CHOOSE_MON, EVENT_OAK_GOT_PARCEL, EVENT_PLAYER_CHOSE_CHARMANDER, EVENT_RIVAL_PICKED_STARTER
+  party:
+    slot 0: #4 CHARMANDER L5 moves SCRATCH, GROWL
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: NoScript:VIRIDIAN_MART
+  map: VIRIDIAN_MART
+  trigger: click_no_script
+
+Actions
+  - noScript: VIRIDIAN_MART keys=[TEXT_VIRIDIANMART_CLERK]
+
+Final state
+  location: VIRIDIAN_MART[42] (3,6)
+  flags: EVENT_BATTLED_RIVAL_IN_OAKS_LAB, EVENT_GOT_OAKS_PARCEL, EVENT_GOT_POKEDEX, EVENT_GOT_STARTER, EVENT_OAKS_LAB_RIVAL_EXITED, EVENT_OAK_ASKED_TO_CHOOSE_MON, EVENT_OAK_GOT_PARCEL, EVENT_PLAYER_CHOSE_CHARMANDER, EVENT_RIVAL_PICKED_STARTER
+  party:
+    slot 0: #4 CHARMANDER L5 moves SCRATCH, GROWL
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none

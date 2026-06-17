@@ -1,0 +1,29 @@
+{
+  "name": "vermilion_city_ss_anne_guard_ship_departed_blocked",
+  "description": "The S.S. Anne guard blocks and pushes back the player after the ship has left.",
+  "fixture": {
+    "characterName": "ScriptSimSSAnneGuardDeparted",
+    "mapName": "VERMILION_CITY",
+    "x": 188,
+    "y": -24,
+    "direction": "DOWN",
+    "flags": ["EVENT_SS_ANNE_LEFT"],
+    "party": [{ "speciesId": 6, "level": 28 }],
+    "inventory": [{ "itemId": 63, "quantity": 1 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "VERMILION_CITY",
+    "x": 188,
+    "y": -24
+  },
+  "expect": {
+    "scriptLabel": "VermilionCitySSAnneGuardShipDepartedBlocked",
+    "finalX": 188,
+    "finalY": -25,
+    "flagsPresent": ["EVENT_SS_ANNE_LEFT"],
+    "actionTypesContains": ["dialogue", "movePlayer"],
+    "activeBattleAbsent": true
+  }
+}

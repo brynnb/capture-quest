@@ -1,0 +1,39 @@
+Scenario: viridian_city_gambler_gym_closed
+Description: Viridian City's gambler says the gym is closed before Giovanni returns and before the Earth Badge is earned.
+Character: ScriptSimViridianGamblerClosed
+
+Initial state
+  location: VIRIDIAN_CITY[9999] (12,10)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L20 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: ViridianCityGambler1TextEarthBadgeEventBeatViridianGymGiovanniAbsent
+  map: VIRIDIAN_CITY
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [This POKÉMON GYM
+is always closed. I wonder who the
+LEADER is?]
+  - unlockInput
+
+Final state
+  location: VIRIDIAN_CITY[9999] (12,10)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L20 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

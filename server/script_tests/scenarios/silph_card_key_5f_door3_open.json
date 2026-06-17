@@ -1,0 +1,29 @@
+{
+  "name": "silph_card_key_5f_door3_open",
+  "description": "Using the CARD KEY on Silph Co. 5F door 3 opens its source door flag and passable tile block.",
+  "fixture": {
+    "characterName": "ScriptSimSilphCardKey5FDoor3",
+    "mapName": "SILPH_CO_5F",
+    "x": 14,
+    "y": 12,
+    "inventory": [{ "itemName": "CARD_KEY", "quantity": 1 }]
+  },
+  "trigger": {
+    "type": "silph_card_key",
+    "mapName": "SILPH_CO_5F",
+    "textConstant": "TEXT_SILPH_CARD_KEY_DOOR_5F_3"
+  },
+  "expect": {
+    "scriptLabel": "SilphCardKeyDoor",
+    "flagsPresent": ["EVENT_SILPH_CO_5_UNLOCKED_DOOR3"],
+    "inventoryContains": [{ "itemName": "CARD_KEY", "quantity": 1 }],
+    "actionTypesContains": ["silphCardKey"],
+    "tileStates": [
+      { "x": 14, "y": 10, "tileImageId": 758, "collisionType": 1, "label": "SilphCardKeyDoor_5F_3_Open_0_0" },
+      { "x": 15, "y": 10, "tileImageId": 758, "collisionType": 1, "label": "SilphCardKeyDoor_5F_3_Open_1_0" },
+      { "x": 14, "y": 11, "tileImageId": 758, "collisionType": 1, "label": "SilphCardKeyDoor_5F_3_Open_0_1" },
+      { "x": 15, "y": 11, "tileImageId": 758, "collisionType": 1, "label": "SilphCardKeyDoor_5F_3_Open_1_1" }
+    ],
+    "activeBattleAbsent": true
+  }
+}

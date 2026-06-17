@@ -1,0 +1,51 @@
+{
+  "name": "victory_road_3f_boulder_hole",
+  "description": "Pushing the Victory Road 3F source boulder into the hole hides it on 3F and shows the fallen 2F boulder.",
+  "fixture": {
+    "characterName": "SimVictoryRoad3FBoulderHole",
+    "mapName": "VICTORY_ROAD_3F",
+    "x": 21,
+    "y": 15,
+    "flags": ["EVENT_GOT_RAINBOWBADGE"],
+    "party": [
+      { "speciesId": 66, "level": 20, "moves": ["STRENGTH"] }
+    ]
+  },
+  "trigger": {
+    "type": "boulder_push",
+    "direction": "RIGHT",
+    "activateStrength": true
+  },
+  "expect": {
+    "scriptLabel": "BoulderPush:VICTORY_ROAD_3F",
+    "boulderPush": {
+      "success": true,
+      "objectName": "VictoryRoad3F_NPC_10",
+      "fromX": 22,
+      "fromY": 15,
+      "toX": 23,
+      "toY": 15,
+      "dropped": true,
+      "flagSet": "EVENT_VICTORY_ROAD_3_BOULDER_ON_SWITCH2"
+    },
+    "flagsPresent": ["EVENT_VICTORY_ROAD_3_BOULDER_ON_SWITCH2"],
+    "objectStates": [
+      {
+        "mapName": "VICTORY_ROAD_3F",
+        "name": "VictoryRoad3F_NPC_10",
+        "x": 22,
+        "y": 15,
+        "visible": false
+      },
+      {
+        "mapName": "VICTORY_ROAD_2F",
+        "name": "VictoryRoad2F_NPC_13",
+        "x": 23,
+        "y": 16,
+        "visible": true
+      }
+    ],
+    "actionTypesContains": ["boulderPush"],
+    "activeBattleAbsent": true
+  }
+}

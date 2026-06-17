@@ -1,0 +1,28 @@
+{
+  "name": "wardens_house_hm04",
+  "description": "Giving the Warden Gold Teeth grants HM04 Strength and removes Gold Teeth.",
+  "fixture": {
+    "characterName": "ScriptSimWardenHM04",
+    "mapName": "WARDENS_HOUSE",
+    "x": 2,
+    "y": 4,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_GOLD_TEETH"],
+    "party": [{ "speciesId": 6, "level": 42 }],
+    "inventory": [{ "itemId": 64, "quantity": 1 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "WARDENS_HOUSE",
+    "textConstant": "TEXT_WARDENSHOUSE_WARDEN"
+  },
+  "expect": {
+    "scriptLabel": "WardensHouseHM04",
+    "flagsPresent": ["EVENT_GOT_GOLD_TEETH", "EVENT_GOT_HM04"],
+    "inventoryContains": [{ "itemId": 87, "quantity": 1 }],
+    "inventoryAbsent": [{ "itemId": 64 }],
+    "actionTypesContains": ["dialogue", "setFlag", "takeItem", "giveItem"],
+    "activeBattleAbsent": true
+  }
+}

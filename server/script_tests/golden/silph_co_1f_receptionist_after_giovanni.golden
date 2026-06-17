@@ -1,0 +1,39 @@
+Scenario: silph_co_1f_receptionist_after_giovanni
+Description: Silph Co. 1F map-load script restores the receptionist after Giovanni is beaten.
+Character: ScriptSimSilphCo1FReceptionist
+
+Initial state
+  location: SILPH_CO_1F[181] (4,5)
+  flags: EVENT_BEAT_SILPH_CO_GIOVANNI
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SilphCo1FScriptEventSilphCoReceptionistAtDeskVisibility
+  map: SILPH_CO_1F
+  trigger: map_script
+
+Actions
+  - setFlag *: EVENT_SILPH_CO_RECEPTIONIST_AT_DESK
+  - showObject *: objects=[TEXT_SILPHCO1F_LINK_RECEPTIONIST]
+
+Final state
+  location: SILPH_CO_1F[181] (4,5)
+  flags: EVENT_BEAT_SILPH_CO_GIOVANNI, EVENT_SILPH_CO_RECEPTIONIST_AT_DESK
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Event object states
+  CutsceneAction:showObject SILPH_CO_1F/SilphCo1F_NPC_1 (4,2): visible text=TEXT_SILPHCO1F_LINK_RECEPTIONIST

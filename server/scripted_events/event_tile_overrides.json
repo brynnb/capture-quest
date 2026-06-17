@@ -1,0 +1,164 @@
+{
+  "palettes": {
+    "floor_758": [
+      { "dx": 1, "dy": 1, "tileImageId": 758, "collisionType": 1 },
+      { "dx": 0, "dy": 1, "tileImageId": 758, "collisionType": 1 },
+      { "dx": 1, "dy": 0, "tileImageId": 758, "collisionType": 1 },
+      { "dx": 0, "dy": 0, "tileImageId": 758, "collisionType": 1 }
+    ],
+    "hgate_bottom_758_781": [
+      { "dx": 1, "dy": 1, "tileImageId": 781, "collisionType": 0 },
+      { "dx": 0, "dy": 1, "tileImageId": 781, "collisionType": 0 },
+      { "dx": 1, "dy": 0, "tileImageId": 758, "collisionType": 1 },
+      { "dx": 0, "dy": 0, "tileImageId": 758, "collisionType": 1 }
+    ],
+    "hgate_top_781_758": [
+      { "dx": 1, "dy": 1, "tileImageId": 758, "collisionType": 1 },
+      { "dx": 0, "dy": 1, "tileImageId": 758, "collisionType": 1 },
+      { "dx": 1, "dy": 0, "tileImageId": 781, "collisionType": 0 },
+      { "dx": 0, "dy": 0, "tileImageId": 781, "collisionType": 0 }
+    ],
+    "vgate_right_758_780": [
+      { "dx": 1, "dy": 1, "tileImageId": 780, "collisionType": 0 },
+      { "dx": 0, "dy": 1, "tileImageId": 758, "collisionType": 1 },
+      { "dx": 1, "dy": 0, "tileImageId": 780, "collisionType": 0 },
+      { "dx": 0, "dy": 0, "tileImageId": 758, "collisionType": 1 }
+    ],
+    "uniform_758_blocked": [
+      { "dx": 1, "dy": 1, "tileImageId": 758, "collisionType": 0 },
+      { "dx": 0, "dy": 1, "tileImageId": 758, "collisionType": 0 },
+      { "dx": 1, "dy": 0, "tileImageId": 758, "collisionType": 0 },
+      { "dx": 0, "dy": 0, "tileImageId": 758, "collisionType": 0 }
+    ],
+    "uniform_758_open": [
+      { "dx": 1, "dy": 1, "tileImageId": 758, "collisionType": 1 },
+      { "dx": 0, "dy": 1, "tileImageId": 758, "collisionType": 1 },
+      { "dx": 1, "dy": 0, "tileImageId": 758, "collisionType": 1 },
+      { "dx": 0, "dy": 0, "tileImageId": 758, "collisionType": 1 }
+    ],
+    "uniform_123_blocked": [
+      { "dx": 1, "dy": 1, "tileImageId": 123, "collisionType": 0 },
+      { "dx": 0, "dy": 1, "tileImageId": 123, "collisionType": 0 },
+      { "dx": 1, "dy": 0, "tileImageId": 123, "collisionType": 0 },
+      { "dx": 0, "dy": 0, "tileImageId": 123, "collisionType": 0 }
+    ],
+    "uniform_123_open": [
+      { "dx": 1, "dy": 1, "tileImageId": 123, "collisionType": 1 },
+      { "dx": 0, "dy": 1, "tileImageId": 123, "collisionType": 1 },
+      { "dx": 1, "dy": 0, "tileImageId": 123, "collisionType": 1 },
+      { "dx": 0, "dy": 0, "tileImageId": 123, "collisionType": 1 }
+    ],
+    "victory_block_15": [
+      { "dx": 0, "dy": 0, "tileImageId": 560, "collisionType": 1 },
+      { "dx": 1, "dy": 0, "tileImageId": 560, "collisionType": 1 },
+      { "dx": 0, "dy": 1, "tileImageId": 562, "collisionType": 1 },
+      { "dx": 1, "dy": 1, "tileImageId": 562, "collisionType": 1 }
+    ],
+    "victory_block_1d": [
+      { "dx": 0, "dy": 0, "tileImageId": 562, "collisionType": 1 },
+      { "dx": 1, "dy": 0, "tileImageId": 562, "collisionType": 1 },
+      { "dx": 0, "dy": 1, "tileImageId": 568, "collisionType": 0 },
+      { "dx": 1, "dy": 1, "tileImageId": 568, "collisionType": 0 }
+    ]
+  },
+  "blocks": [
+    { "mapId": 165, "mapName": "POKEMON_MANSION_1F", "blockX": 6, "blockY": 12, "palette": "floor_758", "requiresFlagAbsent": "EVENT_MANSION_SWITCH_ON", "labelPrefix": "PokemonMansionSwitchOff_1F_6_12" },
+    { "mapId": 165, "mapName": "POKEMON_MANSION_1F", "blockX": 3, "blockY": 8, "palette": "hgate_bottom_758_781", "requiresFlagAbsent": "EVENT_MANSION_SWITCH_ON", "labelPrefix": "PokemonMansionSwitchOff_1F_3_8" },
+    { "mapId": 165, "mapName": "POKEMON_MANSION_1F", "blockX": 8, "blockY": 10, "palette": "hgate_bottom_758_781", "requiresFlagAbsent": "EVENT_MANSION_SWITCH_ON", "labelPrefix": "PokemonMansionSwitchOff_1F_8_10" },
+    { "mapId": 165, "mapName": "POKEMON_MANSION_1F", "blockX": 13, "blockY": 13, "palette": "hgate_bottom_758_781", "requiresFlagAbsent": "EVENT_MANSION_SWITCH_ON", "labelPrefix": "PokemonMansionSwitchOff_1F_13_13" },
+    { "mapId": 165, "mapName": "POKEMON_MANSION_1F", "blockX": 6, "blockY": 12, "palette": "hgate_bottom_758_781", "requiresFlag": "EVENT_MANSION_SWITCH_ON", "labelPrefix": "PokemonMansionSwitchOn_1F_6_12" },
+    { "mapId": 165, "mapName": "POKEMON_MANSION_1F", "blockX": 3, "blockY": 8, "palette": "floor_758", "requiresFlag": "EVENT_MANSION_SWITCH_ON", "labelPrefix": "PokemonMansionSwitchOn_1F_3_8" },
+    { "mapId": 165, "mapName": "POKEMON_MANSION_1F", "blockX": 8, "blockY": 10, "palette": "floor_758", "requiresFlag": "EVENT_MANSION_SWITCH_ON", "labelPrefix": "PokemonMansionSwitchOn_1F_8_10" },
+    { "mapId": 165, "mapName": "POKEMON_MANSION_1F", "blockX": 13, "blockY": 13, "palette": "floor_758", "requiresFlag": "EVENT_MANSION_SWITCH_ON", "labelPrefix": "PokemonMansionSwitchOn_1F_13_13" },
+
+    { "mapId": 214, "mapName": "POKEMON_MANSION_2F", "blockX": 2, "blockY": 4, "palette": "floor_758", "requiresFlagAbsent": "EVENT_MANSION_SWITCH_ON", "labelPrefix": "PokemonMansionSwitchOff_2F_2_4" },
+    { "mapId": 214, "mapName": "POKEMON_MANSION_2F", "blockX": 4, "blockY": 9, "palette": "hgate_top_781_758", "requiresFlagAbsent": "EVENT_MANSION_SWITCH_ON", "labelPrefix": "PokemonMansionSwitchOff_2F_4_9" },
+    { "mapId": 214, "mapName": "POKEMON_MANSION_2F", "blockX": 11, "blockY": 3, "palette": "vgate_right_758_780", "requiresFlagAbsent": "EVENT_MANSION_SWITCH_ON", "labelPrefix": "PokemonMansionSwitchOff_2F_11_3" },
+    { "mapId": 214, "mapName": "POKEMON_MANSION_2F", "blockX": 2, "blockY": 4, "palette": "vgate_right_758_780", "requiresFlag": "EVENT_MANSION_SWITCH_ON", "labelPrefix": "PokemonMansionSwitchOn_2F_2_4" },
+    { "mapId": 214, "mapName": "POKEMON_MANSION_2F", "blockX": 4, "blockY": 9, "palette": "floor_758", "requiresFlag": "EVENT_MANSION_SWITCH_ON", "labelPrefix": "PokemonMansionSwitchOn_2F_4_9" },
+    { "mapId": 214, "mapName": "POKEMON_MANSION_2F", "blockX": 11, "blockY": 3, "palette": "floor_758", "requiresFlag": "EVENT_MANSION_SWITCH_ON", "labelPrefix": "PokemonMansionSwitchOn_2F_11_3" },
+
+    { "mapId": 215, "mapName": "POKEMON_MANSION_3F", "blockX": 2, "blockY": 7, "palette": "floor_758", "requiresFlagAbsent": "EVENT_MANSION_SWITCH_ON", "labelPrefix": "PokemonMansionSwitchOff_3F_2_7" },
+    { "mapId": 215, "mapName": "POKEMON_MANSION_3F", "blockX": 5, "blockY": 7, "palette": "vgate_right_758_780", "requiresFlagAbsent": "EVENT_MANSION_SWITCH_ON", "labelPrefix": "PokemonMansionSwitchOff_3F_5_7" },
+    { "mapId": 215, "mapName": "POKEMON_MANSION_3F", "blockX": 2, "blockY": 7, "palette": "vgate_right_758_780", "requiresFlag": "EVENT_MANSION_SWITCH_ON", "labelPrefix": "PokemonMansionSwitchOn_3F_2_7" },
+    { "mapId": 215, "mapName": "POKEMON_MANSION_3F", "blockX": 5, "blockY": 7, "palette": "floor_758", "requiresFlag": "EVENT_MANSION_SWITCH_ON", "labelPrefix": "PokemonMansionSwitchOn_3F_5_7" },
+
+    { "mapId": 216, "mapName": "POKEMON_MANSION_B1F", "blockX": 8, "blockY": 13, "palette": "floor_758", "requiresFlagAbsent": "EVENT_MANSION_SWITCH_ON", "labelPrefix": "PokemonMansionSwitchOff_B1F_8_13" },
+    { "mapId": 216, "mapName": "POKEMON_MANSION_B1F", "blockX": 11, "blockY": 6, "palette": "floor_758", "requiresFlagAbsent": "EVENT_MANSION_SWITCH_ON", "labelPrefix": "PokemonMansionSwitchOff_B1F_11_6" },
+    { "mapId": 216, "mapName": "POKEMON_MANSION_B1F", "blockX": 3, "blockY": 4, "palette": "vgate_right_758_780", "requiresFlagAbsent": "EVENT_MANSION_SWITCH_ON", "labelPrefix": "PokemonMansionSwitchOff_B1F_3_4" },
+    { "mapId": 216, "mapName": "POKEMON_MANSION_B1F", "blockX": 8, "blockY": 8, "palette": "hgate_top_781_758", "requiresFlagAbsent": "EVENT_MANSION_SWITCH_ON", "labelPrefix": "PokemonMansionSwitchOff_B1F_8_8" },
+    { "mapId": 216, "mapName": "POKEMON_MANSION_B1F", "blockX": 8, "blockY": 13, "palette": "hgate_bottom_758_781", "requiresFlag": "EVENT_MANSION_SWITCH_ON", "labelPrefix": "PokemonMansionSwitchOn_B1F_8_13" },
+    { "mapId": 216, "mapName": "POKEMON_MANSION_B1F", "blockX": 11, "blockY": 6, "palette": "vgate_right_758_780", "requiresFlag": "EVENT_MANSION_SWITCH_ON", "labelPrefix": "PokemonMansionSwitchOn_B1F_11_6" },
+    { "mapId": 216, "mapName": "POKEMON_MANSION_B1F", "blockX": 3, "blockY": 4, "palette": "floor_758", "requiresFlag": "EVENT_MANSION_SWITCH_ON", "labelPrefix": "PokemonMansionSwitchOn_B1F_3_4" },
+    { "mapId": 216, "mapName": "POKEMON_MANSION_B1F", "blockX": 8, "blockY": 8, "palette": "floor_758", "requiresFlag": "EVENT_MANSION_SWITCH_ON", "labelPrefix": "PokemonMansionSwitchOn_B1F_8_8" },
+
+    { "mapId": 207, "mapName": "SILPH_CO_2F", "blockX": 2, "blockY": 2, "palette": "uniform_758_blocked", "requiresFlagAbsent": "EVENT_SILPH_CO_2_UNLOCKED_DOOR1", "labelPrefix": "SilphCardKeyDoor_2F_1_Closed" },
+    { "mapId": 207, "mapName": "SILPH_CO_2F", "blockX": 2, "blockY": 2, "palette": "uniform_758_open", "requiresFlag": "EVENT_SILPH_CO_2_UNLOCKED_DOOR1", "labelPrefix": "SilphCardKeyDoor_2F_1_Open" },
+    { "mapId": 207, "mapName": "SILPH_CO_2F", "blockX": 2, "blockY": 5, "palette": "uniform_758_blocked", "requiresFlagAbsent": "EVENT_SILPH_CO_2_UNLOCKED_DOOR2", "labelPrefix": "SilphCardKeyDoor_2F_2_Closed" },
+    { "mapId": 207, "mapName": "SILPH_CO_2F", "blockX": 2, "blockY": 5, "palette": "uniform_758_open", "requiresFlag": "EVENT_SILPH_CO_2_UNLOCKED_DOOR2", "labelPrefix": "SilphCardKeyDoor_2F_2_Open" },
+    { "mapId": 208, "mapName": "SILPH_CO_3F", "blockX": 4, "blockY": 4, "palette": "uniform_758_blocked", "requiresFlagAbsent": "EVENT_SILPH_CO_3_UNLOCKED_DOOR1", "labelPrefix": "SilphCardKeyDoor_3F_1_Closed" },
+    { "mapId": 208, "mapName": "SILPH_CO_3F", "blockX": 4, "blockY": 4, "palette": "uniform_758_open", "requiresFlag": "EVENT_SILPH_CO_3_UNLOCKED_DOOR1", "labelPrefix": "SilphCardKeyDoor_3F_1_Open" },
+    { "mapId": 208, "mapName": "SILPH_CO_3F", "blockX": 8, "blockY": 4, "palette": "uniform_758_blocked", "requiresFlagAbsent": "EVENT_SILPH_CO_3_UNLOCKED_DOOR2", "labelPrefix": "SilphCardKeyDoor_3F_2_Closed" },
+    { "mapId": 208, "mapName": "SILPH_CO_3F", "blockX": 8, "blockY": 4, "palette": "uniform_758_open", "requiresFlag": "EVENT_SILPH_CO_3_UNLOCKED_DOOR2", "labelPrefix": "SilphCardKeyDoor_3F_2_Open" },
+    { "mapId": 209, "mapName": "SILPH_CO_4F", "blockX": 2, "blockY": 6, "palette": "uniform_758_blocked", "requiresFlagAbsent": "EVENT_SILPH_CO_4_UNLOCKED_DOOR1", "labelPrefix": "SilphCardKeyDoor_4F_1_Closed" },
+    { "mapId": 209, "mapName": "SILPH_CO_4F", "blockX": 2, "blockY": 6, "palette": "uniform_758_open", "requiresFlag": "EVENT_SILPH_CO_4_UNLOCKED_DOOR1", "labelPrefix": "SilphCardKeyDoor_4F_1_Open" },
+    { "mapId": 209, "mapName": "SILPH_CO_4F", "blockX": 6, "blockY": 4, "palette": "uniform_758_blocked", "requiresFlagAbsent": "EVENT_SILPH_CO_4_UNLOCKED_DOOR2", "labelPrefix": "SilphCardKeyDoor_4F_2_Closed" },
+    { "mapId": 209, "mapName": "SILPH_CO_4F", "blockX": 6, "blockY": 4, "palette": "uniform_758_open", "requiresFlag": "EVENT_SILPH_CO_4_UNLOCKED_DOOR2", "labelPrefix": "SilphCardKeyDoor_4F_2_Open" },
+    { "mapId": 210, "mapName": "SILPH_CO_5F", "blockX": 3, "blockY": 2, "palette": "uniform_758_blocked", "requiresFlagAbsent": "EVENT_SILPH_CO_5_UNLOCKED_DOOR1", "labelPrefix": "SilphCardKeyDoor_5F_1_Closed" },
+    { "mapId": 210, "mapName": "SILPH_CO_5F", "blockX": 3, "blockY": 2, "palette": "uniform_758_open", "requiresFlag": "EVENT_SILPH_CO_5_UNLOCKED_DOOR1", "labelPrefix": "SilphCardKeyDoor_5F_1_Open" },
+    { "mapId": 210, "mapName": "SILPH_CO_5F", "blockX": 3, "blockY": 6, "palette": "uniform_758_blocked", "requiresFlagAbsent": "EVENT_SILPH_CO_5_UNLOCKED_DOOR2", "labelPrefix": "SilphCardKeyDoor_5F_2_Closed" },
+    { "mapId": 210, "mapName": "SILPH_CO_5F", "blockX": 3, "blockY": 6, "palette": "uniform_758_open", "requiresFlag": "EVENT_SILPH_CO_5_UNLOCKED_DOOR2", "labelPrefix": "SilphCardKeyDoor_5F_2_Open" },
+    { "mapId": 210, "mapName": "SILPH_CO_5F", "blockX": 7, "blockY": 5, "palette": "uniform_758_blocked", "requiresFlagAbsent": "EVENT_SILPH_CO_5_UNLOCKED_DOOR3", "labelPrefix": "SilphCardKeyDoor_5F_3_Closed" },
+    { "mapId": 210, "mapName": "SILPH_CO_5F", "blockX": 7, "blockY": 5, "palette": "uniform_758_open", "requiresFlag": "EVENT_SILPH_CO_5_UNLOCKED_DOOR3", "labelPrefix": "SilphCardKeyDoor_5F_3_Open" },
+    { "mapId": 211, "mapName": "SILPH_CO_6F", "blockX": 2, "blockY": 6, "palette": "uniform_758_blocked", "requiresFlagAbsent": "EVENT_SILPH_CO_6_UNLOCKED_DOOR", "labelPrefix": "SilphCardKeyDoor_6F_1_Closed" },
+    { "mapId": 211, "mapName": "SILPH_CO_6F", "blockX": 2, "blockY": 6, "palette": "uniform_758_open", "requiresFlag": "EVENT_SILPH_CO_6_UNLOCKED_DOOR", "labelPrefix": "SilphCardKeyDoor_6F_1_Open" },
+    { "mapId": 212, "mapName": "SILPH_CO_7F", "blockX": 5, "blockY": 3, "palette": "uniform_758_blocked", "requiresFlagAbsent": "EVENT_SILPH_CO_7_UNLOCKED_DOOR1", "labelPrefix": "SilphCardKeyDoor_7F_1_Closed" },
+    { "mapId": 212, "mapName": "SILPH_CO_7F", "blockX": 5, "blockY": 3, "palette": "uniform_758_open", "requiresFlag": "EVENT_SILPH_CO_7_UNLOCKED_DOOR1", "labelPrefix": "SilphCardKeyDoor_7F_1_Open" },
+    { "mapId": 212, "mapName": "SILPH_CO_7F", "blockX": 10, "blockY": 2, "palette": "uniform_758_blocked", "requiresFlagAbsent": "EVENT_SILPH_CO_7_UNLOCKED_DOOR2", "labelPrefix": "SilphCardKeyDoor_7F_2_Closed" },
+    { "mapId": 212, "mapName": "SILPH_CO_7F", "blockX": 10, "blockY": 2, "palette": "uniform_758_open", "requiresFlag": "EVENT_SILPH_CO_7_UNLOCKED_DOOR2", "labelPrefix": "SilphCardKeyDoor_7F_2_Open" },
+    { "mapId": 212, "mapName": "SILPH_CO_7F", "blockX": 10, "blockY": 6, "palette": "uniform_758_blocked", "requiresFlagAbsent": "EVENT_SILPH_CO_7_UNLOCKED_DOOR3", "labelPrefix": "SilphCardKeyDoor_7F_3_Closed" },
+    { "mapId": 212, "mapName": "SILPH_CO_7F", "blockX": 10, "blockY": 6, "palette": "uniform_758_open", "requiresFlag": "EVENT_SILPH_CO_7_UNLOCKED_DOOR3", "labelPrefix": "SilphCardKeyDoor_7F_3_Open" },
+    { "mapId": 213, "mapName": "SILPH_CO_8F", "blockX": 3, "blockY": 4, "palette": "uniform_758_blocked", "requiresFlagAbsent": "EVENT_SILPH_CO_8_UNLOCKED_DOOR", "labelPrefix": "SilphCardKeyDoor_8F_1_Closed" },
+    { "mapId": 213, "mapName": "SILPH_CO_8F", "blockX": 3, "blockY": 4, "palette": "uniform_758_open", "requiresFlag": "EVENT_SILPH_CO_8_UNLOCKED_DOOR", "labelPrefix": "SilphCardKeyDoor_8F_1_Open" },
+    { "mapId": 233, "mapName": "SILPH_CO_9F", "blockX": 1, "blockY": 4, "palette": "uniform_758_blocked", "requiresFlagAbsent": "EVENT_SILPH_CO_9_UNLOCKED_DOOR1", "labelPrefix": "SilphCardKeyDoor_9F_1_Closed" },
+    { "mapId": 233, "mapName": "SILPH_CO_9F", "blockX": 1, "blockY": 4, "palette": "uniform_758_open", "requiresFlag": "EVENT_SILPH_CO_9_UNLOCKED_DOOR1", "labelPrefix": "SilphCardKeyDoor_9F_1_Open" },
+    { "mapId": 233, "mapName": "SILPH_CO_9F", "blockX": 9, "blockY": 2, "palette": "uniform_758_blocked", "requiresFlagAbsent": "EVENT_SILPH_CO_9_UNLOCKED_DOOR2", "labelPrefix": "SilphCardKeyDoor_9F_2_Closed" },
+    { "mapId": 233, "mapName": "SILPH_CO_9F", "blockX": 9, "blockY": 2, "palette": "uniform_758_open", "requiresFlag": "EVENT_SILPH_CO_9_UNLOCKED_DOOR2", "labelPrefix": "SilphCardKeyDoor_9F_2_Open" },
+    { "mapId": 233, "mapName": "SILPH_CO_9F", "blockX": 9, "blockY": 5, "palette": "uniform_758_blocked", "requiresFlagAbsent": "EVENT_SILPH_CO_9_UNLOCKED_DOOR3", "labelPrefix": "SilphCardKeyDoor_9F_3_Closed" },
+    { "mapId": 233, "mapName": "SILPH_CO_9F", "blockX": 9, "blockY": 5, "palette": "uniform_758_open", "requiresFlag": "EVENT_SILPH_CO_9_UNLOCKED_DOOR3", "labelPrefix": "SilphCardKeyDoor_9F_3_Open" },
+    { "mapId": 233, "mapName": "SILPH_CO_9F", "blockX": 5, "blockY": 6, "palette": "uniform_758_blocked", "requiresFlagAbsent": "EVENT_SILPH_CO_9_UNLOCKED_DOOR4", "labelPrefix": "SilphCardKeyDoor_9F_4_Closed" },
+    { "mapId": 233, "mapName": "SILPH_CO_9F", "blockX": 5, "blockY": 6, "palette": "uniform_758_open", "requiresFlag": "EVENT_SILPH_CO_9_UNLOCKED_DOOR4", "labelPrefix": "SilphCardKeyDoor_9F_4_Open" },
+    { "mapId": 234, "mapName": "SILPH_CO_10F", "blockX": 5, "blockY": 4, "palette": "uniform_758_blocked", "requiresFlagAbsent": "EVENT_SILPH_CO_10_UNLOCKED_DOOR", "labelPrefix": "SilphCardKeyDoor_10F_1_Closed" },
+    { "mapId": 234, "mapName": "SILPH_CO_10F", "blockX": 5, "blockY": 4, "palette": "uniform_758_open", "requiresFlag": "EVENT_SILPH_CO_10_UNLOCKED_DOOR", "labelPrefix": "SilphCardKeyDoor_10F_1_Open" },
+    { "mapId": 235, "mapName": "SILPH_CO_11F", "blockX": 3, "blockY": 6, "palette": "uniform_123_blocked", "requiresFlagAbsent": "EVENT_SILPH_CO_11_UNLOCKED_DOOR", "labelPrefix": "SilphCardKeyDoor_11F_1_Closed" },
+    { "mapId": 235, "mapName": "SILPH_CO_11F", "blockX": 3, "blockY": 6, "palette": "uniform_123_open", "requiresFlag": "EVENT_SILPH_CO_11_UNLOCKED_DOOR", "labelPrefix": "SilphCardKeyDoor_11F_1_Open" },
+
+    { "mapId": 108, "mapName": "VICTORY_ROAD_1F", "blockX": 4, "blockY": 6, "palette": "victory_block_1d", "requiresFlag": "EVENT_VICTORY_ROAD_1_BOULDER_ON_SWITCH", "labelPrefix": "VictoryRoadBoulderBlock_1F_Switch_1d" },
+    { "mapId": 194, "mapName": "VICTORY_ROAD_2F", "blockX": 3, "blockY": 4, "palette": "victory_block_15", "requiresFlag": "EVENT_VICTORY_ROAD_2_BOULDER_ON_SWITCH1", "labelPrefix": "VictoryRoadBoulderBlock_2F_Switch1_15" },
+    { "mapId": 194, "mapName": "VICTORY_ROAD_2F", "blockX": 11, "blockY": 7, "palette": "victory_block_1d", "requiresFlag": "EVENT_VICTORY_ROAD_2_BOULDER_ON_SWITCH2", "labelPrefix": "VictoryRoadBoulderBlock_2F_Switch2_1d" },
+    { "mapId": 198, "mapName": "VICTORY_ROAD_3F", "blockX": 3, "blockY": 5, "palette": "victory_block_1d", "requiresFlag": "EVENT_VICTORY_ROAD_3_BOULDER_ON_SWITCH1", "labelPrefix": "VictoryRoadBoulderBlock_3F_Switch_1d" }
+  ],
+  "tiles": [
+    { "mapId": 166, "mapName": "CINNABAR_GYM", "x": 9, "y": 3, "tileImageId": 781, "collisionType": 0, "requiresFlagAbsent": "EVENT_CINNABAR_GYM_GATE1_UNLOCKED", "label": "CinnabarGymGate1Closed" },
+    { "mapId": 166, "mapName": "CINNABAR_GYM", "x": 6, "y": 3, "tileImageId": 781, "collisionType": 0, "requiresFlagAbsent": "EVENT_CINNABAR_GYM_GATE2_UNLOCKED", "label": "CinnabarGymGate2Closed" },
+    { "mapId": 166, "mapName": "CINNABAR_GYM", "x": 6, "y": 6, "tileImageId": 781, "collisionType": 0, "requiresFlagAbsent": "EVENT_CINNABAR_GYM_GATE3_UNLOCKED", "label": "CinnabarGymGate3Closed" },
+    { "mapId": 166, "mapName": "CINNABAR_GYM", "x": 3, "y": 8, "tileImageId": 780, "collisionType": 0, "requiresFlagAbsent": "EVENT_CINNABAR_GYM_GATE4_UNLOCKED", "label": "CinnabarGymGate4Closed" },
+    { "mapId": 166, "mapName": "CINNABAR_GYM", "x": 2, "y": 6, "tileImageId": 781, "collisionType": 0, "requiresFlagAbsent": "EVENT_CINNABAR_GYM_GATE5_UNLOCKED", "label": "CinnabarGymGate5Closed" },
+    { "mapId": 166, "mapName": "CINNABAR_GYM", "x": 2, "y": 3, "tileImageId": 781, "collisionType": 0, "requiresFlagAbsent": "EVENT_CINNABAR_GYM_GATE6_UNLOCKED", "label": "CinnabarGymGate6Closed" },
+    { "mapId": 166, "mapName": "CINNABAR_GYM", "x": 9, "y": 3, "tileImageId": 758, "collisionType": 1, "requiresFlag": "EVENT_CINNABAR_GYM_GATE1_UNLOCKED", "label": "CinnabarGymGate1Open" },
+    { "mapId": 166, "mapName": "CINNABAR_GYM", "x": 6, "y": 3, "tileImageId": 758, "collisionType": 1, "requiresFlag": "EVENT_CINNABAR_GYM_GATE2_UNLOCKED", "label": "CinnabarGymGate2Open" },
+    { "mapId": 166, "mapName": "CINNABAR_GYM", "x": 6, "y": 6, "tileImageId": 758, "collisionType": 1, "requiresFlag": "EVENT_CINNABAR_GYM_GATE3_UNLOCKED", "label": "CinnabarGymGate3Open" },
+    { "mapId": 166, "mapName": "CINNABAR_GYM", "x": 3, "y": 8, "tileImageId": 758, "collisionType": 1, "requiresFlag": "EVENT_CINNABAR_GYM_GATE4_UNLOCKED", "label": "CinnabarGymGate4Open" },
+    { "mapId": 166, "mapName": "CINNABAR_GYM", "x": 2, "y": 6, "tileImageId": 758, "collisionType": 1, "requiresFlag": "EVENT_CINNABAR_GYM_GATE5_UNLOCKED", "label": "CinnabarGymGate5Open" },
+    { "mapId": 166, "mapName": "CINNABAR_GYM", "x": 2, "y": 3, "tileImageId": 758, "collisionType": 1, "requiresFlag": "EVENT_CINNABAR_GYM_GATE6_UNLOCKED", "label": "CinnabarGymGate6Open" },
+
+    { "mapId": 92, "mapName": "VERMILION_GYM", "x": 4, "y": 4, "tileImageId": 253, "collisionType": 0, "requiresFlagAbsent": "EVENT_2ND_LOCK_OPENED", "label": "VermilionGymTrashDoorClosed_4_4" },
+    { "mapId": 92, "mapName": "VERMILION_GYM", "x": 5, "y": 4, "tileImageId": 253, "collisionType": 0, "requiresFlagAbsent": "EVENT_2ND_LOCK_OPENED", "label": "VermilionGymTrashDoorClosed_5_4" },
+    { "mapId": 92, "mapName": "VERMILION_GYM", "x": 4, "y": 5, "tileImageId": 253, "collisionType": 0, "requiresFlagAbsent": "EVENT_2ND_LOCK_OPENED", "label": "VermilionGymTrashDoorClosed_4_5" },
+    { "mapId": 92, "mapName": "VERMILION_GYM", "x": 5, "y": 5, "tileImageId": 253, "collisionType": 0, "requiresFlagAbsent": "EVENT_2ND_LOCK_OPENED", "label": "VermilionGymTrashDoorClosed_5_5" },
+    { "mapId": 92, "mapName": "VERMILION_GYM", "x": 4, "y": 4, "tileImageId": 253, "collisionType": 1, "requiresFlag": "EVENT_2ND_LOCK_OPENED", "label": "VermilionGymTrashDoorOpen_4_4" },
+    { "mapId": 92, "mapName": "VERMILION_GYM", "x": 5, "y": 4, "tileImageId": 253, "collisionType": 1, "requiresFlag": "EVENT_2ND_LOCK_OPENED", "label": "VermilionGymTrashDoorOpen_5_4" },
+    { "mapId": 92, "mapName": "VERMILION_GYM", "x": 4, "y": 5, "tileImageId": 253, "collisionType": 1, "requiresFlag": "EVENT_2ND_LOCK_OPENED", "label": "VermilionGymTrashDoorOpen_4_5" },
+    { "mapId": 92, "mapName": "VERMILION_GYM", "x": 5, "y": 5, "tileImageId": 253, "collisionType": 1, "requiresFlag": "EVENT_2ND_LOCK_OPENED", "label": "VermilionGymTrashDoorOpen_5_5" }
+  ]
+}

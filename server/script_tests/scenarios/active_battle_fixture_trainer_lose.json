@@ -1,0 +1,32 @@
+{
+  "name": "active_battle_fixture_trainer_lose",
+  "description": "The simulator can seed an already-active trainer battle and resolve a loss path without a cutscene trigger.",
+  "fixture": {
+    "characterName": "ScriptSimActiveTrainerLose",
+    "mapName": "OAKS_LAB",
+    "x": 5,
+    "y": 11,
+    "party": [{ "speciesId": 25, "level": 5 }],
+    "activeBattle": {
+      "type": "trainer",
+      "trainerClass": "RIVAL1",
+      "partyIndex": 1,
+      "trainerName": "RIVAL",
+      "loseFlag": "EVENT_TEST_LOST_TO_ACTIVE_RIVAL",
+      "lossMessage": "You lost the fixture battle.",
+      "noBlackoutOnLoss": true
+    }
+  },
+  "trigger": {
+    "type": "resolve_active_battle"
+  },
+  "resolveBattle": {
+    "result": "lose"
+  },
+  "expect": {
+    "scriptLabel": "ResolveActiveBattle",
+    "flagsPresent": ["EVENT_TEST_LOST_TO_ACTIVE_RIVAL"],
+    "actionTypesContains": ["resolveBattle"],
+    "activeBattleAbsent": true
+  }
+}

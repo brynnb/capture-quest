@@ -1,0 +1,25 @@
+{
+  "name": "seafoam_b3f_boulder2_down_hole",
+  "description": "Seafoam B3F source boulder 2 drops to B4F, using the source toggle mapping to object 2.",
+  "fixture": {
+    "characterName": "ScriptSimSeafoamB3FBoulder2",
+    "mapName": "SEAFOAM_ISLANDS_B3F",
+    "x": 6,
+    "y": 16
+  },
+  "trigger": {
+    "type": "seafoam_boulder_hole",
+    "mapName": "SEAFOAM_ISLANDS_B3F",
+    "holeIndex": 2
+  },
+  "expect": {
+    "scriptLabel": "SeafoamBoulderHole",
+    "flagsPresent": ["EVENT_SEAFOAM4_BOULDER2_DOWN_HOLE"],
+    "actionTypesContains": ["seafoamBoulderHole"],
+    "objectStates": [
+      { "mapName": "SEAFOAM_ISLANDS_B3F", "name": "SeafoamIslandsB3F_NPC_2", "visible": false, "label": "SeafoamBoulder_B3F_Source2_HiddenAfterB3FDrop" },
+      { "mapName": "SEAFOAM_ISLANDS_B4F", "name": "SeafoamIslandsB4F_NPC_2", "visible": true, "label": "SeafoamBoulder_B4F_2_VisibleAfterB3FDrop" }
+    ],
+    "activeBattleAbsent": true
+  }
+}

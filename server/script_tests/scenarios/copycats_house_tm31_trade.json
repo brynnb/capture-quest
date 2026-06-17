@@ -1,0 +1,29 @@
+{
+  "name": "copycats_house_tm31_trade",
+  "description": "Copycat trades a Poke Doll for TM31 Mimic.",
+  "fixture": {
+    "characterName": "ScriptSimCopycatTM31",
+    "mapName": "COPYCATS_HOUSE_2F",
+    "x": 4,
+    "y": 4,
+    "direction": "UP",
+    "flags": [],
+    "party": [{ "speciesId": 6, "level": 35 }],
+    "inventory": [{ "itemId": 51, "quantity": 1 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "COPYCATS_HOUSE_2F",
+    "textConstant": "TEXT_COPYCATSHOUSE2F_COPYCAT",
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "CopycatsHouseTM31",
+    "flagsPresent": ["EVENT_GOT_TM31"],
+    "inventoryContains": [{ "itemId": 119, "quantity": 1 }],
+    "inventoryAbsent": [{ "itemId": 51 }],
+    "actionTypesContains": ["dialogue", "choice", "takeItem", "giveItem", "setsFlags"],
+    "activeBattleAbsent": true
+  }
+}

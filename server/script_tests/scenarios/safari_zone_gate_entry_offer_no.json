@@ -1,0 +1,29 @@
+{
+  "name": "safari_zone_gate_entry_offer_no",
+  "description": "Declining the Safari Gate prompt leaves the player at the counter without charging the entry fee.",
+  "fixture": {
+    "characterName": "ScriptSimSafariGateNo",
+    "mapName": "SAFARI_ZONE_GATE",
+    "x": 4,
+    "y": 2,
+    "direction": "UP",
+    "money": 500
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "SAFARI_ZONE_GATE",
+    "x": 4,
+    "y": 2,
+    "choice": false
+  },
+  "expect": {
+    "scriptLabel": "SafariZoneGateEntryOffer",
+    "finalMapName": "SAFARI_ZONE_GATE",
+    "finalX": 4,
+    "finalY": 2,
+    "flagsAbsent": ["EVENT_IN_SAFARI_ZONE"],
+    "money": 500,
+    "actionTypesContains": ["dialogue", "choice"],
+    "activeBattleAbsent": true
+  }
+}

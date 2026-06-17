@@ -1,0 +1,40 @@
+Scenario: lavender_cubone_house_girl_before_fuji
+Description: The Cubone house girl talks about Cubone's mother before Mr. Fuji is rescued.
+Character: ScriptSimCuboneGirlBeforeFuji
+
+Initial state
+  location: LAVENDER_CUBONE_HOUSE[151] (3,4)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L24 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: LavenderCuboneHouseBrunetteGirlTextEventRescuedMrFujiAbsent
+  map: LAVENDER_CUBONE_HOUSE
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [I hate those
+horrible ROCKETs! That poor CUBONE's
+mother... It was killed
+trying to escape from TEAM ROCKET!]
+  - unlockInput
+
+Final state
+  location: LAVENDER_CUBONE_HOUSE[151] (3,4)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L24 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

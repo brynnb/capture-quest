@@ -1,0 +1,25 @@
+{
+  "name": "safari_zone_gate_worker2_explanation_yes",
+  "description": "The Safari Zone gate worker explains the zone when the player says it is their first visit.",
+  "fixture": {
+    "characterName": "ScriptSimSafariWorker2Yes",
+    "mapName": "SAFARI_ZONE_GATE",
+    "x": 3,
+    "y": 6,
+    "direction": "UP",
+    "party": [{ "speciesId": 25, "level": 25 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "SAFARI_ZONE_GATE",
+    "textConstant": "TEXT_SAFARIZONEGATE_SAFARI_ZONE_WORKER2",
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "SafariZoneGateSafariZoneWorker2TextChoice",
+    "actionTypesContains": ["dialogue", "choice"],
+    "activeBattleAbsent": true
+  }
+}

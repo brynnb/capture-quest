@@ -1,0 +1,43 @@
+Scenario: bike_shop_exchange_voucher
+Description: The Bike Shop clerk exchanges the Bike Voucher for a Bicycle.
+Character: ScriptSimBikeShopExchange
+
+Initial state
+  location: BIKE_SHOP[66] (6,4)
+  flags: EVENT_GOT_BIKE_VOUCHER
+  party:
+    slot 0: #5 CHARMELEON L25 moves EMBER, EMBER, LEER, RAGE
+  inventory:
+    #45 BIKE VOUCHER x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: BikeShopExchangeVoucher
+  map: BIKE_SHOP
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: BIKE SHOP CLERK [Oh, that's... A BIKE VOUCHER! OK! Here you go!]
+  - dialogue:  [{PLAYER} exchanged the BIKE VOUCHER for a BICYCLE.]
+  - setFlag *: EVENT_GOT_BICYCLE
+  - playSFX: SFX_GET_KEY_ITEM
+  - unlockInput
+  - takeItem *: BIKE VOUCHER x1 removed
+  - giveItem *: BICYCLE x1 added
+  - setsFlags *: EVENT_GOT_BICYCLE
+
+Final state
+  location: BIKE_SHOP[66] (6,4)
+  flags: EVENT_GOT_BICYCLE, EVENT_GOT_BIKE_VOUCHER
+  party:
+    slot 0: #5 CHARMELEON L25 moves EMBER, EMBER, LEER, RAGE
+  inventory:
+    #6 BICYCLE x1
+  hidden objects:
+    none
+  active battle:
+    none

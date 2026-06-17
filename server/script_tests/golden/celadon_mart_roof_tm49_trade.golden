@@ -1,0 +1,47 @@
+Scenario: celadon_mart_roof_tm49_trade
+Description: The Celadon Mart rooftop girl trades Lemonade for TM49 Tri Attack.
+Character: ScriptSimCeladonRoofTM49
+
+Initial state
+  location: CELADON_MART_ROOF[126] (5,6)
+  flags: none
+  party:
+    slot 0: #6 CHARIZARD L35 moves LEER, EMBER, LEER, RAGE
+  inventory:
+    #62 LEMONADE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: CeladonMartRoofTM49TriAttack
+  map: CELADON_MART_ROOF
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: LITTLE GIRL [I'm thirsty!
+I want something to drink!]
+  - choice: TEXT_CELADONMARTROOF_LITTLE_GIRL "Trade LEMONADE for TM49?" choice=true
+  - dialogue: LITTLE GIRL [Yay! LEMONADE! Thank you! You can have this
+from me!]
+  - takeItem *: LEMONADE x1 removed
+  - giveItem *: TM49 x1 added
+  - dialogue:  [(PLAYER) received
+TM49! TM49 contains
+TRI ATTACK!]
+  - setFlag *: EVENT_GOT_TM49
+  - unlockInput
+
+Final state
+  location: CELADON_MART_ROOF[126] (5,6)
+  flags: EVENT_GOT_TM49
+  party:
+    slot 0: #6 CHARIZARD L35 moves LEER, EMBER, LEER, RAGE
+  inventory:
+    #137 TM49 x1
+  hidden objects:
+    none
+  active battle:
+    none

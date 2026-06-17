@@ -1,0 +1,40 @@
+Scenario: pokemon_mansion_1f_generated_switch_turn_off
+Description: Generated Pokemon Mansion 1F switch script YES toggles the shared Mansion switch flag off when already set.
+Character: ScriptSimMansion1FGeneratedSwitchOff
+
+Initial state
+  location: POKEMON_MANSION_1F[165] (2,5)
+  flags: EVENT_MANSION_SWITCH_ON
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: PokemonMansion1FSwitchToggle
+  map: POKEMON_MANSION_1F
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [A secret switch!]
+  - choice: TEXT_POKEMONMANSION1F_SWITCH "Press it?" choice=true
+  - dialogue:  [Who wouldn't?]
+  - toggleFlag *: EVENT_MANSION_SWITCH_ON=false
+  - unlockInput
+
+Final state
+  location: POKEMON_MANSION_1F[165] (2,5)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

@@ -1,0 +1,45 @@
+# Tygo configuration to generate TypeScript interfaces from Go structs
+# Usage: tygo generate
+
+packages:
+  - path: capturequest/internal/world
+    type_mappings:
+      int32: number
+      int16: number
+      int8: number
+      uint32: number
+      uint16: number
+      uint8: number
+      float32: number
+      float64: number
+    output_path: ../src/net/generated/world_api.ts
+
+  - path: capturequest/internal/zone/interface
+    type_mappings:
+      int32: number
+      int16: number
+      int8: number
+      uint32: number
+      uint16: number
+      uint8: number
+      float32: number
+      float64: number
+    output_path: ../src/net/generated/world_interface.ts
+
+  - path: capturequest/internal/api/opcodes
+    output_path: ../src/net/generated/opcodes.ts
+
+  - path: capturequest/internal/db/models
+    type_mappings:
+      time.Time: string # Go's time.Time serializes to RFC3339/ISO8601 strings in JSON
+      int64: number
+      int32: number
+      int16: number
+      int8: number
+      uint64: number
+      uint32: number
+      uint16: number
+      uint8: number
+      float32: number
+      float64: number
+    output_path: ../src/net/generated/models.ts

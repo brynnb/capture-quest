@@ -1,0 +1,41 @@
+Scenario: agathas_room_exit_block_closed
+Description: Agatha's exit block resolves to the closed layout before she is defeated.
+Character: ScriptSimAgathaExitClosed
+
+Initial state
+  location: AGATHAS_ROOM[247] (4,7)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: TileState:AGATHAS_ROOM
+  map: AGATHAS_ROOM
+  trigger: tile_state
+
+Actions
+  - tileState: 4 event tiles
+
+Final state
+  location: AGATHAS_ROOM[247] (4,7)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Event tile states
+  AgathaExitBlockClosed_0_0 (0,4): tile=261 collision=0
+  AgathaExitBlockClosed_0_1 (0,5): tile=484 collision=1
+  AgathaExitBlockClosed_1_0 (1,4): tile=261 collision=0
+  AgathaExitBlockClosed_1_1 (1,5): tile=484 collision=1

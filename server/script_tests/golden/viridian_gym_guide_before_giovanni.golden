@@ -1,0 +1,41 @@
+Scenario: viridian_gym_guide_before_giovanni
+Description: The Viridian gym guide gives final gym advice before Giovanni is beaten.
+Character: ScriptSimViridianGuideBeforeGiovanni
+
+Initial state
+  location: VIRIDIAN_GYM[45] (16,16)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L45 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: ViridianGymGymGuideTextEventBeatViridianGymGiovanniAbsent
+  map: VIRIDIAN_GYM
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Yo! Champ in
+making! Even I don't know
+VIRIDIAN LEADER's identity! This will be the
+toughest of all the GYM LEADERs! I heard that the
+trainers here like ground-type POKÉMON!]
+  - unlockInput
+
+Final state
+  location: VIRIDIAN_GYM[45] (16,16)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L45 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

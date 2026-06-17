@@ -1,0 +1,29 @@
+{
+  "name": "viridian_city_gym_open_from_earth_badge",
+  "description": "Viridian City's gym-open source check sets the gym open flag once the Earth Badge is present.",
+  "fixture": {
+    "characterName": "ScriptSimViridianGymOpen",
+    "mapName": "VIRIDIAN_CITY",
+    "x": 22,
+    "y": -64,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_EARTHBADGE"],
+    "party": [{ "speciesId": 6, "level": 55 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "VIRIDIAN_CITY",
+    "x": 22,
+    "y": -64
+  },
+  "expect": {
+    "scriptLabel": "ViridianCityGymOpenFromEarthBadge",
+    "finalX": 22,
+    "finalY": -64,
+    "flagsPresent": ["EVENT_GOT_EARTHBADGE", "EVENT_VIRIDIAN_GYM_OPEN"],
+    "actionTypesContains": ["setFlag"],
+    "activeBattleAbsent": true
+  }
+}

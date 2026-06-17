@@ -1,0 +1,43 @@
+Scenario: seafoam_b3f_fallen_boulders_visible_after_b2f_drops
+Description: Seafoam B3F shows boulder objects 3 and 4 after both B2F boulders have dropped.
+Character: ScriptSimSeafoamB3FFallenVisible
+
+Initial state
+  location: SEAFOAM_ISLANDS_B3F[161] (18,6)
+  flags: EVENT_SEAFOAM3_BOULDER1_DOWN_HOLE, EVENT_SEAFOAM3_BOULDER2_DOWN_HOLE
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: EventObjectState:SEAFOAM_ISLANDS_B3F
+  map: SEAFOAM_ISLANDS_B3F
+  trigger: event_object_state
+
+Actions
+  - eventObjectState: 6 event objects
+
+Final state
+  location: SEAFOAM_ISLANDS_B3F[161] (18,6)
+  flags: EVENT_SEAFOAM3_BOULDER1_DOWN_HOLE, EVENT_SEAFOAM3_BOULDER2_DOWN_HOLE
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Event object states
+  SeafoamBoulder_B3F_Source1_VisibleBeforeDrop SEAFOAM_ISLANDS_B3F/SeafoamIslandsB3F_NPC_1 (5,14): visible text=TEXT_SEAFOAMISLANDSB3F_BOULDER1
+  SeafoamBoulder_B3F_Source2_VisibleBeforeDrop SEAFOAM_ISLANDS_B3F/SeafoamIslandsB3F_NPC_2 (3,15): visible text=TEXT_SEAFOAMISLANDSB3F_BOULDER2
+  SeafoamBoulder_B3F_Fallen1_VisibleAfterB2FDrop SEAFOAM_ISLANDS_B3F/SeafoamIslandsB3F_NPC_3 (8,14): visible text=TEXT_SEAFOAMISLANDSB3F_BOULDER3
+  SeafoamBoulder_B3F_Fallen2_VisibleAfterB2FDrop SEAFOAM_ISLANDS_B3F/SeafoamIslandsB3F_NPC_4 (9,14): visible text=TEXT_SEAFOAMISLANDSB3F_BOULDER4
+  SourceMissableInitial:HS_SEAFOAM_ISLANDS_B3F_BOULDER_2 SEAFOAM_ISLANDS_B3F/SeafoamIslandsB3F_NPC_5 (18,6): hidden text=TEXT_SEAFOAMISLANDSB3F_BOULDER5
+  SourceMissableInitial:HS_SEAFOAM_ISLANDS_B3F_BOULDER_3 SEAFOAM_ISLANDS_B3F/SeafoamIslandsB3F_NPC_6 (19,6): hidden text=TEXT_SEAFOAMISLANDSB3F_BOULDER6

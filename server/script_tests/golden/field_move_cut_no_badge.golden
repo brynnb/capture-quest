@@ -1,0 +1,41 @@
+Scenario: field_move_cut_no_badge
+Description: Cut is blocked without the Cascade Badge even when a party Pokemon knows CUT.
+Character: SimFieldCutNoBadge
+
+Initial state
+  location: PALLET_TOWN[9999] (10,10)
+  flags: none
+  party:
+    slot 0: #1 BULBASAUR L16 moves CUT
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FieldMovePermission:CUT
+  map: PALLET_TOWN
+  trigger: field_move_permission
+
+Actions
+  - fieldMovePermission: move=CUT allowed=false requiredBadge=EVENT_GOT_CASCADEBADGE knownBy=#1 BULBASAUR message="No! A new BADGE is required."
+
+Final state
+  location: PALLET_TOWN[9999] (10,10)
+  flags: none
+  party:
+    slot 0: #1 BULBASAUR L16 moves CUT
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Field move
+  move: CUT[15] allowed=false
+  required badge: EVENT_GOT_CASCADEBADGE
+  known by: #1 BULBASAUR
+  message: No! A new BADGE is required.

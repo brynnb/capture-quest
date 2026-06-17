@@ -1,0 +1,29 @@
+{
+  "name": "loreleis_room_entrance_auto_walk",
+  "description": "Lorelei's room auto-walks the player into the room the first time they enter the Elite Four chamber.",
+  "fixture": {
+    "characterName": "ScriptSimLoreleiEntranceAutoWalk",
+    "mapName": "LORELEIS_ROOM",
+    "x": 4,
+    "y": 10,
+    "direction": "UP",
+    "flags": [],
+    "party": [{ "speciesId": 6, "level": 50 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "LORELEIS_ROOM",
+    "x": 4,
+    "y": 10
+  },
+  "expect": {
+    "scriptLabel": "LoreleisRoomEntranceAutoWalk",
+    "finalX": 4,
+    "finalY": 4,
+    "flagsPresent": ["EVENT_AUTOWALKED_INTO_LORELEIS_ROOM"],
+    "flagsAbsent": ["EVENT_BEAT_LORELEIS_ROOM_TRAINER_0"],
+    "actionTypesContains": ["setFlag", "movePlayer"],
+    "activeBattleAbsent": true
+  }
+}

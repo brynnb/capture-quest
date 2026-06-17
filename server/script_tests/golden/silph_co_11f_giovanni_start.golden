@@ -1,0 +1,53 @@
+Scenario: silph_co_11f_giovanni_start
+Description: Step into the Silph Co. 11F Giovanni trigger and verify the source-derived battle starts.
+Character: ScriptSimSilphGiovanniStart
+
+Initial state
+  location: SILPH_CO_11F[235] (6,13)
+  flags: EVENT_BEAT_CERULEAN_RIVAL, EVENT_BEAT_GHOST_MAROWAK, EVENT_BEAT_POKEMON_TOWER_RIVAL, EVENT_BEAT_ROCKET_HIDEOUT_GIOVANNI, EVENT_BEAT_SILPH_CO_RIVAL, EVENT_BEAT_SS_ANNE_RIVAL, EVENT_GOT_HM01, EVENT_GOT_POKEDEX, EVENT_GOT_POKE_FLUTE, EVENT_RESCUED_MR_FUJI, EVENT_ROCKET_HIDEOUT_GIOVANNI_LEFT, EVENT_SAFFRON_GUARDS_OPENED, EVENT_SS_ANNE_LEFT
+  party:
+    slot 0: #6 CHARIZARD L45 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    #48 CARD KEY x1
+    #84 HM01 x1
+    #73 POKé FLUTE x1
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SilphCo11FGiovanniEncounter
+  map: SILPH_CO_11F
+  trigger: coord
+
+Actions
+  - lockInput
+  - move: GIOVANNI [DOWN DOWN DOWN]
+  - dialogue: GIOVANNI [Ah (PLAYER)!
+So we meet again! The PRESIDENT and
+I are discussing a vital business proposition. Keep your nose
+out of grown-up matters... Or, experience a
+world of pain!]
+  - startTrainerBattle *: GIOVANNI party=2 enemy=[#33 NIDORINO L37 #115 KANGASKHAN L35 #111 RHYHORN L37 #31 NIDOQUEEN L41] winFlag=EVENT_BEAT_SILPH_CO_GIOVANNI
+  - unlockInput
+
+Final state
+  location: SILPH_CO_11F[235] (6,13)
+  flags: EVENT_BEAT_CERULEAN_RIVAL, EVENT_BEAT_GHOST_MAROWAK, EVENT_BEAT_POKEMON_TOWER_RIVAL, EVENT_BEAT_ROCKET_HIDEOUT_GIOVANNI, EVENT_BEAT_SILPH_CO_RIVAL, EVENT_BEAT_SS_ANNE_RIVAL, EVENT_GOT_HM01, EVENT_GOT_POKEDEX, EVENT_GOT_POKE_FLUTE, EVENT_RESCUED_MR_FUJI, EVENT_ROCKET_HIDEOUT_GIOVANNI_LEFT, EVENT_SAFFRON_GUARDS_OPENED, EVENT_SS_ANNE_LEFT
+  party:
+    slot 0: #6 CHARIZARD L45 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    #48 CARD KEY x1
+    #84 HM01 x1
+    #73 POKé FLUTE x1
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    trainer phase=action_select trainer=GIOVANNI name=GIOVANNI winFlag=EVENT_BEAT_SILPH_CO_GIOVANNI
+    enemy slot 0: #33 NIDORINO L37
+    enemy slot 1: #115 KANGASKHAN L35
+    enemy slot 2: #111 RHYHORN L37
+    enemy slot 3: #31 NIDOQUEEN L41

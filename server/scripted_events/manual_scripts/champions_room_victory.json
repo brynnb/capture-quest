@@ -1,0 +1,104 @@
+{
+  "scriptLabel": "ChampionsRoomVictory",
+  "mapName": "CHAMPIONS_ROOM",
+  "trigger": {
+    "type": "map_script"
+  },
+  "requiresFlag": "EVENT_BEAT_CHAMPION_RIVAL",
+  "requiresFlagAbsent": "EVENT_CHAMPIONS_ROOM_COMPLETE",
+  "setsFlags": [
+    "EVENT_CHAMPIONS_ROOM_COMPLETE"
+  ],
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Why? Why did I lose?",
+        "I never made any mistakes raising my POKéMON...",
+        "Darn it! You're the new POKéMON LEAGUE champion!",
+        "Although I don't like to admit it."
+      ],
+      "speaker": "RIVAL"
+    },
+    {
+      "ms": 500,
+      "type": "delay"
+    },
+    {
+      "x": 5,
+      "y": 11,
+      "type": "showActor",
+      "actor": "OAK",
+      "sprite": "SPRITE_OAK"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "{PLAYER}!"
+      ],
+      "speaker": "OAK"
+    },
+    {
+      "type": "move",
+      "actor": "OAK",
+      "movements": [
+        "UP",
+        "UP",
+        "UP",
+        "UP",
+        "UP"
+      ]
+    },
+    {
+      "type": "facePlayer",
+      "actor": "OAK",
+      "direction": "DOWN"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "So, you won! Congratulations!",
+        "You're the new POKéMON LEAGUE champion!",
+        "You've grown up so much since you first left with your POKéMON!",
+        "{PLAYER}, you have come of age!"
+      ],
+      "speaker": "OAK"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "{RIVAL}! I'm disappointed!",
+        "I came when I heard you beat the ELITE FOUR!",
+        "But, when I got here, you had already lost!",
+        "{RIVAL}! Do you understand why you lost?",
+        "You have forgotten to treat your POKéMON with trust and love!",
+        "Without them, you will never become a champion again!"
+      ],
+      "speaker": "OAK"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "{PLAYER}! You understand that your victory was not just your own doing!",
+        "The bond you share with your POKéMON is marvelous!",
+        "{PLAYER}! Come with me!"
+      ],
+      "speaker": "OAK"
+    },
+    {
+      "type": "hideActor",
+      "actor": "OAK"
+    },
+    {
+      "type": "unlockInput"
+    }
+  ],
+  "warp": {
+    "mapId": 118,
+    "x": 5,
+    "y": 7
+  }
+}

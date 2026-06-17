@@ -1,0 +1,25 @@
+{
+  "name": "lavender_town_little_girl_ghost_no",
+  "description": "Declining the Lavender Town ghost question stops before the believer response.",
+  "fixture": {
+    "characterName": "ScriptSimLavenderGhostNo",
+    "mapName": "LAVENDER_TOWN",
+    "x": 9,
+    "y": 8,
+    "direction": "UP",
+    "party": [{ "speciesId": 25, "level": 20 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "LAVENDER_TOWN",
+    "textConstant": "TEXT_LAVENDERTOWN_LITTLE_GIRL",
+    "choice": false
+  },
+  "expect": {
+    "scriptLabel": "LavenderTownLittleGirlTextChoice",
+    "actionTypesContains": ["dialogue", "choice"],
+    "activeBattleAbsent": true
+  }
+}

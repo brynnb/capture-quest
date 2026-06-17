@@ -1,0 +1,38 @@
+Scenario: vermilion_city_ss_anne_guard_ship_departed_blocked
+Description: The S.S. Anne guard blocks and pushes back the player after the ship has left.
+Character: ScriptSimSSAnneGuardDeparted
+
+Initial state
+  location: VERMILION_CITY[9999] (188,-24)
+  flags: EVENT_SS_ANNE_LEFT
+  party:
+    slot 0: #6 CHARIZARD L28 moves LEER, EMBER, LEER, RAGE
+  inventory:
+    #63 S.S.TICKET x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: VermilionCitySSAnneGuardShipDepartedBlocked
+  map: VERMILION_CITY
+  trigger: coord
+
+Actions
+  - lockInput
+  - dialogue:  [The ship set sail.]
+  - movePlayer *: from=(188,-24) to=(188,-25) steps=[UP]
+  - unlockInput
+
+Final state
+  location: VERMILION_CITY[9999] (188,-25)
+  flags: EVENT_SS_ANNE_LEFT
+  party:
+    slot 0: #6 CHARIZARD L28 moves LEER, EMBER, LEER, RAGE
+  inventory:
+    #63 S.S.TICKET x1
+  hidden objects:
+    none
+  active battle:
+    none

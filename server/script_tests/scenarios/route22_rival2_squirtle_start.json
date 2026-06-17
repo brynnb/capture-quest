@@ -1,0 +1,56 @@
+{
+  "name": "route22_rival2_squirtle_start",
+  "description": "Before Pokemon League, step into the second Route 22 rival trigger with Squirtle chosen.",
+  "fixture": {
+    "characterName": "ScriptSimRoute22Rival2Squirtle",
+    "mapName": "ROUTE_22",
+    "x": -21,
+    "y": -59,
+    "direction": "LEFT",
+    "flags": [
+      "EVENT_GOT_POKEDEX",
+      "EVENT_GOT_BOULDERBADGE",
+      "EVENT_GOT_CASCADEBADGE",
+      "EVENT_GOT_THUNDERBADGE",
+      "EVENT_GOT_RAINBOWBADGE",
+      "EVENT_GOT_SOULBADGE",
+      "EVENT_GOT_MARSHBADGE",
+      "EVENT_GOT_VOLCANOBADGE",
+      "EVENT_GOT_EARTHBADGE",
+      "EVENT_ROUTE22_RIVAL_1",
+      "EVENT_2ND_ROUTE22_RIVAL_BATTLE",
+      "EVENT_ROUTE22_RIVAL_WANTS_BATTLE",
+      "EVENT_PLAYER_CHOSE_SQUIRTLE"
+    ],
+    "party": [
+      { "speciesId": 9, "level": 45 }
+    ],
+    "inventory": [
+      { "itemId": 9, "quantity": 1 }
+    ],
+    "hiddenObjects": ["TEXT_ROUTE22_RIVAL1"]
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "ROUTE_22",
+    "x": -21,
+    "y": -59
+  },
+  "expect": {
+    "scriptLabel": "Route22Rival2Encounter",
+    "flagsPresent": [
+      "EVENT_2ND_ROUTE22_RIVAL_BATTLE",
+      "EVENT_ROUTE22_RIVAL_WANTS_BATTLE",
+      "EVENT_ROUTE22_RIVAL_1"
+    ],
+    "flagsAbsent": ["EVENT_ROUTE22_RIVAL_2"],
+    "partySpecies": [9],
+    "inventoryContains": [
+      { "itemId": 9, "quantity": 1 }
+    ],
+    "hiddenObjectKeys": ["TEXT_ROUTE22_RIVAL1"],
+    "actionTypesContains": ["showActor", "move", "dialogue", "startTrainerBattle"],
+    "activeBattleTrainerClass": "RIVAL2",
+    "activeBattleEnemySpecies": [18, 111, 130, 58, 65, 3]
+  }
+}

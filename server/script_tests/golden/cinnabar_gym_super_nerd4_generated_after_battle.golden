@@ -1,0 +1,38 @@
+Scenario: cinnabar_gym_super_nerd4_generated_after_battle
+Description: The generated Cinnabar Gym trainer text switches to after-battle dialogue once defeated.
+Character: ScriptSimCinnabarSuperNerd4After
+
+Initial state
+  location: CINNABAR_GYM[166] (11,9)
+  flags: EVENT_BEAT_CINNABAR_GYM_TRAINER_3
+  party:
+    slot 0: #9 BLASTOISE L50 moves WATER_GUN, BITE, WITHDRAW, SKULL_BASH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: CinnabarGymSuperNerd4AfterBattle
+  map: CINNABAR_GYM
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [I wish there was
+a thief POKÉMON! I'd use that!]
+  - unlockInput
+
+Final state
+  location: CINNABAR_GYM[166] (11,9)
+  flags: EVENT_BEAT_CINNABAR_GYM_TRAINER_3
+  party:
+    slot 0: #9 BLASTOISE L50 moves WATER_GUN, BITE, WITHDRAW, SKULL_BASH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

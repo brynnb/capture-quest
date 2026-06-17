@@ -1,0 +1,41 @@
+{
+  "name": "bills_house_ss_ticket",
+  "description": "After Bill is restored, talking to Bill grants the S.S. Ticket.",
+  "fixture": {
+    "characterName": "ScriptSimBillSSTicket",
+    "mapName": "BILLS_HOUSE",
+    "x": 4,
+    "y": 5,
+    "direction": "UP",
+    "flags": ["EVENT_MET_BILL"],
+    "party": [{ "speciesId": 5, "level": 24 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "BILLS_HOUSE",
+    "textConstant": "TEXT_BILLSHOUSE_BILL_SS_TICKET"
+  },
+  "expect": {
+    "scriptLabel": "BillsHouseSSTicket",
+    "flagsPresent": ["EVENT_MET_BILL", "EVENT_GOT_SS_TICKET"],
+    "inventoryContains": [{ "itemId": 63, "quantity": 1 }],
+    "objectStates": [
+      {
+        "mapName": "CERULEAN_CITY",
+        "name": "CeruleanCity_NPC_6",
+        "visible": true,
+        "label": "CutsceneAction:showObject"
+      },
+      {
+        "mapName": "CERULEAN_CITY",
+        "name": "CeruleanCity_NPC_11",
+        "visible": false,
+        "label": "CutsceneAction:hideObject"
+      }
+    ],
+    "actionTypesContains": ["dialogue", "setFlag", "giveItem", "showObject", "hideObject"],
+    "activeBattleAbsent": true
+  }
+}

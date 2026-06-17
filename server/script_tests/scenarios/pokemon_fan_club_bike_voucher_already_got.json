@@ -1,0 +1,27 @@
+{
+  "name": "pokemon_fan_club_bike_voucher_already_got",
+  "description": "The Pokemon Fan Club chairman recognizes that the Bike Voucher event is already complete.",
+  "fixture": {
+    "characterName": "ScriptSimBikeVoucherAlreadyGot",
+    "mapName": "POKEMON_FAN_CLUB",
+    "x": 3,
+    "y": 3,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_BIKE_VOUCHER"],
+    "party": [{ "speciesId": 5, "level": 25 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "POKEMON_FAN_CLUB",
+    "textConstant": "TEXT_POKEMONFANCLUB_CHAIRMAN"
+  },
+  "expect": {
+    "scriptLabel": "PokemonFanClubChairmanTextAlreadyGot",
+    "flagsPresent": ["EVENT_GOT_BIKE_VOUCHER"],
+    "inventoryAbsent": [{ "itemId": 45 }],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

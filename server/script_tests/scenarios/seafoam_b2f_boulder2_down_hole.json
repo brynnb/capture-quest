@@ -1,0 +1,26 @@
+{
+  "name": "seafoam_b2f_boulder2_down_hole",
+  "description": "Seafoam B2F boulder 2 drops to the source B3F boulder 4 object.",
+  "fixture": {
+    "characterName": "ScriptSimSeafoamB2FBoulder2",
+    "mapName": "SEAFOAM_ISLANDS_B2F",
+    "x": 22,
+    "y": 6,
+    "flags": ["EVENT_SEAFOAM2_BOULDER2_DOWN_HOLE"]
+  },
+  "trigger": {
+    "type": "seafoam_boulder_hole",
+    "mapName": "SEAFOAM_ISLANDS_B2F",
+    "holeIndex": 2
+  },
+  "expect": {
+    "scriptLabel": "SeafoamBoulderHole",
+    "flagsPresent": ["EVENT_SEAFOAM2_BOULDER2_DOWN_HOLE", "EVENT_SEAFOAM3_BOULDER2_DOWN_HOLE"],
+    "actionTypesContains": ["seafoamBoulderHole"],
+    "objectStates": [
+      { "mapName": "SEAFOAM_ISLANDS_B2F", "name": "SeafoamIslandsB2F_NPC_2", "visible": false, "label": "SeafoamBoulder_B2F_2_HiddenAfterB2FDrop" },
+      { "mapName": "SEAFOAM_ISLANDS_B3F", "name": "SeafoamIslandsB3F_NPC_4", "visible": true, "label": "SeafoamBoulder_B3F_Fallen2_VisibleAfterB2FDrop" }
+    ],
+    "activeBattleAbsent": true
+  }
+}

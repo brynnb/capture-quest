@@ -1,0 +1,38 @@
+Scenario: fuchsia_city_fossil_sign_dome
+Description: The Fuchsia zoo fossil sign shows Omanyte text when the Dome Fossil branch flag is set.
+Character: ScriptSimFuchsiaFossilSignDome
+
+Initial state
+  location: FUCHSIA_CITY[9999] (26,13)
+  flags: EVENT_GOT_DOME_FOSSIL
+  party:
+    slot 0: #25 PIKACHU L20 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FuchsiaCityFossilSignDomeFossil
+  map: FUCHSIA_CITY
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Name: OMANYTE A POKÉMON that
+was resurrected from a fossil.]
+  - unlockInput
+
+Final state
+  location: FUCHSIA_CITY[9999] (26,13)
+  flags: EVENT_GOT_DOME_FOSSIL
+  party:
+    slot 0: #25 PIKACHU L20 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

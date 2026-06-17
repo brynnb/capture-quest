@@ -1,0 +1,69 @@
+{
+  "scriptLabel": "CinnabarGymBlainePostBattle",
+  "mapName": "CINNABAR_GYM",
+  "trigger": {
+    "type": "map_script"
+  },
+  "requiresFlag": "EVENT_BEAT_BLAINE",
+  "requiresFlagAbsent": "EVENT_GOT_VOLCANOBADGE",
+  "setsFlags": [
+    "EVENT_GOT_VOLCANOBADGE",
+    "EVENT_GOT_TM38"
+  ],
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "I have burnt out!",
+        "You have earned the VOLCANOBADGE!"
+      ],
+      "speaker": "BLAINE"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Hah!",
+        "The VOLCANOBADGE heightens the SPECIAL abilities of your POKéMON!",
+        "Here, you can have this too!"
+      ],
+      "speaker": "BLAINE"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "{PLAYER} received TM38!",
+        "TM38 contains FIRE BLAST!",
+        "Teach it to fire-type POKéMON!",
+        "CHARMELEON or PONYTA would be good bets!"
+      ],
+      "speaker": "BLAINE"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "FIRE BLAST is the ultimate fire technique!",
+        "Don't waste it on water POKéMON!"
+      ],
+      "speaker": "BLAINE"
+    },
+    {
+      "flag": "EVENT_GOT_VOLCANOBADGE",
+      "type": "setFlag"
+    },
+    {
+      "flag": "EVENT_GOT_TM38",
+      "type": "setFlag"
+    },
+    {
+      "type": "giveItem",
+      "itemId": 126,
+      "quantity": 1
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

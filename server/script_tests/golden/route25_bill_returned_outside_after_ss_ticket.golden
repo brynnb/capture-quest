@@ -1,0 +1,43 @@
+Scenario: route25_bill_returned_outside_after_ss_ticket
+Description: Route 25 map-load sync hides pre-help Bill objects and shows Bill outside after receiving the S.S. Ticket.
+Character: ScriptSimRoute25BillReturned
+
+Initial state
+  location: ROUTE_25[9999] (43,3)
+  flags: EVENT_GOT_SS_TICKET, EVENT_MET_BILL_2
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: Route25BillReturnedOutsideAfterSSTicket
+  map: ROUTE_25
+  trigger: map_script
+
+Actions
+  - setFlag *: EVENT_LEFT_BILLS_HOUSE_AFTER_HELPING
+  - hideObject *: objects=[TEXT_ROUTE24_COOLTRAINER_M1]
+  - hideObject *: objects=[TEXT_BILLSHOUSE_BILL_SS_TICKET]
+  - showObject *: objects=[TEXT_BILLSHOUSE_BILL_CHECK_OUT_MY_RARE_POKEMON]
+
+Final state
+  location: ROUTE_25[9999] (43,3)
+  flags: EVENT_GOT_SS_TICKET, EVENT_LEFT_BILLS_HOUSE_AFTER_HELPING, EVENT_MET_BILL_2
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Event object states
+  BillsHouse_NPC_1 BILLS_HOUSE/BillsHouse_NPC_1 (6,5): visible text=TEXT_BILLSHOUSE_BILL_POKEMON
+  CutsceneAction:hideObject BILLS_HOUSE/BillsHouse_NPC_2 (4,4): hidden text=TEXT_BILLSHOUSE_BILL_SS_TICKET
+  CutsceneAction:showObject BILLS_HOUSE/BillsHouse_NPC_3 (6,5): visible text=TEXT_BILLSHOUSE_BILL_CHECK_OUT_MY_RARE_POKEMON

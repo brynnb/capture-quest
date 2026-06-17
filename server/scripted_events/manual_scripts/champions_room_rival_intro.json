@@ -1,0 +1,66 @@
+{
+  "scriptLabel": "ChampionsRoomRivalIntro",
+  "mapName": "CHAMPIONS_ROOM",
+  "trigger": {
+    "type": "coord",
+    "label": "ChampionsRoomRivalEntranceCoords",
+    "source": "capturequest",
+    "coordinates": [
+      {
+        "mapName": "ChampionsRoom",
+        "mapId": 120,
+        "x": 3,
+        "y": 7
+      },
+      {
+        "mapName": "ChampionsRoom",
+        "mapId": 120,
+        "x": 4,
+        "y": 7
+      }
+    ]
+  },
+  "requiresFlagAbsent": "EVENT_BEAT_CHAMPION_RIVAL",
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "movePlayer",
+      "movements": [
+        "UP",
+        "RIGHT",
+        "UP",
+        "UP",
+        "UP"
+      ]
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Hey! I was looking forward to seeing you, {PLAYER}!",
+        "My rival should be strong to keep me sharp!",
+        "While working on POKéDEX, I looked all over for powerful POKéMON!",
+        "Not only that, I assembled teams that would beat any POKéMON type!",
+        "And now! I'm the POKéMON LEAGUE champion!",
+        "{PLAYER}! Do you know what that means?",
+        "I'll tell you! I am the most powerful trainer in the world!"
+      ],
+      "speaker": "RIVAL"
+    },
+    {
+      "type": "startTrainerBattle",
+      "winFlag": "EVENT_BEAT_CHAMPION_RIVAL",
+      "partyByFlag": {
+        "EVENT_PLAYER_CHOSE_SQUIRTLE": 2,
+        "EVENT_PLAYER_CHOSE_BULBASAUR": 3,
+        "EVENT_PLAYER_CHOSE_CHARMANDER": 1
+      },
+      "trainerName": "RIVAL",
+      "trainerClass": "RIVAL3"
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

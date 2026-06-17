@@ -1,0 +1,41 @@
+Scenario: game_corner_hidden_coin_coin_case_full
+Description: Game Corner hidden coin pickup caps the Coin Case at 9999.
+Character: SimGameCornerHiddenFullCase
+
+Initial state
+  location: GAME_CORNER[135] (15,8)
+  flags: none
+  coins: 9990
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: GameCornerHiddenCoin
+  map: GAME_CORNER
+  trigger: gamecorner_hidden_coin
+
+Actions
+  - gameCornerHiddenCoin *: success=true coinId=11 amount=100 coins=9999 attempts=1 message="Found coins, but the COIN CASE is full!"
+
+Final state
+  location: GAME_CORNER[135] (15,8)
+  flags: none
+  coins: 9999
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Game Corner
+  hidden coin: success=true coinId=11 amount=100 coins=9999 attempts=1
+  message: Found coins, but the COIN CASE is full!

@@ -1,0 +1,8 @@
+{
+  "scriptLabel": "SeafoamBoulderHole",
+  "mapName": "SEAFOAM_ISLANDS_1F",
+  "trigger": {
+    "type": "map_script"
+  },
+  "actions": []
+}

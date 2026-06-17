@@ -1,0 +1,40 @@
+Scenario: game_corner_hidden_coin_twenty
+Description: Game Corner hidden coin pickup awards the source 20-coin floor spot.
+Character: SimGameCornerHiddenTwenty
+
+Initial state
+  location: GAME_CORNER[135] (3,11)
+  flags: none
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: GameCornerHiddenCoin
+  map: GAME_CORNER
+  trigger: gamecorner_hidden_coin
+
+Actions
+  - gameCornerHiddenCoin *: success=true coinId=3 amount=20 coins=20 attempts=1 message="Found coins!"
+
+Final state
+  location: GAME_CORNER[135] (3,11)
+  flags: none
+  coins: 20
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Game Corner
+  hidden coin: success=true coinId=3 amount=20 coins=20 attempts=1
+  message: Found coins!

@@ -1,0 +1,24 @@
+{
+  "name": "seafoam_b3f_fallen_boulders_visible_after_b2f_drops",
+  "description": "Seafoam B3F shows boulder objects 3 and 4 after both B2F boulders have dropped.",
+  "fixture": {
+    "characterName": "ScriptSimSeafoamB3FFallenVisible",
+    "mapName": "SEAFOAM_ISLANDS_B3F",
+    "x": 18,
+    "y": 6,
+    "flags": ["EVENT_SEAFOAM3_BOULDER1_DOWN_HOLE", "EVENT_SEAFOAM3_BOULDER2_DOWN_HOLE"]
+  },
+  "trigger": {
+    "type": "event_object_state",
+    "mapName": "SEAFOAM_ISLANDS_B3F"
+  },
+  "expect": {
+    "scriptLabel": "EventObjectState:SEAFOAM_ISLANDS_B3F",
+    "actionTypesContains": ["eventObjectState"],
+    "objectStates": [
+      { "mapName": "SEAFOAM_ISLANDS_B3F", "name": "SeafoamIslandsB3F_NPC_3", "visible": true, "label": "SeafoamBoulder_B3F_Fallen1_VisibleAfterB2FDrop" },
+      { "mapName": "SEAFOAM_ISLANDS_B3F", "name": "SeafoamIslandsB3F_NPC_4", "visible": true, "label": "SeafoamBoulder_B3F_Fallen2_VisibleAfterB2FDrop" }
+    ],
+    "activeBattleAbsent": true
+  }
+}

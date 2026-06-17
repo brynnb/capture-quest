@@ -1,0 +1,23 @@
+{
+  "name": "game_corner_clerk2_no_coin_case",
+  "description": "The Game Corner clerk refuses to give coins when the player has no Coin Case.",
+  "fixture": {
+    "characterName": "ScriptSimGameCornerClerk2NoCoinCase",
+    "mapName": "GAME_CORNER",
+    "x": 7,
+    "y": 4,
+    "direction": "UP"
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "GAME_CORNER",
+    "textConstant": "TEXT_GAMECORNER_CLERK2"
+  },
+  "expect": {
+    "scriptLabel": "GameCornerClerk2NoCoinCase",
+    "flagsAbsent": ["EVENT_GOT_20_COINS_2"],
+    "coins": 0,
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

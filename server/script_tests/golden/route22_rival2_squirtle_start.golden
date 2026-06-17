@@ -1,0 +1,47 @@
+Scenario: route22_rival2_squirtle_start
+Description: Before Pokemon League, step into the second Route 22 rival trigger with Squirtle chosen.
+Character: ScriptSimRoute22Rival2Squirtle
+
+Initial state
+  location: ROUTE_22[9999] (-21,-59)
+  flags: EVENT_2ND_ROUTE22_RIVAL_BATTLE, EVENT_GOT_BOULDERBADGE, EVENT_GOT_CASCADEBADGE, EVENT_GOT_EARTHBADGE, EVENT_GOT_MARSHBADGE, EVENT_GOT_POKEDEX, EVENT_GOT_RAINBOWBADGE, EVENT_GOT_SOULBADGE, EVENT_GOT_THUNDERBADGE, EVENT_GOT_VOLCANOBADGE, EVENT_PLAYER_CHOSE_SQUIRTLE, EVENT_ROUTE22_RIVAL_1, EVENT_ROUTE22_RIVAL_WANTS_BATTLE
+  party:
+    slot 0: #9 BLASTOISE L45 moves WATER_GUN, BITE, WITHDRAW, SKULL_BASH
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    TEXT_ROUTE22_RIVAL1
+  active battle:
+    none
+
+Resolved script
+  label: Route22Rival2Encounter
+  map: ROUTE_22
+  trigger: coord
+
+Actions
+  - lockInput
+  - showActor
+  - move: RIVAL2 [LEFT LEFT LEFT LEFT]
+  - facePlayer
+  - dialogue: RIVAL [What? {PLAYER}! What a surprise to see you here! So you're going to POKéMON LEAGUE? You collected all the BADGEs too? That's cool! Then I'll whip you {PLAYER} as a warm up for POKéMON LEAGUE!]
+  - startTrainerBattle *: RIVAL2 party=11 enemy=[#18 PIDGEOT L47 #111 RHYHORN L45 #130 GYARADOS L45 #58 GROWLITHE L47 #65 ALAKAZAM L50 #3 VENUSAUR L53] winFlag=EVENT_ROUTE22_RIVAL_2
+  - unlockInput
+
+Final state
+  location: ROUTE_22[9999] (-21,-59)
+  flags: EVENT_2ND_ROUTE22_RIVAL_BATTLE, EVENT_GOT_BOULDERBADGE, EVENT_GOT_CASCADEBADGE, EVENT_GOT_EARTHBADGE, EVENT_GOT_MARSHBADGE, EVENT_GOT_POKEDEX, EVENT_GOT_RAINBOWBADGE, EVENT_GOT_SOULBADGE, EVENT_GOT_THUNDERBADGE, EVENT_GOT_VOLCANOBADGE, EVENT_PLAYER_CHOSE_SQUIRTLE, EVENT_ROUTE22_RIVAL_1, EVENT_ROUTE22_RIVAL_WANTS_BATTLE
+  party:
+    slot 0: #9 BLASTOISE L45 moves WATER_GUN, BITE, WITHDRAW, SKULL_BASH
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    TEXT_ROUTE22_RIVAL1
+  active battle:
+    trainer phase=action_select trainer=RIVAL2 name=Gary winFlag=EVENT_ROUTE22_RIVAL_2
+    enemy slot 0: #18 PIDGEOT L47
+    enemy slot 1: #111 RHYHORN L45
+    enemy slot 2: #130 GYARADOS L45
+    enemy slot 3: #58 GROWLITHE L47
+    enemy slot 4: #65 ALAKAZAM L50
+    enemy slot 5: #3 VENUSAUR L53

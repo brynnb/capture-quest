@@ -1,0 +1,22 @@
+{
+  "name": "pokemon_mansion_3f_switch_tiles_on",
+  "description": "Pokemon Mansion 3F switch-controlled blocks resolve to the flag-on layout.",
+  "fixture": {
+    "characterName": "ScriptSimMansion3FTilesOn",
+    "mapName": "POKEMON_MANSION_3F",
+    "x": 10,
+    "y": 5,
+    "flags": ["EVENT_MANSION_SWITCH_ON"]
+  },
+  "trigger": {
+    "type": "tile_state",
+    "mapName": "POKEMON_MANSION_3F"
+  },
+  "expect": {
+    "scriptLabel": "TileState:POKEMON_MANSION_3F",
+    "tileStates": [
+      { "x": 5, "y": 14, "tileImageId": 780, "collisionType": 0, "label": "PokemonMansionSwitchOn_3F_2_7_1_0" },
+      { "x": 11, "y": 14, "tileImageId": 758, "collisionType": 1, "label": "PokemonMansionSwitchOn_3F_5_7_1_0" }
+    ]
+  }
+}

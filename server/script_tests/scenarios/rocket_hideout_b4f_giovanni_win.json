@@ -1,0 +1,54 @@
+{
+  "name": "rocket_hideout_b4f_giovanni_win",
+  "description": "Winning the Rocket Hideout B4F Giovanni battle hides Giovanni and reveals the Silph Scope.",
+  "fixture": {
+    "characterName": "ScriptSimRocketHideoutGiovanniWin",
+    "mapName": "ROCKET_HIDEOUT_B4F",
+    "x": 25,
+    "y": 4,
+    "direction": "UP",
+    "flags": [
+      "EVENT_BEAT_ROCKET_HIDEOUT_4_TRAINER_0",
+      "EVENT_BEAT_ROCKET_HIDEOUT_4_TRAINER_1",
+      "EVENT_ROCKET_HIDEOUT_4_DOOR_UNLOCKED"
+    ],
+    "party": [
+      { "speciesId": 6, "level": 45 }
+    ],
+    "hiddenObjects": ["HS_ROCKET_HIDEOUT_B4F_ITEM_4"]
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "ROCKET_HIDEOUT_B4F",
+    "textConstant": "TEXT_ROCKETHIDEOUTB4F_GIOVANNI"
+  },
+  "resolveBattle": {
+    "result": "win"
+  },
+  "expect": {
+    "scriptLabel": "RocketHideoutB4FGiovanniEncounter",
+    "flagsPresent": [
+      "EVENT_BEAT_ROCKET_HIDEOUT_GIOVANNI",
+      "EVENT_ROCKET_HIDEOUT_GIOVANNI_LEFT"
+    ],
+    "partySpecies": [6],
+    "objectStates": [
+      {
+        "mapName": "ROCKET_HIDEOUT_B4F",
+        "name": "RocketHideoutB4F_NPC_1",
+        "text": "TEXT_ROCKETHIDEOUTB4F_GIOVANNI",
+        "visible": false,
+        "label": "CutsceneAction:hideObject"
+      },
+      {
+        "mapName": "ROCKET_HIDEOUT_B4F",
+        "name": "RocketHideoutB4F_ITEM_8",
+        "text": "TEXT_ROCKETHIDEOUTB4F_SILPH_SCOPE",
+        "visible": true,
+        "label": "CutsceneAction:showObject"
+      }
+    ],
+    "actionTypesContains": ["startTrainerBattle", "resolveBattle", "dialogue", "hideActor", "setFlag", "hideObject", "showObject"],
+    "activeBattleAbsent": true
+  }
+}

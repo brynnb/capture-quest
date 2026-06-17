@@ -1,0 +1,48 @@
+{
+  "scriptLabel": "CeruleanCityRivalDefeated",
+  "mapName": "CERULEAN_CITY",
+  "trigger": {
+    "type": "map_script"
+  },
+  "requiresFlag": "EVENT_BEAT_CERULEAN_RIVAL",
+  "requiresFlagAbsent": "EVENT_CERULEAN_RIVAL_LEFT",
+  "setsFlags": [
+    "EVENT_CERULEAN_RIVAL_LEFT"
+  ],
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Hey! Take it easy! You won already!",
+        "I went to BILL's and got him to show me his rare POKéMON!",
+        "That added a lot of pages to my POKéDEX!",
+        "After all, BILL's world famous as a POKéMANIAC!",
+        "Smell ya later!"
+      ],
+      "speaker": "RIVAL"
+    },
+    {
+      "type": "move",
+      "actor": "RIVAL",
+      "movements": [
+        "DOWN",
+        "DOWN",
+        "DOWN",
+        "DOWN",
+        "DOWN",
+        "DOWN",
+        "DOWN"
+      ]
+    },
+    {
+      "type": "hideActor",
+      "actor": "RIVAL"
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

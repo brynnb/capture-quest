@@ -1,0 +1,24 @@
+{
+  "name": "lances_room_entrance_lock_coord",
+  "description": "Lance's room entrance-lock coordinate sets the source door-lock flag.",
+  "fixture": {
+    "characterName": "ScriptSimLanceEntranceLock",
+    "mapName": "LANCES_ROOM",
+    "x": 5,
+    "y": 11,
+    "direction": "UP",
+    "party": [{ "speciesId": 25, "level": 60 }]
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "LANCES_ROOM",
+    "x": 5,
+    "y": 11
+  },
+  "expect": {
+    "scriptLabel": "LancesRoomEntranceLock",
+    "flagsPresent": ["EVENT_LANCES_ROOM_LOCK_DOOR"],
+    "actionTypesContains": ["setFlag"],
+    "activeBattleAbsent": true
+  }
+}

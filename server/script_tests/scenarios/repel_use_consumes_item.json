@@ -1,0 +1,39 @@
+{
+  "name": "repel_use_consumes_item",
+  "description": "Using REPEL consumes one inventory item and starts a 100-step repel effect.",
+  "fixture": {
+    "characterName": "ScriptSimRepelUse",
+    "mapName": "ROUTE_1",
+    "x": 10,
+    "y": 10,
+    "party": [{ "speciesId": 25, "level": 12 }],
+    "inventory": [{ "itemId": 30, "quantity": 2 }]
+  },
+  "trigger": {
+    "type": "repel_use",
+    "itemId": 30
+  },
+  "expect": {
+    "scriptLabel": "RepelUse",
+    "inventoryContains": [{ "itemId": 30, "quantity": 1 }],
+    "repel": {
+      "success": true,
+      "active": true,
+      "stepsLeft": 100,
+      "message": "REPEL's effect started!"
+    },
+    "messages": [
+      {
+        "channel": "stream",
+        "opcode": 144,
+        "payloadContains": [
+          "\"success\":true",
+          "\"newQuantity\":1",
+          "\"stepsLeft\":100"
+        ]
+      }
+    ],
+    "actionTypesContains": ["repelUse"],
+    "activeBattleAbsent": true
+  }
+}

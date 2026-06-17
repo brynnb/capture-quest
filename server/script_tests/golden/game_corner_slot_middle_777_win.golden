@@ -1,0 +1,42 @@
+Scenario: game_corner_slot_middle_777_win
+Description: Game Corner slot machine deterministic middle-row 7-7-7 awards 300 coins after deducting the bet.
+Character: SimGameCornerSlot777
+
+Initial state
+  location: GAME_CORNER[135] (18,15)
+  flags: none
+  coins: 3
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: GameCornerSlotPlay
+  map: GAME_CORNER
+  trigger: gamecorner_slot_play
+
+Actions
+  - gameCornerSlotPlay *: success=true bet=1 payout=300 coins=302 positions=[17 17 17] match=middle:7
+
+Final state
+  location: GAME_CORNER[135] (18,15)
+  flags: none
+  coins: 302
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Game Corner
+  slot play: success=true bet=1 payout=300 coins=302 positions=[17 17 17]
+  match: middle 7
+  reels: [[staryu 7 pikachu] [cherry 7 staryu] [staryu 7 pidgey]]

@@ -1,0 +1,32 @@
+{
+  "name": "game_corner_prize_list_with_coin_case",
+  "description": "Game Corner prize list matches the Red source prize table.",
+  "fixture": {
+    "characterName": "SimGameCornerPrizeListWithCase",
+    "mapName": "GAME_CORNER_PRIZE_ROOM",
+    "x": 2,
+    "y": 4,
+    "coins": 9999,
+    "inventory": [
+      { "itemName": "COIN CASE", "quantity": 1 }
+    ]
+  },
+  "trigger": {
+    "type": "gamecorner_prize_list"
+  },
+  "expect": {
+    "scriptLabel": "GameCornerPrizeList",
+    "coins": 9999,
+    "gameCornerPrizes": [
+      { "name": "ABRA", "type": "pokemon", "pokemonId": 63, "coinCost": 180 },
+      { "name": "CLEFAIRY", "type": "pokemon", "pokemonId": 35, "coinCost": 500 },
+      { "name": "NIDORINA", "type": "pokemon", "pokemonId": 30, "coinCost": 1200 },
+      { "name": "DRATINI", "type": "pokemon", "pokemonId": 147, "coinCost": 2800 },
+      { "name": "SCYTHER", "type": "pokemon", "pokemonId": 123, "coinCost": 5500 },
+      { "name": "PORYGON", "type": "pokemon", "pokemonId": 137, "coinCost": 9999 },
+      { "name": "TM23 Dragon Rage", "type": "tm", "itemId": 111, "coinCost": 3300 },
+      { "name": "TM15 Hyper Beam", "type": "tm", "itemId": 103, "coinCost": 5500 },
+      { "name": "TM50 Substitute", "type": "tm", "itemId": 138, "coinCost": 7700 }
+    ]
+  }
+}

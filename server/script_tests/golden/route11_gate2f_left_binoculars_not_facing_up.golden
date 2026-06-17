@@ -1,0 +1,35 @@
+Scenario: route11_gate2f_left_binoculars_not_facing_up
+Description: The Route 11 Gate 2F left binoculars do not fire unless the player is facing up, matching GateUpstairsScript_PrintIfFacingUp.
+Character: ScriptSimRoute11BinocularsWrongFacing
+
+Initial state
+  location: ROUTE_11_GATE_2F[86] (1,3)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L20 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: NoScript:ROUTE_11_GATE_2F
+  map: ROUTE_11_GATE_2F
+  trigger: click_no_script
+
+Actions
+  - noScript: ROUTE_11_GATE_2F keys=[TEXT_ROUTE11GATE2F_LEFT_BINOCULARS]
+
+Final state
+  location: ROUTE_11_GATE_2F[86] (1,3)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L20 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

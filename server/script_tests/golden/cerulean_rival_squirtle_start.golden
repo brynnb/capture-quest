@@ -1,0 +1,49 @@
+Scenario: cerulean_rival_squirtle_start
+Description: Step into the Cerulean bridge rival trigger with Squirtle chosen and verify the Bulbasaur-path party.
+Character: ScriptSimCeruleanRivalSquirtle
+
+Initial state
+  location: CERULEAN_CITY[9999] (191,-192)
+  flags: EVENT_GOT_POKEDEX, EVENT_PLAYER_CHOSE_SQUIRTLE
+  party:
+    slot 0: #7 SQUIRTLE L18 moves TACKLE, BUBBLE, WATER_GUN
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: CeruleanCityRivalEncounter
+  map: CERULEAN_CITY
+  trigger: coord
+
+Actions
+  - lockInput
+  - showActor
+  - move: RIVAL [DOWN DOWN DOWN]
+  - facePlayer
+  - dialogue: RIVAL [{RIVAL}: Yo!
+(PLAYER)! You're still
+struggling along back here? I'm doing great!
+I caught a bunch of strong and smart POKÉMON! Here, let me see
+what you caught, (PLAYER)!]
+  - startTrainerBattle *: RIVAL1 party=8 enemy=[#17 PIDGEOTTO L18 #63 ABRA L15 #19 RATTATA L15 #1 BULBASAUR L17] winFlag=EVENT_BEAT_CERULEAN_RIVAL
+  - unlockInput
+
+Final state
+  location: CERULEAN_CITY[9999] (191,-192)
+  flags: EVENT_GOT_POKEDEX, EVENT_PLAYER_CHOSE_SQUIRTLE
+  party:
+    slot 0: #7 SQUIRTLE L18 moves TACKLE, BUBBLE, WATER_GUN
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    trainer phase=action_select trainer=RIVAL1 name=Gary winFlag=EVENT_BEAT_CERULEAN_RIVAL
+    enemy slot 0: #17 PIDGEOTTO L18
+    enemy slot 1: #63 ABRA L15
+    enemy slot 2: #19 RATTATA L15
+    enemy slot 3: #1 BULBASAUR L17

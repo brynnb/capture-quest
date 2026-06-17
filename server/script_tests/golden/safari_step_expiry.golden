@@ -1,0 +1,38 @@
+Scenario: safari_step_expiry
+Description: A seeded Safari Zone session expires when its step count reaches zero.
+Character: ScriptSimSafariStepExpiry
+
+Initial state
+  location: SAFARI_ZONE_CENTER[220] (14,24)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L25 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SafariStep
+  map: SAFARI_ZONE_CENTER
+  trigger: safari_step
+
+Actions
+  - safariStep *: steps=1 active=false left=0 balls=3 expired=true
+
+Final state
+  location: SAFARI_ZONE_CENTER[220] (14,24)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L25 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Safari session
+  inactive

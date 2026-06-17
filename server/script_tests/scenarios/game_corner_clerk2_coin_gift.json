@@ -1,0 +1,25 @@
+{
+  "name": "game_corner_clerk2_coin_gift",
+  "description": "The Game Corner clerk gives 20 source coins once when the player has a Coin Case with room.",
+  "fixture": {
+    "characterName": "ScriptSimGameCornerClerk2CoinGift",
+    "mapName": "GAME_CORNER",
+    "x": 7,
+    "y": 4,
+    "direction": "UP",
+    "inventory": [{ "itemName": "COIN_CASE", "quantity": 1 }],
+    "coins": 10
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "GAME_CORNER",
+    "textConstant": "TEXT_GAMECORNER_CLERK2"
+  },
+  "expect": {
+    "scriptLabel": "GameCornerClerk2CoinsGift",
+    "flagsPresent": ["EVENT_GOT_20_COINS_2"],
+    "coins": 30,
+    "actionTypesContains": ["dialogue", "giveCoins", "setFlag"],
+    "activeBattleAbsent": true
+  }
+}

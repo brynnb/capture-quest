@@ -1,0 +1,40 @@
+Scenario: loreleis_room_post_battle
+Description: After beating Lorelei, her room post-battle script records completion.
+Character: ScriptSimLoreleiPostBattle
+
+Initial state
+  location: LORELEIS_ROOM[245] (4,10)
+  flags: EVENT_BEAT_LORELEI
+  party:
+    slot 0: #6 CHARIZARD L60 moves RAGE, SLASH, FLAMETHROWER, FIRE_SPIN
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: LoreleisRoomLoreleiPostBattle
+  map: LORELEIS_ROOM
+  trigger: map_script
+
+Actions
+  - lockInput
+  - dialogue: LORELEI [How dare you!]
+  - dialogue: LORELEI [You're better than I thought! Go on ahead! You only got a taste of POKéMON LEAGUE power!]
+  - setFlag *: EVENT_LORELEI_POST_BATTLE_DONE
+  - unlockInput
+  - setsFlags *: EVENT_LORELEI_POST_BATTLE_DONE
+
+Final state
+  location: LORELEIS_ROOM[245] (4,10)
+  flags: EVENT_BEAT_LORELEI, EVENT_LORELEI_POST_BATTLE_DONE
+  party:
+    slot 0: #6 CHARIZARD L60 moves RAGE, SLASH, FLAMETHROWER, FIRE_SPIN
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

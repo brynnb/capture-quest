@@ -1,0 +1,25 @@
+{
+  "name": "museum_1f_entry_ticket_purchase",
+  "description": "Museum 1F entry deducts the 50 Pokédollar child ticket fee.",
+  "fixture": {
+    "characterName": "ScriptSimMuseumTicketPurchase",
+    "mapName": "MUSEUM_1F",
+    "x": 9,
+    "y": 4,
+    "direction": "UP",
+    "money": 50,
+    "party": [{ "speciesId": 25, "level": 12 }]
+  },
+  "trigger": {
+    "type": "direct",
+    "scriptLabel": "Museum1FEntryTicketPurchase",
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "Museum1FEntryTicketPurchase",
+    "flagsPresent": ["EVENT_BOUGHT_MUSEUM_TICKET"],
+    "money": 0,
+    "actionTypesContains": ["choice", "takeMoney", "setFlag"],
+    "activeBattleAbsent": true
+  }
+}

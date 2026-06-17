@@ -1,0 +1,42 @@
+Scenario: safari_zone_gate_exit
+Description: Leaving the Safari Zone through the gate runs the exit script instead of the entry offer.
+Character: ScriptSimSafariGateExit
+
+Initial state
+  location: SAFARI_ZONE_GATE[156] (4,2)
+  flags: EVENT_IN_SAFARI_ZONE
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SafariZoneGateExit
+  map: SAFARI_ZONE_GATE
+  trigger: coord
+
+Actions
+  - lockInput
+  - dialogue: SAFARI ZONE WORKER [Leaving early? Please return any SAFARI BALLs you have left.]
+  - dialogue: SAFARI ZONE WORKER [Did you get a good haul? Come again!]
+  - endSafariSession *: active=true balls=17 steps=321 ended=true
+  - unlockInput
+
+Final state
+  location: SAFARI_ZONE_GATE[156] (4,2)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Safari session
+  inactive

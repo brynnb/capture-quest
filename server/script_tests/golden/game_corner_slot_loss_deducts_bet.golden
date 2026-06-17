@@ -1,0 +1,41 @@
+Scenario: game_corner_slot_loss_deducts_bet
+Description: Game Corner slot machine deterministic non-match deducts the bet and pays nothing.
+Character: SimGameCornerSlotLoss
+
+Initial state
+  location: GAME_CORNER[135] (18,15)
+  flags: none
+  coins: 10
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: GameCornerSlotPlay
+  map: GAME_CORNER
+  trigger: gamecorner_slot_play
+
+Actions
+  - gameCornerSlotPlay *: success=true bet=3 payout=0 coins=7 positions=[1 1 1]
+
+Final state
+  location: GAME_CORNER[135] (18,15)
+  flags: none
+  coins: 7
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Game Corner
+  slot play: success=true bet=3 payout=0 coins=7 positions=[1 1 1]
+  reels: [[pikachu staryu BAR] [staryu cherry pidgey] [pidgey staryu cherry]]

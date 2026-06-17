@@ -1,0 +1,34 @@
+Scenario: route18_gate_2f_marc_trade_ready
+Description: Route 18 Gate 2F Youngster is ready to trade Lickitung named MARC for Slowbro.
+Character: ScriptSimRoute18MarcTrade
+
+Initial state
+  location: ROUTE_18_GATE_2F[191] (4,3)
+  flags: none
+  party:
+    slot 0: #80 SLOWBRO L25 moves DISABLE, HEADBUTT, DISABLE, HEADBUTT
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FixtureState
+  map: ROUTE_18_GATE_2F
+  trigger: fixture_state
+
+Actions
+
+Final state
+  location: ROUTE_18_GATE_2F[191] (4,3)
+  flags: none
+  party:
+    slot 0: #80 SLOWBRO L25 moves DISABLE, HEADBUTT, DISABLE, HEADBUTT
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

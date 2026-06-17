@@ -1,0 +1,44 @@
+Scenario: indigo_plateau_lobby_map_load_reset
+Description: The generated Indigo Plateau Lobby map script resets Victory Road and in-progress Elite Four state.
+Character: ScriptSimIndigoLobbyMapLoadReset
+
+Initial state
+  location: INDIGO_PLATEAU_LOBBY[174] (5,6)
+  flags: EVENT_AUTOWALKED_INTO_AGATHAS_ROOM, EVENT_AUTOWALKED_INTO_BRUNOS_ROOM, EVENT_AUTOWALKED_INTO_LORELEIS_ROOM, EVENT_BEAT_AGATHAS_ROOM_TRAINER_0, EVENT_BEAT_BRUNOS_ROOM_TRAINER_0, EVENT_BEAT_CHAMPION_RIVAL, EVENT_BEAT_LANCE, EVENT_BEAT_LANCES_ROOM_TRAINER_0, EVENT_BEAT_LORELEIS_ROOM_TRAINER_0, EVENT_LANCES_ROOM_LOCK_DOOR, EVENT_VICTORY_ROAD_1_BOULDER_ON_SWITCH
+  party:
+    slot 0: #6 CHARIZARD L65 moves RAGE, SLASH, FLAMETHROWER, FIRE_SPIN
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: IndigoPlateauLobbyMapLoadReset
+  map: INDIGO_PLATEAU_LOBBY
+  trigger: map_script
+
+Actions
+  - resetFlag *: EVENT_VICTORY_ROAD_1_BOULDER_ON_SWITCH
+  - resetFlag *: EVENT_BEAT_LORELEIS_ROOM_TRAINER_0
+  - resetFlag *: EVENT_AUTOWALKED_INTO_LORELEIS_ROOM
+  - resetFlag *: EVENT_BEAT_BRUNOS_ROOM_TRAINER_0
+  - resetFlag *: EVENT_AUTOWALKED_INTO_BRUNOS_ROOM
+  - resetFlag *: EVENT_BEAT_AGATHAS_ROOM_TRAINER_0
+  - resetFlag *: EVENT_AUTOWALKED_INTO_AGATHAS_ROOM
+  - resetFlag *: EVENT_BEAT_LANCES_ROOM_TRAINER_0
+  - resetFlag *: EVENT_BEAT_LANCE
+  - resetFlag *: EVENT_LANCES_ROOM_LOCK_DOOR
+
+Final state
+  location: INDIGO_PLATEAU_LOBBY[174] (5,6)
+  flags: EVENT_BEAT_CHAMPION_RIVAL
+  party:
+    slot 0: #6 CHARIZARD L65 moves RAGE, SLASH, FLAMETHROWER, FIRE_SPIN
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

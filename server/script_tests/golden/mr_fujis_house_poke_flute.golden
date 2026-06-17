@@ -1,0 +1,42 @@
+Scenario: mr_fujis_house_poke_flute
+Description: Mr. Fuji gives the Poke Flute after being rescued from Pokemon Tower.
+Character: ScriptSimPokeFlute
+
+Initial state
+  location: MR_FUJIS_HOUSE[149] (2,3)
+  flags: EVENT_RESCUED_MR_FUJI
+  party:
+    slot 0: #6 CHARIZARD L34 moves LEER, EMBER, LEER, RAGE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: MrFujisHousePokeFlute
+  map: MR_FUJIS_HOUSE
+  trigger: map_script
+
+Actions
+  - lockInput
+  - dialogue: MR. FUJI [Thank you for rescuing me from TEAM ROCKET! They had me trapped in POKéMON TOWER! I want you to have this as a token of my gratitude.]
+  - dialogue:  [{PLAYER} received a POKé FLUTE! The POKé FLUTE can wake sleeping POKéMON! Use it to wake that sleeping SNORLAX!]
+  - setFlag *: EVENT_GOT_POKE_FLUTE
+  - playSFX: SFX_GET_KEY_ITEM
+  - unlockInput
+  - giveItem *: POKé FLUTE x1 added
+  - setsFlags *: EVENT_GOT_POKE_FLUTE
+
+Final state
+  location: MR_FUJIS_HOUSE[149] (2,3)
+  flags: EVENT_GOT_POKE_FLUTE, EVENT_RESCUED_MR_FUJI
+  party:
+    slot 0: #6 CHARIZARD L34 moves LEER, EMBER, LEER, RAGE
+  inventory:
+    #73 POKé FLUTE x1
+  hidden objects:
+    none
+  active battle:
+    none

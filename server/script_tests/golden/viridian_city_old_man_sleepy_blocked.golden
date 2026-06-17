@@ -1,0 +1,40 @@
+Scenario: viridian_city_old_man_sleepy_blocked
+Description: Viridian City's old man blocks and pushes back the player before Oak gives the Pokédex.
+Character: ScriptSimViridianOldManSleepy
+
+Initial state
+  location: VIRIDIAN_CITY[9999] (9,-63)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L8 moves THUNDERSHOCK, GROWL
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: ViridianCityOldManSleepyBlocked
+  map: VIRIDIAN_CITY
+  trigger: coord
+
+Actions
+  - lockInput
+  - dialogue:  [You can't go
+through here! This is private
+property!]
+  - movePlayer *: from=(9,-63) to=(9,-62) steps=[DOWN]
+  - unlockInput
+
+Final state
+  location: VIRIDIAN_CITY[9999] (9,-62)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L8 moves THUNDERSHOCK, GROWL
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

@@ -1,0 +1,37 @@
+{
+  "name": "cinnabar_lab_submit_helix_fossil",
+  "description": "Submitting Helix Fossil removes it from inventory and starts Omanyte revival.",
+  "fixture": {
+    "characterName": "ScriptSimCinnabarSubmitHelix",
+    "mapName": "CINNABAR_LAB_FOSSIL_ROOM",
+    "x": 5,
+    "y": 3,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_HELIX_FOSSIL"],
+    "party": [{ "speciesId": 25, "level": 35 }],
+    "inventory": [{ "itemId": 42, "quantity": 1 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "CINNABAR_LAB_FOSSIL_ROOM",
+    "textConstant": "TEXT_CINNABARLABFOSSILROOM_SCIENTIST1",
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "CinnabarLabSubmitHelixFossil",
+    "flagsPresent": [
+      "EVENT_GOT_HELIX_FOSSIL",
+      "EVENT_GAVE_FOSSIL_TO_LAB",
+      "EVENT_LAB_STILL_REVIVING_FOSSIL",
+      "EVENT_LAB_REVIVING_HELIX_FOSSIL"
+    ],
+    "flagsAbsent": [
+      "EVENT_LAB_REVIVING_DOME_FOSSIL",
+      "EVENT_LAB_REVIVING_OLD_AMBER"
+    ],
+    "inventoryAbsent": [{ "itemId": 42 }],
+    "actionTypesContains": ["choice", "takeItem", "setFlag"],
+    "activeBattleAbsent": true
+  }
+}

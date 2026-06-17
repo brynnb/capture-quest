@@ -1,0 +1,22 @@
+{
+  "name": "seafoam_b3f_current_near_left_boulder",
+  "description": "Seafoam B3F current at the left fallen boulder forces the source Down 6, Right 2, Down 4 path.",
+  "fixture": {
+    "characterName": "ScriptSimSeafoamB3FCurrentLeftBoulder",
+    "mapName": "SEAFOAM_ISLANDS_B3F",
+    "x": 18,
+    "y": 6,
+    "flags": ["EVENT_SEAFOAM3_BOULDER1_DOWN_HOLE", "EVENT_SEAFOAM3_BOULDER2_DOWN_HOLE"]
+  },
+  "trigger": {
+    "type": "seafoam_current",
+    "mapName": "SEAFOAM_ISLANDS_B3F"
+  },
+  "expect": {
+    "scriptLabel": "SeafoamCurrent:SeafoamB3FCurrentNearLeftBoulder",
+    "finalX": 20,
+    "finalY": 16,
+    "actionTypesContains": ["seafoamCurrent"],
+    "activeBattleAbsent": true
+  }
+}

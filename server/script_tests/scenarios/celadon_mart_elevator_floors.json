@@ -1,0 +1,23 @@
+{
+  "name": "celadon_mart_elevator_floors",
+  "description": "Celadon Dept. Store elevator lists floors 1F through 5F.",
+  "fixture": {
+    "characterName": "SimCeladonElevatorFloors",
+    "mapName": "CELADON_MART_ELEVATOR",
+    "x": 2,
+    "y": 2
+  },
+  "trigger": {
+    "type": "elevator_floors"
+  },
+  "expect": {
+    "scriptLabel": "ElevatorFloors:CELADON_MART_ELEVATOR",
+    "elevatorFloors": [
+      { "mapName": "CELADON_MART_1F", "label": "1F", "destX": 1, "destY": 1 },
+      { "mapName": "CELADON_MART_2F", "label": "2F", "destX": 1, "destY": 1 },
+      { "mapName": "CELADON_MART_3F", "label": "3F", "destX": 1, "destY": 1 },
+      { "mapName": "CELADON_MART_4F", "label": "4F", "destX": 1, "destY": 1 },
+      { "mapName": "CELADON_MART_5F", "label": "5F", "destX": 1, "destY": 1 }
+    ]
+  }
+}

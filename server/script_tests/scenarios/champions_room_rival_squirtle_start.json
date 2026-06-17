@@ -1,0 +1,53 @@
+{
+  "name": "champions_room_rival_squirtle_start",
+  "description": "Enter the Champion room with Squirtle chosen and verify the Venusaur-path champion party.",
+  "fixture": {
+    "characterName": "ScriptSimChampionRivalSquirtle",
+    "mapName": "CHAMPIONS_ROOM",
+    "x": 3,
+    "y": 7,
+    "direction": "UP",
+    "flags": [
+      "EVENT_GOT_POKEDEX",
+      "EVENT_PLAYER_CHOSE_SQUIRTLE",
+      "EVENT_GOT_BOULDERBADGE",
+      "EVENT_GOT_CASCADEBADGE",
+      "EVENT_GOT_THUNDERBADGE",
+      "EVENT_GOT_RAINBOWBADGE",
+      "EVENT_GOT_SOULBADGE",
+      "EVENT_GOT_MARSHBADGE",
+      "EVENT_GOT_VOLCANOBADGE",
+      "EVENT_GOT_EARTHBADGE",
+      "EVENT_BEAT_LORELEI",
+      "EVENT_BEAT_BRUNO",
+      "EVENT_BEAT_AGATHA",
+      "EVENT_BEAT_LANCE"
+    ],
+    "party": [
+      { "speciesId": 9, "level": 65 }
+    ],
+    "inventory": [
+      { "itemId": 9, "quantity": 1 }
+    ]
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "CHAMPIONS_ROOM",
+    "x": 3,
+    "y": 7
+  },
+  "expect": {
+    "scriptLabel": "ChampionsRoomRivalIntro",
+    "flagsAbsent": ["EVENT_BEAT_CHAMPION_RIVAL"],
+    "partySpecies": [9],
+    "inventoryContains": [
+      { "itemId": 9, "quantity": 1 }
+    ],
+    "finalMapName": "CHAMPIONS_ROOM",
+    "finalX": 4,
+    "finalY": 3,
+    "actionTypesContains": ["movePlayer", "dialogue", "startTrainerBattle"],
+    "activeBattleTrainerClass": "RIVAL3",
+    "activeBattleEnemySpecies": [18, 65, 112, 130, 59, 3]
+  }
+}

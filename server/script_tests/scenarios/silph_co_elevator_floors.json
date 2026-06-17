@@ -1,0 +1,29 @@
+{
+  "name": "silph_co_elevator_floors",
+  "description": "Silph Co. elevator lists floors 1F through 11F.",
+  "fixture": {
+    "characterName": "SimSilphElevatorFloors",
+    "mapName": "SILPH_CO_ELEVATOR",
+    "x": 2,
+    "y": 2
+  },
+  "trigger": {
+    "type": "elevator_floors"
+  },
+  "expect": {
+    "scriptLabel": "ElevatorFloors:SILPH_CO_ELEVATOR",
+    "elevatorFloors": [
+      { "mapName": "SILPH_CO_1F", "label": "1F", "destX": 20 },
+      { "mapName": "SILPH_CO_2F", "label": "2F", "destX": 20 },
+      { "mapName": "SILPH_CO_3F", "label": "3F", "destX": 20 },
+      { "mapName": "SILPH_CO_4F", "label": "4F", "destX": 20 },
+      { "mapName": "SILPH_CO_5F", "label": "5F", "destX": 20 },
+      { "mapName": "SILPH_CO_6F", "label": "6F", "destX": 18 },
+      { "mapName": "SILPH_CO_7F", "label": "7F", "destX": 18 },
+      { "mapName": "SILPH_CO_8F", "label": "8F", "destX": 18 },
+      { "mapName": "SILPH_CO_9F", "label": "9F", "destX": 18 },
+      { "mapName": "SILPH_CO_10F", "label": "10F", "destX": 12 },
+      { "mapName": "SILPH_CO_11F", "label": "11F", "destX": 13 }
+    ]
+  }
+}

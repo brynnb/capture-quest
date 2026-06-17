@@ -1,0 +1,83 @@
+{
+  "name": "pokemon_tower_2f_rival_squirtle_right_side_start",
+  "description": "Step into the Pokemon Tower 2F right-side rival trigger with Squirtle chosen and verify the Ivysaur-path party.",
+  "fixture": {
+    "characterName": "ScriptSimPokemonTower2fRivalSquirtleRightSide",
+    "mapName": "POKEMON_TOWER_2F",
+    "x": 15,
+    "y": 5,
+    "direction": "LEFT",
+    "flags": [
+      "EVENT_GOT_POKEDEX",
+      "EVENT_PLAYER_CHOSE_SQUIRTLE",
+      "EVENT_BEAT_CERULEAN_RIVAL",
+      "EVENT_BEAT_SS_ANNE_RIVAL",
+      "EVENT_GOT_CASCADEBADGE",
+      "EVENT_GOT_SS_TICKET",
+      "EVENT_GOT_HM01",
+      "EVENT_SS_ANNE_LEFT"
+    ],
+    "party": [
+      {
+        "speciesId": 8,
+        "level": 28
+      }
+    ],
+    "inventory": [
+      {
+        "itemId": 9,
+        "quantity": 1
+      },
+      {
+        "itemId": 63,
+        "quantity": 1
+      },
+      {
+        "itemId": 84,
+        "quantity": 1
+      }
+    ]
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "POKEMON_TOWER_2F",
+    "x": 15,
+    "y": 5
+  },
+  "expect": {
+    "scriptLabel": "PokemonTower2FRivalEncounter",
+    "flagsAbsent": [
+      "EVENT_BEAT_POKEMON_TOWER_RIVAL"
+    ],
+    "partySpecies": [
+      8
+    ],
+    "inventoryContains": [
+      {
+        "itemId": 9,
+        "quantity": 1
+      },
+      {
+        "itemId": 63,
+        "quantity": 1
+      },
+      {
+        "itemId": 84,
+        "quantity": 1
+      }
+    ],
+    "actionTypesContains": [
+      "facePlayer",
+      "dialogue",
+      "startTrainerBattle"
+    ],
+    "activeBattleTrainerClass": "RIVAL2",
+    "activeBattleEnemySpecies": [
+      17,
+      130,
+      58,
+      64,
+      2
+    ]
+  }
+}

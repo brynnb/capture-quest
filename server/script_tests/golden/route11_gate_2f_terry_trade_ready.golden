@@ -1,0 +1,34 @@
+Scenario: route11_gate_2f_terry_trade_ready
+Description: Route 11 Gate 2F Youngster is ready to trade Nidorina named TERRY for Nidorino.
+Character: ScriptSimRoute11TerryTrade
+
+Initial state
+  location: ROUTE_11_GATE_2F[86] (4,3)
+  flags: none
+  party:
+    slot 0: #33 NIDORINO L25 moves TACKLE, HORN_ATTACK, POISON_STING, FOCUS_ENERGY
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FixtureState
+  map: ROUTE_11_GATE_2F
+  trigger: fixture_state
+
+Actions
+
+Final state
+  location: ROUTE_11_GATE_2F[86] (4,3)
+  flags: none
+  party:
+    slot 0: #33 NIDORINO L25 moves TACKLE, HORN_ATTACK, POISON_STING, FOCUS_ENERGY
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

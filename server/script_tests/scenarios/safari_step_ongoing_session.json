@@ -1,0 +1,28 @@
+{
+  "name": "safari_step_ongoing_session",
+  "description": "A seeded Safari Zone session decrements step count without expiring while steps remain.",
+  "fixture": {
+    "characterName": "ScriptSimSafariStepOngoing",
+    "mapName": "SAFARI_ZONE_CENTER",
+    "x": 14,
+    "y": 24,
+    "party": [{ "speciesId": 25, "level": 25 }],
+    "safari": {
+      "active": true,
+      "ballsLeft": 30,
+      "stepsLeft": 3
+    }
+  },
+  "trigger": {
+    "type": "safari_step",
+    "repeat": 2
+  },
+  "expect": {
+    "scriptLabel": "SafariStep",
+    "safariActive": true,
+    "safariBallsLeft": 30,
+    "safariStepsLeft": 1,
+    "actionTypesContains": ["safariStep"],
+    "activeBattleAbsent": true
+  }
+}

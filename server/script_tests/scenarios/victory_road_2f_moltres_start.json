@@ -1,0 +1,22 @@
+{
+  "name": "victory_road_2f_moltres_start",
+  "description": "Victory Road 2F Moltres starts a scripted L50 wild battle without setting the beat flag at cutscene completion.",
+  "fixture": {
+    "characterName": "ScriptSim_Moltres_Start",
+    "mapName": "VICTORY_ROAD_2F",
+    "x": 11,
+    "y": 5,
+    "party": [{"speciesId": 25, "level": 60}]
+  },
+  "trigger": {
+    "type": "npc_click",
+    "textConstant": "TEXT_VICTORYROAD2F_MOLTRES"
+  },
+  "expect": {
+    "scriptLabel": "VictoryRoad2FMoltresEncounter",
+    "flagsAbsent": ["EVENT_BEAT_MOLTRES"],
+    "actionTypesContains": ["startWildBattle"],
+    "activeBattleType": "wild",
+    "activeBattleEnemySpecies": [146]
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "seafoam_b4f_surf_blocked_at_stairs_current",
+  "description": "Seafoam B4F blocks Surf at the fast-current stairs coordinate after both B3F boulders have fallen to B4F.",
+  "fixture": {
+    "characterName": "ScriptSimSeafoamB4FSurfBlocked",
+    "mapName": "SEAFOAM_ISLANDS_B4F",
+    "x": 7,
+    "y": 11,
+    "flags": ["EVENT_SEAFOAM4_BOULDER1_DOWN_HOLE", "EVENT_SEAFOAM4_BOULDER2_DOWN_HOLE"]
+  },
+  "trigger": {
+    "type": "seafoam_surf_check",
+    "mapName": "SEAFOAM_ISLANDS_B4F"
+  },
+  "expect": {
+    "scriptLabel": "SeafoamSurfCheck",
+    "seafoamSurfBlocked": true,
+    "actionTypesContains": ["seafoamSurfCheck"],
+    "activeBattleAbsent": true
+  }
+}

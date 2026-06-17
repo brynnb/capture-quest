@@ -1,0 +1,43 @@
+{
+  "name": "seafoam_1f_boulder_push_one_tile",
+  "description": "Using Strength lets the player push a visible Seafoam boulder one walkable tile.",
+  "fixture": {
+    "characterName": "SimBoulderPushOneTile",
+    "mapName": "SEAFOAM_ISLANDS_1F",
+    "x": 18,
+    "y": 11,
+    "flags": ["EVENT_GOT_RAINBOWBADGE"],
+    "party": [
+      { "speciesId": 66, "level": 20, "moves": ["STRENGTH"] }
+    ]
+  },
+  "trigger": {
+    "type": "boulder_push",
+    "direction": "UP",
+    "activateStrength": true
+  },
+  "expect": {
+    "scriptLabel": "BoulderPush:SEAFOAM_ISLANDS_1F",
+    "boulderPush": {
+      "success": true,
+      "objectName": "SeafoamIslands1F_NPC_1",
+      "fromX": 18,
+      "fromY": 10,
+      "toX": 18,
+      "toY": 9,
+      "dropped": false
+    },
+    "flagsAbsent": ["EVENT_SEAFOAM1_BOULDER1_DOWN_HOLE"],
+    "objectStates": [
+      {
+        "mapName": "SEAFOAM_ISLANDS_1F",
+        "name": "SeafoamIslands1F_NPC_1",
+        "x": 18,
+        "y": 9,
+        "visible": true
+      }
+    ],
+    "actionTypesContains": ["boulderPush"],
+    "activeBattleAbsent": true
+  }
+}

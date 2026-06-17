@@ -1,0 +1,262 @@
+[
+  {
+    "mapId": 159,
+    "mapName": "SEAFOAM_ISLANDS_B1F",
+    "objectName": "SeafoamIslandsB1F_NPC_1",
+    "visible": false,
+    "requiresFlag": "EVENT_SEAFOAM2_BOULDER1_DOWN_HOLE",
+    "label": "SeafoamBoulder_B1F_1_HiddenAfterB1FDrop"
+  },
+  {
+    "mapId": 159,
+    "mapName": "SEAFOAM_ISLANDS_B1F",
+    "objectName": "SeafoamIslandsB1F_NPC_1",
+    "visible": false,
+    "requiresFlagAbsent": "EVENT_SEAFOAM1_BOULDER1_DOWN_HOLE",
+    "label": "SeafoamBoulder_B1F_1_HiddenBeforeDrop"
+  },
+  {
+    "mapId": 159,
+    "mapName": "SEAFOAM_ISLANDS_B1F",
+    "objectName": "SeafoamIslandsB1F_NPC_1",
+    "visible": true,
+    "requiresFlag": "EVENT_SEAFOAM1_BOULDER1_DOWN_HOLE",
+    "requiresFlagAbsent": "EVENT_SEAFOAM2_BOULDER1_DOWN_HOLE",
+    "label": "SeafoamBoulder_B1F_1_VisibleAfter1FDrop"
+  },
+  {
+    "mapId": 159,
+    "mapName": "SEAFOAM_ISLANDS_B1F",
+    "objectName": "SeafoamIslandsB1F_NPC_2",
+    "visible": false,
+    "requiresFlag": "EVENT_SEAFOAM2_BOULDER2_DOWN_HOLE",
+    "label": "SeafoamBoulder_B1F_2_HiddenAfterB1FDrop"
+  },
+  {
+    "mapId": 159,
+    "mapName": "SEAFOAM_ISLANDS_B1F",
+    "objectName": "SeafoamIslandsB1F_NPC_2",
+    "visible": false,
+    "requiresFlagAbsent": "EVENT_SEAFOAM1_BOULDER2_DOWN_HOLE",
+    "label": "SeafoamBoulder_B1F_2_HiddenBeforeDrop"
+  },
+  {
+    "mapId": 159,
+    "mapName": "SEAFOAM_ISLANDS_B1F",
+    "objectName": "SeafoamIslandsB1F_NPC_2",
+    "visible": true,
+    "requiresFlag": "EVENT_SEAFOAM1_BOULDER2_DOWN_HOLE",
+    "requiresFlagAbsent": "EVENT_SEAFOAM2_BOULDER2_DOWN_HOLE",
+    "label": "SeafoamBoulder_B1F_2_VisibleAfter1FDrop"
+  },
+  {
+    "mapId": 160,
+    "mapName": "SEAFOAM_ISLANDS_B2F",
+    "objectName": "SeafoamIslandsB2F_NPC_1",
+    "visible": false,
+    "requiresFlag": "EVENT_SEAFOAM3_BOULDER1_DOWN_HOLE",
+    "label": "SeafoamBoulder_B2F_1_HiddenAfterB2FDrop"
+  },
+  {
+    "mapId": 160,
+    "mapName": "SEAFOAM_ISLANDS_B2F",
+    "objectName": "SeafoamIslandsB2F_NPC_1",
+    "visible": false,
+    "requiresFlagAbsent": "EVENT_SEAFOAM2_BOULDER1_DOWN_HOLE",
+    "label": "SeafoamBoulder_B2F_1_HiddenBeforeDrop"
+  },
+  {
+    "mapId": 160,
+    "mapName": "SEAFOAM_ISLANDS_B2F",
+    "objectName": "SeafoamIslandsB2F_NPC_1",
+    "visible": true,
+    "requiresFlag": "EVENT_SEAFOAM2_BOULDER1_DOWN_HOLE",
+    "requiresFlagAbsent": "EVENT_SEAFOAM3_BOULDER1_DOWN_HOLE",
+    "label": "SeafoamBoulder_B2F_1_VisibleAfterB1FDrop"
+  },
+  {
+    "mapId": 160,
+    "mapName": "SEAFOAM_ISLANDS_B2F",
+    "objectName": "SeafoamIslandsB2F_NPC_2",
+    "visible": false,
+    "requiresFlag": "EVENT_SEAFOAM3_BOULDER2_DOWN_HOLE",
+    "label": "SeafoamBoulder_B2F_2_HiddenAfterB2FDrop"
+  },
+  {
+    "mapId": 160,
+    "mapName": "SEAFOAM_ISLANDS_B2F",
+    "objectName": "SeafoamIslandsB2F_NPC_2",
+    "visible": false,
+    "requiresFlagAbsent": "EVENT_SEAFOAM2_BOULDER2_DOWN_HOLE",
+    "label": "SeafoamBoulder_B2F_2_HiddenBeforeDrop"
+  },
+  {
+    "mapId": 160,
+    "mapName": "SEAFOAM_ISLANDS_B2F",
+    "objectName": "SeafoamIslandsB2F_NPC_2",
+    "visible": true,
+    "requiresFlag": "EVENT_SEAFOAM2_BOULDER2_DOWN_HOLE",
+    "requiresFlagAbsent": "EVENT_SEAFOAM3_BOULDER2_DOWN_HOLE",
+    "label": "SeafoamBoulder_B2F_2_VisibleAfterB1FDrop"
+  },
+  {
+    "mapId": 161,
+    "mapName": "SEAFOAM_ISLANDS_B3F",
+    "objectName": "SeafoamIslandsB3F_NPC_1",
+    "visible": false,
+    "requiresFlag": "EVENT_SEAFOAM4_BOULDER1_DOWN_HOLE",
+    "label": "SeafoamBoulder_B3F_Source1_HiddenAfterB3FDrop"
+  },
+  {
+    "mapId": 161,
+    "mapName": "SEAFOAM_ISLANDS_B3F",
+    "objectName": "SeafoamIslandsB3F_NPC_1",
+    "visible": true,
+    "requiresFlagAbsent": "EVENT_SEAFOAM4_BOULDER1_DOWN_HOLE",
+    "label": "SeafoamBoulder_B3F_Source1_VisibleBeforeDrop"
+  },
+  {
+    "mapId": 161,
+    "mapName": "SEAFOAM_ISLANDS_B3F",
+    "objectName": "SeafoamIslandsB3F_NPC_2",
+    "visible": false,
+    "requiresFlag": "EVENT_SEAFOAM4_BOULDER2_DOWN_HOLE",
+    "label": "SeafoamBoulder_B3F_Source2_HiddenAfterB3FDrop"
+  },
+  {
+    "mapId": 161,
+    "mapName": "SEAFOAM_ISLANDS_B3F",
+    "objectName": "SeafoamIslandsB3F_NPC_2",
+    "visible": true,
+    "requiresFlagAbsent": "EVENT_SEAFOAM4_BOULDER2_DOWN_HOLE",
+    "label": "SeafoamBoulder_B3F_Source2_VisibleBeforeDrop"
+  },
+  {
+    "mapId": 161,
+    "mapName": "SEAFOAM_ISLANDS_B3F",
+    "objectName": "SeafoamIslandsB3F_NPC_3",
+    "visible": false,
+    "requiresFlagAbsent": "EVENT_SEAFOAM3_BOULDER1_DOWN_HOLE",
+    "label": "SeafoamBoulder_B3F_Fallen1_HiddenBeforeDrop"
+  },
+  {
+    "mapId": 161,
+    "mapName": "SEAFOAM_ISLANDS_B3F",
+    "objectName": "SeafoamIslandsB3F_NPC_3",
+    "visible": true,
+    "requiresFlag": "EVENT_SEAFOAM3_BOULDER1_DOWN_HOLE",
+    "label": "SeafoamBoulder_B3F_Fallen1_VisibleAfterB2FDrop"
+  },
+  {
+    "mapId": 161,
+    "mapName": "SEAFOAM_ISLANDS_B3F",
+    "objectName": "SeafoamIslandsB3F_NPC_4",
+    "visible": false,
+    "requiresFlagAbsent": "EVENT_SEAFOAM3_BOULDER2_DOWN_HOLE",
+    "label": "SeafoamBoulder_B3F_Fallen2_HiddenBeforeDrop"
+  },
+  {
+    "mapId": 161,
+    "mapName": "SEAFOAM_ISLANDS_B3F",
+    "objectName": "SeafoamIslandsB3F_NPC_4",
+    "visible": true,
+    "requiresFlag": "EVENT_SEAFOAM3_BOULDER2_DOWN_HOLE",
+    "label": "SeafoamBoulder_B3F_Fallen2_VisibleAfterB2FDrop"
+  },
+  {
+    "mapId": 162,
+    "mapName": "SEAFOAM_ISLANDS_B4F",
+    "objectName": "SeafoamIslandsB4F_NPC_1",
+    "visible": false,
+    "requiresFlagAbsent": "EVENT_SEAFOAM4_BOULDER1_DOWN_HOLE",
+    "label": "SeafoamBoulder_B4F_1_HiddenBeforeDrop"
+  },
+  {
+    "mapId": 162,
+    "mapName": "SEAFOAM_ISLANDS_B4F",
+    "objectName": "SeafoamIslandsB4F_NPC_1",
+    "visible": true,
+    "requiresFlag": "EVENT_SEAFOAM4_BOULDER1_DOWN_HOLE",
+    "label": "SeafoamBoulder_B4F_1_VisibleAfterB3FDrop"
+  },
+  {
+    "mapId": 162,
+    "mapName": "SEAFOAM_ISLANDS_B4F",
+    "objectName": "SeafoamIslandsB4F_NPC_2",
+    "visible": false,
+    "requiresFlagAbsent": "EVENT_SEAFOAM4_BOULDER2_DOWN_HOLE",
+    "label": "SeafoamBoulder_B4F_2_HiddenBeforeDrop"
+  },
+  {
+    "mapId": 162,
+    "mapName": "SEAFOAM_ISLANDS_B4F",
+    "objectName": "SeafoamIslandsB4F_NPC_2",
+    "visible": true,
+    "requiresFlag": "EVENT_SEAFOAM4_BOULDER2_DOWN_HOLE",
+    "label": "SeafoamBoulder_B4F_2_VisibleAfterB3FDrop"
+  },
+  {
+    "mapId": 192,
+    "mapName": "SEAFOAM_ISLANDS_1F",
+    "objectName": "SeafoamIslands1F_NPC_1",
+    "visible": false,
+    "requiresFlag": "EVENT_SEAFOAM1_BOULDER1_DOWN_HOLE",
+    "label": "SeafoamBoulder_1F_1_HiddenAfterDrop"
+  },
+  {
+    "mapId": 192,
+    "mapName": "SEAFOAM_ISLANDS_1F",
+    "objectName": "SeafoamIslands1F_NPC_1",
+    "visible": true,
+    "requiresFlagAbsent": "EVENT_SEAFOAM1_BOULDER1_DOWN_HOLE",
+    "label": "SeafoamBoulder_1F_1_VisibleBeforeDrop"
+  },
+  {
+    "mapId": 192,
+    "mapName": "SEAFOAM_ISLANDS_1F",
+    "objectName": "SeafoamIslands1F_NPC_2",
+    "visible": false,
+    "requiresFlag": "EVENT_SEAFOAM1_BOULDER2_DOWN_HOLE",
+    "label": "SeafoamBoulder_1F_2_HiddenAfterDrop"
+  },
+  {
+    "mapId": 192,
+    "mapName": "SEAFOAM_ISLANDS_1F",
+    "objectName": "SeafoamIslands1F_NPC_2",
+    "visible": true,
+    "requiresFlagAbsent": "EVENT_SEAFOAM1_BOULDER2_DOWN_HOLE",
+    "label": "SeafoamBoulder_1F_2_VisibleBeforeDrop"
+  },
+  {
+    "mapId": 194,
+    "mapName": "VICTORY_ROAD_2F",
+    "objectName": "VictoryRoad2F_NPC_13",
+    "visible": false,
+    "requiresFlagAbsent": "EVENT_VICTORY_ROAD_3_BOULDER_ON_SWITCH2",
+    "label": "VictoryRoadBoulder_2F_Fallen3_HiddenBeforeHole"
+  },
+  {
+    "mapId": 194,
+    "mapName": "VICTORY_ROAD_2F",
+    "objectName": "VictoryRoad2F_NPC_13",
+    "visible": true,
+    "requiresFlag": "EVENT_VICTORY_ROAD_3_BOULDER_ON_SWITCH2",
+    "label": "VictoryRoadBoulder_2F_Fallen3_VisibleAfterHole"
+  },
+  {
+    "mapId": 198,
+    "mapName": "VICTORY_ROAD_3F",
+    "objectName": "VictoryRoad3F_NPC_10",
+    "visible": false,
+    "requiresFlag": "EVENT_VICTORY_ROAD_3_BOULDER_ON_SWITCH2",
+    "label": "VictoryRoadBoulder_3F_Source4_HiddenAfterHole"
+  },
+  {
+    "mapId": 198,
+    "mapName": "VICTORY_ROAD_3F",
+    "objectName": "VictoryRoad3F_NPC_10",
+    "visible": true,
+    "requiresFlagAbsent": "EVENT_VICTORY_ROAD_3_BOULDER_ON_SWITCH2",
+    "label": "VictoryRoadBoulder_3F_Source4_VisibleBeforeHole"
+  }
+]

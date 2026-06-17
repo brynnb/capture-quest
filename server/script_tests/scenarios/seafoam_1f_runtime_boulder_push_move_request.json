@@ -1,0 +1,42 @@
+{
+  "name": "seafoam_1f_runtime_boulder_push_move_request",
+  "description": "A runtime movement request into an adjacent Strength boulder auto-activates Strength when allowed and pushes the boulder.",
+  "fixture": {
+    "characterName": "SimRuntimeBoulderMoveRequest",
+    "mapName": "SEAFOAM_ISLANDS_1F",
+    "x": 18,
+    "y": 11,
+    "flags": ["EVENT_GOT_RAINBOWBADGE"],
+    "party": [
+      { "speciesId": 66, "level": 20, "moves": ["STRENGTH"] }
+    ]
+  },
+  "trigger": {
+    "type": "runtime_boulder_push",
+    "destX": 18,
+    "destY": 10
+  },
+  "expect": {
+    "scriptLabel": "RuntimeBoulderPush:SEAFOAM_ISLANDS_1F",
+    "boulderPush": {
+      "success": true,
+      "objectName": "SeafoamIslands1F_NPC_1",
+      "fromX": 18,
+      "fromY": 10,
+      "toX": 18,
+      "toY": 9,
+      "dropped": false
+    },
+    "objectStates": [
+      {
+        "mapName": "SEAFOAM_ISLANDS_1F",
+        "name": "SeafoamIslands1F_NPC_1",
+        "x": 18,
+        "y": 9,
+        "visible": true
+      }
+    ],
+    "actionTypesContains": ["runtimeBoulderPush"],
+    "activeBattleAbsent": true
+  }
+}

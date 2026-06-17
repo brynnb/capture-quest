@@ -1,0 +1,26 @@
+{
+  "name": "game_corner_poster_opens_rocket_hideout",
+  "description": "Pressing the Game Corner poster switch sets the Rocket Hideout entrance flag.",
+  "fixture": {
+    "characterName": "ScriptSimGameCornerPoster",
+    "mapName": "GAME_CORNER",
+    "x": 9,
+    "y": 5,
+    "direction": "UP",
+    "flags": [],
+    "party": [{ "speciesId": 25, "level": 20 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "GAME_CORNER",
+    "textConstant": "TEXT_GAMECORNER_POSTER"
+  },
+  "expect": {
+    "scriptLabel": "GameCornerPosterTextEventFoundRocketHideout",
+    "flagsPresent": ["EVENT_FOUND_ROCKET_HIDEOUT"],
+    "actionTypesContains": ["dialogue", "setFlag"],
+    "activeBattleAbsent": true
+  }
+}

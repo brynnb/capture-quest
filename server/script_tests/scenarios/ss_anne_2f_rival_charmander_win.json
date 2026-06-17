@@ -1,0 +1,47 @@
+{
+  "name": "ss_anne_2f_rival_charmander_win",
+  "description": "Win the S.S. Anne 2F rival battle after choosing Charmander and verify persistent cleanup.",
+  "fixture": {
+    "characterName": "ScriptSimSSAnneRivalCharmanderWin",
+    "mapName": "SS_ANNE_2F",
+    "x": 36,
+    "y": 8,
+    "direction": "UP",
+    "flags": [
+      "EVENT_GOT_SS_TICKET",
+      "EVENT_PLAYER_CHOSE_CHARMANDER"
+    ],
+    "party": [
+      { "speciesId": 4, "level": 24 }
+    ],
+    "inventory": [
+      { "itemId": 63, "quantity": 1 }
+    ],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "SS_ANNE_2F",
+    "x": 36,
+    "y": 8
+  },
+  "resolveBattle": {
+    "result": "win"
+  },
+  "expect": {
+    "scriptLabel": "SSAnne2FRivalEncounter",
+    "flagsPresent": [
+      "EVENT_GOT_SS_TICKET",
+      "EVENT_PLAYER_CHOSE_CHARMANDER",
+      "EVENT_BEAT_SS_ANNE_RIVAL",
+      "EVENT_SS_ANNE_RIVAL_LEFT"
+    ],
+    "partySpecies": [4],
+    "inventoryContains": [
+      { "itemId": 63, "quantity": 1 }
+    ],
+    "hiddenObjectKeys": ["TEXT_SSANNE2F_RIVAL"],
+    "actionTypesContains": ["startTrainerBattle", "resolveBattle", "hideObject", "setFlag"],
+    "activeBattleAbsent": true
+  }
+}

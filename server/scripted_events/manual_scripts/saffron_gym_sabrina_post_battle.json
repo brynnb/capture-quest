@@ -1,0 +1,61 @@
+{
+  "scriptLabel": "SaffronGymSabrinaPostBattle",
+  "mapName": "SAFFRON_GYM",
+  "trigger": {
+    "type": "map_script"
+  },
+  "requiresFlag": "EVENT_BEAT_SABRINA",
+  "requiresFlagAbsent": "EVENT_GOT_MARSHBADGE",
+  "setsFlags": [
+    "EVENT_GOT_MARSHBADGE",
+    "EVENT_GOT_TM46"
+  ],
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "I'm shocked! But, a loss is a loss.",
+        "I admit I didn't work hard enough to win!",
+        "You earned the MARSHBADGE!"
+      ],
+      "speaker": "SABRINA"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "The MARSHBADGE makes POKéMON up to L70 obey you!",
+        "Stronger POKéMON will become wild, ignoring your orders in battle!",
+        "Just don't raise your POKéMON too much!",
+        "Wait, please take this TM with you!"
+      ],
+      "speaker": "SABRINA"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "{PLAYER} received TM46!",
+        "Everyone has psychic power! People just don't realize it!"
+      ],
+      "speaker": "SABRINA"
+    },
+    {
+      "flag": "EVENT_GOT_MARSHBADGE",
+      "type": "setFlag"
+    },
+    {
+      "flag": "EVENT_GOT_TM46",
+      "type": "setFlag"
+    },
+    {
+      "type": "giveItem",
+      "itemId": 134,
+      "quantity": 1
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+Scenario: cerulean_gym_guide_before_misty
+Description: The Cerulean gym guide gives Misty advice before she is beaten.
+Character: ScriptSimCeruleanGuideBeforeMisty
+
+Initial state
+  location: CERULEAN_GYM[65] (4,13)
+  flags: none
+  party:
+    slot 0: #1 BULBASAUR L20 moves GROWL, LEECH_SEED, VINE_WHIP, POISONPOWDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: CeruleanGymGymGuideTextEventBeatMistyAbsent
+  map: CERULEAN_GYM
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Yo! Champ in
+making! Here's my advice! The LEADER, MISTY,
+is a pro who uses water POKÉMON! You can drain all
+their water with plant POKÉMON! Or, zap them with
+electricity!]
+  - unlockInput
+
+Final state
+  location: CERULEAN_GYM[65] (4,13)
+  flags: none
+  party:
+    slot 0: #1 BULBASAUR L20 moves GROWL, LEECH_SEED, VINE_WHIP, POISONPOWDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

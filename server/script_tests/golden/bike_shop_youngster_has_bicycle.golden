@@ -1,0 +1,38 @@
+Scenario: bike_shop_youngster_has_bicycle
+Description: The Bike Shop youngster reacts to the player owning a bicycle.
+Character: ScriptSimBikeShopYoungsterHasBike
+
+Initial state
+  location: BIKE_SHOP[66] (5,4)
+  flags: EVENT_GOT_BICYCLE
+  party:
+    slot 0: #25 PIKACHU L20 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    #6 BICYCLE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: BikeShopYoungsterTextEventGotBicycleSet
+  map: BIKE_SHOP
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Wow. Your BIKE is
+really cool!]
+  - unlockInput
+
+Final state
+  location: BIKE_SHOP[66] (5,4)
+  flags: EVENT_GOT_BICYCLE
+  party:
+    slot 0: #25 PIKACHU L20 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    #6 BICYCLE x1
+  hidden objects:
+    none
+  active battle:
+    none

@@ -1,0 +1,25 @@
+{
+  "name": "game_corner_prize_buy_nidorina",
+  "description": "Game Corner prize exchange includes the Red-version Nidorina prize at L17.",
+  "fixture": {
+    "characterName": "SimGameCornerPrizeNidorina",
+    "mapName": "GAME_CORNER_PRIZE_ROOM",
+    "x": 2,
+    "y": 4,
+    "coins": 1200,
+    "inventory": [
+      { "itemName": "COIN CASE", "quantity": 1 }
+    ]
+  },
+  "trigger": {
+    "type": "gamecorner_prize_buy",
+    "prizeName": "NIDORINA"
+  },
+  "expect": {
+    "scriptLabel": "GameCornerPrizeBuy:NIDORINA",
+    "coins": 0,
+    "partySpecies": [30],
+    "gameCornerPrizeMessage": "Here you go!",
+    "actionTypesContains": ["gameCornerPrizeBuy"]
+  }
+}

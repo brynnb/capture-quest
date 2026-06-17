@@ -1,0 +1,39 @@
+Scenario: victory_road_2f_map_load_resets_1f_switch
+Description: Loading Victory Road 2F from the lower floor resets the 1F boulder switch flag.
+Character: SimVictoryRoad2FReset1F
+
+Initial state
+  location: VICTORY_ROAD_2F[194] (4,14)
+  flags: EVENT_VICTORY_ROAD_1_BOULDER_ON_SWITCH
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: MapLoad:VICTORY_ROAD_2F
+  map: VICTORY_ROAD_2F
+  trigger: map_load
+
+Actions
+  - mapLoad *: VICTORY_ROAD_2F set=[] reset=[EVENT_VICTORY_ROAD_1_BOULDER_ON_SWITCH] affected=[VICTORY_ROAD_1F]
+
+Final state
+  location: VICTORY_ROAD_2F[194] (4,14)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Event object states
+  SourceMissableInitial:HS_CERULEAN_CAVE_B1F_ITEM_2 VICTORY_ROAD_1F/VictoryRoad1F_ITEM_3 (11,0): visible text=TEXT_VICTORYROAD1F_TM_SKY_ATTACK
+  SourceMissableInitial:HS_VICTORY_ROAD_1F_ITEM_1 VICTORY_ROAD_1F/VictoryRoad1F_ITEM_4 (9,2): visible text=TEXT_VICTORYROAD1F_RARE_CANDY

@@ -1,0 +1,21 @@
+{
+  "name": "pokemon_mansion_1f_switch_tiles_off",
+  "description": "Pokemon Mansion 1F switch-controlled blocks resolve to the flag-off layout.",
+  "fixture": {
+    "characterName": "ScriptSimMansion1FTilesOff",
+    "mapName": "POKEMON_MANSION_1F",
+    "x": 2,
+    "y": 5
+  },
+  "trigger": {
+    "type": "tile_state",
+    "mapName": "POKEMON_MANSION_1F"
+  },
+  "expect": {
+    "scriptLabel": "TileState:POKEMON_MANSION_1F",
+    "tileStates": [
+      { "x": 12, "y": 24, "tileImageId": 758, "collisionType": 1, "label": "PokemonMansionSwitchOff_1F_6_12_0_0" },
+      { "x": 6, "y": 17, "tileImageId": 781, "collisionType": 0, "label": "PokemonMansionSwitchOff_1F_3_8_0_1" }
+    ]
+  }
+}

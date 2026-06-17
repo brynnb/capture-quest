@@ -1,0 +1,26 @@
+{
+  "name": "viridian_gym_guide_after_giovanni",
+  "description": "The Viridian gym guide reacts after Giovanni is beaten.",
+  "fixture": {
+    "characterName": "ScriptSimViridianGuideAfterGiovanni",
+    "mapName": "VIRIDIAN_GYM",
+    "x": 16,
+    "y": 16,
+    "direction": "UP",
+    "flags": ["EVENT_BEAT_VIRIDIAN_GYM_GIOVANNI"],
+    "party": [{ "speciesId": 25, "level": 45 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "VIRIDIAN_GYM",
+    "textConstant": "TEXT_VIRIDIANGYM_GYM_GUIDE"
+  },
+  "expect": {
+    "scriptLabel": "ViridianGymGymGuideTextEventBeatViridianGymGiovanniSet",
+    "flagsPresent": ["EVENT_BEAT_VIRIDIAN_GYM_GIOVANNI"],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

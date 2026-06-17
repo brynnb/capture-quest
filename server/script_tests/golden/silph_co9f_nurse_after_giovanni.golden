@@ -1,0 +1,38 @@
+Scenario: silph_co9f_nurse_after_giovanni
+Description: The Silph Co. 9F nurse switches to thank-you dialogue after Giovanni is beaten.
+Character: ScriptSimSilphCo9FNurseAfterGiovanni
+
+Initial state
+  location: SILPH_CO_9F[233] (8,4)
+  flags: EVENT_BEAT_SILPH_CO_GIOVANNI
+  party:
+    slot 0: #25 PIKACHU L30 moves THUNDERBOLT(3/15), QUICK_ATTACK(0/30) hp=12/69 status=PAR
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SilphCo9FNurseThankYou
+  map: SILPH_CO_9F
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Thank you so
+much!]
+  - unlockInput
+
+Final state
+  location: SILPH_CO_9F[233] (8,4)
+  flags: EVENT_BEAT_SILPH_CO_GIOVANNI
+  party:
+    slot 0: #25 PIKACHU L30 moves THUNDERBOLT(3/15), QUICK_ATTACK(0/30) hp=12/69 status=PAR
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

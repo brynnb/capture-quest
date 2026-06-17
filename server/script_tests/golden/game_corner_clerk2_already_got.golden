@@ -1,0 +1,40 @@
+Scenario: game_corner_clerk2_already_got
+Description: The Game Corner clerk uses his already-got dialogue after giving his 20 coins.
+Character: ScriptSimGameCornerClerk2AlreadyGot
+
+Initial state
+  location: GAME_CORNER[135] (7,4)
+  flags: EVENT_GOT_20_COINS_2
+  coins: 30
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: GameCornerClerk2AlreadyGot
+  map: GAME_CORNER
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Darn! I need more
+coins for the POKÉMON I want!]
+  - unlockInput
+
+Final state
+  location: GAME_CORNER[135] (7,4)
+  flags: EVENT_GOT_20_COINS_2
+  coins: 30
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none

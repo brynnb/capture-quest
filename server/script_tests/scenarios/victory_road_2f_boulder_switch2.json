@@ -1,0 +1,51 @@
+{
+  "name": "victory_road_2f_boulder_switch2",
+  "description": "Pushing a Victory Road 2F boulder onto the second source switch sets the second 2F switch flag.",
+  "fixture": {
+    "characterName": "SimVictoryRoad2FBoulderSwitch2",
+    "mapName": "VICTORY_ROAD_2F",
+    "x": 9,
+    "y": 14,
+    "flags": ["EVENT_GOT_RAINBOWBADGE"],
+    "party": [
+      { "speciesId": 66, "level": 20, "moves": ["STRENGTH"] }
+    ],
+    "objectPositions": [
+      {
+        "objectName": "VictoryRoad2F_NPC_12",
+        "x": 9,
+        "y": 15
+      }
+    ]
+  },
+  "trigger": {
+    "type": "boulder_push",
+    "direction": "DOWN",
+    "activateStrength": true
+  },
+  "expect": {
+    "scriptLabel": "BoulderPush:VICTORY_ROAD_2F",
+    "boulderPush": {
+      "success": true,
+      "objectName": "VictoryRoad2F_NPC_12",
+      "fromX": 9,
+      "fromY": 15,
+      "toX": 9,
+      "toY": 16,
+      "dropped": false,
+      "flagSet": "EVENT_VICTORY_ROAD_2_BOULDER_ON_SWITCH2"
+    },
+    "flagsPresent": ["EVENT_VICTORY_ROAD_2_BOULDER_ON_SWITCH2"],
+    "tileStates": [
+      {
+        "x": 23,
+        "y": 14,
+        "tileImageId": 562,
+        "collisionType": 1,
+        "label": "VictoryRoadBoulderBlock_2F_Switch2_1d_1_0"
+      }
+    ],
+    "actionTypesContains": ["boulderPush"],
+    "activeBattleAbsent": true
+  }
+}

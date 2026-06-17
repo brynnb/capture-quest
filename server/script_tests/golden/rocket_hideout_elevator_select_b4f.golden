@@ -1,0 +1,38 @@
+Scenario: rocket_hideout_elevator_select_b4f
+Description: Selecting B4F in the Rocket Hideout elevator moves the player to the B4F elevator exit when Lift Key is in inventory.
+Character: SimRocketElevatorSelect
+
+Initial state
+  location: ROCKET_HIDEOUT_ELEVATOR[203] (2,2)
+  flags: none
+  party:
+    none
+  inventory:
+    #74 LIFT KEY x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: ElevatorSelect:ROCKET_HIDEOUT_B4F
+  map: ROCKET_HIDEOUT_ELEVATOR
+  trigger: elevator_select
+
+Actions
+  - elevatorSelect *: ROCKET_HIDEOUT_ELEVATOR -> ROCKET_HIDEOUT_B4F[202] (24,15)
+
+Final state
+  location: ROCKET_HIDEOUT_B4F[202] (24,15)
+  flags: none
+  party:
+    none
+  inventory:
+    #74 LIFT KEY x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Elevator
+  selected: B4F ROCKET_HIDEOUT_B4F[202] (24,15)

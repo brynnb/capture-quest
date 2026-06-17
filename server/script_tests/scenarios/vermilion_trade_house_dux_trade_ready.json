@@ -1,0 +1,26 @@
+{
+  "name": "vermilion_trade_house_dux_trade_ready",
+  "description": "Vermilion Trade House little girl is ready to trade Farfetch'd named DUX for Spearow.",
+  "fixture": {
+    "characterName": "ScriptSimVermilionDuxTrade",
+    "mapName": "VERMILION_TRADE_HOUSE",
+    "x": 3,
+    "y": 4,
+    "direction": "DOWN",
+    "flags": [],
+    "party": [{ "speciesId": 21, "level": 15 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "fixture_state",
+    "mapName": "VERMILION_TRADE_HOUSE",
+    "textConstant": "TEXT_VERMILIONTRADEHOUSE_LITTLE_GIRL"
+  },
+  "expect": {
+    "scriptLabel": "FixtureState",
+    "finalDirection": "DOWN",
+    "partySpecies": [21],
+    "activeBattleAbsent": true
+  }
+}

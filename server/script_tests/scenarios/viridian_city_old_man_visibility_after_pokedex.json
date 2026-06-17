@@ -1,0 +1,39 @@
+{
+  "name": "viridian_city_old_man_visibility_after_pokedex",
+  "description": "After Oak gives the Pokédex, Viridian City swaps the sleepy blocker object for the awake old man tutorial object.",
+  "fixture": {
+    "characterName": "ScriptSimViridianOldManVisibility",
+    "mapName": "VIRIDIAN_CITY",
+    "x": 9,
+    "y": -62,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_POKEDEX"],
+    "party": [{ "speciesId": 25, "level": 8 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "event_object_state",
+    "mapName": "VIRIDIAN_CITY"
+  },
+  "expect": {
+    "scriptLabel": "EventObjectState:VIRIDIAN_CITY",
+    "flagsPresent": ["EVENT_GOT_POKEDEX"],
+    "actionTypesContains": ["eventObjectState"],
+    "objectStates": [
+      {
+        "mapName": "VIRIDIAN_CITY",
+        "name": "ViridianCity_NPC_5",
+        "visible": false,
+        "label": "OaksLabOakGivesPokedexScript:EVENT_GOT_POKEDEX:HS_LYING_OLD_MAN:HideObject"
+      },
+      {
+        "mapName": "VIRIDIAN_CITY",
+        "name": "ViridianCity_NPC_7",
+        "visible": true,
+        "label": "OaksLabOakGivesPokedexScript:EVENT_GOT_POKEDEX:HS_OLD_MAN:ShowObject"
+      }
+    ],
+    "activeBattleAbsent": true
+  }
+}

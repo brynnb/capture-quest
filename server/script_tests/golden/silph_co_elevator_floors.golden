@@ -1,0 +1,49 @@
+Scenario: silph_co_elevator_floors
+Description: Silph Co. elevator lists floors 1F through 11F.
+Character: SimSilphElevatorFloors
+
+Initial state
+  location: SILPH_CO_ELEVATOR[236] (2,2)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: ElevatorFloors:SILPH_CO_ELEVATOR
+  map: SILPH_CO_ELEVATOR
+  trigger: elevator_floors
+
+Actions
+  - elevatorFloors: floors=11
+
+Final state
+  location: SILPH_CO_ELEVATOR[236] (2,2)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Elevator
+  floors:
+    1F -> SILPH_CO_1F[181] (20,0)
+    2F -> SILPH_CO_2F[207] (20,0)
+    3F -> SILPH_CO_3F[208] (20,0)
+    4F -> SILPH_CO_4F[209] (20,0)
+    5F -> SILPH_CO_5F[210] (20,0)
+    6F -> SILPH_CO_6F[211] (18,0)
+    7F -> SILPH_CO_7F[212] (18,0)
+    8F -> SILPH_CO_8F[213] (18,0)
+    9F -> SILPH_CO_9F[233] (18,0)
+    10F -> SILPH_CO_10F[234] (12,0)
+    11F -> SILPH_CO_11F[235] (13,0)

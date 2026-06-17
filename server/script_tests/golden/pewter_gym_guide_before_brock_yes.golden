@@ -1,0 +1,44 @@
+Scenario: pewter_gym_guide_before_brock_yes
+Description: The Pewter gym guide offers Boulder Badge advice before Brock is beaten.
+Character: ScriptSimPewterGuideBeforeBrock
+
+Initial state
+  location: PEWTER_GYM[54] (7,11)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L15 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: PewterGymGuideTextBoulderBadgeAbsent
+  map: PEWTER_GYM
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Hiya! I can tell
+you have what it takes to become a POKÉMON champ! I'm no trainer,
+but I can tell you how to win!]
+  - choice:  "Let me take you\nto the top!" choice=true
+  - dialogue:  [All right! Let's
+get happening! The 1st POKÉMON
+out in a match is at the top of the POKÉMON LIST! By changing the
+order of POKÉMON, matches could be made easier!]
+  - unlockInput
+
+Final state
+  location: PEWTER_GYM[54] (7,11)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L15 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

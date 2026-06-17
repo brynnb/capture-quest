@@ -1,0 +1,38 @@
+Scenario: cinnabar_gym_quiz_6_wrong_battle_win
+Description: Cinnabar Gym quiz 6 wrong YES answer starts Super Nerd party 12 and opens gate 6 after victory.
+Character: ScriptSimCinnabarQuiz6Wrong
+
+Initial state
+  location: CINNABAR_GYM[166] (1,7)
+  flags: none
+  party:
+    slot 0: #9 BLASTOISE L50 moves WATER_GUN, BITE, WITHDRAW, SKULL_BASH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: DialogueChoice:TEXT_CINNABARGYM_QUIZ_6
+  map: CINNABAR_GYM
+  trigger: dialogue_choice
+
+Actions
+  - dialogueChoice *: TEXT_CINNABARGYM_QUIZ_6 choice=true
+  - startTrainerBattle *: SUPER_NERD party=12 enemy=[#58 GROWLITHE L37 #37 VULPIX L37] winFlag=EVENT_BEAT_CINNABAR_GYM_TRAINER_6
+  - resolveBattle *: win trainer=SUPER_NERD winFlag=EVENT_BEAT_CINNABAR_GYM_TRAINER_6
+  - setFlag *: EVENT_CINNABAR_GYM_GATE6_UNLOCKED
+
+Final state
+  location: CINNABAR_GYM[166] (1,7)
+  flags: EVENT_BEAT_CINNABAR_GYM_TRAINER_6, EVENT_CINNABAR_GYM_GATE6_UNLOCKED
+  party:
+    slot 0: #9 BLASTOISE L50 moves WATER_GUN, BITE, WITHDRAW, SKULL_BASH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

@@ -1,0 +1,22 @@
+{
+  "name": "power_plant_zapdos_start",
+  "description": "Power Plant Zapdos starts a scripted L50 wild battle without setting the beat flag at cutscene completion.",
+  "fixture": {
+    "characterName": "ScriptSim_Zapdos_Start",
+    "mapName": "POWER_PLANT",
+    "x": 4,
+    "y": 9,
+    "party": [{"speciesId": 25, "level": 60}]
+  },
+  "trigger": {
+    "type": "npc_click",
+    "textConstant": "TEXT_POWERPLANT_ZAPDOS"
+  },
+  "expect": {
+    "scriptLabel": "PowerPlantZapdosEncounter",
+    "flagsAbsent": ["EVENT_BEAT_ZAPDOS"],
+    "actionTypesContains": ["startWildBattle"],
+    "activeBattleType": "wild",
+    "activeBattleEnemySpecies": [145]
+  }
+}

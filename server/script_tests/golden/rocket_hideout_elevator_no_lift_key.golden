@@ -1,0 +1,39 @@
+Scenario: rocket_hideout_elevator_no_lift_key
+Description: Rocket Hideout elevator refuses the floor menu until the player has the Lift Key item.
+Character: SimRocketElevatorNoKey
+
+Initial state
+  location: ROCKET_HIDEOUT_ELEVATOR[203] (2,2)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: ElevatorFloors:ROCKET_HIDEOUT_ELEVATOR
+  map: ROCKET_HIDEOUT_ELEVATOR
+  trigger: elevator_floors
+
+Actions
+  - elevatorFloors: floors=0 message="It appears to need a key."
+
+Final state
+  location: ROCKET_HIDEOUT_ELEVATOR[203] (2,2)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Elevator
+  message: It appears to need a key.
+  floors: none

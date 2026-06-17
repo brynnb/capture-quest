@@ -1,0 +1,39 @@
+{
+  "name": "repel_use_already_active",
+  "description": "Using REPEL while one is already active refuses the item without consuming inventory.",
+  "fixture": {
+    "characterName": "ScriptSimRepelAlreadyActive",
+    "mapName": "ROUTE_1",
+    "x": 10,
+    "y": 10,
+    "party": [{ "speciesId": 25, "level": 12 }],
+    "inventory": [{ "itemId": 30, "quantity": 1 }],
+    "repel": { "stepsLeft": 50 }
+  },
+  "trigger": {
+    "type": "repel_use",
+    "itemId": 30
+  },
+  "expect": {
+    "scriptLabel": "RepelUse",
+    "inventoryContains": [{ "itemId": 30, "quantity": 1 }],
+    "repel": {
+      "success": false,
+      "active": true,
+      "stepsLeft": 50,
+      "message": "A repel is already active!"
+    },
+    "messages": [
+      {
+        "channel": "stream",
+        "opcode": 144,
+        "payloadContains": [
+          "\"success\":false",
+          "\"error\":\"A repel is already active!\""
+        ]
+      }
+    ],
+    "actionTypesContains": ["repelUse"],
+    "activeBattleAbsent": true
+  }
+}

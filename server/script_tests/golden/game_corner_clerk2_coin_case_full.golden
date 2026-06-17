@@ -1,0 +1,40 @@
+Scenario: game_corner_clerk2_coin_case_full
+Description: The Game Corner clerk uses the source full-Coin-Case branch at the original 9990 threshold.
+Character: ScriptSimGameCornerClerk2CoinCaseFull
+
+Initial state
+  location: GAME_CORNER[135] (7,4)
+  flags: none
+  coins: 9990
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: GameCornerClerk2CoinCaseFull
+  map: GAME_CORNER
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [You have lots of
+coins!]
+  - unlockInput
+
+Final state
+  location: GAME_CORNER[135] (7,4)
+  flags: none
+  coins: 9990
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none

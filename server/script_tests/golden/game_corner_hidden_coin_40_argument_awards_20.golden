@@ -1,0 +1,40 @@
+Scenario: game_corner_hidden_coin_40_argument_awards_20
+Description: Game Corner hidden coin source argument COIN+40 follows the original branch quirk and awards 20 coins.
+Character: SimGameCornerHiddenCoin40Arg
+
+Initial state
+  location: GAME_CORNER[135] (11,7)
+  flags: none
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: GameCornerHiddenCoin
+  map: GAME_CORNER
+  trigger: gamecorner_hidden_coin
+
+Actions
+  - gameCornerHiddenCoin *: success=true coinId=10 amount=20 coins=20 attempts=1 message="Found coins!"
+
+Final state
+  location: GAME_CORNER[135] (11,7)
+  flags: none
+  coins: 20
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Game Corner
+  hidden coin: success=true coinId=10 amount=20 coins=20 attempts=1
+  message: Found coins!

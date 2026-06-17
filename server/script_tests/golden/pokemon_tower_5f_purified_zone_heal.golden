@@ -1,0 +1,41 @@
+Scenario: pokemon_tower_5f_purified_zone_heal
+Description: Stepping into the Pokemon Tower 5F purified zone heals the party and sets the source in-zone flag.
+Character: ScriptSimTower5FPurifiedZone
+
+Initial state
+  location: POKEMON_TOWER_5F[146] (10,8)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L30 moves THUNDERBOLT(3/15), QUICK_ATTACK(0/30) hp=12/69 status=PAR
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: PokemonTower5FPurifiedZone
+  map: POKEMON_TOWER_5F
+  trigger: coord
+
+Actions
+  - lockInput
+  - setFlag *: EVENT_IN_PURIFIED_ZONE
+  - healParty *: healed 1 pokemon
+  - dialogue:  [Entered purified,
+protected zone! (PLAYER)'s POKÉMON
+are fully healed!]
+  - unlockInput
+
+Final state
+  location: POKEMON_TOWER_5F[146] (10,8)
+  flags: EVENT_IN_PURIFIED_ZONE
+  party:
+    slot 0: #25 PIKACHU L30 moves THUNDERBOLT, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

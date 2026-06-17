@@ -1,0 +1,33 @@
+{
+  "name": "bills_house_bill_exits_machine",
+  "description": "After the cell separator runs, Bill appears from the machine and the source cleanup flags are set.",
+  "fixture": {
+    "characterName": "ScriptSimBillExitMachine",
+    "mapName": "BILLS_HOUSE",
+    "x": 4,
+    "y": 5,
+    "direction": "UP",
+    "flags": ["EVENT_BILL_SAID_USE_CELL_SEPARATOR", "EVENT_USED_CELL_SEPARATOR"],
+    "party": [{ "speciesId": 25, "level": 20 }],
+    "inventory": [],
+    "hiddenObjects": ["HS_BILL_1"]
+  },
+  "trigger": {
+    "type": "map_script",
+    "mapName": "BILLS_HOUSE"
+  },
+  "expect": {
+    "scriptLabel": "BillsHouseBillExitsMachine",
+    "flagsPresent": ["EVENT_MET_BILL", "EVENT_MET_BILL_2"],
+    "objectStates": [
+      {
+        "mapName": "BILLS_HOUSE",
+        "name": "BillsHouse_NPC_2",
+        "visible": true,
+        "label": "CutsceneAction:showObject"
+      }
+    ],
+    "actionTypesContains": ["showActor", "showObject", "move", "setFlag"],
+    "activeBattleAbsent": true
+  }
+}

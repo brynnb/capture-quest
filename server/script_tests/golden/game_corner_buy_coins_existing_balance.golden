@@ -1,0 +1,39 @@
+Scenario: game_corner_buy_coins_existing_balance
+Description: Game Corner coin purchase adds 50 coins to an existing Coin Case balance.
+Character: ScriptSimGameCornerExistingBalance
+
+Initial state
+  location: GAME_CORNER[135] (3,3)
+  flags: none
+  money: 2000
+  coins: 20
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: GameCornerBuyCoins
+  map: GAME_CORNER
+  trigger: gamecorner_buy_coins
+
+Actions
+  - gameCornerBuyCoins *: success=true money=1000 coins=70 message="Here are 50 coins!"
+
+Final state
+  location: GAME_CORNER[135] (3,3)
+  flags: none
+  money: 1000
+  coins: 70
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none

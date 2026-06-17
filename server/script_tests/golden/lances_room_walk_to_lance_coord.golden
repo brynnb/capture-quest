@@ -1,0 +1,37 @@
+Scenario: lances_room_walk_to_lance_coord
+Description: Lance's source entrance coordinate starts the forced walk toward Lance.
+Character: ScriptSimLanceWalkToLance
+
+Initial state
+  location: LANCES_ROOM[113] (24,16)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L60 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: LancesRoomWalkToLance
+  map: LANCES_ROOM
+  trigger: coord
+
+Actions
+  - lockInput
+  - movePlayer *: from=(24,16) to=(6,11) steps=[UP UP UP UP UP UP UP UP UP UP UP UP LEFT LEFT LEFT LEFT LEFT LEFT LEFT LEFT LEFT LEFT LEFT LEFT DOWN DOWN DOWN DOWN DOWN DOWN DOWN LEFT LEFT LEFT LEFT LEFT LEFT]
+  - unlockInput
+
+Final state
+  location: LANCES_ROOM[113] (6,11)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L60 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

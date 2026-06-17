@@ -1,0 +1,45 @@
+{
+  "name": "oak_lab_rival_exits_after_battle",
+  "description": "After the first rival battle, Oak's Lab runs the rival exit script.",
+  "fixture": {
+    "characterName": "ScriptSimOakRivalExit",
+    "mapName": "OAKS_LAB",
+    "x": 5,
+    "y": 11,
+    "direction": "UP",
+    "flags": [
+      "EVENT_OAK_ASKED_TO_CHOOSE_MON",
+      "EVENT_GOT_STARTER",
+      "EVENT_RIVAL_PICKED_STARTER",
+      "EVENT_PLAYER_CHOSE_CHARMANDER",
+      "EVENT_BATTLED_RIVAL_IN_OAKS_LAB"
+    ],
+    "party": [
+      { "speciesId": 4, "level": 5 }
+    ],
+    "hiddenObjects": [
+      "TEXT_OAKSLAB_CHARMANDER_POKE_BALL",
+      "TEXT_OAKSLAB_SQUIRTLE_POKE_BALL"
+    ]
+  },
+  "trigger": {
+    "type": "map_script",
+    "mapName": "OAKS_LAB"
+  },
+  "expect": {
+    "scriptLabel": "OaksLabRivalExitsAfterBattle",
+    "flagsPresent": [
+      "EVENT_BATTLED_RIVAL_IN_OAKS_LAB",
+      "EVENT_OAKS_LAB_RIVAL_EXITED"
+    ],
+    "flagsAbsent": ["EVENT_OAK_GOT_PARCEL"],
+    "partySpecies": [4],
+    "hiddenObjectKeys": [
+      "TEXT_OAKSLAB_CHARMANDER_POKE_BALL",
+      "TEXT_OAKSLAB_SQUIRTLE_POKE_BALL",
+      "TEXT_OAKSLAB_RIVAL"
+    ],
+    "actionTypesContains": ["hideObject", "showActor", "dialogue", "move", "hideActor", "setsFlags"],
+    "activeBattleAbsent": true
+  }
+}

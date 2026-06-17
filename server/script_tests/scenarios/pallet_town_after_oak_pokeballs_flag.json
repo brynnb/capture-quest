@@ -1,0 +1,28 @@
+{
+  "name": "pallet_town_after_oak_pokeballs_flag",
+  "description": "Pallet Town mirrors Oak's Poké Ball gift flag into the source post-gift Pallet event on map load.",
+  "fixture": {
+    "characterName": "ScriptSimPalletAfterOakPokeballs",
+    "mapName": "PALLET_TOWN",
+    "x": 5,
+    "y": 6,
+    "direction": "DOWN",
+    "flags": ["EVENT_GOT_POKEBALLS_FROM_OAK"],
+    "party": [{ "speciesId": 25, "level": 10 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "map_script",
+    "mapName": "PALLET_TOWN"
+  },
+  "expect": {
+    "scriptLabel": "PalletTownScriptEventPalletAfterGettingPokeballsSet",
+    "flagsPresent": [
+      "EVENT_GOT_POKEBALLS_FROM_OAK",
+      "EVENT_PALLET_AFTER_GETTING_POKEBALLS"
+    ],
+    "actionTypesContains": ["setFlag"],
+    "activeBattleAbsent": true
+  }
+}

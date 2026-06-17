@@ -1,0 +1,46 @@
+{
+  "scriptLabel": "SilphCo7FRivalDefeated",
+  "mapName": "SILPH_CO_7F",
+  "trigger": {
+    "type": "map_script"
+  },
+  "requiresFlag": "EVENT_BEAT_SILPH_CO_RIVAL",
+  "requiresFlagAbsent": "EVENT_SILPH_CO_RIVAL_LEFT",
+  "setsFlags": [
+    "EVENT_SILPH_CO_RIVAL_LEFT"
+  ],
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Oh ho! So, you are ready for BOSS ROCKET!",
+        "Well, {PLAYER}!",
+        "I'm moving on up and ahead!",
+        "By checking my POKéDEX, I'm starting to see what's strong and how they evolve!",
+        "I'm going to the POKéMON LEAGUE to boot out the ELITE FOUR!",
+        "I'll become the world's most powerful trainer! Smell ya later!"
+      ],
+      "speaker": "RIVAL"
+    },
+    {
+      "type": "move",
+      "actor": "RIVAL",
+      "movements": [
+        "DOWN",
+        "DOWN",
+        "DOWN",
+        "DOWN"
+      ]
+    },
+    {
+      "type": "hideActor",
+      "actor": "RIVAL"
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

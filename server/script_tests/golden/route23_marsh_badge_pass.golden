@@ -1,0 +1,38 @@
+Scenario: route23_marsh_badge_pass
+Description: The Route 23 Marsh Badge swimmer allows the player with the Marsh Badge.
+Character: ScriptSimMarshGatePass
+
+Initial state
+  location: ROUTE_23[34] (8,85)
+  flags: EVENT_GOT_BOULDERBADGE, EVENT_GOT_CASCADEBADGE, EVENT_GOT_MARSHBADGE, EVENT_GOT_POKEDEX, EVENT_GOT_RAINBOWBADGE, EVENT_GOT_SOULBADGE, EVENT_GOT_THUNDERBADGE, EVENT_ROUTE23_BADGE1_CHECKED, EVENT_ROUTE23_BADGE2_CHECKED, EVENT_ROUTE23_BADGE3_CHECKED, EVENT_ROUTE23_BADGE4_CHECKED, EVENT_ROUTE23_BADGE5_CHECKED
+  party:
+    slot 0: #6 CHARIZARD L50 moves LEER, RAGE, SLASH, FLAMETHROWER
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: Route23BadgeCheck6Pass
+  map: ROUTE_23
+  trigger: coord
+
+Actions
+  - lockInput
+  - dialogue: GUARD [You can pass here only if you have the MARSHBADGE! Oh! That is the MARSHBADGE! OK then! Please, go right ahead!]
+  - unlockInput
+  - setsFlags *: EVENT_ROUTE23_BADGE6_CHECKED
+
+Final state
+  location: ROUTE_23[34] (8,85)
+  flags: EVENT_GOT_BOULDERBADGE, EVENT_GOT_CASCADEBADGE, EVENT_GOT_MARSHBADGE, EVENT_GOT_POKEDEX, EVENT_GOT_RAINBOWBADGE, EVENT_GOT_SOULBADGE, EVENT_GOT_THUNDERBADGE, EVENT_ROUTE23_BADGE1_CHECKED, EVENT_ROUTE23_BADGE2_CHECKED, EVENT_ROUTE23_BADGE3_CHECKED, EVENT_ROUTE23_BADGE4_CHECKED, EVENT_ROUTE23_BADGE5_CHECKED, EVENT_ROUTE23_BADGE6_CHECKED
+  party:
+    slot 0: #6 CHARIZARD L50 moves LEER, RAGE, SLASH, FLAMETHROWER
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none

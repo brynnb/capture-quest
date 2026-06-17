@@ -1,0 +1,9 @@
+bin/
+tmp/
+server.log
+server.pid
+discord.txt
+capturequest_config.json
+key.pem
+daemon
+data/*.dat

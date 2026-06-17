@@ -1,0 +1,40 @@
+Scenario: agathas_room_post_battle
+Description: After beating Agatha, her room post-battle script records completion.
+Character: ScriptSimAgathaPostBattle
+
+Initial state
+  location: AGATHAS_ROOM[247] (4,10)
+  flags: EVENT_BEAT_AGATHA
+  party:
+    slot 0: #6 CHARIZARD L60 moves RAGE, SLASH, FLAMETHROWER, FIRE_SPIN
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: AgathasRoomAgathaPostBattle
+  map: AGATHAS_ROOM
+  trigger: map_script
+
+Actions
+  - lockInput
+  - dialogue: AGATHA [Oh ho! You're something special, child!]
+  - dialogue: AGATHA [You win! I see what the old duff sees in you now! I have nothing else to say! Run along now, child!]
+  - setFlag *: EVENT_AGATHA_POST_BATTLE_DONE
+  - unlockInput
+  - setsFlags *: EVENT_AGATHA_POST_BATTLE_DONE
+
+Final state
+  location: AGATHAS_ROOM[247] (4,10)
+  flags: EVENT_AGATHA_POST_BATTLE_DONE, EVENT_BEAT_AGATHA
+  party:
+    slot 0: #6 CHARIZARD L60 moves RAGE, SLASH, FLAMETHROWER, FIRE_SPIN
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

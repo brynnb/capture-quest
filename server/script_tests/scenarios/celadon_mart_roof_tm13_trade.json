@@ -1,0 +1,29 @@
+{
+  "name": "celadon_mart_roof_tm13_trade",
+  "description": "The Celadon Mart rooftop girl trades Fresh Water for TM13 Ice Beam.",
+  "fixture": {
+    "characterName": "ScriptSimCeladonRoofTM13",
+    "mapName": "CELADON_MART_ROOF",
+    "x": 5,
+    "y": 6,
+    "direction": "UP",
+    "flags": [],
+    "party": [{ "speciesId": 6, "level": 35 }],
+    "inventory": [{ "itemId": 60, "quantity": 1 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "CELADON_MART_ROOF",
+    "textConstant": "TEXT_CELADONMARTROOF_LITTLE_GIRL",
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "CeladonMartRoofTM13IceBeam",
+    "flagsPresent": ["EVENT_GOT_TM13"],
+    "inventoryContains": [{ "itemId": 101, "quantity": 1 }],
+    "inventoryAbsent": [{ "itemId": 60 }],
+    "actionTypesContains": ["dialogue", "choice", "takeItem", "giveItem", "setFlag"],
+    "activeBattleAbsent": true
+  }
+}

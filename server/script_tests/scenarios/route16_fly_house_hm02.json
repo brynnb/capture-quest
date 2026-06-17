@@ -1,0 +1,27 @@
+{
+  "name": "route16_fly_house_hm02",
+  "description": "The Route 16 secret-house girl gives HM02 Fly.",
+  "fixture": {
+    "characterName": "ScriptSimRoute16HM02",
+    "mapName": "ROUTE_16_FLY_HOUSE",
+    "x": 2,
+    "y": 4,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_POKEDEX"],
+    "party": [{ "speciesId": 6, "level": 38 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "ROUTE_16_FLY_HOUSE",
+    "textConstant": "TEXT_ROUTE16FLYHOUSE_BRUNETTE_GIRL"
+  },
+  "expect": {
+    "scriptLabel": "Route16FlyHouseHM02",
+    "flagsPresent": ["EVENT_GOT_HM02"],
+    "inventoryContains": [{ "itemId": 85, "quantity": 1 }],
+    "actionTypesContains": ["dialogue", "setFlag", "giveItem"],
+    "activeBattleAbsent": true
+  }
+}

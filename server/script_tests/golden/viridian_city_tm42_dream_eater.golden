@@ -1,0 +1,41 @@
+Scenario: viridian_city_tm42_dream_eater
+Description: The Viridian City Fisher grants TM42 Dream Eater.
+Character: ScriptSimViridianTM42
+
+Initial state
+  location: VIRIDIAN_CITY[9999] (-4,-49)
+  flags: EVENT_GOT_POKEDEX
+  party:
+    slot 0: #4 CHARMANDER L12 moves SCRATCH, GROWL, EMBER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: ViridianCityTM42DreamEater
+  map: VIRIDIAN_CITY
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [{PLAYER} received TM42! TM42 contains DREAM EATER... ...Snore...]
+  - setFlag *: EVENT_GOT_TM42
+  - playSFX: SFX_GET_ITEM_2
+  - unlockInput
+  - giveItem *: TM42 x1 added
+  - setsFlags *: EVENT_GOT_TM42
+
+Final state
+  location: VIRIDIAN_CITY[9999] (-4,-49)
+  flags: EVENT_GOT_POKEDEX, EVENT_GOT_TM42
+  party:
+    slot 0: #4 CHARMANDER L12 moves SCRATCH, GROWL, EMBER
+  inventory:
+    #130 TM42 x1
+  hidden objects:
+    none
+  active battle:
+    none

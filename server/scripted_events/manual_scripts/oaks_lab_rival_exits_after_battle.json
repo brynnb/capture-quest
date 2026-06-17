@@ -1,0 +1,62 @@
+{
+  "scriptLabel": "OaksLabRivalExitsAfterBattle",
+  "mapName": "OAKS_LAB",
+  "trigger": {
+    "type": "map_script"
+  },
+  "requiresFlag": "EVENT_BATTLED_RIVAL_IN_OAKS_LAB",
+  "requiresFlagAbsent": "EVENT_OAKS_LAB_RIVAL_EXITED",
+  "setsFlags": [
+    "EVENT_OAKS_LAB_RIVAL_EXITED"
+  ],
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "hideObject",
+      "triggerLabel": "TEXT_OAKSLAB_RIVAL"
+    },
+    {
+      "x": 4,
+      "y": 3,
+      "type": "showActor",
+      "actor": "RIVAL",
+      "sprite": "SPRITE_BLUE"
+    },
+    {
+      "type": "facePlayer",
+      "actor": "RIVAL",
+      "direction": "DOWN"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Okay! I'll make my POKéMON fight to toughen it up!",
+        "{PLAYER}! Gramps! Smell you later!"
+      ],
+      "speaker": "RIVAL"
+    },
+    {
+      "type": "move",
+      "actor": "RIVAL",
+      "movements": [
+        "DOWN",
+        "DOWN",
+        "DOWN",
+        "DOWN",
+        "DOWN",
+        "DOWN",
+        "DOWN",
+        "DOWN"
+      ]
+    },
+    {
+      "type": "hideActor",
+      "actor": "RIVAL"
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "name": "vermilion_old_rod_house_old_rod",
+  "description": "The Vermilion Fishing Guru grants the Old Rod.",
+  "fixture": {
+    "characterName": "ScriptSimOldRod",
+    "mapName": "VERMILION_OLD_ROD_HOUSE",
+    "x": 2,
+    "y": 5,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_SS_TICKET"],
+    "party": [{ "speciesId": 5, "level": 25 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "VERMILION_OLD_ROD_HOUSE",
+    "textConstant": "TEXT_VERMILIONOLDRODHOUSE_FISHING_GURU",
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "VermilionOldRodHouseFishingGuruTextGift",
+    "inventoryContains": [{ "itemId": 76, "quantity": 1 }],
+    "actionTypesContains": ["dialogue", "choice", "giveItem"],
+    "activeBattleAbsent": true
+  }
+}

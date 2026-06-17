@@ -1,0 +1,43 @@
+Scenario: cinnabar_gym_quiz_gates_initial_closed
+Description: Cinnabar Gym quiz gate tiles are closed for a player without gate flags.
+Character: ScriptSimCinnabarQuizGatesClosed
+
+Initial state
+  location: CINNABAR_GYM[166] (16,13)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: TileState:CINNABAR_GYM
+  map: CINNABAR_GYM
+  trigger: tile_state
+
+Actions
+  - tileState: 6 event tiles
+
+Final state
+  location: CINNABAR_GYM[166] (16,13)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Event tile states
+  CinnabarGymGate1Closed (9,3): tile=781 collision=0
+  CinnabarGymGate2Closed (6,3): tile=781 collision=0
+  CinnabarGymGate3Closed (6,6): tile=781 collision=0
+  CinnabarGymGate4Closed (3,8): tile=780 collision=0
+  CinnabarGymGate5Closed (2,6): tile=781 collision=0
+  CinnabarGymGate6Closed (2,3): tile=781 collision=0

@@ -1,0 +1,39 @@
+Scenario: victory_road_2f_moltres_start
+Description: Victory Road 2F Moltres starts a scripted L50 wild battle without setting the beat flag at cutscene completion.
+Character: ScriptSim_Moltres_Start
+
+Initial state
+  location: VICTORY_ROAD_2F[194] (11,5)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L60 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: VictoryRoad2FMoltresEncounter
+  map: VICTORY_ROAD_2F
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Gyaoo!]
+  - unlockInput
+  - startWildBattle *: #146 MOLTRES L50 winFlag=EVENT_BEAT_MOLTRES
+
+Final state
+  location: VICTORY_ROAD_2F[194] (11,5)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L60 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    wild phase=action_select trainer= name= winFlag=EVENT_BEAT_MOLTRES
+    enemy slot 0: #146 MOLTRES L50

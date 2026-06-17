@@ -1,0 +1,23 @@
+{
+  "name": "blues_house_default_script_flag_side_effects",
+  "description": "The generated Blues House map script sets the source entered-house flag once.",
+  "fixture": {
+    "characterName": "ScriptSimBluesHouseDefaultFlags",
+    "mapName": "BLUES_HOUSE",
+    "x": 2,
+    "y": 5,
+    "direction": "UP",
+    "flags": [],
+    "party": [{ "speciesId": 25, "level": 5 }]
+  },
+  "trigger": {
+    "type": "map_script",
+    "mapName": "BLUES_HOUSE"
+  },
+  "expect": {
+    "scriptLabel": "BluesHouseDefaultScriptFlagSideEffects",
+    "flagsPresent": ["EVENT_ENTERED_BLUES_HOUSE"],
+    "actionTypesContains": ["setFlag"],
+    "activeBattleAbsent": true
+  }
+}

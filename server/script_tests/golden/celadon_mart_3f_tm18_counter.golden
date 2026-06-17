@@ -1,0 +1,42 @@
+Scenario: celadon_mart_3f_tm18_counter
+Description: The Celadon Mart 3F clerk gives TM18 Counter.
+Character: ScriptSimCeladonMartTM18
+
+Initial state
+  location: CELADON_MART_3F[124] (16,6)
+  flags: EVENT_GOT_POKEDEX
+  party:
+    slot 0: #6 CHARIZARD L34 moves LEER, EMBER, LEER, RAGE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: CeladonMart3FTM18Counter
+  map: CELADON_MART_3F
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: CLERK [Oh, hi! I finally finished POKéMON! Not done yet? This might be useful!]
+  - dialogue:  [{PLAYER} received TM18! TM18 is COUNTER! Not like the one I'm leaning on, mind you!]
+  - setFlag *: EVENT_GOT_TM18
+  - playSFX: SFX_GET_ITEM_1
+  - unlockInput
+  - giveItem *: TM18 x1 added
+  - setsFlags *: EVENT_GOT_TM18
+
+Final state
+  location: CELADON_MART_3F[124] (16,6)
+  flags: EVENT_GOT_POKEDEX, EVENT_GOT_TM18
+  party:
+    slot 0: #6 CHARIZARD L34 moves LEER, EMBER, LEER, RAGE
+  inventory:
+    #106 TM18 x1
+  hidden objects:
+    none
+  active battle:
+    none

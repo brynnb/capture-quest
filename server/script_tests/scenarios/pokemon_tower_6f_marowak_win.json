@@ -1,0 +1,23 @@
+{
+  "name": "pokemon_tower_6f_marowak_win",
+  "description": "Pokemon Tower 6F Marowak ghost battle win sets the ghost beat flag.",
+  "fixture": {
+    "characterName": "ScriptSim_Marowak_Win",
+    "mapName": "POKEMON_TOWER_6F",
+    "x": 10,
+    "y": 16,
+    "party": [{"speciesId": 25, "level": 50}]
+  },
+  "trigger": {
+    "type": "coord",
+    "x": 10,
+    "y": 16
+  },
+  "resolveBattle": {"result": "win"},
+  "expect": {
+    "scriptLabel": "PokemonTower6FMarowakGhost",
+    "flagsPresent": ["EVENT_BEAT_GHOST_MAROWAK"],
+    "actionTypesContains": ["startWildBattle", "resolveBattle"],
+    "activeBattleAbsent": true
+  }
+}

@@ -1,0 +1,58 @@
+Scenario: rocket_hideout_b4f_giovanni_win
+Description: Winning the Rocket Hideout B4F Giovanni battle hides Giovanni and reveals the Silph Scope.
+Character: ScriptSimRocketHideoutGiovanniWin
+
+Initial state
+  location: ROCKET_HIDEOUT_B4F[202] (25,4)
+  flags: EVENT_BEAT_ROCKET_HIDEOUT_4_TRAINER_0, EVENT_BEAT_ROCKET_HIDEOUT_4_TRAINER_1, EVENT_ROCKET_HIDEOUT_4_DOOR_UNLOCKED
+  party:
+    slot 0: #6 CHARIZARD L45 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    none
+  hidden objects:
+    TEXT_ROCKETHIDEOUTB4F_SILPH_SCOPE
+  active battle:
+    none
+
+Resolved script
+  label: RocketHideoutB4FGiovanniEncounter
+  map: ROCKET_HIDEOUT_B4F
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: GIOVANNI [So! I must say, I
+am impressed you got here!]
+  - startTrainerBattle *: GIOVANNI party=1 enemy=[#95 ONIX L25 #111 RHYHORN L24 #115 KANGASKHAN L29] winFlag=EVENT_BEAT_ROCKET_HIDEOUT_GIOVANNI
+  - unlockInput
+  - resolveBattle *: win trainer=GIOVANNI winFlag=EVENT_BEAT_ROCKET_HIDEOUT_GIOVANNI
+  - dialogue: GIOVANNI [WHAT!
+This cannot be! I see that you
+raise POKÉMON with utmost care. A child like you
+would never understand what I hope to achieve. I shall step
+aside this time! I hope we meet
+again...]
+  - hideActor
+  - setFlag *: EVENT_ROCKET_HIDEOUT_GIOVANNI_LEFT
+  - hideObject *: objects=[TEXT_ROCKETHIDEOUTB4F_GIOVANNI]
+  - showObject *: objects=[TEXT_ROCKETHIDEOUTB4F_SILPH_SCOPE]
+
+Final state
+  location: ROCKET_HIDEOUT_B4F[202] (25,4)
+  flags: EVENT_BEAT_ROCKET_HIDEOUT_4_TRAINER_0, EVENT_BEAT_ROCKET_HIDEOUT_4_TRAINER_1, EVENT_BEAT_ROCKET_HIDEOUT_GIOVANNI, EVENT_ROCKET_HIDEOUT_4_DOOR_UNLOCKED, EVENT_ROCKET_HIDEOUT_GIOVANNI_LEFT
+  party:
+    slot 0: #6 CHARIZARD L45 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    none
+  hidden objects:
+    TEXT_ROCKETHIDEOUTB4F_GIOVANNI
+  active battle:
+    none
+
+Event object states
+  SourceMissableInitial:HS_ROCKET_HIDEOUT_B4F_ITEM_1 ROCKET_HIDEOUT_B4F/RocketHideoutB4F_ITEM_5 (10,12): visible text=TEXT_ROCKETHIDEOUTB4F_HP_UP
+  SourceMissableInitial:HS_ROCKET_HIDEOUT_B4F_ITEM_2 ROCKET_HIDEOUT_B4F/RocketHideoutB4F_ITEM_6 (9,4): visible text=TEXT_ROCKETHIDEOUTB4F_TM_RAZOR_WIND
+  SourceMissableInitial:HS_ROCKET_HIDEOUT_B4F_ITEM_3 ROCKET_HIDEOUT_B4F/RocketHideoutB4F_ITEM_7 (12,20): visible text=TEXT_ROCKETHIDEOUTB4F_IRON
+  CutsceneAction:showObject ROCKET_HIDEOUT_B4F/RocketHideoutB4F_ITEM_8 (25,2): visible text=TEXT_ROCKETHIDEOUTB4F_SILPH_SCOPE
+  RocketHideoutB4F_ITEM_9 ROCKET_HIDEOUT_B4F/RocketHideoutB4F_ITEM_9 (10,2): visible text=TEXT_ROCKETHIDEOUTB4F_LIFT_KEY
+  CutsceneAction:hideObject ROCKET_HIDEOUT_B4F/RocketHideoutB4F_NPC_1 (25,3): hidden text=TEXT_ROCKETHIDEOUTB4F_GIOVANNI

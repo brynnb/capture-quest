@@ -1,0 +1,35 @@
+Scenario: blues_house_default_script_flag_side_effects
+Description: The generated Blues House map script sets the source entered-house flag once.
+Character: ScriptSimBluesHouseDefaultFlags
+
+Initial state
+  location: BLUES_HOUSE[39] (2,5)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L5 moves THUNDERSHOCK, GROWL
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: BluesHouseDefaultScriptFlagSideEffects
+  map: BLUES_HOUSE
+  trigger: map_script
+
+Actions
+  - setFlag *: EVENT_ENTERED_BLUES_HOUSE
+
+Final state
+  location: BLUES_HOUSE[39] (2,5)
+  flags: EVENT_ENTERED_BLUES_HOUSE
+  party:
+    slot 0: #25 PIKACHU L5 moves THUNDERSHOCK, GROWL
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

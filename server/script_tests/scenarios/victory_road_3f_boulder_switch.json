@@ -1,0 +1,51 @@
+{
+  "name": "victory_road_3f_boulder_switch",
+  "description": "Pushing a Victory Road 3F boulder onto the source switch sets the 3F switch flag.",
+  "fixture": {
+    "characterName": "SimVictoryRoad3FBoulderSwitch",
+    "mapName": "VICTORY_ROAD_3F",
+    "x": 3,
+    "y": 7,
+    "flags": ["EVENT_GOT_RAINBOWBADGE"],
+    "party": [
+      { "speciesId": 66, "level": 20, "moves": ["STRENGTH"] }
+    ],
+    "objectPositions": [
+      {
+        "objectName": "VictoryRoad3F_NPC_7",
+        "x": 3,
+        "y": 6
+      }
+    ]
+  },
+  "trigger": {
+    "type": "boulder_push",
+    "direction": "UP",
+    "activateStrength": true
+  },
+  "expect": {
+    "scriptLabel": "BoulderPush:VICTORY_ROAD_3F",
+    "boulderPush": {
+      "success": true,
+      "objectName": "VictoryRoad3F_NPC_7",
+      "fromX": 3,
+      "fromY": 6,
+      "toX": 3,
+      "toY": 5,
+      "dropped": false,
+      "flagSet": "EVENT_VICTORY_ROAD_3_BOULDER_ON_SWITCH1"
+    },
+    "flagsPresent": ["EVENT_VICTORY_ROAD_3_BOULDER_ON_SWITCH1"],
+    "tileStates": [
+      {
+        "x": 7,
+        "y": 10,
+        "tileImageId": 562,
+        "collisionType": 1,
+        "label": "VictoryRoadBoulderBlock_3F_Switch_1d_1_0"
+      }
+    ],
+    "actionTypesContains": ["boulderPush"],
+    "activeBattleAbsent": true
+  }
+}

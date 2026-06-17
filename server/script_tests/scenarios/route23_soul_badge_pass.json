@@ -1,0 +1,29 @@
+{
+  "name": "route23_soul_badge_pass",
+  "description": "The Route 23 Soul Badge swimmer allows the player with the Soul Badge.",
+  "fixture": {
+    "characterName": "ScriptSimSoulGatePass",
+    "mapName": "ROUTE_23",
+    "x": 11,
+    "y": 96,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_POKEDEX", "EVENT_GOT_BOULDERBADGE", "EVENT_ROUTE23_BADGE1_CHECKED", "EVENT_GOT_CASCADEBADGE", "EVENT_ROUTE23_BADGE2_CHECKED", "EVENT_GOT_THUNDERBADGE", "EVENT_ROUTE23_BADGE3_CHECKED", "EVENT_GOT_RAINBOWBADGE", "EVENT_ROUTE23_BADGE4_CHECKED", "EVENT_GOT_SOULBADGE"],
+    "party": [{ "speciesId": 6, "level": 50 }],
+    "inventory": [{ "itemId": 9, "quantity": 1 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "ROUTE_23",
+    "x": 11,
+    "y": 96
+  },
+  "expect": {
+    "scriptLabel": "Route23BadgeCheck5Pass",
+    "finalX": 11,
+    "finalY": 96,
+    "flagsPresent": ["EVENT_GOT_SOULBADGE", "EVENT_ROUTE23_BADGE5_CHECKED"],
+    "actionTypesContains": ["dialogue", "setsFlags"],
+    "activeBattleAbsent": true
+  }
+}

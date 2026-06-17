@@ -1,0 +1,34 @@
+Scenario: cinnabar_lab_trade_room_crinkles_trade_ready
+Description: Cinnabar Lab Trade Room Beauty is ready to trade Tangela named CRINKLES for Venonat.
+Character: ScriptSimCinnabarCrinklesTrade
+
+Initial state
+  location: CINNABAR_LAB_TRADE_ROOM[168] (5,4)
+  flags: none
+  party:
+    slot 0: #48 VENONAT L25 moves TACKLE, DISABLE, POISONPOWDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FixtureState
+  map: CINNABAR_LAB_TRADE_ROOM
+  trigger: fixture_state
+
+Actions
+
+Final state
+  location: CINNABAR_LAB_TRADE_ROOM[168] (5,4)
+  flags: none
+  party:
+    slot 0: #48 VENONAT L25 moves TACKLE, DISABLE, POISONPOWDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

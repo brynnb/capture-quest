@@ -1,0 +1,105 @@
+Scenario: silph_co_11f_giovanni_win
+Description: Win the Silph Co. 11F Giovanni battle and verify Team Rocket departure cleanup.
+Character: ScriptSimSilphGiovanniWin
+
+Initial state
+  location: SILPH_CO_11F[235] (7,12)
+  flags: EVENT_BEAT_CERULEAN_RIVAL, EVENT_BEAT_GHOST_MAROWAK, EVENT_BEAT_POKEMON_TOWER_RIVAL, EVENT_BEAT_ROCKET_HIDEOUT_GIOVANNI, EVENT_BEAT_SILPH_CO_RIVAL, EVENT_BEAT_SS_ANNE_RIVAL, EVENT_GOT_HM01, EVENT_GOT_POKEDEX, EVENT_GOT_POKE_FLUTE, EVENT_RESCUED_MR_FUJI, EVENT_ROCKET_HIDEOUT_GIOVANNI_LEFT, EVENT_SAFFRON_GUARDS_OPENED, EVENT_SS_ANNE_LEFT
+  party:
+    slot 0: #6 CHARIZARD L45 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    #48 CARD KEY x1
+    #84 HM01 x1
+    #73 POKé FLUTE x1
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SilphCo11FGiovanniEncounter
+  map: SILPH_CO_11F
+  trigger: coord
+
+Actions
+  - lockInput
+  - move: GIOVANNI [DOWN DOWN DOWN]
+  - dialogue: GIOVANNI [Ah (PLAYER)!
+So we meet again! The PRESIDENT and
+I are discussing a vital business proposition. Keep your nose
+out of grown-up matters... Or, experience a
+world of pain!]
+  - startTrainerBattle *: GIOVANNI party=2 enemy=[#33 NIDORINO L37 #115 KANGASKHAN L35 #111 RHYHORN L37 #31 NIDOQUEEN L41] winFlag=EVENT_BEAT_SILPH_CO_GIOVANNI
+  - unlockInput
+  - resolveBattle *: win trainer=GIOVANNI winFlag=EVENT_BEAT_SILPH_CO_GIOVANNI
+  - dialogue: GIOVANNI [Blast it all!
+You ruined our plans for SILPH! But, TEAM ROCKET
+will never fall! (PLAYER)! Never
+forget that all POKÉMON exist for TEAM ROCKET! I must go, but I
+shall return!]
+  - hideActor
+  - setFlag *: EVENT_SILPH_GIOVANNI_LEFT
+  - hideObject *: objects=[TEXT_SAFFRONCITY_ROCKET1]
+  - hideObject *: objects=[TEXT_SAFFRONCITY_ROCKET2]
+  - hideObject *: objects=[TEXT_SAFFRONCITY_ROCKET3]
+  - hideObject *: objects=[TEXT_SAFFRONCITY_ROCKET4]
+  - hideObject *: objects=[TEXT_SAFFRONCITY_ROCKET5]
+  - hideObject *: objects=[TEXT_SAFFRONCITY_ROCKET6]
+  - hideObject *: objects=[TEXT_SAFFRONCITY_ROCKET7]
+  - hideObject *: objects=[TEXT_SAFFRONCITY_ROCKET8]
+  - hideObject *: objects=[TEXT_SAFFRONCITY_ROCKET9]
+  - hideObject *: objects=[TEXT_SILPHCO2F_SCIENTIST1]
+  - hideObject *: objects=[TEXT_SILPHCO2F_SCIENTIST2]
+  - hideObject *: objects=[TEXT_SILPHCO2F_ROCKET1]
+  - hideObject *: objects=[TEXT_SILPHCO2F_ROCKET2]
+  - hideObject *: objects=[TEXT_SILPHCO3F_ROCKET]
+  - hideObject *: objects=[TEXT_SILPHCO3F_SCIENTIST]
+  - hideObject *: objects=[TEXT_SILPHCO4F_ROCKET1]
+  - hideObject *: objects=[TEXT_SILPHCO4F_SCIENTIST]
+  - hideObject *: objects=[TEXT_SILPHCO4F_ROCKET2]
+  - hideObject *: objects=[TEXT_SILPHCO5F_ROCKET1]
+  - hideObject *: objects=[TEXT_SILPHCO5F_SCIENTIST]
+  - hideObject *: objects=[TEXT_SILPHCO5F_ROCKER]
+  - hideObject *: objects=[TEXT_SILPHCO5F_ROCKET2]
+  - hideObject *: objects=[TEXT_SILPHCO6F_ROCKET1]
+  - hideObject *: objects=[TEXT_SILPHCO6F_SCIENTIST]
+  - hideObject *: objects=[TEXT_SILPHCO6F_ROCKET2]
+  - hideObject *: objects=[TEXT_SILPHCO7F_ROCKET1]
+  - hideObject *: objects=[TEXT_SILPHCO7F_SCIENTIST]
+  - hideObject *: objects=[TEXT_SILPHCO7F_ROCKET2]
+  - hideObject *: objects=[TEXT_SILPHCO7F_ROCKET3]
+  - hideObject *: objects=[TEXT_SILPHCO8F_ROCKET1]
+  - hideObject *: objects=[TEXT_SILPHCO8F_SCIENTIST]
+  - hideObject *: objects=[TEXT_SILPHCO8F_ROCKET2]
+  - hideObject *: objects=[TEXT_SILPHCO9F_ROCKET1]
+  - hideObject *: objects=[TEXT_SILPHCO9F_SCIENTIST]
+  - hideObject *: objects=[TEXT_SILPHCO9F_ROCKET2]
+  - hideObject *: objects=[TEXT_SILPHCO10F_ROCKET]
+  - hideObject *: objects=[TEXT_SILPHCO10F_SCIENTIST]
+  - hideObject *: objects=[TEXT_SILPHCO11F_GIOVANNI]
+  - hideObject *: objects=[TEXT_SILPHCO11F_ROCKET1]
+  - hideObject *: objects=[TEXT_SILPHCO11F_ROCKET2]
+  - showObject *: objects=[TEXT_SAFFRONCITY_SCIENTIST]
+  - showObject *: objects=[TEXT_SAFFRONCITY_SILPH_WORKER_M]
+  - showObject *: objects=[TEXT_SAFFRONCITY_SILPH_WORKER_F]
+  - showObject *: objects=[TEXT_SAFFRONCITY_GENTLEMAN]
+  - showObject *: objects=[TEXT_SAFFRONCITY_PIDGEOT]
+  - showObject *: objects=[TEXT_SAFFRONCITY_ROCKER]
+
+Final state
+  location: SILPH_CO_11F[235] (7,12)
+  flags: EVENT_BEAT_CERULEAN_RIVAL, EVENT_BEAT_GHOST_MAROWAK, EVENT_BEAT_POKEMON_TOWER_RIVAL, EVENT_BEAT_ROCKET_HIDEOUT_GIOVANNI, EVENT_BEAT_SILPH_CO_GIOVANNI, EVENT_BEAT_SILPH_CO_RIVAL, EVENT_BEAT_SS_ANNE_RIVAL, EVENT_GOT_HM01, EVENT_GOT_POKEDEX, EVENT_GOT_POKE_FLUTE, EVENT_RESCUED_MR_FUJI, EVENT_ROCKET_HIDEOUT_GIOVANNI_LEFT, EVENT_SAFFRON_GUARDS_OPENED, EVENT_SILPH_GIOVANNI_LEFT, EVENT_SS_ANNE_LEFT
+  party:
+    slot 0: #6 CHARIZARD L45 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    #48 CARD KEY x1
+    #84 HM01 x1
+    #73 POKé FLUTE x1
+    #9 POKéDEX x1
+  hidden objects:
+    TEXT_SILPHCO11F_GIOVANNI
+    TEXT_SILPHCO11F_ROCKET1
+    TEXT_SILPHCO11F_ROCKET2
+  active battle:
+    none

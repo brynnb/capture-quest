@@ -1,0 +1,44 @@
+Scenario: game_corner_clerk2_coin_gift
+Description: The Game Corner clerk gives 20 source coins once when the player has a Coin Case with room.
+Character: ScriptSimGameCornerClerk2CoinGift
+
+Initial state
+  location: GAME_CORNER[135] (7,4)
+  flags: none
+  coins: 10
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: GameCornerClerk2CoinsGift
+  map: GAME_CORNER
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [What's up? Want
+some coins?]
+  - giveCoins *: coins=20 total=30
+  - setFlag *: EVENT_GOT_20_COINS_2
+  - dialogue:  [(PLAYER) received
+20 coins!]
+  - unlockInput
+
+Final state
+  location: GAME_CORNER[135] (7,4)
+  flags: EVENT_GOT_20_COINS_2
+  coins: 30
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none

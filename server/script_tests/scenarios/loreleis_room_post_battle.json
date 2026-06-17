@@ -1,0 +1,22 @@
+{
+  "name": "loreleis_room_post_battle",
+  "description": "After beating Lorelei, her room post-battle script records completion.",
+  "fixture": {
+    "characterName": "ScriptSimLoreleiPostBattle",
+    "mapName": "LORELEIS_ROOM",
+    "x": 4,
+    "y": 10,
+    "direction": "UP",
+    "flags": ["EVENT_BEAT_LORELEI"],
+    "party": [{ "speciesId": 6, "level": 60 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": { "type": "map_script", "mapName": "LORELEIS_ROOM" },
+  "expect": {
+    "scriptLabel": "LoreleisRoomLoreleiPostBattle",
+    "flagsPresent": ["EVENT_BEAT_LORELEI", "EVENT_LORELEI_POST_BATTLE_DONE"],
+    "actionTypesContains": ["dialogue", "setFlag", "setsFlags"],
+    "activeBattleAbsent": true
+  }
+}

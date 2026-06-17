@@ -1,0 +1,41 @@
+{
+  "scriptLabel": "SaffronCityGuardDrink",
+  "mapName": "ROUTE_5_GATE",
+  "trigger": {
+    "type": "npc_click",
+    "label": "TEXT_ROUTE5GATE_GUARD",
+    "source": "extractor"
+  },
+  "requiresFlag": "EVENT_GOT_FRESH_WATER",
+  "requiresFlagAbsent": "EVENT_SAFFRON_GUARDS_OPENED",
+  "setsFlags": [
+    "EVENT_SAFFRON_GUARDS_OPENED"
+  ],
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "I'm on guard duty. Hmm? This drink is for me?",
+        "Gulp gulp... Ahh! That hit the spot!",
+        "I'm sorry about turning you away, kid.",
+        "You can go through now! I'll share this with the other guards!"
+      ],
+      "speaker": "GUARD"
+    },
+    {
+      "flag": "EVENT_SAFFRON_GUARDS_OPENED",
+      "type": "setFlag"
+    },
+    {
+      "type": "unlockInput"
+    },
+    {
+      "type": "takeItem",
+      "itemId": 60,
+      "quantity": 1
+    }
+  ]
+}

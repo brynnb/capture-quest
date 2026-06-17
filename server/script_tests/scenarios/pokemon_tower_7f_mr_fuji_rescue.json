@@ -1,0 +1,43 @@
+{
+  "name": "pokemon_tower_7f_mr_fuji_rescue",
+  "description": "Talking to Mr. Fuji after the Pokemon Tower 7F Rockets are beaten sets rescue flags, updates source missable objects, and warps to his house.",
+  "fixture": {
+    "characterName": "ScriptSimPokemonTower7FMrFuji",
+    "mapName": "POKEMON_TOWER_7F",
+    "x": 10,
+    "y": 8,
+    "direction": "UP",
+    "flags": [
+      "EVENT_BEAT_GHOST_MAROWAK",
+      "EVENT_BEAT_POKEMONTOWER_7_TRAINER_0",
+      "EVENT_BEAT_POKEMONTOWER_7_TRAINER_1",
+      "EVENT_BEAT_POKEMONTOWER_7_TRAINER_2"
+    ],
+    "party": [
+      { "speciesId": 25, "level": 35 }
+    ],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "POKEMON_TOWER_7F",
+    "textConstant": "TEXT_POKEMONTOWER7F_MR_FUJI"
+  },
+  "expect": {
+    "scriptLabel": "PokemonTower7FMrFujiRescue",
+    "flagsPresent": [
+      "EVENT_BEAT_GHOST_MAROWAK",
+      "EVENT_BEAT_POKEMONTOWER_7_TRAINER_0",
+      "EVENT_BEAT_POKEMONTOWER_7_TRAINER_1",
+      "EVENT_BEAT_POKEMONTOWER_7_TRAINER_2",
+      "EVENT_RESCUED_MR_FUJI",
+      "EVENT_RESCUED_MR_FUJI_2"
+    ],
+    "hiddenObjectKeys": ["TEXT_POKEMONTOWER7F_MR_FUJI"],
+    "finalMapName": "MR_FUJIS_HOUSE",
+    "finalX": 3,
+    "finalY": 7,
+    "actionTypesContains": ["dialogue", "setFlag", "showObject", "hideObject", "warp"],
+    "activeBattleAbsent": true
+  }
+}

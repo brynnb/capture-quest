@@ -1,0 +1,39 @@
+Scenario: viridian_city_gym_locked_blocked
+Description: Viridian Gym's door blocks and pushes back the player before the Earth Badge opens the gym.
+Character: ScriptSimViridianGymLocked
+
+Initial state
+  location: VIRIDIAN_CITY[9999] (22,-64)
+  flags: none
+  party:
+    slot 0: #6 CHARIZARD L45 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: ViridianCityGymLockedBlocked
+  map: VIRIDIAN_CITY
+  trigger: coord
+
+Actions
+  - lockInput
+  - dialogue:  [The GYM's doors
+are locked...]
+  - movePlayer *: from=(22,-64) to=(22,-63) steps=[DOWN]
+  - unlockInput
+
+Final state
+  location: VIRIDIAN_CITY[9999] (22,-63)
+  flags: none
+  party:
+    slot 0: #6 CHARIZARD L45 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

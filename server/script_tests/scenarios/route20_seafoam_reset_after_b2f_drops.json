@@ -1,0 +1,47 @@
+{
+  "name": "route20_seafoam_reset_after_b2f_drops",
+  "description": "Loading Route 20 after Seafoam sets source ShowObject/HideObject overrides for B2F-drop boulders without clearing boulder flags.",
+  "fixture": {
+    "characterName": "SimRoute20SeafoamB2FReset",
+    "mapName": "ROUTE_20",
+    "x": 68,
+    "y": 114,
+    "flags": [
+      "EVENT_IN_SEAFOAM_ISLANDS",
+      "EVENT_SEAFOAM1_BOULDER1_DOWN_HOLE",
+      "EVENT_SEAFOAM1_BOULDER2_DOWN_HOLE",
+      "EVENT_SEAFOAM2_BOULDER1_DOWN_HOLE",
+      "EVENT_SEAFOAM2_BOULDER2_DOWN_HOLE",
+      "EVENT_SEAFOAM3_BOULDER1_DOWN_HOLE",
+      "EVENT_SEAFOAM3_BOULDER2_DOWN_HOLE"
+    ],
+    "objectPositions": [
+      { "mapName": "SEAFOAM_ISLANDS_1F", "objectName": "SeafoamIslands1F_NPC_1", "x": 17, "y": 6 },
+      { "mapName": "SEAFOAM_ISLANDS_B3F", "objectName": "SeafoamIslandsB3F_NPC_3", "x": 19, "y": 6 }
+    ]
+  },
+  "trigger": {
+    "type": "map_load",
+    "mapName": "ROUTE_20"
+  },
+  "expect": {
+    "scriptLabel": "MapLoad:ROUTE_20",
+    "flagsPresent": [
+      "EVENT_SEAFOAM1_BOULDER1_DOWN_HOLE",
+      "EVENT_SEAFOAM1_BOULDER2_DOWN_HOLE",
+      "EVENT_SEAFOAM2_BOULDER1_DOWN_HOLE",
+      "EVENT_SEAFOAM2_BOULDER2_DOWN_HOLE",
+      "EVENT_SEAFOAM3_BOULDER1_DOWN_HOLE",
+      "EVENT_SEAFOAM3_BOULDER2_DOWN_HOLE"
+    ],
+    "flagsAbsent": ["EVENT_IN_SEAFOAM_ISLANDS"],
+    "objectStates": [
+      { "mapName": "SEAFOAM_ISLANDS_1F", "name": "SeafoamIslands1F_NPC_1", "x": 18, "y": 10, "visible": true, "label": "Route20SeafoamBoulderReset" },
+      { "mapName": "SEAFOAM_ISLANDS_B1F", "name": "SeafoamIslandsB1F_NPC_1", "visible": false, "label": "Route20SeafoamBoulderReset" },
+      { "mapName": "SEAFOAM_ISLANDS_B2F", "name": "SeafoamIslandsB2F_NPC_1", "visible": false, "label": "Route20SeafoamBoulderReset" },
+      { "mapName": "SEAFOAM_ISLANDS_B3F", "name": "SeafoamIslandsB3F_NPC_3", "x": 8, "y": 14, "visible": false, "label": "Route20SeafoamBoulderReset" }
+    ],
+    "actionTypesContains": ["mapLoad"],
+    "activeBattleAbsent": true
+  }
+}

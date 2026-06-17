@@ -1,0 +1,41 @@
+Scenario: vermilion_gym_trash_door_closed
+Description: Vermilion Gym trash puzzle door blocks when the second electric lock is not open.
+Character: ScriptSimVermilionTrashDoorClosed
+
+Initial state
+  location: VERMILION_GYM[92] (4,6)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: TileState:VERMILION_GYM
+  map: VERMILION_GYM
+  trigger: tile_state
+
+Actions
+  - tileState: 4 event tiles
+
+Final state
+  location: VERMILION_GYM[92] (4,6)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Event tile states
+  VermilionGymTrashDoorClosed_4_4 (4,4): tile=253 collision=0
+  VermilionGymTrashDoorClosed_5_4 (5,4): tile=253 collision=0
+  VermilionGymTrashDoorClosed_4_5 (4,5): tile=253 collision=0
+  VermilionGymTrashDoorClosed_5_5 (5,5): tile=253 collision=0

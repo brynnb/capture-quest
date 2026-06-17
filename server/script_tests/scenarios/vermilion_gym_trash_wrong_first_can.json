@@ -1,0 +1,28 @@
+{
+  "name": "vermilion_gym_trash_wrong_first_can",
+  "description": "Clicking a non-switch trash can before the first lock is found leaves both locks closed.",
+  "fixture": {
+    "characterName": "ScriptSimVermilionTrashWrongFirst",
+    "mapName": "VERMILION_GYM",
+    "x": 3,
+    "y": 9,
+    "vermilionGymTrash": {
+      "firstLockCanIndex": 4
+    }
+  },
+  "trigger": {
+    "type": "vermilion_gym_trash",
+    "mapName": "VERMILION_GYM",
+    "trashCanIndex": 5
+  },
+  "expect": {
+    "scriptLabel": "VermilionGymTrash",
+    "flagsAbsent": ["EVENT_1ST_LOCK_OPENED", "EVENT_2ND_LOCK_OPENED"],
+    "actionTypesContains": ["vermilionGymTrash"],
+    "vermilionGymTrash": {
+      "firstLockCanIndex": 4,
+      "secondLockAbsent": true
+    },
+    "activeBattleAbsent": true
+  }
+}

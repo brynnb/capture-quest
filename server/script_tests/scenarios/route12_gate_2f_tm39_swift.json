@@ -1,0 +1,27 @@
+{
+  "name": "route12_gate_2f_tm39_swift",
+  "description": "The Route 12 Gate 2F girl gives TM39 Swift.",
+  "fixture": {
+    "characterName": "ScriptSimRoute12GateTM39",
+    "mapName": "ROUTE_12_GATE_2F",
+    "x": 3,
+    "y": 5,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_POKEDEX"],
+    "party": [{ "speciesId": 6, "level": 38 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "ROUTE_12_GATE_2F",
+    "textConstant": "TEXT_ROUTE12GATE2F_BRUNETTE_GIRL"
+  },
+  "expect": {
+    "scriptLabel": "Route12Gate2FTM39Swift",
+    "flagsPresent": ["EVENT_GOT_TM39"],
+    "inventoryContains": [{ "itemId": 127, "quantity": 1 }],
+    "actionTypesContains": ["dialogue", "setFlag", "giveItem"],
+    "activeBattleAbsent": true
+  }
+}

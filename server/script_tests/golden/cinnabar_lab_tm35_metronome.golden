@@ -1,0 +1,42 @@
+Scenario: cinnabar_lab_tm35_metronome
+Description: The Cinnabar Lab Metronome room scientist grants TM35.
+Character: ScriptSimCinnabarTM35
+
+Initial state
+  location: CINNABAR_LAB_METRONOME_ROOM[169] (7,3)
+  flags: EVENT_GOT_VOLCANOBADGE
+  party:
+    slot 0: #6 CHARIZARD L48 moves LEER, RAGE, SLASH, FLAMETHROWER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: CinnabarLabTM35Metronome
+  map: CINNABAR_LAB_METRONOME_ROOM
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: SCIENTIST [Tch-tch-tch! That's the sound of a METRONOME! It tweaks your POKéMON's brain into using moves it doesn't know!]
+  - dialogue:  [{PLAYER} received TM35!]
+  - setFlag *: EVENT_GOT_TM35
+  - playSFX: SFX_GET_ITEM_1
+  - unlockInput
+  - giveItem *: TM35 x1 added
+  - setsFlags *: EVENT_GOT_TM35
+
+Final state
+  location: CINNABAR_LAB_METRONOME_ROOM[169] (7,3)
+  flags: EVENT_GOT_TM35, EVENT_GOT_VOLCANOBADGE
+  party:
+    slot 0: #6 CHARIZARD L48 moves LEER, RAGE, SLASH, FLAMETHROWER
+  inventory:
+    #123 TM35 x1
+  hidden objects:
+    none
+  active battle:
+    none

@@ -1,0 +1,29 @@
+{
+  "name": "field_move_surf_with_badge",
+  "description": "Surf is allowed when a party Pokemon knows SURF and the Soul Badge is set.",
+  "fixture": {
+    "characterName": "SimFieldSurfWithBadge",
+    "mapName": "PALLET_TOWN",
+    "x": 10,
+    "y": 10,
+    "flags": ["EVENT_GOT_SOULBADGE"],
+    "party": [
+      { "speciesId": 131, "level": 20, "moves": ["SURF"] }
+    ]
+  },
+  "trigger": {
+    "type": "field_move_permission",
+    "moveName": "SURF"
+  },
+  "expect": {
+    "scriptLabel": "FieldMovePermission:SURF",
+    "fieldMove": {
+      "allowed": true,
+      "moveName": "SURF",
+      "requiredBadgeFlag": "EVENT_GOT_SOULBADGE",
+      "knownBySpeciesId": 131
+    },
+    "actionTypesContains": ["fieldMovePermission"],
+    "activeBattleAbsent": true
+  }
+}

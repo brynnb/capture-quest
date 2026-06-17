@@ -1,0 +1,37 @@
+Scenario: daycare_step_pikachu_growth
+Description: Day Care EXP advances one point per step and updates the computed growth/cost state.
+Character: ScriptSimDayCareStep
+
+Initial state
+  location: ROUTE_5[9999] (10,20)
+  flags: none
+  day care: #25 PIKACHU L5 start=5 grown=0 cost=100 exp=125
+  party:
+    slot 0: #4 CHARMANDER L5 moves SCRATCH, GROWL
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: DayCareStep
+  map: ROUTE_5
+  trigger: daycare_step
+
+Actions
+  - dayCareStep *: steps=91 active=true pokemon=#25 L6 start=5 grown=1 cost=200 exp=216
+
+Final state
+  location: ROUTE_5[9999] (10,20)
+  flags: none
+  day care: #25 PIKACHU L6 start=5 grown=1 cost=200 exp=216
+  party:
+    slot 0: #4 CHARMANDER L5 moves SCRATCH, GROWL
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

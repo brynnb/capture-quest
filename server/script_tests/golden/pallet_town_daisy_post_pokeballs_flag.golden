@@ -1,0 +1,35 @@
+Scenario: pallet_town_daisy_post_pokeballs_flag
+Description: Pallet Town map-load sync sets the post-Pokeballs flag independently of Daisy's Town Map visibility swap.
+Character: ScriptSimPalletDaisyPokeballs
+
+Initial state
+  location: PALLET_TOWN[9999] (5,6)
+  flags: EVENT_GOT_POKEBALLS_FROM_OAK
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: MapLoad:PALLET_TOWN
+  map: PALLET_TOWN
+  trigger: map_load
+
+Actions
+  - mapLoad *: PALLET_TOWN set=[EVENT_PALLET_AFTER_GETTING_POKEBALLS_2] reset=[] affected=[]
+
+Final state
+  location: PALLET_TOWN[9999] (5,6)
+  flags: EVENT_GOT_POKEBALLS_FROM_OAK, EVENT_PALLET_AFTER_GETTING_POKEBALLS_2
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

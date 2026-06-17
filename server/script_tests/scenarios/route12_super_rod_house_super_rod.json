@@ -1,0 +1,27 @@
+{
+  "name": "route12_super_rod_house_super_rod",
+  "description": "The Route 12 Fishing Guru's brother gives the Super Rod.",
+  "fixture": {
+    "characterName": "ScriptSimSuperRod",
+    "mapName": "ROUTE_12_SUPER_ROD_HOUSE",
+    "x": 2,
+    "y": 5,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_POKEDEX"],
+    "party": [{ "speciesId": 6, "level": 38 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "ROUTE_12_SUPER_ROD_HOUSE",
+    "textConstant": "TEXT_ROUTE12SUPERRODHOUSE_FISHING_GURU",
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "Route12SuperRodHouseFishingGuruTextGift",
+    "inventoryContains": [{ "itemId": 78, "quantity": 1 }],
+    "actionTypesContains": ["dialogue", "choice", "giveItem"],
+    "activeBattleAbsent": true
+  }
+}

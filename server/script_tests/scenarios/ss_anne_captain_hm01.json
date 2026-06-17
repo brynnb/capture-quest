@@ -1,0 +1,27 @@
+{
+  "name": "ss_anne_captain_hm01",
+  "description": "Clicking the S.S. Anne Captain before HM01 is received grants HM01 and its event flag.",
+  "fixture": {
+    "characterName": "ScriptSimSSAnneCaptainHM01",
+    "mapName": "SS_ANNE_CAPTAINS_ROOM",
+    "x": 4,
+    "y": 5,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_SS_TICKET"],
+    "party": [{ "speciesId": 5, "level": 30 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "SS_ANNE_CAPTAINS_ROOM",
+    "textConstant": "TEXT_SSANNECAPTAINSROOM_CAPTAIN"
+  },
+  "expect": {
+    "scriptLabel": "SSAnneCaptainHM01",
+    "flagsPresent": ["EVENT_GOT_SS_TICKET", "EVENT_GOT_HM01"],
+    "inventoryContains": [{ "itemId": 84, "quantity": 1 }],
+    "actionTypesContains": ["dialogue", "setFlag", "giveItem"],
+    "activeBattleAbsent": true
+  }
+}

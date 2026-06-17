@@ -1,0 +1,43 @@
+Scenario: celadon_mart_elevator_floors
+Description: Celadon Dept. Store elevator lists floors 1F through 5F.
+Character: SimCeladonElevatorFloors
+
+Initial state
+  location: CELADON_MART_ELEVATOR[127] (2,2)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: ElevatorFloors:CELADON_MART_ELEVATOR
+  map: CELADON_MART_ELEVATOR
+  trigger: elevator_floors
+
+Actions
+  - elevatorFloors: floors=5
+
+Final state
+  location: CELADON_MART_ELEVATOR[127] (2,2)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Elevator
+  floors:
+    1F -> CELADON_MART_1F[122] (1,1)
+    2F -> CELADON_MART_2F[123] (1,1)
+    3F -> CELADON_MART_3F[124] (1,1)
+    4F -> CELADON_MART_4F[125] (1,1)
+    5F -> CELADON_MART_5F[136] (1,1)

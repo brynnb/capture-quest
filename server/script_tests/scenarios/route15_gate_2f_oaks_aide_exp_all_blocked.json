@@ -1,0 +1,36 @@
+{
+  "name": "route15_gate_2f_oaks_aide_exp_all_blocked",
+  "description": "Route 15 Gate 2F Oak's Aide blocks Exp. All when the player has caught fewer than 50 Pokemon.",
+  "fixture": {
+    "characterName": "ScriptSimRoute15AideExpAllBlocked",
+    "mapName": "ROUTE_15_GATE_2F",
+    "x": 4,
+    "y": 3,
+    "direction": "UP",
+    "flags": [],
+    "party": [{ "speciesId": 25, "level": 35 }],
+    "inventory": [],
+    "pokedexCaught": [
+      1, 4, 7, 10, 13, 16, 19, 21, 25, 27,
+      29, 32, 35, 39, 41, 43, 46, 48, 50, 52,
+      54, 56, 58, 60, 63, 66, 69, 72, 74, 77,
+      79, 81, 84, 86, 88, 90, 92, 95, 96, 98,
+      100, 102, 104, 106, 109, 111, 113, 114, 116
+    ],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "ROUTE_15_GATE_2F",
+    "textConstant": "TEXT_ROUTE15GATE2F_OAKS_AIDE",
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "Route15Gate2FOaksAideExpAllBlocked",
+    "flagsAbsent": ["EVENT_GOT_EXP_ALL"],
+    "inventoryAbsent": [{ "itemId": 75 }],
+    "pokedexCaughtCount": 49,
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

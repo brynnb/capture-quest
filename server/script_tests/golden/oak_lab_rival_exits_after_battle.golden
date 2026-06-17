@@ -1,0 +1,46 @@
+Scenario: oak_lab_rival_exits_after_battle
+Description: After the first rival battle, Oak's Lab runs the rival exit script.
+Character: ScriptSimOakRivalExit
+
+Initial state
+  location: OAKS_LAB[40] (5,11)
+  flags: EVENT_BATTLED_RIVAL_IN_OAKS_LAB, EVENT_GOT_STARTER, EVENT_OAK_ASKED_TO_CHOOSE_MON, EVENT_PLAYER_CHOSE_CHARMANDER, EVENT_RIVAL_PICKED_STARTER
+  party:
+    slot 0: #4 CHARMANDER L5 moves SCRATCH, GROWL
+  inventory:
+    none
+  hidden objects:
+    TEXT_OAKSLAB_CHARMANDER_POKE_BALL
+    TEXT_OAKSLAB_SQUIRTLE_POKE_BALL
+  active battle:
+    none
+
+Resolved script
+  label: OaksLabRivalExitsAfterBattle
+  map: OAKS_LAB
+  trigger: map_script
+
+Actions
+  - lockInput
+  - hideObject *: objects=[TEXT_OAKSLAB_RIVAL]
+  - showActor
+  - facePlayer
+  - dialogue: RIVAL [Okay! I'll make my POKéMON fight to toughen it up! {PLAYER}! Gramps! Smell you later!]
+  - move: RIVAL [DOWN DOWN DOWN DOWN DOWN DOWN DOWN DOWN]
+  - hideActor
+  - unlockInput
+  - setsFlags *: EVENT_OAKS_LAB_RIVAL_EXITED
+
+Final state
+  location: OAKS_LAB[40] (5,11)
+  flags: EVENT_BATTLED_RIVAL_IN_OAKS_LAB, EVENT_GOT_STARTER, EVENT_OAKS_LAB_RIVAL_EXITED, EVENT_OAK_ASKED_TO_CHOOSE_MON, EVENT_PLAYER_CHOSE_CHARMANDER, EVENT_RIVAL_PICKED_STARTER
+  party:
+    slot 0: #4 CHARMANDER L5 moves SCRATCH, GROWL
+  inventory:
+    none
+  hidden objects:
+    TEXT_OAKSLAB_RIVAL
+    TEXT_OAKSLAB_CHARMANDER_POKE_BALL
+    TEXT_OAKSLAB_SQUIRTLE_POKE_BALL
+  active battle:
+    none

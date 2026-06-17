@@ -1,0 +1,53 @@
+Scenario: cerulean_city_rocket_battle_win
+Description: Winning the Cerulean City Rocket battle returns TM28 and hides the Rocket source object.
+Character: ScriptSimCeruleanRocketWin
+
+Initial state
+  location: CERULEAN_CITY[9999] (190,-188)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L25 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: CeruleanCityRocketBattleTM28
+  map: CERULEAN_CITY
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Hey! Stay out!
+It's not your yard! Huh? Me? I'm an innocent
+bystander! Don't you believe me?]
+  - startTrainerBattle *: ROCKET party=5 enemy=[#66 MACHOP L17 #96 DROWZEE L17] winFlag=EVENT_BEAT_CERULEAN_ROCKET_THIEF
+  - unlockInput
+  - resolveBattle *: win trainer=ROCKET winFlag=EVENT_BEAT_CERULEAN_ROCKET_THIEF
+  - dialogue:  [Stop!
+I give up! I'll leave quietly!]
+  - dialogue:  [OK! I'll return
+the TM I stole!]
+  - giveItem *: TM28 x1 added
+  - dialogue:  [(PLAYER) recovered
+TM28! I better get
+moving! Bye!]
+  - showObject *: objects=[TEXT_CERULEANCITY_GUARD1]
+  - hideObject *: objects=[TEXT_CERULEANCITY_GUARD2]
+  - hideObject *: objects=[TEXT_CERULEANCITY_ROCKET]
+
+Final state
+  location: CERULEAN_CITY[9999] (190,-188)
+  flags: EVENT_BEAT_CERULEAN_ROCKET_THIEF
+  party:
+    slot 0: #25 PIKACHU L25 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    #116 TM28 x1
+  hidden objects:
+    TEXT_CERULEANCITY_ROCKET
+    TEXT_CERULEANCITY_GUARD2
+  active battle:
+    none

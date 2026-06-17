@@ -1,0 +1,92 @@
+{
+  "scriptLabel": "OaksLabChooseCharmander",
+  "mapName": "OAKS_LAB",
+  "trigger": {
+    "type": "npc_click",
+    "label": "TEXT_OAKSLAB_CHARMANDER_POKE_BALL",
+    "source": "extractor"
+  },
+  "requiresFlag": "EVENT_OAK_ASKED_TO_CHOOSE_MON",
+  "requiresFlagAbsent": "EVENT_GOT_STARTER",
+  "setsFlags": [
+    "EVENT_GOT_STARTER",
+    "EVENT_RIVAL_PICKED_STARTER",
+    "EVENT_PLAYER_CHOSE_CHARMANDER"
+  ],
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "choice",
+      "prompt": "So! You want CHARMANDER?",
+      "noLines": [
+        "Okay. Take your time."
+      ],
+      "textConstant": "TEXT_OAKSLAB_CHARMANDER_POKE_BALL"
+    },
+    {
+      "type": "givePokemon",
+      "level": 5,
+      "message": "Received CHARMANDER!",
+      "pokemonId": 4
+    },
+    {
+      "type": "hideObject",
+      "triggerLabel": "TEXT_OAKSLAB_CHARMANDER_POKE_BALL"
+    },
+    {
+      "type": "hideObject",
+      "triggerLabel": "TEXT_OAKSLAB_SQUIRTLE_POKE_BALL"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "{PLAYER} received CHARMANDER!"
+      ]
+    },
+    {
+      "ms": 300,
+      "type": "delay"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "I'll take this one, then!",
+        "{RIVAL} received SQUIRTLE!"
+      ],
+      "speaker": "RIVAL"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Wait {PLAYER}! Let's check out our POKEMON!",
+        "Come on, I'll take you on!"
+      ],
+      "speaker": "RIVAL"
+    },
+    {
+      "type": "startTrainerBattle",
+      "winFlag": "EVENT_BATTLED_RIVAL_IN_OAKS_LAB",
+      "loseFlag": "EVENT_BATTLED_RIVAL_IN_OAKS_LAB",
+      "lossMessage": "RIVAL: Yeah! Am I great or what?",
+      "noBlackoutOnLoss": true,
+      "postWinActions": [
+        {
+          "type": "healParty"
+        }
+      ],
+      "postLoseActions": [
+        {
+          "type": "healParty"
+        }
+      ],
+      "partyIndex": 1,
+      "trainerName": "RIVAL",
+      "trainerClass": "RIVAL1"
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

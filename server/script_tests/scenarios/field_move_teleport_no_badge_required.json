@@ -1,0 +1,27 @@
+{
+  "name": "field_move_teleport_no_badge_required",
+  "description": "Teleport has no badge gate and is allowed when a party Pokemon knows TELEPORT.",
+  "fixture": {
+    "characterName": "SimFieldTeleportNoBadge",
+    "mapName": "PALLET_TOWN",
+    "x": 10,
+    "y": 10,
+    "party": [
+      { "speciesId": 63, "level": 20, "moves": ["TELEPORT"] }
+    ]
+  },
+  "trigger": {
+    "type": "field_move_permission",
+    "moveName": "TELEPORT"
+  },
+  "expect": {
+    "scriptLabel": "FieldMovePermission:TELEPORT",
+    "fieldMove": {
+      "allowed": true,
+      "moveName": "TELEPORT",
+      "knownBySpeciesId": 63
+    },
+    "actionTypesContains": ["fieldMovePermission"],
+    "activeBattleAbsent": true
+  }
+}

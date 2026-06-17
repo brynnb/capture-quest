@@ -1,0 +1,27 @@
+{
+  "name": "game_corner_clerk1_buy_coins",
+  "description": "Game Corner Clerk 1 sells 50 coins for 1000 Pokédollars when the player has a Coin Case with room.",
+  "fixture": {
+    "characterName": "ScriptSimGameCornerClerk1BuyCoins",
+    "mapName": "GAME_CORNER",
+    "x": 3,
+    "y": 3,
+    "direction": "UP",
+    "money": 1000,
+    "coins": 10,
+    "inventory": [{ "itemName": "COIN_CASE", "quantity": 1 }]
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "GAME_CORNER",
+    "textConstant": "TEXT_GAMECORNER_CLERK1",
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "GameCornerClerk1BuyCoins",
+    "money": 0,
+    "coins": 60,
+    "actionTypesContains": ["dialogue", "choice", "takeMoney", "giveCoins"],
+    "activeBattleAbsent": true
+  }
+}

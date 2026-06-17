@@ -1,0 +1,40 @@
+Scenario: route16_snorlax_win
+Description: Route 16 Snorlax battle win sets the beat flag and hides the Snorlax object.
+Character: ScriptSim_Route16_Snorlax_Win
+
+Initial state
+  location: ROUTE_16[9999] (86,-108)
+  flags: EVENT_GOT_POKE_FLUTE
+  party:
+    slot 0: #25 PIKACHU L50 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: Route16SnorlaxEncounter
+  map: ROUTE_16
+  trigger: coord
+
+Actions
+  - lockInput
+  - dialogue:  [A huge POKéMON is blocking the way! It's a sleeping SNORLAX! The POKé FLUTE woke it up! The SNORLAX attacked!]
+  - unlockInput
+  - startWildBattle *: #143 SNORLAX L30 winFlag=EVENT_BEAT_ROUTE16_SNORLAX
+  - resolveBattle *: win type=wild target=#143 SNORLAX winFlag=EVENT_BEAT_ROUTE16_SNORLAX
+  - hideObject *: objects=[TEXT_ROUTE16_SNORLAX]
+
+Final state
+  location: ROUTE_16[9999] (86,-108)
+  flags: EVENT_BEAT_ROUTE16_SNORLAX, EVENT_GOT_POKE_FLUTE
+  party:
+    slot 0: #25 PIKACHU L50 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+  inventory:
+    none
+  hidden objects:
+    TEXT_ROUTE16_SNORLAX
+  active battle:
+    none

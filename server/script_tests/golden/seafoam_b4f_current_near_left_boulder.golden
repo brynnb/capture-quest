@@ -1,0 +1,35 @@
+Scenario: seafoam_b4f_current_near_left_boulder
+Description: Seafoam B4F current near the left B4F boulder forces the source Up 3, Right 3, Up 1 path.
+Character: ScriptSimSeafoamB4FCurrentLeftBoulder
+
+Initial state
+  location: SEAFOAM_ISLANDS_B4F[162] (4,14)
+  flags: EVENT_SEAFOAM4_BOULDER1_DOWN_HOLE, EVENT_SEAFOAM4_BOULDER2_DOWN_HOLE
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SeafoamCurrent:SeafoamB4FCurrentNearLeftBoulder
+  map: SEAFOAM_ISLANDS_B4F
+  trigger: seafoam_current
+
+Actions
+  - seafoamCurrent *: SeafoamB4FCurrentNearLeftBoulder start=(4,14) final=(7,10) movements=[UP UP UP RIGHT RIGHT RIGHT UP]
+
+Final state
+  location: SEAFOAM_ISLANDS_B4F[162] (7,10)
+  flags: EVENT_SEAFOAM4_BOULDER1_DOWN_HOLE, EVENT_SEAFOAM4_BOULDER2_DOWN_HOLE
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

@@ -1,0 +1,39 @@
+Scenario: field_move_dig_no_badge_required
+Description: Dig has no badge gate and is allowed when a party Pokemon knows DIG.
+Character: SimFieldDigNoBadge
+
+Initial state
+  location: PALLET_TOWN[9999] (10,10)
+  flags: none
+  party:
+    slot 0: #27 SANDSHREW L20 moves DIG
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FieldMovePermission:DIG
+  map: PALLET_TOWN
+  trigger: field_move_permission
+
+Actions
+  - fieldMovePermission: move=DIG allowed=true knownBy=#27 SANDSHREW
+
+Final state
+  location: PALLET_TOWN[9999] (10,10)
+  flags: none
+  party:
+    slot 0: #27 SANDSHREW L20 moves DIG
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Field move
+  move: DIG[91] allowed=true
+  known by: #27 SANDSHREW

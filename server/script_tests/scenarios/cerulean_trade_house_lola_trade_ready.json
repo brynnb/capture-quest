@@ -1,0 +1,26 @@
+{
+  "name": "cerulean_trade_house_lola_trade_ready",
+  "description": "Cerulean Trade House Gambler is ready to trade Jynx named LOLA for Poliwhirl.",
+  "fixture": {
+    "characterName": "ScriptSimCeruleanLolaTrade",
+    "mapName": "CERULEAN_TRADE_HOUSE",
+    "x": 1,
+    "y": 3,
+    "direction": "UP",
+    "flags": [],
+    "party": [{ "speciesId": 61, "level": 25 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "fixture_state",
+    "mapName": "CERULEAN_TRADE_HOUSE",
+    "textConstant": "TEXT_CERULEANTRADEHOUSE_GAMBLER"
+  },
+  "expect": {
+    "scriptLabel": "FixtureState",
+    "finalDirection": "UP",
+    "partySpecies": [61],
+    "activeBattleAbsent": true
+  }
+}

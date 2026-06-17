@@ -1,0 +1,27 @@
+{
+  "name": "game_corner_slot_no_coin_case",
+  "description": "Game Corner slot machines require the Coin Case before play.",
+  "fixture": {
+    "characterName": "SimGameCornerSlotNoCase",
+    "mapName": "GAME_CORNER",
+    "x": 18,
+    "y": 15,
+    "coins": 10
+  },
+  "trigger": {
+    "type": "gamecorner_slot_play",
+    "bet": 1
+  },
+  "expect": {
+    "scriptLabel": "GameCornerSlotPlay",
+    "coins": 10,
+    "gameCornerPrizeMessage": "You need a COIN CASE!",
+    "gameCornerSlot": {
+      "success": false,
+      "bet": 1,
+      "payout": 0
+    },
+    "actionTypesContains": ["gameCornerSlotPlay"],
+    "activeBattleAbsent": true
+  }
+}

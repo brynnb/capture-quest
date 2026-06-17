@@ -1,0 +1,27 @@
+{
+  "name": "pokemon_fan_club_pikachu_fan_normal_sets_seel_boast",
+  "description": "The Pokemon Fan Club Pikachu fan's normal branch sets the Seel fan boast flag.",
+  "fixture": {
+    "characterName": "ScriptSimFanClubPikachuNormal",
+    "mapName": "POKEMON_FAN_CLUB",
+    "x": 5,
+    "y": 3,
+    "direction": "LEFT",
+    "flags": [],
+    "party": [{ "speciesId": 25, "level": 20 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "POKEMON_FAN_CLUB",
+    "textConstant": "TEXT_POKEMONFANCLUB_PIKACHU_FAN"
+  },
+  "expect": {
+    "scriptLabel": "PokemonFanClubPikachuFanTextNormal",
+    "flagsPresent": ["EVENT_SEEL_FAN_BOAST"],
+    "flagsAbsent": ["EVENT_PIKACHU_FAN_BOAST"],
+    "actionTypesContains": ["dialogue", "setFlag"],
+    "activeBattleAbsent": true
+  }
+}

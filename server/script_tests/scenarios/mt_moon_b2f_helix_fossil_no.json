@@ -1,0 +1,35 @@
+{
+  "name": "mt_moon_b2f_helix_fossil_no",
+  "description": "Declining the Helix Fossil leaves both fossil choices available.",
+  "fixture": {
+    "characterName": "ScriptSimMtMoonHelixFossilNo",
+    "mapName": "MT_MOON_B2F",
+    "x": 13,
+    "y": 6,
+    "direction": "UP",
+    "flags": ["EVENT_BEAT_MT_MOON_SUPER_NERD"],
+    "party": [{ "speciesId": 25, "level": 18 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "MT_MOON_B2F",
+    "textConstant": "TEXT_MTMOONB2F_HELIX_FOSSIL",
+    "choice": false
+  },
+  "expect": {
+    "scriptLabel": "MtMoonB2FHelixFossilChoice",
+    "flagsAbsent": [
+      "EVENT_GOT_MT_MOON_FOSSIL",
+      "EVENT_GOT_DOME_FOSSIL",
+      "EVENT_GOT_HELIX_FOSSIL"
+    ],
+    "inventoryAbsent": [
+      { "itemId": 41 },
+      { "itemId": 42 }
+    ],
+    "actionTypesContains": ["choice"],
+    "activeBattleAbsent": true
+  }
+}

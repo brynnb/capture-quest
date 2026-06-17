@@ -1,0 +1,27 @@
+{
+  "name": "mt_moon_pokecenter_magikarp_salesman_insufficient_money",
+  "description": "The Mt. Moon Pokecenter salesman refuses the Magikarp sale below 500 Pokédollars.",
+  "fixture": {
+    "characterName": "ScriptSimMagikarpSalesmanNoMoney",
+    "mapName": "MT_MOON_POKECENTER",
+    "x": 7,
+    "y": 4,
+    "direction": "LEFT",
+    "money": 499,
+    "party": [{ "speciesId": 25, "level": 12 }]
+  },
+  "trigger": {
+    "type": "direct",
+    "scriptLabel": "MtMoonPokecenterMagikarpSalesmanInsufficientMoney",
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "MtMoonPokecenterMagikarpSalesmanInsufficientMoney",
+    "flagsAbsent": ["EVENT_BOUGHT_MAGIKARP"],
+    "money": 499,
+    "partySpecies": [25],
+    "partySpeciesAbsent": [129],
+    "actionTypesContains": ["choice", "dialogue"],
+    "activeBattleAbsent": true
+  }
+}

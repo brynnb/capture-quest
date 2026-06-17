@@ -1,0 +1,40 @@
+Scenario: safari_zone_enter_insufficient_money
+Description: Safari Zone entry refuses the player when they have less than the 500 Pokédollar fee.
+Character: ScriptSimSafariInsufficientMoney
+
+Initial state
+  location: SAFARI_ZONE_GATE[156] (4,6)
+  flags: none
+  money: 499
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SafariZoneEnter
+  map: SAFARI_ZONE_GATE
+  trigger: safari_enter
+
+Actions
+  - safariEnter: success=false money=499 message="not enough money"
+
+Final state
+  location: SAFARI_ZONE_GATE[156] (4,6)
+  flags: none
+  money: 499
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Safari session
+  inactive

@@ -1,0 +1,25 @@
+{
+  "name": "rocket_hideout_b1f_door_open_tiles",
+  "description": "Rocket Hideout B1F door resolves to the open floor block after EVENT_677 is set.",
+  "fixture": {
+    "characterName": "ScriptSimRocketHideoutB1FDoorOpenTiles",
+    "mapName": "ROCKET_HIDEOUT_B1F",
+    "x": 12,
+    "y": 8,
+    "flags": ["EVENT_677"]
+  },
+  "trigger": {
+    "type": "tile_state",
+    "mapName": "ROCKET_HIDEOUT_B1F"
+  },
+  "expect": {
+    "scriptLabel": "TileState:ROCKET_HIDEOUT_B1F",
+    "tileStates": [
+      { "x": 24, "y": 16, "tileImageId": 758, "collisionType": 1, "label": "RocketHideoutB1FDoorOpen_0_0" },
+      { "x": 24, "y": 17, "tileImageId": 758, "collisionType": 1, "label": "RocketHideoutB1FDoorOpen_0_1" },
+      { "x": 25, "y": 16, "tileImageId": 758, "collisionType": 1, "label": "RocketHideoutB1FDoorOpen_1_0" },
+      { "x": 25, "y": 17, "tileImageId": 758, "collisionType": 1, "label": "RocketHideoutB1FDoorOpen_1_1" }
+    ],
+    "activeBattleAbsent": true
+  }
+}

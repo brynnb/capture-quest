@@ -1,0 +1,44 @@
+{
+  "scriptLabel": "OaksLabRivalPicksStarter",
+  "mapName": "OAKS_LAB",
+  "trigger": {
+    "type": "map_script"
+  },
+  "requiresFlag": "EVENT_GOT_STARTER",
+  "requiresFlagAbsent": "EVENT_RIVAL_PICKED_STARTER",
+  "setsFlags": [
+    "EVENT_RIVAL_PICKED_STARTER"
+  ],
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "facePlayer",
+      "actor": "RIVAL",
+      "direction": "UP"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "I'll take this one, then!"
+      ],
+      "speaker": "RIVAL"
+    },
+    {
+      "ms": 500,
+      "type": "delay"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Wait {PLAYER}! Let's check out our POKéMON!",
+        "Come on, I'll take you on!"
+      ],
+      "speaker": "RIVAL"
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "scriptLabel": "SilphCo11FGiovanniDefeated",
+  "mapName": "SILPH_CO_11F",
+  "trigger": {
+    "type": "map_script"
+  },
+  "requiresFlag": "EVENT_BEAT_SILPH_CO_GIOVANNI",
+  "requiresFlagAbsent": "EVENT_SILPH_GIOVANNI_LEFT",
+  "setsFlags": [
+    "EVENT_SILPH_GIOVANNI_LEFT"
+  ],
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Blast it all! You ruined our plans for SILPH!",
+        "But, TEAM ROCKET will never fall!",
+        "{PLAYER}! Never forget that all POKéMON exist for TEAM ROCKET!",
+        "I must go, but I shall return!"
+      ],
+      "speaker": "GIOVANNI"
+    },
+    {
+      "type": "move",
+      "actor": "GIOVANNI",
+      "movements": [
+        "DOWN",
+        "DOWN",
+        "DOWN",
+        "DOWN"
+      ]
+    },
+    {
+      "type": "hideActor",
+      "actor": "GIOVANNI"
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

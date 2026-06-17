@@ -1,0 +1,41 @@
+Scenario: safari_battle_run
+Description: An active Safari battle fixture can be resolved through the real Safari action handler by running away.
+Character: ScriptSimSafariBattleRun
+
+Initial state
+  location: SAFARI_ZONE_CENTER[220] (14,24)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L30 moves GROWL, THUNDER_WAVE, QUICK_ATTACK, SWIFT
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SafariBattleAction
+  map: SAFARI_ZONE_CENTER
+  trigger: safari_battle_action
+
+Actions
+  - safariBattleAction *: action=run success=true active=true balls=30 steps=499 isOver=true caught=false fled=false battleBefore=#111 L25 message="ok"
+
+Recorded messages
+  - stream opcode=130 payload={"ballsLeft":30,"caught":false,"events":[{"type":"run","message":"Got away safely!"}],"fled":false,"isOver":true,"stepsLeft":499,"success":true}
+
+Final state
+  location: SAFARI_ZONE_CENTER[220] (14,24)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L30 moves GROWL, THUNDER_WAVE, QUICK_ATTACK, SWIFT
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Safari session
+  active: balls=30 steps=499

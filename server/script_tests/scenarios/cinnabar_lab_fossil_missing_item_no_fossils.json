@@ -1,0 +1,32 @@
+{
+  "name": "cinnabar_lab_fossil_missing_item_no_fossils",
+  "description": "A fossil-choice flag alone is not enough; the Cinnabar Lab scientist requires the matching inventory item.",
+  "fixture": {
+    "characterName": "ScriptSimCinnabarFossilMissingItem",
+    "mapName": "CINNABAR_LAB_FOSSIL_ROOM",
+    "x": 5,
+    "y": 3,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_DOME_FOSSIL"],
+    "party": [{ "speciesId": 25, "level": 35 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "CINNABAR_LAB_FOSSIL_ROOM",
+    "textConstant": "TEXT_CINNABARLABFOSSILROOM_SCIENTIST1"
+  },
+  "expect": {
+    "scriptLabel": "CinnabarLabFossilNoFossils",
+    "flagsPresent": ["EVENT_GOT_DOME_FOSSIL"],
+    "flagsAbsent": [
+      "EVENT_GAVE_FOSSIL_TO_LAB",
+      "EVENT_LAB_STILL_REVIVING_FOSSIL",
+      "EVENT_LAB_REVIVING_DOME_FOSSIL"
+    ],
+    "inventoryAbsent": [{ "itemId": 41 }],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

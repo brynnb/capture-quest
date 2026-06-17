@@ -1,0 +1,22 @@
+{
+  "name": "cerulean_cave_b1f_mewtwo_start",
+  "description": "Cerulean Cave B1F Mewtwo starts a scripted L70 wild battle without setting the beat flag at cutscene completion.",
+  "fixture": {
+    "characterName": "ScriptSim_Mewtwo_Start",
+    "mapName": "CERULEAN_CAVE_B1F",
+    "x": 27,
+    "y": 13,
+    "party": [{"speciesId": 25, "level": 70}]
+  },
+  "trigger": {
+    "type": "npc_click",
+    "textConstant": "TEXT_CERULEANCAVEB1F_MEWTWO"
+  },
+  "expect": {
+    "scriptLabel": "CeruleanCaveB1FMewtwoEncounter",
+    "flagsAbsent": ["EVENT_BEAT_MEWTWO"],
+    "actionTypesContains": ["startWildBattle"],
+    "activeBattleType": "wild",
+    "activeBattleEnemySpecies": [150]
+  }
+}

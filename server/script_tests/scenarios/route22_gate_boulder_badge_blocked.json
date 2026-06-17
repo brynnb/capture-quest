@@ -1,0 +1,29 @@
+{
+  "name": "route22_gate_boulder_badge_blocked",
+  "description": "The Route 22 Gate guard blocks the player without the Boulder Badge.",
+  "fixture": {
+    "characterName": "ScriptSimBoulderGateBlocked",
+    "mapName": "ROUTE_22_GATE",
+    "x": 4,
+    "y": 2,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_POKEDEX"],
+    "party": [{ "speciesId": 6, "level": 50 }],
+    "inventory": [{ "itemId": 9, "quantity": 1 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "ROUTE_22_GATE",
+    "x": 4,
+    "y": 2
+  },
+  "expect": {
+    "scriptLabel": "Route23BadgeCheck1Blocked",
+    "finalX": 4,
+    "finalY": 3,
+    "flagsAbsent": ["EVENT_GOT_BOULDERBADGE", "EVENT_ROUTE23_BADGE1_CHECKED"],
+    "actionTypesContains": ["dialogue", "movePlayer"],
+    "activeBattleAbsent": true
+  }
+}

@@ -1,0 +1,38 @@
+Scenario: celadon_mart_roof_tm13_trade_no
+Description: Declining the Celadon Mart rooftop Fresh Water trade keeps the drink and does not grant TM13.
+Character: ScriptSimCeladonRoofTM13No
+
+Initial state
+  location: CELADON_MART_ROOF[126] (5,6)
+  flags: none
+  party:
+    slot 0: #6 CHARIZARD L35 moves LEER, EMBER, LEER, RAGE
+  inventory:
+    #60 FRESH WATER x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: CeladonMartRoofTM13IceBeam
+  map: CELADON_MART_ROOF
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: LITTLE GIRL [I'm thirsty!
+I want something to drink!]
+  - choice: TEXT_CELADONMARTROOF_LITTLE_GIRL "Trade FRESH WATER for TM13?" choice=false
+
+Final state
+  location: CELADON_MART_ROOF[126] (5,6)
+  flags: none
+  party:
+    slot 0: #6 CHARIZARD L35 moves LEER, EMBER, LEER, RAGE
+  inventory:
+    #60 FRESH WATER x1
+  hidden objects:
+    none
+  active battle:
+    none

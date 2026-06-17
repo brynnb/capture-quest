@@ -1,0 +1,29 @@
+{
+  "name": "field_move_strength_with_rainbow_badge",
+  "description": "Strength is allowed when a party Pokemon knows STRENGTH and the Rainbow Badge is set.",
+  "fixture": {
+    "characterName": "SimFieldStrengthWithBadge",
+    "mapName": "PALLET_TOWN",
+    "x": 10,
+    "y": 10,
+    "flags": ["EVENT_GOT_RAINBOWBADGE"],
+    "party": [
+      { "speciesId": 66, "level": 20, "moves": ["STRENGTH"] }
+    ]
+  },
+  "trigger": {
+    "type": "field_move_permission",
+    "moveName": "STRENGTH"
+  },
+  "expect": {
+    "scriptLabel": "FieldMovePermission:STRENGTH",
+    "fieldMove": {
+      "allowed": true,
+      "moveName": "STRENGTH",
+      "requiredBadgeFlag": "EVENT_GOT_RAINBOWBADGE",
+      "knownBySpeciesId": 66
+    },
+    "actionTypesContains": ["fieldMovePermission"],
+    "activeBattleAbsent": true
+  }
+}

@@ -1,0 +1,53 @@
+Scenario: pokemon_mansion_b1f_switch_tiles_on
+Description: Pokemon Mansion B1F switch-controlled blocks resolve to the flag-on layout.
+Character: ScriptSimMansionB1FTilesOn
+
+Initial state
+  location: POKEMON_MANSION_B1F[216] (20,3)
+  flags: EVENT_MANSION_SWITCH_ON
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: TileState:POKEMON_MANSION_B1F
+  map: POKEMON_MANSION_B1F
+  trigger: tile_state
+
+Actions
+  - tileState: 16 event tiles
+
+Final state
+  location: POKEMON_MANSION_B1F[216] (20,3)
+  flags: EVENT_MANSION_SWITCH_ON
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Event tile states
+  PokemonMansionSwitchOn_B1F_8_13_1_1 (17,27): tile=781 collision=0
+  PokemonMansionSwitchOn_B1F_8_13_0_1 (16,27): tile=781 collision=0
+  PokemonMansionSwitchOn_B1F_8_13_1_0 (17,26): tile=758 collision=1
+  PokemonMansionSwitchOn_B1F_8_13_0_0 (16,26): tile=758 collision=1
+  PokemonMansionSwitchOn_B1F_11_6_1_1 (23,13): tile=780 collision=0
+  PokemonMansionSwitchOn_B1F_11_6_0_1 (22,13): tile=758 collision=1
+  PokemonMansionSwitchOn_B1F_11_6_1_0 (23,12): tile=780 collision=0
+  PokemonMansionSwitchOn_B1F_11_6_0_0 (22,12): tile=758 collision=1
+  PokemonMansionSwitchOn_B1F_3_4_1_1 (7,9): tile=758 collision=1
+  PokemonMansionSwitchOn_B1F_3_4_0_1 (6,9): tile=758 collision=1
+  PokemonMansionSwitchOn_B1F_3_4_1_0 (7,8): tile=758 collision=1
+  PokemonMansionSwitchOn_B1F_3_4_0_0 (6,8): tile=758 collision=1
+  PokemonMansionSwitchOn_B1F_8_8_1_1 (17,17): tile=758 collision=1
+  PokemonMansionSwitchOn_B1F_8_8_0_1 (16,17): tile=758 collision=1
+  PokemonMansionSwitchOn_B1F_8_8_1_0 (17,16): tile=758 collision=1
+  PokemonMansionSwitchOn_B1F_8_8_0_0 (16,16): tile=758 collision=1

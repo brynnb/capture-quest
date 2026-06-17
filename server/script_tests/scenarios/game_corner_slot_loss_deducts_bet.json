@@ -1,0 +1,31 @@
+{
+  "name": "game_corner_slot_loss_deducts_bet",
+  "description": "Game Corner slot machine deterministic non-match deducts the bet and pays nothing.",
+  "fixture": {
+    "characterName": "SimGameCornerSlotLoss",
+    "mapName": "GAME_CORNER",
+    "x": 18,
+    "y": 15,
+    "coins": 10,
+    "inventory": [
+      { "itemName": "COIN CASE", "quantity": 1 }
+    ]
+  },
+  "trigger": {
+    "type": "gamecorner_slot_play",
+    "bet": 3,
+    "randomValues": [1, 1, 1, 1]
+  },
+  "expect": {
+    "scriptLabel": "GameCornerSlotPlay",
+    "coins": 7,
+    "gameCornerSlot": {
+      "success": true,
+      "bet": 3,
+      "payout": 0,
+      "reelPositions": [1, 1, 1]
+    },
+    "actionTypesContains": ["gameCornerSlotPlay"],
+    "activeBattleAbsent": true
+  }
+}

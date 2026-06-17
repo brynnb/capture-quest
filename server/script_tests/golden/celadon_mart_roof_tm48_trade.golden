@@ -1,0 +1,48 @@
+Scenario: celadon_mart_roof_tm48_trade
+Description: The Celadon Mart rooftop girl trades Soda Pop for TM48 Rock Slide.
+Character: ScriptSimCeladonRoofTM48
+
+Initial state
+  location: CELADON_MART_ROOF[126] (5,6)
+  flags: none
+  party:
+    slot 0: #6 CHARIZARD L35 moves LEER, EMBER, LEER, RAGE
+  inventory:
+    #61 SODA POP x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: CeladonMartRoofTM48RockSlide
+  map: CELADON_MART_ROOF
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: LITTLE GIRL [I'm thirsty!
+I want something to drink!]
+  - choice: TEXT_CELADONMARTROOF_LITTLE_GIRL "Trade SODA POP for TM48?" choice=true
+  - dialogue: LITTLE GIRL [Yay! SODA POP! Thank you! You can have this
+from me!]
+  - takeItem *: SODA POP x1 removed
+  - giveItem *: TM48 x1 added
+  - dialogue:  [(PLAYER) received
+TM48! TM48 contains
+ROCK SLIDE! It can spook the
+target sometimes!]
+  - setFlag *: EVENT_GOT_TM48
+  - unlockInput
+
+Final state
+  location: CELADON_MART_ROOF[126] (5,6)
+  flags: EVENT_GOT_TM48
+  party:
+    slot 0: #6 CHARIZARD L35 moves LEER, EMBER, LEER, RAGE
+  inventory:
+    #136 TM48 x1
+  hidden objects:
+    none
+  active battle:
+    none

@@ -1,0 +1,38 @@
+Scenario: route18_gate_cycling_road_blocked
+Description: The Route 18 Cycling Road guard blocks the player without a Bicycle.
+Character: ScriptSimRoute18BikeGate
+
+Initial state
+  location: ROUTE_18_GATE_1F[190] (4,3)
+  flags: EVENT_GOT_POKEDEX
+  party:
+    slot 0: #6 CHARIZARD L35 moves LEER, EMBER, LEER, RAGE
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: Route18Gate1FGuardBlocked
+  map: ROUTE_18_GATE_1F
+  trigger: coord
+
+Actions
+  - lockInput
+  - dialogue: GUARD [Excuse me! You need a BICYCLE for CYCLING ROAD!]
+  - movePlayer *: from=(4,3) to=(5,3) steps=[RIGHT]
+  - unlockInput
+
+Final state
+  location: ROUTE_18_GATE_1F[190] (5,3)
+  flags: EVENT_GOT_POKEDEX
+  party:
+    slot 0: #6 CHARIZARD L35 moves LEER, EMBER, LEER, RAGE
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none

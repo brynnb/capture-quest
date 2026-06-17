@@ -1,0 +1,39 @@
+Scenario: pokemon_fan_club_seel_fan_better_resets_seel_boast
+Description: The Pokemon Fan Club Seel fan uses the boast branch when the Pikachu fan has boasted, then resets her own boast flag.
+Character: ScriptSimFanClubSeelBetter
+
+Initial state
+  location: POKEMON_FAN_CLUB[90] (2,3)
+  flags: EVENT_SEEL_FAN_BOAST
+  party:
+    slot 0: #86 SEEL L20 moves HEADBUTT
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: PokemonFanClubSeelFanTextMineIsBetter
+  map: POKEMON_FAN_CLUB
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Oh dear! My SEEL is far
+more attractive!]
+  - resetFlag *: EVENT_SEEL_FAN_BOAST
+  - unlockInput
+
+Final state
+  location: POKEMON_FAN_CLUB[90] (2,3)
+  flags: none
+  party:
+    slot 0: #86 SEEL L20 moves HEADBUTT
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

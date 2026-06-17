@@ -1,0 +1,39 @@
+Scenario: cerulean_gym_guide_after_misty
+Description: The Cerulean gym guide switches to post-Misty dialogue after she is beaten.
+Character: ScriptSimCeruleanGuideAfterMisty
+
+Initial state
+  location: CERULEAN_GYM[65] (4,13)
+  flags: EVENT_BEAT_MISTY
+  party:
+    slot 0: #1 BULBASAUR L20 moves GROWL, LEECH_SEED, VINE_WHIP, POISONPOWDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: CeruleanGymGymGuideTextEventBeatMistySet
+  map: CERULEAN_GYM
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [You beat MISTY!
+What'd I tell ya? You and me kid,
+we make a pretty darn good team!]
+  - unlockInput
+
+Final state
+  location: CERULEAN_GYM[65] (4,13)
+  flags: EVENT_BEAT_MISTY
+  party:
+    slot 0: #1 BULBASAUR L20 moves GROWL, LEECH_SEED, VINE_WHIP, POISONPOWDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

@@ -1,0 +1,36 @@
+Scenario: cinnabar_island_script_flag_side_effects
+Description: The generated Cinnabar Island map script resets Mansion switch and fossil walk-away flags.
+Character: ScriptSimCinnabarIslandFlagReset
+
+Initial state
+  location: CINNABAR_ISLAND[9999] (10,10)
+  flags: EVENT_LAB_STILL_REVIVING_FOSSIL, EVENT_MANSION_SWITCH_ON
+  party:
+    slot 0: #25 PIKACHU L5 moves THUNDERSHOCK, GROWL
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: CinnabarIslandScriptFlagSideEffects
+  map: CINNABAR_ISLAND
+  trigger: map_script
+
+Actions
+  - resetFlag *: EVENT_MANSION_SWITCH_ON
+  - resetFlag *: EVENT_LAB_STILL_REVIVING_FOSSIL
+
+Final state
+  location: CINNABAR_ISLAND[9999] (10,10)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L5 moves THUNDERSHOCK, GROWL
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

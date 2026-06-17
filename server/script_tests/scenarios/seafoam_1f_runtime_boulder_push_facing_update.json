@@ -1,0 +1,41 @@
+{
+  "name": "seafoam_1f_runtime_boulder_push_facing_update",
+  "description": "A runtime same-tile facing update toward an adjacent Strength boulder auto-activates Strength when allowed and pushes the boulder.",
+  "fixture": {
+    "characterName": "SimRuntimeBoulderFacing",
+    "mapName": "SEAFOAM_ISLANDS_1F",
+    "x": 18,
+    "y": 11,
+    "flags": ["EVENT_GOT_RAINBOWBADGE"],
+    "party": [
+      { "speciesId": 66, "level": 20, "moves": ["STRENGTH"] }
+    ]
+  },
+  "trigger": {
+    "type": "runtime_boulder_push",
+    "direction": "UP"
+  },
+  "expect": {
+    "scriptLabel": "RuntimeBoulderPush:SEAFOAM_ISLANDS_1F",
+    "boulderPush": {
+      "success": true,
+      "objectName": "SeafoamIslands1F_NPC_1",
+      "fromX": 18,
+      "fromY": 10,
+      "toX": 18,
+      "toY": 9,
+      "dropped": false
+    },
+    "objectStates": [
+      {
+        "mapName": "SEAFOAM_ISLANDS_1F",
+        "name": "SeafoamIslands1F_NPC_1",
+        "x": 18,
+        "y": 9,
+        "visible": true
+      }
+    ],
+    "actionTypesContains": ["runtimeBoulderPush"],
+    "activeBattleAbsent": true
+  }
+}

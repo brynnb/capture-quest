@@ -1,0 +1,29 @@
+{
+  "name": "route23_cascade_badge_blocked",
+  "description": "The Route 23 Cascade Badge guard blocks the player without the Cascade Badge.",
+  "fixture": {
+    "characterName": "ScriptSimCascadeGateBlocked",
+    "mapName": "ROUTE_23",
+    "x": 8,
+    "y": 136,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_POKEDEX", "EVENT_GOT_BOULDERBADGE", "EVENT_ROUTE23_BADGE1_CHECKED"],
+    "party": [{ "speciesId": 6, "level": 50 }],
+    "inventory": [{ "itemId": 9, "quantity": 1 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "ROUTE_23",
+    "x": 8,
+    "y": 136
+  },
+  "expect": {
+    "scriptLabel": "Route23BadgeCheck2Blocked",
+    "finalX": 8,
+    "finalY": 137,
+    "flagsAbsent": ["EVENT_GOT_CASCADEBADGE", "EVENT_ROUTE23_BADGE2_CHECKED"],
+    "actionTypesContains": ["dialogue", "movePlayer"],
+    "activeBattleAbsent": true
+  }
+}

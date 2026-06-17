@@ -1,0 +1,38 @@
+Scenario: vermilion_gym_guide_after_surge
+Description: The Vermilion gym guide switches to post-Surge dialogue after the Thunder Badge is earned.
+Character: ScriptSimVermilionGuideAfterSurge
+
+Initial state
+  location: VERMILION_GYM[92] (4,15)
+  flags: EVENT_GOT_THUNDERBADGE
+  party:
+    slot 0: #25 PIKACHU L25 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: VermilionGymGymGuideTextThunderBadgeSet
+  map: VERMILION_GYM
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Whew! That match
+was electric!]
+  - unlockInput
+
+Final state
+  location: VERMILION_GYM[92] (4,15)
+  flags: EVENT_GOT_THUNDERBADGE
+  party:
+    slot 0: #25 PIKACHU L25 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

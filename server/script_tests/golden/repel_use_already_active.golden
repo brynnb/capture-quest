@@ -1,0 +1,45 @@
+Scenario: repel_use_already_active
+Description: Using REPEL while one is already active refuses the item without consuming inventory.
+Character: ScriptSimRepelAlreadyActive
+
+Initial state
+  location: ROUTE_1[9999] (10,10)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L12 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    #30 REPEL x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: RepelUse
+  map: ROUTE_1
+  trigger: repel_use
+
+Actions
+  - repelUse: success=false item=30 steps=50 message="A repel is already active!"
+
+Recorded messages
+  - stream opcode=144 payload={"error":"A repel is already active!","success":false}
+
+Final state
+  location: ROUTE_1[9999] (10,10)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L12 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    #30 REPEL x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Repel
+  initial: active=true steps=50
+  final: active=true steps=50
+  item: 30
+  success: false
+  message: A repel is already active!

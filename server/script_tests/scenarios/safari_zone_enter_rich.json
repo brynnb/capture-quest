@@ -1,0 +1,25 @@
+{
+  "name": "safari_zone_enter_rich",
+  "description": "Safari Zone entry deducts only the 500 Pokédollar fee when the player has extra money.",
+  "fixture": {
+    "characterName": "ScriptSimSafariRich",
+    "mapName": "SAFARI_ZONE_GATE",
+    "x": 4,
+    "y": 6,
+    "direction": "UP",
+    "money": 1000
+  },
+  "trigger": {
+    "type": "safari_enter",
+    "mapName": "SAFARI_ZONE_GATE"
+  },
+  "expect": {
+    "scriptLabel": "SafariZoneEnter",
+    "money": 500,
+    "safariActive": true,
+    "safariBallsLeft": 30,
+    "safariStepsLeft": 500,
+    "actionTypesContains": ["safariEnter"],
+    "activeBattleAbsent": true
+  }
+}

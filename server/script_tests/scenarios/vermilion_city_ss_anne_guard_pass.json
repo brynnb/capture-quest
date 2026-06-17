@@ -1,0 +1,28 @@
+{
+  "name": "vermilion_city_ss_anne_guard_pass",
+  "description": "The S.S. Anne guard lets the player pass when they face the dock gate with a ticket before the ship leaves.",
+  "fixture": {
+    "characterName": "ScriptSimSSAnneGuardPass",
+    "mapName": "VERMILION_CITY",
+    "x": 188,
+    "y": -24,
+    "direction": "DOWN",
+    "flags": [],
+    "party": [{ "speciesId": 6, "level": 28 }],
+    "inventory": [{ "itemId": 63, "quantity": 1 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "VERMILION_CITY",
+    "x": 188,
+    "y": -24
+  },
+  "expect": {
+    "scriptLabel": "VermilionCitySSAnneGuardPass",
+    "finalX": 188,
+    "finalY": -24,
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

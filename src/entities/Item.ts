@@ -1,0 +1,34 @@
+export interface Item {
+  id: number;
+  name?: string;
+  shortName?: string;
+  price?: number;
+  vendingPrice?: number;
+  itemType?: number;
+  isUsable?: boolean;
+  usesPartyMenu?: boolean;
+  isKeyItem?: boolean;
+  isGuardDrink?: boolean;
+  moveId?: number;
+  stackable?: boolean;
+  stackSize?: number;
+  bonusHp?: number;
+  bonusAttack?: number;
+  bonusDefense?: number;
+  bonusSpeed?: number;
+  bonusSpecial?: number;
+  bonusAccuracy?: number;
+  bonusEvasion?: number;
+  bonusCatchRate?: number;
+  bonusExp?: number;
+  bonusEncounterRate?: number;
+  bonusCrit?: number;
+  bonusFlee?: number;
+  healAmount?: number;
+  statusCure?: string;
+  ppRestore?: number;
+  revivePercent?: number;
+  ballModifier?: number;
+  loreText?: string;
+  icon?: number;
+}

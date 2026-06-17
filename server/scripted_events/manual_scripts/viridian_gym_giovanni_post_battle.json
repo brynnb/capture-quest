@@ -1,0 +1,70 @@
+{
+  "scriptLabel": "ViridianGymGiovanniPostBattle",
+  "mapName": "VIRIDIAN_GYM",
+  "trigger": {
+    "type": "map_script"
+  },
+  "requiresFlag": "EVENT_BEAT_GIOVANNI_GYM",
+  "requiresFlagAbsent": "EVENT_GOT_EARTHBADGE",
+  "setsFlags": [
+    "EVENT_GOT_EARTHBADGE",
+    "EVENT_GOT_TM27"
+  ],
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Ha! That was a truly intense fight!",
+        "You have won! As proof, here is the EARTHBADGE!"
+      ],
+      "speaker": "GIOVANNI"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "The EARTHBADGE makes POKéMON of any level obey!",
+        "It is evidence of your mastery as a POKéMON trainer!",
+        "With it, you can enter the POKéMON LEAGUE!"
+      ],
+      "speaker": "GIOVANNI"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "{PLAYER} received TM27!",
+        "TM27 is FISSURE! It will take out POKéMON with just one hit!",
+        "I made it when I ran the GYM here, too long ago..."
+      ],
+      "speaker": "GIOVANNI"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Having lost, I cannot face my underlings!",
+        "TEAM ROCKET is finished forever!",
+        "I will dedicate my life to the study of POKéMON!",
+        "Let us meet again some day! Farewell!"
+      ],
+      "speaker": "GIOVANNI"
+    },
+    {
+      "flag": "EVENT_GOT_EARTHBADGE",
+      "type": "setFlag"
+    },
+    {
+      "flag": "EVENT_GOT_TM27",
+      "type": "setFlag"
+    },
+    {
+      "type": "giveItem",
+      "itemId": 115,
+      "quantity": 1
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

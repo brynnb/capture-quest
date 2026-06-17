@@ -1,0 +1,42 @@
+Scenario: cerulean_city_rocket_battle_start
+Description: The Cerulean City Rocket starts party 5 before returning TM28.
+Character: ScriptSimCeruleanRocketStart
+
+Initial state
+  location: CERULEAN_CITY[9999] (190,-188)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L25 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: CeruleanCityRocketBattleTM28
+  map: CERULEAN_CITY
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Hey! Stay out!
+It's not your yard! Huh? Me? I'm an innocent
+bystander! Don't you believe me?]
+  - startTrainerBattle *: ROCKET party=5 enemy=[#66 MACHOP L17 #96 DROWZEE L17] winFlag=EVENT_BEAT_CERULEAN_ROCKET_THIEF
+  - unlockInput
+
+Final state
+  location: CERULEAN_CITY[9999] (190,-188)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L25 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    trainer phase=action_select trainer=ROCKET name=ROCKET winFlag=EVENT_BEAT_CERULEAN_ROCKET_THIEF
+    enemy slot 0: #66 MACHOP L17
+    enemy slot 1: #96 DROWZEE L17

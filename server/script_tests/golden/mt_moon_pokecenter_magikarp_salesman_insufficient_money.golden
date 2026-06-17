@@ -1,0 +1,43 @@
+Scenario: mt_moon_pokecenter_magikarp_salesman_insufficient_money
+Description: The Mt. Moon Pokecenter salesman refuses the Magikarp sale below 500 Pokédollars.
+Character: ScriptSimMagikarpSalesmanNoMoney
+
+Initial state
+  location: MT_MOON_POKECENTER[68] (7,4)
+  flags: none
+  money: 499
+  party:
+    slot 0: #25 PIKACHU L12 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: MtMoonPokecenterMagikarpSalesmanInsufficientMoney
+  map: MT_MOON_POKECENTER
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [MAN: Hello, there!
+Have I got a deal just for you!]
+  - choice: TEXT_MTMOONPOKECENTER_MAGIKARP_SALESMAN "I'll let you have\na swell MAGIKARP for just 500 Pokedollars! What do you say?" choice=true
+  - dialogue:  [You'll need more
+money than that!]
+  - unlockInput
+
+Final state
+  location: MT_MOON_POKECENTER[68] (7,4)
+  flags: none
+  money: 499
+  party:
+    slot 0: #25 PIKACHU L12 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

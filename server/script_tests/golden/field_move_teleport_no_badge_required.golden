@@ -1,0 +1,39 @@
+Scenario: field_move_teleport_no_badge_required
+Description: Teleport has no badge gate and is allowed when a party Pokemon knows TELEPORT.
+Character: SimFieldTeleportNoBadge
+
+Initial state
+  location: PALLET_TOWN[9999] (10,10)
+  flags: none
+  party:
+    slot 0: #63 ABRA L20 moves TELEPORT
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FieldMovePermission:TELEPORT
+  map: PALLET_TOWN
+  trigger: field_move_permission
+
+Actions
+  - fieldMovePermission: move=TELEPORT allowed=true knownBy=#63 ABRA
+
+Final state
+  location: PALLET_TOWN[9999] (10,10)
+  flags: none
+  party:
+    slot 0: #63 ABRA L20 moves TELEPORT
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Field move
+  move: TELEPORT[100] allowed=true
+  known by: #63 ABRA

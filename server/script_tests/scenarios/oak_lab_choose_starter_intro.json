@@ -1,0 +1,44 @@
+{
+  "name": "oak_lab_choose_starter_intro",
+  "description": "Enter Oak's Lab after Oak has stopped the player in Pallet Town.",
+  "fixture": {
+    "characterName": "ScriptSimOakStarterIntro",
+    "mapName": "OAKS_LAB",
+    "x": 5,
+    "y": 11,
+    "direction": "UP",
+    "flags": ["EVENT_OAK_APPEARED_IN_PALLET"],
+    "party": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "map_script",
+    "mapName": "OAKS_LAB"
+  },
+  "expect": {
+    "scriptLabel": "OaksLabChooseStarterIntro",
+    "finalMapName": "OAKS_LAB",
+    "finalX": 5,
+    "finalY": 3,
+    "flagsPresent": [
+      "EVENT_OAK_APPEARED_IN_PALLET",
+      "EVENT_FOLLOWED_OAK_INTO_LAB",
+      "EVENT_FOLLOWED_OAK_INTO_LAB_2",
+      "EVENT_OAK_ASKED_TO_CHOOSE_MON"
+    ],
+    "flagsAbsent": ["EVENT_GOT_STARTER"],
+    "partySpecies": [],
+    "hiddenObjectKeys": ["TEXT_OAKSLAB_OAK2"],
+    "actionTypesContains": [
+      "showActor",
+      "move",
+      "hideActor",
+      "movePlayer",
+      "dialogue",
+      "delay",
+      "hideObject",
+      "showObject",
+      "setsFlags"
+    ]
+  }
+}

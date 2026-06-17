@@ -1,0 +1,24 @@
+{
+  "name": "rocket_hideout_elevator_with_lift_key",
+  "description": "Rocket Hideout elevator lists B1F, B2F, and B4F when the player has the Lift Key item.",
+  "fixture": {
+    "characterName": "SimRocketElevatorWithKey",
+    "mapName": "ROCKET_HIDEOUT_ELEVATOR",
+    "x": 2,
+    "y": 2,
+    "inventory": [
+      { "itemName": "LIFT KEY", "quantity": 1 }
+    ]
+  },
+  "trigger": {
+    "type": "elevator_floors"
+  },
+  "expect": {
+    "scriptLabel": "ElevatorFloors:ROCKET_HIDEOUT_ELEVATOR",
+    "elevatorFloors": [
+      { "mapName": "ROCKET_HIDEOUT_B1F", "label": "B1F", "destX": 24, "destY": 19, "requiresItem": 74 },
+      { "mapName": "ROCKET_HIDEOUT_B2F", "label": "B2F", "destX": 24, "destY": 19, "requiresItem": 74 },
+      { "mapName": "ROCKET_HIDEOUT_B4F", "label": "B4F", "destX": 24, "destY": 15, "requiresItem": 74 }
+    ]
+  }
+}

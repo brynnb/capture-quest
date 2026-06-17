@@ -1,0 +1,42 @@
+Scenario: oak_lab_oak_give_pokeballs_after_route22_rival
+Description: After winning the first Route 22 rival battle, Oak gives five Poke Balls only if the player has none.
+Character: ScriptSimOakGivePokeballs
+
+Initial state
+  location: OAKS_LAB[40] (5,11)
+  flags: EVENT_BATTLED_RIVAL_IN_OAKS_LAB, EVENT_GOT_OAKS_PARCEL, EVENT_GOT_POKEDEX, EVENT_GOT_STARTER, EVENT_OAKS_LAB_RIVAL_EXITED, EVENT_OAK_ASKED_TO_CHOOSE_MON, EVENT_OAK_GOT_PARCEL, EVENT_PLAYER_CHOSE_CHARMANDER, EVENT_RIVAL_PICKED_STARTER, EVENT_ROUTE22_RIVAL_1
+  party:
+    slot 0: #4 CHARMANDER L10 moves SCRATCH, GROWL, EMBER
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    TEXT_OAKSLAB_CHARMANDER_POKE_BALL
+    TEXT_OAKSLAB_SQUIRTLE_POKE_BALL
+  active battle:
+    none
+
+Resolved script
+  label: OaksLabOakGivePokeballs
+  map: OAKS_LAB
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - giveItem *: POKé BALL x5 added
+  - dialogue: OAK [You can't get detailed data on POKéMON by just seeing them. You must catch them! Use these to capture wild POKéMON. {PLAYER} got 5 POKé BALLs! When a wild POKéMON appears, it's fair game. Just throw a POKé BALL at it and try to catch it! This won't always work, though. A healthy POKéMON could escape. You have to be lucky!]
+  - unlockInput
+  - setsFlags *: EVENT_GOT_POKEBALLS_FROM_OAK
+
+Final state
+  location: OAKS_LAB[40] (5,11)
+  flags: EVENT_BATTLED_RIVAL_IN_OAKS_LAB, EVENT_GOT_OAKS_PARCEL, EVENT_GOT_POKEBALLS_FROM_OAK, EVENT_GOT_POKEDEX, EVENT_GOT_STARTER, EVENT_OAKS_LAB_RIVAL_EXITED, EVENT_OAK_ASKED_TO_CHOOSE_MON, EVENT_OAK_GOT_PARCEL, EVENT_PLAYER_CHOSE_CHARMANDER, EVENT_RIVAL_PICKED_STARTER, EVENT_ROUTE22_RIVAL_1
+  party:
+    slot 0: #4 CHARMANDER L10 moves SCRATCH, GROWL, EMBER
+  inventory:
+    #4 POKé BALL x5
+    #9 POKéDEX x1
+  hidden objects:
+    TEXT_OAKSLAB_CHARMANDER_POKE_BALL
+    TEXT_OAKSLAB_SQUIRTLE_POKE_BALL
+  active battle:
+    none

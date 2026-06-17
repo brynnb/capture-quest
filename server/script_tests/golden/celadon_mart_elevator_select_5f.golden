@@ -1,0 +1,38 @@
+Scenario: celadon_mart_elevator_select_5f
+Description: Selecting 5F in the Celadon Dept. Store elevator moves the player to the 5F elevator exit.
+Character: SimCeladonElevatorSelect
+
+Initial state
+  location: CELADON_MART_ELEVATOR[127] (2,2)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: ElevatorSelect:CELADON_MART_5F
+  map: CELADON_MART_ELEVATOR
+  trigger: elevator_select
+
+Actions
+  - elevatorSelect *: CELADON_MART_ELEVATOR -> CELADON_MART_5F[136] (1,1)
+
+Final state
+  location: CELADON_MART_5F[136] (1,1)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Elevator
+  selected: 5F CELADON_MART_5F[136] (1,1)

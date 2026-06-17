@@ -1,0 +1,46 @@
+Scenario: game_corner_clerk1_insufficient_money
+Description: Game Corner Clerk 1 refuses a coin purchase when the player has a Coin Case but not enough money.
+Character: ScriptSimGameCornerClerk1InsufficientMoney
+
+Initial state
+  location: GAME_CORNER[135] (3,3)
+  flags: none
+  money: 999
+  coins: 10
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: GameCornerClerk1InsufficientMoney
+  map: GAME_CORNER
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Welcome to ROCKET
+GAME CORNER! Do you need some
+game coins?]
+  - choice: TEXT_GAMECORNER_CLERK1 "It's 1000 Pokedollars for 50\ncoins. Would you like some?" choice=true
+  - dialogue:  [You can't afford
+the coins!]
+  - unlockInput
+
+Final state
+  location: GAME_CORNER[135] (3,3)
+  flags: none
+  money: 999
+  coins: 10
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none

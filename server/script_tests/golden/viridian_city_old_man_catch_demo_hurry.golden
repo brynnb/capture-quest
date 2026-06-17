@@ -1,0 +1,41 @@
+Scenario: viridian_city_old_man_catch_demo_hurry
+Description: Telling the Viridian old man you are in a hurry prints his short dismissal and does not start the catch tutorial.
+Character: ScriptSimViridianOldManHurry
+
+Initial state
+  location: VIRIDIAN_CITY[9999] (21,9)
+  flags: EVENT_GOT_POKEDEX
+  party:
+    slot 0: #25 PIKACHU L10 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: ViridianCityOldManCatchDemo
+  map: VIRIDIAN_CITY
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: OLD MAN [Ahh, I've had my
+coffee now and I feel great! Sure you can go
+through!]
+  - choice:  "Are you in a\nhurry?" choice=true
+  - dialogue: OLD MAN [Time is money...
+Go along then.]
+
+Final state
+  location: VIRIDIAN_CITY[9999] (21,9)
+  flags: EVENT_GOT_POKEDEX
+  party:
+    slot 0: #25 PIKACHU L10 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

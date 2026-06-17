@@ -1,0 +1,62 @@
+{
+  "scriptLabel": "VermilionGymLtSurgePostBattle",
+  "mapName": "VERMILION_GYM",
+  "trigger": {
+    "type": "map_script"
+  },
+  "requiresFlag": "EVENT_BEAT_LT_SURGE",
+  "requiresFlagAbsent": "EVENT_GOT_THUNDERBADGE",
+  "setsFlags": [
+    "EVENT_GOT_THUNDERBADGE",
+    "EVENT_GOT_TM24"
+  ],
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Whoa!",
+        "You're the real deal, kid!",
+        "Fine then, take the THUNDERBADGE!"
+      ],
+      "speaker": "LT. SURGE"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "The THUNDERBADGE cranks up your POKéMON's SPEED!",
+        "It also lets your POKéMON FLY any time, kid!",
+        "You're special, kid! Take this!"
+      ],
+      "speaker": "LT. SURGE"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "{PLAYER} received TM24!",
+        "A little word of advice, kid!",
+        "Electricity is sure powerful!",
+        "But, it's useless against ground-type POKéMON!"
+      ],
+      "speaker": "LT. SURGE"
+    },
+    {
+      "flag": "EVENT_GOT_THUNDERBADGE",
+      "type": "setFlag"
+    },
+    {
+      "flag": "EVENT_GOT_TM24",
+      "type": "setFlag"
+    },
+    {
+      "type": "giveItem",
+      "itemId": 112,
+      "quantity": 1
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

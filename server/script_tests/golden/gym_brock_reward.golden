@@ -1,0 +1,45 @@
+Scenario: gym_brock_reward
+Description: After beating Brock, the Pewter Gym post-battle script grants Boulderbadge state and TM34.
+Character: ScriptSimGymBrockReward
+
+Initial state
+  location: PEWTER_GYM[54] (4,2)
+  flags: EVENT_BEAT_BROCK
+  party:
+    slot 0: #4 CHARMANDER L14 moves SCRATCH, GROWL, EMBER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: PewterGymBrockPostBattle
+  map: PEWTER_GYM
+  trigger: map_script
+
+Actions
+  - lockInput
+  - dialogue: BROCK [I took you for granted. As proof of your victory, here's the BOULDERBADGE! {PLAYER} received the BOULDERBADGE!]
+  - dialogue: BROCK [That's an official POKéMON LEAGUE BADGE! Its bearer's POKéMON become more powerful! The technique FLASH can now be used any time!]
+  - dialogue: BROCK [Wait! Take this with you! {PLAYER} received TM34!]
+  - dialogue: BROCK [There are all kinds of trainers in the world! You appear to be very gifted as a POKéMON trainer! Go to the GYM in CERULEAN and test your abilities!]
+  - setFlag *: EVENT_GOT_BOULDERBADGE
+  - setFlag *: EVENT_GOT_TM34
+  - giveItem *: TM34 x1 added
+  - unlockInput
+  - setsFlags *: EVENT_GOT_BOULDERBADGE
+  - setsFlags *: EVENT_GOT_TM34
+
+Final state
+  location: PEWTER_GYM[54] (4,2)
+  flags: EVENT_BEAT_BROCK, EVENT_GOT_BOULDERBADGE, EVENT_GOT_TM34
+  party:
+    slot 0: #4 CHARMANDER L14 moves SCRATCH, GROWL, EMBER
+  inventory:
+    #122 TM34 x1
+  hidden objects:
+    none
+  active battle:
+    none

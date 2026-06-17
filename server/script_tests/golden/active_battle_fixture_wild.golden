@@ -1,0 +1,36 @@
+Scenario: active_battle_fixture_wild
+Description: The simulator can seed an already-active wild battle and snapshot its enemy party.
+Character: ScriptSimActiveWildBattle
+
+Initial state
+  location: ROUTE_1[9999] (10,10)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L12 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    wild phase=action_select trainer= name= winFlag=EVENT_TEST_BEAT_WILD_PIDGEY
+    enemy slot 0: #16 PIDGEY L3
+
+Resolved script
+  label: ActiveBattleState
+  map: ROUTE_1
+  trigger: active_battle_state
+
+Actions
+
+Final state
+  location: ROUTE_1[9999] (10,10)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L12 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    wild phase=action_select trainer= name= winFlag=EVENT_TEST_BEAT_WILD_PIDGEY
+    enemy slot 0: #16 PIDGEY L3

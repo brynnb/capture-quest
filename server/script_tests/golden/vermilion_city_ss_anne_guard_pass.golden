@@ -1,0 +1,41 @@
+Scenario: vermilion_city_ss_anne_guard_pass
+Description: The S.S. Anne guard lets the player pass when they face the dock gate with a ticket before the ship leaves.
+Character: ScriptSimSSAnneGuardPass
+
+Initial state
+  location: VERMILION_CITY[9999] (188,-24)
+  flags: none
+  party:
+    slot 0: #6 CHARIZARD L28 moves LEER, EMBER, LEER, RAGE
+  inventory:
+    #63 S.S.TICKET x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: VermilionCitySSAnneGuardPass
+  map: VERMILION_CITY
+  trigger: coord
+
+Actions
+  - lockInput
+  - dialogue:  [Welcome to S.S.
+ANNE! Excuse me, do you
+have a ticket? (PLAYER) flashed
+the S.S.TICKET! Great! Welcome to
+S.S.ANNE!]
+  - unlockInput
+
+Final state
+  location: VERMILION_CITY[9999] (188,-24)
+  flags: none
+  party:
+    slot 0: #6 CHARIZARD L28 moves LEER, EMBER, LEER, RAGE
+  inventory:
+    #63 S.S.TICKET x1
+  hidden objects:
+    none
+  active battle:
+    none

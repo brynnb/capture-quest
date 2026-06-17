@@ -1,0 +1,42 @@
+{
+  "name": "route20_seafoam_reset_after_b3f_drops",
+  "description": "Loading Route 20 after full Seafoam boulder progress restores B3F source boulders and hides B4F fallen boulders without clearing flags.",
+  "fixture": {
+    "characterName": "SimRoute20SeafoamB3FReset",
+    "mapName": "ROUTE_20",
+    "x": 68,
+    "y": 114,
+    "flags": [
+      "EVENT_IN_SEAFOAM_ISLANDS",
+      "EVENT_SEAFOAM3_BOULDER1_DOWN_HOLE",
+      "EVENT_SEAFOAM3_BOULDER2_DOWN_HOLE",
+      "EVENT_SEAFOAM4_BOULDER1_DOWN_HOLE",
+      "EVENT_SEAFOAM4_BOULDER2_DOWN_HOLE"
+    ],
+    "objectPositions": [
+      { "mapName": "SEAFOAM_ISLANDS_B3F", "objectName": "SeafoamIslandsB3F_NPC_1", "x": 3, "y": 16 },
+      { "mapName": "SEAFOAM_ISLANDS_B4F", "objectName": "SeafoamIslandsB4F_NPC_1", "x": 4, "y": 14 }
+    ]
+  },
+  "trigger": {
+    "type": "map_load",
+    "mapName": "ROUTE_20"
+  },
+  "expect": {
+    "scriptLabel": "MapLoad:ROUTE_20",
+    "flagsPresent": [
+      "EVENT_SEAFOAM3_BOULDER1_DOWN_HOLE",
+      "EVENT_SEAFOAM3_BOULDER2_DOWN_HOLE",
+      "EVENT_SEAFOAM4_BOULDER1_DOWN_HOLE",
+      "EVENT_SEAFOAM4_BOULDER2_DOWN_HOLE"
+    ],
+    "flagsAbsent": ["EVENT_IN_SEAFOAM_ISLANDS"],
+    "objectStates": [
+      { "mapName": "SEAFOAM_ISLANDS_B3F", "name": "SeafoamIslandsB3F_NPC_1", "x": 5, "y": 14, "visible": true, "label": "Route20SeafoamBoulderReset" },
+      { "mapName": "SEAFOAM_ISLANDS_B3F", "name": "SeafoamIslandsB3F_NPC_3", "visible": false, "label": "Route20SeafoamBoulderReset" },
+      { "mapName": "SEAFOAM_ISLANDS_B4F", "name": "SeafoamIslandsB4F_NPC_1", "x": 4, "y": 15, "visible": false, "label": "Route20SeafoamBoulderReset" }
+    ],
+    "actionTypesContains": ["mapLoad"],
+    "activeBattleAbsent": true
+  }
+}

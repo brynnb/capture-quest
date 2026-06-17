@@ -1,0 +1,40 @@
+Scenario: field_move_surf_with_badge
+Description: Surf is allowed when a party Pokemon knows SURF and the Soul Badge is set.
+Character: SimFieldSurfWithBadge
+
+Initial state
+  location: PALLET_TOWN[9999] (10,10)
+  flags: EVENT_GOT_SOULBADGE
+  party:
+    slot 0: #131 LAPRAS L20 moves SURF
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FieldMovePermission:SURF
+  map: PALLET_TOWN
+  trigger: field_move_permission
+
+Actions
+  - fieldMovePermission: move=SURF allowed=true requiredBadge=EVENT_GOT_SOULBADGE knownBy=#131 LAPRAS
+
+Final state
+  location: PALLET_TOWN[9999] (10,10)
+  flags: EVENT_GOT_SOULBADGE
+  party:
+    slot 0: #131 LAPRAS L20 moves SURF
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Field move
+  move: SURF[57] allowed=true
+  required badge: EVENT_GOT_SOULBADGE
+  known by: #131 LAPRAS

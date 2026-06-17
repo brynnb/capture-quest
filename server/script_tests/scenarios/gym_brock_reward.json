@@ -1,0 +1,23 @@
+{
+  "name": "gym_brock_reward",
+  "description": "After beating Brock, the Pewter Gym post-battle script grants Boulderbadge state and TM34.",
+  "fixture": {
+    "characterName": "ScriptSimGymBrockReward",
+    "mapName": "PEWTER_GYM",
+    "x": 4,
+    "y": 2,
+    "direction": "UP",
+    "flags": ["EVENT_BEAT_BROCK"],
+    "party": [{ "speciesId": 4, "level": 14 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": { "type": "map_script", "mapName": "PEWTER_GYM" },
+  "expect": {
+    "scriptLabel": "PewterGymBrockPostBattle",
+    "flagsPresent": ["EVENT_BEAT_BROCK", "EVENT_GOT_BOULDERBADGE", "EVENT_GOT_TM34"],
+    "inventoryContains": [{ "itemId": 122, "quantity": 1 }],
+    "actionTypesContains": ["dialogue", "setFlag", "giveItem"],
+    "activeBattleAbsent": true
+  }
+}

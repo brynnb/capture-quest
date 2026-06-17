@@ -1,0 +1,41 @@
+Scenario: game_corner_prize_buy_nidorina
+Description: Game Corner prize exchange includes the Red-version Nidorina prize at L17.
+Character: SimGameCornerPrizeNidorina
+
+Initial state
+  location: GAME_CORNER_PRIZE_ROOM[137] (2,4)
+  flags: none
+  coins: 1200
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: GameCornerPrizeBuy:NIDORINA
+  map: GAME_CORNER_PRIZE_ROOM
+  trigger: gamecorner_prize_buy
+
+Actions
+  - gameCornerPrizeBuy *: success=true prize=NIDORINA coins=0 message="Here you go!" level=17
+
+Final state
+  location: GAME_CORNER_PRIZE_ROOM[137] (2,4)
+  flags: none
+  party:
+    slot 0: #30 NIDORINA L17 moves TACKLE, SCRATCH, SCRATCH, POISON_STING
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Game Corner
+  purchase: success=true coins=0 message=Here you go!
+  prize: pokemon NIDORINA cost=1200 pokemon=30
+  pokemon: level=17 location=party

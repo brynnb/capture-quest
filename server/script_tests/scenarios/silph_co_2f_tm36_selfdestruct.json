@@ -1,0 +1,27 @@
+{
+  "name": "silph_co_2f_tm36_selfdestruct",
+  "description": "The Silph Co. 2F worker gives TM36 Selfdestruct after Giovanni is beaten.",
+  "fixture": {
+    "characterName": "ScriptSimSilphTM36",
+    "mapName": "SILPH_CO_2F",
+    "x": 10,
+    "y": 2,
+    "direction": "UP",
+    "flags": ["EVENT_BEAT_SILPH_CO_GIOVANNI"],
+    "party": [{ "speciesId": 6, "level": 44 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "SILPH_CO_2F",
+    "textConstant": "TEXT_SILPHCO2F_SILPH_WORKER_F"
+  },
+  "expect": {
+    "scriptLabel": "SilphCo2FTM36Selfdestruct",
+    "flagsPresent": ["EVENT_BEAT_SILPH_CO_GIOVANNI", "EVENT_GOT_TM36"],
+    "inventoryContains": [{ "itemId": 124, "quantity": 1 }],
+    "actionTypesContains": ["dialogue", "setFlag", "giveItem"],
+    "activeBattleAbsent": true
+  }
+}

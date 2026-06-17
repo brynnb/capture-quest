@@ -1,0 +1,41 @@
+# Air configuration for Go live reload
+# Run with: air
+
+root = "."
+tmp_dir = "tmp"
+
+[build]
+# Command to build the project - use cmd/server directly (not daemon wrapper)
+# Include build timestamp via ldflags so we can verify we're running the latest code
+cmd = "rm -f ./tmp/main && go build -ldflags \"-X 'main.BuildTime=$(date +%Y-%m-%d_%H:%M:%S)'\" -o ./tmp/main ./cmd/server"
+# Binary to run
+bin = "./tmp/main"
+stop_on_error = true
+# Watch these file extensions
+include_ext = ["go", "tpl", "tmpl", "html"]
+# Exclude these directories
+exclude_dir = ["assets", "tmp", "vendor", "node_modules", "certs", "maps"]
+# Exclude files matching these patterns
+exclude_file = []
+# Exclude unchanged files
+exclude_unchanged = true
+# Follow symlinks
+follow_symlink = false
+# Delay before rebuilding (milliseconds)
+delay = 1000
+
+[log]
+# Show log time
+time = false
+main_only = true
+
+[color]
+# Customize colors
+main = "magenta"
+watcher = "cyan"
+build = "yellow"
+runner = "green"
+
+[misc]
+# Delete tmp directory on exit
+clean_on_exit = true

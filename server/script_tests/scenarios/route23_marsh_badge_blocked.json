@@ -1,0 +1,29 @@
+{
+  "name": "route23_marsh_badge_blocked",
+  "description": "The Route 23 Marsh Badge swimmer blocks the player without the Marsh Badge.",
+  "fixture": {
+    "characterName": "ScriptSimMarshGateBlocked",
+    "mapName": "ROUTE_23",
+    "x": 8,
+    "y": 85,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_POKEDEX", "EVENT_GOT_BOULDERBADGE", "EVENT_ROUTE23_BADGE1_CHECKED", "EVENT_GOT_CASCADEBADGE", "EVENT_ROUTE23_BADGE2_CHECKED", "EVENT_GOT_THUNDERBADGE", "EVENT_ROUTE23_BADGE3_CHECKED", "EVENT_GOT_RAINBOWBADGE", "EVENT_ROUTE23_BADGE4_CHECKED", "EVENT_GOT_SOULBADGE", "EVENT_ROUTE23_BADGE5_CHECKED"],
+    "party": [{ "speciesId": 6, "level": 50 }],
+    "inventory": [{ "itemId": 9, "quantity": 1 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "ROUTE_23",
+    "x": 8,
+    "y": 85
+  },
+  "expect": {
+    "scriptLabel": "Route23BadgeCheck6Blocked",
+    "finalX": 8,
+    "finalY": 86,
+    "flagsAbsent": ["EVENT_GOT_MARSHBADGE", "EVENT_ROUTE23_BADGE6_CHECKED"],
+    "actionTypesContains": ["dialogue", "movePlayer"],
+    "activeBattleAbsent": true
+  }
+}

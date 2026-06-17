@@ -1,0 +1,33 @@
+{
+  "name": "rocket_hideout_b4f_giovanni_start",
+  "description": "Talking to Rocket Hideout B4F Giovanni starts the source-derived Giovanni battle.",
+  "fixture": {
+    "characterName": "ScriptSimRocketHideoutGiovanniStart",
+    "mapName": "ROCKET_HIDEOUT_B4F",
+    "x": 25,
+    "y": 4,
+    "direction": "UP",
+    "flags": [
+      "EVENT_BEAT_ROCKET_HIDEOUT_4_TRAINER_0",
+      "EVENT_BEAT_ROCKET_HIDEOUT_4_TRAINER_1",
+      "EVENT_ROCKET_HIDEOUT_4_DOOR_UNLOCKED"
+    ],
+    "party": [
+      { "speciesId": 6, "level": 45 }
+    ],
+    "hiddenObjects": ["HS_ROCKET_HIDEOUT_B4F_ITEM_4"]
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "ROCKET_HIDEOUT_B4F",
+    "textConstant": "TEXT_ROCKETHIDEOUTB4F_GIOVANNI"
+  },
+  "expect": {
+    "scriptLabel": "RocketHideoutB4FGiovanniEncounter",
+    "flagsAbsent": ["EVENT_BEAT_ROCKET_HIDEOUT_GIOVANNI"],
+    "partySpecies": [6],
+    "actionTypesContains": ["dialogue", "startTrainerBattle"],
+    "activeBattleTrainerClass": "GIOVANNI",
+    "activeBattleEnemySpecies": [95, 111, 115]
+  }
+}

@@ -1,0 +1,48 @@
+Scenario: rocket_hideout_b4f_rocket3_lift_key_drop
+Description: After Rocket Hideout B4F Rocket 3 is beaten, talking to him drops the Lift Key item object.
+Character: ScriptSimRocketHideoutLiftKeyDrop
+
+Initial state
+  location: ROCKET_HIDEOUT_B4F[202] (11,3)
+  flags: EVENT_BEAT_ROCKET_HIDEOUT_4_TRAINER_2
+  party:
+    slot 0: #25 PIKACHU L30 moves GROWL, THUNDER_WAVE, QUICK_ATTACK, SWIFT
+  inventory:
+    none
+  hidden objects:
+    TEXT_ROCKETHIDEOUTB4F_LIFT_KEY
+  active battle:
+    none
+
+Resolved script
+  label: RocketHideoutB4FRocket3AfterBattleTextObjectDrop
+  map: ROCKET_HIDEOUT_B4F
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Oh no! I dropped
+the LIFT KEY!]
+  - setFlag *: EVENT_ROCKET_DROPPED_LIFT_KEY
+  - showObject *: objects=[TEXT_ROCKETHIDEOUTB4F_LIFT_KEY]
+  - unlockInput
+
+Final state
+  location: ROCKET_HIDEOUT_B4F[202] (11,3)
+  flags: EVENT_BEAT_ROCKET_HIDEOUT_4_TRAINER_2, EVENT_ROCKET_DROPPED_LIFT_KEY
+  party:
+    slot 0: #25 PIKACHU L30 moves GROWL, THUNDER_WAVE, QUICK_ATTACK, SWIFT
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Event object states
+  SourceMissableInitial:HS_ROCKET_HIDEOUT_B4F_ITEM_1 ROCKET_HIDEOUT_B4F/RocketHideoutB4F_ITEM_5 (10,12): visible text=TEXT_ROCKETHIDEOUTB4F_HP_UP
+  SourceMissableInitial:HS_ROCKET_HIDEOUT_B4F_ITEM_2 ROCKET_HIDEOUT_B4F/RocketHideoutB4F_ITEM_6 (9,4): visible text=TEXT_ROCKETHIDEOUTB4F_TM_RAZOR_WIND
+  SourceMissableInitial:HS_ROCKET_HIDEOUT_B4F_ITEM_3 ROCKET_HIDEOUT_B4F/RocketHideoutB4F_ITEM_7 (12,20): visible text=TEXT_ROCKETHIDEOUTB4F_IRON
+  RocketHideoutB4F_ITEM_8 ROCKET_HIDEOUT_B4F/RocketHideoutB4F_ITEM_8 (25,2): visible text=TEXT_ROCKETHIDEOUTB4F_SILPH_SCOPE
+  CutsceneAction:showObject ROCKET_HIDEOUT_B4F/RocketHideoutB4F_ITEM_9 (10,2): visible text=TEXT_ROCKETHIDEOUTB4F_LIFT_KEY
+  RocketHideoutB4F_NPC_1 ROCKET_HIDEOUT_B4F/RocketHideoutB4F_NPC_1 (25,3): visible text=TEXT_ROCKETHIDEOUTB4F_GIOVANNI

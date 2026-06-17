@@ -1,0 +1,26 @@
+{
+  "name": "pokemon_fan_club_seel_fan_better_resets_seel_boast",
+  "description": "The Pokemon Fan Club Seel fan uses the boast branch when the Pikachu fan has boasted, then resets her own boast flag.",
+  "fixture": {
+    "characterName": "ScriptSimFanClubSeelBetter",
+    "mapName": "POKEMON_FAN_CLUB",
+    "x": 2,
+    "y": 3,
+    "direction": "RIGHT",
+    "flags": ["EVENT_SEEL_FAN_BOAST"],
+    "party": [{ "speciesId": 86, "level": 20 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "POKEMON_FAN_CLUB",
+    "textConstant": "TEXT_POKEMONFANCLUB_SEEL_FAN"
+  },
+  "expect": {
+    "scriptLabel": "PokemonFanClubSeelFanTextMineIsBetter",
+    "flagsAbsent": ["EVENT_SEEL_FAN_BOAST"],
+    "actionTypesContains": ["dialogue", "resetFlag"],
+    "activeBattleAbsent": true
+  }
+}

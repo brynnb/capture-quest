@@ -1,0 +1,49 @@
+Scenario: pokemon_mansion_2f_switch_tiles_off
+Description: Pokemon Mansion 2F switch-controlled blocks resolve to the flag-off layout.
+Character: ScriptSimMansion2FTilesOff
+
+Initial state
+  location: POKEMON_MANSION_2F[214] (2,11)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: TileState:POKEMON_MANSION_2F
+  map: POKEMON_MANSION_2F
+  trigger: tile_state
+
+Actions
+  - tileState: 12 event tiles
+
+Final state
+  location: POKEMON_MANSION_2F[214] (2,11)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Event tile states
+  PokemonMansionSwitchOff_2F_2_4_1_1 (5,9): tile=758 collision=1
+  PokemonMansionSwitchOff_2F_2_4_0_1 (4,9): tile=758 collision=1
+  PokemonMansionSwitchOff_2F_2_4_1_0 (5,8): tile=758 collision=1
+  PokemonMansionSwitchOff_2F_2_4_0_0 (4,8): tile=758 collision=1
+  PokemonMansionSwitchOff_2F_4_9_1_1 (9,19): tile=758 collision=1
+  PokemonMansionSwitchOff_2F_4_9_0_1 (8,19): tile=758 collision=1
+  PokemonMansionSwitchOff_2F_4_9_1_0 (9,18): tile=781 collision=0
+  PokemonMansionSwitchOff_2F_4_9_0_0 (8,18): tile=781 collision=0
+  PokemonMansionSwitchOff_2F_11_3_1_1 (23,7): tile=780 collision=0
+  PokemonMansionSwitchOff_2F_11_3_0_1 (22,7): tile=758 collision=1
+  PokemonMansionSwitchOff_2F_11_3_1_0 (23,6): tile=780 collision=0
+  PokemonMansionSwitchOff_2F_11_3_0_0 (22,6): tile=758 collision=1

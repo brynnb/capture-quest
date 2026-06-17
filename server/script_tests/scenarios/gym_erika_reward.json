@@ -1,0 +1,23 @@
+{
+  "name": "gym_erika_reward",
+  "description": "After beating Erika, the Celadon Gym post-battle script grants Rainbowbadge state and TM21.",
+  "fixture": {
+    "characterName": "ScriptSimGymErikaReward",
+    "mapName": "CELADON_GYM",
+    "x": 5,
+    "y": 4,
+    "direction": "UP",
+    "flags": ["EVENT_BEAT_ERIKA", "EVENT_GOT_BOULDERBADGE", "EVENT_GOT_CASCADEBADGE", "EVENT_GOT_THUNDERBADGE"],
+    "party": [{ "speciesId": 5, "level": 34 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": { "type": "map_script", "mapName": "CELADON_GYM" },
+  "expect": {
+    "scriptLabel": "CeladonGymErikaPostBattle",
+    "flagsPresent": ["EVENT_BEAT_ERIKA", "EVENT_GOT_RAINBOWBADGE", "EVENT_GOT_TM21"],
+    "inventoryContains": [{ "itemId": 109, "quantity": 1 }],
+    "actionTypesContains": ["dialogue", "setFlag", "giveItem"],
+    "activeBattleAbsent": true
+  }
+}

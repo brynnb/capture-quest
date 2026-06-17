@@ -1,0 +1,27 @@
+{
+  "name": "silph_card_key_2f_door1_no_key",
+  "description": "Trying a Silph Co. Card Key door without the CARD KEY leaves the door flag unset and collision closed.",
+  "fixture": {
+    "characterName": "ScriptSimSilphCardKeyNoKey",
+    "mapName": "SILPH_CO_2F",
+    "x": 4,
+    "y": 6
+  },
+  "trigger": {
+    "type": "silph_card_key",
+    "mapName": "SILPH_CO_2F",
+    "textConstant": "TEXT_SILPH_CARD_KEY_DOOR_2F_1"
+  },
+  "expect": {
+    "scriptLabel": "SilphCardKeyDoor",
+    "flagsAbsent": ["EVENT_SILPH_CO_2_UNLOCKED_DOOR1"],
+    "actionTypesContains": ["silphCardKey"],
+    "tileStates": [
+      { "x": 4, "y": 4, "tileImageId": 758, "collisionType": 0, "label": "SilphCardKeyDoor_2F_1_Closed_0_0" },
+      { "x": 5, "y": 4, "tileImageId": 758, "collisionType": 0, "label": "SilphCardKeyDoor_2F_1_Closed_1_0" },
+      { "x": 4, "y": 5, "tileImageId": 758, "collisionType": 0, "label": "SilphCardKeyDoor_2F_1_Closed_0_1" },
+      { "x": 5, "y": 5, "tileImageId": 758, "collisionType": 0, "label": "SilphCardKeyDoor_2F_1_Closed_1_1" }
+    ],
+    "activeBattleAbsent": true
+  }
+}

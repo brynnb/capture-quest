@@ -1,0 +1,47 @@
+Scenario: fighting_dojo_karate_master_reward_prompt
+Description: After beating the Karate Master, the map prompt unlocks the Fighting Dojo Pokemon choice without granting either gift.
+Character: ScriptSimDojoRewardPrompt
+
+Initial state
+  location: FIGHTING_DOJO[177] (4,3)
+  flags: EVENT_BEAT_KARATE_MASTER
+  party:
+    slot 0: #25 PIKACHU L35 moves THUNDER_WAVE, QUICK_ATTACK, SWIFT, AGILITY
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FightingDojoKarateMasterPostBattle
+  map: FIGHTING_DOJO
+  trigger: map_script
+
+Actions
+  - lockInput
+  - dialogue:  [Hwa!
+Arrgh! Beaten! Indeed, I have
+lost! But, I beseech
+you, do not take our emblem as your trophy! In return, I will
+give you a prized fighting POKÉMON! Choose whichever
+one you like!]
+  - setFlag *: EVENT_BEAT_KARATE_MASTER
+  - setFlag *: EVENT_BEAT_FIGHTING_DOJO_TRAINER_0
+  - setFlag *: EVENT_BEAT_FIGHTING_DOJO_TRAINER_1
+  - setFlag *: EVENT_BEAT_FIGHTING_DOJO_TRAINER_2
+  - setFlag *: EVENT_BEAT_FIGHTING_DOJO_TRAINER_3
+  - unlockInput
+
+Final state
+  location: FIGHTING_DOJO[177] (4,3)
+  flags: EVENT_BEAT_FIGHTING_DOJO_TRAINER_0, EVENT_BEAT_FIGHTING_DOJO_TRAINER_1, EVENT_BEAT_FIGHTING_DOJO_TRAINER_2, EVENT_BEAT_FIGHTING_DOJO_TRAINER_3, EVENT_BEAT_KARATE_MASTER
+  party:
+    slot 0: #25 PIKACHU L35 moves THUNDER_WAVE, QUICK_ATTACK, SWIFT, AGILITY
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

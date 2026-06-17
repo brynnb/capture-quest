@@ -1,0 +1,39 @@
+Scenario: seafoam_b1f_boulders_initial_hidden
+Description: Seafoam B1F starts with both fallen boulders hidden before any 1F boulder drops.
+Character: ScriptSimSeafoamB1FInitial
+
+Initial state
+  location: SEAFOAM_ISLANDS_B1F[159] (1,1)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: EventObjectState:SEAFOAM_ISLANDS_B1F
+  map: SEAFOAM_ISLANDS_B1F
+  trigger: event_object_state
+
+Actions
+  - eventObjectState: 2 event objects
+
+Final state
+  location: SEAFOAM_ISLANDS_B1F[159] (1,1)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Event object states
+  SeafoamBoulder_B1F_1_HiddenBeforeDrop SEAFOAM_ISLANDS_B1F/SeafoamIslandsB1F_NPC_1 (17,6): hidden text=TEXT_SEAFOAMISLANDSB1F_BOULDER1
+  SeafoamBoulder_B1F_2_HiddenBeforeDrop SEAFOAM_ISLANDS_B1F/SeafoamIslandsB1F_NPC_2 (22,6): hidden text=TEXT_SEAFOAMISLANDSB1F_BOULDER2

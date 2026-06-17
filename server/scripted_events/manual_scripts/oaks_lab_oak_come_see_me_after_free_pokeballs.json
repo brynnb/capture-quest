@@ -1,0 +1,30 @@
+{
+  "scriptLabel": "OaksLabOakComeSeeMeAfterFreePokeballs",
+  "mapName": "OAKS_LAB",
+  "trigger": {
+    "type": "npc_click",
+    "label": "TEXT_OAKSLAB_OAK1",
+    "source": "extractor"
+  },
+  "requiresFlags": [
+    "EVENT_GOT_POKEDEX",
+    "EVENT_GOT_POKEBALLS_FROM_OAK"
+  ],
+  "requiresItemAbsentId": 4,
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Come see me sometimes.",
+        "I want to know how your POKéDEX is coming along."
+      ],
+      "speaker": "OAK"
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

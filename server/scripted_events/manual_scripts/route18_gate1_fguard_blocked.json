@@ -1,0 +1,58 @@
+{
+  "scriptLabel": "Route18Gate1FGuardBlocked",
+  "mapName": "ROUTE_18_GATE_1F",
+  "trigger": {
+    "type": "coord",
+    "label": "Route18Gate1FStopsPlayerCoords",
+    "source": "capturequest",
+    "coordinates": [
+      {
+        "mapName": "Route18Gate1F",
+        "mapId": 190,
+        "x": 4,
+        "y": 3
+      },
+      {
+        "mapName": "Route18Gate1F",
+        "mapId": 190,
+        "x": 4,
+        "y": 4
+      },
+      {
+        "mapName": "Route18Gate1F",
+        "mapId": 190,
+        "x": 4,
+        "y": 5
+      },
+      {
+        "mapName": "Route18Gate1F",
+        "mapId": 190,
+        "x": 4,
+        "y": 6
+      }
+    ]
+  },
+  "requiresItemAbsentName": "BICYCLE",
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Excuse me!",
+        "You need a BICYCLE for CYCLING ROAD!"
+      ],
+      "speaker": "GUARD"
+    },
+    {
+      "type": "movePlayer",
+      "movements": [
+        "RIGHT"
+      ]
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

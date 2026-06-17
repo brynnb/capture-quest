@@ -1,0 +1,22 @@
+{
+  "name": "vermilion_city_ss_anne_departure",
+  "description": "After receiving HM01, the S.S. Anne departure script marks the ship as gone.",
+  "fixture": {
+    "characterName": "ScriptSimSSAnneDeparture",
+    "mapName": "VERMILION_CITY",
+    "x": 18,
+    "y": 30,
+    "direction": "DOWN",
+    "flags": ["EVENT_GOT_HM01"],
+    "party": [{ "speciesId": 6, "level": 28 }],
+    "inventory": [{ "itemId": 84, "quantity": 1 }],
+    "hiddenObjects": []
+  },
+  "trigger": { "type": "map_script", "mapName": "VERMILION_CITY" },
+  "expect": {
+    "scriptLabel": "VermilionCitySSAnneDeparture",
+    "flagsPresent": ["EVENT_GOT_HM01", "EVENT_SS_ANNE_LEFT"],
+    "actionTypesContains": ["dialogue", "screenFade", "setFlag", "setsFlags"],
+    "activeBattleAbsent": true
+  }
+}

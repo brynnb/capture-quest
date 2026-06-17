@@ -1,0 +1,39 @@
+Scenario: route11_gate2f_left_binoculars_snorlax_blocking
+Description: The Route 11 Gate 2F left binoculars show sleeping Snorlax text before Route 12 Snorlax is beaten, when facing up.
+Character: ScriptSimRoute11BinocularsSnorlax
+
+Initial state
+  location: ROUTE_11_GATE_2F[86] (1,3)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L20 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: Route11Gate2FLeftBinocularsTextEventBeatRoute12SnorlaxAbsentFacingUp
+  map: ROUTE_11_GATE_2F
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Looked into the
+binoculars. A big POKÉMON is
+asleep on a road!]
+  - unlockInput
+
+Final state
+  location: ROUTE_11_GATE_2F[86] (1,3)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L20 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

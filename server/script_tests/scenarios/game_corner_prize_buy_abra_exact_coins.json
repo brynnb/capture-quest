@@ -1,0 +1,25 @@
+{
+  "name": "game_corner_prize_buy_abra_exact_coins",
+  "description": "Game Corner prize exchange buys Abra L9 and deducts exactly 180 coins.",
+  "fixture": {
+    "characterName": "SimGameCornerPrizeAbra",
+    "mapName": "GAME_CORNER_PRIZE_ROOM",
+    "x": 2,
+    "y": 4,
+    "coins": 180,
+    "inventory": [
+      { "itemName": "COIN CASE", "quantity": 1 }
+    ]
+  },
+  "trigger": {
+    "type": "gamecorner_prize_buy",
+    "prizeName": "ABRA"
+  },
+  "expect": {
+    "scriptLabel": "GameCornerPrizeBuy:ABRA",
+    "coins": 0,
+    "partySpecies": [63],
+    "gameCornerPrizeMessage": "Here you go!",
+    "actionTypesContains": ["gameCornerPrizeBuy"]
+  }
+}

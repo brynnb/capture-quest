@@ -1,0 +1,56 @@
+{
+  "name": "silph_co_7f_rival_bulbasaur_start",
+  "description": "Step into the Silph Co. 7F rival trigger with Bulbasaur chosen and verify the Charizard-path party.",
+  "fixture": {
+    "characterName": "ScriptSimSilphRivalBulbasaur",
+    "mapName": "SILPH_CO_7F",
+    "x": 3,
+    "y": 2,
+    "direction": "DOWN",
+    "flags": [
+      "EVENT_GOT_POKEDEX",
+      "EVENT_PLAYER_CHOSE_BULBASAUR",
+      "EVENT_BEAT_CERULEAN_RIVAL",
+      "EVENT_BEAT_SS_ANNE_RIVAL",
+      "EVENT_BEAT_POKEMON_TOWER_RIVAL",
+      "EVENT_BEAT_GHOST_MAROWAK",
+      "EVENT_RESCUED_MR_FUJI",
+      "EVENT_GOT_POKE_FLUTE",
+      "EVENT_BEAT_ROCKET_HIDEOUT_GIOVANNI",
+      "EVENT_ROCKET_HIDEOUT_GIOVANNI_LEFT",
+      "EVENT_SAFFRON_GUARDS_OPENED",
+      "EVENT_GOT_CASCADEBADGE",
+      "EVENT_GOT_HM01",
+      "EVENT_SS_ANNE_LEFT"
+    ],
+    "party": [
+      { "speciesId": 3, "level": 42 }
+    ],
+    "inventory": [
+      { "itemId": 9, "quantity": 1 },
+      { "itemId": 48, "quantity": 1 },
+      { "itemId": 73, "quantity": 1 },
+      { "itemId": 84, "quantity": 1 }
+    ]
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "SILPH_CO_7F",
+    "x": 3,
+    "y": 2
+  },
+  "expect": {
+    "scriptLabel": "SilphCo7FRivalEncounter",
+    "flagsAbsent": ["EVENT_BEAT_SILPH_CO_RIVAL"],
+    "partySpecies": [3],
+    "inventoryContains": [
+      { "itemId": 9, "quantity": 1 },
+      { "itemId": 48, "quantity": 1 },
+      { "itemId": 73, "quantity": 1 },
+      { "itemId": 84, "quantity": 1 }
+    ],
+    "actionTypesContains": ["move", "dialogue", "startTrainerBattle"],
+    "activeBattleTrainerClass": "RIVAL2",
+    "activeBattleEnemySpecies": [18, 102, 130, 65, 6]
+  }
+}

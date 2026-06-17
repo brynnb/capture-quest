@@ -1,0 +1,30 @@
+{
+  "name": "active_battle_fixture_trainer_blackout_money",
+  "description": "A normal trainer battle loss applies blackout money loss by halving the player's Pokédollars.",
+  "fixture": {
+    "characterName": "ScriptSimActiveTrainerBlackout",
+    "mapName": "VIRIDIAN_FOREST",
+    "x": 5,
+    "y": 10,
+    "party": [{ "speciesId": 25, "level": 5 }],
+    "money": 999,
+    "activeBattle": {
+      "type": "trainer",
+      "trainerClass": "BUG_CATCHER",
+      "partyIndex": 1,
+      "trainerName": "BUG CATCHER"
+    }
+  },
+  "trigger": {
+    "type": "resolve_active_battle"
+  },
+  "resolveBattle": {
+    "result": "lose"
+  },
+  "expect": {
+    "scriptLabel": "ResolveActiveBattle",
+    "money": 499,
+    "actionTypesContains": ["resolveBattle", "blackoutMoney"],
+    "activeBattleAbsent": true
+  }
+}

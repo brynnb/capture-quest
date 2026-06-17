@@ -1,0 +1,25 @@
+{
+  "name": "game_corner_clerk2_coin_case_full",
+  "description": "The Game Corner clerk uses the source full-Coin-Case branch at the original 9990 threshold.",
+  "fixture": {
+    "characterName": "ScriptSimGameCornerClerk2CoinCaseFull",
+    "mapName": "GAME_CORNER",
+    "x": 7,
+    "y": 4,
+    "direction": "UP",
+    "inventory": [{ "itemName": "COIN_CASE", "quantity": 1 }],
+    "coins": 9990
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "GAME_CORNER",
+    "textConstant": "TEXT_GAMECORNER_CLERK2"
+  },
+  "expect": {
+    "scriptLabel": "GameCornerClerk2CoinCaseFull",
+    "flagsAbsent": ["EVENT_GOT_20_COINS_2"],
+    "coins": 9990,
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

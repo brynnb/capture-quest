@@ -1,0 +1,38 @@
+{
+  "name": "cerulean_rival_bulbasaur_start",
+  "description": "Step into the Cerulean bridge rival trigger with Bulbasaur chosen and verify the Charmander-path party.",
+  "fixture": {
+    "characterName": "ScriptSimCeruleanRivalBulbasaur",
+    "mapName": "CERULEAN_CITY",
+    "x": 190,
+    "y": -192,
+    "direction": "UP",
+    "flags": [
+      "EVENT_GOT_POKEDEX",
+      "EVENT_PLAYER_CHOSE_BULBASAUR"
+    ],
+    "party": [
+      { "speciesId": 1, "level": 18 }
+    ],
+    "inventory": [
+      { "itemId": 9, "quantity": 1 }
+    ]
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "CERULEAN_CITY",
+    "x": 190,
+    "y": -192
+  },
+  "expect": {
+    "scriptLabel": "CeruleanCityRivalEncounter",
+    "flagsAbsent": ["EVENT_BEAT_CERULEAN_RIVAL"],
+    "partySpecies": [1],
+    "inventoryContains": [
+      { "itemId": 9, "quantity": 1 }
+    ],
+    "actionTypesContains": ["showActor", "move", "dialogue", "startTrainerBattle"],
+    "activeBattleTrainerClass": "RIVAL1",
+    "activeBattleEnemySpecies": [17, 63, 19, 4]
+  }
+}

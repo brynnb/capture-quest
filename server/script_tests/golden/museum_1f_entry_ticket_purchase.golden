@@ -1,0 +1,44 @@
+Scenario: museum_1f_entry_ticket_purchase
+Description: Museum 1F entry deducts the 50 Pokédollar child ticket fee.
+Character: ScriptSimMuseumTicketPurchase
+
+Initial state
+  location: MUSEUM_1F[52] (9,4)
+  flags: none
+  money: 50
+  party:
+    slot 0: #25 PIKACHU L12 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: Museum1FEntryTicketPurchase
+  map: MUSEUM_1F
+  trigger: coord
+
+Actions
+  - lockInput
+  - dialogue:  [It's 50 Pokedollars for a
+child's ticket.]
+  - choice: TEXT_MUSEUM1F_SCIENTIST1 "Would you like to\ncome in?" choice=true
+  - dialogue:  [Right, 50 Pokedollars!
+Thank you!]
+  - takeMoney *: spent=50 money=0
+  - setFlag *: EVENT_BOUGHT_MUSEUM_TICKET
+  - unlockInput
+
+Final state
+  location: MUSEUM_1F[52] (9,4)
+  flags: EVENT_BOUGHT_MUSEUM_TICKET
+  party:
+    slot 0: #25 PIKACHU L12 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

@@ -1,0 +1,26 @@
+{
+  "name": "cerulean_city_rocket_battle_win",
+  "description": "Winning the Cerulean City Rocket battle returns TM28 and hides the Rocket source object.",
+  "fixture": {
+    "characterName": "ScriptSimCeruleanRocketWin",
+    "mapName": "CERULEAN_CITY",
+    "x": 190,
+    "y": -188,
+    "direction": "UP",
+    "party": [{ "speciesId": 25, "level": 25 }]
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "CERULEAN_CITY",
+    "textConstant": "TEXT_CERULEANCITY_ROCKET"
+  },
+  "resolveBattle": { "result": "win" },
+  "expect": {
+    "scriptLabel": "CeruleanCityRocketBattleTM28",
+    "flagsPresent": ["EVENT_BEAT_CERULEAN_ROCKET_THIEF"],
+    "inventoryContains": [{ "itemName": "TM_DIG", "quantity": 1 }],
+    "hiddenObjectKeys": ["HS_CERULEAN_ROCKET"],
+    "actionTypesContains": ["dialogue", "startTrainerBattle", "resolveBattle", "giveItem", "hideObject"],
+    "activeBattleAbsent": true
+  }
+}

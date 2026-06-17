@@ -1,0 +1,29 @@
+{
+  "name": "loreleis_room_dont_run_away",
+  "description": "Lorelei's room blocks a player from running away after the entrance auto-walk and before Lorelei is defeated.",
+  "fixture": {
+    "characterName": "ScriptSimLoreleiDontRunAway",
+    "mapName": "LORELEIS_ROOM",
+    "x": 4,
+    "y": 10,
+    "direction": "DOWN",
+    "flags": ["EVENT_AUTOWALKED_INTO_LORELEIS_ROOM"],
+    "party": [{ "speciesId": 6, "level": 50 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "LORELEIS_ROOM",
+    "x": 4,
+    "y": 10
+  },
+  "expect": {
+    "scriptLabel": "LoreleisRoomDontRunAway",
+    "finalX": 4,
+    "finalY": 9,
+    "flagsPresent": ["EVENT_AUTOWALKED_INTO_LORELEIS_ROOM"],
+    "flagsAbsent": ["EVENT_BEAT_LORELEIS_ROOM_TRAINER_0"],
+    "actionTypesContains": ["dialogue", "movePlayer"],
+    "activeBattleAbsent": true
+  }
+}

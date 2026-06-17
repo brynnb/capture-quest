@@ -1,0 +1,38 @@
+Scenario: route23_soul_badge_blocked
+Description: The Route 23 Soul Badge swimmer blocks the player without the Soul Badge.
+Character: ScriptSimSoulGateBlocked
+
+Initial state
+  location: ROUTE_23[34] (11,96)
+  flags: EVENT_GOT_BOULDERBADGE, EVENT_GOT_CASCADEBADGE, EVENT_GOT_POKEDEX, EVENT_GOT_RAINBOWBADGE, EVENT_GOT_THUNDERBADGE, EVENT_ROUTE23_BADGE1_CHECKED, EVENT_ROUTE23_BADGE2_CHECKED, EVENT_ROUTE23_BADGE3_CHECKED, EVENT_ROUTE23_BADGE4_CHECKED
+  party:
+    slot 0: #6 CHARIZARD L50 moves LEER, RAGE, SLASH, FLAMETHROWER
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: Route23BadgeCheck5Blocked
+  map: ROUTE_23
+  trigger: coord
+
+Actions
+  - lockInput
+  - dialogue: GUARD [You can pass here only if you have the SOULBADGE! You don't have the SOULBADGE yet! You have to have it to get to POKéMON LEAGUE!]
+  - movePlayer *: from=(11,96) to=(11,97) steps=[DOWN]
+  - unlockInput
+
+Final state
+  location: ROUTE_23[34] (11,97)
+  flags: EVENT_GOT_BOULDERBADGE, EVENT_GOT_CASCADEBADGE, EVENT_GOT_POKEDEX, EVENT_GOT_RAINBOWBADGE, EVENT_GOT_THUNDERBADGE, EVENT_ROUTE23_BADGE1_CHECKED, EVENT_ROUTE23_BADGE2_CHECKED, EVENT_ROUTE23_BADGE3_CHECKED, EVENT_ROUTE23_BADGE4_CHECKED
+  party:
+    slot 0: #6 CHARIZARD L50 moves LEER, RAGE, SLASH, FLAMETHROWER
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none

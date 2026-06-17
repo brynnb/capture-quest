@@ -1,0 +1,72 @@
+{
+  "name": "fixture_party_detailed_state",
+  "description": "Scenario fixtures can seed detailed party Pokemon state for future battle and script tests.",
+  "fixture": {
+    "characterName": "ScriptSimFixturePartyDetails",
+    "mapName": "PALLET_TOWN",
+    "x": 5,
+    "y": 6,
+    "direction": "LEFT",
+    "flags": [],
+    "party": [
+      {
+        "speciesId": 25,
+        "level": 30,
+        "moves": ["THUNDERBOLT", "QUICK ATTACK"],
+        "movePp": [3, 0],
+        "curHp": 12,
+        "status": "PAR",
+        "exp": 9000,
+        "ivs": {
+          "attack": 15,
+          "defense": 14,
+          "speed": 13,
+          "special": 12
+        },
+        "evs": {
+          "hp": 1000,
+          "attack": 2000,
+          "defense": 3000,
+          "speed": 4000,
+          "special": 5000
+        }
+      }
+    ],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "fixture_state",
+    "mapName": "PALLET_TOWN"
+  },
+  "expect": {
+    "scriptLabel": "FixtureState",
+    "finalDirection": "LEFT",
+    "partySpecies": [25],
+    "partyState": [
+      {
+        "slot": 0,
+        "speciesId": 25,
+        "level": 30,
+        "curHp": 12,
+        "status": "PAR",
+        "exp": 9000,
+        "movePp": [3, 0],
+        "ivs": {
+          "attack": 15,
+          "defense": 14,
+          "speed": 13,
+          "special": 12
+        },
+        "evs": {
+          "hp": 1000,
+          "attack": 2000,
+          "defense": 3000,
+          "speed": 4000,
+          "special": 5000
+        }
+      }
+    ],
+    "activeBattleAbsent": true
+  }
+}

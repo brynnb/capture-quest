@@ -1,0 +1,43 @@
+Scenario: vermilion_gym_trash_second_lock_success
+Description: Clicking the seeded adjacent second-switch trash can opens the second electric lock and the motorized door.
+Character: ScriptSimVermilionTrashSecondSuccess
+
+Initial state
+  location: VERMILION_GYM[92] (5,9)
+  flags: EVENT_1ST_LOCK_OPENED
+  vermilion gym trash: first=4 second=7
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: VermilionGymTrash
+  map: VERMILION_GYM
+  trigger: vermilion_gym_trash
+
+Actions
+  - vermilionGymTrash *: can=7 text=TEXT_VERMILIONGYM_TRASH_SUCCESS_3 first=4 second=7
+
+Final state
+  location: VERMILION_GYM[92] (5,9)
+  flags: EVENT_1ST_LOCK_OPENED, EVENT_2ND_LOCK_OPENED
+  vermilion gym trash: first=4 second=7
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Event tile states
+  VermilionGymTrashDoorOpen_4_4 (4,4): tile=253 collision=1
+  VermilionGymTrashDoorOpen_5_4 (5,4): tile=253 collision=1
+  VermilionGymTrashDoorOpen_4_5 (4,5): tile=253 collision=1
+  VermilionGymTrashDoorOpen_5_5 (5,5): tile=253 collision=1

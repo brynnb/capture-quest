@@ -1,0 +1,26 @@
+{
+  "scriptLabel": "ViridianMartSayHiToOak",
+  "mapName": "VIRIDIAN_MART",
+  "trigger": {
+    "type": "npc_click",
+    "label": "TEXT_VIRIDIANMART_CLERK",
+    "source": "extractor"
+  },
+  "requiresFlag": "EVENT_GOT_OAKS_PARCEL",
+  "requiresFlagAbsent": "EVENT_OAK_GOT_PARCEL",
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Okay! Say hi to PROF.OAK for me!"
+      ],
+      "speaker": "CLERK"
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

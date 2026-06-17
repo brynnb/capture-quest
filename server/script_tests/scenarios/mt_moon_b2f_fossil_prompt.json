@@ -1,0 +1,33 @@
+{
+  "name": "mt_moon_b2f_fossil_prompt",
+  "description": "After beating the Mt. Moon Super Nerd, the map prompt unlocks fossil selection without granting either fossil.",
+  "fixture": {
+    "characterName": "ScriptSimMtMoonFossilPrompt",
+    "mapName": "MT_MOON_B2F",
+    "x": 12,
+    "y": 5,
+    "direction": "DOWN",
+    "flags": ["EVENT_BEAT_MT_MOON_SUPER_NERD"],
+    "party": [{ "speciesId": 25, "level": 18 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "map_script",
+    "mapName": "MT_MOON_B2F"
+  },
+  "expect": {
+    "scriptLabel": "MtMoonB2FFossilChoice",
+    "flagsAbsent": [
+      "EVENT_GOT_MT_MOON_FOSSIL",
+      "EVENT_GOT_DOME_FOSSIL",
+      "EVENT_GOT_HELIX_FOSSIL"
+    ],
+    "inventoryAbsent": [
+      { "itemId": 41 },
+      { "itemId": 42 }
+    ],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

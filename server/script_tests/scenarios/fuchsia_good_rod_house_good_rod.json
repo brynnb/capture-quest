@@ -1,0 +1,27 @@
+{
+  "name": "fuchsia_good_rod_house_good_rod",
+  "description": "The Fuchsia Fishing Guru grants the Good Rod.",
+  "fixture": {
+    "characterName": "ScriptSimGoodRod",
+    "mapName": "FUCHSIA_GOOD_ROD_HOUSE",
+    "x": 5,
+    "y": 4,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_SOULBADGE"],
+    "party": [{ "speciesId": 6, "level": 42 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "FUCHSIA_GOOD_ROD_HOUSE",
+    "textConstant": "TEXT_FUCHSIAGOODRODHOUSE_FISHING_GURU",
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "FuchsiaGoodRodHouseFishingGuruTextGift",
+    "inventoryContains": [{ "itemId": 77, "quantity": 1 }],
+    "actionTypesContains": ["dialogue", "choice", "giveItem"],
+    "activeBattleAbsent": true
+  }
+}

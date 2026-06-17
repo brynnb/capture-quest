@@ -1,0 +1,39 @@
+Scenario: daycare_withdraw_pikachu_learns_move
+Description: Day Care retrieval silently applies level-up moves learned after the stored start level.
+Character: ScriptSimDayCareLearnMove
+
+Initial state
+  location: DAYCARE[72] (2,4)
+  flags: none
+  money: 1000
+  day care: #25 PIKACHU L9 start=8 grown=1 cost=200 exp=729
+  party:
+    slot 0: #4 CHARMANDER L5 moves SCRATCH, GROWL
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: DayCareWithdraw
+  map: DAYCARE
+  trigger: daycare_withdraw
+
+Actions
+  - dayCareWithdraw *: success=true cost=200 money=800 slot=1 learned=THUNDER_WAVE message="Here's your Pokémon."
+
+Final state
+  location: DAYCARE[72] (2,4)
+  flags: none
+  money: 800
+  party:
+    slot 0: #4 CHARMANDER L5 moves SCRATCH, GROWL
+    slot 1: #25 PIKACHU L9 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

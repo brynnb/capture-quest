@@ -1,0 +1,44 @@
+Scenario: mt_moon_pokecenter_magikarp_salesman_purchase
+Description: The Mt. Moon Pokecenter salesman sells Magikarp for exactly 500 Pokédollars.
+Character: ScriptSimMagikarpSalesmanPurchase
+
+Initial state
+  location: MT_MOON_POKECENTER[68] (7,4)
+  flags: none
+  money: 500
+  party:
+    slot 0: #25 PIKACHU L12 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: MtMoonPokecenterMagikarpSalesmanPurchase
+  map: MT_MOON_POKECENTER
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [MAN: Hello, there!
+Have I got a deal just for you!]
+  - choice: TEXT_MTMOONPOKECENTER_MAGIKARP_SALESMAN "I'll let you have\na swell MAGIKARP for just 500 Pokedollars! What do you say?" choice=true
+  - takeMoney *: spent=500 money=0
+  - givePokemon *: MAGIKARP L5 added to party
+  - setFlag *: EVENT_BOUGHT_MAGIKARP
+  - unlockInput
+
+Final state
+  location: MT_MOON_POKECENTER[68] (7,4)
+  flags: EVENT_BOUGHT_MAGIKARP
+  party:
+    slot 0: #25 PIKACHU L12 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+    slot 1: #129 MAGIKARP L5 moves SPLASH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

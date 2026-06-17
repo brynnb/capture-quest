@@ -1,0 +1,29 @@
+{
+  "name": "route23_thunder_badge_pass",
+  "description": "The Route 23 Thunder Badge guard allows the player with the Thunder Badge.",
+  "fixture": {
+    "characterName": "ScriptSimThunderGatePass",
+    "mapName": "ROUTE_23",
+    "x": 8,
+    "y": 119,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_POKEDEX", "EVENT_GOT_BOULDERBADGE", "EVENT_ROUTE23_BADGE1_CHECKED", "EVENT_GOT_CASCADEBADGE", "EVENT_ROUTE23_BADGE2_CHECKED", "EVENT_GOT_THUNDERBADGE"],
+    "party": [{ "speciesId": 6, "level": 50 }],
+    "inventory": [{ "itemId": 9, "quantity": 1 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "ROUTE_23",
+    "x": 8,
+    "y": 119
+  },
+  "expect": {
+    "scriptLabel": "Route23BadgeCheck3Pass",
+    "finalX": 8,
+    "finalY": 119,
+    "flagsPresent": ["EVENT_GOT_THUNDERBADGE", "EVENT_ROUTE23_BADGE3_CHECKED"],
+    "actionTypesContains": ["dialogue", "setsFlags"],
+    "activeBattleAbsent": true
+  }
+}

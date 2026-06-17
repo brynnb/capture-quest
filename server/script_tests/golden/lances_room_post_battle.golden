@@ -1,0 +1,46 @@
+Scenario: lances_room_post_battle
+Description: After beating Lance, the generated source after-battle script sets the champion-gate flag.
+Character: ScriptSimLancePostBattle
+
+Initial state
+  location: LANCES_ROOM[113] (5,10)
+  flags: EVENT_BEAT_LANCES_ROOM_TRAINER_0
+  party:
+    slot 0: #6 CHARIZARD L60 moves RAGE, SLASH, FLAMETHROWER, FIRE_SPIN
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: LancesRoomLanceAfterBattleTextEventBeatLanceSet
+  map: LANCES_ROOM
+  trigger: map_script
+
+Actions
+  - lockInput
+  - dialogue:  [That's it! I hate to admit
+it, but you are a POKÉMON master!]
+  - dialogue:  [I still can't
+believe my dragons lost to you, (PLAYER)! You are now the
+POKÉMON LEAGUE champion! ...Or, you would
+have been, but you have one more challenge ahead. You have to face
+another trainer! His name is... {RIVAL}!
+He beat the ELITE FOUR before you! He is the real
+POKÉMON LEAGUE champion!]
+  - setFlag *: EVENT_BEAT_LANCE
+  - unlockInput
+
+Final state
+  location: LANCES_ROOM[113] (5,10)
+  flags: EVENT_BEAT_LANCE, EVENT_BEAT_LANCES_ROOM_TRAINER_0
+  party:
+    slot 0: #6 CHARIZARD L60 moves RAGE, SLASH, FLAMETHROWER, FIRE_SPIN
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

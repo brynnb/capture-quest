@@ -1,0 +1,47 @@
+{
+  "name": "cerulean_rival_charmander_win",
+  "description": "Win the Cerulean bridge rival battle after choosing Charmander and verify persistent cleanup.",
+  "fixture": {
+    "characterName": "ScriptSimCeruleanRivalCharmanderWin",
+    "mapName": "CERULEAN_CITY",
+    "x": 190,
+    "y": -192,
+    "direction": "UP",
+    "flags": [
+      "EVENT_GOT_POKEDEX",
+      "EVENT_PLAYER_CHOSE_CHARMANDER"
+    ],
+    "party": [
+      { "speciesId": 4, "level": 18 }
+    ],
+    "inventory": [
+      { "itemId": 9, "quantity": 1 }
+    ],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "CERULEAN_CITY",
+    "x": 190,
+    "y": -192
+  },
+  "resolveBattle": {
+    "result": "win"
+  },
+  "expect": {
+    "scriptLabel": "CeruleanCityRivalEncounter",
+    "flagsPresent": [
+      "EVENT_GOT_POKEDEX",
+      "EVENT_PLAYER_CHOSE_CHARMANDER",
+      "EVENT_BEAT_CERULEAN_RIVAL",
+      "EVENT_CERULEAN_RIVAL_LEFT"
+    ],
+    "partySpecies": [4],
+    "inventoryContains": [
+      { "itemId": 9, "quantity": 1 }
+    ],
+    "hiddenObjectKeys": ["TEXT_CERULEANCITY_RIVAL"],
+    "actionTypesContains": ["startTrainerBattle", "resolveBattle", "hideObject", "setFlag"],
+    "activeBattleAbsent": true
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "name": "game_corner_rocket_hideout_entrance_open",
+  "description": "The Game Corner Rocket Hideout entrance resolves to the open stair block after the poster switch flag is set.",
+  "fixture": {
+    "characterName": "ScriptSimGameCornerHideoutOpen",
+    "mapName": "GAME_CORNER",
+    "x": 9,
+    "y": 5,
+    "flags": ["EVENT_FOUND_ROCKET_HIDEOUT"]
+  },
+  "trigger": {
+    "type": "tile_state",
+    "mapName": "GAME_CORNER"
+  },
+  "expect": {
+    "scriptLabel": "TileState:GAME_CORNER",
+    "tileStates": [
+      { "x": 16, "y": 4, "tileImageId": 583, "collisionType": 0, "label": "GameCornerRocketHideoutDoorOpen_0_0" },
+      { "x": 17, "y": 4, "tileImageId": 231, "collisionType": 1, "label": "GameCornerRocketHideoutDoorOpen_1_0" },
+      { "x": 16, "y": 5, "tileImageId": 607, "collisionType": 1, "label": "GameCornerRocketHideoutDoorOpen_0_1" },
+      { "x": 17, "y": 5, "tileImageId": 607, "collisionType": 1, "label": "GameCornerRocketHideoutDoorOpen_1_1" }
+    ],
+    "activeBattleAbsent": true
+  }
+}

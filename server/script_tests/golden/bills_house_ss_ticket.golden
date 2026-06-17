@@ -1,0 +1,51 @@
+Scenario: bills_house_ss_ticket
+Description: After Bill is restored, talking to Bill grants the S.S. Ticket.
+Character: ScriptSimBillSSTicket
+
+Initial state
+  location: BILLS_HOUSE[88] (4,5)
+  flags: EVENT_MET_BILL
+  party:
+    slot 0: #5 CHARMELEON L24 moves EMBER, EMBER, LEER, RAGE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: BillsHouseSSTicket
+  map: BILLS_HOUSE
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: BILL [That cruise ship, S.S.ANNE, is in VERMILION CITY. Its passengers are all trainers! They invited me to their party, but I can't stand fancy do's. Why don't you go instead of me?]
+  - dialogue:  [{PLAYER} received an S.S.TICKET!]
+  - setFlag *: EVENT_GOT_SS_TICKET
+  - showObject *: objects=[TEXT_CERULEANCITY_GUARD1]
+  - hideObject *: objects=[TEXT_CERULEANCITY_GUARD2]
+  - playSFX: SFX_GET_KEY_ITEM
+  - unlockInput
+  - giveItem *: S.S.TICKET x1 added
+  - setsFlags *: EVENT_GOT_SS_TICKET
+
+Final state
+  location: BILLS_HOUSE[88] (4,5)
+  flags: EVENT_GOT_SS_TICKET, EVENT_MET_BILL
+  party:
+    slot 0: #5 CHARMELEON L24 moves EMBER, EMBER, LEER, RAGE
+  inventory:
+    #63 S.S.TICKET x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Event object states
+  SourceMissableInitial:HS_CERULEAN_RIVAL CERULEAN_CITY/CeruleanCity_NPC_1 (190,-196): hidden text=TEXT_CERULEANCITY_RIVAL
+  SourceMissableInitial:HS_CERULEAN_CAVE_GUY CERULEAN_CITY/CeruleanCity_NPC_10 (174,-186): visible text=TEXT_CERULEANCITY_SUPER_NERD3
+  CutsceneAction:hideObject CERULEAN_CITY/CeruleanCity_NPC_11 (197,-186): hidden text=TEXT_CERULEANCITY_GUARD2
+  SourceMissableInitial:HS_CERULEAN_ROCKET CERULEAN_CITY/CeruleanCity_NPC_2 (200,-190): visible text=TEXT_CERULEANCITY_ROCKET
+  CutsceneAction:showObject CERULEAN_CITY/CeruleanCity_NPC_6 (198,-186): visible text=TEXT_CERULEANCITY_GUARD1

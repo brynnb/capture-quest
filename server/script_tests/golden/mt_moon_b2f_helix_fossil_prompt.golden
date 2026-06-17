@@ -1,0 +1,36 @@
+Scenario: mt_moon_b2f_helix_fossil_prompt
+Description: Clicking the Helix Fossil opens a YES/NO confirmation before granting either fossil.
+Character: ScriptSimMtMoonHelixFossilPrompt
+
+Initial state
+  location: MT_MOON_B2F[61] (13,6)
+  flags: EVENT_BEAT_MT_MOON_SUPER_NERD
+  party:
+    slot 0: #25 PIKACHU L18 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: MtMoonB2FHelixFossilChoice
+  map: MT_MOON_B2F
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - choice: TEXT_MTMOONB2F_HELIX_FOSSIL "You want the\nHELIX FOSSIL?"
+
+Final state
+  location: MT_MOON_B2F[61] (13,6)
+  flags: EVENT_BEAT_MT_MOON_SUPER_NERD
+  party:
+    slot 0: #25 PIKACHU L18 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

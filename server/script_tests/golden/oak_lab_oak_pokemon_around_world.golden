@@ -1,0 +1,39 @@
+Scenario: oak_lab_oak_pokemon_around_world
+Description: After receiving the Pokedex but before the first Route 22 rival win, Oak tells the player Pokemon around the world are waiting.
+Character: ScriptSimOakPokemonAroundWorld
+
+Initial state
+  location: OAKS_LAB[40] (5,11)
+  flags: EVENT_BATTLED_RIVAL_IN_OAKS_LAB, EVENT_GOT_OAKS_PARCEL, EVENT_GOT_POKEDEX, EVENT_GOT_STARTER, EVENT_OAKS_LAB_RIVAL_EXITED, EVENT_OAK_ASKED_TO_CHOOSE_MON, EVENT_OAK_GOT_PARCEL, EVENT_PLAYER_CHOSE_CHARMANDER, EVENT_RIVAL_PICKED_STARTER
+  party:
+    slot 0: #4 CHARMANDER L9 moves SCRATCH, GROWL, EMBER
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    TEXT_OAKSLAB_CHARMANDER_POKE_BALL
+    TEXT_OAKSLAB_SQUIRTLE_POKE_BALL
+  active battle:
+    none
+
+Resolved script
+  label: OaksLabOakPokemonAroundWorld
+  map: OAKS_LAB
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: OAK [POKéMON around the world wait for you, {PLAYER}!]
+  - unlockInput
+
+Final state
+  location: OAKS_LAB[40] (5,11)
+  flags: EVENT_BATTLED_RIVAL_IN_OAKS_LAB, EVENT_GOT_OAKS_PARCEL, EVENT_GOT_POKEDEX, EVENT_GOT_STARTER, EVENT_OAKS_LAB_RIVAL_EXITED, EVENT_OAK_ASKED_TO_CHOOSE_MON, EVENT_OAK_GOT_PARCEL, EVENT_PLAYER_CHOSE_CHARMANDER, EVENT_RIVAL_PICKED_STARTER
+  party:
+    slot 0: #4 CHARMANDER L9 moves SCRATCH, GROWL, EMBER
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    TEXT_OAKSLAB_CHARMANDER_POKE_BALL
+    TEXT_OAKSLAB_SQUIRTLE_POKE_BALL
+  active battle:
+    none

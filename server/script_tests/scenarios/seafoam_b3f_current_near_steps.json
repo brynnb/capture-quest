@@ -1,0 +1,22 @@
+{
+  "name": "seafoam_b3f_current_near_steps",
+  "description": "Seafoam B3F current near the steps forces the source Down 6, Right 5, Down 3 path after both B2F boulders have fallen.",
+  "fixture": {
+    "characterName": "ScriptSimSeafoamB3FCurrentSteps",
+    "mapName": "SEAFOAM_ISLANDS_B3F",
+    "x": 15,
+    "y": 8,
+    "flags": ["EVENT_SEAFOAM3_BOULDER1_DOWN_HOLE", "EVENT_SEAFOAM3_BOULDER2_DOWN_HOLE"]
+  },
+  "trigger": {
+    "type": "seafoam_current",
+    "mapName": "SEAFOAM_ISLANDS_B3F"
+  },
+  "expect": {
+    "scriptLabel": "SeafoamCurrent:SeafoamB3FCurrentNearSteps",
+    "finalX": 20,
+    "finalY": 17,
+    "actionTypesContains": ["seafoamCurrent"],
+    "activeBattleAbsent": true
+  }
+}

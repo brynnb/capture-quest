@@ -1,0 +1,46 @@
+Scenario: mt_moon_b2f_helix_fossil
+Description: Confirming the Helix Fossil grants Helix Fossil, records the choice, and hides both fossils.
+Character: ScriptSimMtMoonHelixFossil
+
+Initial state
+  location: MT_MOON_B2F[61] (13,6)
+  flags: EVENT_BEAT_MT_MOON_SUPER_NERD
+  party:
+    slot 0: #25 PIKACHU L18 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: MtMoonB2FHelixFossilChoice
+  map: MT_MOON_B2F
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - choice: TEXT_MTMOONB2F_HELIX_FOSSIL "You want the\nHELIX FOSSIL?" choice=true
+  - giveItem *: HELIX FOSSIL x1 added
+  - hideObject *: objects=[TEXT_MTMOONB2F_HELIX_FOSSIL]
+  - hideObject *: objects=[TEXT_MTMOONB2F_DOME_FOSSIL]
+  - dialogue:  [(PLAYER) got the
+! All right. Then
+this is mine!]
+  - setFlag *: EVENT_GOT_MT_MOON_FOSSIL
+  - setFlag *: EVENT_GOT_HELIX_FOSSIL
+  - unlockInput
+
+Final state
+  location: MT_MOON_B2F[61] (13,6)
+  flags: EVENT_BEAT_MT_MOON_SUPER_NERD, EVENT_GOT_HELIX_FOSSIL, EVENT_GOT_MT_MOON_FOSSIL
+  party:
+    slot 0: #25 PIKACHU L18 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    #42 HELIX FOSSIL x1
+  hidden objects:
+    TEXT_MTMOONB2F_DOME_FOSSIL
+    TEXT_MTMOONB2F_HELIX_FOSSIL
+  active battle:
+    none

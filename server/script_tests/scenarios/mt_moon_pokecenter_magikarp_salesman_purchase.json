@@ -1,0 +1,26 @@
+{
+  "name": "mt_moon_pokecenter_magikarp_salesman_purchase",
+  "description": "The Mt. Moon Pokecenter salesman sells Magikarp for exactly 500 Pokédollars.",
+  "fixture": {
+    "characterName": "ScriptSimMagikarpSalesmanPurchase",
+    "mapName": "MT_MOON_POKECENTER",
+    "x": 7,
+    "y": 4,
+    "direction": "LEFT",
+    "money": 500,
+    "party": [{ "speciesId": 25, "level": 12 }]
+  },
+  "trigger": {
+    "type": "direct",
+    "scriptLabel": "MtMoonPokecenterMagikarpSalesmanPurchase",
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "MtMoonPokecenterMagikarpSalesmanPurchase",
+    "flagsPresent": ["EVENT_BOUGHT_MAGIKARP"],
+    "money": 0,
+    "partySpecies": [25, 129],
+    "actionTypesContains": ["choice", "takeMoney", "givePokemon", "setFlag"],
+    "activeBattleAbsent": true
+  }
+}

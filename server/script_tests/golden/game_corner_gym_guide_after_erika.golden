@@ -1,0 +1,39 @@
+Scenario: game_corner_gym_guide_after_erika
+Description: The Game Corner gym guide talks about rare prize Pokemon after Erika is beaten.
+Character: ScriptSimGameCornerGuideAfterErika
+
+Initial state
+  location: GAME_CORNER[135] (8,13)
+  flags: EVENT_BEAT_ERIKA
+  party:
+    slot 0: #25 PIKACHU L25 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: GameCornerGymGuideTextEventBeatErikaSet
+  map: GAME_CORNER
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [They offer rare
+POKÉMON that can be exchanged for your coins. But, I just can't
+seem to win!]
+  - unlockInput
+
+Final state
+  location: GAME_CORNER[135] (8,13)
+  flags: EVENT_BEAT_ERIKA
+  party:
+    slot 0: #25 PIKACHU L25 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

@@ -1,0 +1,22 @@
+{
+  "name": "lances_room_entrance_blocks_closed",
+  "description": "Lance's entrance blocks resolve to the closed layout after the room lock flag is set.",
+  "fixture": {
+    "characterName": "ScriptSimLanceEntranceClosed",
+    "mapName": "LANCES_ROOM",
+    "x": 5,
+    "y": 10,
+    "flags": ["EVENT_LANCES_ROOM_LOCK_DOOR"]
+  },
+  "trigger": {
+    "type": "tile_state",
+    "mapName": "LANCES_ROOM"
+  },
+  "expect": {
+    "scriptLabel": "TileState:LANCES_ROOM",
+    "tileStates": [
+      { "x": 12, "y": 6, "tileImageId": 261, "collisionType": 0, "label": "LanceEntranceRightClosed_0_0" },
+      { "x": 13, "y": 4, "tileImageId": 261, "collisionType": 0, "label": "LanceEntranceLeftClosed_1_0" }
+    ]
+  }
+}

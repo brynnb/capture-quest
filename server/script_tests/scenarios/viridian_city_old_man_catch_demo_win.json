@@ -1,0 +1,29 @@
+{
+  "name": "viridian_city_old_man_catch_demo_win",
+  "description": "Winning the Viridian old man Weedle tutorial battle runs the source follow-up advice.",
+  "fixture": {
+    "characterName": "ScriptSimViridianOldManTutorialWin",
+    "mapName": "VIRIDIAN_CITY",
+    "x": 21,
+    "y": 9,
+    "direction": "LEFT",
+    "flags": ["EVENT_GOT_POKEDEX"],
+    "party": [{ "speciesId": 25, "level": 10 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "VIRIDIAN_CITY",
+    "textConstant": "TEXT_VIRIDIANCITY_OLD_MAN",
+    "choice": false
+  },
+  "resolveBattle": {"result": "win"},
+  "expect": {
+    "scriptLabel": "ViridianCityOldManCatchDemo",
+    "flagsPresent": ["EVENT_GOT_POKEDEX", "EVENT_OLD_MAN_CATCH_TUTORIAL_DONE"],
+    "inventoryContains": [{ "itemId": 4, "quantity": 1 }],
+    "actionTypesContains": ["dialogue", "choice", "giveItem", "startWildBattle", "setFlag", "resolveBattle"],
+    "activeBattleAbsent": true
+  }
+}

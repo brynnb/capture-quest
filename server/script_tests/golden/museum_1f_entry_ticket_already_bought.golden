@@ -1,0 +1,38 @@
+Scenario: museum_1f_entry_ticket_already_bought
+Description: Museum 1F entry lets a ticketed player continue looking around.
+Character: ScriptSimMuseumTicketAlready
+
+Initial state
+  location: MUSEUM_1F[52] (9,4)
+  flags: EVENT_BOUGHT_MUSEUM_TICKET
+  party:
+    slot 0: #25 PIKACHU L12 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: Museum1FEntryTicketAlreadyBought
+  map: MUSEUM_1F
+  trigger: coord
+
+Actions
+  - lockInput
+  - dialogue:  [Take plenty of
+time to look!]
+  - unlockInput
+
+Final state
+  location: MUSEUM_1F[52] (9,4)
+  flags: EVENT_BOUGHT_MUSEUM_TICKET
+  party:
+    slot 0: #25 PIKACHU L12 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

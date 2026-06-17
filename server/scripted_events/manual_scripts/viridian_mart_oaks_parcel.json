@@ -1,0 +1,46 @@
+{
+  "scriptLabel": "ViridianMartOaksParcel",
+  "mapName": "VIRIDIAN_MART",
+  "trigger": {
+    "type": "npc_click",
+    "source": "extractor",
+    "label": "TEXT_VIRIDIANMART_CLERK"
+  },
+  "requiresFlag": "EVENT_OAK_ASKED_TO_CHOOSE_MON",
+  "requiresFlagAbsent": "EVENT_GOT_OAKS_PARCEL",
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "lines": [
+        "Hey! You came from\nPALLET TOWN?"
+      ],
+      "type": "dialogue"
+    },
+    {
+      "lines": [
+        "You know PROF.\nOAK, right?",
+        "His order came in.\nWill you take it to him?",
+        "(PLAYER) got\nOAK's PARCEL!"
+      ],
+      "type": "dialogue"
+    },
+    {
+      "sfxConstant": "SFX_GET_KEY_ITEM",
+      "type": "playSFX"
+    },
+    {
+      "itemName": "OAKS_PARCEL",
+      "quantity": 1,
+      "type": "giveItem"
+    },
+    {
+      "flag": "EVENT_GOT_OAKS_PARCEL",
+      "type": "setFlag"
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

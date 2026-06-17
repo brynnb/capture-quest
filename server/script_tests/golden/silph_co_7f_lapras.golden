@@ -1,0 +1,42 @@
+Scenario: silph_co_7f_lapras
+Description: After saving Silph, the 7F worker grants Lapras.
+Character: ScriptSimSilphLapras
+
+Initial state
+  location: SILPH_CO_7F[212] (1,6)
+  flags: EVENT_BEAT_SILPH_CO_GIOVANNI
+  party:
+    slot 0: #6 CHARIZARD L45 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SilphCo7FLaprasGift
+  map: SILPH_CO_7F
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: SILPH EMPLOYEE [Thank you for saving SILPH CO.! I want you to have this POKéMON! It's a rare LAPRAS!]
+  - dialogue:  [{PLAYER} received LAPRAS!]
+  - setFlag *: EVENT_GOT_LAPRAS
+  - unlockInput
+  - givePokemon *: LAPRAS L15 added to party
+  - setsFlags *: EVENT_GOT_LAPRAS
+
+Final state
+  location: SILPH_CO_7F[212] (1,6)
+  flags: EVENT_BEAT_SILPH_CO_GIOVANNI, EVENT_GOT_LAPRAS
+  party:
+    slot 0: #6 CHARIZARD L45 moves EMBER, LEER, RAGE, SLASH
+    slot 1: #131 LAPRAS L15 moves GROWL
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

@@ -1,0 +1,26 @@
+{
+  "name": "route11_gate2f_left_binoculars_not_facing_up",
+  "description": "The Route 11 Gate 2F left binoculars do not fire unless the player is facing up, matching GateUpstairsScript_PrintIfFacingUp.",
+  "fixture": {
+    "characterName": "ScriptSimRoute11BinocularsWrongFacing",
+    "mapName": "ROUTE_11_GATE_2F",
+    "x": 1,
+    "y": 3,
+    "direction": "DOWN",
+    "flags": [],
+    "party": [{ "speciesId": 25, "level": 20 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "click_no_script",
+    "mapName": "ROUTE_11_GATE_2F",
+    "textConstant": "TEXT_ROUTE11GATE2F_LEFT_BINOCULARS"
+  },
+  "expect": {
+    "scriptLabel": "NoScript:ROUTE_11_GATE_2F",
+    "flagsAbsent": ["EVENT_BEAT_ROUTE12_SNORLAX"],
+    "actionTypesContains": ["noScript"],
+    "activeBattleAbsent": true
+  }
+}

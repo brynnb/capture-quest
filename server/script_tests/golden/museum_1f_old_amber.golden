@@ -1,0 +1,43 @@
+Scenario: museum_1f_old_amber
+Description: The Museum 1F scientist grants Old Amber.
+Character: ScriptSimOldAmber
+
+Initial state
+  location: MUSEUM_1F[52] (15,3)
+  flags: EVENT_GOT_HM01
+  party:
+    slot 0: #5 CHARMELEON L25 moves EMBER, EMBER, LEER, RAGE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: Museum1FOldAmber
+  map: MUSEUM_1F
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: SCIENTIST [Ssh! I think that this chunk of AMBER contains POKéMON DNA! It would be great if POKéMON could be resurrected from it! But, my colleagues just ignore me!]
+  - dialogue: SCIENTIST [So I have a favor to ask! Take this to a POKéMON LAB and get it examined!]
+  - dialogue:  [{PLAYER} received OLD AMBER!]
+  - setFlag *: EVENT_GOT_OLD_AMBER
+  - playSFX: SFX_GET_ITEM_1
+  - unlockInput
+  - giveItem *: OLD AMBER x1 added
+  - setsFlags *: EVENT_GOT_OLD_AMBER
+
+Final state
+  location: MUSEUM_1F[52] (15,3)
+  flags: EVENT_GOT_HM01, EVENT_GOT_OLD_AMBER
+  party:
+    slot 0: #5 CHARMELEON L25 moves EMBER, EMBER, LEER, RAGE
+  inventory:
+    #31 OLD AMBER x1
+  hidden objects:
+    none
+  active battle:
+    none

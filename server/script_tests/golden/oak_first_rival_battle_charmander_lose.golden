@@ -1,0 +1,51 @@
+Scenario: oak_first_rival_battle_charmander_lose
+Description: Lose the first Oak's Lab rival battle and verify it completes the story gate without blackout progression loss.
+Character: ScriptSimOakCharmanderBattleLose
+
+Initial state
+  location: OAKS_LAB[40] (5,11)
+  flags: EVENT_OAK_ASKED_TO_CHOOSE_MON
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: OaksLabChooseCharmander
+  map: OAKS_LAB
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - choice: TEXT_OAKSLAB_CHARMANDER_POKE_BALL "So! You want CHARMANDER?" choice=true
+  - givePokemon *: CHARMANDER L5 added to party
+  - hideObject *: objects=[TEXT_OAKSLAB_CHARMANDER_POKE_BALL]
+  - hideObject *: objects=[TEXT_OAKSLAB_SQUIRTLE_POKE_BALL]
+  - dialogue:  [{PLAYER} received CHARMANDER!]
+  - delay: 300ms
+  - dialogue: RIVAL [I'll take this one, then! {RIVAL} received SQUIRTLE!]
+  - dialogue: RIVAL [Wait {PLAYER}! Let's check out our POKEMON! Come on, I'll take you on!]
+  - startTrainerBattle *: RIVAL1 party=1 enemy=[#7 SQUIRTLE L5] winFlag=EVENT_BATTLED_RIVAL_IN_OAKS_LAB
+  - unlockInput
+  - setsFlags *: EVENT_GOT_STARTER
+  - setsFlags *: EVENT_RIVAL_PICKED_STARTER
+  - setsFlags *: EVENT_PLAYER_CHOSE_CHARMANDER
+  - resolveBattle *: lose trainer=RIVAL1 loseFlag=EVENT_BATTLED_RIVAL_IN_OAKS_LAB
+  - healParty *: healed 1 pokemon
+
+Final state
+  location: OAKS_LAB[40] (5,11)
+  flags: EVENT_BATTLED_RIVAL_IN_OAKS_LAB, EVENT_GOT_STARTER, EVENT_OAK_ASKED_TO_CHOOSE_MON, EVENT_PLAYER_CHOSE_CHARMANDER, EVENT_RIVAL_PICKED_STARTER
+  party:
+    slot 0: #4 CHARMANDER L5 moves SCRATCH, GROWL
+  inventory:
+    none
+  hidden objects:
+    TEXT_OAKSLAB_CHARMANDER_POKE_BALL
+    TEXT_OAKSLAB_SQUIRTLE_POKE_BALL
+  active battle:
+    none

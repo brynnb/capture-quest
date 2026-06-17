@@ -1,0 +1,29 @@
+{
+  "name": "victory_road_indigo_lobby_reset_1f_switch",
+  "description": "Loading Indigo Plateau Lobby resets the Victory Road 1F boulder switch flag.",
+  "fixture": {
+    "characterName": "SimVictoryRoadIndigoReset1F",
+    "mapName": "INDIGO_PLATEAU_LOBBY",
+    "x": 5,
+    "y": 6,
+    "flags": ["EVENT_VICTORY_ROAD_1_BOULDER_ON_SWITCH"],
+    "objectPositions": [
+      {
+        "mapName": "VICTORY_ROAD_1F",
+        "objectName": "VictoryRoad1F_NPC_5",
+        "x": 17,
+        "y": 13
+      }
+    ]
+  },
+  "trigger": {
+    "type": "map_load",
+    "mapName": "INDIGO_PLATEAU_LOBBY"
+  },
+  "expect": {
+    "scriptLabel": "MapLoad:INDIGO_PLATEAU_LOBBY",
+    "flagsAbsent": ["EVENT_VICTORY_ROAD_1_BOULDER_ON_SWITCH"],
+    "actionTypesContains": ["mapLoad"],
+    "activeBattleAbsent": true
+  }
+}

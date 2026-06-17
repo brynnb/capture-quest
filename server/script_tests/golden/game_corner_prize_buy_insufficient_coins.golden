@@ -1,0 +1,41 @@
+Scenario: game_corner_prize_buy_insufficient_coins
+Description: Game Corner prize exchange refuses a prize when coins are below the source cost.
+Character: SimGameCornerPrizePoor
+
+Initial state
+  location: GAME_CORNER_PRIZE_ROOM[137] (2,4)
+  flags: none
+  coins: 179
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: GameCornerPrizeBuy:ABRA
+  map: GAME_CORNER_PRIZE_ROOM
+  trigger: gamecorner_prize_buy
+
+Actions
+  - gameCornerPrizeBuy: success=false prize=ABRA coins=179 message="You don't have enough coins!"
+
+Final state
+  location: GAME_CORNER_PRIZE_ROOM[137] (2,4)
+  flags: none
+  coins: 179
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Game Corner
+  purchase: success=false coins=179 message=You don't have enough coins!
+  prize: pokemon ABRA cost=180 pokemon=63

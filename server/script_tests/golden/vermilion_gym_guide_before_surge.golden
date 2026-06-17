@@ -1,0 +1,43 @@
+Scenario: vermilion_gym_guide_before_surge
+Description: The Vermilion gym guide gives Thunder Badge advice before Lt. Surge is beaten.
+Character: ScriptSimVermilionGuideBeforeSurge
+
+Initial state
+  location: VERMILION_GYM[92] (4,15)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L25 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: VermilionGymGymGuideTextThunderBadgeAbsent
+  map: VERMILION_GYM
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Yo! Champ in
+making! LT.SURGE has a
+nickname. People refer to him as the Lightning American! He's an expert on
+electric POKÉMON! Birds and water
+POKÉMON are at risk! Beware of paralysis too! LT.SURGE is very
+cautious! You'll have to
+break a code to get to him!]
+  - unlockInput
+
+Final state
+  location: VERMILION_GYM[92] (4,15)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L25 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

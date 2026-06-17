@@ -1,0 +1,42 @@
+Scenario: vermilion_city_ss_anne_guard_no_ticket_blocked
+Description: The S.S. Anne guard blocks and pushes back a player who faces the dock gate without a ticket.
+Character: ScriptSimSSAnneGuardNoTicket
+
+Initial state
+  location: VERMILION_CITY[9999] (188,-24)
+  flags: none
+  party:
+    slot 0: #6 CHARIZARD L28 moves LEER, EMBER, LEER, RAGE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: VermilionCitySSAnneGuardNoTicketBlocked
+  map: VERMILION_CITY
+  trigger: coord
+
+Actions
+  - lockInput
+  - dialogue:  [Welcome to S.S.
+ANNE! Excuse me, do you
+have a ticket? (PLAYER) doesn't
+have the needed S.S.TICKET. Sorry! You need a ticket
+to get aboard.]
+  - movePlayer *: from=(188,-24) to=(188,-25) steps=[UP]
+  - unlockInput
+
+Final state
+  location: VERMILION_CITY[9999] (188,-25)
+  flags: none
+  party:
+    slot 0: #6 CHARIZARD L28 moves LEER, EMBER, LEER, RAGE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

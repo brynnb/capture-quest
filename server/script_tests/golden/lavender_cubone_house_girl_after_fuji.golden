@@ -1,0 +1,39 @@
+Scenario: lavender_cubone_house_girl_after_fuji
+Description: The Cubone house girl notices the Pokemon Tower ghost is gone after Mr. Fuji is rescued.
+Character: ScriptSimCuboneGirlAfterFuji
+
+Initial state
+  location: LAVENDER_CUBONE_HOUSE[151] (3,4)
+  flags: EVENT_RESCUED_MR_FUJI
+  party:
+    slot 0: #25 PIKACHU L24 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: LavenderCuboneHouseBrunetteGirlTextEventRescuedMrFujiSet
+  map: LAVENDER_CUBONE_HOUSE
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [The GHOST of
+POKÉMON TOWER is gone! Someone must have
+soothed its restless soul!]
+  - unlockInput
+
+Final state
+  location: LAVENDER_CUBONE_HOUSE[151] (3,4)
+  flags: EVENT_RESCUED_MR_FUJI
+  party:
+    slot 0: #25 PIKACHU L24 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

@@ -1,0 +1,39 @@
+Scenario: pokemon_fan_club_pikachu_fan_better_resets_pikachu_boast
+Description: The Pokemon Fan Club Pikachu fan uses the boast branch when the Seel fan has boasted, then resets his own boast flag.
+Character: ScriptSimFanClubPikachuBetter
+
+Initial state
+  location: POKEMON_FAN_CLUB[90] (5,3)
+  flags: EVENT_PIKACHU_FAN_BOAST
+  party:
+    slot 0: #25 PIKACHU L20 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: PokemonFanClubPikachuFanTextMineIsBetter
+  map: POKEMON_FAN_CLUB
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Humph! My PIKACHU
+is twice as cute as that one!]
+  - resetFlag *: EVENT_PIKACHU_FAN_BOAST
+  - unlockInput
+
+Final state
+  location: POKEMON_FAN_CLUB[90] (5,3)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L20 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

@@ -1,0 +1,27 @@
+{
+  "name": "silph_co_7f_lapras",
+  "description": "After saving Silph, the 7F worker grants Lapras.",
+  "fixture": {
+    "characterName": "ScriptSimSilphLapras",
+    "mapName": "SILPH_CO_7F",
+    "x": 1,
+    "y": 6,
+    "direction": "UP",
+    "flags": ["EVENT_BEAT_SILPH_CO_GIOVANNI"],
+    "party": [{ "speciesId": 6, "level": 45 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "SILPH_CO_7F",
+    "textConstant": "TEXT_SILPHCO7F_SILPH_WORKER_M1"
+  },
+  "expect": {
+    "scriptLabel": "SilphCo7FLaprasGift",
+    "flagsPresent": ["EVENT_BEAT_SILPH_CO_GIOVANNI", "EVENT_GOT_LAPRAS"],
+    "partySpecies": [6, 131],
+    "actionTypesContains": ["dialogue", "setFlag", "givePokemon"],
+    "activeBattleAbsent": true
+  }
+}

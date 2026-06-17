@@ -1,0 +1,38 @@
+Scenario: viridian_city_gambler_gym_returned_after_giovanni
+Description: Viridian City's gambler says the gym leader returned after Giovanni is beaten, even before the Earth Badge flag is present.
+Character: ScriptSimViridianGamblerGiovanni
+
+Initial state
+  location: VIRIDIAN_CITY[9999] (12,10)
+  flags: EVENT_BEAT_VIRIDIAN_GYM_GIOVANNI
+  party:
+    slot 0: #25 PIKACHU L20 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: ViridianCityGambler1TextEventBeatViridianGymGiovanniSetEarthBadgeAbsent
+  map: VIRIDIAN_CITY
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [VIRIDIAN GYM's
+LEADER returned!]
+  - unlockInput
+
+Final state
+  location: VIRIDIAN_CITY[9999] (12,10)
+  flags: EVENT_BEAT_VIRIDIAN_GYM_GIOVANNI
+  party:
+    slot 0: #25 PIKACHU L20 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

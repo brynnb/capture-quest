@@ -1,0 +1,29 @@
+{
+  "name": "celadon_mart_roof_tm48_trade",
+  "description": "The Celadon Mart rooftop girl trades Soda Pop for TM48 Rock Slide.",
+  "fixture": {
+    "characterName": "ScriptSimCeladonRoofTM48",
+    "mapName": "CELADON_MART_ROOF",
+    "x": 5,
+    "y": 6,
+    "direction": "UP",
+    "flags": [],
+    "party": [{ "speciesId": 6, "level": 35 }],
+    "inventory": [{ "itemId": 61, "quantity": 1 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "CELADON_MART_ROOF",
+    "textConstant": "TEXT_CELADONMARTROOF_LITTLE_GIRL",
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "CeladonMartRoofTM48RockSlide",
+    "flagsPresent": ["EVENT_GOT_TM48"],
+    "inventoryContains": [{ "itemId": 136, "quantity": 1 }],
+    "inventoryAbsent": [{ "itemId": 61 }],
+    "actionTypesContains": ["dialogue", "choice", "takeItem", "giveItem", "setFlag"],
+    "activeBattleAbsent": true
+  }
+}

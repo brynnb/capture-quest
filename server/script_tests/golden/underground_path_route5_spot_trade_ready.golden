@@ -1,0 +1,34 @@
+Scenario: underground_path_route5_spot_trade_ready
+Description: Underground Path Route 5 little girl is ready to trade Nidoran female named SPOT for Nidoran male.
+Character: ScriptSimUndergroundSpotTrade
+
+Initial state
+  location: UNDERGROUND_PATH_ROUTE_5[71] (2,4)
+  flags: none
+  party:
+    slot 0: #32 NIDORAN_M L15 moves LEER, TACKLE, HORN_ATTACK, POISON_STING
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FixtureState
+  map: UNDERGROUND_PATH_ROUTE_5
+  trigger: fixture_state
+
+Actions
+
+Final state
+  location: UNDERGROUND_PATH_ROUTE_5[71] (2,4)
+  flags: none
+  party:
+    slot 0: #32 NIDORAN_M L15 moves LEER, TACKLE, HORN_ATTACK, POISON_STING
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

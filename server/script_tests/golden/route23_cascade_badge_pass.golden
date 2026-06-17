@@ -1,0 +1,38 @@
+Scenario: route23_cascade_badge_pass
+Description: The Route 23 Cascade Badge guard allows the player with the Cascade Badge.
+Character: ScriptSimCascadeGatePass
+
+Initial state
+  location: ROUTE_23[34] (8,136)
+  flags: EVENT_GOT_BOULDERBADGE, EVENT_GOT_CASCADEBADGE, EVENT_GOT_POKEDEX, EVENT_ROUTE23_BADGE1_CHECKED
+  party:
+    slot 0: #6 CHARIZARD L50 moves LEER, RAGE, SLASH, FLAMETHROWER
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: Route23BadgeCheck2Pass
+  map: ROUTE_23
+  trigger: coord
+
+Actions
+  - lockInput
+  - dialogue: GUARD [You can pass here only if you have the CASCADEBADGE! Oh! That is the CASCADEBADGE! OK then! Please, go right ahead!]
+  - unlockInput
+  - setsFlags *: EVENT_ROUTE23_BADGE2_CHECKED
+
+Final state
+  location: ROUTE_23[34] (8,136)
+  flags: EVENT_GOT_BOULDERBADGE, EVENT_GOT_CASCADEBADGE, EVENT_GOT_POKEDEX, EVENT_ROUTE23_BADGE1_CHECKED, EVENT_ROUTE23_BADGE2_CHECKED
+  party:
+    slot 0: #6 CHARIZARD L50 moves LEER, RAGE, SLASH, FLAMETHROWER
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none

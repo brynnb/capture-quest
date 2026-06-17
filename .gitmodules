@@ -1,0 +1,3 @@
+[submodule "tools/pokemon-gameboy-extractor-tool"]
+	path = tools/pokemon-gameboy-extractor-tool
+	url = https://github.com/brynnb/pokemon-gameboy-extractor-tool.git

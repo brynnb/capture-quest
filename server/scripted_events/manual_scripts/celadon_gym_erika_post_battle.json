@@ -1,0 +1,52 @@
+{
+  "scriptLabel": "CeladonGymErikaPostBattle",
+  "mapName": "CELADON_GYM",
+  "trigger": {
+    "type": "map_script"
+  },
+  "requiresFlag": "EVENT_BEAT_ERIKA",
+  "requiresFlagAbsent": "EVENT_GOT_RAINBOWBADGE",
+  "setsFlags": [
+    "EVENT_GOT_RAINBOWBADGE",
+    "EVENT_GOT_TM21"
+  ],
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Oh! I concede defeat.",
+        "You are remarkably strong.",
+        "I must confer you the RAINBOWBADGE."
+      ],
+      "speaker": "ERIKA"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "{PLAYER} received TM21!",
+        "You are cataloging POKéMON? I must say I'm impressed.",
+        "I would never collect POKéMON if they were unattractive."
+      ],
+      "speaker": "ERIKA"
+    },
+    {
+      "flag": "EVENT_GOT_RAINBOWBADGE",
+      "type": "setFlag"
+    },
+    {
+      "flag": "EVENT_GOT_TM21",
+      "type": "setFlag"
+    },
+    {
+      "type": "giveItem",
+      "itemId": 109,
+      "quantity": 1
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

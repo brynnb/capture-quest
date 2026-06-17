@@ -1,0 +1,41 @@
+Scenario: game_corner_rocket_hideout_entrance_open
+Description: The Game Corner Rocket Hideout entrance resolves to the open stair block after the poster switch flag is set.
+Character: ScriptSimGameCornerHideoutOpen
+
+Initial state
+  location: GAME_CORNER[135] (9,5)
+  flags: EVENT_FOUND_ROCKET_HIDEOUT
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: TileState:GAME_CORNER
+  map: GAME_CORNER
+  trigger: tile_state
+
+Actions
+  - tileState: 4 event tiles
+
+Final state
+  location: GAME_CORNER[135] (9,5)
+  flags: EVENT_FOUND_ROCKET_HIDEOUT
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Event tile states
+  GameCornerRocketHideoutDoorOpen_0_0 (16,4): tile=583 collision=0
+  GameCornerRocketHideoutDoorOpen_0_1 (16,5): tile=607 collision=1
+  GameCornerRocketHideoutDoorOpen_1_0 (17,4): tile=231 collision=1
+  GameCornerRocketHideoutDoorOpen_1_1 (17,5): tile=607 collision=1

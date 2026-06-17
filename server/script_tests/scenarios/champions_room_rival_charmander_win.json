@@ -1,0 +1,60 @@
+{
+  "name": "champions_room_rival_charmander_win",
+  "description": "Win the Champion rival battle after choosing Charmander and verify the deferred champion beat flag.",
+  "fixture": {
+    "characterName": "ScriptSimChampionRivalCharmanderWin",
+    "mapName": "CHAMPIONS_ROOM",
+    "x": 3,
+    "y": 7,
+    "direction": "UP",
+    "flags": [
+      "EVENT_GOT_POKEDEX",
+      "EVENT_PLAYER_CHOSE_CHARMANDER",
+      "EVENT_GOT_BOULDERBADGE",
+      "EVENT_GOT_CASCADEBADGE",
+      "EVENT_GOT_THUNDERBADGE",
+      "EVENT_GOT_RAINBOWBADGE",
+      "EVENT_GOT_SOULBADGE",
+      "EVENT_GOT_MARSHBADGE",
+      "EVENT_GOT_VOLCANOBADGE",
+      "EVENT_GOT_EARTHBADGE",
+      "EVENT_BEAT_LORELEI",
+      "EVENT_BEAT_BRUNO",
+      "EVENT_BEAT_AGATHA",
+      "EVENT_BEAT_LANCE"
+    ],
+    "party": [
+      { "speciesId": 6, "level": 65 }
+    ],
+    "inventory": [
+      { "itemId": 9, "quantity": 1 }
+    ]
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "CHAMPIONS_ROOM",
+    "x": 3,
+    "y": 7
+  },
+  "resolveBattle": {
+    "result": "win"
+  },
+  "expect": {
+    "scriptLabel": "ChampionsRoomRivalIntro",
+    "flagsPresent": [
+      "EVENT_GOT_POKEDEX",
+      "EVENT_PLAYER_CHOSE_CHARMANDER",
+      "EVENT_BEAT_CHAMPION_RIVAL"
+    ],
+    "flagsAbsent": ["EVENT_CHAMPIONS_ROOM_COMPLETE"],
+    "partySpecies": [6],
+    "inventoryContains": [
+      { "itemId": 9, "quantity": 1 }
+    ],
+    "finalMapName": "CHAMPIONS_ROOM",
+    "finalX": 4,
+    "finalY": 3,
+    "actionTypesContains": ["startTrainerBattle", "resolveBattle"],
+    "activeBattleAbsent": true
+  }
+}

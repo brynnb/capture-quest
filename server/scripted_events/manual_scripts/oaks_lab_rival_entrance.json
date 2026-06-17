@@ -1,0 +1,43 @@
+{
+  "scriptLabel": "OaksLabRivalEntrance",
+  "mapName": "OAKS_LAB",
+  "trigger": {
+    "type": "coord"
+  },
+  "requiresFlagAbsent": "EVENT_OAK_LAB_RIVAL_ENTERED",
+  "setsFlags": [
+    "EVENT_OAK_LAB_RIVAL_ENTERED"
+  ],
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "x": 5,
+      "y": 11,
+      "type": "showActor",
+      "actor": "RIVAL",
+      "sprite": "SPRITE_BLUE"
+    },
+    {
+      "type": "move",
+      "actor": "RIVAL",
+      "movements": [
+        "UP",
+        "UP",
+        "UP",
+        "UP"
+      ]
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Gramps! I'm fed up with waiting!"
+      ],
+      "speaker": "RIVAL"
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "name": "loreleis_room_exit_block_closed",
+  "description": "Lorelei's exit block resolves to the closed layout before she is defeated.",
+  "fixture": {
+    "characterName": "ScriptSimLoreleiExitClosed",
+    "mapName": "LORELEIS_ROOM",
+    "x": 4,
+    "y": 7,
+    "flags": []
+  },
+  "trigger": {
+    "type": "tile_state",
+    "mapName": "LORELEIS_ROOM"
+  },
+  "expect": {
+    "scriptLabel": "TileState:LORELEIS_ROOM",
+    "tileStates": [
+      { "x": 0, "y": 4, "tileImageId": 261, "collisionType": 0, "label": "LoreleiExitBlockClosed_0_0" },
+      { "x": 1, "y": 5, "tileImageId": 253, "collisionType": 1, "label": "LoreleiExitBlockClosed_1_1" }
+    ]
+  }
+}

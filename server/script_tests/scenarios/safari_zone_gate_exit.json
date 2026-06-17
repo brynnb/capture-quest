@@ -1,0 +1,33 @@
+{
+  "name": "safari_zone_gate_exit",
+  "description": "Leaving the Safari Zone through the gate runs the exit script instead of the entry offer.",
+  "fixture": {
+    "characterName": "ScriptSimSafariGateExit",
+    "mapName": "SAFARI_ZONE_GATE",
+    "x": 4,
+    "y": 2,
+    "direction": "DOWN",
+    "flags": ["EVENT_IN_SAFARI_ZONE"],
+    "safari": {
+      "active": true,
+      "ballsLeft": 17,
+      "stepsLeft": 321
+    }
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "SAFARI_ZONE_GATE",
+    "x": 4,
+    "y": 2
+  },
+  "expect": {
+    "scriptLabel": "SafariZoneGateExit",
+    "finalMapName": "SAFARI_ZONE_GATE",
+    "finalX": 4,
+    "finalY": 2,
+    "flagsAbsent": ["EVENT_IN_SAFARI_ZONE", "EVENT_SAFARI_GAME_OVER"],
+    "safariActive": false,
+    "actionTypesContains": ["dialogue", "endSafariSession"],
+    "activeBattleAbsent": true
+  }
+}

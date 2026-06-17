@@ -1,0 +1,45 @@
+Scenario: silph_card_key_2f_door2_open
+Description: Using the CARD KEY on Silph Co. 2F door 2 opens its source door flag and passable tile block.
+Character: ScriptSimSilphCardKey2FDoor2
+
+Initial state
+  location: SILPH_CO_2F[207] (4,12)
+  flags: none
+  party:
+    none
+  inventory:
+    #48 CARD KEY x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SilphCardKeyDoor
+  map: SILPH_CO_2F
+  trigger: silph_card_key
+
+Actions
+  - silphCardKey *: door=SILPH_CO_2F 2F2 flag=EVENT_SILPH_CO_2_UNLOCKED_DOOR2 hasKey=true opened=true
+
+Final state
+  location: SILPH_CO_2F[207] (4,12)
+  flags: EVENT_SILPH_CO_2_UNLOCKED_DOOR2
+  party:
+    none
+  inventory:
+    #48 CARD KEY x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Event tile states
+  SilphCardKeyDoor_2F_1_Closed_1_1 (5,5): tile=758 collision=0
+  SilphCardKeyDoor_2F_1_Closed_0_1 (4,5): tile=758 collision=0
+  SilphCardKeyDoor_2F_1_Closed_1_0 (5,4): tile=758 collision=0
+  SilphCardKeyDoor_2F_1_Closed_0_0 (4,4): tile=758 collision=0
+  SilphCardKeyDoor_2F_2_Open_1_1 (5,11): tile=758 collision=1
+  SilphCardKeyDoor_2F_2_Open_0_1 (4,11): tile=758 collision=1
+  SilphCardKeyDoor_2F_2_Open_1_0 (5,10): tile=758 collision=1
+  SilphCardKeyDoor_2F_2_Open_0_0 (4,10): tile=758 collision=1

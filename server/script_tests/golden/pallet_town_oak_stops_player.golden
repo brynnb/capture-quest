@@ -1,0 +1,49 @@
+Scenario: pallet_town_oak_stops_player
+Description: Step onto the north Pallet Town exit trigger before meeting Oak.
+Character: ScriptSimPalletOakStop
+
+Initial state
+  location: PALLET_TOWN[9999] (10,1)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: PalletTownOakStopsPlayer
+  map: PALLET_TOWN
+  trigger: coord
+
+Actions
+  - lockInput
+  - playMusic: MUSIC_MEET_PROF_OAK
+  - showActor
+  - move: OAK [UP UP UP UP]
+  - facePlayer
+  - dialogue: OAK [Hey! Wait! Don't go out!]
+  - dialogueText: OAK TEXT_PALLETTOWN_OAK
+  - parallel: 2 actions
+  - move: OAK [DOWN DOWN DOWN DOWN DOWN DOWN DOWN DOWN DOWN DOWN RIGHT RIGHT RIGHT UP]
+  - movePlayer *: from=(10,1) to=(12,11) steps=[DOWN DOWN DOWN DOWN DOWN DOWN LEFT DOWN DOWN DOWN DOWN DOWN RIGHT RIGHT RIGHT UP]
+  - hideActor
+  - screenFade
+  - unlockInput
+  - setsFlags *: EVENT_OAK_APPEARED_IN_PALLET
+  - warp *: map=40 x=5 y=11
+
+Final state
+  location: OAKS_LAB[40] (5,11)
+  flags: EVENT_OAK_APPEARED_IN_PALLET
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

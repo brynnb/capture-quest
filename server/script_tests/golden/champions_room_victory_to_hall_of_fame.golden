@@ -1,0 +1,48 @@
+Scenario: champions_room_victory_to_hall_of_fame
+Description: Run the Champions Room post-battle script and verify it completes the room and warps to Hall of Fame entry.
+Character: ScriptSimChampionRoomVictory
+
+Initial state
+  location: CHAMPIONS_ROOM[120] (4,3)
+  flags: EVENT_BEAT_CHAMPION_RIVAL, EVENT_GOT_POKEDEX, EVENT_PLAYER_CHOSE_CHARMANDER
+  party:
+    slot 0: #6 CHARIZARD L65 moves RAGE, SLASH, FLAMETHROWER, FIRE_SPIN
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: ChampionsRoomVictory
+  map: CHAMPIONS_ROOM
+  trigger: map_script
+
+Actions
+  - lockInput
+  - dialogue: RIVAL [Why? Why did I lose? I never made any mistakes raising my POKéMON... Darn it! You're the new POKéMON LEAGUE champion! Although I don't like to admit it.]
+  - delay: 500ms
+  - showActor
+  - dialogue: OAK [{PLAYER}!]
+  - move: OAK [UP UP UP UP UP]
+  - facePlayer
+  - dialogue: OAK [So, you won! Congratulations! You're the new POKéMON LEAGUE champion! You've grown up so much since you first left with your POKéMON! {PLAYER}, you have come of age!]
+  - dialogue: OAK [{RIVAL}! I'm disappointed! I came when I heard you beat the ELITE FOUR! But, when I got here, you had already lost! {RIVAL}! Do you understand why you lost? You have forgotten to treat your POKéMON with trust and love! Without them, you will never become a champion again!]
+  - dialogue: OAK [{PLAYER}! You understand that your victory was not just your own doing! The bond you share with your POKéMON is marvelous! {PLAYER}! Come with me!]
+  - hideActor
+  - unlockInput
+  - setsFlags *: EVENT_CHAMPIONS_ROOM_COMPLETE
+  - warp *: map=118 x=5 y=7
+
+Final state
+  location: HALL_OF_FAME[118] (5,7)
+  flags: EVENT_BEAT_CHAMPION_RIVAL, EVENT_CHAMPIONS_ROOM_COMPLETE, EVENT_GOT_POKEDEX, EVENT_PLAYER_CHOSE_CHARMANDER
+  party:
+    slot 0: #6 CHARIZARD L65 moves RAGE, SLASH, FLAMETHROWER, FIRE_SPIN
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none

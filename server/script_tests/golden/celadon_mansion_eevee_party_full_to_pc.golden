@@ -1,0 +1,56 @@
+Scenario: celadon_mansion_eevee_party_full_to_pc
+Description: The Celadon Mansion Eevee gift is sent to the PC when the party is full.
+Character: ScriptSimCeladonEeveeFullParty
+
+Initial state
+  location: CELADON_MANSION_ROOF_HOUSE[132] (4,4)
+  flags: EVENT_GOT_RAINBOWBADGE
+  party:
+    slot 0: #1 BULBASAUR L30 moves LEECH_SEED, VINE_WHIP, POISONPOWDER, RAZOR_LEAF
+    slot 1: #4 CHARMANDER L30 moves EMBER, LEER, RAGE, SLASH
+    slot 2: #7 SQUIRTLE L30 moves BUBBLE, WATER_GUN, BITE, WITHDRAW
+    slot 3: #25 PIKACHU L30 moves GROWL, THUNDER_WAVE, QUICK_ATTACK, SWIFT
+    slot 4: #16 PIDGEY L30 moves SAND-ATTACK, QUICK_ATTACK, WHIRLWIND, WING_ATTACK
+    slot 5: #19 RATTATA L30 moves TACKLE, QUICK_ATTACK, HYPER_FANG, FOCUS_ENERGY
+  pc:
+    box 0 slot 0: #10 CATERPIE L5
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: CeladonMansionEevee
+  map: CELADON_MANSION_ROOF_HOUSE
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [There's a POKé BALL on the table! {PLAYER} received EEVEE!]
+  - setFlag *: EVENT_GOT_EEVEE
+  - unlockInput
+  - givePokemon *: EEVEE L25 sent to PC box=0 slot=1
+  - hideObject *: objects=[TEXT_CELADONMANSION_ROOF_HOUSE_EEVEE_POKEBALL]
+  - setsFlags *: EVENT_GOT_EEVEE
+
+Final state
+  location: CELADON_MANSION_ROOF_HOUSE[132] (4,4)
+  flags: EVENT_GOT_EEVEE, EVENT_GOT_RAINBOWBADGE
+  party:
+    slot 0: #1 BULBASAUR L30 moves LEECH_SEED, VINE_WHIP, POISONPOWDER, RAZOR_LEAF
+    slot 1: #4 CHARMANDER L30 moves EMBER, LEER, RAGE, SLASH
+    slot 2: #7 SQUIRTLE L30 moves BUBBLE, WATER_GUN, BITE, WITHDRAW
+    slot 3: #25 PIKACHU L30 moves GROWL, THUNDER_WAVE, QUICK_ATTACK, SWIFT
+    slot 4: #16 PIDGEY L30 moves SAND-ATTACK, QUICK_ATTACK, WHIRLWIND, WING_ATTACK
+    slot 5: #19 RATTATA L30 moves TACKLE, QUICK_ATTACK, HYPER_FANG, FOCUS_ENERGY
+  pc:
+    box 0 slot 0: #10 CATERPIE L5
+    box 0 slot 1: #133 EEVEE L25
+  inventory:
+    none
+  hidden objects:
+    TEXT_CELADONMANSION_ROOF_HOUSE_EEVEE_POKEBALL
+  active battle:
+    none

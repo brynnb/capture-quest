@@ -1,0 +1,30 @@
+{
+  "name": "debug_field_move_surf_ready",
+  "description": "Debug setup: stand on Pallet shore facing water with a SURF user and Soul Badge.",
+  "fixture": {
+    "characterName": "DebugFieldSurfReady",
+    "mapName": "PALLET_TOWN",
+    "x": 3,
+    "y": 17,
+    "direction": "RIGHT",
+    "flags": ["EVENT_GOT_SOULBADGE"],
+    "party": [
+      { "speciesId": 131, "level": 20, "moves": ["SURF"] }
+    ]
+  },
+  "trigger": {
+    "type": "field_move_permission",
+    "moveName": "SURF"
+  },
+  "expect": {
+    "scriptLabel": "FieldMovePermission:SURF",
+    "fieldMove": {
+      "allowed": true,
+      "moveName": "SURF",
+      "requiredBadgeFlag": "EVENT_GOT_SOULBADGE",
+      "knownBySpeciesId": 131
+    },
+    "actionTypesContains": ["fieldMovePermission"],
+    "activeBattleAbsent": true
+  }
+}

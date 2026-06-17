@@ -1,0 +1,44 @@
+{
+  "name": "viridian_mart_say_hi_to_oak",
+  "description": "After receiving Oak's Parcel but before delivery, the Viridian Mart clerk reminds the player to say hi to Oak.",
+  "fixture": {
+    "characterName": "ScriptSimViridianParcelReminder",
+    "mapName": "VIRIDIAN_MART",
+    "x": 3,
+    "y": 6,
+    "direction": "UP",
+    "flags": [
+      "EVENT_OAK_ASKED_TO_CHOOSE_MON",
+      "EVENT_GOT_STARTER",
+      "EVENT_RIVAL_PICKED_STARTER",
+      "EVENT_PLAYER_CHOSE_CHARMANDER",
+      "EVENT_BATTLED_RIVAL_IN_OAKS_LAB",
+      "EVENT_OAKS_LAB_RIVAL_EXITED",
+      "EVENT_GOT_OAKS_PARCEL"
+    ],
+    "party": [
+      { "speciesId": 4, "level": 5 }
+    ],
+    "inventory": [
+      { "itemId": 70, "quantity": 1 }
+    ],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "VIRIDIAN_MART",
+    "textConstant": "TEXT_VIRIDIANMART_CLERK"
+  },
+  "expect": {
+    "scriptLabel": "ViridianMartSayHiToOak",
+    "flagsPresent": ["EVENT_GOT_OAKS_PARCEL"],
+    "flagsAbsent": ["EVENT_OAK_GOT_PARCEL", "EVENT_GOT_POKEDEX"],
+    "partySpecies": [4],
+    "inventoryContains": [
+      { "itemId": 70, "quantity": 1 }
+    ],
+    "hiddenObjectKeys": [],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

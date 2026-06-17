@@ -1,0 +1,37 @@
+{
+  "name": "daycare_deposit_pikachu",
+  "description": "Leaving a party Pokemon at the Day Care removes it from the party and stores its start level.",
+  "fixture": {
+    "characterName": "ScriptSimDayCareDeposit",
+    "mapName": "DAYCARE",
+    "x": 2,
+    "y": 4,
+    "direction": "UP",
+    "party": [
+      { "speciesId": 25, "level": 5 },
+      { "speciesId": 4, "level": 5 }
+    ],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "daycare_deposit",
+    "mapName": "DAYCARE",
+    "partySlot": 0
+  },
+  "expect": {
+    "scriptLabel": "DayCareDeposit",
+    "partySpecies": [4],
+    "partySpeciesAbsent": [25],
+    "dayCare": {
+      "active": true,
+      "pokemonId": 25,
+      "level": 5,
+      "startLevel": 5,
+      "levelsGrown": 0,
+      "cost": 100
+    },
+    "actionTypesContains": ["dayCareDeposit"],
+    "activeBattleAbsent": true
+  }
+}

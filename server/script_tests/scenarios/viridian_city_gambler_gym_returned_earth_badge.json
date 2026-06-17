@@ -1,0 +1,25 @@
+{
+  "name": "viridian_city_gambler_gym_returned_earth_badge",
+  "description": "Viridian City's gambler says the gym leader returned when the Earth Badge flag is present.",
+  "fixture": {
+    "characterName": "ScriptSimViridianGamblerBadge",
+    "mapName": "VIRIDIAN_CITY",
+    "x": 12,
+    "y": 10,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_EARTHBADGE"],
+    "party": [{ "speciesId": 25, "level": 20 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "VIRIDIAN_CITY",
+    "textConstant": "TEXT_VIRIDIANCITY_GAMBLER1"
+  },
+  "expect": {
+    "scriptLabel": "ViridianCityGambler1TextEarthBadgeSet",
+    "flagsPresent": ["EVENT_GOT_EARTHBADGE"],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

@@ -1,0 +1,50 @@
+Scenario: lances_room_lance_coord_battle_start
+Description: Lance's source coordinate trigger starts his Elite Four battle when the player steps next to him.
+Character: ScriptSimLanceCoordBattle
+
+Initial state
+  location: LANCES_ROOM[113] (5,1)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L60 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: LancesRoomLanceCoordBattle
+  map: LANCES_ROOM
+  trigger: coord
+
+Actions
+  - lockInput
+  - dialogue: LANCE [Ah! I heard about
+you (PLAYER)! I lead the ELITE
+FOUR! You can call me LANCE the dragon trainer! You know that
+dragons are mythical POKÉMON! They're hard to
+catch and raise, but their powers are superior! They're virtually
+indestructible! Well, are you
+ready to lose? Your LEAGUE
+challenge ends with me, (PLAYER)!]
+  - startTrainerBattle *: LANCE party=1 enemy=[#130 GYARADOS L58 #148 DRAGONAIR L56 #148 DRAGONAIR L56 #142 AERODACTYL L60 #149 DRAGONITE L62] winFlag=EVENT_BEAT_LANCES_ROOM_TRAINER_0
+  - unlockInput
+
+Final state
+  location: LANCES_ROOM[113] (5,1)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L60 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    trainer phase=action_select trainer=LANCE name=LANCE winFlag=EVENT_BEAT_LANCES_ROOM_TRAINER_0
+    enemy slot 0: #130 GYARADOS L58
+    enemy slot 1: #148 DRAGONAIR L56
+    enemy slot 2: #148 DRAGONAIR L56
+    enemy slot 3: #142 AERODACTYL L60
+    enemy slot 4: #149 DRAGONITE L62

@@ -1,0 +1,49 @@
+{
+  "name": "silph_co_11f_giovanni_start",
+  "description": "Step into the Silph Co. 11F Giovanni trigger and verify the source-derived battle starts.",
+  "fixture": {
+    "characterName": "ScriptSimSilphGiovanniStart",
+    "mapName": "SILPH_CO_11F",
+    "x": 6,
+    "y": 13,
+    "direction": "UP",
+    "flags": [
+      "EVENT_GOT_POKEDEX",
+      "EVENT_BEAT_CERULEAN_RIVAL",
+      "EVENT_BEAT_SS_ANNE_RIVAL",
+      "EVENT_BEAT_POKEMON_TOWER_RIVAL",
+      "EVENT_BEAT_GHOST_MAROWAK",
+      "EVENT_RESCUED_MR_FUJI",
+      "EVENT_GOT_POKE_FLUTE",
+      "EVENT_BEAT_ROCKET_HIDEOUT_GIOVANNI",
+      "EVENT_ROCKET_HIDEOUT_GIOVANNI_LEFT",
+      "EVENT_BEAT_SILPH_CO_RIVAL",
+      "EVENT_SAFFRON_GUARDS_OPENED",
+      "EVENT_GOT_HM01",
+      "EVENT_SS_ANNE_LEFT"
+    ],
+    "party": [
+      { "speciesId": 6, "level": 45 }
+    ],
+    "inventory": [
+      { "itemId": 9, "quantity": 1 },
+      { "itemId": 48, "quantity": 1 },
+      { "itemId": 73, "quantity": 1 },
+      { "itemId": 84, "quantity": 1 }
+    ]
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "SILPH_CO_11F",
+    "x": 6,
+    "y": 13
+  },
+  "expect": {
+    "scriptLabel": "SilphCo11FGiovanniEncounter",
+    "flagsAbsent": ["EVENT_BEAT_SILPH_CO_GIOVANNI"],
+    "partySpecies": [6],
+    "actionTypesContains": ["move", "dialogue", "startTrainerBattle"],
+    "activeBattleTrainerClass": "GIOVANNI",
+    "activeBattleEnemySpecies": [33, 115, 111, 31]
+  }
+}

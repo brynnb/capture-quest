@@ -1,0 +1,38 @@
+Scenario: mt_moon_pokecenter_magikarp_salesman_already_bought
+Description: After buying Magikarp, the Mt. Moon Pokecenter salesman gives the no-refunds line.
+Character: ScriptSimMagikarpSalesmanAlready
+
+Initial state
+  location: MT_MOON_POKECENTER[68] (7,4)
+  flags: EVENT_BOUGHT_MAGIKARP
+  party:
+    slot 0: #25 PIKACHU L12 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: MtMoonPokecenterMagikarpSalesmanAlreadyBought
+  map: MT_MOON_POKECENTER
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [MAN: Well, I don't
+give refunds!]
+  - unlockInput
+
+Final state
+  location: MT_MOON_POKECENTER[68] (7,4)
+  flags: EVENT_BOUGHT_MAGIKARP
+  party:
+    slot 0: #25 PIKACHU L12 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

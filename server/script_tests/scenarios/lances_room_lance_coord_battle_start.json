@@ -1,0 +1,25 @@
+{
+  "name": "lances_room_lance_coord_battle_start",
+  "description": "Lance's source coordinate trigger starts his Elite Four battle when the player steps next to him.",
+  "fixture": {
+    "characterName": "ScriptSimLanceCoordBattle",
+    "mapName": "LANCES_ROOM",
+    "x": 5,
+    "y": 1,
+    "direction": "UP",
+    "party": [{ "speciesId": 25, "level": 60 }]
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "LANCES_ROOM",
+    "x": 5,
+    "y": 1
+  },
+  "expect": {
+    "scriptLabel": "LancesRoomLanceCoordBattle",
+    "flagsAbsent": ["EVENT_BEAT_LANCE", "EVENT_BEAT_LANCES_ROOM_TRAINER_0"],
+    "actionTypesContains": ["dialogue", "startTrainerBattle"],
+    "activeBattleTrainerClass": "LANCE",
+    "activeBattleEnemySpecies": [142, 148, 148, 149, 130]
+  }
+}

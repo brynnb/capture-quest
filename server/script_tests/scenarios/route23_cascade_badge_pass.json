@@ -1,0 +1,29 @@
+{
+  "name": "route23_cascade_badge_pass",
+  "description": "The Route 23 Cascade Badge guard allows the player with the Cascade Badge.",
+  "fixture": {
+    "characterName": "ScriptSimCascadeGatePass",
+    "mapName": "ROUTE_23",
+    "x": 8,
+    "y": 136,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_POKEDEX", "EVENT_GOT_BOULDERBADGE", "EVENT_ROUTE23_BADGE1_CHECKED", "EVENT_GOT_CASCADEBADGE"],
+    "party": [{ "speciesId": 6, "level": 50 }],
+    "inventory": [{ "itemId": 9, "quantity": 1 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "ROUTE_23",
+    "x": 8,
+    "y": 136
+  },
+  "expect": {
+    "scriptLabel": "Route23BadgeCheck2Pass",
+    "finalX": 8,
+    "finalY": 136,
+    "flagsPresent": ["EVENT_GOT_CASCADEBADGE", "EVENT_ROUTE23_BADGE2_CHECKED"],
+    "actionTypesContains": ["dialogue", "setsFlags"],
+    "activeBattleAbsent": true
+  }
+}

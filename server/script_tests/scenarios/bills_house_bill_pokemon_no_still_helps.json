@@ -1,0 +1,34 @@
+{
+  "name": "bills_house_bill_pokemon_no_still_helps",
+  "description": "Declining Bill's request still continues into the cell-separator setup, matching Red/Blue.",
+  "fixture": {
+    "characterName": "ScriptSimBillPokemonNo",
+    "mapName": "BILLS_HOUSE",
+    "x": 4,
+    "y": 5,
+    "direction": "UP",
+    "party": [{ "speciesId": 25, "level": 20 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "BILLS_HOUSE",
+    "textConstant": "TEXT_BILLSHOUSE_BILL_POKEMON",
+    "choice": false
+  },
+  "expect": {
+    "scriptLabel": "BillsHousePokemonWalkToMachine",
+    "flagsPresent": ["EVENT_BILL_SAID_USE_CELL_SEPARATOR"],
+    "objectStates": [
+      {
+        "mapName": "BILLS_HOUSE",
+        "name": "BillsHouse_NPC_1",
+        "visible": false,
+        "label": "CutsceneAction:hideObject"
+      }
+    ],
+    "actionTypesContains": ["dialogue", "choice", "move", "hideObject", "setFlag"],
+    "activeBattleAbsent": true
+  }
+}

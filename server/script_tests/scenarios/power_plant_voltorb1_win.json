@@ -1,0 +1,23 @@
+{
+  "name": "power_plant_voltorb1_win",
+  "description": "Power Plant Voltorb 1 battle win sets the beat flag and hides the disguised Poké Ball object.",
+  "fixture": {
+    "characterName": "ScriptSim_Voltorb1_Win",
+    "mapName": "POWER_PLANT",
+    "x": 9,
+    "y": 20,
+    "party": [{"speciesId": 25, "level": 50}]
+  },
+  "trigger": {
+    "type": "npc_click",
+    "textConstant": "TEXT_POWERPLANT_VOLTORB1"
+  },
+  "resolveBattle": {"result": "win"},
+  "expect": {
+    "scriptLabel": "PowerPlantVoltorb1Encounter",
+    "flagsPresent": ["EVENT_BEAT_POWER_PLANT_VOLTORB_0"],
+    "hiddenObjectKeys": ["TEXT_POWERPLANT_VOLTORB1"],
+    "actionTypesContains": ["startWildBattle", "resolveBattle", "hideObject"],
+    "activeBattleAbsent": true
+  }
+}

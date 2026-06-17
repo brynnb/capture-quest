@@ -1,0 +1,38 @@
+{
+  "name": "rocket_hideout_b4f_rocket3_lift_key_drop",
+  "description": "After Rocket Hideout B4F Rocket 3 is beaten, talking to him drops the Lift Key item object.",
+  "fixture": {
+    "characterName": "ScriptSimRocketHideoutLiftKeyDrop",
+    "mapName": "ROCKET_HIDEOUT_B4F",
+    "x": 11,
+    "y": 3,
+    "direction": "UP",
+    "flags": ["EVENT_BEAT_ROCKET_HIDEOUT_4_TRAINER_2"],
+    "party": [{ "speciesId": 25, "level": 30 }],
+    "inventory": [],
+    "hiddenObjects": ["HS_ROCKET_HIDEOUT_B4F_ITEM_5"]
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "ROCKET_HIDEOUT_B4F",
+    "textConstant": "TEXT_ROCKETHIDEOUTB4F_ROCKET3"
+  },
+  "expect": {
+    "scriptLabel": "RocketHideoutB4FRocket3AfterBattleTextObjectDrop",
+    "flagsPresent": [
+      "EVENT_BEAT_ROCKET_HIDEOUT_4_TRAINER_2",
+      "EVENT_ROCKET_DROPPED_LIFT_KEY"
+    ],
+    "objectStates": [
+      {
+        "mapName": "ROCKET_HIDEOUT_B4F",
+        "name": "RocketHideoutB4F_ITEM_9",
+        "text": "TEXT_ROCKETHIDEOUTB4F_LIFT_KEY",
+        "visible": true,
+        "label": "CutsceneAction:showObject"
+      }
+    ],
+    "actionTypesContains": ["dialogue", "setFlag", "showObject"],
+    "activeBattleAbsent": true
+  }
+}

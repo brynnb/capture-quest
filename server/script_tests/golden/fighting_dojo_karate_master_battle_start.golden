@@ -1,0 +1,42 @@
+Scenario: fighting_dojo_karate_master_battle_start
+Description: The Fighting Dojo Karate Master starts his source Blackbelt party before offering a gift Pokemon.
+Character: ScriptSimDojoKarateMasterStart
+
+Initial state
+  location: FIGHTING_DOJO[177] (4,3)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L35 moves THUNDER_WAVE, QUICK_ATTACK, SWIFT, AGILITY
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FightingDojoKarateMasterBattle
+  map: FIGHTING_DOJO
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Grunt! I am the KARATE
+MASTER! I am the LEADER here! You wish to
+challenge us? Expect no mercy! Fwaaa!]
+  - startTrainerBattle *: BLACKBELT party=1 enemy=[#106 HITMONLEE L37 #107 HITMONCHAN L37] winFlag=EVENT_BEAT_KARATE_MASTER
+  - unlockInput
+
+Final state
+  location: FIGHTING_DOJO[177] (4,3)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L35 moves THUNDER_WAVE, QUICK_ATTACK, SWIFT, AGILITY
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    trainer phase=action_select trainer=BLACKBELT name=BLACKBELT winFlag=EVENT_BEAT_KARATE_MASTER
+    enemy slot 0: #106 HITMONLEE L37
+    enemy slot 1: #107 HITMONCHAN L37

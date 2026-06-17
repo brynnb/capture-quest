@@ -1,0 +1,27 @@
+{
+  "name": "viridian_city_old_man_catch_demo_hurry",
+  "description": "Telling the Viridian old man you are in a hurry prints his short dismissal and does not start the catch tutorial.",
+  "fixture": {
+    "characterName": "ScriptSimViridianOldManHurry",
+    "mapName": "VIRIDIAN_CITY",
+    "x": 21,
+    "y": 9,
+    "direction": "LEFT",
+    "flags": ["EVENT_GOT_POKEDEX"],
+    "party": [{ "speciesId": 25, "level": 10 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "VIRIDIAN_CITY",
+    "textConstant": "TEXT_VIRIDIANCITY_OLD_MAN",
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "ViridianCityOldManCatchDemo",
+    "flagsPresent": ["EVENT_GOT_POKEDEX"],
+    "actionTypesContains": ["dialogue", "choice"],
+    "activeBattleAbsent": true
+  }
+}

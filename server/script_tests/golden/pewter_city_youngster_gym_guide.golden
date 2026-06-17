@@ -1,0 +1,43 @@
+Scenario: pewter_city_youngster_gym_guide
+Description: Before Brock is beaten, stepping into Pewter City's east exit guide coords starts the source gym escort branch.
+Character: ScriptSimPewterGymGuide
+
+Initial state
+  location: PEWTER_CITY[9999] (25,-163)
+  flags: none
+  party:
+    slot 0: #1 BULBASAUR L12 moves TACKLE, GROWL, LEECH_SEED
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: PewterCityYoungsterGymGuide
+  map: PEWTER_CITY
+  trigger: coord
+
+Actions
+  - lockInput
+  - dialogue: YOUNGSTER [You're a trainer
+right? BROCK's looking for new challengers! Follow me!]
+  - move: YOUNGSTER [RIGHT RIGHT RIGHT RIGHT RIGHT]
+  - dialogue: YOUNGSTER [If you have the
+right stuff, go take on BROCK!]
+  - hideObject *: objects=[TEXT_PEWTERCITY_YOUNGSTER]
+  - showObject *: objects=[TEXT_PEWTERCITY_YOUNGSTER]
+  - unlockInput
+
+Final state
+  location: PEWTER_CITY[9999] (25,-163)
+  flags: none
+  party:
+    slot 0: #1 BULBASAUR L12 moves TACKLE, GROWL, LEECH_SEED
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

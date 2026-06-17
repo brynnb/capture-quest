@@ -1,0 +1,28 @@
+{
+  "name": "pokemon_fan_club_bike_voucher",
+  "description": "The Pokemon Fan Club chairman grants the Bike Voucher.",
+  "fixture": {
+    "characterName": "ScriptSimBikeVoucher",
+    "mapName": "POKEMON_FAN_CLUB",
+    "x": 3,
+    "y": 3,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_SS_TICKET"],
+    "party": [{ "speciesId": 5, "level": 25 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "POKEMON_FAN_CLUB",
+    "textConstant": "TEXT_POKEMONFANCLUB_CHAIRMAN",
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "PokemonFanClubChairmanTextGift",
+    "flagsPresent": ["EVENT_GOT_BIKE_VOUCHER"],
+    "inventoryContains": [{ "itemId": 45, "quantity": 1 }],
+    "actionTypesContains": ["dialogue", "choice", "setFlag", "giveItem"],
+    "activeBattleAbsent": true
+  }
+}

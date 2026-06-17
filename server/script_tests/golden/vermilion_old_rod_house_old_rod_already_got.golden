@@ -1,0 +1,39 @@
+Scenario: vermilion_old_rod_house_old_rod_already_got
+Description: The Vermilion Fishing Guru uses the already-got branch when the player has the Old Rod.
+Character: ScriptSimOldRodAlreadyGot
+
+Initial state
+  location: VERMILION_OLD_ROD_HOUSE[163] (2,5)
+  flags: none
+  party:
+    slot 0: #5 CHARMELEON L25 moves EMBER, EMBER, LEER, RAGE
+  inventory:
+    #76 OLD ROD x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: VermilionOldRodHouseFishingGuruTextAlreadyGot
+  map: VERMILION_OLD_ROD_HOUSE
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: FISHING GURU [Hello there,
+(PLAYER)! How are the fish
+biting?]
+  - unlockInput
+
+Final state
+  location: VERMILION_OLD_ROD_HOUSE[163] (2,5)
+  flags: none
+  party:
+    slot 0: #5 CHARMELEON L25 moves EMBER, EMBER, LEER, RAGE
+  inventory:
+    #76 OLD ROD x1
+  hidden objects:
+    none
+  active battle:
+    none

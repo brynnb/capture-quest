@@ -1,0 +1,45 @@
+Scenario: lances_room_entrance_blocks_open
+Description: Lance's entrance blocks resolve to the open layout before the room locks behind the player.
+Character: ScriptSimLanceEntranceOpen
+
+Initial state
+  location: LANCES_ROOM[113] (5,10)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: TileState:LANCES_ROOM
+  map: LANCES_ROOM
+  trigger: tile_state
+
+Actions
+  - tileState: 8 event tiles
+
+Final state
+  location: LANCES_ROOM[113] (5,10)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Event tile states
+  LanceEntranceLeftOpen_0_0 (12,4): tile=255 collision=0
+  LanceEntranceLeftOpen_0_1 (12,5): tile=257 collision=0
+  LanceEntranceRightOpen_0_0 (12,6): tile=253 collision=1
+  LanceEntranceRightOpen_0_1 (12,7): tile=253 collision=1
+  LanceEntranceLeftOpen_1_0 (13,4): tile=253 collision=1
+  LanceEntranceLeftOpen_1_1 (13,5): tile=253 collision=1
+  LanceEntranceRightOpen_1_0 (13,6): tile=255 collision=0
+  LanceEntranceRightOpen_1_1 (13,7): tile=257 collision=0

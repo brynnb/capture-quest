@@ -1,0 +1,41 @@
+{
+  "scriptLabel": "AgathasRoomAgathaPostBattle",
+  "mapName": "AGATHAS_ROOM",
+  "trigger": {
+    "type": "map_script"
+  },
+  "requiresFlag": "EVENT_BEAT_AGATHA",
+  "requiresFlagAbsent": "EVENT_AGATHA_POST_BATTLE_DONE",
+  "setsFlags": [
+    "EVENT_AGATHA_POST_BATTLE_DONE"
+  ],
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Oh ho!",
+        "You're something special, child!"
+      ],
+      "speaker": "AGATHA"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "You win! I see what the old duff sees in you now!",
+        "I have nothing else to say!",
+        "Run along now, child!"
+      ],
+      "speaker": "AGATHA"
+    },
+    {
+      "flag": "EVENT_AGATHA_POST_BATTLE_DONE",
+      "type": "setFlag"
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

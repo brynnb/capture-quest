@@ -1,0 +1,46 @@
+Scenario: wardens_house_hm04
+Description: Giving the Warden Gold Teeth grants HM04 Strength and removes Gold Teeth.
+Character: ScriptSimWardenHM04
+
+Initial state
+  location: WARDENS_HOUSE[155] (2,4)
+  flags: EVENT_GOT_GOLD_TEETH
+  party:
+    slot 0: #6 CHARIZARD L42 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    #64 GOLD TEETH x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: WardensHouseHM04
+  map: WARDENS_HOUSE
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [{PLAYER} gave the GOLD TEETH to the WARDEN!]
+  - dialogue:  [The WARDEN popped in his teeth!]
+  - dialogue: WARDEN [Thanks, kid! No one could understand a word that I said. I couldn't work that way. Let me give you something for your trouble.]
+  - dialogue:  [{PLAYER} received HM04! HM04 teaches STRENGTH! It lets POKéMON move boulders when you're outside of battle.]
+  - setFlag *: EVENT_GOT_HM04
+  - playSFX: SFX_GET_ITEM_1
+  - playSFX: SFX_GET_ITEM_1
+  - unlockInput
+  - takeItem *: GOLD TEETH x1 removed
+  - giveItem *: HM04 x1 added
+  - setsFlags *: EVENT_GOT_HM04
+
+Final state
+  location: WARDENS_HOUSE[155] (2,4)
+  flags: EVENT_GOT_GOLD_TEETH, EVENT_GOT_HM04
+  party:
+    slot 0: #6 CHARIZARD L42 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    #87 HM04 x1
+  hidden objects:
+    none
+  active battle:
+    none

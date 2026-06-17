@@ -1,0 +1,24 @@
+{
+  "name": "game_corner_prize_buy_insufficient_coins",
+  "description": "Game Corner prize exchange refuses a prize when coins are below the source cost.",
+  "fixture": {
+    "characterName": "SimGameCornerPrizePoor",
+    "mapName": "GAME_CORNER_PRIZE_ROOM",
+    "x": 2,
+    "y": 4,
+    "coins": 179,
+    "inventory": [
+      { "itemName": "COIN CASE", "quantity": 1 }
+    ]
+  },
+  "trigger": {
+    "type": "gamecorner_prize_buy",
+    "prizeName": "ABRA"
+  },
+  "expect": {
+    "scriptLabel": "GameCornerPrizeBuy:ABRA",
+    "coins": 179,
+    "gameCornerPrizeMessage": "You don't have enough coins!",
+    "actionTypesContains": ["gameCornerPrizeBuy"]
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "scriptLabel": "Route16Gate1FGuardBlocked",
+  "mapName": "ROUTE_16_GATE_1F",
+  "trigger": {
+    "type": "coord",
+    "label": "Route16Gate1FStopsPlayerCoords",
+    "source": "capturequest",
+    "coordinates": [
+      {
+        "mapName": "Route16Gate1F",
+        "mapId": 186,
+        "x": 4,
+        "y": 7
+      },
+      {
+        "mapName": "Route16Gate1F",
+        "mapId": 186,
+        "x": 4,
+        "y": 8
+      },
+      {
+        "mapName": "Route16Gate1F",
+        "mapId": 186,
+        "x": 4,
+        "y": 9
+      },
+      {
+        "mapName": "Route16Gate1F",
+        "mapId": 186,
+        "x": 4,
+        "y": 10
+      }
+    ]
+  },
+  "requiresItemAbsentName": "BICYCLE",
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Excuse me! Wait up please!",
+        "No pedestrians are allowed on CYCLING ROAD!"
+      ],
+      "speaker": "GUARD"
+    },
+    {
+      "type": "movePlayer",
+      "movements": [
+        "RIGHT"
+      ]
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

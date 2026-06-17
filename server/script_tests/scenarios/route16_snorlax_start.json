@@ -1,0 +1,24 @@
+{
+  "name": "route16_snorlax_start",
+  "description": "Route 16 Snorlax starts a scripted L30 wild battle without setting the beat flag at cutscene completion.",
+  "fixture": {
+    "characterName": "ScriptSim_Route16_Snorlax_Start",
+    "mapName": "ROUTE_16",
+    "x": 86,
+    "y": -108,
+    "flags": ["EVENT_GOT_POKE_FLUTE"],
+    "party": [{"speciesId": 25, "level": 50}]
+  },
+  "trigger": {
+    "type": "coord",
+    "x": 86,
+    "y": -108
+  },
+  "expect": {
+    "scriptLabel": "Route16SnorlaxEncounter",
+    "flagsAbsent": ["EVENT_BEAT_ROUTE16_SNORLAX"],
+    "actionTypesContains": ["startWildBattle"],
+    "activeBattleType": "wild",
+    "activeBattleEnemySpecies": [143]
+  }
+}

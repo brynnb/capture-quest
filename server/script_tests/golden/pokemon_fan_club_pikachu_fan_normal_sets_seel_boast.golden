@@ -1,0 +1,39 @@
+Scenario: pokemon_fan_club_pikachu_fan_normal_sets_seel_boast
+Description: The Pokemon Fan Club Pikachu fan's normal branch sets the Seel fan boast flag.
+Character: ScriptSimFanClubPikachuNormal
+
+Initial state
+  location: POKEMON_FAN_CLUB[90] (5,3)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L20 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: PokemonFanClubPikachuFanTextNormal
+  map: POKEMON_FAN_CLUB
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Won't you admire
+my PIKACHU's adorable tail?]
+  - setFlag *: EVENT_SEEL_FAN_BOAST
+  - unlockInput
+
+Final state
+  location: POKEMON_FAN_CLUB[90] (5,3)
+  flags: EVENT_SEEL_FAN_BOAST
+  party:
+    slot 0: #25 PIKACHU L20 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

@@ -1,0 +1,27 @@
+{
+  "name": "mr_fujis_house_poke_flute_already_got",
+  "description": "Mr. Fuji explains the Poke Flute after the player has already received it.",
+  "fixture": {
+    "characterName": "ScriptSimPokeFluteAlreadyGot",
+    "mapName": "MR_FUJIS_HOUSE",
+    "x": 2,
+    "y": 3,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_POKE_FLUTE"],
+    "party": [{ "speciesId": 6, "level": 34 }],
+    "inventory": [{ "itemId": 73, "quantity": 1 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "MR_FUJIS_HOUSE",
+    "textConstant": "TEXT_MRFUJISHOUSE_MR_FUJI"
+  },
+  "expect": {
+    "scriptLabel": "MrFujisHouseMrFujiTextAlreadyGot",
+    "flagsPresent": ["EVENT_GOT_POKE_FLUTE"],
+    "inventoryContains": [{ "itemId": 73, "quantity": 1 }],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

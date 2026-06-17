@@ -1,0 +1,38 @@
+Scenario: pewter_gym_guide_after_brock
+Description: The Pewter gym guide switches to post-Brock dialogue after the Boulder Badge is earned.
+Character: ScriptSimPewterGuideAfterBrock
+
+Initial state
+  location: PEWTER_GYM[54] (7,11)
+  flags: EVENT_GOT_BOULDERBADGE
+  party:
+    slot 0: #25 PIKACHU L15 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: PewterGymGuideTextBoulderBadgeSet
+  map: PEWTER_GYM
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Just as I thought!
+You're POKÉMON champ material!]
+  - unlockInput
+
+Final state
+  location: PEWTER_GYM[54] (7,11)
+  flags: EVENT_GOT_BOULDERBADGE
+  party:
+    slot 0: #25 PIKACHU L15 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

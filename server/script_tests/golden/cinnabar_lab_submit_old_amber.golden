@@ -1,0 +1,44 @@
+Scenario: cinnabar_lab_submit_old_amber
+Description: Submitting Old Amber removes it from inventory and starts Aerodactyl revival.
+Character: ScriptSimCinnabarSubmitOldAmber
+
+Initial state
+  location: CINNABAR_LAB_FOSSIL_ROOM[170] (5,3)
+  flags: EVENT_GOT_OLD_AMBER
+  party:
+    slot 0: #25 PIKACHU L35 moves THUNDER_WAVE, QUICK_ATTACK, SWIFT, AGILITY
+  inventory:
+    #31 OLD AMBER x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: CinnabarLabSubmitOldAmber
+  map: CINNABAR_LAB_FOSSIL_ROOM
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: DOCTOR [Hiya! I am important doctor! I study here rare POKEMON fossils! You! Have you a fossil for me? Oh! That is OLD AMBER! It is fossil of AERODACTYL, a POKEMON that is already extinct! My Resurrection Machine will make that POKEMON live again!]
+  - choice: TEXT_CINNABARLABFOSSILROOM_SCIENTIST1 "Give OLD AMBER?" choice=true
+  - dialogue: DOCTOR [So! You hurry and give me that! (PLAYER) handed over OLD AMBER!]
+  - takeItem *: OLD AMBER x1 removed
+  - dialogue: DOCTOR [I take a little time! You go for walk a little while!]
+  - setFlag *: EVENT_GAVE_FOSSIL_TO_LAB
+  - setFlag *: EVENT_LAB_STILL_REVIVING_FOSSIL
+  - setFlag *: EVENT_LAB_REVIVING_OLD_AMBER
+  - unlockInput
+
+Final state
+  location: CINNABAR_LAB_FOSSIL_ROOM[170] (5,3)
+  flags: EVENT_GAVE_FOSSIL_TO_LAB, EVENT_GOT_OLD_AMBER, EVENT_LAB_REVIVING_OLD_AMBER, EVENT_LAB_STILL_REVIVING_FOSSIL
+  party:
+    slot 0: #25 PIKACHU L35 moves THUNDER_WAVE, QUICK_ATTACK, SWIFT, AGILITY
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

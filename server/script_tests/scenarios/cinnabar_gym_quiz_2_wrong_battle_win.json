@@ -1,0 +1,24 @@
+{
+  "name": "cinnabar_gym_quiz_2_wrong_battle_win",
+  "description": "Cinnabar Gym quiz 2 wrong YES answer starts Super Nerd party 10 and opens gate 2 after victory.",
+  "fixture": {
+    "characterName": "ScriptSimCinnabarQuiz2Wrong",
+    "mapName": "CINNABAR_GYM",
+    "x": 10,
+    "y": 1,
+    "party": [{ "speciesId": 9, "level": 50 }]
+  },
+  "trigger": {
+    "type": "dialogue_choice",
+    "mapName": "CINNABAR_GYM",
+    "textConstant": "TEXT_CINNABARGYM_QUIZ_2",
+    "choice": true
+  },
+  "resolveBattle": { "result": "win" },
+  "expect": {
+    "scriptLabel": "DialogueChoice:TEXT_CINNABARGYM_QUIZ_2",
+    "flagsPresent": ["EVENT_BEAT_CINNABAR_GYM_TRAINER_2", "EVENT_CINNABAR_GYM_GATE2_UNLOCKED"],
+    "actionTypesContains": ["dialogueChoice", "startTrainerBattle", "resolveBattle", "setFlag"],
+    "activeBattleAbsent": true
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "name": "silph_co_1f_receptionist_after_giovanni",
+  "description": "Silph Co. 1F map-load script restores the receptionist after Giovanni is beaten.",
+  "fixture": {
+    "characterName": "ScriptSimSilphCo1FReceptionist",
+    "mapName": "SILPH_CO_1F",
+    "x": 4,
+    "y": 5,
+    "flags": ["EVENT_BEAT_SILPH_CO_GIOVANNI"]
+  },
+  "trigger": {
+    "type": "map_script",
+    "mapName": "SILPH_CO_1F"
+  },
+  "expect": {
+    "scriptLabel": "SilphCo1FScriptEventSilphCoReceptionistAtDeskVisibility",
+    "flagsPresent": ["EVENT_BEAT_SILPH_CO_GIOVANNI", "EVENT_SILPH_CO_RECEPTIONIST_AT_DESK"],
+    "actionTypesContains": ["setFlag", "showObject"],
+    "objectStates": [
+      {
+        "mapName": "SILPH_CO_1F",
+        "name": "SilphCo1F_NPC_1",
+        "visible": true,
+        "label": "CutsceneAction:showObject"
+      }
+    ],
+    "activeBattleAbsent": true
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "name": "mt_moon_b2f_dome_fossil",
+  "description": "Confirming the Dome Fossil grants Dome Fossil, records the choice, and hides both fossils.",
+  "fixture": {
+    "characterName": "ScriptSimMtMoonDomeFossil",
+    "mapName": "MT_MOON_B2F",
+    "x": 12,
+    "y": 6,
+    "direction": "UP",
+    "flags": ["EVENT_BEAT_MT_MOON_SUPER_NERD"],
+    "party": [{ "speciesId": 25, "level": 18 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "MT_MOON_B2F",
+    "textConstant": "TEXT_MTMOONB2F_DOME_FOSSIL",
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "MtMoonB2FDomeFossilChoice",
+    "flagsPresent": [
+      "EVENT_GOT_MT_MOON_FOSSIL",
+      "EVENT_GOT_DOME_FOSSIL"
+    ],
+    "flagsAbsent": ["EVENT_GOT_HELIX_FOSSIL"],
+    "inventoryContains": [{ "itemId": 41, "quantity": 1 }],
+    "inventoryAbsent": [{ "itemId": 42 }],
+    "hiddenObjectKeys": [
+      "TEXT_MTMOONB2F_DOME_FOSSIL",
+      "TEXT_MTMOONB2F_HELIX_FOSSIL"
+    ],
+    "actionTypesContains": ["choice", "giveItem", "hideObject", "setFlag"],
+    "activeBattleAbsent": true
+  }
+}

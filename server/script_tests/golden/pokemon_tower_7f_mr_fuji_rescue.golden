@@ -1,0 +1,50 @@
+Scenario: pokemon_tower_7f_mr_fuji_rescue
+Description: Talking to Mr. Fuji after the Pokemon Tower 7F Rockets are beaten sets rescue flags, updates source missable objects, and warps to his house.
+Character: ScriptSimPokemonTower7FMrFuji
+
+Initial state
+  location: POKEMON_TOWER_7F[148] (10,8)
+  flags: EVENT_BEAT_GHOST_MAROWAK, EVENT_BEAT_POKEMONTOWER_7_TRAINER_0, EVENT_BEAT_POKEMONTOWER_7_TRAINER_1, EVENT_BEAT_POKEMONTOWER_7_TRAINER_2
+  party:
+    slot 0: #25 PIKACHU L35 moves THUNDER_WAVE, QUICK_ATTACK, SWIFT, AGILITY
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: PokemonTower7FMrFujiRescue
+  map: POKEMON_TOWER_7F
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: MR. FUJI [MR.FUJI: Heh? You
+came to save me? Thank you. But, I
+came here of my own free will. I came to calm
+the soul of CUBONE's mother. I think MAROWAK's
+spirit has gone to the afterlife. I must thank you
+for your kind concern! Follow me to my
+home, POKÉMON HOUSE at the foot of this tower.]
+  - setFlag *: EVENT_RESCUED_MR_FUJI
+  - setFlag *: EVENT_RESCUED_MR_FUJI_2
+  - showObject *: objects=[TEXT_MRFUJISHOUSE_MR_FUJI]
+  - hideObject *: objects=[TEXT_SAFFRONCITY_ROCKET8]
+  - showObject *: objects=[TEXT_SAFFRONCITY_ROCKET9]
+  - hideObject *: objects=[TEXT_POKEMONTOWER7F_MR_FUJI]
+  - unlockInput
+  - warp *: map=149 x=3 y=7
+
+Final state
+  location: MR_FUJIS_HOUSE[149] (3,7)
+  flags: EVENT_BEAT_GHOST_MAROWAK, EVENT_BEAT_POKEMONTOWER_7_TRAINER_0, EVENT_BEAT_POKEMONTOWER_7_TRAINER_1, EVENT_BEAT_POKEMONTOWER_7_TRAINER_2, EVENT_RESCUED_MR_FUJI, EVENT_RESCUED_MR_FUJI_2
+  party:
+    slot 0: #25 PIKACHU L35 moves THUNDER_WAVE, QUICK_ATTACK, SWIFT, AGILITY
+  inventory:
+    none
+  hidden objects:
+    TEXT_POKEMONTOWER7F_MR_FUJI
+  active battle:
+    none

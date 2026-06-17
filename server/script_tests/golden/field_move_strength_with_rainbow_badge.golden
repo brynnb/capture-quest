@@ -1,0 +1,40 @@
+Scenario: field_move_strength_with_rainbow_badge
+Description: Strength is allowed when a party Pokemon knows STRENGTH and the Rainbow Badge is set.
+Character: SimFieldStrengthWithBadge
+
+Initial state
+  location: PALLET_TOWN[9999] (10,10)
+  flags: EVENT_GOT_RAINBOWBADGE
+  party:
+    slot 0: #66 MACHOP L20 moves STRENGTH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FieldMovePermission:STRENGTH
+  map: PALLET_TOWN
+  trigger: field_move_permission
+
+Actions
+  - fieldMovePermission: move=STRENGTH allowed=true requiredBadge=EVENT_GOT_RAINBOWBADGE knownBy=#66 MACHOP
+
+Final state
+  location: PALLET_TOWN[9999] (10,10)
+  flags: EVENT_GOT_RAINBOWBADGE
+  party:
+    slot 0: #66 MACHOP L20 moves STRENGTH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Field move
+  move: STRENGTH[70] allowed=true
+  required badge: EVENT_GOT_RAINBOWBADGE
+  known by: #66 MACHOP

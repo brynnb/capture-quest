@@ -1,0 +1,38 @@
+Scenario: loreleis_room_entrance_auto_walk
+Description: Lorelei's room auto-walks the player into the room the first time they enter the Elite Four chamber.
+Character: ScriptSimLoreleiEntranceAutoWalk
+
+Initial state
+  location: LORELEIS_ROOM[245] (4,10)
+  flags: none
+  party:
+    slot 0: #6 CHARIZARD L50 moves LEER, RAGE, SLASH, FLAMETHROWER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: LoreleisRoomEntranceAutoWalk
+  map: LORELEIS_ROOM
+  trigger: coord
+
+Actions
+  - lockInput
+  - setFlag *: EVENT_AUTOWALKED_INTO_LORELEIS_ROOM
+  - movePlayer *: from=(4,10) to=(4,4) steps=[UP UP UP UP UP UP]
+  - unlockInput
+
+Final state
+  location: LORELEIS_ROOM[245] (4,4)
+  flags: EVENT_AUTOWALKED_INTO_LORELEIS_ROOM
+  party:
+    slot 0: #6 CHARIZARD L50 moves LEER, RAGE, SLASH, FLAMETHROWER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

@@ -1,0 +1,39 @@
+Scenario: victory_road_indigo_lobby_reset_1f_switch
+Description: Loading Indigo Plateau Lobby resets the Victory Road 1F boulder switch flag.
+Character: SimVictoryRoadIndigoReset1F
+
+Initial state
+  location: INDIGO_PLATEAU_LOBBY[174] (5,6)
+  flags: EVENT_VICTORY_ROAD_1_BOULDER_ON_SWITCH
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: MapLoad:INDIGO_PLATEAU_LOBBY
+  map: INDIGO_PLATEAU_LOBBY
+  trigger: map_load
+
+Actions
+  - mapLoad *: INDIGO_PLATEAU_LOBBY set=[] reset=[EVENT_VICTORY_ROAD_1_BOULDER_ON_SWITCH] affected=[VICTORY_ROAD_1F]
+
+Final state
+  location: INDIGO_PLATEAU_LOBBY[174] (5,6)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Event object states
+  SourceMissableInitial:HS_CERULEAN_CAVE_B1F_ITEM_2 VICTORY_ROAD_1F/VictoryRoad1F_ITEM_3 (11,0): visible text=TEXT_VICTORYROAD1F_TM_SKY_ATTACK
+  SourceMissableInitial:HS_VICTORY_ROAD_1F_ITEM_1 VICTORY_ROAD_1F/VictoryRoad1F_ITEM_4 (9,2): visible text=TEXT_VICTORYROAD1F_RARE_CANDY

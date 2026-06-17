@@ -1,0 +1,38 @@
+Scenario: viridian_city_old_man_catch_demo_done
+Description: After the Viridian old man catch tutorial is complete, talking to him gives advice without restarting the demo battle.
+Character: ScriptSimViridianOldManTutorialDone
+
+Initial state
+  location: VIRIDIAN_CITY[9999] (21,9)
+  flags: EVENT_GOT_POKEDEX, EVENT_OLD_MAN_CATCH_TUTORIAL_DONE
+  party:
+    slot 0: #25 PIKACHU L10 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: ViridianCityOldManCatchDemoDone
+  map: VIRIDIAN_CITY
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: OLD MAN [First, you need
+to weaken the target POKÉMON.]
+  - unlockInput
+
+Final state
+  location: VIRIDIAN_CITY[9999] (21,9)
+  flags: EVENT_GOT_POKEDEX, EVENT_OLD_MAN_CATCH_TUTORIAL_DONE
+  party:
+    slot 0: #25 PIKACHU L10 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

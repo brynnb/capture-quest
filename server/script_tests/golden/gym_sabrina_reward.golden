@@ -1,0 +1,44 @@
+Scenario: gym_sabrina_reward
+Description: After beating Sabrina, the Saffron Gym post-battle script grants Marshbadge state and TM46.
+Character: ScriptSimGymSabrinaReward
+
+Initial state
+  location: SAFFRON_GYM[178] (5,4)
+  flags: EVENT_BEAT_SABRINA, EVENT_GOT_BOULDERBADGE, EVENT_GOT_CASCADEBADGE, EVENT_GOT_RAINBOWBADGE, EVENT_GOT_SOULBADGE, EVENT_GOT_THUNDERBADGE
+  party:
+    slot 0: #6 CHARIZARD L43 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SaffronGymSabrinaPostBattle
+  map: SAFFRON_GYM
+  trigger: map_script
+
+Actions
+  - lockInput
+  - dialogue: SABRINA [I'm shocked! But, a loss is a loss. I admit I didn't work hard enough to win! You earned the MARSHBADGE!]
+  - dialogue: SABRINA [The MARSHBADGE makes POKéMON up to L70 obey you! Stronger POKéMON will become wild, ignoring your orders in battle! Just don't raise your POKéMON too much! Wait, please take this TM with you!]
+  - dialogue: SABRINA [{PLAYER} received TM46! Everyone has psychic power! People just don't realize it!]
+  - setFlag *: EVENT_GOT_MARSHBADGE
+  - setFlag *: EVENT_GOT_TM46
+  - giveItem *: TM46 x1 added
+  - unlockInput
+  - setsFlags *: EVENT_GOT_MARSHBADGE
+  - setsFlags *: EVENT_GOT_TM46
+
+Final state
+  location: SAFFRON_GYM[178] (5,4)
+  flags: EVENT_BEAT_SABRINA, EVENT_GOT_BOULDERBADGE, EVENT_GOT_CASCADEBADGE, EVENT_GOT_MARSHBADGE, EVENT_GOT_RAINBOWBADGE, EVENT_GOT_SOULBADGE, EVENT_GOT_THUNDERBADGE, EVENT_GOT_TM46
+  party:
+    slot 0: #6 CHARIZARD L43 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    #134 TM46 x1
+  hidden objects:
+    none
+  active battle:
+    none

@@ -1,0 +1,27 @@
+{
+  "name": "fuchsia_city_fossil_sign_helix",
+  "description": "The Fuchsia zoo fossil sign shows Kabuto text when only the Helix Fossil branch flag is set.",
+  "fixture": {
+    "characterName": "ScriptSimFuchsiaFossilSignHelix",
+    "mapName": "FUCHSIA_CITY",
+    "x": 26,
+    "y": 13,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_HELIX_FOSSIL"],
+    "party": [{ "speciesId": 25, "level": 20 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "FUCHSIA_CITY",
+    "textConstant": "TEXT_FUCHSIACITY_FOSSIL_SIGN"
+  },
+  "expect": {
+    "scriptLabel": "FuchsiaCityFossilSignHelixFossil",
+    "flagsPresent": ["EVENT_GOT_HELIX_FOSSIL"],
+    "flagsAbsent": ["EVENT_GOT_DOME_FOSSIL"],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

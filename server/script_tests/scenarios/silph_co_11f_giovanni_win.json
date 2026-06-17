@@ -1,0 +1,54 @@
+{
+  "name": "silph_co_11f_giovanni_win",
+  "description": "Win the Silph Co. 11F Giovanni battle and verify Team Rocket departure cleanup.",
+  "fixture": {
+    "characterName": "ScriptSimSilphGiovanniWin",
+    "mapName": "SILPH_CO_11F",
+    "x": 7,
+    "y": 12,
+    "direction": "UP",
+    "flags": [
+      "EVENT_GOT_POKEDEX",
+      "EVENT_BEAT_CERULEAN_RIVAL",
+      "EVENT_BEAT_SS_ANNE_RIVAL",
+      "EVENT_BEAT_POKEMON_TOWER_RIVAL",
+      "EVENT_BEAT_GHOST_MAROWAK",
+      "EVENT_RESCUED_MR_FUJI",
+      "EVENT_GOT_POKE_FLUTE",
+      "EVENT_BEAT_ROCKET_HIDEOUT_GIOVANNI",
+      "EVENT_ROCKET_HIDEOUT_GIOVANNI_LEFT",
+      "EVENT_BEAT_SILPH_CO_RIVAL",
+      "EVENT_SAFFRON_GUARDS_OPENED",
+      "EVENT_GOT_HM01",
+      "EVENT_SS_ANNE_LEFT"
+    ],
+    "party": [
+      { "speciesId": 6, "level": 45 }
+    ],
+    "inventory": [
+      { "itemId": 9, "quantity": 1 },
+      { "itemId": 48, "quantity": 1 },
+      { "itemId": 73, "quantity": 1 },
+      { "itemId": 84, "quantity": 1 }
+    ]
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "SILPH_CO_11F",
+    "x": 7,
+    "y": 12
+  },
+  "resolveBattle": {
+    "result": "win"
+  },
+  "expect": {
+    "scriptLabel": "SilphCo11FGiovanniEncounter",
+    "flagsPresent": [
+      "EVENT_BEAT_SILPH_CO_GIOVANNI",
+      "EVENT_SILPH_GIOVANNI_LEFT"
+    ],
+    "partySpecies": [6],
+    "actionTypesContains": ["startTrainerBattle", "resolveBattle", "dialogue", "hideActor", "setFlag", "hideObject", "showObject"],
+    "activeBattleAbsent": true
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "name": "game_corner_hidden_coin_twenty",
+  "description": "Game Corner hidden coin pickup awards the source 20-coin floor spot.",
+  "fixture": {
+    "characterName": "SimGameCornerHiddenTwenty",
+    "mapName": "GAME_CORNER",
+    "x": 3,
+    "y": 11,
+    "inventory": [
+      { "itemName": "COIN CASE", "quantity": 1 }
+    ]
+  },
+  "trigger": {
+    "type": "gamecorner_hidden_coin",
+    "x": 3,
+    "y": 11
+  },
+  "expect": {
+    "scriptLabel": "GameCornerHiddenCoin",
+    "coins": 20,
+    "gameCornerPrizeMessage": "Found coins!",
+    "actionTypesContains": ["gameCornerHiddenCoin"],
+    "activeBattleAbsent": true
+  }
+}

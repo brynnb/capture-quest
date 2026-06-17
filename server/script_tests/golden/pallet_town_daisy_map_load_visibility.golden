@@ -1,0 +1,40 @@
+Scenario: pallet_town_daisy_map_load_visibility
+Description: Pallet Town map-load sync hides sitting Daisy and shows walking Daisy after the Town Map and Blue's House flags are set.
+Character: ScriptSimPalletDaisyVisibility
+
+Initial state
+  location: PALLET_TOWN[9999] (5,6)
+  flags: EVENT_ENTERED_BLUES_HOUSE, EVENT_GOT_TOWN_MAP
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: MapLoad:PALLET_TOWN
+  map: PALLET_TOWN
+  trigger: map_load
+
+Actions
+  - mapLoad *: PALLET_TOWN set=[EVENT_DAISY_WALKING] reset=[] affected=[BLUES_HOUSE]
+
+Final state
+  location: PALLET_TOWN[9999] (5,6)
+  flags: EVENT_DAISY_WALKING, EVENT_ENTERED_BLUES_HOUSE, EVENT_GOT_TOWN_MAP
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Event object states
+  PalletTownDaisyScript BLUES_HOUSE/BluesHouse_NPC_1 (2,3): hidden text=TEXT_BLUESHOUSE_DAISY_SITTING
+  PalletTownDaisyScript BLUES_HOUSE/BluesHouse_NPC_2 (6,4): visible text=TEXT_BLUESHOUSE_DAISY_WALKING
+  BluesHouseDaisySittingText:EVENT_GOT_TOWN_MAP:HS_TOWN_MAP:HideObject BLUES_HOUSE/BluesHouse_NPC_3 (3,3): hidden text=TEXT_BLUESHOUSE_TOWN_MAP

@@ -1,0 +1,26 @@
+{
+  "name": "pewter_gym_guide_after_brock",
+  "description": "The Pewter gym guide switches to post-Brock dialogue after the Boulder Badge is earned.",
+  "fixture": {
+    "characterName": "ScriptSimPewterGuideAfterBrock",
+    "mapName": "PEWTER_GYM",
+    "x": 7,
+    "y": 11,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_BOULDERBADGE"],
+    "party": [{ "speciesId": 25, "level": 15 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "PEWTER_GYM",
+    "textConstant": "TEXT_PEWTERGYM_GYM_GUIDE"
+  },
+  "expect": {
+    "scriptLabel": "PewterGymGuideTextBoulderBadgeSet",
+    "flagsPresent": ["EVENT_GOT_BOULDERBADGE"],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

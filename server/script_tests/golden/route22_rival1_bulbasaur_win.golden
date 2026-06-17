@@ -1,0 +1,46 @@
+Scenario: route22_rival1_bulbasaur_win
+Description: Win the first Route 22 rival battle after choosing Bulbasaur and verify post-battle cleanup.
+Character: ScriptSimRoute22Rival1BulbasaurWin
+
+Initial state
+  location: ROUTE_22[9999] (-21,-59)
+  flags: EVENT_1ST_ROUTE22_RIVAL_BATTLE, EVENT_GOT_POKEDEX, EVENT_PLAYER_CHOSE_BULBASAUR, EVENT_ROUTE22_RIVAL_WANTS_BATTLE
+  party:
+    slot 0: #1 BULBASAUR L9 moves TACKLE, GROWL, LEECH_SEED
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: Route22Rival1Encounter
+  map: ROUTE_22
+  trigger: coord
+
+Actions
+  - lockInput
+  - showActor
+  - move: RIVAL [LEFT LEFT LEFT LEFT]
+  - facePlayer
+  - dialogue: RIVAL [Hey! {PLAYER}! You're going to POKéMON LEAGUE? Forget it! You probably don't have any BADGEs! The guard won't let you through! By the way, did your POKéMON get any stronger?]
+  - startTrainerBattle *: RIVAL1 party=6 enemy=[#16 PIDGEY L9 #4 CHARMANDER L8] winFlag=EVENT_ROUTE22_RIVAL_1
+  - unlockInput
+  - resolveBattle *: win trainer=RIVAL1 winFlag=EVENT_ROUTE22_RIVAL_1
+  - move: RIVAL [RIGHT RIGHT DOWN DOWN DOWN DOWN DOWN]
+  - hideObject *: objects=[TEXT_ROUTE22_RIVAL1]
+  - resetFlag *: EVENT_1ST_ROUTE22_RIVAL_BATTLE
+  - resetFlag *: EVENT_ROUTE22_RIVAL_WANTS_BATTLE
+
+Final state
+  location: ROUTE_22[9999] (-21,-59)
+  flags: EVENT_GOT_POKEDEX, EVENT_PLAYER_CHOSE_BULBASAUR, EVENT_ROUTE22_RIVAL_1
+  party:
+    slot 0: #1 BULBASAUR L9 moves TACKLE, GROWL, LEECH_SEED
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    TEXT_ROUTE22_RIVAL1
+  active battle:
+    none

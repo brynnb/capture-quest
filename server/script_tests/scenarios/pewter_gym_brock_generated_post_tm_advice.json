@@ -1,0 +1,27 @@
+{
+  "name": "pewter_gym_brock_generated_post_tm_advice",
+  "description": "The generated Brock leader text branch switches to post-TM advice after TM34 has been received.",
+  "fixture": {
+    "characterName": "ScriptSimBrockGeneratedPostTM",
+    "mapName": "PEWTER_GYM",
+    "x": 4,
+    "y": 2,
+    "direction": "UP",
+    "flags": ["EVENT_BEAT_BROCK", "EVENT_GOT_BOULDERBADGE", "EVENT_GOT_TM34"],
+    "party": [{ "speciesId": 25, "level": 15 }],
+    "inventory": [{ "itemId": 122, "quantity": 1 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "PEWTER_GYM",
+    "textConstant": "TEXT_PEWTERGYM_BROCK"
+  },
+  "expect": {
+    "scriptLabel": "PewterGymBrockTextEventGotTm34Set",
+    "flagsPresent": ["EVENT_BEAT_BROCK", "EVENT_GOT_BOULDERBADGE", "EVENT_GOT_TM34"],
+    "inventoryContains": [{ "itemId": 122, "quantity": 1 }],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

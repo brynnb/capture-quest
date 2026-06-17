@@ -1,0 +1,38 @@
+Scenario: pokemon_fan_club_bike_voucher_has_voucher
+Description: The Pokemon Fan Club chairman uses the already-got dialogue when the player still has a Bike Voucher.
+Character: ScriptSimBikeVoucherHasVoucher
+
+Initial state
+  location: POKEMON_FAN_CLUB[90] (3,3)
+  flags: none
+  party:
+    slot 0: #5 CHARMELEON L25 moves EMBER, EMBER, LEER, RAGE
+  inventory:
+    #45 BIKE VOUCHER x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: PokemonFanClubChairmanTextHasVoucher
+  map: POKEMON_FAN_CLUB
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: CHAIRMAN [Hello, (PLAYER)! Did you come see
+me about my POKÉMON again? No? Too bad!]
+  - unlockInput
+
+Final state
+  location: POKEMON_FAN_CLUB[90] (3,3)
+  flags: none
+  party:
+    slot 0: #5 CHARMELEON L25 moves EMBER, EMBER, LEER, RAGE
+  inventory:
+    #45 BIKE VOUCHER x1
+  hidden objects:
+    none
+  active battle:
+    none

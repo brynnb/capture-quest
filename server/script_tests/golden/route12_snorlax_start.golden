@@ -1,0 +1,39 @@
+Scenario: route12_snorlax_start
+Description: Route 12 Snorlax starts a scripted L30 wild battle without setting the beat flag at cutscene completion.
+Character: ScriptSim_Route12_Snorlax_Start
+
+Initial state
+  location: ROUTE_12[9999] (280,-38)
+  flags: EVENT_GOT_POKE_FLUTE
+  party:
+    slot 0: #25 PIKACHU L50 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: Route12SnorlaxEncounter
+  map: ROUTE_12
+  trigger: coord
+
+Actions
+  - lockInput
+  - dialogue:  [A huge POKéMON is blocking the way! It's a sleeping SNORLAX! The POKé FLUTE woke it up! The SNORLAX attacked!]
+  - unlockInput
+  - startWildBattle *: #143 SNORLAX L30 winFlag=EVENT_BEAT_ROUTE12_SNORLAX
+
+Final state
+  location: ROUTE_12[9999] (280,-38)
+  flags: EVENT_GOT_POKE_FLUTE
+  party:
+    slot 0: #25 PIKACHU L50 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    wild phase=action_select trainer= name= winFlag=EVENT_BEAT_ROUTE12_SNORLAX
+    enemy slot 0: #143 SNORLAX L30

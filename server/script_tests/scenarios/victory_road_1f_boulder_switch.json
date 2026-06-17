@@ -1,0 +1,51 @@
+{
+  "name": "victory_road_1f_boulder_switch",
+  "description": "Pushing a Victory Road 1F boulder onto the source switch sets the 1F switch flag.",
+  "fixture": {
+    "characterName": "SimVictoryRoad1FBoulderSwitch",
+    "mapName": "VICTORY_ROAD_1F",
+    "x": 17,
+    "y": 15,
+    "flags": ["EVENT_GOT_RAINBOWBADGE"],
+    "party": [
+      { "speciesId": 66, "level": 20, "moves": ["STRENGTH"] }
+    ],
+    "objectPositions": [
+      {
+        "objectName": "VictoryRoad1F_NPC_5",
+        "x": 17,
+        "y": 14
+      }
+    ]
+  },
+  "trigger": {
+    "type": "boulder_push",
+    "direction": "UP",
+    "activateStrength": true
+  },
+  "expect": {
+    "scriptLabel": "BoulderPush:VICTORY_ROAD_1F",
+    "boulderPush": {
+      "success": true,
+      "objectName": "VictoryRoad1F_NPC_5",
+      "fromX": 17,
+      "fromY": 14,
+      "toX": 17,
+      "toY": 13,
+      "dropped": false,
+      "flagSet": "EVENT_VICTORY_ROAD_1_BOULDER_ON_SWITCH"
+    },
+    "flagsPresent": ["EVENT_VICTORY_ROAD_1_BOULDER_ON_SWITCH"],
+    "tileStates": [
+      {
+        "x": 9,
+        "y": 12,
+        "tileImageId": 562,
+        "collisionType": 1,
+        "label": "VictoryRoadBoulderBlock_1F_Switch_1d_1_0"
+      }
+    ],
+    "actionTypesContains": ["boulderPush"],
+    "activeBattleAbsent": true
+  }
+}

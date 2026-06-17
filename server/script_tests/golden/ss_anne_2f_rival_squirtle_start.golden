@@ -1,0 +1,45 @@
+Scenario: ss_anne_2f_rival_squirtle_start
+Description: Step into the S.S. Anne 2F rival trigger with Squirtle chosen and verify the Ivysaur-path party.
+Character: ScriptSimSSAnneRivalSquirtle
+
+Initial state
+  location: SS_ANNE_2F[96] (37,8)
+  flags: EVENT_GOT_SS_TICKET, EVENT_PLAYER_CHOSE_SQUIRTLE
+  party:
+    slot 0: #7 SQUIRTLE L24 moves TACKLE, BUBBLE, WATER_GUN, BITE
+  inventory:
+    #63 S.S.TICKET x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SSAnne2FRivalEncounter
+  map: SS_ANNE_2F
+  trigger: coord
+
+Actions
+  - lockInput
+  - showActor
+  - move: RIVAL [DOWN DOWN DOWN DOWN]
+  - facePlayer
+  - dialogue: RIVAL [Bonjour! {PLAYER}! Imagine seeing you here! {PLAYER}, were you really invited? So how's your POKéDEX coming? I already caught 40 kinds, pal! Different kinds are everywhere! Crawl around in grassy areas!]
+  - startTrainerBattle *: RIVAL2 party=2 enemy=[#17 PIDGEOTTO L19 #20 RATICATE L16 #64 KADABRA L18 #2 IVYSAUR L20] winFlag=EVENT_BEAT_SS_ANNE_RIVAL
+  - unlockInput
+
+Final state
+  location: SS_ANNE_2F[96] (37,8)
+  flags: EVENT_GOT_SS_TICKET, EVENT_PLAYER_CHOSE_SQUIRTLE
+  party:
+    slot 0: #7 SQUIRTLE L24 moves TACKLE, BUBBLE, WATER_GUN, BITE
+  inventory:
+    #63 S.S.TICKET x1
+  hidden objects:
+    none
+  active battle:
+    trainer phase=action_select trainer=RIVAL2 name=Gary winFlag=EVENT_BEAT_SS_ANNE_RIVAL
+    enemy slot 0: #17 PIDGEOTTO L19
+    enemy slot 1: #20 RATICATE L16
+    enemy slot 2: #64 KADABRA L18
+    enemy slot 3: #2 IVYSAUR L20

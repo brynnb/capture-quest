@@ -1,0 +1,23 @@
+{
+  "name": "celadon_diner_coin_case",
+  "description": "The Celadon Diner Gym Guide gives the Coin Case before Game Corner play.",
+  "fixture": {
+    "characterName": "ScriptSimCeladonDinerCoinCase",
+    "mapName": "CELADON_DINER",
+    "x": 1,
+    "y": 2,
+    "direction": "UP"
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "CELADON_DINER",
+    "textConstant": "TEXT_CELADONDINER_GYM_GUIDE"
+  },
+  "expect": {
+    "scriptLabel": "CeladonDinerCoinCase",
+    "flagsPresent": ["EVENT_GOT_COIN_CASE"],
+    "inventoryContains": [{ "itemId": 69, "quantity": 1 }],
+    "actionTypesContains": ["dialogue", "giveItem", "setFlag"],
+    "activeBattleAbsent": true
+  }
+}

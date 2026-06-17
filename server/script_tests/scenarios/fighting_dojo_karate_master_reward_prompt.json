@@ -1,0 +1,38 @@
+{
+  "name": "fighting_dojo_karate_master_reward_prompt",
+  "description": "After beating the Karate Master, the map prompt unlocks the Fighting Dojo Pokemon choice without granting either gift.",
+  "fixture": {
+    "characterName": "ScriptSimDojoRewardPrompt",
+    "mapName": "FIGHTING_DOJO",
+    "x": 4,
+    "y": 3,
+    "direction": "UP",
+    "flags": ["EVENT_BEAT_KARATE_MASTER"],
+    "party": [{ "speciesId": 25, "level": 35 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "map_script",
+    "mapName": "FIGHTING_DOJO"
+  },
+  "expect": {
+    "scriptLabel": "FightingDojoKarateMasterPostBattle",
+    "flagsPresent": [
+      "EVENT_BEAT_KARATE_MASTER",
+      "EVENT_BEAT_FIGHTING_DOJO_TRAINER_0",
+      "EVENT_BEAT_FIGHTING_DOJO_TRAINER_1",
+      "EVENT_BEAT_FIGHTING_DOJO_TRAINER_2",
+      "EVENT_BEAT_FIGHTING_DOJO_TRAINER_3"
+    ],
+    "flagsAbsent": [
+      "EVENT_GOT_FIGHTING_DOJO_POKEMON",
+      "EVENT_GOT_HITMONLEE",
+      "EVENT_GOT_HITMONCHAN",
+      "EVENT_DEFEATED_FIGHTING_DOJO"
+    ],
+    "partySpecies": [25],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

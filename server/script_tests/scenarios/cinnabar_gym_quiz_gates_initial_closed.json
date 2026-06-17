@@ -1,0 +1,25 @@
+{
+  "name": "cinnabar_gym_quiz_gates_initial_closed",
+  "description": "Cinnabar Gym quiz gate tiles are closed for a player without gate flags.",
+  "fixture": {
+    "characterName": "ScriptSimCinnabarQuizGatesClosed",
+    "mapName": "CINNABAR_GYM",
+    "x": 16,
+    "y": 13
+  },
+  "trigger": {
+    "type": "tile_state",
+    "mapName": "CINNABAR_GYM"
+  },
+  "expect": {
+    "scriptLabel": "TileState:CINNABAR_GYM",
+    "tileStates": [
+      { "x": 9, "y": 3, "tileImageId": 781, "collisionType": 0, "label": "CinnabarGymGate1Closed" },
+      { "x": 6, "y": 3, "tileImageId": 781, "collisionType": 0, "label": "CinnabarGymGate2Closed" },
+      { "x": 6, "y": 6, "tileImageId": 781, "collisionType": 0, "label": "CinnabarGymGate3Closed" },
+      { "x": 3, "y": 8, "tileImageId": 780, "collisionType": 0, "label": "CinnabarGymGate4Closed" },
+      { "x": 2, "y": 6, "tileImageId": 781, "collisionType": 0, "label": "CinnabarGymGate5Closed" },
+      { "x": 2, "y": 3, "tileImageId": 781, "collisionType": 0, "label": "CinnabarGymGate6Closed" }
+    ]
+  }
+}

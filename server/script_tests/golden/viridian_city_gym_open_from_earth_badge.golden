@@ -1,0 +1,35 @@
+Scenario: viridian_city_gym_open_from_earth_badge
+Description: Viridian City's gym-open source check sets the gym open flag once the Earth Badge is present.
+Character: ScriptSimViridianGymOpen
+
+Initial state
+  location: VIRIDIAN_CITY[9999] (22,-64)
+  flags: EVENT_GOT_EARTHBADGE
+  party:
+    slot 0: #6 CHARIZARD L55 moves RAGE, SLASH, FLAMETHROWER, FIRE_SPIN
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: ViridianCityGymOpenFromEarthBadge
+  map: VIRIDIAN_CITY
+  trigger: coord
+
+Actions
+  - setFlag *: EVENT_VIRIDIAN_GYM_OPEN
+
+Final state
+  location: VIRIDIAN_CITY[9999] (22,-64)
+  flags: EVENT_GOT_EARTHBADGE, EVENT_VIRIDIAN_GYM_OPEN
+  party:
+    slot 0: #6 CHARIZARD L55 moves RAGE, SLASH, FLAMETHROWER, FIRE_SPIN
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

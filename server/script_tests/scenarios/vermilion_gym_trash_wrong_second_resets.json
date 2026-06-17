@@ -1,0 +1,31 @@
+{
+  "name": "vermilion_gym_trash_wrong_second_resets",
+  "description": "Clicking the wrong second trash can resets the first lock and reselects a seeded first-switch can.",
+  "fixture": {
+    "characterName": "ScriptSimVermilionTrashWrongSecond",
+    "mapName": "VERMILION_GYM",
+    "x": 5,
+    "y": 9,
+    "flags": ["EVENT_1ST_LOCK_OPENED"],
+    "vermilionGymTrash": {
+      "firstLockCanIndex": 4,
+      "secondLockCanIndex": 7
+    }
+  },
+  "trigger": {
+    "type": "vermilion_gym_trash",
+    "mapName": "VERMILION_GYM",
+    "trashCanIndex": 8,
+    "randomFirstLockCanIndex": 6
+  },
+  "expect": {
+    "scriptLabel": "VermilionGymTrash",
+    "flagsAbsent": ["EVENT_1ST_LOCK_OPENED", "EVENT_2ND_LOCK_OPENED"],
+    "actionTypesContains": ["vermilionGymTrash"],
+    "vermilionGymTrash": {
+      "firstLockCanIndex": 6,
+      "secondLockAbsent": true
+    },
+    "activeBattleAbsent": true
+  }
+}

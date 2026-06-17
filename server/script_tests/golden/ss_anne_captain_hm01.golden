@@ -1,0 +1,43 @@
+Scenario: ss_anne_captain_hm01
+Description: Clicking the S.S. Anne Captain before HM01 is received grants HM01 and its event flag.
+Character: ScriptSimSSAnneCaptainHM01
+
+Initial state
+  location: SS_ANNE_CAPTAINS_ROOM[101] (4,5)
+  flags: EVENT_GOT_SS_TICKET
+  party:
+    slot 0: #5 CHARMELEON L30 moves EMBER, EMBER, LEER, RAGE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SSAnneCaptainHM01
+  map: SS_ANNE_CAPTAINS_ROOM
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: CAPTAIN [Urrp! I feel seasick... Ohh... Thank you! I feel much better now! You want to see my CUT technique? Ahh, I see! Here, take this!]
+  - dialogue:  [{PLAYER} received HM01! Use CUT to chop down small trees that block your way! But CUT can only be used if you have the CASCADEBADGE!]
+  - setFlag *: EVENT_GOT_HM01
+  - playSFX: SFX_STOP_ALL_MUSIC
+  - playSFX: SFX_GET_KEY_ITEM
+  - giveItem *: HM01 x1 added
+  - unlockInput
+  - setsFlags *: EVENT_GOT_HM01
+
+Final state
+  location: SS_ANNE_CAPTAINS_ROOM[101] (4,5)
+  flags: EVENT_GOT_HM01, EVENT_GOT_SS_TICKET
+  party:
+    slot 0: #5 CHARMELEON L30 moves EMBER, EMBER, LEER, RAGE
+  inventory:
+    #84 HM01 x1
+  hidden objects:
+    none
+  active battle:
+    none

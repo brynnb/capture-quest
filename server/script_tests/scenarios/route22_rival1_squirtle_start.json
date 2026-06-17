@@ -1,0 +1,46 @@
+{
+  "name": "route22_rival1_squirtle_start",
+  "description": "After receiving the Pokedex, step into the first Route 22 rival trigger with Squirtle chosen.",
+  "fixture": {
+    "characterName": "ScriptSimRoute22Rival1Squirtle",
+    "mapName": "ROUTE_22",
+    "x": -21,
+    "y": -59,
+    "direction": "LEFT",
+    "flags": [
+      "EVENT_GOT_POKEDEX",
+      "EVENT_1ST_ROUTE22_RIVAL_BATTLE",
+      "EVENT_ROUTE22_RIVAL_WANTS_BATTLE",
+      "EVENT_PLAYER_CHOSE_SQUIRTLE"
+    ],
+    "party": [
+      { "speciesId": 7, "level": 9 }
+    ],
+    "inventory": [
+      { "itemId": 9, "quantity": 1 }
+    ],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "ROUTE_22",
+    "x": -21,
+    "y": -59
+  },
+  "expect": {
+    "scriptLabel": "Route22Rival1Encounter",
+    "flagsPresent": [
+      "EVENT_1ST_ROUTE22_RIVAL_BATTLE",
+      "EVENT_ROUTE22_RIVAL_WANTS_BATTLE"
+    ],
+    "flagsAbsent": ["EVENT_ROUTE22_RIVAL_1"],
+    "partySpecies": [7],
+    "inventoryContains": [
+      { "itemId": 9, "quantity": 1 }
+    ],
+    "hiddenObjectKeys": [],
+    "actionTypesContains": ["showActor", "move", "dialogue", "startTrainerBattle"],
+    "activeBattleTrainerClass": "RIVAL1",
+    "activeBattleEnemySpecies": [16, 1]
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "agathas_room_exit_block_closed",
+  "description": "Agatha's exit block resolves to the closed layout before she is defeated.",
+  "fixture": {
+    "characterName": "ScriptSimAgathaExitClosed",
+    "mapName": "AGATHAS_ROOM",
+    "x": 4,
+    "y": 7,
+    "flags": []
+  },
+  "trigger": {
+    "type": "tile_state",
+    "mapName": "AGATHAS_ROOM"
+  },
+  "expect": {
+    "scriptLabel": "TileState:AGATHAS_ROOM",
+    "tileStates": [
+      { "x": 0, "y": 4, "tileImageId": 261, "collisionType": 0, "label": "AgathaExitBlockClosed_0_0" },
+      { "x": 1, "y": 5, "tileImageId": 484, "collisionType": 1, "label": "AgathaExitBlockClosed_1_1" }
+    ]
+  }
+}

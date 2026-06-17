@@ -1,0 +1,42 @@
+Scenario: route16_fly_house_hm02
+Description: The Route 16 secret-house girl gives HM02 Fly.
+Character: ScriptSimRoute16HM02
+
+Initial state
+  location: ROUTE_16_FLY_HOUSE[188] (2,4)
+  flags: EVENT_GOT_POKEDEX
+  party:
+    slot 0: #6 CHARIZARD L38 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: Route16FlyHouseHM02
+  map: ROUTE_16_FLY_HOUSE
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Oh, you found my secret retreat! Please don't tell anyone I'm here. I'll make it up to you with this!]
+  - dialogue:  [{PLAYER} received HM02! HM02 is FLY. It will take you back to any town. Put it to good use!]
+  - setFlag *: EVENT_GOT_HM02
+  - playSFX: SFX_GET_KEY_ITEM
+  - unlockInput
+  - giveItem *: HM02 x1 added
+  - setsFlags *: EVENT_GOT_HM02
+
+Final state
+  location: ROUTE_16_FLY_HOUSE[188] (2,4)
+  flags: EVENT_GOT_HM02, EVENT_GOT_POKEDEX
+  party:
+    slot 0: #6 CHARIZARD L38 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    #85 HM02 x1
+  hidden objects:
+    none
+  active battle:
+    none

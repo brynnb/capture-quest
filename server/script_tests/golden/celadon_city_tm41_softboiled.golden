@@ -1,0 +1,41 @@
+Scenario: celadon_city_tm41_softboiled
+Description: The Celadon City Gramps3 NPC grants TM41 Softboiled.
+Character: ScriptSimCeladonTM41
+
+Initial state
+  location: CELADON_CITY[9999] (122,-110)
+  flags: EVENT_GOT_RAINBOWBADGE
+  party:
+    slot 0: #6 CHARIZARD L35 moves LEER, EMBER, LEER, RAGE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: CeladonCityTM41Softboiled
+  map: CELADON_CITY
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [{PLAYER} received TM41! TM41 teaches SOFTBOILED! Only one POKéMON can use it! That POKéMON is CHANSEY!]
+  - setFlag *: EVENT_GOT_TM41
+  - playSFX: SFX_GET_ITEM_1
+  - unlockInput
+  - giveItem *: TM41 x1 added
+  - setsFlags *: EVENT_GOT_TM41
+
+Final state
+  location: CELADON_CITY[9999] (122,-110)
+  flags: EVENT_GOT_RAINBOWBADGE, EVENT_GOT_TM41
+  party:
+    slot 0: #6 CHARIZARD L35 moves LEER, EMBER, LEER, RAGE
+  inventory:
+    #129 TM41 x1
+  hidden objects:
+    none
+  active battle:
+    none

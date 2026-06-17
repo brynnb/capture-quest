@@ -1,0 +1,45 @@
+Scenario: viridian_mart_oaks_parcel
+Description: After choosing a starter, the Viridian Mart clerk gives Oak's Parcel.
+Character: ScriptSimViridianParcel
+
+Initial state
+  location: VIRIDIAN_MART[42] (3,6)
+  flags: EVENT_BATTLED_RIVAL_IN_OAKS_LAB, EVENT_GOT_STARTER, EVENT_OAKS_LAB_RIVAL_EXITED, EVENT_OAK_ASKED_TO_CHOOSE_MON, EVENT_PLAYER_CHOSE_CHARMANDER, EVENT_RIVAL_PICKED_STARTER
+  party:
+    slot 0: #4 CHARMANDER L5 moves SCRATCH, GROWL
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: ViridianMartOaksParcel
+  map: VIRIDIAN_MART
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Hey! You came from
+PALLET TOWN?]
+  - dialogue:  [You know PROF.
+OAK, right? His order came in.
+Will you take it to him? (PLAYER) got
+OAK's PARCEL!]
+  - playSFX: SFX_GET_KEY_ITEM
+  - giveItem *: OAK's PARCEL x1 added
+  - setFlag *: EVENT_GOT_OAKS_PARCEL
+  - unlockInput
+
+Final state
+  location: VIRIDIAN_MART[42] (3,6)
+  flags: EVENT_BATTLED_RIVAL_IN_OAKS_LAB, EVENT_GOT_OAKS_PARCEL, EVENT_GOT_STARTER, EVENT_OAKS_LAB_RIVAL_EXITED, EVENT_OAK_ASKED_TO_CHOOSE_MON, EVENT_PLAYER_CHOSE_CHARMANDER, EVENT_RIVAL_PICKED_STARTER
+  party:
+    slot 0: #4 CHARMANDER L5 moves SCRATCH, GROWL
+  inventory:
+    #70 OAK's PARCEL x1
+  hidden objects:
+    none
+  active battle:
+    none

@@ -1,0 +1,35 @@
+Scenario: seafoam_b4f_current_surf_exit
+Description: Seafoam B4F surf-exit current forces the player up from the B3F hole landing after both B2F boulders have fallen.
+Character: ScriptSimSeafoamB4FCurrentSurfExit
+
+Initial state
+  location: SEAFOAM_ISLANDS_B4F[162] (20,17)
+  flags: EVENT_SEAFOAM3_BOULDER1_DOWN_HOLE, EVENT_SEAFOAM3_BOULDER2_DOWN_HOLE
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SeafoamCurrent:SeafoamB4FCurrentSurfExitLeft
+  map: SEAFOAM_ISLANDS_B4F
+  trigger: seafoam_current
+
+Actions
+  - seafoamCurrent *: SeafoamB4FCurrentSurfExitLeft start=(20,17) final=(20,15) movements=[UP UP]
+
+Final state
+  location: SEAFOAM_ISLANDS_B4F[162] (20,15)
+  flags: EVENT_SEAFOAM3_BOULDER1_DOWN_HOLE, EVENT_SEAFOAM3_BOULDER2_DOWN_HOLE
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

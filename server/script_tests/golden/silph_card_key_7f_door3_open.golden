@@ -1,0 +1,49 @@
+Scenario: silph_card_key_7f_door3_open
+Description: Using the CARD KEY on Silph Co. 7F door 3 opens its source door flag and passable tile block.
+Character: ScriptSimSilphCardKey7FDoor3
+
+Initial state
+  location: SILPH_CO_7F[212] (20,14)
+  flags: none
+  party:
+    none
+  inventory:
+    #48 CARD KEY x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SilphCardKeyDoor
+  map: SILPH_CO_7F
+  trigger: silph_card_key
+
+Actions
+  - silphCardKey *: door=SILPH_CO_7F 7F3 flag=EVENT_SILPH_CO_7_UNLOCKED_DOOR3 hasKey=true opened=true
+
+Final state
+  location: SILPH_CO_7F[212] (20,14)
+  flags: EVENT_SILPH_CO_7_UNLOCKED_DOOR3
+  party:
+    none
+  inventory:
+    #48 CARD KEY x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Event tile states
+  SilphCardKeyDoor_7F_1_Closed_1_1 (11,7): tile=758 collision=0
+  SilphCardKeyDoor_7F_1_Closed_0_1 (10,7): tile=758 collision=0
+  SilphCardKeyDoor_7F_1_Closed_1_0 (11,6): tile=758 collision=0
+  SilphCardKeyDoor_7F_1_Closed_0_0 (10,6): tile=758 collision=0
+  SilphCardKeyDoor_7F_2_Closed_1_1 (21,5): tile=758 collision=0
+  SilphCardKeyDoor_7F_2_Closed_0_1 (20,5): tile=758 collision=0
+  SilphCardKeyDoor_7F_2_Closed_1_0 (21,4): tile=758 collision=0
+  SilphCardKeyDoor_7F_2_Closed_0_0 (20,4): tile=758 collision=0
+  SilphCardKeyDoor_7F_3_Open_1_1 (21,13): tile=758 collision=1
+  SilphCardKeyDoor_7F_3_Open_0_1 (20,13): tile=758 collision=1
+  SilphCardKeyDoor_7F_3_Open_1_0 (21,12): tile=758 collision=1
+  SilphCardKeyDoor_7F_3_Open_0_0 (20,12): tile=758 collision=1

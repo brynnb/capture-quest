@@ -1,0 +1,26 @@
+{
+  "name": "route2_trade_house_marcel_trade_ready",
+  "description": "Route 2 Trade House Game Boy Kid is ready to trade Mr. Mime named MARCEL for Abra.",
+  "fixture": {
+    "characterName": "ScriptSimRoute2MarcelTrade",
+    "mapName": "ROUTE_2_TRADE_HOUSE",
+    "x": 4,
+    "y": 2,
+    "direction": "UP",
+    "flags": [],
+    "party": [{ "speciesId": 63, "level": 15 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "fixture_state",
+    "mapName": "ROUTE_2_TRADE_HOUSE",
+    "textConstant": "TEXT_ROUTE2TRADEHOUSE_GAMEBOY_KID"
+  },
+  "expect": {
+    "scriptLabel": "FixtureState",
+    "finalDirection": "UP",
+    "partySpecies": [63],
+    "activeBattleAbsent": true
+  }
+}

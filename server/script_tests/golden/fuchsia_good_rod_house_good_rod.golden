@@ -1,0 +1,45 @@
+Scenario: fuchsia_good_rod_house_good_rod
+Description: The Fuchsia Fishing Guru grants the Good Rod.
+Character: ScriptSimGoodRod
+
+Initial state
+  location: FUCHSIA_GOOD_ROD_HOUSE[164] (5,4)
+  flags: EVENT_GOT_SOULBADGE
+  party:
+    slot 0: #6 CHARIZARD L42 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FuchsiaGoodRodHouseFishingGuruTextGift
+  map: FUCHSIA_GOOD_ROD_HOUSE
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: FISHING GURU [I'm the FISHING
+GURU's older brother! I simply Looove
+fishing!]
+  - choice:  "Do you like to\nfish?" choice=true
+  - giveItem *: GOOD ROD x1 added
+  - dialogue:  [Grand! I like
+your style! Take this and
+fish, young one! (PLAYER) received
+a GOOD ROD!]
+  - unlockInput
+
+Final state
+  location: FUCHSIA_GOOD_ROD_HOUSE[164] (5,4)
+  flags: EVENT_GOT_SOULBADGE
+  party:
+    slot 0: #6 CHARIZARD L42 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    #77 GOOD ROD x1
+  hidden objects:
+    none
+  active battle:
+    none

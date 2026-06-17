@@ -1,0 +1,40 @@
+Scenario: pokemon_tower_6f_marowak_start
+Description: Pokemon Tower 6F Marowak ghost starts a scripted L30 wild battle without setting the beat flag at cutscene completion.
+Character: ScriptSim_Marowak_Start
+
+Initial state
+  location: POKEMON_TOWER_6F[147] (10,16)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L50 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: PokemonTower6FMarowakGhost
+  map: POKEMON_TOWER_6F
+  trigger: coord
+
+Actions
+  - lockInput
+  - dialogue:  [Be gone...
+Intruders...]
+  - unlockInput
+  - startWildBattle *: #105 MAROWAK L30 winFlag=EVENT_BEAT_GHOST_MAROWAK
+
+Final state
+  location: POKEMON_TOWER_6F[147] (10,16)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L50 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    wild phase=action_select trainer= name= winFlag=EVENT_BEAT_GHOST_MAROWAK
+    enemy slot 0: #105 MAROWAK L30

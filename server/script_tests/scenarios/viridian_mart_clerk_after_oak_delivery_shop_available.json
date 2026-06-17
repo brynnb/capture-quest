@@ -1,0 +1,49 @@
+{
+  "name": "viridian_mart_clerk_after_oak_delivery_shop_available",
+  "description": "After delivering Oak's Parcel, no scripted event claims the Viridian Mart clerk click so the client can open the shop.",
+  "fixture": {
+    "characterName": "ScriptSimViridianShopAfterDelivery",
+    "mapName": "VIRIDIAN_MART",
+    "x": 3,
+    "y": 6,
+    "direction": "UP",
+    "flags": [
+      "EVENT_OAK_ASKED_TO_CHOOSE_MON",
+      "EVENT_GOT_STARTER",
+      "EVENT_RIVAL_PICKED_STARTER",
+      "EVENT_PLAYER_CHOSE_CHARMANDER",
+      "EVENT_BATTLED_RIVAL_IN_OAKS_LAB",
+      "EVENT_OAKS_LAB_RIVAL_EXITED",
+      "EVENT_GOT_OAKS_PARCEL",
+      "EVENT_OAK_GOT_PARCEL",
+      "EVENT_GOT_POKEDEX"
+    ],
+    "party": [
+      { "speciesId": 4, "level": 5 }
+    ],
+    "inventory": [
+      { "itemId": 9, "quantity": 1 }
+    ],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "click_no_script",
+    "mapName": "VIRIDIAN_MART",
+    "textConstant": "TEXT_VIRIDIANMART_CLERK"
+  },
+  "expect": {
+    "scriptLabel": "NoScript:VIRIDIAN_MART",
+    "flagsPresent": [
+      "EVENT_GOT_OAKS_PARCEL",
+      "EVENT_OAK_GOT_PARCEL",
+      "EVENT_GOT_POKEDEX"
+    ],
+    "partySpecies": [4],
+    "inventoryContains": [
+      { "itemId": 9, "quantity": 1 }
+    ],
+    "hiddenObjectKeys": [],
+    "actionTypesContains": ["noScript"],
+    "activeBattleAbsent": true
+  }
+}

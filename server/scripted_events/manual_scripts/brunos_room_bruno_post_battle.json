@@ -1,0 +1,39 @@
+{
+  "scriptLabel": "BrunosRoomBrunoPostBattle",
+  "mapName": "BRUNOS_ROOM",
+  "trigger": {
+    "type": "map_script"
+  },
+  "requiresFlag": "EVENT_BEAT_BRUNO",
+  "requiresFlagAbsent": "EVENT_BRUNO_POST_BATTLE_DONE",
+  "setsFlags": [
+    "EVENT_BRUNO_POST_BATTLE_DONE"
+  ],
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Why? How could I lose?"
+      ],
+      "speaker": "BRUNO"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "My job is done!",
+        "Go face your next challenge!"
+      ],
+      "speaker": "BRUNO"
+    },
+    {
+      "flag": "EVENT_BRUNO_POST_BATTLE_DONE",
+      "type": "setFlag"
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

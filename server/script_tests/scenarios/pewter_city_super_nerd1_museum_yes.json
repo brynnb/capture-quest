@@ -1,0 +1,26 @@
+{
+  "name": "pewter_city_super_nerd1_museum_yes",
+  "description": "The Pewter City museum guide stops after the source YES response.",
+  "fixture": {
+    "characterName": "ScriptSimPewterMuseumYes",
+    "mapName": "PEWTER_CITY",
+    "x": 16,
+    "y": 17,
+    "direction": "UP",
+    "party": [{ "speciesId": 1, "level": 12 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "PEWTER_CITY",
+    "textConstant": "TEXT_PEWTERCITY_SUPER_NERD1",
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "PewterCitySuperNerd1MuseumGuide",
+    "actionTypesContains": ["dialogue", "choice"],
+    "actionTypesAbsent": ["move", "hideObject", "showObject"],
+    "activeBattleAbsent": true
+  }
+}

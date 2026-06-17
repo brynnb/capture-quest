@@ -1,0 +1,22 @@
+{
+  "name": "game_corner_hidden_coin_no_coin_case",
+  "description": "Game Corner hidden coins require the Coin Case before awarding coins.",
+  "fixture": {
+    "characterName": "SimGameCornerHiddenNoCase",
+    "mapName": "GAME_CORNER",
+    "x": 3,
+    "y": 11
+  },
+  "trigger": {
+    "type": "gamecorner_hidden_coin",
+    "x": 3,
+    "y": 11
+  },
+  "expect": {
+    "scriptLabel": "GameCornerHiddenCoin",
+    "coins": 0,
+    "gameCornerPrizeMessage": "You need a COIN CASE!",
+    "actionTypesContains": ["gameCornerHiddenCoin"],
+    "activeBattleAbsent": true
+  }
+}

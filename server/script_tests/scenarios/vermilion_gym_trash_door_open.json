@@ -1,0 +1,24 @@
+{
+  "name": "vermilion_gym_trash_door_open",
+  "description": "Vermilion Gym trash puzzle door opens after the second electric lock flag.",
+  "fixture": {
+    "characterName": "ScriptSimVermilionTrashDoorOpen",
+    "mapName": "VERMILION_GYM",
+    "x": 4,
+    "y": 6,
+    "flags": ["EVENT_2ND_LOCK_OPENED"]
+  },
+  "trigger": {
+    "type": "tile_state",
+    "mapName": "VERMILION_GYM"
+  },
+  "expect": {
+    "scriptLabel": "TileState:VERMILION_GYM",
+    "tileStates": [
+      { "x": 4, "y": 4, "tileImageId": 253, "collisionType": 1 },
+      { "x": 5, "y": 4, "tileImageId": 253, "collisionType": 1 },
+      { "x": 4, "y": 5, "tileImageId": 253, "collisionType": 1 },
+      { "x": 5, "y": 5, "tileImageId": 253, "collisionType": 1 }
+    ]
+  }
+}

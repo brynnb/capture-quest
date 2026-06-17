@@ -1,0 +1,39 @@
+Scenario: bike_shop_no_voucher_yes
+Description: The Bike Shop clerk quotes the unaffordable bike price when the player has no Bike Voucher.
+Character: ScriptSimBikeShopNoVoucher
+
+Initial state
+  location: BIKE_SHOP[66] (6,4)
+  flags: none
+  party:
+    slot 0: #5 CHARMELEON L25 moves EMBER, EMBER, LEER, RAGE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: BikeShopNoVoucher
+  map: BIKE_SHOP
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: BIKE SHOP CLERK [Hi! Welcome to our BIKE SHOP. Have we got just the BIKE for you!]
+  - choice: TEXT_BIKESHOP_CLERK "It's a cool BIKE!\nDo you want it?" choice=true
+  - dialogue: BIKE SHOP CLERK [Sorry! You can't afford it! Come back again some time!]
+  - unlockInput
+
+Final state
+  location: BIKE_SHOP[66] (6,4)
+  flags: none
+  party:
+    slot 0: #5 CHARMELEON L25 moves EMBER, EMBER, LEER, RAGE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

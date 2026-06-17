@@ -1,0 +1,46 @@
+Scenario: hall_of_fame_oak_congratulations
+Description: Run the Hall of Fame Oak congratulations script after Champion victory and verify Hall of Fame completion.
+Character: ScriptSimHallOfFame
+
+Initial state
+  location: HALL_OF_FAME[118] (5,7)
+  flags: EVENT_BEAT_CHAMPION_RIVAL, EVENT_CHAMPIONS_ROOM_COMPLETE, EVENT_GOT_POKEDEX, EVENT_PLAYER_CHOSE_CHARMANDER
+  party:
+    slot 0: #6 CHARIZARD L65 moves RAGE, SLASH, FLAMETHROWER, FIRE_SPIN
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: HallOfFameOakCongratulations
+  map: HALL_OF_FAME
+  trigger: map_script
+
+Actions
+  - lockInput
+  - showActor
+  - facePlayer
+  - delay: 500ms
+  - dialogue: OAK [Er-hem! Congratulations {PLAYER}! This floor is the POKéMON HALL OF FAME!]
+  - dialogue: OAK [POKéMON LEAGUE champions are honored for their exploits here! Their POKéMON are also recorded in the HALL OF FAME!]
+  - dialogue: OAK [{PLAYER}! You have endeavored hard to become the new LEAGUE champion! Congratulations, {PLAYER}, you and your POKéMON are HALL OF FAMERs!]
+  - screenFade
+  - hideActor
+  - setFlag *: EVENT_HALL_OF_FAME_DONE
+  - unlockInput
+  - setsFlags *: EVENT_HALL_OF_FAME_DONE
+
+Final state
+  location: HALL_OF_FAME[118] (5,7)
+  flags: EVENT_BEAT_CHAMPION_RIVAL, EVENT_CHAMPIONS_ROOM_COMPLETE, EVENT_GOT_POKEDEX, EVENT_HALL_OF_FAME_DONE, EVENT_PLAYER_CHOSE_CHARMANDER
+  party:
+    slot 0: #6 CHARIZARD L65 moves RAGE, SLASH, FLAMETHROWER, FIRE_SPIN
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none

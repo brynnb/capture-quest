@@ -1,0 +1,36 @@
+Scenario: oak_starter_bulbasaur_prompt
+Description: Clicking Bulbasaur's Pokeball opens a YES/NO confirmation before granting a starter.
+Character: ScriptSimOakBulbasaurPrompt
+
+Initial state
+  location: OAKS_LAB[40] (5,11)
+  flags: EVENT_OAK_ASKED_TO_CHOOSE_MON
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: OaksLabChooseBulbasaur
+  map: OAKS_LAB
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - choice: TEXT_OAKSLAB_BULBASAUR_POKE_BALL "So! You want BULBASAUR?"
+
+Final state
+  location: OAKS_LAB[40] (5,11)
+  flags: EVENT_OAK_ASKED_TO_CHOOSE_MON
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

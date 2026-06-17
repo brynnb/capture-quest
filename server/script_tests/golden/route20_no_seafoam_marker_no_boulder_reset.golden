@@ -1,0 +1,35 @@
+Scenario: route20_no_seafoam_marker_no_boulder_reset
+Description: Loading Route 20 without the Seafoam marker leaves Seafoam boulder flags untouched.
+Character: SimRoute20NoSeafoamMarker
+
+Initial state
+  location: ROUTE_20[9999] (68,114)
+  flags: EVENT_SEAFOAM1_BOULDER1_DOWN_HOLE, EVENT_SEAFOAM3_BOULDER1_DOWN_HOLE, EVENT_SEAFOAM3_BOULDER2_DOWN_HOLE
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: MapLoad:ROUTE_20
+  map: ROUTE_20
+  trigger: map_load
+
+Actions
+  - mapLoad: ROUTE_20 set=[] reset=[] affected=[]
+
+Final state
+  location: ROUTE_20[9999] (68,114)
+  flags: EVENT_SEAFOAM1_BOULDER1_DOWN_HOLE, EVENT_SEAFOAM3_BOULDER1_DOWN_HOLE, EVENT_SEAFOAM3_BOULDER2_DOWN_HOLE
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

@@ -1,0 +1,39 @@
+Scenario: route11_gate_2f_oaks_aide_itemfinder_blocked
+Description: Route 11 Gate 2F Oak's Aide blocks Itemfinder when the player has caught fewer than 30 Pokemon.
+Character: ScriptSimRoute11AideItemfinderBlocked
+
+Initial state
+  location: ROUTE_11_GATE_2F[86] (2,5)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L30 moves GROWL, THUNDER_WAVE, QUICK_ATTACK, SWIFT
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: Route11Gate2FOaksAideItemfinderBlocked
+  map: ROUTE_11_GATE_2F
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: OAKS AIDE [Hi! Remember me? I'm PROF.OAK's AIDE! If you caught 30 kinds of POKEMON, I'm supposed to give you ITEMFINDER!]
+  - choice:  "Have you caught at least 30 kinds of POKEMON?" choice=true
+  - dialogue: OAKS AIDE [Let's see... Uh-oh! You need 30 kinds if you want the ITEMFINDER.]
+  - unlockInput
+
+Final state
+  location: ROUTE_11_GATE_2F[86] (2,5)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L30 moves GROWL, THUNDER_WAVE, QUICK_ATTACK, SWIFT
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

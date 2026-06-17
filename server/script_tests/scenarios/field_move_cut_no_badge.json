@@ -1,0 +1,29 @@
+{
+  "name": "field_move_cut_no_badge",
+  "description": "Cut is blocked without the Cascade Badge even when a party Pokemon knows CUT.",
+  "fixture": {
+    "characterName": "SimFieldCutNoBadge",
+    "mapName": "PALLET_TOWN",
+    "x": 10,
+    "y": 10,
+    "party": [
+      { "speciesId": 1, "level": 16, "moves": ["CUT"] }
+    ]
+  },
+  "trigger": {
+    "type": "field_move_permission",
+    "moveName": "CUT"
+  },
+  "expect": {
+    "scriptLabel": "FieldMovePermission:CUT",
+    "fieldMove": {
+      "allowed": false,
+      "message": "No! A new BADGE is required.",
+      "moveName": "CUT",
+      "requiredBadgeFlag": "EVENT_GOT_CASCADEBADGE",
+      "knownBySpeciesId": 1
+    },
+    "actionTypesContains": ["fieldMovePermission"],
+    "activeBattleAbsent": true
+  }
+}

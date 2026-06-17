@@ -1,0 +1,25 @@
+{
+  "name": "viridian_city_gambler_gym_closed",
+  "description": "Viridian City's gambler says the gym is closed before Giovanni returns and before the Earth Badge is earned.",
+  "fixture": {
+    "characterName": "ScriptSimViridianGamblerClosed",
+    "mapName": "VIRIDIAN_CITY",
+    "x": 12,
+    "y": 10,
+    "direction": "UP",
+    "flags": [],
+    "party": [{ "speciesId": 25, "level": 20 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "VIRIDIAN_CITY",
+    "textConstant": "TEXT_VIRIDIANCITY_GAMBLER1"
+  },
+  "expect": {
+    "scriptLabel": "ViridianCityGambler1TextEarthBadgeEventBeatViridianGymGiovanniAbsent",
+    "flagsAbsent": ["EVENT_BEAT_VIRIDIAN_GYM_GIOVANNI", "EVENT_GOT_EARTHBADGE"],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

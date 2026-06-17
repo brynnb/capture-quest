@@ -1,0 +1,32 @@
+{
+  "name": "gym_giovanni_reward",
+  "description": "After beating Giovanni in Viridian Gym, the post-battle script grants Earthbadge state and TM27.",
+  "fixture": {
+    "characterName": "ScriptSimGymGiovanniReward",
+    "mapName": "VIRIDIAN_GYM",
+    "x": 5,
+    "y": 4,
+    "direction": "UP",
+    "flags": [
+      "EVENT_BEAT_GIOVANNI_GYM",
+      "EVENT_GOT_BOULDERBADGE",
+      "EVENT_GOT_CASCADEBADGE",
+      "EVENT_GOT_THUNDERBADGE",
+      "EVENT_GOT_RAINBOWBADGE",
+      "EVENT_GOT_SOULBADGE",
+      "EVENT_GOT_MARSHBADGE",
+      "EVENT_GOT_VOLCANOBADGE"
+    ],
+    "party": [{ "speciesId": 6, "level": 50 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": { "type": "map_script", "mapName": "VIRIDIAN_GYM" },
+  "expect": {
+    "scriptLabel": "ViridianGymGiovanniPostBattle",
+    "flagsPresent": ["EVENT_BEAT_GIOVANNI_GYM", "EVENT_GOT_EARTHBADGE", "EVENT_GOT_TM27"],
+    "inventoryContains": [{ "itemId": 115, "quantity": 1 }],
+    "actionTypesContains": ["dialogue", "setFlag", "giveItem"],
+    "activeBattleAbsent": true
+  }
+}

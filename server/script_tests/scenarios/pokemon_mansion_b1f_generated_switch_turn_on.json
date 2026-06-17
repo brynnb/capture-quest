@@ -1,0 +1,22 @@
+{
+  "name": "pokemon_mansion_b1f_generated_switch_turn_on",
+  "description": "Generated Pokemon Mansion B1F switch script uses the reused 2F source script and toggles the shared Mansion switch flag on.",
+  "fixture": {
+    "characterName": "ScriptSimMansionB1FGeneratedSwitchOn",
+    "mapName": "POKEMON_MANSION_B1F",
+    "x": 2,
+    "y": 5
+  },
+  "trigger": {
+    "type": "direct",
+    "mapName": "POKEMON_MANSION_B1F",
+    "scriptLabel": "PokemonMansionB1FSwitchToggle",
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "PokemonMansionB1FSwitchToggle",
+    "flagsPresent": ["EVENT_MANSION_SWITCH_ON"],
+    "actionTypesContains": ["dialogue", "choice", "toggleFlag"],
+    "activeBattleAbsent": true
+  }
+}

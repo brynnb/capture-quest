@@ -1,0 +1,27 @@
+{
+  "name": "silph_co_11f_master_ball",
+  "description": "After saving Silph, the president grants the Master Ball.",
+  "fixture": {
+    "characterName": "ScriptSimSilphMasterBall",
+    "mapName": "SILPH_CO_11F",
+    "x": 7,
+    "y": 6,
+    "direction": "UP",
+    "flags": ["EVENT_BEAT_SILPH_CO_GIOVANNI"],
+    "party": [{ "speciesId": 6, "level": 45 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "SILPH_CO_11F",
+    "textConstant": "TEXT_SILPHCO11F_SILPH_PRESIDENT"
+  },
+  "expect": {
+    "scriptLabel": "SilphCo11FMasterBall",
+    "flagsPresent": ["EVENT_BEAT_SILPH_CO_GIOVANNI", "EVENT_GOT_MASTER_BALL"],
+    "inventoryContains": [{ "itemId": 1, "quantity": 1 }],
+    "actionTypesContains": ["dialogue", "setFlag", "giveItem"],
+    "activeBattleAbsent": true
+  }
+}

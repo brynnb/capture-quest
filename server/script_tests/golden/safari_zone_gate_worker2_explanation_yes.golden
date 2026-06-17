@@ -1,0 +1,42 @@
+Scenario: safari_zone_gate_worker2_explanation_yes
+Description: The Safari Zone gate worker explains the zone when the player says it is their first visit.
+Character: ScriptSimSafariWorker2Yes
+
+Initial state
+  location: SAFARI_ZONE_GATE[156] (3,6)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L25 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SafariZoneGateSafariZoneWorker2TextChoice
+  map: SAFARI_ZONE_GATE
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - choice:  "Hi! Is it your\nfirst time here?" choice=true
+  - dialogue:  [SAFARI ZONE has 4
+zones in it. Each zone has
+different kinds of POKÉMON. Use SAFARI BALLs to catch them! When you run out
+of time or SAFARI BALLs, it's game over for you! Before you go,
+open an unused POKÉMON BOX so there's room for new POKÉMON!]
+  - unlockInput
+
+Final state
+  location: SAFARI_ZONE_GATE[156] (3,6)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L25 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

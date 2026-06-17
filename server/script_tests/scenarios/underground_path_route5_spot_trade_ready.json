@@ -1,0 +1,26 @@
+{
+  "name": "underground_path_route5_spot_trade_ready",
+  "description": "Underground Path Route 5 little girl is ready to trade Nidoran female named SPOT for Nidoran male.",
+  "fixture": {
+    "characterName": "ScriptSimUndergroundSpotTrade",
+    "mapName": "UNDERGROUND_PATH_ROUTE_5",
+    "x": 2,
+    "y": 4,
+    "direction": "UP",
+    "flags": [],
+    "party": [{ "speciesId": 32, "level": 15 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "fixture_state",
+    "mapName": "UNDERGROUND_PATH_ROUTE_5",
+    "textConstant": "TEXT_UNDERGROUNDPATHROUTE5_LITTLE_GIRL"
+  },
+  "expect": {
+    "scriptLabel": "FixtureState",
+    "finalDirection": "UP",
+    "partySpecies": [32],
+    "activeBattleAbsent": true
+  }
+}

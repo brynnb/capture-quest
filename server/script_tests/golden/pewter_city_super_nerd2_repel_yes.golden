@@ -1,0 +1,39 @@
+Scenario: pewter_city_super_nerd2_repel_yes
+Description: The Pewter City repel NPC gives the correct response when the player knows what he is doing.
+Character: ScriptSimPewterRepelYes
+
+Initial state
+  location: PEWTER_CITY[9999] (16,17)
+  flags: none
+  party:
+    slot 0: #1 BULBASAUR L12 moves TACKLE, GROWL, LEECH_SEED
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: PewterCitySuperNerd2TextChoice
+  map: PEWTER_CITY
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - choice:  "Psssst!\nDo you know what I'm doing?" choice=true
+  - dialogue:  [That's right!
+It's hard work!]
+  - unlockInput
+
+Final state
+  location: PEWTER_CITY[9999] (16,17)
+  flags: none
+  party:
+    slot 0: #1 BULBASAUR L12 moves TACKLE, GROWL, LEECH_SEED
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

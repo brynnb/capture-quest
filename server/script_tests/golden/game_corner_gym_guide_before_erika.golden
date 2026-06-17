@@ -1,0 +1,40 @@
+Scenario: game_corner_gym_guide_before_erika
+Description: The Game Corner gym guide gives Erika advice before Erika is beaten.
+Character: ScriptSimGameCornerGuideBeforeErika
+
+Initial state
+  location: GAME_CORNER[135] (8,13)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L25 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: GameCornerGymGuideTextEventBeatErikaAbsent
+  map: GAME_CORNER
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Hey! You have better
+things to do, champ in making! CELADON GYM's
+LEADER is ERIKA! She uses grass- type POKÉMON! She might appear
+docile, but don't be fooled!]
+  - unlockInput
+
+Final state
+  location: GAME_CORNER[135] (8,13)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L25 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

@@ -1,0 +1,27 @@
+{
+  "scriptLabel": "OaksLabOakPokemonAroundWorld",
+  "mapName": "OAKS_LAB",
+  "trigger": {
+    "type": "npc_click",
+    "label": "TEXT_OAKSLAB_OAK1",
+    "source": "extractor"
+  },
+  "requiresFlag": "EVENT_GOT_POKEDEX",
+  "requiresFlagAbsent": "EVENT_ROUTE22_RIVAL_1",
+  "requiresItemAbsentId": 4,
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "POKéMON around the world wait for you, {PLAYER}!"
+      ],
+      "speaker": "OAK"
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

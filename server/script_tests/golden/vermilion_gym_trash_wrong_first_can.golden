@@ -1,0 +1,43 @@
+Scenario: vermilion_gym_trash_wrong_first_can
+Description: Clicking a non-switch trash can before the first lock is found leaves both locks closed.
+Character: ScriptSimVermilionTrashWrongFirst
+
+Initial state
+  location: VERMILION_GYM[92] (3,9)
+  flags: none
+  vermilion gym trash: first=4 second=none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: VermilionGymTrash
+  map: VERMILION_GYM
+  trigger: vermilion_gym_trash
+
+Actions
+  - vermilionGymTrash: can=5 text=TEXT_VERMILIONGYM_TRASH first=4
+
+Final state
+  location: VERMILION_GYM[92] (3,9)
+  flags: none
+  vermilion gym trash: first=4 second=none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Event tile states
+  VermilionGymTrashDoorClosed_4_4 (4,4): tile=253 collision=0
+  VermilionGymTrashDoorClosed_5_4 (5,4): tile=253 collision=0
+  VermilionGymTrashDoorClosed_4_5 (4,5): tile=253 collision=0
+  VermilionGymTrashDoorClosed_5_5 (5,5): tile=253 collision=0

@@ -1,0 +1,41 @@
+Scenario: loreleis_room_exit_block_open
+Description: Lorelei's exit block resolves to the open layout after she is defeated.
+Character: ScriptSimLoreleiExitOpen
+
+Initial state
+  location: LORELEIS_ROOM[245] (4,7)
+  flags: EVENT_BEAT_LORELEIS_ROOM_TRAINER_0
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: TileState:LORELEIS_ROOM
+  map: LORELEIS_ROOM
+  trigger: tile_state
+
+Actions
+  - tileState: 4 event tiles
+
+Final state
+  location: LORELEIS_ROOM[245] (4,7)
+  flags: EVENT_BEAT_LORELEIS_ROOM_TRAINER_0
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Event tile states
+  LoreleiExitBlockOpen_0_0 (0,4): tile=253 collision=1
+  LoreleiExitBlockOpen_0_1 (0,5): tile=253 collision=1
+  LoreleiExitBlockOpen_1_0 (1,4): tile=253 collision=1
+  LoreleiExitBlockOpen_1_1 (1,5): tile=253 collision=1

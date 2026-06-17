@@ -1,0 +1,30 @@
+{
+  "name": "debug_field_move_cut_ready",
+  "description": "Debug setup: stand below the Cerulean cut tree with a CUT user and Cascade Badge.",
+  "fixture": {
+    "characterName": "DebugFieldCutReady",
+    "mapName": "CERULEAN_CITY",
+    "x": 189,
+    "y": -169,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_CASCADEBADGE"],
+    "party": [
+      { "speciesId": 1, "level": 16, "moves": ["CUT"] }
+    ]
+  },
+  "trigger": {
+    "type": "field_move_permission",
+    "moveName": "CUT"
+  },
+  "expect": {
+    "scriptLabel": "FieldMovePermission:CUT",
+    "fieldMove": {
+      "allowed": true,
+      "moveName": "CUT",
+      "requiredBadgeFlag": "EVENT_GOT_CASCADEBADGE",
+      "knownBySpeciesId": 1
+    },
+    "actionTypesContains": ["fieldMovePermission"],
+    "activeBattleAbsent": true
+  }
+}

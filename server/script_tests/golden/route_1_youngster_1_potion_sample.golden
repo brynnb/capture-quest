@@ -1,0 +1,43 @@
+Scenario: route_1_youngster_1_potion_sample
+Description: The Route 1 mart worker gives the player a free Potion sample.
+Character: ScriptSimRoute1PotionSample
+
+Initial state
+  location: ROUTE_1[9999] (8,21)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L5 moves THUNDERSHOCK, GROWL
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: Route1Youngster1TextGift
+  map: ROUTE_1
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Hi! I work at a
+POKÉMON MART. It's a convenient
+shop, so please visit us in VIRIDIAN CITY. I know, I'll give
+you a sample! Here you go!]
+  - giveItem *: POTION x1 added
+  - playSFX: SFX_GET_ITEM_1
+  - setFlag *: EVENT_GOT_POTION_SAMPLE
+  - unlockInput
+
+Final state
+  location: ROUTE_1[9999] (8,21)
+  flags: EVENT_GOT_POTION_SAMPLE
+  party:
+    slot 0: #25 PIKACHU L5 moves THUNDERSHOCK, GROWL
+  inventory:
+    #20 POTION x1
+  hidden objects:
+    none
+  active battle:
+    none

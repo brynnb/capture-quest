@@ -1,0 +1,27 @@
+{
+  "name": "celadon_mart_3f_tm18_counter",
+  "description": "The Celadon Mart 3F clerk gives TM18 Counter.",
+  "fixture": {
+    "characterName": "ScriptSimCeladonMartTM18",
+    "mapName": "CELADON_MART_3F",
+    "x": 16,
+    "y": 6,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_POKEDEX"],
+    "party": [{ "speciesId": 6, "level": 34 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "CELADON_MART_3F",
+    "textConstant": "TEXT_CELADONMART3F_CLERK"
+  },
+  "expect": {
+    "scriptLabel": "CeladonMart3FTM18Counter",
+    "flagsPresent": ["EVENT_GOT_TM18"],
+    "inventoryContains": [{ "itemId": 106, "quantity": 1 }],
+    "actionTypesContains": ["dialogue", "setFlag", "giveItem"],
+    "activeBattleAbsent": true
+  }
+}

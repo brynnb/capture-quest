@@ -1,0 +1,35 @@
+{
+  "name": "cinnabar_lab_fossil_still_reviving",
+  "description": "Clicking the fossil scientist before the walk-around transition keeps the fossil in the still-reviving state.",
+  "fixture": {
+    "characterName": "ScriptSimCinnabarFossilStillReviving",
+    "mapName": "CINNABAR_LAB_FOSSIL_ROOM",
+    "x": 5,
+    "y": 3,
+    "direction": "UP",
+    "flags": [
+      "EVENT_GAVE_FOSSIL_TO_LAB",
+      "EVENT_LAB_STILL_REVIVING_FOSSIL",
+      "EVENT_LAB_REVIVING_DOME_FOSSIL"
+    ],
+    "party": [{ "speciesId": 25, "level": 35 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "CINNABAR_LAB_FOSSIL_ROOM",
+    "textConstant": "TEXT_CINNABARLABFOSSILROOM_SCIENTIST1"
+  },
+  "expect": {
+    "scriptLabel": "CinnabarLabFossilStillReviving",
+    "flagsPresent": [
+      "EVENT_GAVE_FOSSIL_TO_LAB",
+      "EVENT_LAB_STILL_REVIVING_FOSSIL",
+      "EVENT_LAB_REVIVING_DOME_FOSSIL"
+    ],
+    "partySpecies": [25],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

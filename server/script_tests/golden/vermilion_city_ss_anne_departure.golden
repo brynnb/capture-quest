@@ -1,0 +1,40 @@
+Scenario: vermilion_city_ss_anne_departure
+Description: After receiving HM01, the S.S. Anne departure script marks the ship as gone.
+Character: ScriptSimSSAnneDeparture
+
+Initial state
+  location: VERMILION_CITY[9999] (18,30)
+  flags: EVENT_GOT_HM01
+  party:
+    slot 0: #6 CHARIZARD L28 moves LEER, EMBER, LEER, RAGE
+  inventory:
+    #84 HM01 x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: VermilionCitySSAnneDeparture
+  map: VERMILION_CITY
+  trigger: map_script
+
+Actions
+  - lockInput
+  - dialogue:  [The ship set sail.]
+  - screenFade
+  - setFlag *: EVENT_SS_ANNE_LEFT
+  - unlockInput
+  - setsFlags *: EVENT_SS_ANNE_LEFT
+
+Final state
+  location: VERMILION_CITY[9999] (18,30)
+  flags: EVENT_GOT_HM01, EVENT_SS_ANNE_LEFT
+  party:
+    slot 0: #6 CHARIZARD L28 moves LEER, EMBER, LEER, RAGE
+  inventory:
+    #84 HM01 x1
+  hidden objects:
+    none
+  active battle:
+    none

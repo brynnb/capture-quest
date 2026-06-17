@@ -1,0 +1,51 @@
+Scenario: silph_co_7f_rival_charmander_start
+Description: Step into the Silph Co. 7F rival trigger from the upper coordinate with Charmander chosen and verify the Blastoise-path party.
+Character: ScriptSimSilphRivalCharmander
+
+Initial state
+  location: SILPH_CO_7F[212] (3,2)
+  flags: EVENT_BEAT_CERULEAN_RIVAL, EVENT_BEAT_GHOST_MAROWAK, EVENT_BEAT_POKEMON_TOWER_RIVAL, EVENT_BEAT_ROCKET_HIDEOUT_GIOVANNI, EVENT_BEAT_SS_ANNE_RIVAL, EVENT_GOT_CASCADEBADGE, EVENT_GOT_HM01, EVENT_GOT_POKEDEX, EVENT_GOT_POKE_FLUTE, EVENT_PLAYER_CHOSE_CHARMANDER, EVENT_RESCUED_MR_FUJI, EVENT_ROCKET_HIDEOUT_GIOVANNI_LEFT, EVENT_SAFFRON_GUARDS_OPENED, EVENT_SS_ANNE_LEFT
+  party:
+    slot 0: #6 CHARIZARD L42 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    #48 CARD KEY x1
+    #84 HM01 x1
+    #73 POKé FLUTE x1
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SilphCo7FRivalEncounter
+  map: SILPH_CO_7F
+  trigger: coord
+
+Actions
+  - lockInput
+  - dialogue: RIVAL [{RIVAL}: What kept you {PLAYER}?]
+  - move: RIVAL [UP UP UP]
+  - dialogue: RIVAL [Hahaha! I thought you'd turn up if I waited here! I guess TEAM ROCKET slowed you down! Not that I care! I saw you in SAFFRON, so I decided to see if you got better!]
+  - startTrainerBattle *: RIVAL2 party=7 enemy=[#18 PIDGEOT L37 #58 GROWLITHE L38 #102 EXEGGCUTE L35 #65 ALAKAZAM L35 #9 BLASTOISE L40] winFlag=EVENT_BEAT_SILPH_CO_RIVAL
+  - unlockInput
+
+Final state
+  location: SILPH_CO_7F[212] (3,2)
+  flags: EVENT_BEAT_CERULEAN_RIVAL, EVENT_BEAT_GHOST_MAROWAK, EVENT_BEAT_POKEMON_TOWER_RIVAL, EVENT_BEAT_ROCKET_HIDEOUT_GIOVANNI, EVENT_BEAT_SS_ANNE_RIVAL, EVENT_GOT_CASCADEBADGE, EVENT_GOT_HM01, EVENT_GOT_POKEDEX, EVENT_GOT_POKE_FLUTE, EVENT_PLAYER_CHOSE_CHARMANDER, EVENT_RESCUED_MR_FUJI, EVENT_ROCKET_HIDEOUT_GIOVANNI_LEFT, EVENT_SAFFRON_GUARDS_OPENED, EVENT_SS_ANNE_LEFT
+  party:
+    slot 0: #6 CHARIZARD L42 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    #48 CARD KEY x1
+    #84 HM01 x1
+    #73 POKé FLUTE x1
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    trainer phase=action_select trainer=RIVAL2 name=Gary winFlag=EVENT_BEAT_SILPH_CO_RIVAL
+    enemy slot 0: #18 PIDGEOT L37
+    enemy slot 1: #58 GROWLITHE L38
+    enemy slot 2: #102 EXEGGCUTE L35
+    enemy slot 3: #65 ALAKAZAM L35
+    enemy slot 4: #9 BLASTOISE L40

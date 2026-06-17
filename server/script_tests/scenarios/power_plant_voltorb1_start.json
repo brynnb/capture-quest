@@ -1,0 +1,22 @@
+{
+  "name": "power_plant_voltorb1_start",
+  "description": "Power Plant Voltorb 1 starts a scripted L40 wild battle from generated object-event data.",
+  "fixture": {
+    "characterName": "ScriptSim_Voltorb1_Start",
+    "mapName": "POWER_PLANT",
+    "x": 9,
+    "y": 20,
+    "party": [{"speciesId": 25, "level": 50}]
+  },
+  "trigger": {
+    "type": "npc_click",
+    "textConstant": "TEXT_POWERPLANT_VOLTORB1"
+  },
+  "expect": {
+    "scriptLabel": "PowerPlantVoltorb1Encounter",
+    "flagsAbsent": ["EVENT_BEAT_POWER_PLANT_VOLTORB_0"],
+    "actionTypesContains": ["startWildBattle"],
+    "activeBattleType": "wild",
+    "activeBattleEnemySpecies": [100]
+  }
+}

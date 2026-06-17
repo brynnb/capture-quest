@@ -1,0 +1,35 @@
+Scenario: seafoam_b3f_current_near_right_boulder
+Description: Seafoam B3F current at the right fallen boulder forces the source Down 6, Right 2, Down 4, Left 1 path.
+Character: ScriptSimSeafoamB3FCurrentRightBoulder
+
+Initial state
+  location: SEAFOAM_ISLANDS_B3F[161] (19,6)
+  flags: EVENT_SEAFOAM3_BOULDER1_DOWN_HOLE, EVENT_SEAFOAM3_BOULDER2_DOWN_HOLE
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SeafoamCurrent:SeafoamB3FCurrentNearRightBoulder
+  map: SEAFOAM_ISLANDS_B3F
+  trigger: seafoam_current
+
+Actions
+  - seafoamCurrent *: SeafoamB3FCurrentNearRightBoulder start=(19,6) final=(20,16) movements=[DOWN DOWN DOWN DOWN DOWN DOWN RIGHT RIGHT DOWN DOWN DOWN DOWN LEFT]
+
+Final state
+  location: SEAFOAM_ISLANDS_B3F[161] (20,16)
+  flags: EVENT_SEAFOAM3_BOULDER1_DOWN_HOLE, EVENT_SEAFOAM3_BOULDER2_DOWN_HOLE
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

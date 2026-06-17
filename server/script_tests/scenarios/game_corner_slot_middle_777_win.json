@@ -1,0 +1,33 @@
+{
+  "name": "game_corner_slot_middle_777_win",
+  "description": "Game Corner slot machine deterministic middle-row 7-7-7 awards 300 coins after deducting the bet.",
+  "fixture": {
+    "characterName": "SimGameCornerSlot777",
+    "mapName": "GAME_CORNER",
+    "x": 18,
+    "y": 15,
+    "coins": 3,
+    "inventory": [
+      { "itemName": "COIN CASE", "quantity": 1 }
+    ]
+  },
+  "trigger": {
+    "type": "gamecorner_slot_play",
+    "bet": 1,
+    "randomValues": [254, 17, 17, 17]
+  },
+  "expect": {
+    "scriptLabel": "GameCornerSlotPlay",
+    "coins": 302,
+    "gameCornerSlot": {
+      "success": true,
+      "bet": 1,
+      "payout": 300,
+      "matchLine": "middle",
+      "matchSymbol": "7",
+      "reelPositions": [17, 17, 17]
+    },
+    "actionTypesContains": ["gameCornerSlotPlay"],
+    "activeBattleAbsent": true
+  }
+}

@@ -1,0 +1,38 @@
+Scenario: celadon_diner_coin_case
+Description: The Celadon Diner Gym Guide gives the Coin Case before Game Corner play.
+Character: ScriptSimCeladonDinerCoinCase
+
+Initial state
+  location: CELADON_DINER[138] (1,2)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: CeladonDinerCoinCase
+  map: CELADON_DINER
+  trigger: npc_click
+
+Actions
+  - dialogue: MAN [I am flat out busted. No more slots for me! Here, you can have this.]
+  - playSFX: SFX_GET_KEY_ITEM
+  - giveItem *: COIN CASE x1 added
+  - setFlag *: EVENT_GOT_COIN_CASE
+
+Final state
+  location: CELADON_DINER[138] (1,2)
+  flags: EVENT_GOT_COIN_CASE
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none

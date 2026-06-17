@@ -1,0 +1,26 @@
+{
+  "name": "bike_shop_youngster_no_bicycle",
+  "description": "The Bike Shop youngster comments on expensive bikes before the player has a bicycle.",
+  "fixture": {
+    "characterName": "ScriptSimBikeShopYoungsterNoBike",
+    "mapName": "BIKE_SHOP",
+    "x": 5,
+    "y": 4,
+    "direction": "UP",
+    "flags": [],
+    "party": [{ "speciesId": 25, "level": 20 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "BIKE_SHOP",
+    "textConstant": "TEXT_BIKESHOP_YOUNGSTER"
+  },
+  "expect": {
+    "scriptLabel": "BikeShopYoungsterTextEventGotBicycleAbsent",
+    "flagsAbsent": ["EVENT_GOT_BICYCLE"],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

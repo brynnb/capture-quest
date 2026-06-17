@@ -1,0 +1,25 @@
+{
+  "name": "game_corner_buy_coins_full_coin_case",
+  "description": "Game Corner coin purchase refuses the player when the Coin Case is already full.",
+  "fixture": {
+    "characterName": "ScriptSimGameCornerFullCoinCase",
+    "mapName": "GAME_CORNER",
+    "x": 3,
+    "y": 3,
+    "direction": "UP",
+    "money": 1000,
+    "coins": 9999,
+    "inventory": [{ "itemId": 69, "quantity": 1 }]
+  },
+  "trigger": {
+    "type": "gamecorner_buy_coins",
+    "mapName": "GAME_CORNER"
+  },
+  "expect": {
+    "scriptLabel": "GameCornerBuyCoins",
+    "money": 1000,
+    "coins": 9999,
+    "actionTypesContains": ["gameCornerBuyCoins"],
+    "activeBattleAbsent": true
+  }
+}

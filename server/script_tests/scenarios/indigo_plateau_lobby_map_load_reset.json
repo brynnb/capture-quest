@@ -1,0 +1,46 @@
+{
+  "name": "indigo_plateau_lobby_map_load_reset",
+  "description": "The generated Indigo Plateau Lobby map script resets Victory Road and in-progress Elite Four state.",
+  "fixture": {
+    "characterName": "ScriptSimIndigoLobbyMapLoadReset",
+    "mapName": "INDIGO_PLATEAU_LOBBY",
+    "x": 5,
+    "y": 6,
+    "flags": [
+      "EVENT_VICTORY_ROAD_1_BOULDER_ON_SWITCH",
+      "EVENT_BEAT_LORELEIS_ROOM_TRAINER_0",
+      "EVENT_AUTOWALKED_INTO_LORELEIS_ROOM",
+      "EVENT_BEAT_BRUNOS_ROOM_TRAINER_0",
+      "EVENT_AUTOWALKED_INTO_BRUNOS_ROOM",
+      "EVENT_BEAT_AGATHAS_ROOM_TRAINER_0",
+      "EVENT_AUTOWALKED_INTO_AGATHAS_ROOM",
+      "EVENT_BEAT_LANCES_ROOM_TRAINER_0",
+      "EVENT_BEAT_LANCE",
+      "EVENT_LANCES_ROOM_LOCK_DOOR",
+      "EVENT_BEAT_CHAMPION_RIVAL"
+    ],
+    "party": [{ "speciesId": 6, "level": 65 }]
+  },
+  "trigger": {
+    "type": "map_script",
+    "mapName": "INDIGO_PLATEAU_LOBBY"
+  },
+  "expect": {
+    "scriptLabel": "IndigoPlateauLobbyMapLoadReset",
+    "flagsPresent": ["EVENT_BEAT_CHAMPION_RIVAL"],
+    "flagsAbsent": [
+      "EVENT_VICTORY_ROAD_1_BOULDER_ON_SWITCH",
+      "EVENT_BEAT_LORELEIS_ROOM_TRAINER_0",
+      "EVENT_AUTOWALKED_INTO_LORELEIS_ROOM",
+      "EVENT_BEAT_BRUNOS_ROOM_TRAINER_0",
+      "EVENT_AUTOWALKED_INTO_BRUNOS_ROOM",
+      "EVENT_BEAT_AGATHAS_ROOM_TRAINER_0",
+      "EVENT_AUTOWALKED_INTO_AGATHAS_ROOM",
+      "EVENT_BEAT_LANCES_ROOM_TRAINER_0",
+      "EVENT_BEAT_LANCE",
+      "EVENT_LANCES_ROOM_LOCK_DOOR"
+    ],
+    "actionTypesContains": ["resetFlag"],
+    "activeBattleAbsent": true
+  }
+}

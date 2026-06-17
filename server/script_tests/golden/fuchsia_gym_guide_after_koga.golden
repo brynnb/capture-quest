@@ -1,0 +1,38 @@
+Scenario: fuchsia_gym_guide_after_koga
+Description: The Fuchsia gym guide switches to post-Koga dialogue after he is beaten.
+Character: ScriptSimFuchsiaGuideAfterKoga
+
+Initial state
+  location: FUCHSIA_GYM[157] (7,14)
+  flags: EVENT_BEAT_KOGA
+  party:
+    slot 0: #1 BULBASAUR L30 moves LEECH_SEED, VINE_WHIP, POISONPOWDER, RAZOR_LEAF
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FuchsiaGymGymGuideTextEventBeatKogaSet
+  map: FUCHSIA_GYM
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [It's amazing how
+ninja can terrify even now!]
+  - unlockInput
+
+Final state
+  location: FUCHSIA_GYM[157] (7,14)
+  flags: EVENT_BEAT_KOGA
+  party:
+    slot 0: #1 BULBASAUR L30 moves LEECH_SEED, VINE_WHIP, POISONPOWDER, RAZOR_LEAF
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

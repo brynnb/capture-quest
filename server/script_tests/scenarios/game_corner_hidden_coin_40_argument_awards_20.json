@@ -1,0 +1,25 @@
+{
+  "name": "game_corner_hidden_coin_40_argument_awards_20",
+  "description": "Game Corner hidden coin source argument COIN+40 follows the original branch quirk and awards 20 coins.",
+  "fixture": {
+    "characterName": "SimGameCornerHiddenCoin40Arg",
+    "mapName": "GAME_CORNER",
+    "x": 11,
+    "y": 7,
+    "inventory": [
+      { "itemName": "COIN CASE", "quantity": 1 }
+    ]
+  },
+  "trigger": {
+    "type": "gamecorner_hidden_coin",
+    "x": 11,
+    "y": 7
+  },
+  "expect": {
+    "scriptLabel": "GameCornerHiddenCoin",
+    "coins": 20,
+    "gameCornerPrizeMessage": "Found coins!",
+    "actionTypesContains": ["gameCornerHiddenCoin"],
+    "activeBattleAbsent": true
+  }
+}

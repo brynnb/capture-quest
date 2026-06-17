@@ -1,0 +1,35 @@
+Scenario: pallet_town_after_oak_pokeballs_flag
+Description: Pallet Town mirrors Oak's Poké Ball gift flag into the source post-gift Pallet event on map load.
+Character: ScriptSimPalletAfterOakPokeballs
+
+Initial state
+  location: PALLET_TOWN[9999] (5,6)
+  flags: EVENT_GOT_POKEBALLS_FROM_OAK
+  party:
+    slot 0: #25 PIKACHU L10 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: PalletTownScriptEventPalletAfterGettingPokeballsSet
+  map: PALLET_TOWN
+  trigger: map_script
+
+Actions
+  - setFlag *: EVENT_PALLET_AFTER_GETTING_POKEBALLS
+
+Final state
+  location: PALLET_TOWN[9999] (5,6)
+  flags: EVENT_GOT_POKEBALLS_FROM_OAK, EVENT_PALLET_AFTER_GETTING_POKEBALLS
+  party:
+    slot 0: #25 PIKACHU L10 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

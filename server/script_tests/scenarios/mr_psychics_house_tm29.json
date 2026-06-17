@@ -1,0 +1,27 @@
+{
+  "name": "mr_psychics_house_tm29",
+  "description": "Mr. Psychic grants TM29 Psychic.",
+  "fixture": {
+    "characterName": "ScriptSimMrPsychicTM29",
+    "mapName": "MR_PSYCHICS_HOUSE",
+    "x": 5,
+    "y": 4,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_MARSHBADGE"],
+    "party": [{ "speciesId": 6, "level": 43 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "MR_PSYCHICS_HOUSE",
+    "textConstant": "TEXT_MRPSYCHICSHOUSE_MR_PSYCHIC"
+  },
+  "expect": {
+    "scriptLabel": "MrPsychicsHouseTM29",
+    "flagsPresent": ["EVENT_GOT_TM29"],
+    "inventoryContains": [{ "itemId": 117, "quantity": 1 }],
+    "actionTypesContains": ["dialogue", "setFlag", "giveItem"],
+    "activeBattleAbsent": true
+  }
+}

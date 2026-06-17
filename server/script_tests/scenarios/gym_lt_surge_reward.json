@@ -1,0 +1,23 @@
+{
+  "name": "gym_lt_surge_reward",
+  "description": "After beating Lt. Surge, the Vermilion Gym post-battle script grants Thunderbadge state and TM24.",
+  "fixture": {
+    "characterName": "ScriptSimGymLtSurgeReward",
+    "mapName": "VERMILION_GYM",
+    "x": 5,
+    "y": 3,
+    "direction": "UP",
+    "flags": ["EVENT_BEAT_LT_SURGE", "EVENT_GOT_BOULDERBADGE", "EVENT_GOT_CASCADEBADGE"],
+    "party": [{ "speciesId": 5, "level": 28 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": { "type": "map_script", "mapName": "VERMILION_GYM" },
+  "expect": {
+    "scriptLabel": "VermilionGymLtSurgePostBattle",
+    "flagsPresent": ["EVENT_BEAT_LT_SURGE", "EVENT_GOT_THUNDERBADGE", "EVENT_GOT_TM24"],
+    "inventoryContains": [{ "itemId": 112, "quantity": 1 }],
+    "actionTypesContains": ["dialogue", "setFlag", "giveItem"],
+    "activeBattleAbsent": true
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "gym_misty_reward",
+  "description": "After beating Misty, the Cerulean Gym post-battle script grants Cascadebadge state and TM11.",
+  "fixture": {
+    "characterName": "ScriptSimGymMistyReward",
+    "mapName": "CERULEAN_GYM",
+    "x": 4,
+    "y": 2,
+    "direction": "UP",
+    "flags": ["EVENT_BEAT_MISTY", "EVENT_GOT_BOULDERBADGE"],
+    "party": [{ "speciesId": 4, "level": 22 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": { "type": "map_script", "mapName": "CERULEAN_GYM" },
+  "expect": {
+    "scriptLabel": "CeruleanGymMistyPostBattle",
+    "flagsPresent": ["EVENT_BEAT_MISTY", "EVENT_GOT_CASCADEBADGE", "EVENT_GOT_TM11"],
+    "inventoryContains": [{ "itemId": 99, "quantity": 1 }],
+    "actionTypesContains": ["dialogue", "setFlag", "giveItem"],
+    "activeBattleAbsent": true
+  }
+}

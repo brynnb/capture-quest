@@ -1,0 +1,50 @@
+Scenario: viridian_city_old_man_catch_demo_start
+Description: Telling the Viridian old man you are not in a hurry starts the Red/Blue Weedle catch tutorial battle.
+Character: ScriptSimViridianOldManTutorial
+
+Initial state
+  location: VIRIDIAN_CITY[9999] (21,9)
+  flags: EVENT_GOT_POKEDEX
+  party:
+    slot 0: #25 PIKACHU L10 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: ViridianCityOldManCatchDemo
+  map: VIRIDIAN_CITY
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: OLD MAN [Ahh, I've had my
+coffee now and I feel great! Sure you can go
+through!]
+  - choice:  "Are you in a\nhurry?" choice=false
+  - dialogue: OLD MAN [I see you're using
+a POKÉDEX. When you catch a
+POKÉMON, POKÉDEX is automatically updated. What? Don't you
+know how to catch POKÉMON? I'll show you
+how to then.]
+  - giveItem *: POKé BALL x1 added
+  - startWildBattle *: #13 WEEDLE L5 winFlag= allowedActions=[item] guaranteedCatch=true
+  - unlockInput
+
+Final state
+  location: VIRIDIAN_CITY[9999] (21,9)
+  flags: EVENT_GOT_POKEDEX
+  party:
+    slot 0: #25 PIKACHU L10 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    #4 POKé BALL x1
+  hidden objects:
+    none
+  active battle:
+    wild phase=action_select trainer= name= winFlag=
+    allowed actions: item
+    guaranteed catch: true
+    enemy slot 0: #13 WEEDLE L5

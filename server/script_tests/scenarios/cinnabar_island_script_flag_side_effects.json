@@ -1,0 +1,23 @@
+{
+  "name": "cinnabar_island_script_flag_side_effects",
+  "description": "The generated Cinnabar Island map script resets Mansion switch and fossil walk-away flags.",
+  "fixture": {
+    "characterName": "ScriptSimCinnabarIslandFlagReset",
+    "mapName": "CINNABAR_ISLAND",
+    "x": 10,
+    "y": 10,
+    "direction": "DOWN",
+    "flags": ["EVENT_MANSION_SWITCH_ON", "EVENT_LAB_STILL_REVIVING_FOSSIL"],
+    "party": [{ "speciesId": 25, "level": 5 }]
+  },
+  "trigger": {
+    "type": "map_script",
+    "mapName": "CINNABAR_ISLAND"
+  },
+  "expect": {
+    "scriptLabel": "CinnabarIslandScriptFlagSideEffects",
+    "flagsAbsent": ["EVENT_MANSION_SWITCH_ON", "EVENT_LAB_STILL_REVIVING_FOSSIL"],
+    "actionTypesContains": ["resetFlag"],
+    "activeBattleAbsent": true
+  }
+}

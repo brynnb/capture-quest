@@ -1,0 +1,41 @@
+Scenario: rocket_hideout_b1f_door_open_tiles
+Description: Rocket Hideout B1F door resolves to the open floor block after EVENT_677 is set.
+Character: ScriptSimRocketHideoutB1FDoorOpenTiles
+
+Initial state
+  location: ROCKET_HIDEOUT_B1F[199] (12,8)
+  flags: EVENT_677
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: TileState:ROCKET_HIDEOUT_B1F
+  map: ROCKET_HIDEOUT_B1F
+  trigger: tile_state
+
+Actions
+  - tileState: 4 event tiles
+
+Final state
+  location: ROCKET_HIDEOUT_B1F[199] (12,8)
+  flags: EVENT_677
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Event tile states
+  RocketHideoutB1FDoorOpen_0_0 (24,16): tile=758 collision=1
+  RocketHideoutB1FDoorOpen_0_1 (24,17): tile=758 collision=1
+  RocketHideoutB1FDoorOpen_1_0 (25,16): tile=758 collision=1
+  RocketHideoutB1FDoorOpen_1_1 (25,17): tile=758 collision=1

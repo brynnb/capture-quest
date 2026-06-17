@@ -1,0 +1,40 @@
+Scenario: seafoam_b4f_articuno_win
+Description: Seafoam Islands B4F Articuno battle win sets the beat flag and hides the Articuno object.
+Character: ScriptSim_Articuno_Win
+
+Initial state
+  location: SEAFOAM_ISLANDS_B4F[162] (6,1)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L60 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SeafoamIslandsB4FArticunoEncounter
+  map: SEAFOAM_ISLANDS_B4F
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Gyaoo!]
+  - unlockInput
+  - startWildBattle *: #144 ARTICUNO L50 winFlag=EVENT_BEAT_ARTICUNO
+  - resolveBattle *: win type=wild target=#144 ARTICUNO winFlag=EVENT_BEAT_ARTICUNO
+  - hideObject *: objects=[TEXT_SEAFOAMISLANDSB4F_ARTICUNO]
+
+Final state
+  location: SEAFOAM_ISLANDS_B4F[162] (6,1)
+  flags: EVENT_BEAT_ARTICUNO
+  party:
+    slot 0: #25 PIKACHU L60 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+  inventory:
+    none
+  hidden objects:
+    TEXT_SEAFOAMISLANDSB4F_ARTICUNO
+  active battle:
+    none

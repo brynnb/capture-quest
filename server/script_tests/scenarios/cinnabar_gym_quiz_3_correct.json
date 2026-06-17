@@ -1,0 +1,24 @@
+{
+  "name": "cinnabar_gym_quiz_3_correct",
+  "description": "Cinnabar Gym quiz 3 accepts NO and unlocks gate 3 without a trainer battle.",
+  "fixture": {
+    "characterName": "ScriptSimCinnabarQuiz3Correct",
+    "mapName": "CINNABAR_GYM",
+    "x": 9,
+    "y": 7,
+    "party": [{ "speciesId": 9, "level": 50 }]
+  },
+  "trigger": {
+    "type": "dialogue_choice",
+    "mapName": "CINNABAR_GYM",
+    "textConstant": "TEXT_CINNABARGYM_QUIZ_3",
+    "choice": false
+  },
+  "expect": {
+    "scriptLabel": "DialogueChoice:TEXT_CINNABARGYM_QUIZ_3",
+    "flagsPresent": ["EVENT_CINNABAR_GYM_GATE3_UNLOCKED"],
+    "flagsAbsent": ["EVENT_BEAT_CINNABAR_GYM_TRAINER_3"],
+    "actionTypesContains": ["dialogueChoice", "setFlag"],
+    "activeBattleAbsent": true
+  }
+}

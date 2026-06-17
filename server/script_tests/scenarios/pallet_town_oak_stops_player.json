@@ -1,0 +1,31 @@
+{
+  "name": "pallet_town_oak_stops_player",
+  "description": "Step onto the north Pallet Town exit trigger before meeting Oak.",
+  "fixture": {
+    "characterName": "ScriptSimPalletOakStop",
+    "mapName": "PALLET_TOWN",
+    "x": 10,
+    "y": 1,
+    "direction": "UP",
+    "flags": [],
+    "party": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "PALLET_TOWN",
+    "x": 10,
+    "y": 1
+  },
+  "expect": {
+    "scriptLabel": "PalletTownOakStopsPlayer",
+    "finalMapName": "OAKS_LAB",
+    "finalX": 5,
+    "finalY": 11,
+    "flagsPresent": ["EVENT_OAK_APPEARED_IN_PALLET"],
+    "flagsAbsent": ["EVENT_OAK_ASKED_TO_CHOOSE_MON"],
+    "partySpecies": [],
+    "hiddenObjectKeys": [],
+    "actionTypesContains": ["playMusic", "showActor", "move", "facePlayer", "dialogue", "dialogueText", "parallel", "movePlayer", "hideActor", "screenFade", "setsFlags", "warp"]
+  }
+}

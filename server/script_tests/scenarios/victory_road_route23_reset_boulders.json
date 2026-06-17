@@ -1,0 +1,61 @@
+{
+  "name": "victory_road_route23_reset_boulders",
+  "description": "Loading Route 23 resets Victory Road 2F/3F boulder switch and hole flags.",
+  "fixture": {
+    "characterName": "SimVictoryRoadRoute23Reset",
+    "mapName": "ROUTE_23",
+    "x": 15,
+    "y": 35,
+    "flags": [
+      "EVENT_VICTORY_ROAD_2_BOULDER_ON_SWITCH1",
+      "EVENT_VICTORY_ROAD_2_BOULDER_ON_SWITCH2",
+      "EVENT_VICTORY_ROAD_3_BOULDER_ON_SWITCH1",
+      "EVENT_VICTORY_ROAD_3_BOULDER_ON_SWITCH2"
+    ],
+    "objectPositions": [
+      {
+        "mapName": "VICTORY_ROAD_2F",
+        "objectName": "VictoryRoad2F_NPC_11",
+        "x": 1,
+        "y": 16
+      },
+      {
+        "mapName": "VICTORY_ROAD_3F",
+        "objectName": "VictoryRoad3F_NPC_10",
+        "x": 23,
+        "y": 15
+      }
+    ]
+  },
+  "trigger": {
+    "type": "map_load",
+    "mapName": "ROUTE_23"
+  },
+  "expect": {
+    "scriptLabel": "MapLoad:ROUTE_23",
+    "flagsAbsent": [
+      "EVENT_VICTORY_ROAD_2_BOULDER_ON_SWITCH1",
+      "EVENT_VICTORY_ROAD_2_BOULDER_ON_SWITCH2",
+      "EVENT_VICTORY_ROAD_3_BOULDER_ON_SWITCH1",
+      "EVENT_VICTORY_ROAD_3_BOULDER_ON_SWITCH2"
+    ],
+    "objectStates": [
+      {
+        "mapName": "VICTORY_ROAD_2F",
+        "name": "VictoryRoad2F_NPC_13",
+        "x": 23,
+        "y": 16,
+        "visible": false
+      },
+      {
+        "mapName": "VICTORY_ROAD_3F",
+        "name": "VictoryRoad3F_NPC_10",
+        "x": 22,
+        "y": 15,
+        "visible": true
+      }
+    ],
+    "actionTypesContains": ["mapLoad"],
+    "activeBattleAbsent": true
+  }
+}

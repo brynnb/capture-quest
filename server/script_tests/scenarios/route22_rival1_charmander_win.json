@@ -1,0 +1,52 @@
+{
+  "name": "route22_rival1_charmander_win",
+  "description": "Win the first Route 22 rival battle after choosing Charmander and verify post-battle cleanup.",
+  "fixture": {
+    "characterName": "ScriptSimRoute22Rival1CharmanderWin",
+    "mapName": "ROUTE_22",
+    "x": -21,
+    "y": -59,
+    "direction": "LEFT",
+    "flags": [
+      "EVENT_GOT_POKEDEX",
+      "EVENT_1ST_ROUTE22_RIVAL_BATTLE",
+      "EVENT_ROUTE22_RIVAL_WANTS_BATTLE",
+      "EVENT_PLAYER_CHOSE_CHARMANDER"
+    ],
+    "party": [
+      { "speciesId": 4, "level": 9 }
+    ],
+    "inventory": [
+      { "itemId": 9, "quantity": 1 }
+    ],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "ROUTE_22",
+    "x": -21,
+    "y": -59
+  },
+  "resolveBattle": {
+    "result": "win"
+  },
+  "expect": {
+    "scriptLabel": "Route22Rival1Encounter",
+    "flagsPresent": [
+      "EVENT_GOT_POKEDEX",
+      "EVENT_PLAYER_CHOSE_CHARMANDER",
+      "EVENT_ROUTE22_RIVAL_1"
+    ],
+    "flagsAbsent": [
+      "EVENT_1ST_ROUTE22_RIVAL_BATTLE",
+      "EVENT_ROUTE22_RIVAL_WANTS_BATTLE"
+    ],
+    "partySpecies": [4],
+    "inventoryContains": [
+      { "itemId": 9, "quantity": 1 }
+    ],
+    "hiddenObjectKeys": ["TEXT_ROUTE22_RIVAL1"],
+    "actionTypesContains": ["startTrainerBattle", "resolveBattle", "hideObject", "resetFlag"],
+    "activeBattleAbsent": true
+  }
+}

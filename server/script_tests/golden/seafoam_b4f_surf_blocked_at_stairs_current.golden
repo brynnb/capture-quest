@@ -1,0 +1,35 @@
+Scenario: seafoam_b4f_surf_blocked_at_stairs_current
+Description: Seafoam B4F blocks Surf at the fast-current stairs coordinate after both B3F boulders have fallen to B4F.
+Character: ScriptSimSeafoamB4FSurfBlocked
+
+Initial state
+  location: SEAFOAM_ISLANDS_B4F[162] (7,11)
+  flags: EVENT_SEAFOAM4_BOULDER1_DOWN_HOLE, EVENT_SEAFOAM4_BOULDER2_DOWN_HOLE
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SeafoamSurfCheck
+  map: SEAFOAM_ISLANDS_B4F
+  trigger: seafoam_surf_check
+
+Actions
+  - seafoamSurfCheck: map=SEAFOAM_ISLANDS_B4F (7,11) blocked=true
+
+Final state
+  location: SEAFOAM_ISLANDS_B4F[162] (7,11)
+  flags: EVENT_SEAFOAM4_BOULDER1_DOWN_HOLE, EVENT_SEAFOAM4_BOULDER2_DOWN_HOLE
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

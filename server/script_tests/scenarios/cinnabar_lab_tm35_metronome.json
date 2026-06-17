@@ -1,0 +1,27 @@
+{
+  "name": "cinnabar_lab_tm35_metronome",
+  "description": "The Cinnabar Lab Metronome room scientist grants TM35.",
+  "fixture": {
+    "characterName": "ScriptSimCinnabarTM35",
+    "mapName": "CINNABAR_LAB_METRONOME_ROOM",
+    "x": 7,
+    "y": 3,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_VOLCANOBADGE"],
+    "party": [{ "speciesId": 6, "level": 48 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "CINNABAR_LAB_METRONOME_ROOM",
+    "textConstant": "TEXT_CINNABARLABMETRONOMEROOM_SCIENTIST1"
+  },
+  "expect": {
+    "scriptLabel": "CinnabarLabTM35Metronome",
+    "flagsPresent": ["EVENT_GOT_TM35"],
+    "inventoryContains": [{ "itemId": 123, "quantity": 1 }],
+    "actionTypesContains": ["dialogue", "setFlag", "giveItem"],
+    "activeBattleAbsent": true
+  }
+}

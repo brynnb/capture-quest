@@ -1,0 +1,51 @@
+Scenario: silph_co_7f_rival_squirtle_upper_start
+Description: Step into the Silph Co. 7F upper rival trigger with Squirtle chosen and verify the Venusaur-path party.
+Character: ScriptSimSilphCo7fRivalSquirtleUpper
+
+Initial state
+  location: SILPH_CO_7F[212] (3,2)
+  flags: EVENT_BEAT_CERULEAN_RIVAL, EVENT_BEAT_GHOST_MAROWAK, EVENT_BEAT_POKEMON_TOWER_RIVAL, EVENT_BEAT_ROCKET_HIDEOUT_GIOVANNI, EVENT_BEAT_SS_ANNE_RIVAL, EVENT_GOT_CASCADEBADGE, EVENT_GOT_HM01, EVENT_GOT_POKEDEX, EVENT_GOT_POKE_FLUTE, EVENT_PLAYER_CHOSE_SQUIRTLE, EVENT_RESCUED_MR_FUJI, EVENT_ROCKET_HIDEOUT_GIOVANNI_LEFT, EVENT_SAFFRON_GUARDS_OPENED, EVENT_SS_ANNE_LEFT
+  party:
+    slot 0: #9 BLASTOISE L42 moves WATER_GUN, BITE, WITHDRAW, SKULL_BASH
+  inventory:
+    #48 CARD KEY x1
+    #84 HM01 x1
+    #73 POKé FLUTE x1
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SilphCo7FRivalEncounter
+  map: SILPH_CO_7F
+  trigger: coord
+
+Actions
+  - lockInput
+  - dialogue: RIVAL [{RIVAL}: What kept you {PLAYER}?]
+  - move: RIVAL [UP UP UP]
+  - dialogue: RIVAL [Hahaha! I thought you'd turn up if I waited here! I guess TEAM ROCKET slowed you down! Not that I care! I saw you in SAFFRON, so I decided to see if you got better!]
+  - startTrainerBattle *: RIVAL2 party=8 enemy=[#18 PIDGEOT L37 #130 GYARADOS L38 #58 GROWLITHE L35 #65 ALAKAZAM L35 #3 VENUSAUR L40] winFlag=EVENT_BEAT_SILPH_CO_RIVAL
+  - unlockInput
+
+Final state
+  location: SILPH_CO_7F[212] (3,2)
+  flags: EVENT_BEAT_CERULEAN_RIVAL, EVENT_BEAT_GHOST_MAROWAK, EVENT_BEAT_POKEMON_TOWER_RIVAL, EVENT_BEAT_ROCKET_HIDEOUT_GIOVANNI, EVENT_BEAT_SS_ANNE_RIVAL, EVENT_GOT_CASCADEBADGE, EVENT_GOT_HM01, EVENT_GOT_POKEDEX, EVENT_GOT_POKE_FLUTE, EVENT_PLAYER_CHOSE_SQUIRTLE, EVENT_RESCUED_MR_FUJI, EVENT_ROCKET_HIDEOUT_GIOVANNI_LEFT, EVENT_SAFFRON_GUARDS_OPENED, EVENT_SS_ANNE_LEFT
+  party:
+    slot 0: #9 BLASTOISE L42 moves WATER_GUN, BITE, WITHDRAW, SKULL_BASH
+  inventory:
+    #48 CARD KEY x1
+    #84 HM01 x1
+    #73 POKé FLUTE x1
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    trainer phase=action_select trainer=RIVAL2 name=Gary winFlag=EVENT_BEAT_SILPH_CO_RIVAL
+    enemy slot 0: #18 PIDGEOT L37
+    enemy slot 1: #130 GYARADOS L38
+    enemy slot 2: #58 GROWLITHE L35
+    enemy slot 3: #65 ALAKAZAM L35
+    enemy slot 4: #3 VENUSAUR L40

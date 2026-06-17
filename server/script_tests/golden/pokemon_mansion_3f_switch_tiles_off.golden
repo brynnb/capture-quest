@@ -1,0 +1,45 @@
+Scenario: pokemon_mansion_3f_switch_tiles_off
+Description: Pokemon Mansion 3F switch-controlled blocks resolve to the flag-off layout.
+Character: ScriptSimMansion3FTilesOff
+
+Initial state
+  location: POKEMON_MANSION_3F[215] (10,5)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: TileState:POKEMON_MANSION_3F
+  map: POKEMON_MANSION_3F
+  trigger: tile_state
+
+Actions
+  - tileState: 8 event tiles
+
+Final state
+  location: POKEMON_MANSION_3F[215] (10,5)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Event tile states
+  PokemonMansionSwitchOff_3F_2_7_1_1 (5,15): tile=758 collision=1
+  PokemonMansionSwitchOff_3F_2_7_0_1 (4,15): tile=758 collision=1
+  PokemonMansionSwitchOff_3F_2_7_1_0 (5,14): tile=758 collision=1
+  PokemonMansionSwitchOff_3F_2_7_0_0 (4,14): tile=758 collision=1
+  PokemonMansionSwitchOff_3F_5_7_1_1 (11,15): tile=780 collision=0
+  PokemonMansionSwitchOff_3F_5_7_0_1 (10,15): tile=758 collision=1
+  PokemonMansionSwitchOff_3F_5_7_1_0 (11,14): tile=780 collision=0
+  PokemonMansionSwitchOff_3F_5_7_0_0 (10,14): tile=758 collision=1

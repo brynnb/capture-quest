@@ -1,0 +1,41 @@
+Scenario: rocket_hideout_elevator_with_lift_key
+Description: Rocket Hideout elevator lists B1F, B2F, and B4F when the player has the Lift Key item.
+Character: SimRocketElevatorWithKey
+
+Initial state
+  location: ROCKET_HIDEOUT_ELEVATOR[203] (2,2)
+  flags: none
+  party:
+    none
+  inventory:
+    #74 LIFT KEY x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: ElevatorFloors:ROCKET_HIDEOUT_ELEVATOR
+  map: ROCKET_HIDEOUT_ELEVATOR
+  trigger: elevator_floors
+
+Actions
+  - elevatorFloors: floors=3
+
+Final state
+  location: ROCKET_HIDEOUT_ELEVATOR[203] (2,2)
+  flags: none
+  party:
+    none
+  inventory:
+    #74 LIFT KEY x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Elevator
+  floors:
+    B1F -> ROCKET_HIDEOUT_B1F[199] (24,19) requiresItem=74
+    B2F -> ROCKET_HIDEOUT_B2F[200] (24,19) requiresItem=74
+    B4F -> ROCKET_HIDEOUT_B4F[202] (24,15) requiresItem=74

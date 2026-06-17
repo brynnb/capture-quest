@@ -1,0 +1,26 @@
+{
+  "name": "seafoam_1f_pathfind_allows_hidden_dropped_boulder_tile",
+  "description": "Per-character pathfinding does not block a source boulder tile after the boulder has dropped and become hidden.",
+  "fixture": {
+    "characterName": "SimSeafoamPathfindHiddenBoulder",
+    "mapName": "SEAFOAM_ISLANDS_1F",
+    "x": 18,
+    "y": 11,
+    "flags": ["EVENT_SEAFOAM1_BOULDER1_DOWN_HOLE"]
+  },
+  "trigger": {
+    "type": "pathfind",
+    "destX": 18,
+    "destY": 9
+  },
+  "expect": {
+    "scriptLabel": "Pathfind:SEAFOAM_ISLANDS_1F",
+    "pathfind": {
+      "found": true,
+      "length": 2,
+      "contains": [{ "x": 18, "y": 10 }]
+    },
+    "actionTypesContains": ["pathfind"],
+    "activeBattleAbsent": true
+  }
+}

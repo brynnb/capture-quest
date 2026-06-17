@@ -1,0 +1,22 @@
+{
+  "name": "seafoam_b4f_current_near_left_boulder",
+  "description": "Seafoam B4F current near the left B4F boulder forces the source Up 3, Right 3, Up 1 path.",
+  "fixture": {
+    "characterName": "ScriptSimSeafoamB4FCurrentLeftBoulder",
+    "mapName": "SEAFOAM_ISLANDS_B4F",
+    "x": 4,
+    "y": 14,
+    "flags": ["EVENT_SEAFOAM4_BOULDER1_DOWN_HOLE", "EVENT_SEAFOAM4_BOULDER2_DOWN_HOLE"]
+  },
+  "trigger": {
+    "type": "seafoam_current",
+    "mapName": "SEAFOAM_ISLANDS_B4F"
+  },
+  "expect": {
+    "scriptLabel": "SeafoamCurrent:SeafoamB4FCurrentNearLeftBoulder",
+    "finalX": 7,
+    "finalY": 10,
+    "actionTypesContains": ["seafoamCurrent"],
+    "activeBattleAbsent": true
+  }
+}

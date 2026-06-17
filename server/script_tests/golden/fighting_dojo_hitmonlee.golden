@@ -1,0 +1,43 @@
+Scenario: fighting_dojo_hitmonlee
+Description: Choosing the Hitmonlee Poké Ball grants Hitmonlee L30 and records the Fighting Dojo choice.
+Character: ScriptSimDojoHitmonlee
+
+Initial state
+  location: FIGHTING_DOJO[177] (4,2)
+  flags: EVENT_BEAT_KARATE_MASTER
+  party:
+    slot 0: #25 PIKACHU L35 moves THUNDER_WAVE, QUICK_ATTACK, SWIFT, AGILITY
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FightingDojoHitmonleeChoice
+  map: FIGHTING_DOJO
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - choice:  "You want the\nhard kicking HITMONLEE?" choice=true
+  - givePokemon *: HITMONLEE L30 added to party
+  - hideObject *: objects=[TEXT_FIGHTINGDOJO_HITMONLEE_POKE_BALL]
+  - setFlag *: EVENT_GOT_FIGHTING_DOJO_POKEMON
+  - setFlag *: EVENT_GOT_HITMONLEE
+  - setFlag *: EVENT_DEFEATED_FIGHTING_DOJO
+  - unlockInput
+
+Final state
+  location: FIGHTING_DOJO[177] (4,2)
+  flags: EVENT_BEAT_KARATE_MASTER, EVENT_DEFEATED_FIGHTING_DOJO, EVENT_GOT_FIGHTING_DOJO_POKEMON, EVENT_GOT_HITMONLEE
+  party:
+    slot 0: #25 PIKACHU L35 moves THUNDER_WAVE, QUICK_ATTACK, SWIFT, AGILITY
+    slot 1: #106 HITMONLEE L30 moves MEDITATE
+  inventory:
+    none
+  hidden objects:
+    TEXT_FIGHTINGDOJO_HITMONLEE_POKE_BALL
+  active battle:
+    none

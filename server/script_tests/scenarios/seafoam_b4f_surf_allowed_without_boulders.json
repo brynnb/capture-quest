@@ -1,0 +1,20 @@
+{
+  "name": "seafoam_b4f_surf_allowed_without_boulders",
+  "description": "Seafoam B4F does not apply the fast-current Surf block before both B3F boulders have fallen.",
+  "fixture": {
+    "characterName": "ScriptSimSeafoamB4FSurfAllowed",
+    "mapName": "SEAFOAM_ISLANDS_B4F",
+    "x": 7,
+    "y": 11
+  },
+  "trigger": {
+    "type": "seafoam_surf_check",
+    "mapName": "SEAFOAM_ISLANDS_B4F"
+  },
+  "expect": {
+    "scriptLabel": "SeafoamSurfCheck",
+    "seafoamSurfBlocked": false,
+    "actionTypesContains": ["seafoamSurfCheck"],
+    "activeBattleAbsent": true
+  }
+}

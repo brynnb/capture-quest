@@ -1,0 +1,24 @@
+{
+  "name": "game_corner_buy_coins_exact_fee",
+  "description": "Game Corner coin purchase deducts exactly ₽1000 and grants 50 coins.",
+  "fixture": {
+    "characterName": "ScriptSimGameCornerExactFee",
+    "mapName": "GAME_CORNER",
+    "x": 3,
+    "y": 3,
+    "direction": "UP",
+    "money": 1000,
+    "inventory": [{ "itemId": 69, "quantity": 1 }]
+  },
+  "trigger": {
+    "type": "gamecorner_buy_coins",
+    "mapName": "GAME_CORNER"
+  },
+  "expect": {
+    "scriptLabel": "GameCornerBuyCoins",
+    "money": 0,
+    "coins": 50,
+    "actionTypesContains": ["gameCornerBuyCoins"],
+    "activeBattleAbsent": true
+  }
+}

@@ -1,0 +1,40 @@
+Scenario: safari_zone_enter_rich
+Description: Safari Zone entry deducts only the 500 Pokédollar fee when the player has extra money.
+Character: ScriptSimSafariRich
+
+Initial state
+  location: SAFARI_ZONE_GATE[156] (4,6)
+  flags: none
+  money: 1000
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SafariZoneEnter
+  map: SAFARI_ZONE_GATE
+  trigger: safari_enter
+
+Actions
+  - safariEnter *: success=true money=500 balls=30 steps=500
+
+Final state
+  location: SAFARI_ZONE_GATE[156] (4,6)
+  flags: none
+  money: 500
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Safari session
+  active: balls=30 steps=500

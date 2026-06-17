@@ -1,0 +1,60 @@
+{
+  "name": "pokemon_tower_5f_purified_zone_heal",
+  "description": "Stepping into the Pokemon Tower 5F purified zone heals the party and sets the source in-zone flag.",
+  "fixture": {
+    "characterName": "ScriptSimTower5FPurifiedZone",
+    "mapName": "POKEMON_TOWER_5F",
+    "x": 10,
+    "y": 8,
+    "direction": "UP",
+    "flags": [],
+    "party": [
+      {
+        "speciesId": 25,
+        "level": 30,
+        "moves": ["THUNDERBOLT", "QUICK ATTACK"],
+        "movePp": [3, 0],
+        "curHp": 12,
+        "status": "PAR",
+        "ivs": {
+          "attack": 15,
+          "defense": 14,
+          "speed": 13,
+          "special": 12
+        },
+        "evs": {
+          "hp": 1000,
+          "attack": 2000,
+          "defense": 3000,
+          "speed": 4000,
+          "special": 5000
+        }
+      }
+    ],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "POKEMON_TOWER_5F",
+    "x": 10,
+    "y": 8
+  },
+  "expect": {
+    "scriptLabel": "PokemonTower5FPurifiedZone",
+    "flagsPresent": ["EVENT_IN_PURIFIED_ZONE"],
+    "partyState": [
+      {
+        "slot": 0,
+        "speciesId": 25,
+        "level": 30,
+        "curHp": 69,
+        "maxHp": 69,
+        "status": "NONE",
+        "movePp": [15, 30]
+      }
+    ],
+    "actionTypesContains": ["setFlag", "healParty", "dialogue"],
+    "activeBattleAbsent": true
+  }
+}

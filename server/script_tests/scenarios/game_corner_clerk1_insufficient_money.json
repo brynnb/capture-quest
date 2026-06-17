@@ -1,0 +1,27 @@
+{
+  "name": "game_corner_clerk1_insufficient_money",
+  "description": "Game Corner Clerk 1 refuses a coin purchase when the player has a Coin Case but not enough money.",
+  "fixture": {
+    "characterName": "ScriptSimGameCornerClerk1InsufficientMoney",
+    "mapName": "GAME_CORNER",
+    "x": 3,
+    "y": 3,
+    "direction": "UP",
+    "money": 999,
+    "coins": 10,
+    "inventory": [{ "itemName": "COIN_CASE", "quantity": 1 }]
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "GAME_CORNER",
+    "textConstant": "TEXT_GAMECORNER_CLERK1",
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "GameCornerClerk1InsufficientMoney",
+    "money": 999,
+    "coins": 10,
+    "actionTypesContains": ["dialogue", "choice"],
+    "activeBattleAbsent": true
+  }
+}

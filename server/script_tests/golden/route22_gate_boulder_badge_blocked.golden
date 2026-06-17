@@ -1,0 +1,38 @@
+Scenario: route22_gate_boulder_badge_blocked
+Description: The Route 22 Gate guard blocks the player without the Boulder Badge.
+Character: ScriptSimBoulderGateBlocked
+
+Initial state
+  location: ROUTE_22_GATE[193] (4,2)
+  flags: EVENT_GOT_POKEDEX
+  party:
+    slot 0: #6 CHARIZARD L50 moves LEER, RAGE, SLASH, FLAMETHROWER
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: Route23BadgeCheck1Blocked
+  map: ROUTE_22_GATE
+  trigger: coord
+
+Actions
+  - lockInput
+  - dialogue: GUARD [You can pass here only if you have the BOULDERBADGE! You don't have the BOULDERBADGE yet! You have to have it to get to POKéMON LEAGUE!]
+  - movePlayer *: from=(4,2) to=(4,3) steps=[DOWN]
+  - unlockInput
+
+Final state
+  location: ROUTE_22_GATE[193] (4,3)
+  flags: EVENT_GOT_POKEDEX
+  party:
+    slot 0: #6 CHARIZARD L50 moves LEER, RAGE, SLASH, FLAMETHROWER
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none

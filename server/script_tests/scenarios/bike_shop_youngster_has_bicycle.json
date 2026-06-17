@@ -1,0 +1,26 @@
+{
+  "name": "bike_shop_youngster_has_bicycle",
+  "description": "The Bike Shop youngster reacts to the player owning a bicycle.",
+  "fixture": {
+    "characterName": "ScriptSimBikeShopYoungsterHasBike",
+    "mapName": "BIKE_SHOP",
+    "x": 5,
+    "y": 4,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_BICYCLE"],
+    "party": [{ "speciesId": 25, "level": 20 }],
+    "inventory": [{ "itemId": 6, "quantity": 1 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "BIKE_SHOP",
+    "textConstant": "TEXT_BIKESHOP_YOUNGSTER"
+  },
+  "expect": {
+    "scriptLabel": "BikeShopYoungsterTextEventGotBicycleSet",
+    "flagsPresent": ["EVENT_GOT_BICYCLE"],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

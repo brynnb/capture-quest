@@ -1,0 +1,40 @@
+Scenario: field_move_surf_no_known_move
+Description: Surf is blocked when the Soul Badge is set but no party Pokemon knows SURF.
+Character: SimFieldSurfNoKnownMove
+
+Initial state
+  location: PALLET_TOWN[9999] (10,10)
+  flags: EVENT_GOT_SOULBADGE
+  party:
+    slot 0: #7 SQUIRTLE L5 moves TACKLE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FieldMovePermission:SURF
+  map: PALLET_TOWN
+  trigger: field_move_permission
+
+Actions
+  - fieldMovePermission: move=SURF allowed=false requiredBadge=EVENT_GOT_SOULBADGE message="No POKEMON knows that move."
+
+Final state
+  location: PALLET_TOWN[9999] (10,10)
+  flags: EVENT_GOT_SOULBADGE
+  party:
+    slot 0: #7 SQUIRTLE L5 moves TACKLE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Field move
+  move: SURF[57] allowed=false
+  required badge: EVENT_GOT_SOULBADGE
+  message: No POKEMON knows that move.

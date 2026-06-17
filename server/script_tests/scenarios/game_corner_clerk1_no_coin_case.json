@@ -1,0 +1,27 @@
+{
+  "name": "game_corner_clerk1_no_coin_case",
+  "description": "Game Corner Clerk 1 refuses a coin purchase when the player lacks a Coin Case.",
+  "fixture": {
+    "characterName": "ScriptSimGameCornerClerk1NoCoinCase",
+    "mapName": "GAME_CORNER",
+    "x": 3,
+    "y": 3,
+    "direction": "UP",
+    "money": 1000,
+    "coins": 0,
+    "inventory": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "GAME_CORNER",
+    "textConstant": "TEXT_GAMECORNER_CLERK1",
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "GameCornerClerk1NoCoinCase",
+    "money": 1000,
+    "coins": 0,
+    "actionTypesContains": ["dialogue", "choice"],
+    "activeBattleAbsent": true
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "name": "route11_gate_2f_oaks_aide_itemfinder_reward",
+  "description": "Route 11 Gate 2F Oak's Aide gives Itemfinder when the player has caught 30 Pokemon.",
+  "fixture": {
+    "characterName": "ScriptSimRoute11AideItemfinderReward",
+    "mapName": "ROUTE_11_GATE_2F",
+    "x": 2,
+    "y": 5,
+    "direction": "DOWN",
+    "flags": [],
+    "party": [{ "speciesId": 25, "level": 30 }],
+    "inventory": [],
+    "pokedexCaught": [
+      1, 4, 7, 10, 13, 16, 19, 21, 25, 27,
+      29, 32, 35, 39, 41, 43, 46, 48, 50, 52,
+      54, 56, 58, 60, 63, 66, 69, 72, 74, 77
+    ],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "ROUTE_11_GATE_2F",
+    "textConstant": "TEXT_ROUTE11GATE2F_OAKS_AIDE",
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "Route11Gate2FOaksAideItemfinderReward",
+    "flagsPresent": ["EVENT_GOT_ITEMFINDER"],
+    "inventoryContains": [{ "itemId": 71, "quantity": 1 }],
+    "pokedexCaughtCount": 30,
+    "actionTypesContains": ["giveItem", "setFlag"],
+    "activeBattleAbsent": true
+  }
+}

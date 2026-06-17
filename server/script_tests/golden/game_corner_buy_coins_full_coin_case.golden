@@ -1,0 +1,39 @@
+Scenario: game_corner_buy_coins_full_coin_case
+Description: Game Corner coin purchase refuses the player when the Coin Case is already full.
+Character: ScriptSimGameCornerFullCoinCase
+
+Initial state
+  location: GAME_CORNER[135] (3,3)
+  flags: none
+  money: 1000
+  coins: 9999
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: GameCornerBuyCoins
+  map: GAME_CORNER
+  trigger: gamecorner_buy_coins
+
+Actions
+  - gameCornerBuyCoins: success=false money=1000 coins=9999 message="Your COIN CASE is full!"
+
+Final state
+  location: GAME_CORNER[135] (3,3)
+  flags: none
+  money: 1000
+  coins: 9999
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none

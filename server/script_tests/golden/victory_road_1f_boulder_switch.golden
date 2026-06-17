@@ -1,0 +1,56 @@
+Scenario: victory_road_1f_boulder_switch
+Description: Pushing a Victory Road 1F boulder onto the source switch sets the 1F switch flag.
+Character: SimVictoryRoad1FBoulderSwitch
+
+Initial state
+  location: VICTORY_ROAD_1F[108] (17,15)
+  flags: EVENT_GOT_RAINBOWBADGE
+  party:
+    slot 0: #66 MACHOP L20 moves STRENGTH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: BoulderPush:VICTORY_ROAD_1F
+  map: VICTORY_ROAD_1F
+  trigger: boulder_push
+
+Actions
+  - boulderPush *: success=true object=VictoryRoad1F_NPC_5 from=(17,14) to=(17,13) direction=UP flag=EVENT_VICTORY_ROAD_1_BOULDER_ON_SWITCH message="The boulder moved."
+
+Final state
+  location: VICTORY_ROAD_1F[108] (17,15)
+  flags: EVENT_GOT_RAINBOWBADGE, EVENT_VICTORY_ROAD_1_BOULDER_ON_SWITCH
+  party:
+    slot 0: #66 MACHOP L20 moves STRENGTH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Boulder push
+  result: success=true direction=UP object=VictoryRoad1F_NPC_5
+  movement: (17,14) -> (17,13)
+  flag: EVENT_VICTORY_ROAD_1_BOULDER_ON_SWITCH
+  message: The boulder moved.
+  strength: MACHOP used STRENGTH. MACHOP can move boulders.
+  boulders:
+    VictoryRoad1F_NPC_5 (17,13): visible
+    VictoryRoad1F_NPC_6 (14,2): visible
+    VictoryRoad1F_NPC_7 (2,10): visible
+
+Event tile states
+  VictoryRoadBoulderBlock_1F_Switch_1d_0_0 (8,12): tile=562 collision=1
+  VictoryRoadBoulderBlock_1F_Switch_1d_1_0 (9,12): tile=562 collision=1
+  VictoryRoadBoulderBlock_1F_Switch_1d_0_1 (8,13): tile=568 collision=0
+  VictoryRoadBoulderBlock_1F_Switch_1d_1_1 (9,13): tile=568 collision=0
+
+Event object states
+  SourceMissableInitial:HS_CERULEAN_CAVE_B1F_ITEM_2 VICTORY_ROAD_1F/VictoryRoad1F_ITEM_3 (11,0): visible text=TEXT_VICTORYROAD1F_TM_SKY_ATTACK
+  SourceMissableInitial:HS_VICTORY_ROAD_1F_ITEM_1 VICTORY_ROAD_1F/VictoryRoad1F_ITEM_4 (9,2): visible text=TEXT_VICTORYROAD1F_RARE_CANDY

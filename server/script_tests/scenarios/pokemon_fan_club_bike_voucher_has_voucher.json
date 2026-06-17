@@ -1,0 +1,26 @@
+{
+  "name": "pokemon_fan_club_bike_voucher_has_voucher",
+  "description": "The Pokemon Fan Club chairman uses the already-got dialogue when the player still has a Bike Voucher.",
+  "fixture": {
+    "characterName": "ScriptSimBikeVoucherHasVoucher",
+    "mapName": "POKEMON_FAN_CLUB",
+    "x": 3,
+    "y": 3,
+    "direction": "UP",
+    "flags": [],
+    "party": [{ "speciesId": 5, "level": 25 }],
+    "inventory": [{ "itemId": 45, "quantity": 1 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "POKEMON_FAN_CLUB",
+    "textConstant": "TEXT_POKEMONFANCLUB_CHAIRMAN"
+  },
+  "expect": {
+    "scriptLabel": "PokemonFanClubChairmanTextHasVoucher",
+    "inventoryContains": [{ "itemId": 45, "quantity": 1 }],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

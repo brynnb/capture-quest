@@ -1,0 +1,40 @@
+Scenario: power_plant_zapdos_win
+Description: Power Plant Zapdos battle win sets the beat flag and hides the Zapdos object.
+Character: ScriptSim_Zapdos_Win
+
+Initial state
+  location: POWER_PLANT[83] (4,9)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L60 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: PowerPlantZapdosEncounter
+  map: POWER_PLANT
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Gyaoo!]
+  - unlockInput
+  - startWildBattle *: #145 ZAPDOS L50 winFlag=EVENT_BEAT_ZAPDOS
+  - resolveBattle *: win type=wild target=#145 ZAPDOS winFlag=EVENT_BEAT_ZAPDOS
+  - hideObject *: objects=[TEXT_POWERPLANT_ZAPDOS]
+
+Final state
+  location: POWER_PLANT[83] (4,9)
+  flags: EVENT_BEAT_ZAPDOS
+  party:
+    slot 0: #25 PIKACHU L60 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+  inventory:
+    none
+  hidden objects:
+    TEXT_POWERPLANT_ZAPDOS
+  active battle:
+    none

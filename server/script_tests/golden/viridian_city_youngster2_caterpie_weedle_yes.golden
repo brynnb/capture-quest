@@ -1,0 +1,40 @@
+Scenario: viridian_city_youngster2_caterpie_weedle_yes
+Description: The Viridian City youngster explains the Caterpie and Weedle difference when the player says yes.
+Character: ScriptSimViridianBugInfoYes
+
+Initial state
+  location: VIRIDIAN_CITY[9999] (18,9)
+  flags: none
+  party:
+    slot 0: #4 CHARMANDER L12 moves SCRATCH, GROWL, EMBER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: ViridianCityYoungster2TextChoice
+  map: VIRIDIAN_CITY
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - choice:  "You want to know\nabout the 2 kinds of caterpillar POKÉMON?" choice=true
+  - dialogue:  [CATERPIE has no
+poison, but WEEDLE does. Watch out for its
+POISON STING!]
+  - unlockInput
+
+Final state
+  location: VIRIDIAN_CITY[9999] (18,9)
+  flags: none
+  party:
+    slot 0: #4 CHARMANDER L12 moves SCRATCH, GROWL, EMBER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

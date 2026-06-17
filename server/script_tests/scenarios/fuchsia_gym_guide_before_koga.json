@@ -1,0 +1,26 @@
+{
+  "name": "fuchsia_gym_guide_before_koga",
+  "description": "The Fuchsia gym guide gives Koga advice before he is beaten.",
+  "fixture": {
+    "characterName": "ScriptSimFuchsiaGuideBeforeKoga",
+    "mapName": "FUCHSIA_GYM",
+    "x": 7,
+    "y": 14,
+    "direction": "DOWN",
+    "flags": [],
+    "party": [{ "speciesId": 1, "level": 30 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "FUCHSIA_GYM",
+    "textConstant": "TEXT_FUCHSIAGYM_GYM_GUIDE"
+  },
+  "expect": {
+    "scriptLabel": "FuchsiaGymGymGuideTextEventBeatKogaAbsent",
+    "flagsAbsent": ["EVENT_BEAT_KOGA"],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

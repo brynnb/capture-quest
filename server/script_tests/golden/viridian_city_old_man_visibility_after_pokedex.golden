@@ -1,0 +1,39 @@
+Scenario: viridian_city_old_man_visibility_after_pokedex
+Description: After Oak gives the Pokédex, Viridian City swaps the sleepy blocker object for the awake old man tutorial object.
+Character: ScriptSimViridianOldManVisibility
+
+Initial state
+  location: VIRIDIAN_CITY[9999] (9,-62)
+  flags: EVENT_GOT_POKEDEX
+  party:
+    slot 0: #25 PIKACHU L8 moves THUNDERSHOCK, GROWL
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: EventObjectState:VIRIDIAN_CITY
+  map: VIRIDIAN_CITY
+  trigger: event_object_state
+
+Actions
+  - eventObjectState: 2 event objects
+
+Final state
+  location: VIRIDIAN_CITY[9999] (9,-62)
+  flags: EVENT_GOT_POKEDEX
+  party:
+    slot 0: #25 PIKACHU L8 moves THUNDERSHOCK, GROWL
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Event object states
+  OaksLabOakGivesPokedexScript:EVENT_GOT_POKEDEX:HS_LYING_OLD_MAN:HideObject VIRIDIAN_CITY/ViridianCity_NPC_5 (8,-63): hidden text=TEXT_VIRIDIANCITY_OLD_MAN_SLEEPY
+  OaksLabOakGivesPokedexScript:EVENT_GOT_POKEDEX:HS_OLD_MAN:ShowObject VIRIDIAN_CITY/ViridianCity_NPC_7 (7,-67): visible text=TEXT_VIRIDIANCITY_OLD_MAN

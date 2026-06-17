@@ -1,0 +1,22 @@
+{
+  "name": "agathas_room_post_battle",
+  "description": "After beating Agatha, her room post-battle script records completion.",
+  "fixture": {
+    "characterName": "ScriptSimAgathaPostBattle",
+    "mapName": "AGATHAS_ROOM",
+    "x": 4,
+    "y": 10,
+    "direction": "UP",
+    "flags": ["EVENT_BEAT_AGATHA"],
+    "party": [{ "speciesId": 6, "level": 60 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": { "type": "map_script", "mapName": "AGATHAS_ROOM" },
+  "expect": {
+    "scriptLabel": "AgathasRoomAgathaPostBattle",
+    "flagsPresent": ["EVENT_BEAT_AGATHA", "EVENT_AGATHA_POST_BATTLE_DONE"],
+    "actionTypesContains": ["dialogue", "setFlag", "setsFlags"],
+    "activeBattleAbsent": true
+  }
+}

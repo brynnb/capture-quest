@@ -1,0 +1,8 @@
+{
+  "scriptLabel": "VermilionGymTrash",
+  "mapName": "VERMILION_GYM",
+  "trigger": {
+    "type": "npc_click"
+  },
+  "actions": []
+}

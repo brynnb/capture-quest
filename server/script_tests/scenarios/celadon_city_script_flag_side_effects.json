@@ -1,0 +1,23 @@
+{
+  "name": "celadon_city_script_flag_side_effects",
+  "description": "The generated Celadon City map script clears the source temporary city flags.",
+  "fixture": {
+    "characterName": "ScriptSimCeladonCityFlagReset",
+    "mapName": "CELADON_CITY",
+    "x": 13,
+    "y": 19,
+    "direction": "DOWN",
+    "flags": ["EVENT_1B8", "EVENT_1BF", "EVENT_67F"],
+    "party": [{ "speciesId": 25, "level": 5 }]
+  },
+  "trigger": {
+    "type": "map_script",
+    "mapName": "CELADON_CITY"
+  },
+  "expect": {
+    "scriptLabel": "CeladonCityScriptFlagSideEffects",
+    "flagsAbsent": ["EVENT_1B8", "EVENT_1BF", "EVENT_67F"],
+    "actionTypesContains": ["resetFlag"],
+    "activeBattleAbsent": true
+  }
+}

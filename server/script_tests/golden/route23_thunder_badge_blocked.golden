@@ -1,0 +1,38 @@
+Scenario: route23_thunder_badge_blocked
+Description: The Route 23 Thunder Badge guard blocks the player without the Thunder Badge.
+Character: ScriptSimThunderGateBlocked
+
+Initial state
+  location: ROUTE_23[34] (8,119)
+  flags: EVENT_GOT_BOULDERBADGE, EVENT_GOT_CASCADEBADGE, EVENT_GOT_POKEDEX, EVENT_ROUTE23_BADGE1_CHECKED, EVENT_ROUTE23_BADGE2_CHECKED
+  party:
+    slot 0: #6 CHARIZARD L50 moves LEER, RAGE, SLASH, FLAMETHROWER
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: Route23BadgeCheck3Blocked
+  map: ROUTE_23
+  trigger: coord
+
+Actions
+  - lockInput
+  - dialogue: GUARD [You can pass here only if you have the THUNDERBADGE! You don't have the THUNDERBADGE yet! You have to have it to get to POKéMON LEAGUE!]
+  - movePlayer *: from=(8,119) to=(8,120) steps=[DOWN]
+  - unlockInput
+
+Final state
+  location: ROUTE_23[34] (8,120)
+  flags: EVENT_GOT_BOULDERBADGE, EVENT_GOT_CASCADEBADGE, EVENT_GOT_POKEDEX, EVENT_ROUTE23_BADGE1_CHECKED, EVENT_ROUTE23_BADGE2_CHECKED
+  party:
+    slot 0: #6 CHARIZARD L50 moves LEER, RAGE, SLASH, FLAMETHROWER
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none

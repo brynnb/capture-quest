@@ -1,0 +1,25 @@
+{
+  "name": "museum_1f_entry_ticket_insufficient_money",
+  "description": "Museum 1F entry refuses the ticket when the player has less than 50 Pokédollars.",
+  "fixture": {
+    "characterName": "ScriptSimMuseumTicketNoMoney",
+    "mapName": "MUSEUM_1F",
+    "x": 9,
+    "y": 4,
+    "direction": "UP",
+    "money": 49,
+    "party": [{ "speciesId": 25, "level": 12 }]
+  },
+  "trigger": {
+    "type": "direct",
+    "scriptLabel": "Museum1FEntryTicketInsufficientMoney",
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "Museum1FEntryTicketInsufficientMoney",
+    "flagsAbsent": ["EVENT_BOUGHT_MUSEUM_TICKET"],
+    "money": 49,
+    "actionTypesContains": ["choice", "dialogue"],
+    "activeBattleAbsent": true
+  }
+}

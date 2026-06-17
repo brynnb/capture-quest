@@ -1,0 +1,83 @@
+{
+  "name": "pokemon_tower_2f_rival_charmander_below_start",
+  "description": "Step into the Pokemon Tower 2F below rival trigger with Charmander chosen and verify the Wartortle-path party.",
+  "fixture": {
+    "characterName": "ScriptSimPokemonTower2fRivalCharmanderBelow",
+    "mapName": "POKEMON_TOWER_2F",
+    "x": 14,
+    "y": 6,
+    "direction": "UP",
+    "flags": [
+      "EVENT_GOT_POKEDEX",
+      "EVENT_PLAYER_CHOSE_CHARMANDER",
+      "EVENT_BEAT_CERULEAN_RIVAL",
+      "EVENT_BEAT_SS_ANNE_RIVAL",
+      "EVENT_GOT_CASCADEBADGE",
+      "EVENT_GOT_SS_TICKET",
+      "EVENT_GOT_HM01",
+      "EVENT_SS_ANNE_LEFT"
+    ],
+    "party": [
+      {
+        "speciesId": 5,
+        "level": 28
+      }
+    ],
+    "inventory": [
+      {
+        "itemId": 9,
+        "quantity": 1
+      },
+      {
+        "itemId": 63,
+        "quantity": 1
+      },
+      {
+        "itemId": 84,
+        "quantity": 1
+      }
+    ]
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "POKEMON_TOWER_2F",
+    "x": 14,
+    "y": 6
+  },
+  "expect": {
+    "scriptLabel": "PokemonTower2FRivalEncounterBelow",
+    "flagsAbsent": [
+      "EVENT_BEAT_POKEMON_TOWER_RIVAL"
+    ],
+    "partySpecies": [
+      5
+    ],
+    "inventoryContains": [
+      {
+        "itemId": 9,
+        "quantity": 1
+      },
+      {
+        "itemId": 63,
+        "quantity": 1
+      },
+      {
+        "itemId": 84,
+        "quantity": 1
+      }
+    ],
+    "actionTypesContains": [
+      "facePlayer",
+      "dialogue",
+      "startTrainerBattle"
+    ],
+    "activeBattleTrainerClass": "RIVAL2",
+    "activeBattleEnemySpecies": [
+      17,
+      58,
+      102,
+      64,
+      8
+    ]
+  }
+}

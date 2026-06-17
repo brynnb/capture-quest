@@ -1,0 +1,54 @@
+Scenario: pokemon_fan_club_bike_voucher
+Description: The Pokemon Fan Club chairman grants the Bike Voucher.
+Character: ScriptSimBikeVoucher
+
+Initial state
+  location: POKEMON_FAN_CLUB[90] (3,3)
+  flags: EVENT_GOT_SS_TICKET
+  party:
+    slot 0: #5 CHARMELEON L25 moves EMBER, EMBER, LEER, RAGE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: PokemonFanClubChairmanTextGift
+  map: POKEMON_FAN_CLUB
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: CHAIRMAN [I chair the
+POKÉMON Fan Club! I have collected
+over 100 POKÉMON! I'm very fussy
+when it comes to POKÉMON! So...]
+  - choice:  "Did you come\nvisit to hear about my POKÉMON?" choice=true
+  - dialogue: CHAIRMAN [Good!
+Then listen up! My favorite
+RAPIDASH... It...cute...
+lovely...smart... plus...amazing... you think so?... oh yes...it... stunning... kindly... love it! Hug it...when... sleeping...warm and cuddly... spectacular... ravishing... ...Oops! Look at the time! I kept you too long! Thanks for hearing
+me out! I want you to have this!]
+  - giveItem *: BIKE VOUCHER x1 added
+  - dialogue:  [(PLAYER) received
+a BIKE VOUCHER! Exchange that for
+a BICYCLE! Don't worry, my
+FEAROW will FLY me anywhere! So, I don't need a
+BICYCLE! I hope you like
+cycling!]
+  - setFlag *: EVENT_GOT_BIKE_VOUCHER
+  - unlockInput
+
+Final state
+  location: POKEMON_FAN_CLUB[90] (3,3)
+  flags: EVENT_GOT_BIKE_VOUCHER, EVENT_GOT_SS_TICKET
+  party:
+    slot 0: #5 CHARMELEON L25 moves EMBER, EMBER, LEER, RAGE
+  inventory:
+    #45 BIKE VOUCHER x1
+  hidden objects:
+    none
+  active battle:
+    none

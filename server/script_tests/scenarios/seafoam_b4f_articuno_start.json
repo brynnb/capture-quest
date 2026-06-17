@@ -1,0 +1,22 @@
+{
+  "name": "seafoam_b4f_articuno_start",
+  "description": "Seafoam Islands B4F Articuno starts a scripted L50 wild battle without setting the beat flag at cutscene completion.",
+  "fixture": {
+    "characterName": "ScriptSim_Articuno_Start",
+    "mapName": "SEAFOAM_ISLANDS_B4F",
+    "x": 6,
+    "y": 1,
+    "party": [{"speciesId": 25, "level": 60}]
+  },
+  "trigger": {
+    "type": "npc_click",
+    "textConstant": "TEXT_SEAFOAMISLANDSB4F_ARTICUNO"
+  },
+  "expect": {
+    "scriptLabel": "SeafoamIslandsB4FArticunoEncounter",
+    "flagsAbsent": ["EVENT_BEAT_ARTICUNO"],
+    "actionTypesContains": ["startWildBattle"],
+    "activeBattleType": "wild",
+    "activeBattleEnemySpecies": [144]
+  }
+}

@@ -1,0 +1,35 @@
+Scenario: cinnabar_lab_fossil_ready_after_walk
+Description: Re-entering the fossil room after the walk-around wait clears the still-reviving flag.
+Character: ScriptSimCinnabarFossilReadyAfterWalk
+
+Initial state
+  location: CINNABAR_LAB_FOSSIL_ROOM[170] (5,3)
+  flags: EVENT_GAVE_FOSSIL_TO_LAB, EVENT_LAB_REVIVING_DOME_FOSSIL, EVENT_LAB_STILL_REVIVING_FOSSIL
+  party:
+    slot 0: #25 PIKACHU L35 moves THUNDER_WAVE, QUICK_ATTACK, SWIFT, AGILITY
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: CinnabarLabFossilReadyAfterWalk
+  map: CINNABAR_LAB_FOSSIL_ROOM
+  trigger: map_script
+
+Actions
+  - resetFlag *: EVENT_LAB_STILL_REVIVING_FOSSIL
+
+Final state
+  location: CINNABAR_LAB_FOSSIL_ROOM[170] (5,3)
+  flags: EVENT_GAVE_FOSSIL_TO_LAB, EVENT_LAB_REVIVING_DOME_FOSSIL
+  party:
+    slot 0: #25 PIKACHU L35 moves THUNDER_WAVE, QUICK_ATTACK, SWIFT, AGILITY
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

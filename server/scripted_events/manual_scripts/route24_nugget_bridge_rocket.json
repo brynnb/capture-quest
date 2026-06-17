@@ -1,0 +1,54 @@
+{
+  "scriptLabel": "Route24NuggetBridgeRocket",
+  "mapName": "ROUTE_24",
+  "trigger": {
+    "type": "coord",
+    "label": "Route24NuggetBridgeRocketCoords",
+    "source": "capturequest",
+    "coordinates": [
+      {
+        "mapName": "Route24",
+        "mapId": 9999,
+        "x": 190,
+        "y": -219
+      }
+    ]
+  },
+  "requiresFlagAbsent": "EVENT_BEAT_ROUTE24_ROCKET",
+  "setsFlags": [
+    "EVENT_BEAT_ROUTE24_ROCKET"
+  ],
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "x": 10,
+      "y": 1,
+      "type": "showActor",
+      "actor": "ROCKET",
+      "sprite": "SPRITE_ROCKET"
+    },
+    {
+      "type": "facePlayer",
+      "actor": "ROCKET",
+      "direction": "DOWN"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Congratulations! You beat all 5 trainers on NUGGET BRIDGE!",
+        "You get a NUGGET as a prize!",
+        "{PLAYER} got a NUGGET!",
+        "By the way, how would you like to join TEAM ROCKET?",
+        "We're a group dedicated to evil using POKéMON!",
+        "Want to join?",
+        "No?! Fine! Then I'll make you regret it!"
+      ],
+      "speaker": "ROCKET"
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

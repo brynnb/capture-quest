@@ -1,0 +1,22 @@
+{
+  "name": "lances_room_post_battle",
+  "description": "After beating Lance, the generated source after-battle script sets the champion-gate flag.",
+  "fixture": {
+    "characterName": "ScriptSimLancePostBattle",
+    "mapName": "LANCES_ROOM",
+    "x": 5,
+    "y": 10,
+    "direction": "UP",
+    "flags": ["EVENT_BEAT_LANCES_ROOM_TRAINER_0"],
+    "party": [{ "speciesId": 6, "level": 60 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": { "type": "map_script", "mapName": "LANCES_ROOM" },
+  "expect": {
+    "scriptLabel": "LancesRoomLanceAfterBattleTextEventBeatLanceSet",
+    "flagsPresent": ["EVENT_BEAT_LANCES_ROOM_TRAINER_0", "EVENT_BEAT_LANCE"],
+    "actionTypesContains": ["dialogue", "setFlag"],
+    "activeBattleAbsent": true
+  }
+}

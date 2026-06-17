@@ -1,0 +1,38 @@
+Scenario: pokemon_fan_club_bike_voucher_already_got
+Description: The Pokemon Fan Club chairman recognizes that the Bike Voucher event is already complete.
+Character: ScriptSimBikeVoucherAlreadyGot
+
+Initial state
+  location: POKEMON_FAN_CLUB[90] (3,3)
+  flags: EVENT_GOT_BIKE_VOUCHER
+  party:
+    slot 0: #5 CHARMELEON L25 moves EMBER, EMBER, LEER, RAGE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: PokemonFanClubChairmanTextAlreadyGot
+  map: POKEMON_FAN_CLUB
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: CHAIRMAN [Hello, (PLAYER)! Did you come see
+me about my POKÉMON again? No? Too bad!]
+  - unlockInput
+
+Final state
+  location: POKEMON_FAN_CLUB[90] (3,3)
+  flags: EVENT_GOT_BIKE_VOUCHER
+  party:
+    slot 0: #5 CHARMELEON L25 moves EMBER, EMBER, LEER, RAGE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

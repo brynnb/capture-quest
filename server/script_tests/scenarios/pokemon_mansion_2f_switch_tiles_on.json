@@ -1,0 +1,23 @@
+{
+  "name": "pokemon_mansion_2f_switch_tiles_on",
+  "description": "Pokemon Mansion 2F switch-controlled blocks resolve to the flag-on layout.",
+  "fixture": {
+    "characterName": "ScriptSimMansion2FTilesOn",
+    "mapName": "POKEMON_MANSION_2F",
+    "x": 2,
+    "y": 11,
+    "flags": ["EVENT_MANSION_SWITCH_ON"]
+  },
+  "trigger": {
+    "type": "tile_state",
+    "mapName": "POKEMON_MANSION_2F"
+  },
+  "expect": {
+    "scriptLabel": "TileState:POKEMON_MANSION_2F",
+    "tileStates": [
+      { "x": 5, "y": 8, "tileImageId": 780, "collisionType": 0, "label": "PokemonMansionSwitchOn_2F_2_4_1_0" },
+      { "x": 8, "y": 18, "tileImageId": 758, "collisionType": 1, "label": "PokemonMansionSwitchOn_2F_4_9_0_0" },
+      { "x": 23, "y": 6, "tileImageId": 758, "collisionType": 1, "label": "PokemonMansionSwitchOn_2F_11_3_1_0" }
+    ]
+  }
+}

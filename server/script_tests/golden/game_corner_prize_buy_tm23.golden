@@ -1,0 +1,41 @@
+Scenario: game_corner_prize_buy_tm23
+Description: Game Corner prize exchange buys TM23 Dragon Rage as an inventory item.
+Character: SimGameCornerPrizeTM23
+
+Initial state
+  location: GAME_CORNER_PRIZE_ROOM[137] (2,4)
+  flags: none
+  coins: 3300
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: GameCornerPrizeBuy:TM23 Dragon Rage
+  map: GAME_CORNER_PRIZE_ROOM
+  trigger: gamecorner_prize_buy
+
+Actions
+  - gameCornerPrizeBuy *: success=true prize=TM23 Dragon Rage coins=0 message="Here you go!"
+
+Final state
+  location: GAME_CORNER_PRIZE_ROOM[137] (2,4)
+  flags: none
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+    #111 TM23 x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Game Corner
+  purchase: success=true coins=0 message=Here you go!
+  prize: tm TM23 Dragon Rage cost=3300 item=111

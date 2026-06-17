@@ -1,0 +1,27 @@
+{
+  "name": "repel_wears_off_after_steps",
+  "description": "A seeded repel state decrements per step and emits the wear-off state at zero steps.",
+  "fixture": {
+    "characterName": "ScriptSimRepelWearsOff",
+    "mapName": "ROUTE_1",
+    "x": 10,
+    "y": 10,
+    "party": [{ "speciesId": 25, "level": 12 }],
+    "repel": { "stepsLeft": 2 }
+  },
+  "trigger": {
+    "type": "repel_step",
+    "repeat": 2
+  },
+  "expect": {
+    "scriptLabel": "RepelStep",
+    "repel": {
+      "active": false,
+      "stepsLeft": 0,
+      "message": "REPEL's effect wore off!",
+      "woreOff": true
+    },
+    "actionTypesContains": ["repelStep"],
+    "activeBattleAbsent": true
+  }
+}

@@ -1,0 +1,41 @@
+Scenario: game_corner_hidden_coin_repeat_once
+Description: Game Corner hidden coins can only be collected once per character even if the same spot is checked again.
+Character: SimGameCornerHiddenRepeat
+
+Initial state
+  location: GAME_CORNER[135] (15,8)
+  flags: none
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: GameCornerHiddenCoin
+  map: GAME_CORNER
+  trigger: gamecorner_hidden_coin
+
+Actions
+  - gameCornerHiddenCoin *: success=false coinId=11 amount=100 coins=100 attempts=2 message="No hidden coins." alreadyFound=true
+
+Final state
+  location: GAME_CORNER[135] (15,8)
+  flags: none
+  coins: 100
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Game Corner
+  hidden coin: success=false coinId=11 amount=100 coins=100 attempts=2
+  message: No hidden coins.
+  already found: true

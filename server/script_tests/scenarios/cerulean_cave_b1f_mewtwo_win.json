@@ -1,0 +1,23 @@
+{
+  "name": "cerulean_cave_b1f_mewtwo_win",
+  "description": "Cerulean Cave B1F Mewtwo battle win sets the beat flag and hides the Mewtwo object.",
+  "fixture": {
+    "characterName": "ScriptSim_Mewtwo_Win",
+    "mapName": "CERULEAN_CAVE_B1F",
+    "x": 27,
+    "y": 13,
+    "party": [{"speciesId": 25, "level": 70}]
+  },
+  "trigger": {
+    "type": "npc_click",
+    "textConstant": "TEXT_CERULEANCAVEB1F_MEWTWO"
+  },
+  "resolveBattle": {"result": "win"},
+  "expect": {
+    "scriptLabel": "CeruleanCaveB1FMewtwoEncounter",
+    "flagsPresent": ["EVENT_BEAT_MEWTWO"],
+    "hiddenObjectKeys": ["TEXT_CERULEANCAVEB1F_MEWTWO"],
+    "actionTypesContains": ["startWildBattle", "resolveBattle", "hideObject"],
+    "activeBattleAbsent": true
+  }
+}

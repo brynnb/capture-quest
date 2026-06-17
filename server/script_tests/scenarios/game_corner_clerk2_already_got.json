@@ -1,0 +1,26 @@
+{
+  "name": "game_corner_clerk2_already_got",
+  "description": "The Game Corner clerk uses his already-got dialogue after giving his 20 coins.",
+  "fixture": {
+    "characterName": "ScriptSimGameCornerClerk2AlreadyGot",
+    "mapName": "GAME_CORNER",
+    "x": 7,
+    "y": 4,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_20_COINS_2"],
+    "inventory": [{ "itemName": "COIN_CASE", "quantity": 1 }],
+    "coins": 30
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "GAME_CORNER",
+    "textConstant": "TEXT_GAMECORNER_CLERK2"
+  },
+  "expect": {
+    "scriptLabel": "GameCornerClerk2AlreadyGot",
+    "flagsPresent": ["EVENT_GOT_20_COINS_2"],
+    "coins": 30,
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

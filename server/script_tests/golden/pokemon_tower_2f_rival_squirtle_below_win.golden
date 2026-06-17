@@ -1,0 +1,48 @@
+Scenario: pokemon_tower_2f_rival_squirtle_below_win
+Description: Win the Pokemon Tower 2F rival battle from the below coordinate and verify the alternate post-win movement cleanup.
+Character: ScriptSimTowerRivalSquirtleBelowWin
+
+Initial state
+  location: POKEMON_TOWER_2F[143] (14,6)
+  flags: EVENT_BEAT_CERULEAN_RIVAL, EVENT_BEAT_SS_ANNE_RIVAL, EVENT_GOT_CASCADEBADGE, EVENT_GOT_HM01, EVENT_GOT_POKEDEX, EVENT_GOT_SS_TICKET, EVENT_PLAYER_CHOSE_SQUIRTLE, EVENT_SS_ANNE_LEFT
+  party:
+    slot 0: #8 WARTORTLE L28 moves BUBBLE, BUBBLE, WATER_GUN, BITE
+  inventory:
+    #84 HM01 x1
+    #9 POKéDEX x1
+    #63 S.S.TICKET x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: PokemonTower2FRivalEncounterBelow
+  map: POKEMON_TOWER_2F
+  trigger: coord
+
+Actions
+  - lockInput
+  - facePlayer
+  - dialogue: RIVAL [Hey, {PLAYER}! What brings you here? Your POKéMON don't look dead! I can at least make them faint! Let's go, pal!]
+  - startTrainerBattle *: RIVAL2 party=5 enemy=[#17 PIDGEOTTO L25 #130 GYARADOS L23 #58 GROWLITHE L22 #64 KADABRA L20 #2 IVYSAUR L25] winFlag=EVENT_BEAT_POKEMON_TOWER_RIVAL
+  - unlockInput
+  - resolveBattle *: win trainer=RIVAL2 winFlag=EVENT_BEAT_POKEMON_TOWER_RIVAL
+  - dialogue: RIVAL [How's your POKéDEX coming, pal? I just caught a CUBONE! I can't find the grown-up MAROWAK yet! I doubt there are any left! Well, I better get going! I've got a lot to accomplish, pal! Smell ya later!]
+  - move: RIVAL [RIGHT DOWN DOWN RIGHT DOWN DOWN RIGHT RIGHT]
+  - hideObject *: objects=[TEXT_POKEMONTOWER2F_RIVAL]
+  - setFlag *: EVENT_POKEMON_TOWER_RIVAL_LEFT
+
+Final state
+  location: POKEMON_TOWER_2F[143] (14,6)
+  flags: EVENT_BEAT_CERULEAN_RIVAL, EVENT_BEAT_POKEMON_TOWER_RIVAL, EVENT_BEAT_SS_ANNE_RIVAL, EVENT_GOT_CASCADEBADGE, EVENT_GOT_HM01, EVENT_GOT_POKEDEX, EVENT_GOT_SS_TICKET, EVENT_PLAYER_CHOSE_SQUIRTLE, EVENT_POKEMON_TOWER_RIVAL_LEFT, EVENT_SS_ANNE_LEFT
+  party:
+    slot 0: #8 WARTORTLE L28 moves BUBBLE, BUBBLE, WATER_GUN, BITE
+  inventory:
+    #84 HM01 x1
+    #9 POKéDEX x1
+    #63 S.S.TICKET x1
+  hidden objects:
+    TEXT_POKEMONTOWER2F_RIVAL
+  active battle:
+    none

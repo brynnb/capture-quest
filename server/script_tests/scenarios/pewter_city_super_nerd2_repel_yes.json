@@ -1,0 +1,25 @@
+{
+  "name": "pewter_city_super_nerd2_repel_yes",
+  "description": "The Pewter City repel NPC gives the correct response when the player knows what he is doing.",
+  "fixture": {
+    "characterName": "ScriptSimPewterRepelYes",
+    "mapName": "PEWTER_CITY",
+    "x": 16,
+    "y": 17,
+    "direction": "UP",
+    "party": [{ "speciesId": 1, "level": 12 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "PEWTER_CITY",
+    "textConstant": "TEXT_PEWTERCITY_SUPER_NERD2",
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "PewterCitySuperNerd2TextChoice",
+    "actionTypesContains": ["dialogue", "choice"],
+    "activeBattleAbsent": true
+  }
+}

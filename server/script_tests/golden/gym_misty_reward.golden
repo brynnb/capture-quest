@@ -1,0 +1,44 @@
+Scenario: gym_misty_reward
+Description: After beating Misty, the Cerulean Gym post-battle script grants Cascadebadge state and TM11.
+Character: ScriptSimGymMistyReward
+
+Initial state
+  location: CERULEAN_GYM[65] (4,2)
+  flags: EVENT_BEAT_MISTY, EVENT_GOT_BOULDERBADGE
+  party:
+    slot 0: #4 CHARMANDER L22 moves GROWL, EMBER, LEER, RAGE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: CeruleanGymMistyPostBattle
+  map: CERULEAN_GYM
+  trigger: map_script
+
+Actions
+  - lockInput
+  - dialogue: MISTY [Wow! You're too much! All right! You can have the CASCADEBADGE to show you beat me!]
+  - dialogue: MISTY [The CASCADEBADGE makes all POKéMON up to L30 obey! That includes even outsiders! There's more, you can now use CUT any time! You can CUT down small bushes to open new paths! You can also have my favorite TM!]
+  - dialogue: MISTY [{PLAYER} received TM11! TM11 teaches BUBBLEBEAM! Use it on an aquatic POKéMON!]
+  - setFlag *: EVENT_GOT_CASCADEBADGE
+  - setFlag *: EVENT_GOT_TM11
+  - giveItem *: TM11 x1 added
+  - unlockInput
+  - setsFlags *: EVENT_GOT_CASCADEBADGE
+  - setsFlags *: EVENT_GOT_TM11
+
+Final state
+  location: CERULEAN_GYM[65] (4,2)
+  flags: EVENT_BEAT_MISTY, EVENT_GOT_BOULDERBADGE, EVENT_GOT_CASCADEBADGE, EVENT_GOT_TM11
+  party:
+    slot 0: #4 CHARMANDER L22 moves GROWL, EMBER, LEER, RAGE
+  inventory:
+    #99 TM11 x1
+  hidden objects:
+    none
+  active battle:
+    none

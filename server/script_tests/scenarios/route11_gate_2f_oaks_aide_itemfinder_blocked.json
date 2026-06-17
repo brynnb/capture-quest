@@ -1,0 +1,34 @@
+{
+  "name": "route11_gate_2f_oaks_aide_itemfinder_blocked",
+  "description": "Route 11 Gate 2F Oak's Aide blocks Itemfinder when the player has caught fewer than 30 Pokemon.",
+  "fixture": {
+    "characterName": "ScriptSimRoute11AideItemfinderBlocked",
+    "mapName": "ROUTE_11_GATE_2F",
+    "x": 2,
+    "y": 5,
+    "direction": "DOWN",
+    "flags": [],
+    "party": [{ "speciesId": 25, "level": 30 }],
+    "inventory": [],
+    "pokedexCaught": [
+      1, 4, 7, 10, 13, 16, 19, 21, 25, 27,
+      29, 32, 35, 39, 41, 43, 46, 48, 50, 52,
+      54, 56, 58, 60, 63, 66, 69, 72, 74
+    ],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "ROUTE_11_GATE_2F",
+    "textConstant": "TEXT_ROUTE11GATE2F_OAKS_AIDE",
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "Route11Gate2FOaksAideItemfinderBlocked",
+    "flagsAbsent": ["EVENT_GOT_ITEMFINDER"],
+    "inventoryAbsent": [{ "itemId": 71 }],
+    "pokedexCaughtCount": 29,
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

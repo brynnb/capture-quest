@@ -1,0 +1,30 @@
+{
+  "name": "route25_bill_pokemon_visible_before_help",
+  "description": "Route 25 map-load sync makes Bill's Pokemon form visible before the player helps him.",
+  "fixture": {
+    "characterName": "ScriptSimRoute25BillPokemonVisible",
+    "mapName": "ROUTE_25",
+    "x": 43,
+    "y": 3,
+    "flags": ["EVENT_BILL_SAID_USE_CELL_SEPARATOR"],
+    "hiddenObjects": ["HS_BILL_POKEMON"]
+  },
+  "trigger": {
+    "type": "map_script",
+    "mapName": "ROUTE_25"
+  },
+  "expect": {
+    "scriptLabel": "Route25BillPokemonVisibleBeforeHelp",
+    "flagsAbsent": ["EVENT_BILL_SAID_USE_CELL_SEPARATOR"],
+    "actionTypesContains": ["resetFlag", "showObject"],
+    "objectStates": [
+      {
+        "mapName": "BILLS_HOUSE",
+        "name": "BillsHouse_NPC_1",
+        "visible": true,
+        "label": "CutsceneAction:showObject"
+      }
+    ],
+    "activeBattleAbsent": true
+  }
+}

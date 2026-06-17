@@ -1,0 +1,47 @@
+Scenario: seafoam_1f_boulder_push_needs_strength
+Description: A Seafoam boulder cannot move until Strength is active, even with the right badge and move known.
+Character: SimBoulderNeedsStrength
+
+Initial state
+  location: SEAFOAM_ISLANDS_1F[192] (18,11)
+  flags: EVENT_GOT_RAINBOWBADGE
+  party:
+    slot 0: #66 MACHOP L20 moves STRENGTH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: BoulderPush:SEAFOAM_ISLANDS_1F
+  map: SEAFOAM_ISLANDS_1F
+  trigger: boulder_push
+
+Actions
+  - boulderPush: success=false object=SeafoamIslands1F_NPC_1 from=(18,10) to=(18,9) direction=UP message="This requires STRENGTH to move!"
+
+Final state
+  location: SEAFOAM_ISLANDS_1F[192] (18,11)
+  flags: EVENT_GOT_RAINBOWBADGE
+  party:
+    slot 0: #66 MACHOP L20 moves STRENGTH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Boulder push
+  result: success=false direction=UP object=SeafoamIslands1F_NPC_1
+  movement: (18,10) -> (18,9)
+  message: This requires STRENGTH to move!
+  boulders:
+    SeafoamIslands1F_NPC_1 (18,10): visible
+    SeafoamIslands1F_NPC_2 (26,7): visible
+
+Event object states
+  SeafoamBoulder_1F_1_VisibleBeforeDrop SEAFOAM_ISLANDS_1F/SeafoamIslands1F_NPC_1 (18,10): visible text=TEXT_SEAFOAMISLANDS1F_BOULDER1
+  SeafoamBoulder_1F_2_VisibleBeforeDrop SEAFOAM_ISLANDS_1F/SeafoamIslands1F_NPC_2 (26,7): visible text=TEXT_SEAFOAMISLANDS1F_BOULDER2

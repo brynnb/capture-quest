@@ -1,0 +1,30 @@
+{
+  "name": "gym_sabrina_reward",
+  "description": "After beating Sabrina, the Saffron Gym post-battle script grants Marshbadge state and TM46.",
+  "fixture": {
+    "characterName": "ScriptSimGymSabrinaReward",
+    "mapName": "SAFFRON_GYM",
+    "x": 5,
+    "y": 4,
+    "direction": "UP",
+    "flags": [
+      "EVENT_BEAT_SABRINA",
+      "EVENT_GOT_BOULDERBADGE",
+      "EVENT_GOT_CASCADEBADGE",
+      "EVENT_GOT_THUNDERBADGE",
+      "EVENT_GOT_RAINBOWBADGE",
+      "EVENT_GOT_SOULBADGE"
+    ],
+    "party": [{ "speciesId": 6, "level": 43 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": { "type": "map_script", "mapName": "SAFFRON_GYM" },
+  "expect": {
+    "scriptLabel": "SaffronGymSabrinaPostBattle",
+    "flagsPresent": ["EVENT_BEAT_SABRINA", "EVENT_GOT_MARSHBADGE", "EVENT_GOT_TM46"],
+    "inventoryContains": [{ "itemId": 134, "quantity": 1 }],
+    "actionTypesContains": ["dialogue", "setFlag", "giveItem"],
+    "activeBattleAbsent": true
+  }
+}

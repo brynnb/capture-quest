@@ -1,0 +1,22 @@
+{
+  "name": "seafoam_b4f_current_surf_exit",
+  "description": "Seafoam B4F surf-exit current forces the player up from the B3F hole landing after both B2F boulders have fallen.",
+  "fixture": {
+    "characterName": "ScriptSimSeafoamB4FCurrentSurfExit",
+    "mapName": "SEAFOAM_ISLANDS_B4F",
+    "x": 20,
+    "y": 17,
+    "flags": ["EVENT_SEAFOAM3_BOULDER1_DOWN_HOLE", "EVENT_SEAFOAM3_BOULDER2_DOWN_HOLE"]
+  },
+  "trigger": {
+    "type": "seafoam_current",
+    "mapName": "SEAFOAM_ISLANDS_B4F"
+  },
+  "expect": {
+    "scriptLabel": "SeafoamCurrent:SeafoamB4FCurrentSurfExitLeft",
+    "finalX": 20,
+    "finalY": 15,
+    "actionTypesContains": ["seafoamCurrent"],
+    "activeBattleAbsent": true
+  }
+}

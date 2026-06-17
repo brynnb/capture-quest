@@ -1,0 +1,40 @@
+Scenario: field_move_flash_with_boulder_badge
+Description: Flash is allowed when a party Pokemon knows FLASH and the Boulder Badge is set.
+Character: SimFieldFlashWithBadge
+
+Initial state
+  location: PALLET_TOWN[9999] (10,10)
+  flags: EVENT_GOT_BOULDERBADGE
+  party:
+    slot 0: #25 PIKACHU L20 moves FLASH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FieldMovePermission:FLASH
+  map: PALLET_TOWN
+  trigger: field_move_permission
+
+Actions
+  - fieldMovePermission: move=FLASH allowed=true requiredBadge=EVENT_GOT_BOULDERBADGE knownBy=#25 PIKACHU
+
+Final state
+  location: PALLET_TOWN[9999] (10,10)
+  flags: EVENT_GOT_BOULDERBADGE
+  party:
+    slot 0: #25 PIKACHU L20 moves FLASH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Field move
+  move: FLASH[148] allowed=true
+  required badge: EVENT_GOT_BOULDERBADGE
+  known by: #25 PIKACHU

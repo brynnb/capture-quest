@@ -1,0 +1,28 @@
+{
+  "name": "pewter_gym_brock_generated_pre_battle",
+  "description": "The generated Brock leader text branch starts the source-backed Brock battle before he is beaten.",
+  "fixture": {
+    "characterName": "ScriptSimBrockGeneratedPreBattle",
+    "mapName": "PEWTER_GYM",
+    "x": 4,
+    "y": 2,
+    "direction": "UP",
+    "flags": [],
+    "party": [{ "speciesId": 25, "level": 15 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "PEWTER_GYM",
+    "textConstant": "TEXT_PEWTERGYM_BROCK"
+  },
+  "expect": {
+    "scriptLabel": "PewterGymBrockTextPreBattle",
+    "flagsAbsent": ["EVENT_BEAT_BROCK"],
+    "partySpecies": [25],
+    "actionTypesContains": ["dialogue", "startTrainerBattle"],
+    "activeBattleTrainerClass": "BROCK",
+    "activeBattleEnemySpecies": [74, 95]
+  }
+}

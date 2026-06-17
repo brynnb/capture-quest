@@ -1,0 +1,28 @@
+{
+  "name": "vermilion_city_ss_anne_guard_no_ticket_blocked",
+  "description": "The S.S. Anne guard blocks and pushes back a player who faces the dock gate without a ticket.",
+  "fixture": {
+    "characterName": "ScriptSimSSAnneGuardNoTicket",
+    "mapName": "VERMILION_CITY",
+    "x": 188,
+    "y": -24,
+    "direction": "DOWN",
+    "flags": [],
+    "party": [{ "speciesId": 6, "level": 28 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "VERMILION_CITY",
+    "x": 188,
+    "y": -24
+  },
+  "expect": {
+    "scriptLabel": "VermilionCitySSAnneGuardNoTicketBlocked",
+    "finalX": 188,
+    "finalY": -25,
+    "actionTypesContains": ["dialogue", "movePlayer"],
+    "activeBattleAbsent": true
+  }
+}

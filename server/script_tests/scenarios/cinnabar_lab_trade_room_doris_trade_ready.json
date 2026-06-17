@@ -1,0 +1,26 @@
+{
+  "name": "cinnabar_lab_trade_room_doris_trade_ready",
+  "description": "Cinnabar Lab Trade Room Gramps is ready to trade Electrode named DORIS for Raichu.",
+  "fixture": {
+    "characterName": "ScriptSimCinnabarDorisTrade",
+    "mapName": "CINNABAR_LAB_TRADE_ROOM",
+    "x": 1,
+    "y": 5,
+    "direction": "UP",
+    "flags": [],
+    "party": [{ "speciesId": 26, "level": 30 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "fixture_state",
+    "mapName": "CINNABAR_LAB_TRADE_ROOM",
+    "textConstant": "TEXT_CINNABARLABTRADEROOM_GRAMPS"
+  },
+  "expect": {
+    "scriptLabel": "FixtureState",
+    "finalDirection": "UP",
+    "partySpecies": [26],
+    "activeBattleAbsent": true
+  }
+}

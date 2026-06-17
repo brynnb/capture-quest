@@ -1,0 +1,58 @@
+{
+  "name": "seafoam_1f_boulder_push_into_hole",
+  "description": "Pushing a Seafoam boulder onto its source hole sets the drop flag and hides the source object.",
+  "fixture": {
+    "characterName": "SimBoulderPushIntoHole",
+    "mapName": "SEAFOAM_ISLANDS_1F",
+    "x": 17,
+    "y": 8,
+    "flags": ["EVENT_GOT_RAINBOWBADGE"],
+    "party": [
+      { "speciesId": 66, "level": 20, "moves": ["STRENGTH"] }
+    ],
+    "objectPositions": [
+      {
+        "objectName": "SeafoamIslands1F_NPC_1",
+        "x": 17,
+        "y": 7
+      }
+    ]
+  },
+  "trigger": {
+    "type": "boulder_push",
+    "direction": "UP",
+    "activateStrength": true
+  },
+  "expect": {
+    "scriptLabel": "BoulderPush:SEAFOAM_ISLANDS_1F",
+    "boulderPush": {
+      "success": true,
+      "objectName": "SeafoamIslands1F_NPC_1",
+      "fromX": 17,
+      "fromY": 7,
+      "toX": 17,
+      "toY": 6,
+      "dropped": true,
+      "flagSet": "EVENT_SEAFOAM1_BOULDER1_DOWN_HOLE"
+    },
+    "flagsPresent": ["EVENT_SEAFOAM1_BOULDER1_DOWN_HOLE"],
+    "objectStates": [
+      {
+        "mapName": "SEAFOAM_ISLANDS_1F",
+        "name": "SeafoamIslands1F_NPC_1",
+        "x": 18,
+        "y": 10,
+        "visible": false
+      },
+      {
+        "mapName": "SEAFOAM_ISLANDS_B1F",
+        "name": "SeafoamIslandsB1F_NPC_1",
+        "x": 17,
+        "y": 6,
+        "visible": true
+      }
+    ],
+    "actionTypesContains": ["boulderPush"],
+    "activeBattleAbsent": true
+  }
+}

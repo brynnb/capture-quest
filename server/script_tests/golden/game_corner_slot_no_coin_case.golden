@@ -1,0 +1,41 @@
+Scenario: game_corner_slot_no_coin_case
+Description: Game Corner slot machines require the Coin Case before play.
+Character: SimGameCornerSlotNoCase
+
+Initial state
+  location: GAME_CORNER[135] (18,15)
+  flags: none
+  coins: 10
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: GameCornerSlotPlay
+  map: GAME_CORNER
+  trigger: gamecorner_slot_play
+
+Actions
+  - gameCornerSlotPlay: success=false bet=1 payout=0 coins=10 positions=[] message="You need a COIN CASE!"
+
+Final state
+  location: GAME_CORNER[135] (18,15)
+  flags: none
+  coins: 10
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Game Corner
+  slot play: success=false bet=1 payout=0 coins=10 positions=[]
+  message: You need a COIN CASE!

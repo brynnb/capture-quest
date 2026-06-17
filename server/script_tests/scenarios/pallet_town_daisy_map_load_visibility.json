@@ -1,0 +1,35 @@
+{
+  "name": "pallet_town_daisy_map_load_visibility",
+  "description": "Pallet Town map-load sync hides sitting Daisy and shows walking Daisy after the Town Map and Blue's House flags are set.",
+  "fixture": {
+    "characterName": "ScriptSimPalletDaisyVisibility",
+    "mapName": "PALLET_TOWN",
+    "x": 5,
+    "y": 6,
+    "flags": ["EVENT_GOT_TOWN_MAP", "EVENT_ENTERED_BLUES_HOUSE"]
+  },
+  "trigger": {
+    "type": "map_load",
+    "mapName": "PALLET_TOWN"
+  },
+  "expect": {
+    "scriptLabel": "MapLoad:PALLET_TOWN",
+    "flagsPresent": ["EVENT_GOT_TOWN_MAP", "EVENT_ENTERED_BLUES_HOUSE", "EVENT_DAISY_WALKING"],
+    "flagsAbsent": ["EVENT_PALLET_AFTER_GETTING_POKEBALLS_2"],
+    "objectStates": [
+      {
+        "mapName": "BLUES_HOUSE",
+        "name": "BluesHouse_NPC_1",
+        "visible": false,
+        "label": "PalletTownDaisyScript"
+      },
+      {
+        "mapName": "BLUES_HOUSE",
+        "name": "BluesHouse_NPC_2",
+        "visible": true,
+        "label": "PalletTownDaisyScript"
+      }
+    ],
+    "activeBattleAbsent": true
+  }
+}

@@ -1,0 +1,42 @@
+Scenario: celadon_mansion_eevee
+Description: The Celadon Mansion rooftop Pokeball grants Eevee and hides after pickup.
+Character: ScriptSimCeladonEevee
+
+Initial state
+  location: CELADON_MANSION_ROOF_HOUSE[132] (4,4)
+  flags: EVENT_GOT_RAINBOWBADGE
+  party:
+    slot 0: #5 CHARMELEON L30 moves EMBER, EMBER, LEER, RAGE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: CeladonMansionEevee
+  map: CELADON_MANSION_ROOF_HOUSE
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [There's a POKé BALL on the table! {PLAYER} received EEVEE!]
+  - setFlag *: EVENT_GOT_EEVEE
+  - unlockInput
+  - givePokemon *: EEVEE L25 added to party
+  - hideObject *: objects=[TEXT_CELADONMANSION_ROOF_HOUSE_EEVEE_POKEBALL]
+  - setsFlags *: EVENT_GOT_EEVEE
+
+Final state
+  location: CELADON_MANSION_ROOF_HOUSE[132] (4,4)
+  flags: EVENT_GOT_EEVEE, EVENT_GOT_RAINBOWBADGE
+  party:
+    slot 0: #5 CHARMELEON L30 moves EMBER, EMBER, LEER, RAGE
+    slot 1: #133 EEVEE L25 moves TACKLE
+  inventory:
+    none
+  hidden objects:
+    TEXT_CELADONMANSION_ROOF_HOUSE_EEVEE_POKEBALL
+  active battle:
+    none

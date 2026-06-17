@@ -1,0 +1,33 @@
+{
+  "name": "cinnabar_gym_quiz_gates_open_after_flags",
+  "description": "Cinnabar Gym quiz gate tiles resolve to open floor for a player with all gate flags.",
+  "fixture": {
+    "characterName": "ScriptSimCinnabarQuizGatesOpen",
+    "mapName": "CINNABAR_GYM",
+    "x": 16,
+    "y": 13,
+    "flags": [
+      "EVENT_CINNABAR_GYM_GATE1_UNLOCKED",
+      "EVENT_CINNABAR_GYM_GATE2_UNLOCKED",
+      "EVENT_CINNABAR_GYM_GATE3_UNLOCKED",
+      "EVENT_CINNABAR_GYM_GATE4_UNLOCKED",
+      "EVENT_CINNABAR_GYM_GATE5_UNLOCKED",
+      "EVENT_CINNABAR_GYM_GATE6_UNLOCKED"
+    ]
+  },
+  "trigger": {
+    "type": "tile_state",
+    "mapName": "CINNABAR_GYM"
+  },
+  "expect": {
+    "scriptLabel": "TileState:CINNABAR_GYM",
+    "tileStates": [
+      { "x": 9, "y": 3, "tileImageId": 758, "collisionType": 1 },
+      { "x": 6, "y": 3, "tileImageId": 758, "collisionType": 1 },
+      { "x": 6, "y": 6, "tileImageId": 758, "collisionType": 1 },
+      { "x": 3, "y": 8, "tileImageId": 758, "collisionType": 1 },
+      { "x": 2, "y": 6, "tileImageId": 758, "collisionType": 1 },
+      { "x": 2, "y": 3, "tileImageId": 758, "collisionType": 1 }
+    ]
+  }
+}

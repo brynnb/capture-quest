@@ -1,0 +1,38 @@
+Scenario: pewter_city_super_nerd1_museum_yes
+Description: The Pewter City museum guide stops after the source YES response.
+Character: ScriptSimPewterMuseumYes
+
+Initial state
+  location: PEWTER_CITY[9999] (16,17)
+  flags: none
+  party:
+    slot 0: #1 BULBASAUR L12 moves TACKLE, GROWL, LEECH_SEED
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: PewterCitySuperNerd1MuseumGuide
+  map: PEWTER_CITY
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - choice:  "Did you check out\nthe MUSEUM?" choice=true
+  - dialogue: SUPER NERD [Weren't those
+fossils from MT. MOON amazing?]
+
+Final state
+  location: PEWTER_CITY[9999] (16,17)
+  flags: none
+  party:
+    slot 0: #1 BULBASAUR L12 moves TACKLE, GROWL, LEECH_SEED
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

@@ -1,0 +1,27 @@
+{
+  "name": "museum_1f_old_amber",
+  "description": "The Museum 1F scientist grants Old Amber.",
+  "fixture": {
+    "characterName": "ScriptSimOldAmber",
+    "mapName": "MUSEUM_1F",
+    "x": 15,
+    "y": 3,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_HM01"],
+    "party": [{ "speciesId": 5, "level": 25 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "MUSEUM_1F",
+    "textConstant": "TEXT_MUSEUM1F_SCIENTIST2"
+  },
+  "expect": {
+    "scriptLabel": "Museum1FOldAmber",
+    "flagsPresent": ["EVENT_GOT_OLD_AMBER"],
+    "inventoryContains": [{ "itemId": 31, "quantity": 1 }],
+    "actionTypesContains": ["dialogue", "setFlag", "giveItem"],
+    "activeBattleAbsent": true
+  }
+}

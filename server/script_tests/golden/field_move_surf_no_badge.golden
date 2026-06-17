@@ -1,0 +1,41 @@
+Scenario: field_move_surf_no_badge
+Description: Surf is blocked when a party Pokemon knows SURF but the Soul Badge is missing.
+Character: SimFieldSurfNoBadge
+
+Initial state
+  location: PALLET_TOWN[9999] (10,10)
+  flags: none
+  party:
+    slot 0: #131 LAPRAS L20 moves SURF
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FieldMovePermission:SURF
+  map: PALLET_TOWN
+  trigger: field_move_permission
+
+Actions
+  - fieldMovePermission: move=SURF allowed=false requiredBadge=EVENT_GOT_SOULBADGE knownBy=#131 LAPRAS message="No! A new BADGE is required."
+
+Final state
+  location: PALLET_TOWN[9999] (10,10)
+  flags: none
+  party:
+    slot 0: #131 LAPRAS L20 moves SURF
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Field move
+  move: SURF[57] allowed=false
+  required badge: EVENT_GOT_SOULBADGE
+  known by: #131 LAPRAS
+  message: No! A new BADGE is required.

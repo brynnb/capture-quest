@@ -1,0 +1,43 @@
+Scenario: gym_erika_reward
+Description: After beating Erika, the Celadon Gym post-battle script grants Rainbowbadge state and TM21.
+Character: ScriptSimGymErikaReward
+
+Initial state
+  location: CELADON_GYM[134] (5,4)
+  flags: EVENT_BEAT_ERIKA, EVENT_GOT_BOULDERBADGE, EVENT_GOT_CASCADEBADGE, EVENT_GOT_THUNDERBADGE
+  party:
+    slot 0: #5 CHARMELEON L34 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: CeladonGymErikaPostBattle
+  map: CELADON_GYM
+  trigger: map_script
+
+Actions
+  - lockInput
+  - dialogue: ERIKA [Oh! I concede defeat. You are remarkably strong. I must confer you the RAINBOWBADGE.]
+  - dialogue: ERIKA [{PLAYER} received TM21! You are cataloging POKéMON? I must say I'm impressed. I would never collect POKéMON if they were unattractive.]
+  - setFlag *: EVENT_GOT_RAINBOWBADGE
+  - setFlag *: EVENT_GOT_TM21
+  - giveItem *: TM21 x1 added
+  - unlockInput
+  - setsFlags *: EVENT_GOT_RAINBOWBADGE
+  - setsFlags *: EVENT_GOT_TM21
+
+Final state
+  location: CELADON_GYM[134] (5,4)
+  flags: EVENT_BEAT_ERIKA, EVENT_GOT_BOULDERBADGE, EVENT_GOT_CASCADEBADGE, EVENT_GOT_RAINBOWBADGE, EVENT_GOT_THUNDERBADGE, EVENT_GOT_TM21
+  party:
+    slot 0: #5 CHARMELEON L34 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    #109 TM21 x1
+  hidden objects:
+    none
+  active battle:
+    none

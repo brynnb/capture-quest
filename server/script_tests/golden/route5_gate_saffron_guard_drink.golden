@@ -1,0 +1,40 @@
+Scenario: route5_gate_saffron_guard_drink
+Description: The Route 5 Saffron guard accepts Fresh Water and opens the Saffron gates.
+Character: ScriptSimSaffronGuard
+
+Initial state
+  location: ROUTE_5_GATE[70] (1,4)
+  flags: EVENT_GOT_FRESH_WATER
+  party:
+    slot 0: #6 CHARIZARD L38 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    #60 FRESH WATER x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SaffronCityGuardDrink
+  map: ROUTE_5_GATE
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: GUARD [I'm on guard duty. Hmm? This drink is for me? Gulp gulp... Ahh! That hit the spot! I'm sorry about turning you away, kid. You can go through now! I'll share this with the other guards!]
+  - setFlag *: EVENT_SAFFRON_GUARDS_OPENED
+  - unlockInput
+  - takeItem *: FRESH WATER x1 removed
+  - setsFlags *: EVENT_SAFFRON_GUARDS_OPENED
+
+Final state
+  location: ROUTE_5_GATE[70] (1,4)
+  flags: EVENT_GOT_FRESH_WATER, EVENT_SAFFRON_GUARDS_OPENED
+  party:
+    slot 0: #6 CHARIZARD L38 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

@@ -1,0 +1,35 @@
+Scenario: rocket_hideout_b1f_door_unlock
+Description: Rocket Hideout B1F syncs its source door-open flag after the guard Rocket is beaten.
+Character: ScriptSimRocketHideoutB1FDoorUnlock
+
+Initial state
+  location: ROCKET_HIDEOUT_B1F[199] (12,8)
+  flags: EVENT_BEAT_ROCKET_HIDEOUT_1_TRAINER_4
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: RocketHideoutB1FDoorUnlock
+  map: ROCKET_HIDEOUT_B1F
+  trigger: map_script
+
+Actions
+  - setFlag *: EVENT_677
+
+Final state
+  location: ROCKET_HIDEOUT_B1F[199] (12,8)
+  flags: EVENT_677, EVENT_BEAT_ROCKET_HIDEOUT_1_TRAINER_4
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

@@ -1,0 +1,26 @@
+{
+  "name": "fuchsia_gym_guide_after_koga",
+  "description": "The Fuchsia gym guide switches to post-Koga dialogue after he is beaten.",
+  "fixture": {
+    "characterName": "ScriptSimFuchsiaGuideAfterKoga",
+    "mapName": "FUCHSIA_GYM",
+    "x": 7,
+    "y": 14,
+    "direction": "DOWN",
+    "flags": ["EVENT_BEAT_KOGA"],
+    "party": [{ "speciesId": 1, "level": 30 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "FUCHSIA_GYM",
+    "textConstant": "TEXT_FUCHSIAGYM_GYM_GUIDE"
+  },
+  "expect": {
+    "scriptLabel": "FuchsiaGymGymGuideTextEventBeatKogaSet",
+    "flagsPresent": ["EVENT_BEAT_KOGA"],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

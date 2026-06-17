@@ -1,0 +1,64 @@
+Scenario: victory_road_2f_boulder_switch2
+Description: Pushing a Victory Road 2F boulder onto the second source switch sets the second 2F switch flag.
+Character: SimVictoryRoad2FBoulderSwitch2
+
+Initial state
+  location: VICTORY_ROAD_2F[194] (9,14)
+  flags: EVENT_GOT_RAINBOWBADGE
+  party:
+    slot 0: #66 MACHOP L20 moves STRENGTH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: BoulderPush:VICTORY_ROAD_2F
+  map: VICTORY_ROAD_2F
+  trigger: boulder_push
+
+Actions
+  - boulderPush *: success=true object=VictoryRoad2F_NPC_12 from=(9,15) to=(9,16) direction=DOWN flag=EVENT_VICTORY_ROAD_2_BOULDER_ON_SWITCH2 message="The boulder moved."
+
+Final state
+  location: VICTORY_ROAD_2F[194] (9,14)
+  flags: EVENT_GOT_RAINBOWBADGE, EVENT_VICTORY_ROAD_2_BOULDER_ON_SWITCH2
+  party:
+    slot 0: #66 MACHOP L20 moves STRENGTH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Boulder push
+  result: success=true direction=DOWN object=VictoryRoad2F_NPC_12
+  movement: (9,15) -> (9,16)
+  flag: EVENT_VICTORY_ROAD_2_BOULDER_ON_SWITCH2
+  message: The boulder moved.
+  strength: MACHOP used STRENGTH. MACHOP can move boulders.
+  boulders:
+    VictoryRoad2F_NPC_11 (4,14): visible
+    VictoryRoad2F_NPC_12 (9,16): visible
+    VictoryRoad2F_NPC_13 (23,16): hidden
+
+Event tile states
+  event tile (6,8): tile=562 collision=1
+  event tile (7,8): tile=573 collision=0
+  event tile (6,9): tile=562 collision=1
+  event tile (7,9): tile=573 collision=0
+  VictoryRoadBoulderBlock_2F_Switch2_1d_0_0 (22,14): tile=562 collision=1
+  VictoryRoadBoulderBlock_2F_Switch2_1d_1_0 (23,14): tile=562 collision=1
+  VictoryRoadBoulderBlock_2F_Switch2_1d_0_1 (22,15): tile=568 collision=0
+  VictoryRoadBoulderBlock_2F_Switch2_1d_1_1 (23,15): tile=568 collision=0
+
+Event object states
+  SourceMissableInitial:HS_VICTORY_ROAD_2F_ITEM_4 VICTORY_ROAD_2F/VictoryRoad2F_ITEM_10 (11,0): visible text=TEXT_VICTORYROAD2F_GUARD_SPEC
+  SourceMissableInitial:HS_VICTORY_ROAD_2F_ITEM_1 VICTORY_ROAD_2F/VictoryRoad2F_ITEM_7 (27,5): visible text=TEXT_VICTORYROAD2F_TM_SUBMISSION
+  SourceMissableInitial:HS_VICTORY_ROAD_2F_ITEM_2 VICTORY_ROAD_2F/VictoryRoad2F_ITEM_8 (18,9): visible text=TEXT_VICTORYROAD2F_FULL_HEAL
+  SourceMissableInitial:HS_VICTORY_ROAD_2F_ITEM_3 VICTORY_ROAD_2F/VictoryRoad2F_ITEM_9 (9,11): visible text=TEXT_VICTORYROAD2F_TM_MEGA_KICK
+  VictoryRoadBoulder_2F_Fallen3_HiddenBeforeHole VICTORY_ROAD_2F/VictoryRoad2F_NPC_13 (23,16): hidden text=TEXT_VICTORYROAD2F_BOULDER3
+  SourceMissableInitial:HS_MOLTRES VICTORY_ROAD_2F/VictoryRoad2F_NPC_6 (11,5): visible text=TEXT_VICTORYROAD2F_MOLTRES

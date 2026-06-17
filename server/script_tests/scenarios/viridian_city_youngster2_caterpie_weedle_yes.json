@@ -1,0 +1,25 @@
+{
+  "name": "viridian_city_youngster2_caterpie_weedle_yes",
+  "description": "The Viridian City youngster explains the Caterpie and Weedle difference when the player says yes.",
+  "fixture": {
+    "characterName": "ScriptSimViridianBugInfoYes",
+    "mapName": "VIRIDIAN_CITY",
+    "x": 18,
+    "y": 9,
+    "direction": "UP",
+    "party": [{ "speciesId": 4, "level": 12 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "VIRIDIAN_CITY",
+    "textConstant": "TEXT_VIRIDIANCITY_YOUNGSTER2",
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "ViridianCityYoungster2TextChoice",
+    "actionTypesContains": ["dialogue", "choice"],
+    "activeBattleAbsent": true
+  }
+}

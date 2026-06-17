@@ -1,0 +1,36 @@
+Scenario: cinnabar_gym_quiz_2_correct
+Description: Cinnabar Gym quiz 2 accepts NO and unlocks gate 2 without a trainer battle.
+Character: ScriptSimCinnabarQuiz2Correct
+
+Initial state
+  location: CINNABAR_GYM[166] (10,1)
+  flags: none
+  party:
+    slot 0: #9 BLASTOISE L50 moves WATER_GUN, BITE, WITHDRAW, SKULL_BASH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: DialogueChoice:TEXT_CINNABARGYM_QUIZ_2
+  map: CINNABAR_GYM
+  trigger: dialogue_choice
+
+Actions
+  - dialogueChoice *: TEXT_CINNABARGYM_QUIZ_2 choice=false
+  - setFlag *: EVENT_CINNABAR_GYM_GATE2_UNLOCKED
+
+Final state
+  location: CINNABAR_GYM[166] (10,1)
+  flags: EVENT_CINNABAR_GYM_GATE2_UNLOCKED
+  party:
+    slot 0: #9 BLASTOISE L50 moves WATER_GUN, BITE, WITHDRAW, SKULL_BASH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

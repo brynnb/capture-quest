@@ -1,0 +1,37 @@
+Scenario: bike_shop_already_has_bicycle
+Description: The Bike Shop clerk comments on the player's Bicycle after the voucher exchange is complete.
+Character: ScriptSimBikeShopAlreadyBike
+
+Initial state
+  location: BIKE_SHOP[66] (6,4)
+  flags: EVENT_GOT_BICYCLE, EVENT_GOT_BIKE_VOUCHER
+  party:
+    slot 0: #5 CHARMELEON L25 moves EMBER, EMBER, LEER, RAGE
+  inventory:
+    #6 BICYCLE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: BikeShopAlreadyHasBicycle
+  map: BIKE_SHOP
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: BIKE SHOP CLERK [How do you like your new BICYCLE? You can take it on CYCLING ROAD and in caves!]
+  - unlockInput
+
+Final state
+  location: BIKE_SHOP[66] (6,4)
+  flags: EVENT_GOT_BICYCLE, EVENT_GOT_BIKE_VOUCHER
+  party:
+    slot 0: #5 CHARMELEON L25 moves EMBER, EMBER, LEER, RAGE
+  inventory:
+    #6 BICYCLE x1
+  hidden objects:
+    none
+  active battle:
+    none

@@ -1,0 +1,40 @@
+Scenario: brunos_room_post_battle
+Description: After beating Bruno, his room post-battle script records completion.
+Character: ScriptSimBrunoPostBattle
+
+Initial state
+  location: BRUNOS_ROOM[246] (4,10)
+  flags: EVENT_BEAT_BRUNO
+  party:
+    slot 0: #6 CHARIZARD L60 moves RAGE, SLASH, FLAMETHROWER, FIRE_SPIN
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: BrunosRoomBrunoPostBattle
+  map: BRUNOS_ROOM
+  trigger: map_script
+
+Actions
+  - lockInput
+  - dialogue: BRUNO [Why? How could I lose?]
+  - dialogue: BRUNO [My job is done! Go face your next challenge!]
+  - setFlag *: EVENT_BRUNO_POST_BATTLE_DONE
+  - unlockInput
+  - setsFlags *: EVENT_BRUNO_POST_BATTLE_DONE
+
+Final state
+  location: BRUNOS_ROOM[246] (4,10)
+  flags: EVENT_BEAT_BRUNO, EVENT_BRUNO_POST_BATTLE_DONE
+  party:
+    slot 0: #6 CHARIZARD L60 moves RAGE, SLASH, FLAMETHROWER, FIRE_SPIN
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

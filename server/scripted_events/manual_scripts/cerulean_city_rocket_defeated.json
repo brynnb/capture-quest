@@ -1,0 +1,42 @@
+{
+  "scriptLabel": "CeruleanCityRocketDefeated",
+  "mapName": "CERULEAN_CITY",
+  "trigger": {
+    "type": "map_script"
+  },
+  "requiresFlag": "EVENT_BEAT_CERULEAN_ROCKET_THIEF",
+  "requiresFlagAbsent": "EVENT_CERULEAN_ROCKET_LEFT",
+  "setsFlags": [
+    "EVENT_CERULEAN_ROCKET_LEFT"
+  ],
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Doh! I'm out of POKéMON!",
+        "You won't find me here when you come back!",
+        "I'll dig my way out!"
+      ],
+      "speaker": "ROCKET"
+    },
+    {
+      "type": "move",
+      "actor": "ROCKET",
+      "movements": [
+        "DOWN",
+        "DOWN",
+        "DOWN"
+      ]
+    },
+    {
+      "type": "hideActor",
+      "actor": "ROCKET"
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

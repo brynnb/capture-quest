@@ -1,0 +1,54 @@
+{
+  "name": "oak_lab_oak_raise_young_pokemon",
+  "description": "After the first Oak's Lab rival battle but before Oak's Parcel, Oak tells the player to raise their young Pokemon instead of checking a Pokedex.",
+  "fixture": {
+    "characterName": "ScriptSimOakRaiseYoungPokemon",
+    "mapName": "OAKS_LAB",
+    "x": 5,
+    "y": 6,
+    "direction": "UP",
+    "flags": [
+      "EVENT_OAK_ASKED_TO_CHOOSE_MON",
+      "EVENT_GOT_STARTER",
+      "EVENT_RIVAL_PICKED_STARTER",
+      "EVENT_PLAYER_CHOSE_CHARMANDER",
+      "EVENT_BATTLED_RIVAL_IN_OAKS_LAB",
+      "EVENT_OAKS_LAB_RIVAL_EXITED"
+    ],
+    "party": [
+      { "speciesId": 4, "level": 5 }
+    ],
+    "hiddenObjects": [
+      "TEXT_OAKSLAB_CHARMANDER_POKE_BALL",
+      "TEXT_OAKSLAB_SQUIRTLE_POKE_BALL",
+      "TEXT_OAKSLAB_RIVAL"
+    ]
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "OAKS_LAB",
+    "textConstant": "TEXT_OAKSLAB_OAK1"
+  },
+  "expect": {
+    "scriptLabel": "OaksLabOakRaiseYoungPokemon",
+    "flagsPresent": [
+      "EVENT_BATTLED_RIVAL_IN_OAKS_LAB",
+      "EVENT_OAKS_LAB_RIVAL_EXITED"
+    ],
+    "flagsAbsent": [
+      "EVENT_GOT_OAKS_PARCEL",
+      "EVENT_GOT_POKEDEX"
+    ],
+    "partySpecies": [4],
+    "inventoryAbsent": [
+      { "itemId": 70 }
+    ],
+    "hiddenObjectKeys": [
+      "TEXT_OAKSLAB_CHARMANDER_POKE_BALL",
+      "TEXT_OAKSLAB_SQUIRTLE_POKE_BALL",
+      "TEXT_OAKSLAB_RIVAL"
+    ],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

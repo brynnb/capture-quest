@@ -1,0 +1,30 @@
+{
+  "name": "vermilion_gym_trash_first_lock_success",
+  "description": "Clicking the first-switch trash can opens the first electric lock and chooses a seeded adjacent second switch.",
+  "fixture": {
+    "characterName": "ScriptSimVermilionTrashFirstSuccess",
+    "mapName": "VERMILION_GYM",
+    "x": 3,
+    "y": 9,
+    "vermilionGymTrash": {
+      "firstLockCanIndex": 4
+    }
+  },
+  "trigger": {
+    "type": "vermilion_gym_trash",
+    "mapName": "VERMILION_GYM",
+    "trashCanIndex": 4,
+    "randomSecondLockCanIndex": 7
+  },
+  "expect": {
+    "scriptLabel": "VermilionGymTrash",
+    "flagsPresent": ["EVENT_1ST_LOCK_OPENED"],
+    "flagsAbsent": ["EVENT_2ND_LOCK_OPENED"],
+    "actionTypesContains": ["vermilionGymTrash"],
+    "vermilionGymTrash": {
+      "firstLockCanIndex": 4,
+      "secondLockCanIndex": 7
+    },
+    "activeBattleAbsent": true
+  }
+}

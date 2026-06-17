@@ -1,0 +1,42 @@
+Scenario: blues_house_daisy_town_map
+Description: After receiving the Pokedex, Daisy gives the Town Map.
+Character: ScriptSimDaisyTownMap
+
+Initial state
+  location: BLUES_HOUSE[39] (4,4)
+  flags: EVENT_GOT_POKEDEX
+  party:
+    slot 0: #4 CHARMANDER L10 moves SCRATCH, GROWL, EMBER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: BluesHouseDaisyTownMap
+  map: BLUES_HOUSE
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: DAISY [Grandpa asked you to run an errand? Here, this will help you!]
+  - dialogue:  [{PLAYER} received a TOWN MAP! Use the TOWN MAP to find out where you are.]
+  - setFlag *: EVENT_GOT_TOWN_MAP
+  - playSFX: SFX_GET_KEY_ITEM
+  - unlockInput
+  - giveItem *: TOWN MAP x1 added
+  - setsFlags *: EVENT_GOT_TOWN_MAP
+
+Final state
+  location: BLUES_HOUSE[39] (4,4)
+  flags: EVENT_GOT_POKEDEX, EVENT_GOT_TOWN_MAP
+  party:
+    slot 0: #4 CHARMANDER L10 moves SCRATCH, GROWL, EMBER
+  inventory:
+    #5 TOWN MAP x1
+  hidden objects:
+    none
+  active battle:
+    none

@@ -1,0 +1,38 @@
+Scenario: pokemon_mansion_1f_generated_switch_no_keeps_off
+Description: Generated Pokemon Mansion 1F switch script NO leaves the shared Mansion switch flag off.
+Character: ScriptSimMansion1FGeneratedSwitchNo
+
+Initial state
+  location: POKEMON_MANSION_1F[165] (2,5)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: PokemonMansion1FSwitchToggle
+  map: POKEMON_MANSION_1F
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [A secret switch!]
+  - choice: TEXT_POKEMONMANSION1F_SWITCH "Press it?" choice=false
+  - dialogue:  [Not quite yet!]
+
+Final state
+  location: POKEMON_MANSION_1F[165] (2,5)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

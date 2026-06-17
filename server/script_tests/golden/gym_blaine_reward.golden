@@ -1,0 +1,45 @@
+Scenario: gym_blaine_reward
+Description: After beating Blaine, the Cinnabar Gym post-battle script grants Volcanobadge state and TM38.
+Character: ScriptSimGymBlaineReward
+
+Initial state
+  location: CINNABAR_GYM[166] (5,4)
+  flags: EVENT_BEAT_BLAINE, EVENT_GOT_BOULDERBADGE, EVENT_GOT_CASCADEBADGE, EVENT_GOT_MARSHBADGE, EVENT_GOT_RAINBOWBADGE, EVENT_GOT_SOULBADGE, EVENT_GOT_THUNDERBADGE
+  party:
+    slot 0: #6 CHARIZARD L48 moves LEER, RAGE, SLASH, FLAMETHROWER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: CinnabarGymBlainePostBattle
+  map: CINNABAR_GYM
+  trigger: map_script
+
+Actions
+  - lockInput
+  - dialogue: BLAINE [I have burnt out! You have earned the VOLCANOBADGE!]
+  - dialogue: BLAINE [Hah! The VOLCANOBADGE heightens the SPECIAL abilities of your POKéMON! Here, you can have this too!]
+  - dialogue: BLAINE [{PLAYER} received TM38! TM38 contains FIRE BLAST! Teach it to fire-type POKéMON! CHARMELEON or PONYTA would be good bets!]
+  - dialogue: BLAINE [FIRE BLAST is the ultimate fire technique! Don't waste it on water POKéMON!]
+  - setFlag *: EVENT_GOT_VOLCANOBADGE
+  - setFlag *: EVENT_GOT_TM38
+  - giveItem *: TM38 x1 added
+  - unlockInput
+  - setsFlags *: EVENT_GOT_VOLCANOBADGE
+  - setsFlags *: EVENT_GOT_TM38
+
+Final state
+  location: CINNABAR_GYM[166] (5,4)
+  flags: EVENT_BEAT_BLAINE, EVENT_GOT_BOULDERBADGE, EVENT_GOT_CASCADEBADGE, EVENT_GOT_MARSHBADGE, EVENT_GOT_RAINBOWBADGE, EVENT_GOT_SOULBADGE, EVENT_GOT_THUNDERBADGE, EVENT_GOT_TM38, EVENT_GOT_VOLCANOBADGE
+  party:
+    slot 0: #6 CHARIZARD L48 moves LEER, RAGE, SLASH, FLAMETHROWER
+  inventory:
+    #126 TM38 x1
+  hidden objects:
+    none
+  active battle:
+    none

@@ -1,0 +1,25 @@
+{
+  "name": "safari_zone_enter_exact_fee",
+  "description": "Safari Zone entry deducts the exact 500 Pokédollar fee and starts a 30-ball, 500-step visit.",
+  "fixture": {
+    "characterName": "ScriptSimSafariExactFee",
+    "mapName": "SAFARI_ZONE_GATE",
+    "x": 4,
+    "y": 6,
+    "direction": "UP",
+    "money": 500
+  },
+  "trigger": {
+    "type": "safari_enter",
+    "mapName": "SAFARI_ZONE_GATE"
+  },
+  "expect": {
+    "scriptLabel": "SafariZoneEnter",
+    "money": 0,
+    "safariActive": true,
+    "safariBallsLeft": 30,
+    "safariStepsLeft": 500,
+    "actionTypesContains": ["safariEnter"],
+    "activeBattleAbsent": true
+  }
+}

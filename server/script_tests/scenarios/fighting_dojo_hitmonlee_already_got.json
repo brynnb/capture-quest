@@ -1,0 +1,28 @@
+{
+  "name": "fighting_dojo_hitmonlee_already_got",
+  "description": "Clicking a Fighting Dojo prize Poké Ball after choosing a reward shows the greedy warning.",
+  "fixture": {
+    "characterName": "ScriptSimDojoHitmonleeAlreadyGot",
+    "mapName": "FIGHTING_DOJO",
+    "x": 4,
+    "y": 2,
+    "direction": "UP",
+    "flags": ["EVENT_BEAT_KARATE_MASTER", "EVENT_GOT_FIGHTING_DOJO_POKEMON", "EVENT_GOT_HITMONCHAN"],
+    "party": [{ "speciesId": 25, "level": 35 }, { "speciesId": 107, "level": 30 }],
+    "inventory": [],
+    "hiddenObjects": ["TEXT_FIGHTINGDOJO_HITMONCHAN_POKE_BALL"]
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "FIGHTING_DOJO",
+    "textConstant": "TEXT_FIGHTINGDOJO_HITMONLEE_POKE_BALL"
+  },
+  "expect": {
+    "scriptLabel": "FightingDojoHitmonleeAlreadyGot",
+    "flagsPresent": ["EVENT_GOT_FIGHTING_DOJO_POKEMON", "EVENT_GOT_HITMONCHAN"],
+    "flagsAbsent": ["EVENT_GOT_HITMONLEE"],
+    "partySpecies": [25, 107],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

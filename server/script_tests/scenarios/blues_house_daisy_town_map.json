@@ -1,0 +1,27 @@
+{
+  "name": "blues_house_daisy_town_map",
+  "description": "After receiving the Pokedex, Daisy gives the Town Map.",
+  "fixture": {
+    "characterName": "ScriptSimDaisyTownMap",
+    "mapName": "BLUES_HOUSE",
+    "x": 4,
+    "y": 4,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_POKEDEX"],
+    "party": [{ "speciesId": 4, "level": 10 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "BLUES_HOUSE",
+    "textConstant": "TEXT_BLUESHOUSE_DAISY_SITTING"
+  },
+  "expect": {
+    "scriptLabel": "BluesHouseDaisyTownMap",
+    "flagsPresent": ["EVENT_GOT_POKEDEX", "EVENT_GOT_TOWN_MAP"],
+    "inventoryContains": [{ "itemId": 5, "quantity": 1 }],
+    "actionTypesContains": ["dialogue", "setFlag", "giveItem"],
+    "activeBattleAbsent": true
+  }
+}

@@ -1,0 +1,39 @@
+Scenario: cerulean_cave_b1f_mewtwo_start
+Description: Cerulean Cave B1F Mewtwo starts a scripted L70 wild battle without setting the beat flag at cutscene completion.
+Character: ScriptSim_Mewtwo_Start
+
+Initial state
+  location: CERULEAN_CAVE_B1F[227] (27,13)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L70 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: CeruleanCaveB1FMewtwoEncounter
+  map: CERULEAN_CAVE_B1F
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Mew!]
+  - unlockInput
+  - startWildBattle *: #150 MEWTWO L70 winFlag=EVENT_BEAT_MEWTWO
+
+Final state
+  location: CERULEAN_CAVE_B1F[227] (27,13)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L70 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    wild phase=action_select trainer= name= winFlag=EVENT_BEAT_MEWTWO
+    enemy slot 0: #150 MEWTWO L70

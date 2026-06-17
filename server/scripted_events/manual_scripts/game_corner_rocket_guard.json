@@ -1,0 +1,26 @@
+{
+  "scriptLabel": "GameCornerRocketGuard",
+  "mapName": "GAME_CORNER",
+  "trigger": {
+    "type": "npc_click"
+  },
+  "requiresFlagAbsent": "EVENT_BEAT_GAME_CORNER_ROCKET",
+  "setsFlags": [
+    "EVENT_BEAT_GAME_CORNER_ROCKET"
+  ],
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "I'm guarding this poster! Go away, or else!"
+      ],
+      "speaker": "ROCKET"
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

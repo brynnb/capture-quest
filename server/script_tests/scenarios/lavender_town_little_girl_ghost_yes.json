@@ -1,0 +1,25 @@
+{
+  "name": "lavender_town_little_girl_ghost_yes",
+  "description": "The Lavender Town girl gives the believer response when the player says yes.",
+  "fixture": {
+    "characterName": "ScriptSimLavenderGhostYes",
+    "mapName": "LAVENDER_TOWN",
+    "x": 9,
+    "y": 8,
+    "direction": "UP",
+    "party": [{ "speciesId": 25, "level": 20 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "LAVENDER_TOWN",
+    "textConstant": "TEXT_LAVENDERTOWN_LITTLE_GIRL",
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "LavenderTownLittleGirlTextChoice",
+    "actionTypesContains": ["dialogue", "choice"],
+    "activeBattleAbsent": true
+  }
+}

@@ -1,0 +1,38 @@
+Scenario: silph_co_6f_worker_m1_after_giovanni
+Description: Silph Co. 6F Worker M1 uses the post-Giovanni source dialogue after Giovanni is beaten.
+Character: ScriptSimSilphCo6FWorkerM1AfterGiovanni
+
+Initial state
+  location: SILPH_CO_6F[211] (10,8)
+  flags: EVENT_BEAT_SILPH_CO_GIOVANNI
+  party:
+    slot 0: #6 CHARIZARD L45 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SilphCo6FSilphWorkerM1TextEventBeatSilphCoGiovanniSet
+  map: SILPH_CO_6F
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Well, better get
+back to work!]
+  - unlockInput
+
+Final state
+  location: SILPH_CO_6F[211] (10,8)
+  flags: EVENT_BEAT_SILPH_CO_GIOVANNI
+  party:
+    slot 0: #6 CHARIZARD L45 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

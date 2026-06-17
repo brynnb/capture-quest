@@ -1,0 +1,48 @@
+Scenario: seafoam_1f_runtime_boulder_push_facing_update
+Description: A runtime same-tile facing update toward an adjacent Strength boulder auto-activates Strength when allowed and pushes the boulder.
+Character: SimRuntimeBoulderFacing
+
+Initial state
+  location: SEAFOAM_ISLANDS_1F[192] (18,11)
+  flags: EVENT_GOT_RAINBOWBADGE
+  party:
+    slot 0: #66 MACHOP L20 moves STRENGTH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: RuntimeBoulderPush:SEAFOAM_ISLANDS_1F
+  map: SEAFOAM_ISLANDS_1F
+  trigger: runtime_boulder_push
+
+Actions
+  - runtimeBoulderPush *: attempted=true success=true object=SeafoamIslands1F_NPC_1 from=(18,10) to=(18,9) direction=UP message="The boulder moved."
+
+Final state
+  location: SEAFOAM_ISLANDS_1F[192] (18,11)
+  flags: EVENT_GOT_RAINBOWBADGE
+  party:
+    slot 0: #66 MACHOP L20 moves STRENGTH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Boulder push
+  result: success=true direction=UP object=SeafoamIslands1F_NPC_1
+  movement: (18,10) -> (18,9)
+  message: The boulder moved.
+  strength: MACHOP used STRENGTH. MACHOP can move boulders.
+  boulders:
+    SeafoamIslands1F_NPC_1 (18,9): visible
+    SeafoamIslands1F_NPC_2 (26,7): visible
+
+Event object states
+  SeafoamBoulder_1F_1_VisibleBeforeDrop SEAFOAM_ISLANDS_1F/SeafoamIslands1F_NPC_1 (18,9): visible text=TEXT_SEAFOAMISLANDS1F_BOULDER1
+  SeafoamBoulder_1F_2_VisibleBeforeDrop SEAFOAM_ISLANDS_1F/SeafoamIslands1F_NPC_2 (26,7): visible text=TEXT_SEAFOAMISLANDS1F_BOULDER2

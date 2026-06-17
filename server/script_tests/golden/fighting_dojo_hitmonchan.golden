@@ -1,0 +1,43 @@
+Scenario: fighting_dojo_hitmonchan
+Description: Choosing the Hitmonchan Poké Ball grants Hitmonchan L30 and records the Fighting Dojo choice.
+Character: ScriptSimDojoHitmonchan
+
+Initial state
+  location: FIGHTING_DOJO[177] (5,2)
+  flags: EVENT_BEAT_KARATE_MASTER
+  party:
+    slot 0: #25 PIKACHU L35 moves THUNDER_WAVE, QUICK_ATTACK, SWIFT, AGILITY
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FightingDojoHitmonchanChoice
+  map: FIGHTING_DOJO
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - choice:  "You want the\npiston punching HITMONCHAN?" choice=true
+  - givePokemon *: HITMONCHAN L30 added to party
+  - hideObject *: objects=[TEXT_FIGHTINGDOJO_HITMONCHAN_POKE_BALL]
+  - setFlag *: EVENT_GOT_FIGHTING_DOJO_POKEMON
+  - setFlag *: EVENT_GOT_HITMONCHAN
+  - setFlag *: EVENT_DEFEATED_FIGHTING_DOJO
+  - unlockInput
+
+Final state
+  location: FIGHTING_DOJO[177] (5,2)
+  flags: EVENT_BEAT_KARATE_MASTER, EVENT_DEFEATED_FIGHTING_DOJO, EVENT_GOT_FIGHTING_DOJO_POKEMON, EVENT_GOT_HITMONCHAN
+  party:
+    slot 0: #25 PIKACHU L35 moves THUNDER_WAVE, QUICK_ATTACK, SWIFT, AGILITY
+    slot 1: #107 HITMONCHAN L30 moves AGILITY
+  inventory:
+    none
+  hidden objects:
+    TEXT_FIGHTINGDOJO_HITMONCHAN_POKE_BALL
+  active battle:
+    none

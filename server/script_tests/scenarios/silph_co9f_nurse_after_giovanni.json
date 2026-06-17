@@ -1,0 +1,58 @@
+{
+  "name": "silph_co9f_nurse_after_giovanni",
+  "description": "The Silph Co. 9F nurse switches to thank-you dialogue after Giovanni is beaten.",
+  "fixture": {
+    "characterName": "ScriptSimSilphCo9FNurseAfterGiovanni",
+    "mapName": "SILPH_CO_9F",
+    "x": 8,
+    "y": 4,
+    "direction": "UP",
+    "flags": ["EVENT_BEAT_SILPH_CO_GIOVANNI"],
+    "party": [
+      {
+        "speciesId": 25,
+        "level": 30,
+        "moves": ["THUNDERBOLT", "QUICK ATTACK"],
+        "movePp": [3, 0],
+        "curHp": 12,
+        "status": "PAR",
+        "ivs": {
+          "attack": 15,
+          "defense": 14,
+          "speed": 13,
+          "special": 12
+        },
+        "evs": {
+          "hp": 1000,
+          "attack": 2000,
+          "defense": 3000,
+          "speed": 4000,
+          "special": 5000
+        }
+      }
+    ],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "SILPH_CO_9F",
+    "textConstant": "TEXT_SILPHCO9F_NURSE"
+  },
+  "expect": {
+    "scriptLabel": "SilphCo9FNurseThankYou",
+    "flagsPresent": ["EVENT_BEAT_SILPH_CO_GIOVANNI"],
+    "partyState": [
+      {
+        "slot": 0,
+        "speciesId": 25,
+        "level": 30,
+        "curHp": 12,
+        "status": "PAR",
+        "movePp": [3, 0]
+      }
+    ],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

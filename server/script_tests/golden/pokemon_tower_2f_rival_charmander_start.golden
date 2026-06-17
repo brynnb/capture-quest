@@ -1,0 +1,48 @@
+Scenario: pokemon_tower_2f_rival_charmander_start
+Description: Step into the Pokemon Tower 2F rival trigger from the right-side coordinate with Charmander chosen and verify the Wartortle-path party.
+Character: ScriptSimTowerRivalCharmander
+
+Initial state
+  location: POKEMON_TOWER_2F[143] (15,5)
+  flags: EVENT_BEAT_CERULEAN_RIVAL, EVENT_BEAT_SS_ANNE_RIVAL, EVENT_GOT_CASCADEBADGE, EVENT_GOT_HM01, EVENT_GOT_POKEDEX, EVENT_GOT_SS_TICKET, EVENT_PLAYER_CHOSE_CHARMANDER, EVENT_SS_ANNE_LEFT
+  party:
+    slot 0: #5 CHARMELEON L28 moves EMBER, EMBER, LEER, RAGE
+  inventory:
+    #84 HM01 x1
+    #9 POKéDEX x1
+    #63 S.S.TICKET x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: PokemonTower2FRivalEncounter
+  map: POKEMON_TOWER_2F
+  trigger: coord
+
+Actions
+  - lockInput
+  - facePlayer
+  - dialogue: RIVAL [Hey, {PLAYER}! What brings you here? Your POKéMON don't look dead! I can at least make them faint! Let's go, pal!]
+  - startTrainerBattle *: RIVAL2 party=4 enemy=[#17 PIDGEOTTO L25 #58 GROWLITHE L23 #102 EXEGGCUTE L22 #64 KADABRA L20 #8 WARTORTLE L25] winFlag=EVENT_BEAT_POKEMON_TOWER_RIVAL
+  - unlockInput
+
+Final state
+  location: POKEMON_TOWER_2F[143] (15,5)
+  flags: EVENT_BEAT_CERULEAN_RIVAL, EVENT_BEAT_SS_ANNE_RIVAL, EVENT_GOT_CASCADEBADGE, EVENT_GOT_HM01, EVENT_GOT_POKEDEX, EVENT_GOT_SS_TICKET, EVENT_PLAYER_CHOSE_CHARMANDER, EVENT_SS_ANNE_LEFT
+  party:
+    slot 0: #5 CHARMELEON L28 moves EMBER, EMBER, LEER, RAGE
+  inventory:
+    #84 HM01 x1
+    #9 POKéDEX x1
+    #63 S.S.TICKET x1
+  hidden objects:
+    none
+  active battle:
+    trainer phase=action_select trainer=RIVAL2 name=Gary winFlag=EVENT_BEAT_POKEMON_TOWER_RIVAL
+    enemy slot 0: #17 PIDGEOTTO L25
+    enemy slot 1: #58 GROWLITHE L23
+    enemy slot 2: #102 EXEGGCUTE L22
+    enemy slot 3: #64 KADABRA L20
+    enemy slot 4: #8 WARTORTLE L25

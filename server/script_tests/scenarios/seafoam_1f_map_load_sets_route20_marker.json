@@ -1,0 +1,20 @@
+{
+  "name": "seafoam_1f_map_load_sets_route20_marker",
+  "description": "Loading Seafoam 1F sets the source EVENT_IN_SEAFOAM_ISLANDS marker consumed by Route 20.",
+  "fixture": {
+    "characterName": "SimSeafoam1FMapLoadMarker",
+    "mapName": "SEAFOAM_ISLANDS_1F",
+    "x": 4,
+    "y": 16
+  },
+  "trigger": {
+    "type": "map_load",
+    "mapName": "SEAFOAM_ISLANDS_1F"
+  },
+  "expect": {
+    "scriptLabel": "MapLoad:SEAFOAM_ISLANDS_1F",
+    "flagsPresent": ["EVENT_IN_SEAFOAM_ISLANDS"],
+    "actionTypesContains": ["mapLoad"],
+    "activeBattleAbsent": true
+  }
+}

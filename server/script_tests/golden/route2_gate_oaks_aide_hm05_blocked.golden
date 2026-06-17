@@ -1,0 +1,39 @@
+Scenario: route2_gate_oaks_aide_hm05_blocked
+Description: Route 2 Gate Oak's Aide blocks HM05 when the player has caught fewer than 10 Pokemon.
+Character: ScriptSimRoute2AideHM05Blocked
+
+Initial state
+  location: ROUTE_2_GATE[49] (2,4)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L20 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: Route2GateOaksAideHM05Blocked
+  map: ROUTE_2_GATE
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: OAKS AIDE [Hi! Remember me? I'm PROF.OAK's AIDE! If you caught 10 kinds of POKEMON, I'm supposed to give you HM05!]
+  - choice:  "Have you caught at least 10 kinds of POKEMON?" choice=true
+  - dialogue: OAKS AIDE [Let's see... Uh-oh! You need 10 kinds if you want the HM05.]
+  - unlockInput
+
+Final state
+  location: ROUTE_2_GATE[49] (2,4)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L20 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

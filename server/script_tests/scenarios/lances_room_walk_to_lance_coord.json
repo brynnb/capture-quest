@@ -1,0 +1,24 @@
+{
+  "name": "lances_room_walk_to_lance_coord",
+  "description": "Lance's source entrance coordinate starts the forced walk toward Lance.",
+  "fixture": {
+    "characterName": "ScriptSimLanceWalkToLance",
+    "mapName": "LANCES_ROOM",
+    "x": 24,
+    "y": 16,
+    "direction": "UP",
+    "party": [{ "speciesId": 25, "level": 60 }]
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "LANCES_ROOM",
+    "x": 24,
+    "y": 16
+  },
+  "expect": {
+    "scriptLabel": "LancesRoomWalkToLance",
+    "flagsAbsent": ["EVENT_BEAT_LANCE"],
+    "actionTypesContains": ["movePlayer"],
+    "activeBattleAbsent": true
+  }
+}

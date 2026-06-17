@@ -1,0 +1,18 @@
+{
+  "scriptLabel": "CinnabarLabFossilRevival",
+  "mapName": "CINNABAR_LAB_FOSSIL_ROOM",
+  "trigger": {
+    "type": "npc_click",
+    "label": "__DISABLED_CINNABAR_FOSSIL_PLACEHOLDER__",
+    "source": "extractor"
+  },
+  "requiresFlag": "__LEGACY_DISABLED__",
+  "actions": [
+    {
+      "type": "dialogue",
+      "lines": [
+        "Legacy fossil revival placeholder disabled."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "name": "vermilion_gym_trash_second_lock_success",
+  "description": "Clicking the seeded adjacent second-switch trash can opens the second electric lock and the motorized door.",
+  "fixture": {
+    "characterName": "ScriptSimVermilionTrashSecondSuccess",
+    "mapName": "VERMILION_GYM",
+    "x": 5,
+    "y": 9,
+    "flags": ["EVENT_1ST_LOCK_OPENED"],
+    "vermilionGymTrash": {
+      "firstLockCanIndex": 4,
+      "secondLockCanIndex": 7
+    }
+  },
+  "trigger": {
+    "type": "vermilion_gym_trash",
+    "mapName": "VERMILION_GYM",
+    "trashCanIndex": 7
+  },
+  "expect": {
+    "scriptLabel": "VermilionGymTrash",
+    "flagsPresent": ["EVENT_1ST_LOCK_OPENED", "EVENT_2ND_LOCK_OPENED"],
+    "actionTypesContains": ["vermilionGymTrash"],
+    "tileStates": [
+      { "x": 4, "y": 4, "tileImageId": 253, "collisionType": 1 },
+      { "x": 5, "y": 4, "tileImageId": 253, "collisionType": 1 },
+      { "x": 4, "y": 5, "tileImageId": 253, "collisionType": 1 },
+      { "x": 5, "y": 5, "tileImageId": 253, "collisionType": 1 }
+    ],
+    "vermilionGymTrash": {
+      "firstLockCanIndex": 4,
+      "secondLockCanIndex": 7
+    },
+    "activeBattleAbsent": true
+  }
+}

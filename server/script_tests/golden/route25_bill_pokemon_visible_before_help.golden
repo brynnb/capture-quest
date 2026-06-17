@@ -1,0 +1,41 @@
+Scenario: route25_bill_pokemon_visible_before_help
+Description: Route 25 map-load sync makes Bill's Pokemon form visible before the player helps him.
+Character: ScriptSimRoute25BillPokemonVisible
+
+Initial state
+  location: ROUTE_25[9999] (43,3)
+  flags: EVENT_BILL_SAID_USE_CELL_SEPARATOR
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: Route25BillPokemonVisibleBeforeHelp
+  map: ROUTE_25
+  trigger: map_script
+
+Actions
+  - resetFlag *: EVENT_BILL_SAID_USE_CELL_SEPARATOR
+  - showObject *: objects=[TEXT_BILLSHOUSE_BILL_POKEMON]
+
+Final state
+  location: ROUTE_25[9999] (43,3)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Event object states
+  CutsceneAction:showObject BILLS_HOUSE/BillsHouse_NPC_1 (6,5): visible text=TEXT_BILLSHOUSE_BILL_POKEMON
+  SourceMissableInitial:HS_BILL_1 BILLS_HOUSE/BillsHouse_NPC_2 (4,4): hidden text=TEXT_BILLSHOUSE_BILL_SS_TICKET
+  SourceMissableInitial:HS_BILL_2 BILLS_HOUSE/BillsHouse_NPC_3 (6,5): hidden text=TEXT_BILLSHOUSE_BILL_CHECK_OUT_MY_RARE_POKEMON

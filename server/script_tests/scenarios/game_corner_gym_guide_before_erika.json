@@ -1,0 +1,26 @@
+{
+  "name": "game_corner_gym_guide_before_erika",
+  "description": "The Game Corner gym guide gives Erika advice before Erika is beaten.",
+  "fixture": {
+    "characterName": "ScriptSimGameCornerGuideBeforeErika",
+    "mapName": "GAME_CORNER",
+    "x": 8,
+    "y": 13,
+    "direction": "DOWN",
+    "flags": [],
+    "party": [{ "speciesId": 25, "level": 25 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "GAME_CORNER",
+    "textConstant": "TEXT_GAMECORNER_GYM_GUIDE"
+  },
+  "expect": {
+    "scriptLabel": "GameCornerGymGuideTextEventBeatErikaAbsent",
+    "flagsAbsent": ["EVENT_BEAT_ERIKA"],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

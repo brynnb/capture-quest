@@ -1,0 +1,26 @@
+{
+  "name": "seafoam_b1f_boulder2_down_hole",
+  "description": "Seafoam B1F boulder 2 drops to B2F after the corresponding 1F boulder has fallen.",
+  "fixture": {
+    "characterName": "ScriptSimSeafoamB1FBoulder2",
+    "mapName": "SEAFOAM_ISLANDS_B1F",
+    "x": 23,
+    "y": 6,
+    "flags": ["EVENT_SEAFOAM1_BOULDER2_DOWN_HOLE"]
+  },
+  "trigger": {
+    "type": "seafoam_boulder_hole",
+    "mapName": "SEAFOAM_ISLANDS_B1F",
+    "holeIndex": 2
+  },
+  "expect": {
+    "scriptLabel": "SeafoamBoulderHole",
+    "flagsPresent": ["EVENT_SEAFOAM1_BOULDER2_DOWN_HOLE", "EVENT_SEAFOAM2_BOULDER2_DOWN_HOLE"],
+    "actionTypesContains": ["seafoamBoulderHole"],
+    "objectStates": [
+      { "mapName": "SEAFOAM_ISLANDS_B1F", "name": "SeafoamIslandsB1F_NPC_2", "visible": false, "label": "SeafoamBoulder_B1F_2_HiddenAfterB1FDrop" },
+      { "mapName": "SEAFOAM_ISLANDS_B2F", "name": "SeafoamIslandsB2F_NPC_2", "visible": true, "label": "SeafoamBoulder_B2F_2_VisibleAfterB1FDrop" }
+    ],
+    "activeBattleAbsent": true
+  }
+}

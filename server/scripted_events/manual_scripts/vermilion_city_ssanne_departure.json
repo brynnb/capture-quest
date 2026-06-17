@@ -1,0 +1,35 @@
+{
+  "scriptLabel": "VermilionCitySSAnneDeparture",
+  "mapName": "VERMILION_CITY",
+  "trigger": {
+    "type": "map_script"
+  },
+  "requiresFlag": "EVENT_GOT_HM01",
+  "requiresFlagAbsent": "EVENT_SS_ANNE_LEFT",
+  "setsFlags": [
+    "EVENT_SS_ANNE_LEFT"
+  ],
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "The ship set sail."
+      ]
+    },
+    {
+      "ms": 1000,
+      "type": "screenFade",
+      "fadeType": "out"
+    },
+    {
+      "flag": "EVENT_SS_ANNE_LEFT",
+      "type": "setFlag"
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

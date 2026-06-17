@@ -1,0 +1,27 @@
+{
+  "name": "pewter_gym_guide_before_brock_yes",
+  "description": "The Pewter gym guide offers Boulder Badge advice before Brock is beaten.",
+  "fixture": {
+    "characterName": "ScriptSimPewterGuideBeforeBrock",
+    "mapName": "PEWTER_GYM",
+    "x": 7,
+    "y": 11,
+    "direction": "UP",
+    "flags": [],
+    "party": [{ "speciesId": 25, "level": 15 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "PEWTER_GYM",
+    "textConstant": "TEXT_PEWTERGYM_GYM_GUIDE",
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "PewterGymGuideTextBoulderBadgeAbsent",
+    "flagsAbsent": ["EVENT_GOT_BOULDERBADGE"],
+    "actionTypesContains": ["dialogue", "choice"],
+    "activeBattleAbsent": true
+  }
+}

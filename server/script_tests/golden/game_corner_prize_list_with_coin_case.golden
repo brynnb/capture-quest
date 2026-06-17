@@ -1,0 +1,50 @@
+Scenario: game_corner_prize_list_with_coin_case
+Description: Game Corner prize list matches the Red source prize table.
+Character: SimGameCornerPrizeListWithCase
+
+Initial state
+  location: GAME_CORNER_PRIZE_ROOM[137] (2,4)
+  flags: none
+  coins: 9999
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: GameCornerPrizeList
+  map: GAME_CORNER_PRIZE_ROOM
+  trigger: gamecorner_prize_list
+
+Actions
+  - gameCornerPrizeList: success=true prizes=9 coins=9999
+
+Final state
+  location: GAME_CORNER_PRIZE_ROOM[137] (2,4)
+  flags: none
+  coins: 9999
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Game Corner
+  prize list: success=true coins=9999
+  prizes:
+    pokemon ABRA cost=180 pokemon=63
+    pokemon CLEFAIRY cost=500 pokemon=35
+    pokemon NIDORINA cost=1200 pokemon=30
+    pokemon DRATINI cost=2800 pokemon=147
+    pokemon SCYTHER cost=5500 pokemon=123
+    pokemon PORYGON cost=9999 pokemon=137
+    tm TM23 Dragon Rage cost=3300 item=111
+    tm TM15 Hyper Beam cost=5500 item=103
+    tm TM50 Substitute cost=7700 item=138

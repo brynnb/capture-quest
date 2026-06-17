@@ -1,0 +1,38 @@
+Scenario: route22_gate_boulder_badge_pass
+Description: The Route 22 Gate guard allows the player with the Boulder Badge.
+Character: ScriptSimBoulderGatePass
+
+Initial state
+  location: ROUTE_22_GATE[193] (4,2)
+  flags: EVENT_GOT_BOULDERBADGE, EVENT_GOT_POKEDEX
+  party:
+    slot 0: #6 CHARIZARD L50 moves LEER, RAGE, SLASH, FLAMETHROWER
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: Route23BadgeCheck1Pass
+  map: ROUTE_22_GATE
+  trigger: coord
+
+Actions
+  - lockInput
+  - dialogue: GUARD [You can pass here only if you have the BOULDERBADGE! Oh! That is the BOULDERBADGE! OK then! Please, go right ahead!]
+  - unlockInput
+  - setsFlags *: EVENT_ROUTE23_BADGE1_CHECKED
+
+Final state
+  location: ROUTE_22_GATE[193] (4,2)
+  flags: EVENT_GOT_BOULDERBADGE, EVENT_GOT_POKEDEX, EVENT_ROUTE23_BADGE1_CHECKED
+  party:
+    slot 0: #6 CHARIZARD L50 moves LEER, RAGE, SLASH, FLAMETHROWER
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none

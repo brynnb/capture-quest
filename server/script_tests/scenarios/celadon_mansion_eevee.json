@@ -1,0 +1,28 @@
+{
+  "name": "celadon_mansion_eevee",
+  "description": "The Celadon Mansion rooftop Pokeball grants Eevee and hides after pickup.",
+  "fixture": {
+    "characterName": "ScriptSimCeladonEevee",
+    "mapName": "CELADON_MANSION_ROOF_HOUSE",
+    "x": 4,
+    "y": 4,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_RAINBOWBADGE"],
+    "party": [{ "speciesId": 5, "level": 30 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "object_click",
+    "mapName": "CELADON_MANSION_ROOF_HOUSE",
+    "textConstant": "TEXT_CELADONMANSION_ROOF_HOUSE_EEVEE_POKEBALL"
+  },
+  "expect": {
+    "scriptLabel": "CeladonMansionEevee",
+    "flagsPresent": ["EVENT_GOT_EEVEE"],
+    "partySpecies": [5, 133],
+    "hiddenObjectKeys": ["TEXT_CELADONMANSION_ROOF_HOUSE_EEVEE_POKEBALL"],
+    "actionTypesContains": ["dialogue", "setFlag", "givePokemon", "hideObject"],
+    "activeBattleAbsent": true
+  }
+}

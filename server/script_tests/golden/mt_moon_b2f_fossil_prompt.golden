@@ -1,0 +1,38 @@
+Scenario: mt_moon_b2f_fossil_prompt
+Description: After beating the Mt. Moon Super Nerd, the map prompt unlocks fossil selection without granting either fossil.
+Character: ScriptSimMtMoonFossilPrompt
+
+Initial state
+  location: MT_MOON_B2F[61] (12,5)
+  flags: EVENT_BEAT_MT_MOON_SUPER_NERD
+  party:
+    slot 0: #25 PIKACHU L18 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: MtMoonB2FFossilChoice
+  map: MT_MOON_B2F
+  trigger: map_script
+
+Actions
+  - lockInput
+  - dialogue: SUPER NERD [OK!
+I'll share!]
+  - unlockInput
+
+Final state
+  location: MT_MOON_B2F[61] (12,5)
+  flags: EVENT_BEAT_MT_MOON_SUPER_NERD
+  party:
+    slot 0: #25 PIKACHU L18 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

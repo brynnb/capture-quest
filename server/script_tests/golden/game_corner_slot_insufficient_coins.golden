@@ -1,0 +1,41 @@
+Scenario: game_corner_slot_insufficient_coins
+Description: Game Corner slot machines refuse a bet larger than the player's coin balance.
+Character: SimGameCornerSlotInsufficient
+
+Initial state
+  location: GAME_CORNER[135] (18,15)
+  flags: none
+  coins: 2
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: GameCornerSlotPlay
+  map: GAME_CORNER
+  trigger: gamecorner_slot_play
+
+Actions
+  - gameCornerSlotPlay: success=false bet=3 payout=0 coins=2 positions=[] message="Not enough coins!"
+
+Final state
+  location: GAME_CORNER[135] (18,15)
+  flags: none
+  coins: 2
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Game Corner
+  slot play: success=false bet=3 payout=0 coins=2 positions=[]
+  message: Not enough coins!

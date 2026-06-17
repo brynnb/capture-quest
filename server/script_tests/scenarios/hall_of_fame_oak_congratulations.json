@@ -1,0 +1,40 @@
+{
+  "name": "hall_of_fame_oak_congratulations",
+  "description": "Run the Hall of Fame Oak congratulations script after Champion victory and verify Hall of Fame completion.",
+  "fixture": {
+    "characterName": "ScriptSimHallOfFame",
+    "mapName": "HALL_OF_FAME",
+    "x": 5,
+    "y": 7,
+    "direction": "UP",
+    "flags": [
+      "EVENT_GOT_POKEDEX",
+      "EVENT_PLAYER_CHOSE_CHARMANDER",
+      "EVENT_BEAT_CHAMPION_RIVAL",
+      "EVENT_CHAMPIONS_ROOM_COMPLETE"
+    ],
+    "party": [
+      { "speciesId": 6, "level": 65 }
+    ],
+    "inventory": [
+      { "itemId": 9, "quantity": 1 }
+    ]
+  },
+  "trigger": {
+    "type": "map_script",
+    "mapName": "HALL_OF_FAME"
+  },
+  "expect": {
+    "scriptLabel": "HallOfFameOakCongratulations",
+    "flagsPresent": [
+      "EVENT_BEAT_CHAMPION_RIVAL",
+      "EVENT_CHAMPIONS_ROOM_COMPLETE",
+      "EVENT_HALL_OF_FAME_DONE"
+    ],
+    "partySpecies": [6],
+    "finalMapName": "HALL_OF_FAME",
+    "finalX": 5,
+    "finalY": 7,
+    "actionTypesContains": ["showActor", "dialogue", "screenFade", "setFlag", "setsFlags"]
+  }
+}

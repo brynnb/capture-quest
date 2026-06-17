@@ -1,0 +1,30 @@
+{
+  "name": "route2_gate_oaks_aide_hm05_blocked",
+  "description": "Route 2 Gate Oak's Aide blocks HM05 when the player has caught fewer than 10 Pokemon.",
+  "fixture": {
+    "characterName": "ScriptSimRoute2AideHM05Blocked",
+    "mapName": "ROUTE_2_GATE",
+    "x": 2,
+    "y": 4,
+    "direction": "LEFT",
+    "flags": [],
+    "party": [{ "speciesId": 25, "level": 20 }],
+    "inventory": [],
+    "pokedexCaught": [1, 4, 7, 10, 13, 16, 19, 21, 25],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "ROUTE_2_GATE",
+    "textConstant": "TEXT_ROUTE2GATE_OAKS_AIDE",
+    "choice": true
+  },
+  "expect": {
+    "scriptLabel": "Route2GateOaksAideHM05Blocked",
+    "flagsAbsent": ["EVENT_GOT_HM05"],
+    "inventoryAbsent": [{ "itemId": 88 }],
+    "pokedexCaughtCount": 9,
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

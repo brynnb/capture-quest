@@ -1,0 +1,47 @@
+{
+  "name": "safari_battle_run",
+  "description": "An active Safari battle fixture can be resolved through the real Safari action handler by running away.",
+  "fixture": {
+    "characterName": "ScriptSimSafariBattleRun",
+    "mapName": "SAFARI_ZONE_CENTER",
+    "x": 14,
+    "y": 24,
+    "direction": "DOWN",
+    "flags": [],
+    "party": [{ "speciesId": 25, "level": 30 }],
+    "inventory": [],
+    "hiddenObjects": [],
+    "safari": {
+      "active": true,
+      "ballsLeft": 30,
+      "stepsLeft": 499,
+      "battle": {
+        "pokemonId": 111,
+        "level": 25
+      }
+    }
+  },
+  "trigger": {
+    "type": "safari_battle_action",
+    "mapName": "SAFARI_ZONE_CENTER",
+    "action": "run"
+  },
+  "expect": {
+    "scriptLabel": "SafariBattleAction",
+    "safariActive": true,
+    "safariBallsLeft": 30,
+    "safariStepsLeft": 499,
+    "safariBattle": {
+      "active": false
+    },
+    "messages": [
+      {
+        "channel": "stream",
+        "opcode": 130,
+        "payloadContains": ["\"success\":true", "\"isOver\":true", "\"type\":\"run\""]
+      }
+    ],
+    "actionTypesContains": ["safariBattleAction"],
+    "activeBattleAbsent": true
+  }
+}

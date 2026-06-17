@@ -1,0 +1,17 @@
+{
+  "name": "rocket_hideout_elevator_no_lift_key",
+  "description": "Rocket Hideout elevator refuses the floor menu until the player has the Lift Key item.",
+  "fixture": {
+    "characterName": "SimRocketElevatorNoKey",
+    "mapName": "ROCKET_HIDEOUT_ELEVATOR",
+    "x": 2,
+    "y": 2
+  },
+  "trigger": {
+    "type": "elevator_floors"
+  },
+  "expect": {
+    "scriptLabel": "ElevatorFloors:ROCKET_HIDEOUT_ELEVATOR",
+    "elevatorMessage": "It appears to need a key."
+  }
+}

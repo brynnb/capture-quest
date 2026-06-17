@@ -1,0 +1,36 @@
+{
+  "name": "route25_bill_returned_outside_after_ss_ticket",
+  "description": "Route 25 map-load sync hides pre-help Bill objects and shows Bill outside after receiving the S.S. Ticket.",
+  "fixture": {
+    "characterName": "ScriptSimRoute25BillReturned",
+    "mapName": "ROUTE_25",
+    "x": 43,
+    "y": 3,
+    "flags": ["EVENT_MET_BILL_2", "EVENT_GOT_SS_TICKET"],
+    "hiddenObjects": ["HS_BILL_2"]
+  },
+  "trigger": {
+    "type": "map_script",
+    "mapName": "ROUTE_25"
+  },
+  "expect": {
+    "scriptLabel": "Route25BillReturnedOutsideAfterSSTicket",
+    "flagsPresent": ["EVENT_LEFT_BILLS_HOUSE_AFTER_HELPING"],
+    "actionTypesContains": ["setFlag", "hideObject", "showObject"],
+    "objectStates": [
+      {
+        "mapName": "BILLS_HOUSE",
+        "name": "BillsHouse_NPC_2",
+        "visible": false,
+        "label": "CutsceneAction:hideObject"
+      },
+      {
+        "mapName": "BILLS_HOUSE",
+        "name": "BillsHouse_NPC_3",
+        "visible": true,
+        "label": "CutsceneAction:showObject"
+      }
+    ],
+    "activeBattleAbsent": true
+  }
+}

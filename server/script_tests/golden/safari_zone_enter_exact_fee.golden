@@ -1,0 +1,39 @@
+Scenario: safari_zone_enter_exact_fee
+Description: Safari Zone entry deducts the exact 500 Pokédollar fee and starts a 30-ball, 500-step visit.
+Character: ScriptSimSafariExactFee
+
+Initial state
+  location: SAFARI_ZONE_GATE[156] (4,6)
+  flags: none
+  money: 500
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SafariZoneEnter
+  map: SAFARI_ZONE_GATE
+  trigger: safari_enter
+
+Actions
+  - safariEnter *: success=true money=0 balls=30 steps=500
+
+Final state
+  location: SAFARI_ZONE_GATE[156] (4,6)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Safari session
+  active: balls=30 steps=500

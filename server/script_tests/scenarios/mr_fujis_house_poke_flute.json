@@ -1,0 +1,23 @@
+{
+  "name": "mr_fujis_house_poke_flute",
+  "description": "Mr. Fuji gives the Poke Flute after being rescued from Pokemon Tower.",
+  "fixture": {
+    "characterName": "ScriptSimPokeFlute",
+    "mapName": "MR_FUJIS_HOUSE",
+    "x": 2,
+    "y": 3,
+    "direction": "UP",
+    "flags": ["EVENT_RESCUED_MR_FUJI"],
+    "party": [{ "speciesId": 6, "level": 34 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": { "type": "map_script", "mapName": "MR_FUJIS_HOUSE" },
+  "expect": {
+    "scriptLabel": "MrFujisHousePokeFlute",
+    "flagsPresent": ["EVENT_RESCUED_MR_FUJI", "EVENT_GOT_POKE_FLUTE"],
+    "inventoryContains": [{ "itemId": 73, "quantity": 1 }],
+    "actionTypesContains": ["dialogue", "setFlag", "giveItem", "setsFlags"],
+    "activeBattleAbsent": true
+  }
+}

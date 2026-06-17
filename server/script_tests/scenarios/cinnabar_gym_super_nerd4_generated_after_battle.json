@@ -1,0 +1,26 @@
+{
+  "name": "cinnabar_gym_super_nerd4_generated_after_battle",
+  "description": "The generated Cinnabar Gym trainer text switches to after-battle dialogue once defeated.",
+  "fixture": {
+    "characterName": "ScriptSimCinnabarSuperNerd4After",
+    "mapName": "CINNABAR_GYM",
+    "x": 11,
+    "y": 9,
+    "direction": "UP",
+    "flags": ["EVENT_BEAT_CINNABAR_GYM_TRAINER_3"],
+    "party": [{ "speciesId": 9, "level": 50 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "CINNABAR_GYM",
+    "textConstant": "TEXT_CINNABARGYM_SUPER_NERD4"
+  },
+  "expect": {
+    "scriptLabel": "CinnabarGymSuperNerd4AfterBattle",
+    "flagsPresent": ["EVENT_BEAT_CINNABAR_GYM_TRAINER_3"],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

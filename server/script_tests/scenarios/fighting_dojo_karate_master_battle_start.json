@@ -1,0 +1,29 @@
+{
+  "name": "fighting_dojo_karate_master_battle_start",
+  "description": "The Fighting Dojo Karate Master starts his source Blackbelt party before offering a gift Pokemon.",
+  "fixture": {
+    "characterName": "ScriptSimDojoKarateMasterStart",
+    "mapName": "FIGHTING_DOJO",
+    "x": 4,
+    "y": 3,
+    "direction": "RIGHT",
+    "party": [{ "speciesId": 25, "level": 35 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "FIGHTING_DOJO",
+    "textConstant": "TEXT_FIGHTINGDOJO_KARATE_MASTER"
+  },
+  "expect": {
+    "scriptLabel": "FightingDojoKarateMasterBattle",
+    "flagsAbsent": [
+      "EVENT_BEAT_KARATE_MASTER",
+      "EVENT_GOT_FIGHTING_DOJO_POKEMON"
+    ],
+    "actionTypesContains": ["dialogue", "startTrainerBattle"],
+    "activeBattleTrainerClass": "BLACKBELT",
+    "activeBattleEnemySpecies": [107]
+  }
+}

@@ -1,0 +1,45 @@
+Scenario: repel_use_consumes_item
+Description: Using REPEL consumes one inventory item and starts a 100-step repel effect.
+Character: ScriptSimRepelUse
+
+Initial state
+  location: ROUTE_1[9999] (10,10)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L12 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    #30 REPEL x2
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: RepelUse
+  map: ROUTE_1
+  trigger: repel_use
+
+Actions
+  - repelUse *: success=true item=30 steps=100 message="REPEL's effect started!"
+
+Recorded messages
+  - stream opcode=144 payload={"message":"REPEL's effect started!","newQuantity":1,"stepsLeft":100,"success":true}
+
+Final state
+  location: ROUTE_1[9999] (10,10)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L12 moves THUNDERSHOCK, GROWL, THUNDER_WAVE
+  inventory:
+    #30 REPEL x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Repel
+  initial: active=false steps=0
+  final: active=true steps=100
+  item: 30
+  success: true
+  message: REPEL's effect started!

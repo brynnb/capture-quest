@@ -1,0 +1,41 @@
+Scenario: seafoam_1f_boulder2_down_hole
+Description: Seafoam 1F boulder 2 drops through hole 2, hiding the 1F object and showing the B1F object.
+Character: ScriptSimSeafoam1FBoulder2
+
+Initial state
+  location: SEAFOAM_ISLANDS_1F[192] (24,6)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SeafoamBoulderHole
+  map: SEAFOAM_ISLANDS_1F
+  trigger: seafoam_boulder_hole
+
+Actions
+  - seafoamBoulderHole *: map=SEAFOAM_ISLANDS_1F hole=2 (24,6) flag=EVENT_SEAFOAM1_BOULDER2_DOWN_HOLE source=SeafoamIslands1F_NPC_2 destination=SEAFOAM_ISLANDS_B1F/SeafoamIslandsB1F_NPC_2
+
+Final state
+  location: SEAFOAM_ISLANDS_1F[192] (24,6)
+  flags: EVENT_SEAFOAM1_BOULDER2_DOWN_HOLE
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Event object states
+  SeafoamBoulder_1F_1_VisibleBeforeDrop SEAFOAM_ISLANDS_1F/SeafoamIslands1F_NPC_1 (18,10): visible text=TEXT_SEAFOAMISLANDS1F_BOULDER1
+  SeafoamBoulder_1F_2_HiddenAfterDrop SEAFOAM_ISLANDS_1F/SeafoamIslands1F_NPC_2 (26,7): hidden text=TEXT_SEAFOAMISLANDS1F_BOULDER2
+  SeafoamBoulder_B1F_1_HiddenBeforeDrop SEAFOAM_ISLANDS_B1F/SeafoamIslandsB1F_NPC_1 (17,6): hidden text=TEXT_SEAFOAMISLANDSB1F_BOULDER1
+  SeafoamBoulder_B1F_2_VisibleAfter1FDrop SEAFOAM_ISLANDS_B1F/SeafoamIslandsB1F_NPC_2 (22,6): visible text=TEXT_SEAFOAMISLANDSB1F_BOULDER2

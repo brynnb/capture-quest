@@ -1,0 +1,27 @@
+{
+  "name": "field_move_dig_no_badge_required",
+  "description": "Dig has no badge gate and is allowed when a party Pokemon knows DIG.",
+  "fixture": {
+    "characterName": "SimFieldDigNoBadge",
+    "mapName": "PALLET_TOWN",
+    "x": 10,
+    "y": 10,
+    "party": [
+      { "speciesId": 27, "level": 20, "moves": ["DIG"] }
+    ]
+  },
+  "trigger": {
+    "type": "field_move_permission",
+    "moveName": "DIG"
+  },
+  "expect": {
+    "scriptLabel": "FieldMovePermission:DIG",
+    "fieldMove": {
+      "allowed": true,
+      "moveName": "DIG",
+      "knownBySpeciesId": 27
+    },
+    "actionTypesContains": ["fieldMovePermission"],
+    "activeBattleAbsent": true
+  }
+}

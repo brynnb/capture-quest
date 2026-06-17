@@ -1,0 +1,42 @@
+Scenario: game_corner_prize_list_no_coin_case
+Description: Game Corner prize vendors require the Coin Case before showing prize menus.
+Character: SimGameCornerPrizeListNoCase
+
+Initial state
+  location: GAME_CORNER_PRIZE_ROOM[137] (2,4)
+  flags: none
+  coins: 500
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: GameCornerPrizeList
+  map: GAME_CORNER_PRIZE_ROOM
+  trigger: gamecorner_prize_list
+
+Actions
+  - gameCornerPrizeList: success=false prizes=0 coins=500 message="You need a COIN CASE!"
+
+Final state
+  location: GAME_CORNER_PRIZE_ROOM[137] (2,4)
+  flags: none
+  coins: 500
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Game Corner
+  prize list: success=false coins=500
+  message: You need a COIN CASE!
+  prizes: none

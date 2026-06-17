@@ -1,0 +1,23 @@
+{
+  "name": "museum_1f_entry_ticket_already_bought",
+  "description": "Museum 1F entry lets a ticketed player continue looking around.",
+  "fixture": {
+    "characterName": "ScriptSimMuseumTicketAlready",
+    "mapName": "MUSEUM_1F",
+    "x": 9,
+    "y": 4,
+    "direction": "UP",
+    "flags": ["EVENT_BOUGHT_MUSEUM_TICKET"],
+    "party": [{ "speciesId": 25, "level": 12 }]
+  },
+  "trigger": {
+    "type": "direct",
+    "scriptLabel": "Museum1FEntryTicketAlreadyBought"
+  },
+  "expect": {
+    "scriptLabel": "Museum1FEntryTicketAlreadyBought",
+    "flagsPresent": ["EVENT_BOUGHT_MUSEUM_TICKET"],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

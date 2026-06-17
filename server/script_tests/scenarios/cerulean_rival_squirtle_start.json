@@ -1,0 +1,38 @@
+{
+  "name": "cerulean_rival_squirtle_start",
+  "description": "Step into the Cerulean bridge rival trigger with Squirtle chosen and verify the Bulbasaur-path party.",
+  "fixture": {
+    "characterName": "ScriptSimCeruleanRivalSquirtle",
+    "mapName": "CERULEAN_CITY",
+    "x": 191,
+    "y": -192,
+    "direction": "UP",
+    "flags": [
+      "EVENT_GOT_POKEDEX",
+      "EVENT_PLAYER_CHOSE_SQUIRTLE"
+    ],
+    "party": [
+      { "speciesId": 7, "level": 18 }
+    ],
+    "inventory": [
+      { "itemId": 9, "quantity": 1 }
+    ]
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "CERULEAN_CITY",
+    "x": 191,
+    "y": -192
+  },
+  "expect": {
+    "scriptLabel": "CeruleanCityRivalEncounter",
+    "flagsAbsent": ["EVENT_BEAT_CERULEAN_RIVAL"],
+    "partySpecies": [7],
+    "inventoryContains": [
+      { "itemId": 9, "quantity": 1 }
+    ],
+    "actionTypesContains": ["showActor", "move", "dialogue", "startTrainerBattle"],
+    "activeBattleTrainerClass": "RIVAL1",
+    "activeBattleEnemySpecies": [17, 63, 19, 1]
+  }
+}

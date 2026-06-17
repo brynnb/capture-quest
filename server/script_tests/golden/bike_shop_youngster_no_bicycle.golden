@@ -1,0 +1,38 @@
+Scenario: bike_shop_youngster_no_bicycle
+Description: The Bike Shop youngster comments on expensive bikes before the player has a bicycle.
+Character: ScriptSimBikeShopYoungsterNoBike
+
+Initial state
+  location: BIKE_SHOP[66] (5,4)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L20 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: BikeShopYoungsterTextEventGotBicycleAbsent
+  map: BIKE_SHOP
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [These BIKEs are
+cool, but they're way expensive!]
+  - unlockInput
+
+Final state
+  location: BIKE_SHOP[66] (5,4)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L20 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

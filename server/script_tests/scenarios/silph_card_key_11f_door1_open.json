@@ -1,0 +1,29 @@
+{
+  "name": "silph_card_key_11f_door1_open",
+  "description": "Using the CARD KEY on Silph Co. 11F door 1 opens its source door flag and passable tile block.",
+  "fixture": {
+    "characterName": "ScriptSimSilphCardKey11FDoor1",
+    "mapName": "SILPH_CO_11F",
+    "x": 6,
+    "y": 14,
+    "inventory": [{ "itemName": "CARD_KEY", "quantity": 1 }]
+  },
+  "trigger": {
+    "type": "silph_card_key",
+    "mapName": "SILPH_CO_11F",
+    "textConstant": "TEXT_SILPH_CARD_KEY_DOOR_11F_1"
+  },
+  "expect": {
+    "scriptLabel": "SilphCardKeyDoor",
+    "flagsPresent": ["EVENT_SILPH_CO_11_UNLOCKED_DOOR"],
+    "inventoryContains": [{ "itemName": "CARD_KEY", "quantity": 1 }],
+    "actionTypesContains": ["silphCardKey"],
+    "tileStates": [
+      { "x": 6, "y": 12, "tileImageId": 123, "collisionType": 1, "label": "SilphCardKeyDoor_11F_1_Open_0_0" },
+      { "x": 7, "y": 12, "tileImageId": 123, "collisionType": 1, "label": "SilphCardKeyDoor_11F_1_Open_1_0" },
+      { "x": 6, "y": 13, "tileImageId": 123, "collisionType": 1, "label": "SilphCardKeyDoor_11F_1_Open_0_1" },
+      { "x": 7, "y": 13, "tileImageId": 123, "collisionType": 1, "label": "SilphCardKeyDoor_11F_1_Open_1_1" }
+    ],
+    "activeBattleAbsent": true
+  }
+}

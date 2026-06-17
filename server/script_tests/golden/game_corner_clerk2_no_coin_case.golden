@@ -1,0 +1,38 @@
+Scenario: game_corner_clerk2_no_coin_case
+Description: The Game Corner clerk refuses to give coins when the player has no Coin Case.
+Character: ScriptSimGameCornerClerk2NoCoinCase
+
+Initial state
+  location: GAME_CORNER[135] (7,4)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: GameCornerClerk2NoCoinCase
+  map: GAME_CORNER
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Oops! Forgot the
+COIN CASE!]
+  - unlockInput
+
+Final state
+  location: GAME_CORNER[135] (7,4)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

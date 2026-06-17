@@ -1,0 +1,37 @@
+Scenario: celadon_city_script_flag_side_effects
+Description: The generated Celadon City map script clears the source temporary city flags.
+Character: ScriptSimCeladonCityFlagReset
+
+Initial state
+  location: CELADON_CITY[9999] (13,19)
+  flags: EVENT_1B8, EVENT_1BF, EVENT_67F
+  party:
+    slot 0: #25 PIKACHU L5 moves THUNDERSHOCK, GROWL
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: CeladonCityScriptFlagSideEffects
+  map: CELADON_CITY
+  trigger: map_script
+
+Actions
+  - resetFlag *: EVENT_1B8
+  - resetFlag *: EVENT_1BF
+  - resetFlag *: EVENT_67F
+
+Final state
+  location: CELADON_CITY[9999] (13,19)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L5 moves THUNDERSHOCK, GROWL
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

@@ -1,0 +1,29 @@
+{
+  "scriptLabel": "OaksLabOakYourPokemonCanFight",
+  "mapName": "OAKS_LAB",
+  "trigger": {
+    "type": "npc_click",
+    "label": "TEXT_OAKSLAB_OAK1",
+    "source": "extractor"
+  },
+  "requiresFlags": [
+    "EVENT_OAK_ASKED_TO_CHOOSE_MON",
+    "EVENT_GOT_STARTER"
+  ],
+  "requiresFlagAbsent": "EVENT_BATTLED_RIVAL_IN_OAKS_LAB",
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "If a wild POKéMON appears, your POKéMON can fight against it!"
+      ],
+      "speaker": "OAK"
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

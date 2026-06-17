@@ -1,0 +1,38 @@
+{
+  "name": "cinnabar_lab_fossil_no_fossils",
+  "description": "The Cinnabar Lab fossil scientist has no reward path when the player has no fossil in inventory.",
+  "fixture": {
+    "characterName": "ScriptSimCinnabarFossilNoFossils",
+    "mapName": "CINNABAR_LAB_FOSSIL_ROOM",
+    "x": 5,
+    "y": 3,
+    "direction": "UP",
+    "flags": [],
+    "party": [{ "speciesId": 25, "level": 35 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "CINNABAR_LAB_FOSSIL_ROOM",
+    "textConstant": "TEXT_CINNABARLABFOSSILROOM_SCIENTIST1"
+  },
+  "expect": {
+    "scriptLabel": "CinnabarLabFossilNoFossils",
+    "flagsAbsent": [
+      "EVENT_GAVE_FOSSIL_TO_LAB",
+      "EVENT_LAB_STILL_REVIVING_FOSSIL",
+      "EVENT_LAB_REVIVING_DOME_FOSSIL",
+      "EVENT_LAB_REVIVING_HELIX_FOSSIL",
+      "EVENT_LAB_REVIVING_OLD_AMBER"
+    ],
+    "partySpecies": [25],
+    "inventoryAbsent": [
+      { "itemId": 31 },
+      { "itemId": 41 },
+      { "itemId": 42 }
+    ],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

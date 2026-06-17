@@ -1,0 +1,27 @@
+{
+  "name": "viridian_city_tm42_dream_eater",
+  "description": "The Viridian City Fisher grants TM42 Dream Eater.",
+  "fixture": {
+    "characterName": "ScriptSimViridianTM42",
+    "mapName": "VIRIDIAN_CITY",
+    "x": -4,
+    "y": -49,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_POKEDEX"],
+    "party": [{ "speciesId": 4, "level": 12 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "VIRIDIAN_CITY",
+    "textConstant": "TEXT_VIRIDIANCITY_FISHER"
+  },
+  "expect": {
+    "scriptLabel": "ViridianCityTM42DreamEater",
+    "flagsPresent": ["EVENT_GOT_TM42"],
+    "inventoryContains": [{ "itemId": 130, "quantity": 1 }],
+    "actionTypesContains": ["dialogue", "setFlag", "giveItem"],
+    "activeBattleAbsent": true
+  }
+}

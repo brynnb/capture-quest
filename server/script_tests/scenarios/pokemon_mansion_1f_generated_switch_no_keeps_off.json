@@ -1,0 +1,22 @@
+{
+  "name": "pokemon_mansion_1f_generated_switch_no_keeps_off",
+  "description": "Generated Pokemon Mansion 1F switch script NO leaves the shared Mansion switch flag off.",
+  "fixture": {
+    "characterName": "ScriptSimMansion1FGeneratedSwitchNo",
+    "mapName": "POKEMON_MANSION_1F",
+    "x": 2,
+    "y": 5
+  },
+  "trigger": {
+    "type": "direct",
+    "mapName": "POKEMON_MANSION_1F",
+    "scriptLabel": "PokemonMansion1FSwitchToggle",
+    "choice": false
+  },
+  "expect": {
+    "scriptLabel": "PokemonMansion1FSwitchToggle",
+    "flagsAbsent": ["EVENT_MANSION_SWITCH_ON"],
+    "actionTypesContains": ["dialogue", "choice"],
+    "activeBattleAbsent": true
+  }
+}

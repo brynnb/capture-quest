@@ -1,0 +1,45 @@
+Scenario: gym_koga_reward
+Description: After beating Koga, the Fuchsia Gym post-battle script grants Soulbadge state and TM06.
+Character: ScriptSimGymKogaReward
+
+Initial state
+  location: FUCHSIA_GYM[157] (5,4)
+  flags: EVENT_BEAT_KOGA, EVENT_GOT_BOULDERBADGE, EVENT_GOT_CASCADEBADGE, EVENT_GOT_RAINBOWBADGE, EVENT_GOT_THUNDERBADGE
+  party:
+    slot 0: #6 CHARIZARD L43 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FuchsiaGymKogaPostBattle
+  map: FUCHSIA_GYM
+  trigger: map_script
+
+Actions
+  - lockInput
+  - dialogue: KOGA [Humph! You have proven your worth! Here! Take the SOULBADGE!]
+  - dialogue: KOGA [Now that you have the SOULBADGE, the DEFENSE of your POKéMON increases! It also lets you SURF outside of battle! Ah! Take this too!]
+  - dialogue: KOGA [{PLAYER} received TM06! TM06 contains TOXIC! It is a secret technique over 400 years old!]
+  - dialogue: KOGA [When afflicted by TOXIC, POKéMON suffer more and more as battle progresses! It will surely terrorize foes!]
+  - setFlag *: EVENT_GOT_SOULBADGE
+  - setFlag *: EVENT_GOT_TM06
+  - giveItem *: TM06 x1 added
+  - unlockInput
+  - setsFlags *: EVENT_GOT_SOULBADGE
+  - setsFlags *: EVENT_GOT_TM06
+
+Final state
+  location: FUCHSIA_GYM[157] (5,4)
+  flags: EVENT_BEAT_KOGA, EVENT_GOT_BOULDERBADGE, EVENT_GOT_CASCADEBADGE, EVENT_GOT_RAINBOWBADGE, EVENT_GOT_SOULBADGE, EVENT_GOT_THUNDERBADGE, EVENT_GOT_TM06
+  party:
+    slot 0: #6 CHARIZARD L43 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    #94 TM06 x1
+  hidden objects:
+    none
+  active battle:
+    none

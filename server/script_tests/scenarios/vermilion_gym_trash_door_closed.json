@@ -1,0 +1,23 @@
+{
+  "name": "vermilion_gym_trash_door_closed",
+  "description": "Vermilion Gym trash puzzle door blocks when the second electric lock is not open.",
+  "fixture": {
+    "characterName": "ScriptSimVermilionTrashDoorClosed",
+    "mapName": "VERMILION_GYM",
+    "x": 4,
+    "y": 6
+  },
+  "trigger": {
+    "type": "tile_state",
+    "mapName": "VERMILION_GYM"
+  },
+  "expect": {
+    "scriptLabel": "TileState:VERMILION_GYM",
+    "tileStates": [
+      { "x": 4, "y": 4, "tileImageId": 253, "collisionType": 0 },
+      { "x": 5, "y": 4, "tileImageId": 253, "collisionType": 0 },
+      { "x": 4, "y": 5, "tileImageId": 253, "collisionType": 0 },
+      { "x": 5, "y": 5, "tileImageId": 253, "collisionType": 0 }
+    ]
+  }
+}

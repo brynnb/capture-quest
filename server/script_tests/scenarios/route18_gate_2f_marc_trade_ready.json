@@ -1,0 +1,26 @@
+{
+  "name": "route18_gate_2f_marc_trade_ready",
+  "description": "Route 18 Gate 2F Youngster is ready to trade Lickitung named MARC for Slowbro.",
+  "fixture": {
+    "characterName": "ScriptSimRoute18MarcTrade",
+    "mapName": "ROUTE_18_GATE_2F",
+    "x": 4,
+    "y": 3,
+    "direction": "UP",
+    "flags": [],
+    "party": [{ "speciesId": 80, "level": 25 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "fixture_state",
+    "mapName": "ROUTE_18_GATE_2F",
+    "textConstant": "TEXT_ROUTE18GATE2F_YOUNGSTER"
+  },
+  "expect": {
+    "scriptLabel": "FixtureState",
+    "finalDirection": "UP",
+    "partySpecies": [80],
+    "activeBattleAbsent": true
+  }
+}

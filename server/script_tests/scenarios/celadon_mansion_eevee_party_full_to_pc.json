@@ -1,0 +1,40 @@
+{
+  "name": "celadon_mansion_eevee_party_full_to_pc",
+  "description": "The Celadon Mansion Eevee gift is sent to the PC when the party is full.",
+  "fixture": {
+    "characterName": "ScriptSimCeladonEeveeFullParty",
+    "mapName": "CELADON_MANSION_ROOF_HOUSE",
+    "x": 4,
+    "y": 4,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_RAINBOWBADGE"],
+    "party": [
+      { "speciesId": 1, "level": 30 },
+      { "speciesId": 4, "level": 30 },
+      { "speciesId": 7, "level": 30 },
+      { "speciesId": 25, "level": 30 },
+      { "speciesId": 16, "level": 30 },
+      { "speciesId": 19, "level": 30 }
+    ],
+    "pc": [{ "speciesId": 10, "level": 5, "box": 0, "slot": 0 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "object_click",
+    "mapName": "CELADON_MANSION_ROOF_HOUSE",
+    "textConstant": "TEXT_CELADONMANSION_ROOF_HOUSE_EEVEE_POKEBALL"
+  },
+  "expect": {
+    "scriptLabel": "CeladonMansionEevee",
+    "flagsPresent": ["EVENT_GOT_EEVEE"],
+    "partySpeciesAbsent": [133],
+    "pcContains": [
+      { "speciesId": 10, "level": 5, "box": 0, "slot": 0 },
+      { "speciesId": 133, "level": 25, "box": 0, "slot": 1 }
+    ],
+    "hiddenObjectKeys": ["TEXT_CELADONMANSION_ROOF_HOUSE_EEVEE_POKEBALL"],
+    "actionTypesContains": ["dialogue", "setFlag", "givePokemon", "hideObject"],
+    "activeBattleAbsent": true
+  }
+}

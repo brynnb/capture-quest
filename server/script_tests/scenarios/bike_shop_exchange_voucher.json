@@ -1,0 +1,28 @@
+{
+  "name": "bike_shop_exchange_voucher",
+  "description": "The Bike Shop clerk exchanges the Bike Voucher for a Bicycle.",
+  "fixture": {
+    "characterName": "ScriptSimBikeShopExchange",
+    "mapName": "BIKE_SHOP",
+    "x": 6,
+    "y": 4,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_BIKE_VOUCHER"],
+    "party": [{ "speciesId": 5, "level": 25 }],
+    "inventory": [{ "itemId": 45, "quantity": 1 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "BIKE_SHOP",
+    "textConstant": "TEXT_BIKESHOP_CLERK"
+  },
+  "expect": {
+    "scriptLabel": "BikeShopExchangeVoucher",
+    "flagsPresent": ["EVENT_GOT_BIKE_VOUCHER", "EVENT_GOT_BICYCLE"],
+    "inventoryContains": [{ "itemId": 6, "quantity": 1 }],
+    "inventoryAbsent": [{ "itemId": 45 }],
+    "actionTypesContains": ["dialogue", "setFlag", "takeItem", "giveItem"],
+    "activeBattleAbsent": true
+  }
+}

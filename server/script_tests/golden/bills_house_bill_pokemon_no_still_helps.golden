@@ -1,0 +1,55 @@
+Scenario: bills_house_bill_pokemon_no_still_helps
+Description: Declining Bill's request still continues into the cell-separator setup, matching Red/Blue.
+Character: ScriptSimBillPokemonNo
+
+Initial state
+  location: BILLS_HOUSE[88] (4,5)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L20 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: BillsHousePokemonWalkToMachine
+  map: BILLS_HOUSE
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: BILL [Hiya! I'm a
+POKÉMON... ...No I'm not! Call me BILL!
+I'm a true blue POKÉMANIAC! Hey! What's with that skeptical look? I'm not joshing
+you, I screwed up an experiment and got combined with a POKÉMON!]
+  - choice:  "So, how about it?\nHelp me out here!" choice=false
+  - dialogue: BILL [No!? Come on, you
+gotta help a guy in deep trouble! What do you say,
+chief? Please? OK? All right!]
+  - dialogue: BILL [When I'm in the
+TELEPORTER, go to my PC and run the Cell Separation System!]
+  - move: BILL_POKEMON [UP UP UP]
+  - hideActor
+  - hideObject *: objects=[TEXT_BILLSHOUSE_BILL_POKEMON]
+  - setFlag *: EVENT_BILL_SAID_USE_CELL_SEPARATOR
+  - unlockInput
+
+Final state
+  location: BILLS_HOUSE[88] (4,5)
+  flags: EVENT_BILL_SAID_USE_CELL_SEPARATOR
+  party:
+    slot 0: #25 PIKACHU L20 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    TEXT_BILLSHOUSE_BILL_POKEMON
+  active battle:
+    none
+
+Event object states
+  CutsceneAction:hideObject BILLS_HOUSE/BillsHouse_NPC_1 (6,5): hidden text=TEXT_BILLSHOUSE_BILL_POKEMON
+  SourceMissableInitial:HS_BILL_1 BILLS_HOUSE/BillsHouse_NPC_2 (4,4): hidden text=TEXT_BILLSHOUSE_BILL_SS_TICKET
+  SourceMissableInitial:HS_BILL_2 BILLS_HOUSE/BillsHouse_NPC_3 (6,5): hidden text=TEXT_BILLSHOUSE_BILL_CHECK_OUT_MY_RARE_POKEMON

@@ -1,0 +1,26 @@
+{
+  "scriptLabel": "OaksLabOakChoosePokemonPrompt",
+  "mapName": "OAKS_LAB",
+  "trigger": {
+    "type": "npc_click",
+    "label": "TEXT_OAKSLAB_OAK1",
+    "source": "extractor"
+  },
+  "requiresFlag": "EVENT_OAK_ASKED_TO_CHOOSE_MON",
+  "requiresFlagAbsent": "EVENT_GOT_STARTER",
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Now, {PLAYER}, which POKéMON do you want?"
+      ],
+      "speaker": "OAK"
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

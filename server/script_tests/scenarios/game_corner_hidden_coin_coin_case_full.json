@@ -1,0 +1,26 @@
+{
+  "name": "game_corner_hidden_coin_coin_case_full",
+  "description": "Game Corner hidden coin pickup caps the Coin Case at 9999.",
+  "fixture": {
+    "characterName": "SimGameCornerHiddenFullCase",
+    "mapName": "GAME_CORNER",
+    "x": 15,
+    "y": 8,
+    "coins": 9990,
+    "inventory": [
+      { "itemName": "COIN CASE", "quantity": 1 }
+    ]
+  },
+  "trigger": {
+    "type": "gamecorner_hidden_coin",
+    "x": 15,
+    "y": 8
+  },
+  "expect": {
+    "scriptLabel": "GameCornerHiddenCoin",
+    "coins": 9999,
+    "gameCornerPrizeMessage": "Found coins, but the COIN CASE is full!",
+    "actionTypesContains": ["gameCornerHiddenCoin"],
+    "activeBattleAbsent": true
+  }
+}

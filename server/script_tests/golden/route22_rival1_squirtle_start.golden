@@ -1,0 +1,43 @@
+Scenario: route22_rival1_squirtle_start
+Description: After receiving the Pokedex, step into the first Route 22 rival trigger with Squirtle chosen.
+Character: ScriptSimRoute22Rival1Squirtle
+
+Initial state
+  location: ROUTE_22[9999] (-21,-59)
+  flags: EVENT_1ST_ROUTE22_RIVAL_BATTLE, EVENT_GOT_POKEDEX, EVENT_PLAYER_CHOSE_SQUIRTLE, EVENT_ROUTE22_RIVAL_WANTS_BATTLE
+  party:
+    slot 0: #7 SQUIRTLE L9 moves TACKLE, BUBBLE
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: Route22Rival1Encounter
+  map: ROUTE_22
+  trigger: coord
+
+Actions
+  - lockInput
+  - showActor
+  - move: RIVAL [LEFT LEFT LEFT LEFT]
+  - facePlayer
+  - dialogue: RIVAL [Hey! {PLAYER}! You're going to POKéMON LEAGUE? Forget it! You probably don't have any BADGEs! The guard won't let you through! By the way, did your POKéMON get any stronger?]
+  - startTrainerBattle *: RIVAL1 party=5 enemy=[#16 PIDGEY L9 #1 BULBASAUR L8] winFlag=EVENT_ROUTE22_RIVAL_1
+  - unlockInput
+
+Final state
+  location: ROUTE_22[9999] (-21,-59)
+  flags: EVENT_1ST_ROUTE22_RIVAL_BATTLE, EVENT_GOT_POKEDEX, EVENT_PLAYER_CHOSE_SQUIRTLE, EVENT_ROUTE22_RIVAL_WANTS_BATTLE
+  party:
+    slot 0: #7 SQUIRTLE L9 moves TACKLE, BUBBLE
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    trainer phase=action_select trainer=RIVAL1 name=Gary winFlag=EVENT_ROUTE22_RIVAL_1
+    enemy slot 0: #16 PIDGEY L9
+    enemy slot 1: #1 BULBASAUR L8

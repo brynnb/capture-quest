@@ -1,0 +1,38 @@
+Scenario: route23_rainbow_badge_blocked
+Description: The Route 23 Rainbow Badge guard blocks the player without the Rainbow Badge.
+Character: ScriptSimRainbowGateBlocked
+
+Initial state
+  location: ROUTE_23[34] (12,105)
+  flags: EVENT_GOT_BOULDERBADGE, EVENT_GOT_CASCADEBADGE, EVENT_GOT_POKEDEX, EVENT_GOT_THUNDERBADGE, EVENT_ROUTE23_BADGE1_CHECKED, EVENT_ROUTE23_BADGE2_CHECKED, EVENT_ROUTE23_BADGE3_CHECKED
+  party:
+    slot 0: #6 CHARIZARD L50 moves LEER, RAGE, SLASH, FLAMETHROWER
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: Route23BadgeCheck4Blocked
+  map: ROUTE_23
+  trigger: coord
+
+Actions
+  - lockInput
+  - dialogue: GUARD [You can pass here only if you have the RAINBOWBADGE! You don't have the RAINBOWBADGE yet! You have to have it to get to POKéMON LEAGUE!]
+  - movePlayer *: from=(12,105) to=(12,106) steps=[DOWN]
+  - unlockInput
+
+Final state
+  location: ROUTE_23[34] (12,106)
+  flags: EVENT_GOT_BOULDERBADGE, EVENT_GOT_CASCADEBADGE, EVENT_GOT_POKEDEX, EVENT_GOT_THUNDERBADGE, EVENT_ROUTE23_BADGE1_CHECKED, EVENT_ROUTE23_BADGE2_CHECKED, EVENT_ROUTE23_BADGE3_CHECKED
+  party:
+    slot 0: #6 CHARIZARD L50 moves LEER, RAGE, SLASH, FLAMETHROWER
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    none
+  active battle:
+    none

@@ -1,0 +1,29 @@
+{
+  "name": "route22_gate_boulder_badge_pass",
+  "description": "The Route 22 Gate guard allows the player with the Boulder Badge.",
+  "fixture": {
+    "characterName": "ScriptSimBoulderGatePass",
+    "mapName": "ROUTE_22_GATE",
+    "x": 4,
+    "y": 2,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_POKEDEX", "EVENT_GOT_BOULDERBADGE"],
+    "party": [{ "speciesId": 6, "level": 50 }],
+    "inventory": [{ "itemId": 9, "quantity": 1 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "ROUTE_22_GATE",
+    "x": 4,
+    "y": 2
+  },
+  "expect": {
+    "scriptLabel": "Route23BadgeCheck1Pass",
+    "finalX": 4,
+    "finalY": 2,
+    "flagsPresent": ["EVENT_GOT_BOULDERBADGE", "EVENT_ROUTE23_BADGE1_CHECKED"],
+    "actionTypesContains": ["dialogue", "setsFlags"],
+    "activeBattleAbsent": true
+  }
+}

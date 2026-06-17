@@ -1,0 +1,68 @@
+{
+  "scriptLabel": "FuchsiaGymKogaPostBattle",
+  "mapName": "FUCHSIA_GYM",
+  "trigger": {
+    "type": "map_script"
+  },
+  "requiresFlag": "EVENT_BEAT_KOGA",
+  "requiresFlagAbsent": "EVENT_GOT_SOULBADGE",
+  "setsFlags": [
+    "EVENT_GOT_SOULBADGE",
+    "EVENT_GOT_TM06"
+  ],
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Humph! You have proven your worth!",
+        "Here! Take the SOULBADGE!"
+      ],
+      "speaker": "KOGA"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Now that you have the SOULBADGE, the DEFENSE of your POKéMON increases!",
+        "It also lets you SURF outside of battle!",
+        "Ah! Take this too!"
+      ],
+      "speaker": "KOGA"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "{PLAYER} received TM06!",
+        "TM06 contains TOXIC!",
+        "It is a secret technique over 400 years old!"
+      ],
+      "speaker": "KOGA"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "When afflicted by TOXIC, POKéMON suffer more and more as battle progresses!",
+        "It will surely terrorize foes!"
+      ],
+      "speaker": "KOGA"
+    },
+    {
+      "flag": "EVENT_GOT_SOULBADGE",
+      "type": "setFlag"
+    },
+    {
+      "flag": "EVENT_GOT_TM06",
+      "type": "setFlag"
+    },
+    {
+      "type": "giveItem",
+      "itemId": 94,
+      "quantity": 1
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

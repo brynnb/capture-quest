@@ -1,0 +1,23 @@
+{
+  "name": "seafoam_b1f_boulders_initial_hidden",
+  "description": "Seafoam B1F starts with both fallen boulders hidden before any 1F boulder drops.",
+  "fixture": {
+    "characterName": "ScriptSimSeafoamB1FInitial",
+    "mapName": "SEAFOAM_ISLANDS_B1F",
+    "x": 1,
+    "y": 1
+  },
+  "trigger": {
+    "type": "event_object_state",
+    "mapName": "SEAFOAM_ISLANDS_B1F"
+  },
+  "expect": {
+    "scriptLabel": "EventObjectState:SEAFOAM_ISLANDS_B1F",
+    "actionTypesContains": ["eventObjectState"],
+    "objectStates": [
+      { "mapName": "SEAFOAM_ISLANDS_B1F", "name": "SeafoamIslandsB1F_NPC_1", "visible": false, "label": "SeafoamBoulder_B1F_1_HiddenBeforeDrop" },
+      { "mapName": "SEAFOAM_ISLANDS_B1F", "name": "SeafoamIslandsB1F_NPC_2", "visible": false, "label": "SeafoamBoulder_B1F_2_HiddenBeforeDrop" }
+    ],
+    "activeBattleAbsent": true
+  }
+}

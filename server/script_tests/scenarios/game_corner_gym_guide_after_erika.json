@@ -1,0 +1,26 @@
+{
+  "name": "game_corner_gym_guide_after_erika",
+  "description": "The Game Corner gym guide talks about rare prize Pokemon after Erika is beaten.",
+  "fixture": {
+    "characterName": "ScriptSimGameCornerGuideAfterErika",
+    "mapName": "GAME_CORNER",
+    "x": 8,
+    "y": 13,
+    "direction": "DOWN",
+    "flags": ["EVENT_BEAT_ERIKA"],
+    "party": [{ "speciesId": 25, "level": 25 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "GAME_CORNER",
+    "textConstant": "TEXT_GAMECORNER_GYM_GUIDE"
+  },
+  "expect": {
+    "scriptLabel": "GameCornerGymGuideTextEventBeatErikaSet",
+    "flagsPresent": ["EVENT_BEAT_ERIKA"],
+    "actionTypesContains": ["dialogue"],
+    "activeBattleAbsent": true
+  }
+}

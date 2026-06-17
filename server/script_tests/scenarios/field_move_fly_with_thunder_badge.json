@@ -1,0 +1,29 @@
+{
+  "name": "field_move_fly_with_thunder_badge",
+  "description": "Fly is allowed when a party Pokemon knows FLY and the Thunder Badge is set.",
+  "fixture": {
+    "characterName": "SimFieldFlyWithBadge",
+    "mapName": "PALLET_TOWN",
+    "x": 10,
+    "y": 10,
+    "flags": ["EVENT_GOT_THUNDERBADGE"],
+    "party": [
+      { "speciesId": 16, "level": 20, "moves": ["FLY"] }
+    ]
+  },
+  "trigger": {
+    "type": "field_move_permission",
+    "moveName": "FLY"
+  },
+  "expect": {
+    "scriptLabel": "FieldMovePermission:FLY",
+    "fieldMove": {
+      "allowed": true,
+      "moveName": "FLY",
+      "requiredBadgeFlag": "EVENT_GOT_THUNDERBADGE",
+      "knownBySpeciesId": 16
+    },
+    "actionTypesContains": ["fieldMovePermission"],
+    "activeBattleAbsent": true
+  }
+}

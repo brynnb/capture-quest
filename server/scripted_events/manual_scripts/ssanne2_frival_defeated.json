@@ -1,0 +1,47 @@
+{
+  "scriptLabel": "SSAnne2FRivalDefeated",
+  "mapName": "SS_ANNE_2F",
+  "trigger": {
+    "type": "map_script"
+  },
+  "requiresFlag": "EVENT_BEAT_SS_ANNE_RIVAL",
+  "requiresFlagAbsent": "EVENT_SS_ANNE_RIVAL_LEFT",
+  "setsFlags": [
+    "EVENT_SS_ANNE_RIVAL_LEFT"
+  ],
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Humph! At least you're raising your POKéMON!",
+        "I heard there was a CUT master on board.",
+        "But, he was just a seasick, old man!",
+        "But, CUT itself is really useful! You should go see him!",
+        "Smell ya!"
+      ],
+      "speaker": "RIVAL"
+    },
+    {
+      "type": "move",
+      "actor": "RIVAL",
+      "movements": [
+        "LEFT",
+        "LEFT",
+        "LEFT",
+        "DOWN",
+        "DOWN",
+        "DOWN"
+      ]
+    },
+    {
+      "type": "hideActor",
+      "actor": "RIVAL"
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

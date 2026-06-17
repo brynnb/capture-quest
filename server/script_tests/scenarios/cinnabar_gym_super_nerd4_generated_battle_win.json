@@ -1,0 +1,27 @@
+{
+  "name": "cinnabar_gym_super_nerd4_generated_battle_win",
+  "description": "The generated Cinnabar Gym trainer text starts Burglar party 5 and opens gate 3 after victory.",
+  "fixture": {
+    "characterName": "ScriptSimCinnabarSuperNerd4Battle",
+    "mapName": "CINNABAR_GYM",
+    "x": 11,
+    "y": 9,
+    "direction": "UP",
+    "flags": [],
+    "party": [{ "speciesId": 9, "level": 50 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "CINNABAR_GYM",
+    "textConstant": "TEXT_CINNABARGYM_SUPER_NERD4"
+  },
+  "resolveBattle": { "result": "win" },
+  "expect": {
+    "scriptLabel": "CinnabarGymSuperNerd4Battle",
+    "flagsPresent": ["EVENT_BEAT_CINNABAR_GYM_TRAINER_3", "EVENT_CINNABAR_GYM_GATE3_UNLOCKED"],
+    "actionTypesContains": ["dialogue", "startTrainerBattle", "resolveBattle", "setFlag"],
+    "activeBattleAbsent": true
+  }
+}

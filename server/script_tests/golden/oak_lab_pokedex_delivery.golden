@@ -1,0 +1,56 @@
+Scenario: oak_lab_pokedex_delivery
+Description: Return Oak's Parcel to Oak and receive the Pokédex.
+Character: ScriptSimOakPokedexDelivery
+
+Initial state
+  location: OAKS_LAB[40] (5,11)
+  flags: EVENT_BATTLED_RIVAL_IN_OAKS_LAB, EVENT_GOT_OAKS_PARCEL, EVENT_GOT_STARTER, EVENT_OAKS_LAB_RIVAL_EXITED, EVENT_OAK_ASKED_TO_CHOOSE_MON, EVENT_PLAYER_CHOSE_CHARMANDER, EVENT_RIVAL_PICKED_STARTER
+  party:
+    slot 0: #4 CHARMANDER L5 moves SCRATCH, GROWL
+  inventory:
+    #70 OAK's PARCEL x1
+  hidden objects:
+    TEXT_OAKSLAB_CHARMANDER_POKE_BALL
+    TEXT_OAKSLAB_SQUIRTLE_POKE_BALL
+  active battle:
+    none
+
+Resolved script
+  label: OaksLabPokedexDelivery
+  map: OAKS_LAB
+  trigger: map_script
+
+Actions
+  - lockInput
+  - showActor
+  - dialogue: RIVAL [Gramps!]
+  - move: RIVAL_RETURN [UP UP UP UP UP]
+  - facePlayer
+  - dialogue: RIVAL [What did you call me for?]
+  - dialogue: OAK [Oh right! I have a request of you two.]
+  - dialogue: OAK [On the desk there is my invention, POKéDEX! It automatically records data on POKéMON you've seen or caught! It's a hi-tech encyclopedia!]
+  - dialogue: OAK [{PLAYER} and {RIVAL}! Take these with you! {PLAYER} got POKéDEX from OAK!]
+  - takeItem *: OAK's PARCEL x1 removed
+  - giveItem *: POKéDEX x1 added
+  - dialogue: OAK [To make a complete guide on all the POKéMON in the world... That was my dream! But, I'm too old! I can't do it! So, I want you two to fulfill my dream for me! Get moving, you two! This is a great undertaking in POKéMON history!]
+  - dialogue: RIVAL [Alright Gramps! Leave it all to me! {PLAYER}, I hate to say it, but I don't need you! I know! I'll borrow a TOWN MAP from my sis! I'll tell her not to lend you one, {PLAYER}! Hahaha!]
+  - move: RIVAL_RETURN [DOWN DOWN DOWN DOWN DOWN]
+  - hideActor
+  - unlockInput
+  - setsFlags *: EVENT_OAK_GOT_PARCEL
+  - setsFlags *: EVENT_GOT_POKEDEX
+  - setsFlags *: EVENT_1ST_ROUTE22_RIVAL_BATTLE
+  - setsFlags *: EVENT_ROUTE22_RIVAL_WANTS_BATTLE
+
+Final state
+  location: OAKS_LAB[40] (5,11)
+  flags: EVENT_1ST_ROUTE22_RIVAL_BATTLE, EVENT_BATTLED_RIVAL_IN_OAKS_LAB, EVENT_GOT_OAKS_PARCEL, EVENT_GOT_POKEDEX, EVENT_GOT_STARTER, EVENT_OAKS_LAB_RIVAL_EXITED, EVENT_OAK_ASKED_TO_CHOOSE_MON, EVENT_OAK_GOT_PARCEL, EVENT_PLAYER_CHOSE_CHARMANDER, EVENT_RIVAL_PICKED_STARTER, EVENT_ROUTE22_RIVAL_WANTS_BATTLE
+  party:
+    slot 0: #4 CHARMANDER L5 moves SCRATCH, GROWL
+  inventory:
+    #9 POKéDEX x1
+  hidden objects:
+    TEXT_OAKSLAB_CHARMANDER_POKE_BALL
+    TEXT_OAKSLAB_SQUIRTLE_POKE_BALL
+  active battle:
+    none

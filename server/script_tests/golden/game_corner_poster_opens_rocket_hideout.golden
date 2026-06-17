@@ -1,0 +1,39 @@
+Scenario: game_corner_poster_opens_rocket_hideout
+Description: Pressing the Game Corner poster switch sets the Rocket Hideout entrance flag.
+Character: ScriptSimGameCornerPoster
+
+Initial state
+  location: GAME_CORNER[135] (9,5)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L20 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: GameCornerPosterTextEventFoundRocketHideout
+  map: GAME_CORNER
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Hey! A switch behind
+the poster!? Let's push it!]
+  - setFlag *: EVENT_FOUND_ROCKET_HIDEOUT
+  - unlockInput
+
+Final state
+  location: GAME_CORNER[135] (9,5)
+  flags: EVENT_FOUND_ROCKET_HIDEOUT
+  party:
+    slot 0: #25 PIKACHU L20 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

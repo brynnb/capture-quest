@@ -1,0 +1,38 @@
+Scenario: viridian_gym_guide_after_giovanni
+Description: The Viridian gym guide reacts after Giovanni is beaten.
+Character: ScriptSimViridianGuideAfterGiovanni
+
+Initial state
+  location: VIRIDIAN_GYM[45] (16,16)
+  flags: EVENT_BEAT_VIRIDIAN_GYM_GIOVANNI
+  party:
+    slot 0: #25 PIKACHU L45 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: ViridianGymGymGuideTextEventBeatViridianGymGiovanniSet
+  map: VIRIDIAN_GYM
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Blow me away!
+GIOVANNI was the GYM LEADER here?]
+  - unlockInput
+
+Final state
+  location: VIRIDIAN_GYM[45] (16,16)
+  flags: EVENT_BEAT_VIRIDIAN_GYM_GIOVANNI
+  party:
+    slot 0: #25 PIKACHU L45 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

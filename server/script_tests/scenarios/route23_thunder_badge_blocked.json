@@ -1,0 +1,29 @@
+{
+  "name": "route23_thunder_badge_blocked",
+  "description": "The Route 23 Thunder Badge guard blocks the player without the Thunder Badge.",
+  "fixture": {
+    "characterName": "ScriptSimThunderGateBlocked",
+    "mapName": "ROUTE_23",
+    "x": 8,
+    "y": 119,
+    "direction": "UP",
+    "flags": ["EVENT_GOT_POKEDEX", "EVENT_GOT_BOULDERBADGE", "EVENT_ROUTE23_BADGE1_CHECKED", "EVENT_GOT_CASCADEBADGE", "EVENT_ROUTE23_BADGE2_CHECKED"],
+    "party": [{ "speciesId": 6, "level": 50 }],
+    "inventory": [{ "itemId": 9, "quantity": 1 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "coord",
+    "mapName": "ROUTE_23",
+    "x": 8,
+    "y": 119
+  },
+  "expect": {
+    "scriptLabel": "Route23BadgeCheck3Blocked",
+    "finalX": 8,
+    "finalY": 120,
+    "flagsAbsent": ["EVENT_GOT_THUNDERBADGE", "EVENT_ROUTE23_BADGE3_CHECKED"],
+    "actionTypesContains": ["dialogue", "movePlayer"],
+    "activeBattleAbsent": true
+  }
+}

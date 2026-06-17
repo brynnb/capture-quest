@@ -1,0 +1,47 @@
+Scenario: vermilion_old_rod_house_old_rod
+Description: The Vermilion Fishing Guru grants the Old Rod.
+Character: ScriptSimOldRod
+
+Initial state
+  location: VERMILION_OLD_ROD_HOUSE[163] (2,5)
+  flags: EVENT_GOT_SS_TICKET
+  party:
+    slot 0: #5 CHARMELEON L25 moves EMBER, EMBER, LEER, RAGE
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: VermilionOldRodHouseFishingGuruTextGift
+  map: VERMILION_OLD_ROD_HOUSE
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue: FISHING GURU [I'm the FISHING
+GURU! I simply Looove
+fishing!]
+  - choice:  "Do you like to\nfish?" choice=true
+  - giveItem *: OLD ROD x1 added
+  - dialogue:  [Grand! I like
+your style! Take this and
+fish, young one! (PLAYER) received
+an OLD ROD! Fishing is a way
+of life! From the seas to
+rivers, go out and land the big one, young one!]
+  - unlockInput
+
+Final state
+  location: VERMILION_OLD_ROD_HOUSE[163] (2,5)
+  flags: EVENT_GOT_SS_TICKET
+  party:
+    slot 0: #5 CHARMELEON L25 moves EMBER, EMBER, LEER, RAGE
+  inventory:
+    #76 OLD ROD x1
+  hidden objects:
+    none
+  active battle:
+    none

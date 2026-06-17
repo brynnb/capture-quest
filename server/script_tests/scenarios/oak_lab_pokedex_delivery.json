@@ -1,0 +1,57 @@
+{
+  "name": "oak_lab_pokedex_delivery",
+  "description": "Return Oak's Parcel to Oak and receive the Pokédex.",
+  "fixture": {
+    "characterName": "ScriptSimOakPokedexDelivery",
+    "mapName": "OAKS_LAB",
+    "x": 5,
+    "y": 11,
+    "direction": "UP",
+    "flags": [
+      "EVENT_OAK_ASKED_TO_CHOOSE_MON",
+      "EVENT_GOT_STARTER",
+      "EVENT_RIVAL_PICKED_STARTER",
+      "EVENT_PLAYER_CHOSE_CHARMANDER",
+      "EVENT_BATTLED_RIVAL_IN_OAKS_LAB",
+      "EVENT_OAKS_LAB_RIVAL_EXITED",
+      "EVENT_GOT_OAKS_PARCEL"
+    ],
+    "party": [
+      { "speciesId": 4, "level": 5 }
+    ],
+    "inventory": [
+      { "itemId": 70, "quantity": 1 }
+    ],
+    "hiddenObjects": [
+      "TEXT_OAKSLAB_CHARMANDER_POKE_BALL",
+      "TEXT_OAKSLAB_SQUIRTLE_POKE_BALL"
+    ]
+  },
+  "trigger": {
+    "type": "map_script",
+    "mapName": "OAKS_LAB"
+  },
+  "expect": {
+    "scriptLabel": "OaksLabPokedexDelivery",
+    "flagsPresent": [
+      "EVENT_OAK_GOT_PARCEL",
+      "EVENT_GOT_POKEDEX",
+      "EVENT_1ST_ROUTE22_RIVAL_BATTLE",
+      "EVENT_ROUTE22_RIVAL_WANTS_BATTLE"
+    ],
+    "flagsAbsent": [],
+    "partySpecies": [4],
+    "inventoryContains": [
+      { "itemId": 9, "quantity": 1 }
+    ],
+    "inventoryAbsent": [
+      { "itemId": 70 }
+    ],
+    "hiddenObjectKeys": [
+      "TEXT_OAKSLAB_CHARMANDER_POKE_BALL",
+      "TEXT_OAKSLAB_SQUIRTLE_POKE_BALL"
+    ],
+    "actionTypesContains": ["showActor", "move", "takeItem", "giveItem", "hideActor", "setsFlags"],
+    "activeBattleAbsent": true
+  }
+}

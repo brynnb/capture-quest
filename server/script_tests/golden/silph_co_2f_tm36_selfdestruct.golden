@@ -1,0 +1,41 @@
+Scenario: silph_co_2f_tm36_selfdestruct
+Description: The Silph Co. 2F worker gives TM36 Selfdestruct after Giovanni is beaten.
+Character: ScriptSimSilphTM36
+
+Initial state
+  location: SILPH_CO_2F[207] (10,2)
+  flags: EVENT_BEAT_SILPH_CO_GIOVANNI
+  party:
+    slot 0: #6 CHARIZARD L44 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SilphCo2FTM36Selfdestruct
+  map: SILPH_CO_2F
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [{PLAYER} got TM36! TM36 is SELFDESTRUCT! It's powerful, but the POKéMON that uses it faints! Be careful.]
+  - setFlag *: EVENT_GOT_TM36
+  - playSFX: SFX_GET_ITEM_1
+  - unlockInput
+  - giveItem *: TM36 x1 added
+  - setsFlags *: EVENT_GOT_TM36
+
+Final state
+  location: SILPH_CO_2F[207] (10,2)
+  flags: EVENT_BEAT_SILPH_CO_GIOVANNI, EVENT_GOT_TM36
+  party:
+    slot 0: #6 CHARIZARD L44 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    #124 TM36 x1
+  hidden objects:
+    none
+  active battle:
+    none

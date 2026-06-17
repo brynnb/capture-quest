@@ -1,0 +1,21 @@
+{
+  "name": "celadon_mart_elevator_select_5f",
+  "description": "Selecting 5F in the Celadon Dept. Store elevator moves the player to the 5F elevator exit.",
+  "fixture": {
+    "characterName": "SimCeladonElevatorSelect",
+    "mapName": "CELADON_MART_ELEVATOR",
+    "x": 2,
+    "y": 2
+  },
+  "trigger": {
+    "type": "elevator_select",
+    "floorMapName": "CELADON_MART_5F"
+  },
+  "expect": {
+    "scriptLabel": "ElevatorSelect:CELADON_MART_5F",
+    "finalMapName": "CELADON_MART_5F",
+    "finalX": 1,
+    "finalY": 1,
+    "actionTypesContains": ["elevatorSelect"]
+  }
+}

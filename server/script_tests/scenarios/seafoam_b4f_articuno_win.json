@@ -1,0 +1,23 @@
+{
+  "name": "seafoam_b4f_articuno_win",
+  "description": "Seafoam Islands B4F Articuno battle win sets the beat flag and hides the Articuno object.",
+  "fixture": {
+    "characterName": "ScriptSim_Articuno_Win",
+    "mapName": "SEAFOAM_ISLANDS_B4F",
+    "x": 6,
+    "y": 1,
+    "party": [{"speciesId": 25, "level": 60}]
+  },
+  "trigger": {
+    "type": "npc_click",
+    "textConstant": "TEXT_SEAFOAMISLANDSB4F_ARTICUNO"
+  },
+  "resolveBattle": {"result": "win"},
+  "expect": {
+    "scriptLabel": "SeafoamIslandsB4FArticunoEncounter",
+    "flagsPresent": ["EVENT_BEAT_ARTICUNO"],
+    "hiddenObjectKeys": ["TEXT_SEAFOAMISLANDSB4F_ARTICUNO"],
+    "actionTypesContains": ["startWildBattle", "resolveBattle", "hideObject"],
+    "activeBattleAbsent": true
+  }
+}

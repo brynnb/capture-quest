@@ -1,0 +1,45 @@
+{
+  "scriptLabel": "PokemonTower2FRivalDefeated",
+  "mapName": "POKEMON_TOWER_2F",
+  "trigger": {
+    "type": "map_script"
+  },
+  "requiresFlag": "EVENT_BEAT_POKEMON_TOWER_RIVAL",
+  "requiresFlagAbsent": "EVENT_POKEMON_TOWER_RIVAL_LEFT",
+  "setsFlags": [
+    "EVENT_POKEMON_TOWER_RIVAL_LEFT"
+  ],
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "How's your POKéDEX coming, pal? I just caught a CUBONE!",
+        "I can't find the grown-up MAROWAK yet!",
+        "I doubt there are any left! Well, I better get going!",
+        "I've got a lot to accomplish, pal! Smell ya later!"
+      ],
+      "speaker": "RIVAL"
+    },
+    {
+      "type": "move",
+      "actor": "RIVAL",
+      "movements": [
+        "RIGHT",
+        "RIGHT",
+        "DOWN",
+        "DOWN",
+        "DOWN"
+      ]
+    },
+    {
+      "type": "hideActor",
+      "actor": "RIVAL"
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

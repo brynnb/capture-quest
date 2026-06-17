@@ -1,0 +1,22 @@
+{
+  "name": "agathas_room_exit_block_open",
+  "description": "Agatha's exit block resolves to the open layout after she is defeated.",
+  "fixture": {
+    "characterName": "ScriptSimAgathaExitOpen",
+    "mapName": "AGATHAS_ROOM",
+    "x": 4,
+    "y": 7,
+    "flags": ["EVENT_BEAT_AGATHAS_ROOM_TRAINER_0"]
+  },
+  "trigger": {
+    "type": "tile_state",
+    "mapName": "AGATHAS_ROOM"
+  },
+  "expect": {
+    "scriptLabel": "TileState:AGATHAS_ROOM",
+    "tileStates": [
+      { "x": 0, "y": 4, "tileImageId": 484, "collisionType": 1, "label": "AgathaExitBlockOpen_0_0" },
+      { "x": 1, "y": 5, "tileImageId": 484, "collisionType": 1, "label": "AgathaExitBlockOpen_1_1" }
+    ]
+  }
+}

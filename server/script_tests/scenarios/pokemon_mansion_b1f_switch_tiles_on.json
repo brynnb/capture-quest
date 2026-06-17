@@ -1,0 +1,23 @@
+{
+  "name": "pokemon_mansion_b1f_switch_tiles_on",
+  "description": "Pokemon Mansion B1F switch-controlled blocks resolve to the flag-on layout.",
+  "fixture": {
+    "characterName": "ScriptSimMansionB1FTilesOn",
+    "mapName": "POKEMON_MANSION_B1F",
+    "x": 20,
+    "y": 3,
+    "flags": ["EVENT_MANSION_SWITCH_ON"]
+  },
+  "trigger": {
+    "type": "tile_state",
+    "mapName": "POKEMON_MANSION_B1F"
+  },
+  "expect": {
+    "scriptLabel": "TileState:POKEMON_MANSION_B1F",
+    "tileStates": [
+      { "x": 16, "y": 27, "tileImageId": 781, "collisionType": 0, "label": "PokemonMansionSwitchOn_B1F_8_13_0_1" },
+      { "x": 23, "y": 12, "tileImageId": 780, "collisionType": 0, "label": "PokemonMansionSwitchOn_B1F_11_6_1_0" },
+      { "x": 16, "y": 16, "tileImageId": 758, "collisionType": 1, "label": "PokemonMansionSwitchOn_B1F_8_8_0_0" }
+    ]
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "name": "oak_first_rival_battle_bulbasaur_win",
+  "description": "Confirm Bulbasaur, start the first rival battle, and auto-resolve the scripted battle as a win.",
+  "fixture": {
+    "characterName": "ScriptSimOakBulbasaurBattleWin",
+    "mapName": "OAKS_LAB",
+    "x": 5,
+    "y": 11,
+    "direction": "UP",
+    "flags": ["EVENT_OAK_ASKED_TO_CHOOSE_MON"],
+    "party": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "OAKS_LAB",
+    "textConstant": "TEXT_OAKSLAB_BULBASAUR_POKE_BALL",
+    "choice": true
+  },
+  "resolveBattle": {
+    "result": "win"
+  },
+  "expect": {
+    "scriptLabel": "OaksLabChooseBulbasaur",
+    "flagsPresent": [
+      "EVENT_GOT_STARTER",
+      "EVENT_RIVAL_PICKED_STARTER",
+      "EVENT_PLAYER_CHOSE_BULBASAUR",
+      "EVENT_BATTLED_RIVAL_IN_OAKS_LAB"
+    ],
+    "partySpecies": [1],
+    "hiddenObjectKeys": [
+      "TEXT_OAKSLAB_BULBASAUR_POKE_BALL",
+      "TEXT_OAKSLAB_CHARMANDER_POKE_BALL"
+    ],
+    "actionTypesContains": ["choice", "givePokemon", "hideObject", "startTrainerBattle", "resolveBattle", "healParty", "setsFlags"],
+    "activeBattleAbsent": true
+  }
+}

@@ -1,0 +1,134 @@
+{
+  "scriptLabel": "PalletTownOakStopsPlayer",
+  "mapName": "PALLET_TOWN",
+  "trigger": {
+    "type": "coord",
+    "label": "PalletTownOakStopsPlayer",
+    "source": "capturequest",
+    "coordinates": [
+      {
+        "mapName": "PalletTown",
+        "mapId": 9999,
+        "x": 10,
+        "y": 1
+      },
+      {
+        "mapName": "PalletTown",
+        "mapId": 9999,
+        "x": 11,
+        "y": 1
+      }
+    ]
+  },
+  "requiresFlagAbsent": "EVENT_OAK_APPEARED_IN_PALLET",
+  "setsFlags": [
+    "EVENT_OAK_APPEARED_IN_PALLET"
+  ],
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "playMusic",
+      "musicConstant": "MUSIC_MEET_PROF_OAK"
+    },
+    {
+      "actor": "OAK",
+      "x": 9,
+      "y": 6,
+      "type": "showActor",
+      "sprite": "SPRITE_OAK"
+    },
+    {
+      "actor": "OAK",
+      "type": "move",
+      "movements": [
+        "UP",
+        "UP",
+        "UP",
+        "UP"
+      ]
+    },
+    {
+      "actor": "OAK",
+      "type": "facePlayer",
+      "direction": "DOWN"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "Hey! Wait!",
+        "Don't go out!"
+      ],
+      "speaker": "OAK"
+    },
+    {
+      "type": "dialogueText",
+      "speaker": "OAK",
+      "textConstant": "TEXT_PALLETTOWN_OAK"
+    },
+    {
+      "type": "parallel",
+      "actions": [
+        {
+          "actor": "OAK",
+          "type": "move",
+          "movements": [
+            "DOWN",
+            "DOWN",
+            "DOWN",
+            "DOWN",
+            "DOWN",
+            "DOWN",
+            "DOWN",
+            "DOWN",
+            "DOWN",
+            "DOWN",
+            "RIGHT",
+            "RIGHT",
+            "RIGHT",
+            "UP"
+          ]
+        },
+        {
+          "type": "movePlayer",
+          "movements": [
+            "DOWN",
+            "DOWN",
+            "DOWN",
+            "DOWN",
+            "DOWN",
+            "DOWN",
+            "LEFT",
+            "DOWN",
+            "DOWN",
+            "DOWN",
+            "DOWN",
+            "DOWN",
+            "RIGHT",
+            "RIGHT",
+            "RIGHT",
+            "UP"
+          ]
+        }
+      ]
+    },
+    {
+      "actor": "OAK",
+      "type": "hideActor"
+    },
+    {
+      "ms": 500,
+      "type": "screenFade",
+      "fadeType": "out"
+    },
+    {
+      "type": "unlockInput"
+    }
+  ],
+  "warp": {
+    "mapId": 40,
+    "x": 5,
+    "y": 11
+  }
+}

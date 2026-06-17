@@ -1,0 +1,31 @@
+{
+  "scriptLabel": "Route23BadgeCheck1Pass",
+  "mapName": "ROUTE_22_GATE",
+  "trigger": {
+    "type": "coord",
+    "label": "Route22GateScriptCoords",
+    "source": "extractor"
+  },
+  "requiresFlag": "EVENT_GOT_BOULDERBADGE",
+  "requiresFlagAbsent": "EVENT_ROUTE23_BADGE1_CHECKED",
+  "setsFlags": [
+    "EVENT_ROUTE23_BADGE1_CHECKED"
+  ],
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "You can pass here only if you have the BOULDERBADGE!",
+        "Oh! That is the BOULDERBADGE!",
+        "OK then! Please, go right ahead!"
+      ],
+      "speaker": "GUARD"
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

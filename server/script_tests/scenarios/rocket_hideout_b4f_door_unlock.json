@@ -1,0 +1,25 @@
+{
+  "name": "rocket_hideout_b4f_door_unlock",
+  "description": "Rocket Hideout B4F syncs its source door-open flag after both guard Rockets are beaten.",
+  "fixture": {
+    "characterName": "ScriptSimRocketHideoutB4FDoorUnlock",
+    "mapName": "ROCKET_HIDEOUT_B4F",
+    "x": 12,
+    "y": 5,
+    "flags": ["EVENT_BEAT_ROCKET_HIDEOUT_4_TRAINER_0", "EVENT_BEAT_ROCKET_HIDEOUT_4_TRAINER_1"]
+  },
+  "trigger": {
+    "type": "map_script",
+    "mapName": "ROCKET_HIDEOUT_B4F"
+  },
+  "expect": {
+    "scriptLabel": "RocketHideoutB4FDoorUnlock",
+    "flagsPresent": [
+      "EVENT_BEAT_ROCKET_HIDEOUT_4_TRAINER_0",
+      "EVENT_BEAT_ROCKET_HIDEOUT_4_TRAINER_1",
+      "EVENT_ROCKET_HIDEOUT_4_DOOR_UNLOCKED"
+    ],
+    "actionTypesContains": ["setFlag"],
+    "activeBattleAbsent": true
+  }
+}

@@ -1,0 +1,40 @@
+Scenario: field_move_fly_with_thunder_badge
+Description: Fly is allowed when a party Pokemon knows FLY and the Thunder Badge is set.
+Character: SimFieldFlyWithBadge
+
+Initial state
+  location: PALLET_TOWN[9999] (10,10)
+  flags: EVENT_GOT_THUNDERBADGE
+  party:
+    slot 0: #16 PIDGEY L20 moves FLY
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FieldMovePermission:FLY
+  map: PALLET_TOWN
+  trigger: field_move_permission
+
+Actions
+  - fieldMovePermission: move=FLY allowed=true requiredBadge=EVENT_GOT_THUNDERBADGE knownBy=#16 PIDGEY
+
+Final state
+  location: PALLET_TOWN[9999] (10,10)
+  flags: EVENT_GOT_THUNDERBADGE
+  party:
+    slot 0: #16 PIDGEY L20 moves FLY
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Field move
+  move: FLY[19] allowed=true
+  required badge: EVENT_GOT_THUNDERBADGE
+  known by: #16 PIDGEY

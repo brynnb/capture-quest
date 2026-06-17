@@ -1,0 +1,43 @@
+{
+  "scriptLabel": "RocketHideoutB4FGiovanniDefeated",
+  "mapName": "ROCKET_HIDEOUT_B4F",
+  "trigger": {
+    "type": "map_script"
+  },
+  "requiresFlag": "EVENT_BEAT_ROCKET_HIDEOUT_GIOVANNI",
+  "requiresFlagAbsent": "EVENT_ROCKET_HIDEOUT_GIOVANNI_LEFT",
+  "setsFlags": [
+    "EVENT_ROCKET_HIDEOUT_GIOVANNI_LEFT"
+  ],
+  "actions": [
+    {
+      "type": "lockInput"
+    },
+    {
+      "type": "dialogue",
+      "lines": [
+        "I see that you raise POKéMON with utmost care.",
+        "A child like you would never understand what I hope to achieve.",
+        "I shall step aside this time! I hope we meet again..."
+      ],
+      "speaker": "GIOVANNI"
+    },
+    {
+      "ms": 500,
+      "type": "screenFade",
+      "fadeType": "out"
+    },
+    {
+      "type": "hideActor",
+      "actor": "GIOVANNI"
+    },
+    {
+      "ms": 500,
+      "type": "screenFade",
+      "fadeType": "in"
+    },
+    {
+      "type": "unlockInput"
+    }
+  ]
+}

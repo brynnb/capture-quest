@@ -1,0 +1,35 @@
+Scenario: lances_room_entrance_lock_coord
+Description: Lance's room entrance-lock coordinate sets the source door-lock flag.
+Character: ScriptSimLanceEntranceLock
+
+Initial state
+  location: LANCES_ROOM[113] (5,11)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L60 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: LancesRoomEntranceLock
+  map: LANCES_ROOM
+  trigger: coord
+
+Actions
+  - setFlag *: EVENT_LANCES_ROOM_LOCK_DOOR
+
+Final state
+  location: LANCES_ROOM[113] (5,11)
+  flags: EVENT_LANCES_ROOM_LOCK_DOOR
+  party:
+    slot 0: #25 PIKACHU L60 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

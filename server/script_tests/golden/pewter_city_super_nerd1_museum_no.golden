@@ -1,0 +1,44 @@
+Scenario: pewter_city_super_nerd1_museum_no
+Description: The Pewter City museum guide continues into the source escort branch after NO.
+Character: ScriptSimPewterMuseumNo
+
+Initial state
+  location: PEWTER_CITY[9999] (16,17)
+  flags: none
+  party:
+    slot 0: #1 BULBASAUR L12 moves TACKLE, GROWL, LEECH_SEED
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: PewterCitySuperNerd1MuseumGuide
+  map: PEWTER_CITY
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - choice:  "Did you check out\nthe MUSEUM?" choice=false
+  - dialogue: SUPER NERD [Really?
+You absolutely have to go!]
+  - move: SUPER_NERD [DOWN DOWN DOWN DOWN]
+  - dialogue: SUPER NERD [It's right here!
+You have to pay to get in, but it's worth it! See you around!]
+  - hideObject *: objects=[TEXT_PEWTERCITY_SUPER_NERD1]
+  - showObject *: objects=[TEXT_PEWTERCITY_SUPER_NERD1]
+  - unlockInput
+
+Final state
+  location: PEWTER_CITY[9999] (16,17)
+  flags: none
+  party:
+    slot 0: #1 BULBASAUR L12 moves TACKLE, GROWL, LEECH_SEED
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

@@ -1,0 +1,32 @@
+{
+  "name": "viridian_city_old_man_catch_demo_start",
+  "description": "Telling the Viridian old man you are not in a hurry starts the Red/Blue Weedle catch tutorial battle.",
+  "fixture": {
+    "characterName": "ScriptSimViridianOldManTutorial",
+    "mapName": "VIRIDIAN_CITY",
+    "x": 21,
+    "y": 9,
+    "direction": "LEFT",
+    "flags": ["EVENT_GOT_POKEDEX"],
+    "party": [{ "speciesId": 25, "level": 10 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "VIRIDIAN_CITY",
+    "textConstant": "TEXT_VIRIDIANCITY_OLD_MAN",
+    "choice": false
+  },
+  "expect": {
+    "scriptLabel": "ViridianCityOldManCatchDemo",
+    "flagsPresent": ["EVENT_GOT_POKEDEX"],
+    "flagsAbsent": ["EVENT_OLD_MAN_CATCH_TUTORIAL_DONE"],
+    "inventoryContains": [{ "itemId": 4, "quantity": 1 }],
+    "actionTypesContains": ["dialogue", "choice", "giveItem", "startWildBattle"],
+    "activeBattleType": "wild",
+    "activeBattleEnemySpecies": [13],
+    "activeBattleAllowedActions": ["item"],
+    "activeBattleGuaranteedCatch": true
+  }
+}

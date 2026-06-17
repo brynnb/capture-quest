@@ -1,0 +1,41 @@
+Scenario: route12_gate_2f_tm39_swift
+Description: The Route 12 Gate 2F girl gives TM39 Swift.
+Character: ScriptSimRoute12GateTM39
+
+Initial state
+  location: ROUTE_12_GATE_2F[195] (3,5)
+  flags: EVENT_GOT_POKEDEX
+  party:
+    slot 0: #6 CHARIZARD L38 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: Route12Gate2FTM39Swift
+  map: ROUTE_12_GATE_2F
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [{PLAYER} received TM39! TM39 is a move called SWIFT. It's very accurate, so use it during battles you can't afford to lose.]
+  - setFlag *: EVENT_GOT_TM39
+  - playSFX: SFX_GET_ITEM_1
+  - unlockInput
+  - giveItem *: TM39 x1 added
+  - setsFlags *: EVENT_GOT_TM39
+
+Final state
+  location: ROUTE_12_GATE_2F[195] (3,5)
+  flags: EVENT_GOT_POKEDEX, EVENT_GOT_TM39
+  party:
+    slot 0: #6 CHARIZARD L38 moves EMBER, LEER, RAGE, SLASH
+  inventory:
+    #127 TM39 x1
+  hidden objects:
+    none
+  active battle:
+    none

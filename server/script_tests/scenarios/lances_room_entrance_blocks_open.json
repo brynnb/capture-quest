@@ -1,0 +1,22 @@
+{
+  "name": "lances_room_entrance_blocks_open",
+  "description": "Lance's entrance blocks resolve to the open layout before the room locks behind the player.",
+  "fixture": {
+    "characterName": "ScriptSimLanceEntranceOpen",
+    "mapName": "LANCES_ROOM",
+    "x": 5,
+    "y": 10,
+    "flags": []
+  },
+  "trigger": {
+    "type": "tile_state",
+    "mapName": "LANCES_ROOM"
+  },
+  "expect": {
+    "scriptLabel": "TileState:LANCES_ROOM",
+    "tileStates": [
+      { "x": 12, "y": 6, "tileImageId": 253, "collisionType": 1, "label": "LanceEntranceRightOpen_0_0" },
+      { "x": 13, "y": 4, "tileImageId": 253, "collisionType": 1, "label": "LanceEntranceLeftOpen_1_0" }
+    ]
+  }
+}

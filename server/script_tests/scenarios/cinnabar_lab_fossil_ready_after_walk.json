@@ -1,0 +1,33 @@
+{
+  "name": "cinnabar_lab_fossil_ready_after_walk",
+  "description": "Re-entering the fossil room after the walk-around wait clears the still-reviving flag.",
+  "fixture": {
+    "characterName": "ScriptSimCinnabarFossilReadyAfterWalk",
+    "mapName": "CINNABAR_LAB_FOSSIL_ROOM",
+    "x": 5,
+    "y": 3,
+    "direction": "UP",
+    "flags": [
+      "EVENT_GAVE_FOSSIL_TO_LAB",
+      "EVENT_LAB_STILL_REVIVING_FOSSIL",
+      "EVENT_LAB_REVIVING_DOME_FOSSIL"
+    ],
+    "party": [{ "speciesId": 25, "level": 35 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "map_script",
+    "mapName": "CINNABAR_LAB_FOSSIL_ROOM"
+  },
+  "expect": {
+    "scriptLabel": "CinnabarLabFossilReadyAfterWalk",
+    "flagsPresent": [
+      "EVENT_GAVE_FOSSIL_TO_LAB",
+      "EVENT_LAB_REVIVING_DOME_FOSSIL"
+    ],
+    "flagsAbsent": ["EVENT_LAB_STILL_REVIVING_FOSSIL"],
+    "actionTypesContains": ["resetFlag"],
+    "activeBattleAbsent": true
+  }
+}

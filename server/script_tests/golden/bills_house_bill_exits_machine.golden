@@ -1,0 +1,47 @@
+Scenario: bills_house_bill_exits_machine
+Description: After the cell separator runs, Bill appears from the machine and the source cleanup flags are set.
+Character: ScriptSimBillExitMachine
+
+Initial state
+  location: BILLS_HOUSE[88] (4,5)
+  flags: EVENT_BILL_SAID_USE_CELL_SEPARATOR, EVENT_USED_CELL_SEPARATOR
+  party:
+    slot 0: #25 PIKACHU L20 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    TEXT_BILLSHOUSE_BILL_SS_TICKET
+  active battle:
+    none
+
+Resolved script
+  label: BillsHouseBillExitsMachine
+  map: BILLS_HOUSE
+  trigger: map_script
+
+Actions
+  - lockInput
+  - showActor
+  - showObject *: objects=[TEXT_BILLSHOUSE_BILL_SS_TICKET]
+  - delay: 500ms
+  - move: BILL_1 [DOWN RIGHT RIGHT RIGHT DOWN]
+  - setFlag *: EVENT_MET_BILL_2
+  - setFlag *: EVENT_MET_BILL
+  - unlockInput
+
+Final state
+  location: BILLS_HOUSE[88] (4,5)
+  flags: EVENT_BILL_SAID_USE_CELL_SEPARATOR, EVENT_MET_BILL, EVENT_MET_BILL_2, EVENT_USED_CELL_SEPARATOR
+  party:
+    slot 0: #25 PIKACHU L20 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Event object states
+  BillsHousePokemonEntersMachineScript:EVENT_BILL_SAID_USE_CELL_SEPARATOR:HS_BILL_POKEMON:HideObject BILLS_HOUSE/BillsHouse_NPC_1 (6,5): hidden text=TEXT_BILLSHOUSE_BILL_POKEMON
+  CutsceneAction:showObject BILLS_HOUSE/BillsHouse_NPC_2 (4,4): visible text=TEXT_BILLSHOUSE_BILL_SS_TICKET
+  SourceMissableInitial:HS_BILL_2 BILLS_HOUSE/BillsHouse_NPC_3 (6,5): hidden text=TEXT_BILLSHOUSE_BILL_CHECK_OUT_MY_RARE_POKEMON

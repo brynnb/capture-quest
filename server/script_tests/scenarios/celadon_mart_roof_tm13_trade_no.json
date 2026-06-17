@@ -1,0 +1,29 @@
+{
+  "name": "celadon_mart_roof_tm13_trade_no",
+  "description": "Declining the Celadon Mart rooftop Fresh Water trade keeps the drink and does not grant TM13.",
+  "fixture": {
+    "characterName": "ScriptSimCeladonRoofTM13No",
+    "mapName": "CELADON_MART_ROOF",
+    "x": 5,
+    "y": 6,
+    "direction": "UP",
+    "flags": [],
+    "party": [{ "speciesId": 6, "level": 35 }],
+    "inventory": [{ "itemId": 60, "quantity": 1 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "CELADON_MART_ROOF",
+    "textConstant": "TEXT_CELADONMARTROOF_LITTLE_GIRL",
+    "choice": false
+  },
+  "expect": {
+    "scriptLabel": "CeladonMartRoofTM13IceBeam",
+    "flagsAbsent": ["EVENT_GOT_TM13"],
+    "inventoryContains": [{ "itemId": 60, "quantity": 1 }],
+    "inventoryAbsent": [{ "itemId": 101 }],
+    "actionTypesContains": ["dialogue", "choice"],
+    "activeBattleAbsent": true
+  }
+}

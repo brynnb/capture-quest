@@ -1,0 +1,38 @@
+Scenario: safari_step_ongoing_session
+Description: A seeded Safari Zone session decrements step count without expiring while steps remain.
+Character: ScriptSimSafariStepOngoing
+
+Initial state
+  location: SAFARI_ZONE_CENTER[220] (14,24)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L25 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: SafariStep
+  map: SAFARI_ZONE_CENTER
+  trigger: safari_step
+
+Actions
+  - safariStep *: steps=2 active=true left=1 balls=30 expired=false
+
+Final state
+  location: SAFARI_ZONE_CENTER[220] (14,24)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L25 moves THUNDERSHOCK, GROWL, THUNDER_WAVE, QUICK_ATTACK
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Safari session
+  active: balls=30 steps=1

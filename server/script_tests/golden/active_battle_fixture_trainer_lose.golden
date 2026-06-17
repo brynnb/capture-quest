@@ -1,0 +1,36 @@
+Scenario: active_battle_fixture_trainer_lose
+Description: The simulator can seed an already-active trainer battle and resolve a loss path without a cutscene trigger.
+Character: ScriptSimActiveTrainerLose
+
+Initial state
+  location: OAKS_LAB[40] (5,11)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L5 moves THUNDERSHOCK, GROWL
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    trainer phase=action_select trainer=RIVAL1 name=Gary winFlag=
+    enemy slot 0: #7 SQUIRTLE L5
+
+Resolved script
+  label: ResolveActiveBattle
+  map: OAKS_LAB
+  trigger: resolve_active_battle
+
+Actions
+  - resolveBattle *: lose trainer=RIVAL1 loseFlag=EVENT_TEST_LOST_TO_ACTIVE_RIVAL
+
+Final state
+  location: OAKS_LAB[40] (5,11)
+  flags: EVENT_TEST_LOST_TO_ACTIVE_RIVAL
+  party:
+    slot 0: #25 PIKACHU L5 moves THUNDERSHOCK, GROWL
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

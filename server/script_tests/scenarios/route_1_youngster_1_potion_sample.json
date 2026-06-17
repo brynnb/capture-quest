@@ -1,0 +1,27 @@
+{
+  "name": "route_1_youngster_1_potion_sample",
+  "description": "The Route 1 mart worker gives the player a free Potion sample.",
+  "fixture": {
+    "characterName": "ScriptSimRoute1PotionSample",
+    "mapName": "ROUTE_1",
+    "x": 8,
+    "y": 21,
+    "direction": "UP",
+    "flags": [],
+    "party": [{ "speciesId": 25, "level": 5 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "ROUTE_1",
+    "textConstant": "TEXT_ROUTE1_YOUNGSTER1"
+  },
+  "expect": {
+    "scriptLabel": "Route1Youngster1TextGift",
+    "flagsPresent": ["EVENT_GOT_POTION_SAMPLE"],
+    "inventoryContains": [{ "itemName": "POTION", "quantity": 1 }],
+    "actionTypesContains": ["dialogue", "giveItem", "setFlag"],
+    "activeBattleAbsent": true
+  }
+}

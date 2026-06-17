@@ -1,0 +1,41 @@
+Scenario: game_corner_rocket_defeated
+Description: The Game Corner Rocket leaves and is hidden after his poster battle is won.
+Character: ScriptSimGameCornerRocketDefeated
+
+Initial state
+  location: GAME_CORNER[135] (8,6)
+  flags: EVENT_BEAT_GAME_CORNER_ROCKET
+  party:
+    slot 0: #25 PIKACHU L35 moves THUNDER_WAVE, QUICK_ATTACK, SWIFT, AGILITY
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: GameCornerRocketDefeated
+  map: GAME_CORNER
+  trigger: map_script
+
+Actions
+  - lockInput
+  - dialogue: ROCKET [Dang! Our hideout might
+be discovered! I better tell BOSS!]
+  - move: ROCKET [DOWN DOWN DOWN RIGHT RIGHT]
+  - setFlag *: EVENT_GAME_CORNER_ROCKET_LEFT
+  - hideActor
+  - unlockInput
+
+Final state
+  location: GAME_CORNER[135] (8,6)
+  flags: EVENT_BEAT_GAME_CORNER_ROCKET, EVENT_GAME_CORNER_ROCKET_LEFT
+  party:
+    slot 0: #25 PIKACHU L35 moves THUNDER_WAVE, QUICK_ATTACK, SWIFT, AGILITY
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

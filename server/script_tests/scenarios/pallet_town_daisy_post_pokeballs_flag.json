@@ -1,0 +1,21 @@
+{
+  "name": "pallet_town_daisy_post_pokeballs_flag",
+  "description": "Pallet Town map-load sync sets the post-Pokeballs flag independently of Daisy's Town Map visibility swap.",
+  "fixture": {
+    "characterName": "ScriptSimPalletDaisyPokeballs",
+    "mapName": "PALLET_TOWN",
+    "x": 5,
+    "y": 6,
+    "flags": ["EVENT_GOT_POKEBALLS_FROM_OAK"]
+  },
+  "trigger": {
+    "type": "map_load",
+    "mapName": "PALLET_TOWN"
+  },
+  "expect": {
+    "scriptLabel": "MapLoad:PALLET_TOWN",
+    "flagsPresent": ["EVENT_GOT_POKEBALLS_FROM_OAK", "EVENT_PALLET_AFTER_GETTING_POKEBALLS_2"],
+    "flagsAbsent": ["EVENT_DAISY_WALKING"],
+    "activeBattleAbsent": true
+  }
+}

@@ -1,0 +1,41 @@
+Scenario: fuchsia_gym_guide_before_koga
+Description: The Fuchsia gym guide gives Koga advice before he is beaten.
+Character: ScriptSimFuchsiaGuideBeforeKoga
+
+Initial state
+  location: FUCHSIA_GYM[157] (7,14)
+  flags: none
+  party:
+    slot 0: #1 BULBASAUR L30 moves LEECH_SEED, VINE_WHIP, POISONPOWDER, RAZOR_LEAF
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FuchsiaGymGymGuideTextEventBeatKogaAbsent
+  map: FUCHSIA_GYM
+  trigger: npc_click
+
+Actions
+  - lockInput
+  - dialogue:  [Yo! Champ in
+making! FUCHSIA GYM is
+riddled with invisible walls! KOGA might appear
+close, but he's blocked off! You have to find
+gaps in the walls to reach him!]
+  - unlockInput
+
+Final state
+  location: FUCHSIA_GYM[157] (7,14)
+  flags: none
+  party:
+    slot 0: #1 BULBASAUR L30 moves LEECH_SEED, VINE_WHIP, POISONPOWDER, RAZOR_LEAF
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

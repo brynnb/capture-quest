@@ -1,0 +1,28 @@
+{
+  "name": "viridian_city_old_man_catch_demo_done",
+  "description": "After the Viridian old man catch tutorial is complete, talking to him gives advice without restarting the demo battle.",
+  "fixture": {
+    "characterName": "ScriptSimViridianOldManTutorialDone",
+    "mapName": "VIRIDIAN_CITY",
+    "x": 21,
+    "y": 9,
+    "direction": "LEFT",
+    "flags": ["EVENT_GOT_POKEDEX", "EVENT_OLD_MAN_CATCH_TUTORIAL_DONE"],
+    "party": [{ "speciesId": 25, "level": 10 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "npc_click",
+    "mapName": "VIRIDIAN_CITY",
+    "textConstant": "TEXT_VIRIDIANCITY_OLD_MAN"
+  },
+  "expect": {
+    "scriptLabel": "ViridianCityOldManCatchDemoDone",
+    "flagsPresent": ["EVENT_GOT_POKEDEX", "EVENT_OLD_MAN_CATCH_TUTORIAL_DONE"],
+    "inventoryAbsent": [{ "itemId": 4 }],
+    "actionTypesContains": ["dialogue"],
+    "actionTypesAbsent": ["choice", "giveItem", "startWildBattle"],
+    "activeBattleAbsent": true
+  }
+}

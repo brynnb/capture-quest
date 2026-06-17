@@ -1,0 +1,27 @@
+{
+  "name": "safari_step_expiry",
+  "description": "A seeded Safari Zone session expires when its step count reaches zero.",
+  "fixture": {
+    "characterName": "ScriptSimSafariStepExpiry",
+    "mapName": "SAFARI_ZONE_CENTER",
+    "x": 14,
+    "y": 24,
+    "party": [{ "speciesId": 25, "level": 25 }],
+    "safari": {
+      "active": true,
+      "ballsLeft": 3,
+      "stepsLeft": 1
+    }
+  },
+  "trigger": {
+    "type": "safari_step"
+  },
+  "expect": {
+    "scriptLabel": "SafariStep",
+    "safariActive": false,
+    "safariBallsLeft": 3,
+    "safariStepsLeft": 0,
+    "actionTypesContains": ["safariStep"],
+    "activeBattleAbsent": true
+  }
+}

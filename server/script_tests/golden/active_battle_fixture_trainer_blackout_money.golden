@@ -1,0 +1,40 @@
+Scenario: active_battle_fixture_trainer_blackout_money
+Description: A normal trainer battle loss applies blackout money loss by halving the player's Pokédollars.
+Character: ScriptSimActiveTrainerBlackout
+
+Initial state
+  location: VIRIDIAN_FOREST[51] (5,10)
+  flags: none
+  money: 999
+  party:
+    slot 0: #25 PIKACHU L5 moves THUNDERSHOCK, GROWL
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    trainer phase=action_select trainer=BUG_CATCHER name=BUG CATCHER winFlag=
+    enemy slot 0: #13 WEEDLE L6
+    enemy slot 1: #10 CATERPIE L6
+
+Resolved script
+  label: ResolveActiveBattle
+  map: VIRIDIAN_FOREST
+  trigger: resolve_active_battle
+
+Actions
+  - resolveBattle *: lose trainer=BUG_CATCHER loseFlag=
+  - blackoutMoney *: lost=500 money=499
+
+Final state
+  location: VIRIDIAN_FOREST[51] (5,10)
+  flags: none
+  money: 499
+  party:
+    slot 0: #25 PIKACHU L5 moves THUNDERSHOCK, GROWL
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

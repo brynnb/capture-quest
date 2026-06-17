@@ -1,0 +1,89 @@
+name: Deploy CaptureQuest
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      reset_database:
+        description: 'Drop and rebuild the runtime database before deploying'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build Frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: server/go.sum
+
+      - name: Build Backend
+        run: |
+          cd server
+          GOOS=linux GOARCH=amd64 go build -o server ./cmd/server
+          GOOS=linux GOARCH=amd64 go build -o import-phaser ./cmd/import-phaser
+
+      - name: Deploy to Server
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_APP_DIR: ${{ vars.DEPLOY_APP_DIR }}
+          RESET_DATABASE: ${{ github.event_name == 'workflow_dispatch' && inputs.reset_database }}
+        run: |
+          : "${DEPLOY_HOST:?DEPLOY_HOST secret is required}"
+          : "${DEPLOY_APP_DIR:?DEPLOY_APP_DIR repository variable is required}"
+
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          SSH_OPTS="-o StrictHostKeyChecking=no -i ~/.ssh/deploy_key"
+          HOST="$DEPLOY_HOST"
+          APP_DIR="$DEPLOY_APP_DIR"
+
+          # Upload frontend
+          tar --exclude='._*' --exclude='.DS_Store' -czf - -C dist . | ssh $SSH_OPTS $HOST "mkdir -p $APP_DIR/dist && cd $APP_DIR/dist && tar xzf -"
+
+          # Stop services before overwriting
+          ssh $SSH_OPTS $HOST "sudo systemctl stop cq-server"
+
+          # Upload backend
+          gzip -c server/server | ssh $SSH_OPTS $HOST "gunzip > $APP_DIR/server/server && chmod +x $APP_DIR/server/server"
+          gzip -c server/import-phaser | ssh $SSH_OPTS $HOST "gunzip > $APP_DIR/server/import-phaser && chmod +x $APP_DIR/server/import-phaser"
+          ssh $SSH_OPTS $HOST "rm -rf $APP_DIR/server/migrations"
+
+          # Upload database/source artifacts for deterministic Postgres imports
+          tar --exclude='._*' --exclude='.DS_Store' -czf - -C server/schema . | ssh $SSH_OPTS $HOST "mkdir -p $APP_DIR/server/schema && cd $APP_DIR/server/schema && tar xzf -"
+          tar --exclude='._*' --exclude='.DS_Store' -czf - -C server/scripts . | ssh $SSH_OPTS $HOST "mkdir -p $APP_DIR/server/scripts && cd $APP_DIR/server/scripts && tar xzf -"
+          gzip -c public/phaser/pokemon.db | ssh $SSH_OPTS $HOST "mkdir -p $APP_DIR/public/phaser && gunzip > $APP_DIR/public/phaser/pokemon.db"
+
+          # Upload file-backed scripted events
+          tar --exclude='._*' --exclude='.DS_Store' -czf - -C server/scripted_events . | ssh $SSH_OPTS $HOST "rm -rf $APP_DIR/server/scripted_events && mkdir -p $APP_DIR/server/scripted_events && cd $APP_DIR/server/scripted_events && tar xzf -"
+
+          # Apply tracked runtime schema and refresh deterministic imported data.
+          ssh $SSH_OPTS $HOST "set -euo pipefail; cd $APP_DIR; set -a; . /etc/capturequest/cq-server.env; set +a; : \${DATABASE_URL:?DATABASE_URL missing}; if [ \"$RESET_DATABASE\" = \"true\" ]; then psql \"\$DATABASE_URL\" -v ON_ERROR_STOP=1 -c 'DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;'; fi; psql \"\$DATABASE_URL\" -v ON_ERROR_STOP=1 -f server/schema/postgres_runtime_schema.sql; cd server; DATABASE_URL=\"\$DATABASE_URL\" ./import-phaser ../public/phaser/pokemon.db"
+
+          # Restart
+          ssh $SSH_OPTS $HOST "sudo systemctl start cq-server && sudo systemctl reload caddy"
+
+          rm -f ~/.ssh/deploy_key
