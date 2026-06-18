@@ -9,13 +9,24 @@ import useGameStatusStore from "@/stores/GameStatusStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import usePokeBattleStore from "@/stores/PokeBattleStore";
 import usePokemonDialogueStore from "@/stores/PokemonDialogueStore";
+import usePokemonPartyStore from "@/stores/PokemonPartyStore";
+import usePokemonPCStore from "@/stores/PokemonPCStore";
 import {
   getCurrentCutsceneScriptLabel,
   getLastCompletedCutsceneScriptLabel,
   getLastStartedCutsceneScriptLabel,
   isCutscenePlaying,
 } from "@/phaser-game/services/CutsceneService";
-import { requestPrizeList } from "@/phaser-game/services/PhaserNetworkService";
+import {
+  buyCoins,
+  buyPrize,
+  playSlotMachine,
+  requestCoinBalance,
+  requestPrizeList,
+  sendPokemonPartyRequest,
+  sendPokemonPCOpen,
+} from "@/phaser-game/services/PhaserNetworkService";
+import type { PokemonDTO } from "@/net/generated/world_api";
 
 const IS_TEST_MODE = import.meta.env.VITE_TEST_MODE === "true";
 
@@ -90,6 +101,14 @@ export interface CaptureQuestTestState {
       shortName: string;
       quantity: number;
     }>;
+  };
+  pokemon: {
+    party: PokemonDTO[];
+    pc: {
+      isOpen: boolean;
+      currentBox: number;
+      boxPokemon: PokemonDTO[];
+    };
   };
   messages: Array<{
     text: string;
@@ -168,6 +187,7 @@ export type CaptureQuestTestStatePatch = Partial<
   worldInput?: Partial<CaptureQuestTestState["worldInput"]>;
   ui?: Partial<CaptureQuestTestState["ui"]>;
   inventory?: Partial<CaptureQuestTestState["inventory"]>;
+  pokemon?: Partial<CaptureQuestTestState["pokemon"]>;
   audio?: Partial<CaptureQuestTestState["audio"]>;
   debug?: Partial<CaptureQuestTestState["debug"]>;
   dialogue?: Partial<CaptureQuestTestState["dialogue"]>;
@@ -183,7 +203,13 @@ export interface CaptureQuestTestBridge {
   getState: () => CaptureQuestTestState;
   waitForEvent: (type: string, timeoutMs?: number) => Promise<unknown>;
   tileToViewport: (x: number, y: number) => TileViewportPoint | null;
+  requestGameCornerCoinBalance: () => void;
+  buyGameCornerCoins: () => void;
+  playGameCornerSlot: (bet: number, isLucky?: boolean) => void;
   requestGameCornerPrizeList: () => void;
+  buyGameCornerPrize: (prizeId: number) => void;
+  requestPokemonParty: () => void;
+  requestPokemonPC: () => void;
 }
 
 declare global {
@@ -236,6 +262,8 @@ function baseState(): CaptureQuestTestState {
   const battle = usePokeBattleStore.getState();
   const audio = useAudioActivityStore.getState();
   const inventory = useCQInventoryStore.getState();
+  const party = usePokemonPartyStore.getState();
+  const pc = usePokemonPCStore.getState();
   const chat = useChatStore.getState();
   const debug = useDebugSceneStore.getState();
   const mapId = status.currentMap;
@@ -289,6 +317,14 @@ function baseState(): CaptureQuestTestState {
         shortName: entry.item.shortName,
         quantity: entry.instance.quantity,
       })),
+    },
+    pokemon: {
+      party: party.party,
+      pc: {
+        isOpen: pc.isOpen,
+        currentBox: pc.currentBox,
+        boxPokemon: pc.boxPokemon,
+      },
     },
     messages: chat.messages.slice(-10).map((message) => ({
       text: message.text,
@@ -368,6 +404,14 @@ function getState(): CaptureQuestTestState {
       ...state.inventory,
       ...(tileViewerState.inventory ?? {}),
     },
+    pokemon: {
+      ...state.pokemon,
+      ...(tileViewerState.pokemon ?? {}),
+      pc: {
+        ...state.pokemon.pc,
+        ...(tileViewerState.pokemon?.pc ?? {}),
+      },
+    },
     audio: {
       ...state.audio,
       ...(tileViewerState.audio ?? {}),
@@ -420,7 +464,13 @@ export function installCaptureQuestTestBridge(): void {
     getState,
     waitForEvent,
     tileToViewport,
+    requestGameCornerCoinBalance: requestCoinBalance,
+    buyGameCornerCoins: buyCoins,
+    playGameCornerSlot: (bet, isLucky = false) => playSlotMachine(bet, isLucky),
     requestGameCornerPrizeList: requestPrizeList,
+    buyGameCornerPrize: buyPrize,
+    requestPokemonParty: sendPokemonPartyRequest,
+    requestPokemonPC: sendPokemonPCOpen,
   };
 
   let previousScreen = useGameScreenStore.getState().currentScreen;

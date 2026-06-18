@@ -8,6 +8,19 @@ import { displayLocationNameForMap } from "@utils/locationNames";
 interface GameStatusStore {
   maps: MapData[];
   currentMap: number | null;
+  playerTileContext: {
+    x: number;
+    y: number;
+    mapId: number;
+    direction: string;
+  } | null;
+  setPlayerTileContext: (context: {
+    x: number;
+    y: number;
+    mapId: number;
+    direction: string;
+  }) => void;
+  clearPlayerTileContext: () => void;
 
   isMuted: boolean;
   sfxVolume: number;
@@ -69,6 +82,9 @@ const useGameStatusStore = create<GameStatusStore>()(
       (set, get) => ({
         maps: [],
         currentMap: null,
+        playerTileContext: null,
+        setPlayerTileContext: (context) => set({ playerTileContext: context }),
+        clearPlayerTileContext: () => set({ playerTileContext: null }),
 
         isMuted: false,
         sfxVolume: 0.25,

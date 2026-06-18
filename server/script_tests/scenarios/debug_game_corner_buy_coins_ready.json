@@ -1,0 +1,29 @@
+{
+  "name": "debug_game_corner_buy_coins_ready",
+  "description": "Debug setup: stand in the Game Corner with money, a Coin Case, and room to buy coins.",
+  "fixture": {
+    "characterName": "DebugGameCornerBuyCoinsReady",
+    "mapName": "GAME_CORNER",
+    "x": 5,
+    "y": 8,
+    "direction": "UP",
+    "money": 1000,
+    "coins": 10,
+    "inventory": [{ "itemId": 69, "quantity": 1 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "fixture_state",
+    "mapName": "GAME_CORNER"
+  },
+  "expect": {
+    "scriptLabel": "FixtureState",
+    "finalX": 5,
+    "finalY": 8,
+    "finalDirection": "UP",
+    "money": 1000,
+    "coins": 10,
+    "inventoryContains": [{ "itemId": 69, "quantity": 1 }],
+    "activeBattleAbsent": true
+  }
+}

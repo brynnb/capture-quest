@@ -738,6 +738,18 @@ export class TileViewer extends Scene {
       actorManager: () => this.actorManager,
       mapRenderer: () => this.mapRenderer,
       getPlayerActor: () => this.playerActor,
+      syncPlayerMovement: (x, y, direction) => {
+        this.playerMovementController.syncPosition(x, y);
+        this.playerMovementController.syncDirection(direction);
+        if (this.playerMovementController.getCurrentMapId() != null) {
+          PhaserNet.sendPlayerPosition(
+            x,
+            y,
+            this.playerMovementController.getCurrentMapId(),
+            direction,
+          );
+        }
+      },
       setInputLocked: (locked) => this.setCutsceneInputLocked(locked),
       onHideObject: (actorId) => this.handleActorDespawn(actorId),
     });

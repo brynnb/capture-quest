@@ -1,0 +1,29 @@
+{
+  "name": "debug_pokemon_center_pc_ready",
+  "description": "Debug setup: stand at the Viridian Pokemon Center PC with party and box Pokemon.",
+  "fixture": {
+    "characterName": "DebugPokemonCenterPCReady",
+    "mapName": "VIRIDIAN_POKECENTER",
+    "x": 12,
+    "y": 4,
+    "direction": "RIGHT",
+    "party": [
+      { "speciesId": 1, "level": 12 },
+      { "speciesId": 4, "level": 12 }
+    ],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "fixture_state",
+    "mapName": "VIRIDIAN_POKECENTER"
+  },
+  "expect": {
+    "scriptLabel": "FixtureState",
+    "finalX": 12,
+    "finalY": 4,
+    "finalDirection": "RIGHT",
+    "partySpecies": [1, 4],
+    "activeBattleAbsent": true
+  }
+}

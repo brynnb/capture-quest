@@ -1,0 +1,25 @@
+{
+  "name": "debug_warp_cinnabar_lab_fossil_door",
+  "description": "Debug setup: stand at the Cinnabar Lab fossil room door in the lobby.",
+  "fixture": {
+    "characterName": "DebugWarpCinnabarLabFossilDoor",
+    "mapName": "CINNABAR_LAB",
+    "x": 16,
+    "y": 5,
+    "direction": "UP",
+    "party": [{ "speciesId": 25, "level": 25 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "fixture_state",
+    "mapName": "CINNABAR_LAB"
+  },
+  "expect": {
+    "scriptLabel": "FixtureState",
+    "finalX": 16,
+    "finalY": 5,
+    "finalDirection": "UP",
+    "activeBattleAbsent": true
+  }
+}

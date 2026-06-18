@@ -1,0 +1,36 @@
+{
+  "name": "debug_game_corner_prize_full_party_ready",
+  "description": "Debug setup: stand in the Game Corner prize room with a full party, a Coin Case, and enough coins to buy a prize Pokemon.",
+  "fixture": {
+    "characterName": "DebugGameCornerPrizeFullPartyReady",
+    "mapName": "GAME_CORNER_PRIZE_ROOM",
+    "x": 2,
+    "y": 4,
+    "coins": 9999,
+    "party": [
+      { "speciesId": 1, "level": 30 },
+      { "speciesId": 4, "level": 30 },
+      { "speciesId": 7, "level": 30 },
+      { "speciesId": 25, "level": 30 },
+      { "speciesId": 16, "level": 30 },
+      { "speciesId": 19, "level": 30 }
+    ],
+    "pc": [{ "speciesId": 10, "level": 5, "box": 0, "slot": 0 }],
+    "inventory": [{ "itemName": "COIN CASE", "quantity": 1 }],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "fixture_state",
+    "mapName": "GAME_CORNER_PRIZE_ROOM"
+  },
+  "expect": {
+    "scriptLabel": "FixtureState",
+    "finalX": 2,
+    "finalY": 4,
+    "coins": 9999,
+    "partySpecies": [1, 4, 7, 25, 16, 19],
+    "pcContains": [{ "speciesId": 10, "level": 5, "box": 0, "slot": 0 }],
+    "inventoryContains": [{ "itemId": 69, "quantity": 1 }],
+    "activeBattleAbsent": true
+  }
+}

@@ -210,6 +210,48 @@ export async function waitForInventoryItem(
     .toBe(true);
 }
 
+export async function waitForPartyPokemon(
+  page: Page,
+  matcher: string | number | RegExp,
+  timeout = 15_000,
+) {
+  await expect
+    .poll(
+      async () => {
+        const state = await getGameState(page);
+        return state.pokemon.party.some((pokemon) => {
+          if (typeof matcher === "number") return pokemon.id === matcher;
+          return typeof matcher === "string"
+            ? pokemon.name === matcher
+            : matcher.test(pokemon.name);
+        });
+      },
+      { timeout },
+    )
+    .toBe(true);
+}
+
+export async function waitForPCPokemon(
+  page: Page,
+  matcher: string | number | RegExp,
+  timeout = 15_000,
+) {
+  await expect
+    .poll(
+      async () => {
+        const state = await getGameState(page);
+        return state.pokemon.pc.boxPokemon.some((pokemon) => {
+          if (typeof matcher === "number") return pokemon.id === matcher;
+          return typeof matcher === "string"
+            ? pokemon.name === matcher
+            : matcher.test(pokemon.name);
+        });
+      },
+      { timeout },
+    )
+    .toBe(true);
+}
+
 export async function waitForInventoryOpen(page: Page, open = true) {
   await expect
     .poll(

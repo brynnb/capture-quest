@@ -358,7 +358,7 @@ func applyPokeFluteBattle(battle *pokebattle.BattleState) (string, error) {
 	return "The Poké Flute played!\n" + strings.Join(woke, " woke up!\n") + " woke up!", nil
 }
 
-func tryHandleFieldItemUse(ses *session.Session, wh *WorldHandler, found *cqitems.CQInventoryItem, charID int32) bool {
+func tryHandleFieldItemUse(ses *session.Session, wh *WorldHandler, found *cqitems.CQInventoryItem, charID int32, req cqItemUseRequest) bool {
 	item := found.Item
 	switch itemShortName(item) {
 	case "REPEL", "SUPER_REPEL", "MAX_REPEL":
@@ -368,7 +368,23 @@ func tryHandleFieldItemUse(ses *session.Session, wh *WorldHandler, found *cqitem
 		handleCQEscapeRopeUse(ses, wh, found, charID)
 		return true
 	case "OLD_ROD", "GOOD_ROD", "SUPER_ROD":
-		payload, _ := json.Marshal(map[string]interface{}{"itemId": item.ID, "rodType": itemShortName(item)})
+		fishingReq := map[string]interface{}{
+			"itemId":  item.ID,
+			"rodType": itemShortName(item),
+		}
+		if req.MapID != nil {
+			fishingReq["mapId"] = *req.MapID
+		}
+		if req.X != nil {
+			fishingReq["x"] = *req.X
+		}
+		if req.Y != nil {
+			fishingReq["y"] = *req.Y
+		}
+		if strings.TrimSpace(req.Direction) != "" {
+			fishingReq["direction"] = req.Direction
+		}
+		payload, _ := json.Marshal(fishingReq)
 		HandlePokeFishing(ses, payload, wh)
 		return true
 	case "BICYCLE":
@@ -394,6 +410,9 @@ func tryHandleFieldItemUse(ses *session.Session, wh *WorldHandler, found *cqitem
 	case "TOWN_MAP":
 		sendCQItemUseSuccess(ses, found, currentMapMessage(ses), found.Instance.Quantity)
 		return true
+	case "COIN_CASE":
+		sendCQItemUseSuccess(ses, found, coinCaseMessage(getCoins(int64(charID))), found.Instance.Quantity)
+		return true
 	case "ITEMFINDER":
 		sendCQItemUseSuccess(ses, found, itemfinderMessage(ses, wh), found.Instance.Quantity)
 		return true
@@ -409,6 +428,13 @@ func tryHandleFieldItemUse(ses *session.Session, wh *WorldHandler, found *cqitem
 	default:
 		return false
 	}
+}
+
+func coinCaseMessage(coins int) string {
+	if coins == 1 {
+		return "You have 1 coin."
+	}
+	return fmt.Sprintf("You have %d coins.", coins)
 }
 
 func handleCQRepelUse(ses *session.Session, wh *WorldHandler, found *cqitems.CQInventoryItem, charID int32) {

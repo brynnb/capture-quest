@@ -3,7 +3,7 @@ Description: Game Corner Clerk 1 sells 50 coins for 1000 Pokédollars when the p
 Character: ScriptSimGameCornerClerk1BuyCoins
 
 Initial state
-  location: GAME_CORNER[135] (3,3)
+  location: GAME_CORNER[135] (5,8)
   flags: none
   money: 1000
   coins: 10
@@ -34,7 +34,7 @@ your 50 coins!]
   - unlockInput
 
 Final state
-  location: GAME_CORNER[135] (3,3)
+  location: GAME_CORNER[135] (5,8)
   flags: none
   coins: 60
   party:

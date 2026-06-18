@@ -197,9 +197,13 @@ func HandleCQMerchantBuyRequest(ses *session.Session, payload []byte, wh *WorldH
 }
 
 type cqItemUseRequest struct {
-	InstanceID int32 `json:"instanceId"` // Item instance ID in inventory
-	PartySlot  int   `json:"partySlot"`  // Target Pokémon party slot (0-5)
-	MoveSlot   int   `json:"moveSlot"`   // For move-targeted items: which move slot (0-3), -1 otherwise
+	InstanceID int32  `json:"instanceId"` // Item instance ID in inventory
+	PartySlot  int    `json:"partySlot"`  // Target Pokémon party slot (0-5)
+	MoveSlot   int    `json:"moveSlot"`   // For move-targeted items: which move slot (0-3), -1 otherwise
+	MapID      *int   `json:"mapId,omitempty"`
+	X          *int   `json:"x,omitempty"`
+	Y          *int   `json:"y,omitempty"`
+	Direction  string `json:"direction,omitempty"`
 }
 
 // HandleCQItemUse handles using an item from inventory outside of battle.
@@ -243,7 +247,7 @@ func HandleCQItemUse(ses *session.Session, payload []byte, wh *WorldHandler) boo
 	}
 
 	item := found.Item
-	if tryHandleFieldItemUse(ses, wh, found, charID) {
+	if tryHandleFieldItemUse(ses, wh, found, charID, req) {
 		return false
 	}
 

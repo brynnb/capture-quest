@@ -16,6 +16,8 @@ type PokeFishingRequestPayload struct {
 	ItemID    int32  `json:"itemId"` // Fallback rod item ID: 76=Old Rod, 77=Good Rod, 78=Super Rod
 	RodType   string `json:"rodType,omitempty"`
 	MapID     *int   `json:"mapId,omitempty"`
+	X         *int   `json:"x,omitempty"`
+	Y         *int   `json:"y,omitempty"`
 	Direction string `json:"direction,omitempty"`
 }
 
@@ -185,13 +187,19 @@ func fishingPlayerPosition(ses *session.Session, wh *WorldHandler, req PokeFishi
 	mapID = int(charData.MapID)
 	x, y = int(charData.X), int(charData.Y)
 
-	if req.MapID != nil {
-		mapID = *req.MapID
-	}
 	if wh != nil && wh.PlayerMovement != nil {
 		if currentX, currentY, currentMapID, ok := wh.PlayerMovement.GetPosition(int(charData.ID)); ok {
 			x, y, mapID = currentX, currentY, currentMapID
 		}
+	}
+	if req.MapID != nil {
+		mapID = *req.MapID
+	}
+	if req.X != nil {
+		x = *req.X
+	}
+	if req.Y != nil {
+		y = *req.Y
 	}
 	if wh != nil && wh.ActorManager != nil && wh.ActorManager.IsOverworld(mapID) {
 		mapID = UnifiedOverworldMapID

@@ -3,7 +3,7 @@ Description: Game Corner coin purchase deducts exactly ₽1000 and grants 50 coi
 Character: ScriptSimGameCornerExactFee
 
 Initial state
-  location: GAME_CORNER[135] (3,3)
+  location: GAME_CORNER[135] (5,8)
   flags: none
   money: 1000
   party:
@@ -24,7 +24,7 @@ Actions
   - gameCornerBuyCoins *: success=true money=0 coins=50 message="Here are 50 coins!"
 
 Final state
-  location: GAME_CORNER[135] (3,3)
+  location: GAME_CORNER[135] (5,8)
   flags: none
   coins: 50
   party:

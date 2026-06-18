@@ -4,17 +4,7 @@ import useCQInventoryStore, {
   type CQMerchantItem,
 } from "@/stores/CQInventoryStore";
 import * as PhaserNet from "@/phaser-game/services/PhaserNetworkService";
-
-const Overlay = styled.div`
-  position: absolute;
-  inset: 0;
-  z-index: 9999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: all;
-  box-sizing: border-box;
-`;
+import { GameFrameOverlay } from "@/components/Interface/GameFrameOverlay";
 
 const ShopWindow = styled.div`
   width: 420px;
@@ -204,7 +194,7 @@ const PokeMartShop: React.FC = () => {
   const formatMoney = (val: number) => `¥${val.toLocaleString()}`;
 
   return (
-    <Overlay onClick={closeShop}>
+    <GameFrameOverlay onClick={closeShop}>
       <ShopWindow onClick={(e) => e.stopPropagation()}>
         <ShopHeader>{shopName || "POKé MART"}</ShopHeader>
         <MoneyBar>
@@ -262,7 +252,7 @@ const PokeMartShop: React.FC = () => {
           </ShopButton>
         </Footer>
       </ShopWindow>
-    </Overlay>
+    </GameFrameOverlay>
   );
 };
 

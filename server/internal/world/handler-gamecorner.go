@@ -9,6 +9,7 @@ import (
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
+	"capturequest/internal/db/cqitems"
 	"capturequest/internal/session"
 )
 
@@ -492,11 +493,25 @@ func HandleGameCornerPrizeBuy(ses *session.Session, payload []byte, wh *WorldHan
 	log.Printf("[GameCorner] Player %d bought %s for coins (remaining: %d)", charID, prizeName, result.Coins)
 
 	ses.SendStreamJSON(map[string]interface{}{
-		"success":   true,
-		"coins":     result.Coins,
-		"prizeName": prizeName,
-		"message":   result.Message,
+		"success":      true,
+		"coins":        result.Coins,
+		"prizeName":    prizeName,
+		"message":      result.Message,
+		"prize":        result.Prize,
+		"prizeLevel":   result.PrizeLevel,
+		"addedToParty": result.AddedToParty,
+		"pcBox":        result.PCBox,
+		"pcSlot":       result.PCSlot,
 	}, opcodes.GameCornerPrizeBuyResponse)
+
+	if inv, err := cqitems.GetCharacterInventory(int32(charID)); err == nil {
+		money, _ := cqitems.GetCharacterMoney(int32(charID))
+		ses.SendStreamJSON(map[string]interface{}{
+			"success": true,
+			"items":   inv,
+			"money":   money,
+		}, opcodes.CQInventoryResponse)
+	}
 	return false
 }
 

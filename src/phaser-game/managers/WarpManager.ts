@@ -111,17 +111,27 @@ export class WarpManager {
       (
         x: number,
         y: number,
-        _inputSource: "click" | "keyboard",
+        inputSource: "click" | "keyboard",
         direction: string,
         reachedMoveDestination: boolean,
       ) => {
-        if (!reachedMoveDestination || this.isWorldInputFrozen()) return;
+        if (
+          this.isWorldInputFrozen() ||
+          (inputSource !== "keyboard" && !reachedMoveDestination)
+        ) {
+          return;
+        }
 
         const warp = this.getWarpAt(x, y);
         if (!warp) return;
 
         const normalizedDirection = direction.trim().toUpperCase();
         const warpDirection = warp.warpDirection?.trim().toUpperCase();
+        if (inputSource === "click") {
+          this.activateWarp(warp, warpDirection || normalizedDirection);
+          return;
+        }
+
         if (warpDirection && warpDirection !== normalizedDirection) return;
 
         this.activateWarp(warp, normalizedDirection);
@@ -306,7 +316,6 @@ export class WarpManager {
         return;
       }
 
-      const playerActor = this.getPlayerActor();
       const playerPos = this.playerMovementController.getCurrentPosition();
       if (this.canActivateWarpFromPosition(warp, playerPos.x, playerPos.y)) {
         console.log(
@@ -330,7 +339,7 @@ export class WarpManager {
       if (!this.playerMovementController.requestMoveTo(
         walkTarget.x,
         walkTarget.y,
-        playerActor?.mapId,
+        this.playerMovementController.getCurrentMapId(),
         "click",
         warp.id,
       )) {

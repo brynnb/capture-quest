@@ -1,22 +1,10 @@
 import React, { useState } from "react";
 import styled from "styled-components";
 import usePokemonPCStore from "@/stores/PokemonPCStore";
+import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import * as PhaserNet from "@/phaser-game/services/PhaserNetworkService";
 import type { PokemonDTO } from "@/net/generated/world_api";
-
-const Overlay = styled.div`
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  z-index: 9999;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: all;
-  background: rgba(0, 0, 0, 0.4);
-`;
+import { GameFrameOverlay } from "@/components/Interface/GameFrameOverlay";
 
 const PCWindow = styled.div`
   width: 640px;
@@ -74,6 +62,47 @@ const ContentArea = styled.div`
   display: flex;
   flex: 1;
   overflow: hidden;
+`;
+
+const MenuArea = styled.div`
+  padding: 18px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 260px;
+  background: #f8f8f0;
+`;
+
+const MenuButton = styled.button`
+  font-family: "Press Start 2P", "Courier New", monospace;
+  font-size: 11px;
+  text-align: left;
+  padding: 12px 14px;
+  border: 3px solid #383838;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #383838;
+  cursor: pointer;
+
+  &:hover,
+  &:focus {
+    background: #e8f0ff;
+    outline: none;
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+`;
+
+const MessagePanel = styled.div`
+  min-height: 42px;
+  padding: 12px 14px;
+  border: 3px solid #383838;
+  border-radius: 6px;
+  background: #ffffff;
+  line-height: 1.6;
 `;
 
 const BoxPanel = styled.div`
@@ -186,6 +215,9 @@ const PCButton = styled.button<{
 `;
 
 const PokemonPC: React.FC = () => {
+  const trainerName =
+    usePlayerCharacterStore((state) => state.characterProfile.name) || "PLAYER";
+  const trainerPCLabel = `${trainerName}'s PC`;
   const {
     isOpen,
     currentBox,
@@ -199,6 +231,9 @@ const PokemonPC: React.FC = () => {
     null,
   );
   const [selectedBoxSlot, setSelectedBoxSlot] = useState<number | null>(null);
+  const [screen, setScreen] = useState<"main" | "storage" | "player" | "oak">(
+    "main",
+  );
 
   if (!isOpen) return null;
 
@@ -242,106 +277,198 @@ const PokemonPC: React.FC = () => {
 
   const handleClose = () => {
     closePC();
+    setScreen("main");
     setSelectedPartySlot(null);
     setSelectedBoxSlot(null);
   };
 
   return (
-    <Overlay onClick={handleClose}>
-      <PCWindow onClick={(e) => e.stopPropagation()}>
+    <GameFrameOverlay
+      $tint="rgba(0, 0, 0, 0.4)"
+      data-testid="pokemon-pc-overlay"
+      onClick={handleClose}
+    >
+      <PCWindow data-testid="pokemon-pc-window" onClick={(e) => e.stopPropagation()}>
         <PCHeader>
-          <span>BILL&apos;s PC</span>
-          <span style={{ fontSize: "10px", opacity: 0.8 }}>
-            BOX {currentBox + 1} / {boxCount}
+          <span>
+            {screen === "storage"
+              ? "BILL's PC"
+              : screen === "player"
+                ? trainerPCLabel
+                : screen === "oak"
+                  ? "PROF. OAK's PC"
+                  : "POKEMON PC"}
           </span>
+          {screen === "storage" ? (
+            <span style={{ fontSize: "10px", opacity: 0.8 }}>
+              BOX {currentBox + 1} / {boxCount}
+            </span>
+          ) : null}
         </PCHeader>
 
-        <BoxNav>
-          <NavButton onClick={handlePrevBox}>◀</NavButton>
-          <span>BOX {currentBox + 1}</span>
-          <NavButton onClick={handleNextBox}>▶</NavButton>
-        </BoxNav>
+        {screen === "main" ? (
+          <MenuArea data-testid="pokemon-pc-main-menu">
+            <MenuButton
+              data-testid="pokemon-pc-bills-pc"
+              onClick={() => setScreen("storage")}
+            >
+              BILL&apos;s PC
+            </MenuButton>
+            <MenuButton
+              data-testid="pokemon-pc-player-pc"
+              onClick={() => setScreen("player")}
+            >
+              {trainerPCLabel}
+            </MenuButton>
+            <MenuButton
+              data-testid="pokemon-pc-oak-pc"
+              onClick={() => setScreen("oak")}
+            >
+              PROF. OAK&apos;s PC
+            </MenuButton>
+            <MenuButton data-testid="pokemon-pc-log-off" onClick={handleClose}>
+              LOG OFF
+            </MenuButton>
+          </MenuArea>
+        ) : null}
 
-        <ContentArea>
-          <BoxPanel>
-            <PanelTitle>PC BOX {currentBox + 1}</PanelTitle>
-            {boxPokemon.length === 0 ? (
-              <PokemonSlot $selected={false} $empty>
-                <PokemonName style={{ color: "#a0a0a0", fontStyle: "italic" }}>
-                  Empty
-                </PokemonName>
-              </PokemonSlot>
-            ) : (
-              boxPokemon.map((p: PokemonDTO, i: number) => (
-                <PokemonSlot
-                  key={`box-${i}`}
-                  $selected={selectedBoxSlot === i}
-                  onClick={() => {
-                    setSelectedBoxSlot(i);
-                    setSelectedPartySlot(null);
-                  }}
-                >
-                  <PokemonInfo>
-                    <PokemonName>{p.name}</PokemonName>
-                    <PokemonLevel>
-                      Lv.{p.level} &nbsp; {p.curHp}/{p.maxHp} HP
-                    </PokemonLevel>
-                  </PokemonInfo>
-                </PokemonSlot>
-              ))
-            )}
-          </BoxPanel>
+        {screen === "player" ? (
+          <MenuArea data-testid="pokemon-pc-player-menu">
+            <MessagePanel data-testid="pokemon-pc-message">
+              Item storage is not wired yet.
+            </MessagePanel>
+            <MenuButton data-testid="pokemon-pc-player-withdraw" disabled>
+              WITHDRAW ITEM
+            </MenuButton>
+            <MenuButton data-testid="pokemon-pc-player-deposit" disabled>
+              DEPOSIT ITEM
+            </MenuButton>
+            <MenuButton data-testid="pokemon-pc-player-toss" disabled>
+              TOSS ITEM
+            </MenuButton>
+            <MenuButton data-testid="pokemon-pc-back" onClick={() => setScreen("main")}>
+              BACK
+            </MenuButton>
+          </MenuArea>
+        ) : null}
 
-          <PartyPanel>
-            <PanelTitle>PARTY ({party.length}/6)</PanelTitle>
-            {party.map((p: PokemonDTO, i: number) => (
-              <PokemonSlot
-                key={`party-${i}`}
-                $selected={selectedPartySlot === i}
+        {screen === "oak" ? (
+          <MenuArea data-testid="pokemon-pc-oak-menu">
+            <MessagePanel data-testid="pokemon-pc-message">
+              PROF. OAK is rating your POKEDEX.
+            </MessagePanel>
+            <MenuButton data-testid="pokemon-pc-back" onClick={() => setScreen("main")}>
+              BACK
+            </MenuButton>
+          </MenuArea>
+        ) : null}
+
+        {screen === "storage" ? (
+          <>
+            <BoxNav>
+              <NavButton data-testid="pokemon-pc-prev-box" onClick={handlePrevBox}>◀</NavButton>
+              <span data-testid="pokemon-pc-current-box">BOX {currentBox + 1}</span>
+              <NavButton data-testid="pokemon-pc-next-box" onClick={handleNextBox}>▶</NavButton>
+            </BoxNav>
+
+            <ContentArea data-testid="pokemon-pc-storage">
+              <BoxPanel>
+                <PanelTitle>PC BOX {currentBox + 1}</PanelTitle>
+                {boxPokemon.length === 0 ? (
+                  <PokemonSlot data-testid="pokemon-pc-box-empty" $selected={false} $empty>
+                    <PokemonName style={{ color: "#a0a0a0", fontStyle: "italic" }}>
+                      Empty
+                    </PokemonName>
+                  </PokemonSlot>
+                ) : (
+                  boxPokemon.map((p: PokemonDTO, i: number) => (
+                    <PokemonSlot
+                      key={`box-${i}`}
+                      data-testid={`pokemon-pc-box-slot-${i}`}
+                      $selected={selectedBoxSlot === i}
+                      onClick={() => {
+                        setSelectedBoxSlot(i);
+                        setSelectedPartySlot(null);
+                      }}
+                    >
+                      <PokemonInfo>
+                        <PokemonName>{p.name}</PokemonName>
+                        <PokemonLevel>
+                          Lv.{p.level} &nbsp; {p.curHp}/{p.maxHp} HP
+                        </PokemonLevel>
+                      </PokemonInfo>
+                    </PokemonSlot>
+                  ))
+                )}
+              </BoxPanel>
+
+              <PartyPanel>
+                <PanelTitle>PARTY ({party.length}/6)</PanelTitle>
+                {party.map((p: PokemonDTO, i: number) => (
+                  <PokemonSlot
+                    key={`party-${i}`}
+                    data-testid={`pokemon-pc-party-slot-${i}`}
+                    $selected={selectedPartySlot === i}
+                    onClick={() => {
+                      setSelectedPartySlot(i);
+                      setSelectedBoxSlot(null);
+                    }}
+                  >
+                    <PokemonInfo>
+                      <PokemonName>{p.name}</PokemonName>
+                      <PokemonLevel>
+                        Lv.{p.level} &nbsp; {p.curHp}/{p.maxHp} HP
+                      </PokemonLevel>
+                    </PokemonInfo>
+                  </PokemonSlot>
+                ))}
+              </PartyPanel>
+            </ContentArea>
+
+            <Footer>
+              <PCButton
+                data-testid="pokemon-pc-deposit"
+                $variant="deposit"
+                disabled={selectedPartySlot === null || party.length <= 1}
+                onClick={handleDeposit}
+              >
+                DEPOSIT
+              </PCButton>
+              <PCButton
+                data-testid="pokemon-pc-withdraw"
+                $variant="withdraw"
+                disabled={selectedBoxSlot === null || party.length >= 6}
+                onClick={handleWithdraw}
+              >
+                WITHDRAW
+              </PCButton>
+              <PCButton
+                data-testid="pokemon-pc-release"
+                $variant="release"
+                disabled={selectedBoxSlot === null}
+                onClick={handleRelease}
+              >
+                RELEASE
+              </PCButton>
+              <PCButton
+                data-testid="pokemon-pc-back"
+                $variant="cancel"
                 onClick={() => {
-                  setSelectedPartySlot(i);
+                  setSelectedPartySlot(null);
                   setSelectedBoxSlot(null);
+                  setScreen("main");
                 }}
               >
-                <PokemonInfo>
-                  <PokemonName>{p.name}</PokemonName>
-                  <PokemonLevel>
-                    Lv.{p.level} &nbsp; {p.curHp}/{p.maxHp} HP
-                  </PokemonLevel>
-                </PokemonInfo>
-              </PokemonSlot>
-            ))}
-          </PartyPanel>
-        </ContentArea>
-
-        <Footer>
-          <PCButton
-            $variant="deposit"
-            disabled={selectedPartySlot === null || party.length <= 1}
-            onClick={handleDeposit}
-          >
-            DEPOSIT
-          </PCButton>
-          <PCButton
-            $variant="withdraw"
-            disabled={selectedBoxSlot === null || party.length >= 6}
-            onClick={handleWithdraw}
-          >
-            WITHDRAW
-          </PCButton>
-          <PCButton
-            $variant="release"
-            disabled={selectedBoxSlot === null}
-            onClick={handleRelease}
-          >
-            RELEASE
-          </PCButton>
-          <PCButton $variant="cancel" onClick={handleClose}>
-            CLOSE
-          </PCButton>
-        </Footer>
+                BACK
+              </PCButton>
+              <PCButton data-testid="pokemon-pc-close" $variant="cancel" onClick={handleClose}>
+                CLOSE
+              </PCButton>
+            </Footer>
+          </>
+        ) : null}
       </PCWindow>
-    </Overlay>
+    </GameFrameOverlay>
   );
 };
 

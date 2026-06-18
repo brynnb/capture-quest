@@ -1,0 +1,36 @@
+Scenario: debug_inventory_blocked_items_ready
+Description: Debug setup: inventory contains items that should not attach to the party-use cursor.
+Character: DebugInventoryBlockedItemsReady
+
+Initial state
+  location: PALLET_TOWN[9999] (9,4)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L5 moves THUNDERSHOCK, GROWL
+  inventory:
+    #49 NUGGET x1
+    #65 X ATTACK x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FixtureState
+  map: PALLET_TOWN
+  trigger: fixture_state
+
+Actions
+
+Final state
+  location: PALLET_TOWN[9999] (9,4)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L5 moves THUNDERSHOCK, GROWL
+  inventory:
+    #49 NUGGET x1
+    #65 X ATTACK x1
+  hidden objects:
+    none
+  active battle:
+    none

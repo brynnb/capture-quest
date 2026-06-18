@@ -52,6 +52,7 @@ type debugFixture struct {
 	Direction         string                       `json:"direction"`
 	Flags             []string                     `json:"flags"`
 	Party             []debugFixturePokemon        `json:"party"`
+	PC                []debugFixturePCPokemon      `json:"pc,omitempty"`
 	Inventory         []debugFixtureItem           `json:"inventory"`
 	Money             int                          `json:"money"`
 	Coins             int                          `json:"coins"`
@@ -69,6 +70,13 @@ type debugFixturePokemon struct {
 	Level     int      `json:"level"`
 	MoveIDs   []int    `json:"moveIds,omitempty"`
 	Moves     []string `json:"moves,omitempty"`
+}
+
+type debugFixturePCPokemon struct {
+	SpeciesID int `json:"speciesId"`
+	Level     int `json:"level"`
+	Box       int `json:"box"`
+	Slot      int `json:"slot"`
 }
 
 type debugFixtureItem struct {
@@ -537,6 +545,11 @@ func applyDebugScenarioFixture(charID int64, f debugFixture, wh *WorldHandler) (
 			return 0, 0, 0, err
 		}
 	}
+	for _, pokemon := range f.PC {
+		if err := seedDebugPCPokemon(charID, pokemon); err != nil {
+			return 0, 0, 0, err
+		}
+	}
 	for _, item := range f.Inventory {
 		itemID, err := debugFixtureItemID(item)
 		if err != nil {
@@ -608,6 +621,25 @@ func applyDebugScenarioFixture(charID int64, f debugFixture, wh *WorldHandler) (
 		return 0, 0, 0, err
 	}
 	return mapID, x, y, nil
+}
+
+func seedDebugPCPokemon(charID int64, fixture debugFixturePCPokemon) error {
+	if fixture.SpeciesID <= 0 {
+		return fmt.Errorf("pc pokemon fixture requires speciesId")
+	}
+	level := fixture.Level
+	if level <= 0 {
+		level = 5
+	}
+	pokemon, err := pokebattle.BuildWildPokemon(db.GlobalWorldDB.DB, fixture.SpeciesID, level)
+	if err != nil {
+		return fmt.Errorf("build PC pokemon %d L%d: %w", fixture.SpeciesID, level, err)
+	}
+	pokemon.IsWild = false
+	if err := pokebattle.SavePokemonToPCSlot(db.GlobalWorldDB.DB, charID, fixture.Box, fixture.Slot, pokemon); err != nil {
+		return fmt.Errorf("seed PC pokemon %d box=%d slot=%d: %w", fixture.SpeciesID, fixture.Box, fixture.Slot, err)
+	}
+	return nil
 }
 
 func seedDebugSafariSession(charID int64, fixture *debugSafariFixture, wh *WorldHandler) error {

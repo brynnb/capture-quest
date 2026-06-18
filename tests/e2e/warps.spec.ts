@@ -13,7 +13,6 @@ import {
   waitForWarps,
 } from "./helpers/state";
 import {
-  activateDirectionalWarpWithKeyboard,
   activateDoorWarpWithKeyboard,
   activateCurrentWarpByClickingBeyond,
   activateWarpWithClick,
@@ -102,7 +101,12 @@ test("Red's House door warps work first try by keyboard and click", async ({
     "Red's House 1F down exit mat",
   );
 
-  await activateDirectionalWarpWithKeyboard(page, exitWarp, "down");
+  await waitForPlayerIdle(page);
+  await pressMovement(page, "up");
+  await waitForPlayerTile(page, exitWarp.x, exitWarp.y - 1);
+  const mapBeforeWalkingOntoMat = (await getGameState(page)).map.id;
+  await pressMovement(page, "down");
+  await waitForMapChange(page, mapBeforeWalkingOntoMat);
   state = await getGameState(page);
   expect(state.map.id).not.toBe(37);
   expect(state.worldInput.frozen).toBe(false);
@@ -126,6 +130,36 @@ test("Red's House door warps work first try by keyboard and click", async ({
     "Red's House 1F down exit mat for click",
   );
   await activateWarpWithClick(page, exitWarp, tileBeforeWarp(exitWarp, "down"));
+  state = await getGameState(page);
+  expect(state.map.id).not.toBe(37);
+  expect(state.worldInput.frozen).toBe(false);
+
+  await jumpToScenario(page, "debug_warp_reds_house_1f_exit_mat");
+  await waitForMap(page, "REDS_HOUSE_1F");
+  await waitForWarps(page);
+  state = await getGameState(page);
+  exitWarp = requireWarp(
+    state,
+    (warp) =>
+      warp.destinationMapId === 0 &&
+      warp.warpDirection === "DOWN" &&
+      warp.x === 2,
+    "Red's House 1F left exit mat for sideways movement",
+  );
+  await pressMovement(page, "left");
+  await waitForPlayerTile(page, exitWarp.x - 1, exitWarp.y);
+  await pressMovement(page, "right");
+  await waitForPlayerTile(page, exitWarp.x, exitWarp.y);
+  state = await getGameState(page);
+  expect(state.map.id).toBe(37);
+
+  await pressMovement(page, "right");
+  await waitForPlayerTile(page, exitWarp.x + 1, exitWarp.y);
+  state = await getGameState(page);
+  expect(state.map.id).toBe(37);
+
+  await clickTile(page, exitWarp.x, exitWarp.y);
+  await waitForMapChange(page, state.map.id);
   state = await getGameState(page);
   expect(state.map.id).not.toBe(37);
   expect(state.worldInput.frozen).toBe(false);
@@ -215,6 +249,7 @@ test("Cerulean Trashed House upper exit works first try by keyboard and click", 
   await createGuestCharacterAndEnterWorld(page);
   await jumpToScenario(page, "debug_warp_cerulean_trashed_house_upper_exit");
   await waitForMap(page, "CERULEAN_TRASHED_HOUSE");
+  await waitForPlayerTile(page, 3, 0);
   await waitForWarps(page);
 
   let state = await getGameState(page);
@@ -256,6 +291,7 @@ test("normal mart exit works first try by keyboard and click", async ({
   await createGuestCharacterAndEnterWorld(page);
   await jumpToScenario(page, "debug_warp_viridian_mart_exit_mat");
   await waitForMap(page, /Viridian Mart|VIRIDIAN_MART/);
+  await waitForPlayerTile(page, 3, 7);
   await waitForWarps(page);
 
   let state = await getGameState(page);
@@ -269,6 +305,7 @@ test("normal mart exit works first try by keyboard and click", async ({
     "Viridian Mart left downward exit",
   );
   const startingMapId = state.map.id;
+  await waitForPlayerIdle(page);
   await pressMovement(page, "down");
   await waitForMapChange(page, startingMapId);
   state = await getGameState(page);
@@ -293,6 +330,127 @@ test("normal mart exit works first try by keyboard and click", async ({
   state = await getGameState(page);
   expect(state.map.id).not.toBe(exitWarp.sourceMapId);
   expect(state.worldInput.frozen).toBe(false);
+
+  await quitToCharacterSelect(page);
+  errors.assertNoSevereErrors();
+});
+
+test("Cinnabar Lab lobby and room warps route to the correct destinations", async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  const errors = collectPageErrors(page);
+
+  await createGuestCharacterAndEnterWorld(page);
+
+  await jumpToScenario(page, "debug_warp_cinnabar_lab_lobby_exit");
+  await waitForMap(page, "CINNABAR_LAB");
+  await waitForWarps(page);
+
+  let state = await getGameState(page);
+  const lobbyExit = requireWarp(
+    state,
+    (warp) =>
+      warp.destinationMapId === 8 &&
+      warp.warpDirection === "DOWN" &&
+      warp.x === 2 &&
+      warp.y === 7,
+    "Cinnabar Lab lobby exterior exit",
+  );
+  expect(lobbyExit.destinationX).toBe(6);
+  expect(lobbyExit.destinationY).toBe(117);
+
+  await pressMovement(page, "down");
+  await waitForMap(page, /Kanto|Unified Overworld/);
+  await waitForPlayerTile(page, 6, 118, 30_000);
+
+  const sideRooms = [
+    {
+      scenario: "debug_warp_cinnabar_lab_trade_door",
+      room: "CINNABAR_LAB_TRADE_ROOM",
+      doorX: 8,
+    },
+    {
+      scenario: "debug_warp_cinnabar_lab_metronome_door",
+      room: "CINNABAR_LAB_METRONOME_ROOM",
+      doorX: 12,
+    },
+    {
+      scenario: "debug_warp_cinnabar_lab_fossil_door",
+      room: "CINNABAR_LAB_FOSSIL_ROOM",
+      doorX: 16,
+    },
+  ];
+
+  for (const { scenario, room, doorX } of sideRooms) {
+    await jumpToScenario(page, scenario);
+    await waitForMap(page, "CINNABAR_LAB");
+    await waitForWarps(page);
+
+    state = await getGameState(page);
+    const roomDoor = requireWarp(
+      state,
+      (warp) =>
+        warp.destinationMap === room &&
+        warp.x === doorX &&
+        warp.y === 4,
+      `${room} entrance`,
+    );
+    expect(roomDoor.destinationX).toBe(2);
+    expect(roomDoor.destinationY).toBe(7);
+
+    await pressMovement(page, "up");
+    await waitForMap(page, room);
+    await waitForPlayerTile(page, 2, 7, 30_000);
+
+    state = await getGameState(page);
+    const roomExit = requireWarp(
+      state,
+      (warp) =>
+        warp.destinationMap === "CINNABAR_LAB" &&
+        warp.warpDirection === "DOWN" &&
+        warp.x === 2 &&
+        warp.y === 7,
+      `${room} exit`,
+    );
+    expect(roomExit.destinationX).toBe(doorX);
+    expect(roomExit.destinationY).toBe(4);
+
+    await pressMovement(page, "down");
+    await waitForMap(page, "CINNABAR_LAB");
+    await waitForPlayerTile(page, doorX, 4, 30_000);
+  }
+
+  await quitToCharacterSelect(page);
+  errors.assertNoSevereErrors();
+});
+
+test("Oak's Lab left exit mat works by direct click", async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors = collectPageErrors(page);
+
+  await createGuestCharacterAndEnterWorld(page);
+  await jumpToScenario(page, "debug_warp_oaks_lab_exit_mat");
+  await waitForMap(page, "OAKS_LAB");
+  await waitForWarps(page);
+
+  const state = await getGameState(page);
+  const leftExit = requireWarp(
+    state,
+    (warp) =>
+      warp.destinationMapId !== state.map.id &&
+      warp.warpDirection === "DOWN" &&
+      warp.x === 4 &&
+      warp.y === 11,
+    "Oak's Lab left downward exit",
+  );
+
+  await clickTile(page, leftExit.x, leftExit.y);
+  await waitForMapChange(page, state.map.id);
+
+  const outsideState = await getGameState(page);
+  expect(outsideState.map.id).not.toBe(state.map.id);
+  expect(outsideState.worldInput.frozen).toBe(false);
 
   await quitToCharacterSelect(page);
   errors.assertNoSevereErrors();

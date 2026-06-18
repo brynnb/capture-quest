@@ -20,6 +20,15 @@ import { TileViewerOverlays } from "./TileViewerOverlays";
 
 type MovementDirection = "UP" | "DOWN" | "LEFT" | "RIGHT";
 
+const POKEMON_CENTER_MAP_IDS = new Set([
+  41, 58, 64, 68, 81, 89, 133, 141, 154, 171, 182,
+]);
+const POKEMON_CENTER_PC_ACCESS_TILE = { x: 13, y: 4 };
+const POKEMON_CENTER_PC_CLICK_TILES = [
+  { x: 13, y: 3 },
+  POKEMON_CENTER_PC_ACCESS_TILE,
+] as const;
+
 interface TileViewerInteractionDeps {
   scene: Scene;
   mapRenderer: () => MapRenderer;
@@ -175,6 +184,11 @@ export class TileViewerInteractionController {
 
     const clickTileX = Math.floor(worldPoint.x / TILE_SIZE);
     const clickTileY = Math.floor(worldPoint.y / TILE_SIZE);
+    if (this.isPokemonCenterPCClickTile(clickTileX, clickTileY)) {
+      this.requestPokemonPCInteraction();
+      return;
+    }
+
     const gameCornerMapId = 135;
     if (
       this.deps.viewedMapIds().has(gameCornerMapId) &&
@@ -234,7 +248,10 @@ export class TileViewerInteractionController {
   private async handleActorClicked(actor: PhaserActor): Promise<void> {
     if (this.deps.isWorldInputFrozen()) return;
     if (!(await this.ensureActorInteractionReachable(actor))) return;
+    await this.performActorInteraction(actor);
+  }
 
+  private async performActorInteraction(actor: PhaserActor): Promise<void> {
     if (actor.spriteName === "SPRITE_NURSE") {
       console.log(
         `[TileViewer] Nurse Joy clicked on map ${actor.mapId}, triggering heal`,
@@ -375,6 +392,11 @@ export class TileViewerInteractionController {
     if (this.deps.isWorldInputFrozen()) return;
     if (this.deps.playerMovementController().getIsMoving()) return;
 
+    if (this.isStandingOnPokemonCenterPCAccessTile()) {
+      PhaserNet.sendPokemonPCOpen();
+      return;
+    }
+
     const actor = this.findInteractableActorInFront();
     if (!actor) {
       this.deps.playerMovementController().handleFieldMoveInteractionInFront();
@@ -420,6 +442,64 @@ export class TileViewerInteractionController {
       actor.text === "TEXT_BIKESHOP_CLERK" ||
       actor.name === "BikeShop_NPC_1"
     );
+  }
+
+  private isPokemonCenterMap(): boolean {
+    const mapId = this.deps.getPlayerActor()?.mapId ?? null;
+    if (mapId != null && POKEMON_CENTER_MAP_IDS.has(mapId)) return true;
+
+    for (const viewedMapId of this.deps.viewedMapIds()) {
+      if (POKEMON_CENTER_MAP_IDS.has(viewedMapId)) return true;
+    }
+    return false;
+  }
+
+  private isPokemonCenterPCClickTile(x: number, y: number): boolean {
+    return (
+      this.isPokemonCenterMap() &&
+      POKEMON_CENTER_PC_CLICK_TILES.some((tile) => tile.x === x && tile.y === y)
+    );
+  }
+
+  private isStandingOnPokemonCenterPCAccessTile(): boolean {
+    if (!this.isPokemonCenterMap()) return false;
+
+    const movement = this.deps.playerMovementController();
+    const position = movement.getCurrentPosition();
+    return (
+      position.x === POKEMON_CENTER_PC_ACCESS_TILE.x &&
+      position.y === POKEMON_CENTER_PC_ACCESS_TILE.y
+    );
+  }
+
+  private requestPokemonPCInteraction(): void {
+    const movement = this.deps.playerMovementController();
+    const openPC = () => {
+      movement.faceTile(
+        POKEMON_CENTER_PC_ACCESS_TILE.x,
+        POKEMON_CENTER_PC_ACCESS_TILE.y - 1,
+      );
+      PhaserNet.sendPokemonPCOpen();
+    };
+
+    const player = movement.getCurrentPosition();
+    if (
+      player.x === POKEMON_CENTER_PC_ACCESS_TILE.x &&
+      player.y === POKEMON_CENTER_PC_ACCESS_TILE.y
+    ) {
+      openPC();
+      return;
+    }
+
+    const pathing = movement.requestPathToTile(
+      POKEMON_CENTER_PC_ACCESS_TILE.x,
+      POKEMON_CENTER_PC_ACCESS_TILE.y,
+      openPC,
+    );
+
+    if (!pathing) {
+      console.warn("[TileViewer] Pokemon Center PC is not reachable from here");
+    }
   }
 
   private findInteractableActorInFront(): PhaserActor | null {
@@ -490,8 +570,7 @@ export class TileViewerInteractionController {
         return { x: latestActor.x, y: latestActor.y };
       },
       () => {
-        this.deps.scene.events.emit(
-          "actorClicked",
+        void this.performActorInteraction(
           this.deps.currentActorById(actorId) ?? actor,
         );
       },

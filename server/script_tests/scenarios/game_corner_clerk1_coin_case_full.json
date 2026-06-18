@@ -4,8 +4,8 @@
   "fixture": {
     "characterName": "ScriptSimGameCornerClerk1CoinCaseFull",
     "mapName": "GAME_CORNER",
-    "x": 3,
-    "y": 3,
+    "x": 5,
+    "y": 8,
     "direction": "UP",
     "money": 1000,
     "coins": 9990,

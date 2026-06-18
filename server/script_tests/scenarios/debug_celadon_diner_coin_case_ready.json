@@ -1,0 +1,25 @@
+{
+  "name": "debug_celadon_diner_coin_case_ready",
+  "description": "Debug setup: stand next to the Celadon Diner Gym Guide before receiving the Coin Case.",
+  "fixture": {
+    "characterName": "DebugCeladonDinerCoinCaseReady",
+    "mapName": "CELADON_DINER",
+    "x": 1,
+    "y": 1,
+    "direction": "LEFT",
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "fixture_state",
+    "mapName": "CELADON_DINER"
+  },
+  "expect": {
+    "scriptLabel": "FixtureState",
+    "finalX": 1,
+    "finalY": 1,
+    "finalDirection": "LEFT",
+    "inventoryAbsent": [{ "itemId": 69 }],
+    "activeBattleAbsent": true
+  }
+}

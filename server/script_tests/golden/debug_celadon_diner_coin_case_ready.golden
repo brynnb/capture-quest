@@ -1,0 +1,34 @@
+Scenario: debug_celadon_diner_coin_case_ready
+Description: Debug setup: stand next to the Celadon Diner Gym Guide before receiving the Coin Case.
+Character: DebugCeladonDinerCoinCaseReady
+
+Initial state
+  location: CELADON_DINER[138] (1,1)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FixtureState
+  map: CELADON_DINER
+  trigger: fixture_state
+
+Actions
+
+Final state
+  location: CELADON_DINER[138] (1,1)
+  flags: none
+  party:
+    none
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

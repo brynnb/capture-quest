@@ -2,7 +2,11 @@ package main
 
 import (
 	"database/sql"
+	"os"
+	"path/filepath"
 	"testing"
+
+	_ "modernc.org/sqlite"
 )
 
 func TestIsTalkOverTileUsesOriginalTilesetCounters(t *testing.T) {
@@ -29,6 +33,12 @@ func TestIsTalkOverTileUsesOriginalTilesetCounters(t *testing.T) {
 			tileset:  2,
 			rawFoot:  sql.NullInt64{Int64: 0x1b, Valid: true},
 			expected: false,
+		},
+		{
+			name:     "game corner counter",
+			tileset:  18,
+			rawFoot:  sql.NullInt64{Int64: 0x15, Valid: true},
+			expected: true,
 		},
 		{
 			name:     "unknown raw foot",
@@ -85,6 +95,60 @@ func TestRawFootTileIDForPlacedTileUsesMapBlockPosition(t *testing.T) {
 	if !isTalkOverTile(21, sql.NullInt64{Int64: int64(raw), Valid: true}) {
 		t.Fatalf("Bike Shop (5,2) raw foot %#x should be a CLUB talk-over tile", raw)
 	}
+}
+
+func TestGameCornerClerkCounterIsTalkOverTile(t *testing.T) {
+	db := openPokemonSQLiteForImportTest(t)
+	defer db.Close()
+
+	mapMetadata, err := loadSQLiteMapBlockMetadata(db)
+	if err != nil {
+		t.Fatalf("loadSQLiteMapBlockMetadata: %v", err)
+	}
+	blocksets, err := loadSQLiteBlocksets(db)
+	if err != nil {
+		t.Fatalf("loadSQLiteBlocksets: %v", err)
+	}
+
+	mapMeta, ok := mapMetadata[135]
+	if !ok {
+		t.Fatal("GAME_CORNER map metadata missing")
+	}
+	raw, ok := rawFootTileIDForPlacedTile(mapMeta, blocksets, 5, 7)
+	if !ok {
+		t.Fatal("rawFootTileIDForPlacedTile Game Corner counter returned ok=false")
+	}
+	if raw != 0x15 {
+		t.Fatalf("rawFootTileIDForPlacedTile Game Corner counter = %#x, want 0x15", raw)
+	}
+	if !isTalkOverTile(18, sql.NullInt64{Int64: int64(raw), Valid: true}) {
+		t.Fatalf("Game Corner counter raw foot %#x should be talk-over", raw)
+	}
+}
+
+func openPokemonSQLiteForImportTest(t *testing.T) *sql.DB {
+	t.Helper()
+	candidates := []string{
+		filepath.Join("..", "..", "..", "public", "phaser", "pokemon.db"),
+		filepath.Join("..", "public", "phaser", "pokemon.db"),
+		filepath.Join("public", "phaser", "pokemon.db"),
+	}
+	for _, candidate := range candidates {
+		info, err := os.Stat(candidate)
+		if err != nil || info.IsDir() {
+			continue
+		}
+		db, err := sql.Open("sqlite", candidate)
+		if err != nil {
+			continue
+		}
+		if err := db.Ping(); err == nil {
+			return db
+		}
+		db.Close()
+	}
+	t.Fatal("could not open public/phaser/pokemon.db")
+	return nil
 }
 
 func TestBlocksetTilesetIDRemapsSharedGraphicsTilesets(t *testing.T) {

@@ -14,23 +14,11 @@ import {
   requestCoinBalance,
 } from "@/phaser-game/services/PhaserNetworkService";
 import useChatStore, { MessageType } from "@/stores/ChatStore";
+import { GameFrameOverlay } from "@/components/Interface/GameFrameOverlay";
 
 const SPIN_INTERVAL_MS = 60;
 const NUM_CHASE_LIGHTS = 24;
 const NUM_WIN_PARTICLES = 30;
-
-const Overlay = styled.div`
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 5000;
-  background: rgba(0, 0, 0, 0.6);
-`;
 
 // --- Chase lights around the cabinet border ---
 const chaseAnim = keyframes`
@@ -732,8 +720,13 @@ const SlotMachine: React.FC = () => {
   }));
 
   return (
-    <Overlay onClick={(e) => e.target === e.currentTarget && !isSpinning && handleClose()}>
-      <Cabinet $winning={isWinning} ref={cabinetRef}>
+    <GameFrameOverlay
+      $tint="rgba(0, 0, 0, 0.6)"
+      $zIndex={5000}
+      data-testid="slot-machine-overlay"
+      onClick={(e) => e.target === e.currentTarget && !isSpinning && handleClose()}
+    >
+      <Cabinet $winning={isWinning} ref={cabinetRef} data-testid="slot-machine">
         {/* Chase lights around the border */}
         {chaseLightPositions.map((pos, i) => (
           <ChaseLight
@@ -775,8 +768,8 @@ const SlotMachine: React.FC = () => {
         </Header>
 
         <CoinDisplay>
-          <CoinBox>COINS: {coins}</CoinBox>
-          <CoinBox>PAYOUT: {payout}</CoinBox>
+          <CoinBox data-testid="slot-machine-coins">COINS: {coins}</CoinBox>
+          <CoinBox data-testid="slot-machine-payout">PAYOUT: {payout}</CoinBox>
         </CoinDisplay>
 
         <ReelWindow $winning={isWinning}>
@@ -815,6 +808,7 @@ const SlotMachine: React.FC = () => {
           {[1, 2, 3].map((b) => (
             <BetButton
               key={b}
+              data-testid={`slot-machine-bet-${b}`}
               $active={bet === b}
               onClick={() => setBet(b)}
               disabled={isSpinning}
@@ -826,13 +820,18 @@ const SlotMachine: React.FC = () => {
 
         <Controls>
           <Button
+            data-testid="slot-machine-spin"
             $variant="spin"
             onClick={handleSpin}
             disabled={isSpinning || coins < bet}
           >
             {isSpinning ? "SPINNING..." : `SPIN (${bet} coin${bet > 1 ? "s" : ""})`}
           </Button>
-          <Button onClick={handleClose} disabled={isSpinning}>
+          <Button
+            data-testid="slot-machine-quit"
+            onClick={handleClose}
+            disabled={isSpinning}
+          >
             QUIT
           </Button>
         </Controls>
@@ -851,7 +850,7 @@ const SlotMachine: React.FC = () => {
           })}
         </PayoutTable>
       </Cabinet>
-    </Overlay>
+    </GameFrameOverlay>
   );
 };
 

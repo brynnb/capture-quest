@@ -1068,6 +1068,8 @@ func resolveLastMapWarpDestinationsPostgres(pg *sql.DB) error {
 			 AND UPPER(source_event.dest_map) = 'LAST_MAP'
 			JOIN phaser_maps AS source_map
 			  ON source_map.id = pw.source_map_id
+			WHERE pw.destination_map_id IS NULL
+			   OR UPPER(COALESCE(pw.destination_map, '')) = 'LAST_MAP'
 		),
 		exact_last_map_sources AS (
 			SELECT

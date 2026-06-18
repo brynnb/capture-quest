@@ -1,0 +1,36 @@
+Scenario: debug_pokemon_center_pc_ready
+Description: Debug setup: stand at the Viridian Pokemon Center PC with party and box Pokemon.
+Character: DebugPokemonCenterPCReady
+
+Initial state
+  location: VIRIDIAN_POKECENTER[41] (12,4)
+  flags: none
+  party:
+    slot 0: #1 BULBASAUR L12 moves TACKLE, GROWL, LEECH_SEED
+    slot 1: #4 CHARMANDER L12 moves SCRATCH, GROWL, EMBER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FixtureState
+  map: VIRIDIAN_POKECENTER
+  trigger: fixture_state
+
+Actions
+
+Final state
+  location: VIRIDIAN_POKECENTER[41] (12,4)
+  flags: none
+  party:
+    slot 0: #1 BULBASAUR L12 moves TACKLE, GROWL, LEECH_SEED
+    slot 1: #4 CHARMANDER L12 moves SCRATCH, GROWL, EMBER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none

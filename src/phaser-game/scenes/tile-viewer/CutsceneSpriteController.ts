@@ -14,6 +14,7 @@ interface CutsceneSpriteControllerDeps {
   actorManager: () => ActorManager;
   mapRenderer: () => MapRenderer;
   getPlayerActor: () => PhaserActor | null;
+  syncPlayerMovement: (x: number, y: number, direction: string) => void;
   setInputLocked: (locked: boolean) => void;
   onHideObject: (actorId: number) => void;
 }
@@ -183,10 +184,15 @@ export class CutsceneSpriteController {
     const playerSprite = this.deps.mapRenderer().getActorSprite(playerActor.id);
     if (!playerSprite || !playerSprite.active) return Promise.resolve();
 
+    const trackedPosition = this.deps
+      .mapRenderer()
+      .getActorTilePosition(playerActor.id);
     let tileX =
+      trackedPosition?.x ??
       playerActor.x ??
       Math.round((playerSprite.x - TILE_SIZE / 2) / TILE_SIZE);
     let tileY =
+      trackedPosition?.y ??
       playerActor.y ??
       Math.round((playerSprite.y - TILE_SIZE / 2) / TILE_SIZE);
 
@@ -210,12 +216,17 @@ export class CutsceneSpriteController {
       }
     };
 
+    let lastMove =
+      trackedPosition?.direction ?? playerActor.actionDirection ?? "DOWN";
+
     return new Promise<void>((resolve) => {
       let stepIndex = 0;
       let stepCount = 0;
 
       const doNextStep = () => {
         if (stepIndex >= movements.length || !playerSprite.active) {
+          syncPlayerTile(lastMove);
+          this.deps.syncPlayerMovement(tileX, tileY, lastMove);
           resolve();
           return;
         }
@@ -232,6 +243,7 @@ export class CutsceneSpriteController {
 
         const nextX = tileX + delta.dx;
         const nextY = tileY + delta.dy;
+        lastMove = move;
         syncPlayerTile(move);
         this.setSpriteFrame(playerSprite, move, false);
         stepCount++;
@@ -255,6 +267,10 @@ export class CutsceneSpriteController {
             tileX = nextX;
             tileY = nextY;
             syncPlayerTile(move);
+            this.deps
+              .mapRenderer()
+              .snapActorPosition(playerActor.id, tileX, tileY, move, playerActor);
+            this.deps.syncPlayerMovement(tileX, tileY, move);
             this.setSpriteFrame(playerSprite, move, false);
             doNextStep();
           },

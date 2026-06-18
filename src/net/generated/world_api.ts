@@ -517,6 +517,8 @@ export interface PokeFishingRequestPayload {
   itemId: number /* int32 */; // Fallback rod item Id: 76=Old Rod, 77=Good Rod, 78=Super Rod
   rodType?: string;
   mapId?: number /* int */;
+  x?: number /* int */;
+  y?: number /* int */;
   direction?: string;
 }
 

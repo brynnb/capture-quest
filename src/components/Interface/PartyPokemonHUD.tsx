@@ -26,12 +26,12 @@ const PartyContainer = styled.div`
   z-index: 1000;
 `;
 
-const PokemonEntry = styled.div<{ $isPlaceholder?: boolean }>`
+const PokemonEntry = styled.div<{ $isPlaceholder?: boolean; $isItemTarget?: boolean }>`
   width: 100%;
   height: 64px;
   background: ${p => p.$isPlaceholder ? 'rgba(192, 193, 255, 0.25)' : 'rgba(192, 193, 255, 0.57)'};
   backdrop-filter: blur(12px);
-  border: 3px ${p => p.$isPlaceholder ? 'dashed #4a4ba680' : 'solid #4a4ba6'};
+  border: 3px ${p => p.$isPlaceholder ? 'dashed #4a4ba680' : `solid ${p.$isItemTarget ? '#f0c040' : '#4a4ba6'}`};
   border-radius: 16px;
   display: flex;
   padding: 6px 10px;
@@ -44,7 +44,7 @@ const PokemonEntry = styled.div<{ $isPlaceholder?: boolean }>`
   opacity: ${p => p.$isPlaceholder ? 0.4 : 1};
 
   &:hover {
-    background: ${p => p.$isPlaceholder ? undefined : 'rgba(192, 193, 255, 0.7)'};
+    background: ${p => p.$isPlaceholder ? undefined : p.$isItemTarget ? 'rgba(255, 242, 168, 0.78)' : 'rgba(192, 193, 255, 0.7)'};
     transform: ${p => p.$isPlaceholder ? 'none' : 'translateX(-4px)'};
   }
 `;
@@ -66,6 +66,31 @@ const FloatingClone = styled.div<{ $uiScale: number }>`
   overflow: hidden;
   transform: scale(${p => p.$uiScale * 1.03});
   transform-origin: top left;
+`;
+
+const FloatingItemCursor = styled.div<{ $uiScale: number }>`
+  position: fixed;
+  min-width: 112px;
+  max-width: 190px;
+  min-height: 34px;
+  background: rgba(255, 248, 210, 0.96);
+  border: 3px solid #2a2ba6;
+  border-radius: 8px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.25);
+  color: #1a1b41;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Pokemon GB", "Press Start 2P", monospace;
+  font-size: 9px;
+  line-height: 1.25;
+  padding: 6px 9px;
+  pointer-events: none;
+  text-align: center;
+  text-transform: uppercase;
+  transform: translate(14px, 14px) scale(${p => p.$uiScale});
+  transform-origin: top left;
+  z-index: 10000;
 `;
 
 const EmptySlot = styled.div`
@@ -349,6 +374,8 @@ export interface PendingItemUse {
 export interface CursorItemUse {
   instanceId: number;
   itemName: string;
+  pointerX?: number;
+  pointerY?: number;
 }
 
 interface PartyPokemonHUDProps {
@@ -377,6 +404,7 @@ const PartyPokemonHUD: React.FC<PartyPokemonHUDProps> = ({
   const loadCharCreateData = useStaticDataStore((s) => s.loadCharCreateData);
   const [selectedPokemon, setSelectedPokemon] = useState<PokemonDTO | null>(null);
   const [pendingFlyMoveName, setPendingFlyMoveName] = useState<string | null>(null);
+  const [cursorItemPoint, setCursorItemPoint] = useState<{ x: number; y: number } | null>(null);
   const [, forceRender] = useState(0);
 
   // All drag state lives in refs to avoid setState-during-render issues.
@@ -411,6 +439,30 @@ const PartyPokemonHUD: React.FC<PartyPokemonHUDProps> = ({
         .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)),
     [homeTowns],
   );
+
+  useEffect(() => {
+    if (!cursorItemUse) {
+      setCursorItemPoint(null);
+      return;
+    }
+
+    const fallbackX =
+      typeof window !== "undefined" ? window.innerWidth - 190 : 0;
+    const fallbackY = typeof window !== "undefined" ? 180 : 0;
+    setCursorItemPoint({
+      x: cursorItemUse.pointerX ?? fallbackX,
+      y: cursorItemUse.pointerY ?? fallbackY,
+    });
+
+    const onPointerMove = (event: PointerEvent) => {
+      setCursorItemPoint({ x: event.clientX, y: event.clientY });
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove);
+    };
+  }, [cursorItemUse]);
 
   useEffect(() => {
     if (!isDragging) return;
@@ -555,7 +607,9 @@ const PartyPokemonHUD: React.FC<PartyPokemonHUDProps> = ({
             >
               <PokemonEntry
                 data-cq-party-entry="true"
+                data-cq-party-item-target={cursorItemUse ? "true" : undefined}
                 $isPlaceholder={isBeingDragged}
+                $isItemTarget={Boolean(cursorItemUse)}
                 onClick={() => handleEntryClick(pokemon, origIdx)}
               >
                 {!isBeingDragged && (
@@ -629,6 +683,21 @@ const PartyPokemonHUD: React.FC<PartyPokemonHUDProps> = ({
               <HPBarFill $percent={draggedPokemon.maxHp > 0 ? Math.round((draggedPokemon.curHp / draggedPokemon.maxHp) * 100) : 0} />
             </HPBarContainer>
           </FloatingClone>,
+          document.body,
+        )}
+
+      {cursorItemUse && cursorItemPoint && typeof document !== "undefined" &&
+        createPortal(
+          <FloatingItemCursor
+            $uiScale={uiScale}
+            data-testid="inventory-cursor-item"
+            style={{
+              left: cursorItemPoint.x,
+              top: cursorItemPoint.y,
+            }}
+          >
+            {cursorItemUse.itemName}
+          </FloatingItemCursor>,
           document.body,
         )}
 

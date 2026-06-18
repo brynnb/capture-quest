@@ -1,0 +1,25 @@
+{
+  "name": "debug_warp_cinnabar_lab_metronome_door",
+  "description": "Debug setup: stand at the Cinnabar Lab metronome room door in the lobby.",
+  "fixture": {
+    "characterName": "DebugWarpCinnabarLabMetronomeDoor",
+    "mapName": "CINNABAR_LAB",
+    "x": 12,
+    "y": 5,
+    "direction": "UP",
+    "party": [{ "speciesId": 25, "level": 25 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "fixture_state",
+    "mapName": "CINNABAR_LAB"
+  },
+  "expect": {
+    "scriptLabel": "FixtureState",
+    "finalX": 12,
+    "finalY": 5,
+    "finalDirection": "UP",
+    "activeBattleAbsent": true
+  }
+}

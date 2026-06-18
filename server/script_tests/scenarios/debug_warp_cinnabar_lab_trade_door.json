@@ -1,0 +1,25 @@
+{
+  "name": "debug_warp_cinnabar_lab_trade_door",
+  "description": "Debug setup: stand at the Cinnabar Lab trade room door in the lobby.",
+  "fixture": {
+    "characterName": "DebugWarpCinnabarLabTradeDoor",
+    "mapName": "CINNABAR_LAB",
+    "x": 8,
+    "y": 5,
+    "direction": "UP",
+    "party": [{ "speciesId": 25, "level": 25 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "fixture_state",
+    "mapName": "CINNABAR_LAB"
+  },
+  "expect": {
+    "scriptLabel": "FixtureState",
+    "finalX": 8,
+    "finalY": 5,
+    "finalDirection": "UP",
+    "activeBattleAbsent": true
+  }
+}

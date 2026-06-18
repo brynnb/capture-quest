@@ -1,0 +1,36 @@
+Scenario: debug_game_corner_slots_ready
+Description: Debug setup: stand beside a Game Corner slot machine with enough coins to spin.
+Character: DebugGameCornerSlotsReady
+
+Initial state
+  location: GAME_CORNER[135] (17,15)
+  flags: none
+  coins: 10
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FixtureState
+  map: GAME_CORNER
+  trigger: fixture_state
+
+Actions
+
+Final state
+  location: GAME_CORNER[135] (17,15)
+  flags: none
+  coins: 10
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none

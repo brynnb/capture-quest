@@ -230,7 +230,10 @@ function itemMatchesFilter(invItem: CQInventoryItem, filter: InventoryFilter): b
 
 interface InventoryItemListProps {
   selectedInstanceId?: number | null;
-  onItemSelect?: (item: CQInventoryItem) => void;
+  onItemSelect?: (
+    item: CQInventoryItem,
+    pointer?: { x: number; y: number },
+  ) => void;
   onTMHMSelect?: (item: CQInventoryItem) => void;
   onClearSelection?: () => void;
 }
@@ -266,13 +269,16 @@ const InventoryItemList: React.FC<InventoryItemListProps> = ({
       return a.instance.id - b.instance.id;
     });
 
-  const handleClick = (item: CQInventoryItem) => {
+  const handleClick = (
+    item: CQInventoryItem,
+    pointer?: { x: number; y: number },
+  ) => {
     if (isMoveItem(item) && onTMHMSelect) {
       onTMHMSelect(item);
       return;
     }
     if (onItemSelect) {
-      onItemSelect(item);
+      onItemSelect(item, pointer);
     }
   };
 
@@ -293,7 +299,7 @@ const InventoryItemList: React.FC<InventoryItemListProps> = ({
           if (selectedInstanceId !== null && onItemSelect) {
             e.preventDefault();
             e.stopPropagation();
-            onItemSelect(invItem);
+            onItemSelect(invItem, { x: e.clientX, y: e.clientY });
           }
         }}
         onClick={(e) => {
@@ -301,7 +307,7 @@ const InventoryItemList: React.FC<InventoryItemListProps> = ({
             e.preventDefault();
             return;
           }
-          handleClick(invItem);
+          handleClick(invItem, { x: e.clientX, y: e.clientY });
         }}
         onMouseEnter={() => {
           const details = invItem.item;

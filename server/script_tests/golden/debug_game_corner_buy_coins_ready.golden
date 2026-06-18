@@ -1,0 +1,38 @@
+Scenario: debug_game_corner_buy_coins_ready
+Description: Debug setup: stand in the Game Corner with money, a Coin Case, and room to buy coins.
+Character: DebugGameCornerBuyCoinsReady
+
+Initial state
+  location: GAME_CORNER[135] (5,8)
+  flags: none
+  money: 1000
+  coins: 10
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FixtureState
+  map: GAME_CORNER
+  trigger: fixture_state
+
+Actions
+
+Final state
+  location: GAME_CORNER[135] (5,8)
+  flags: none
+  money: 1000
+  coins: 10
+  party:
+    none
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none

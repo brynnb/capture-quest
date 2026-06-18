@@ -13,7 +13,11 @@ import PartyPokemonHUD, {
   type CursorItemUse,
   type PendingItemUse,
 } from "@components/Interface/PartyPokemonHUD";
-import useCQInventoryStore, { type CQInventoryItem } from "@/stores/CQInventoryStore";
+import useCQInventoryStore, {
+  ITEM_TYPE_EVOLUTION_STONE,
+  ITEM_TYPE_MEDICINE,
+  type CQInventoryItem,
+} from "@/stores/CQInventoryStore";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
 import { WorldSocket, OpCodes } from "@/net";
 
@@ -60,6 +64,42 @@ function isDirectUseItem(item: CQInventoryItem): boolean {
   return directUseShortNames.has(item.item.shortName.toUpperCase());
 }
 
+const partyTargetShortNames = new Set([
+  "RARE_CANDY",
+  "PP_UP",
+  "PP_UP_2",
+  "HP_UP",
+  "PROTEIN",
+  "IRON",
+  "CARBOS",
+  "CALCIUM",
+]);
+
+function isPartyTargetItem(item: CQInventoryItem): boolean {
+  const template = item.item;
+  const shortName = template.shortName.toUpperCase();
+  return (
+    template.itemType === ITEM_TYPE_MEDICINE ||
+    template.itemType === ITEM_TYPE_EVOLUTION_STONE ||
+    template.healAmount > 0 ||
+    Boolean(template.statusCure) ||
+    template.ppRestore > 0 ||
+    template.revivePercent > 0 ||
+    partyTargetShortNames.has(shortName)
+  );
+}
+
+function currentItemUseWorldContext() {
+  const context = useGameStatusStore.getState().playerTileContext;
+  if (!context) return {};
+  return {
+    x: context.x,
+    y: context.y,
+    mapId: context.mapId,
+    direction: context.direction,
+  };
+}
+
 const InventorySidebar: React.FC = () => {
   const { hoveredItem } = usePlayerCharacterStore();
   const { toggleInventory } = useGameStatusStore();
@@ -69,6 +109,7 @@ const InventorySidebar: React.FC = () => {
   const party = usePokemonPartyStore((s) => s.party);
   const [pendingPPRestore, setPendingPPRestore] = useState<PendingItemUse | null>(null);
   const [selectedCQItem, setSelectedCQItem] = useState<CQInventoryItem | null>(null);
+  const [selectedItemPointer, setSelectedItemPointer] = useState<{ x: number; y: number } | null>(null);
   const [selectedTMHMItem, setSelectedTMHMItem] = useState<CQInventoryItem | null>(null);
 
   useEffect(() => {
@@ -81,6 +122,7 @@ const InventorySidebar: React.FC = () => {
       )
     ) {
       setSelectedCQItem(null);
+      setSelectedItemPointer(null);
     }
   }, [cqItems, selectedCQItem]);
 
@@ -104,17 +146,20 @@ const InventorySidebar: React.FC = () => {
       const target = event.target;
       if (!(target instanceof Element)) {
         setSelectedCQItem(null);
+        setSelectedItemPointer(null);
         return;
       }
       if (target.closest("[data-cq-party-entry='true']")) {
         return;
       }
       setSelectedCQItem(null);
+      setSelectedItemPointer(null);
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setSelectedCQItem(null);
+        setSelectedItemPointer(null);
       }
     };
 
@@ -155,6 +200,7 @@ const InventorySidebar: React.FC = () => {
         itemName: inv.item.name,
       });
       setSelectedCQItem(null);
+      setSelectedItemPointer(null);
       return;
     }
 
@@ -166,6 +212,7 @@ const InventorySidebar: React.FC = () => {
       moveSlot: -1,
     });
     setSelectedCQItem(null);
+    setSelectedItemPointer(null);
   }, [cqItems]);
 
   const handleCursorItemUse = useCallback((partySlot: number) => {
@@ -173,24 +220,42 @@ const InventorySidebar: React.FC = () => {
     handleItemUseOnPartySlot(partySlot, selectedCQItem.instance.id);
   }, [selectedCQItem, handleItemUseOnPartySlot]);
 
-  const handleCQItemSelect = useCallback((item: CQInventoryItem) => {
+  const handleCQItemSelect = useCallback((
+    item: CQInventoryItem,
+    pointer?: { x: number; y: number },
+  ) => {
     if (isDirectUseItem(item)) {
       WorldSocket.sendJsonMessage(OpCodes.CQItemUseRequest, {
         instanceId: item.instance.id,
+        ...currentItemUseWorldContext(),
       });
       setSelectedCQItem(null);
+      setSelectedItemPointer(null);
+      return;
+    }
+
+    if (!isPartyTargetItem(item)) {
+      WorldSocket.sendJsonMessage(OpCodes.CQItemUseRequest, {
+        instanceId: item.instance.id,
+        ...currentItemUseWorldContext(),
+      });
+      setSelectedCQItem(null);
+      setSelectedItemPointer(null);
       return;
     }
 
     if (selectedCQItem) {
       setSelectedCQItem(null);
+      setSelectedItemPointer(null);
       return;
     }
     setSelectedCQItem(item);
+    setSelectedItemPointer(pointer ?? null);
   }, [selectedCQItem]);
 
   const handleTMHMSelect = useCallback((item: CQInventoryItem) => {
     setSelectedCQItem(null);
+    setSelectedItemPointer(null);
     setSelectedTMHMItem(item);
   }, []);
 
@@ -240,6 +305,7 @@ const InventorySidebar: React.FC = () => {
   const handleCancelPending = useCallback(() => {
     setPendingPPRestore(null);
     setPendingTMHM(null);
+    setSelectedItemPointer(null);
   }, [setPendingTMHM]);
 
   const selectedTMHMMove = selectedTMHMItem
@@ -257,6 +323,8 @@ const InventorySidebar: React.FC = () => {
             ? ({
                 instanceId: selectedCQItem.instance.id,
                 itemName: selectedCQItem.item.name,
+                pointerX: selectedItemPointer?.x,
+                pointerY: selectedItemPointer?.y,
               } satisfies CursorItemUse)
             : null
         }
@@ -272,7 +340,10 @@ const InventorySidebar: React.FC = () => {
         selectedInstanceId={selectedCQItem?.instance.id ?? null}
         onItemSelect={handleCQItemSelect}
         onTMHMSelect={handleTMHMSelect}
-        onClearSelection={() => setSelectedCQItem(null)}
+        onClearSelection={() => {
+          setSelectedCQItem(null);
+          setSelectedItemPointer(null);
+        }}
       />
 
       {selectedTMHMItem && selectedTMHMMove && (

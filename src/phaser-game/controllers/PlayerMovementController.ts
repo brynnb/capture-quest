@@ -7,6 +7,7 @@ import usePokemonDialogueStore from "@/stores/PokemonDialogueStore";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import useAudioActivityStore from "@/stores/AudioActivityStore";
+import useGameStatusStore from "@/stores/GameStatusStore";
 import { emitCaptureQuestTestEvent } from "@/testing/capturequestTestBridge";
 
 type MovementDirection = "UP" | "DOWN" | "LEFT" | "RIGHT";
@@ -150,6 +151,12 @@ export class PlayerMovementController {
   }
 
   private emitPlayerPositionChanged(): void {
+    useGameStatusStore.getState().setPlayerTileContext({
+      x: this.currentTileX,
+      y: this.currentTileY,
+      mapId: this.currentMapId,
+      direction: this.currentDirection,
+    });
     emitCaptureQuestTestEvent("cq:playerPositionChanged", {
       x: this.currentTileX,
       y: this.currentTileY,
@@ -183,6 +190,7 @@ export class PlayerMovementController {
     this.currentMapId = mapId;
     this.mapRenderer = mapRenderer;
     this.updateTravelMapForTile(this.currentTileX, this.currentTileY);
+    this.emitPlayerPositionChanged();
   }
 
   private queueClientMove(
@@ -278,6 +286,41 @@ export class PlayerMovementController {
     }
 
     this.queueClientMove(destX, destY, mapId, inputSource, activateWarpId);
+    return true;
+  }
+
+  requestPathToTile(
+    destX: number,
+    destY: number,
+    onReach: () => void,
+    inputSource: "click" | "keyboard" = "click",
+  ): boolean {
+    if (this.inputFrozenChecker()) return false;
+    if (this.playerId === null || !this.mapRenderer) return false;
+    if (!this.isWalkable(destX, destY)) return false;
+
+    if (this.currentTileX === destX && this.currentTileY === destY) {
+      onReach();
+      return true;
+    }
+
+    const path = this.findPath(this.currentTileX, this.currentTileY, destX, destY);
+    if (path.length === 0) return false;
+
+    this.queuePredictedPathMove(
+      destX,
+      destY,
+      this.currentMapId,
+      inputSource,
+      path,
+    );
+    this.setArrivalCallback((arrivedX, arrivedY) => {
+      if (arrivedX !== destX || arrivedY !== destY) return false;
+      if (!this.inputFrozenChecker()) {
+        onReach();
+      }
+      return true;
+    });
     return true;
   }
 
@@ -1005,6 +1048,36 @@ export class PlayerMovementController {
     return best;
   }
 
+  private queuePathToInteractionTile(
+    walkTarget: { x: number; y: number },
+  ): boolean {
+    if (
+      walkTarget.x === this.currentTileX &&
+      walkTarget.y === this.currentTileY
+    ) {
+      return false;
+    }
+
+    const path = this.findPath(
+      this.currentTileX,
+      this.currentTileY,
+      walkTarget.x,
+      walkTarget.y,
+    );
+    if (path.length === 0) {
+      return false;
+    }
+
+    this.queuePredictedPathMove(
+      walkTarget.x,
+      walkTarget.y,
+      this.currentMapId,
+      "click",
+      path,
+    );
+    return true;
+  }
+
   requestInteractionPath(
     targetX: number,
     targetY: number,
@@ -1026,8 +1099,13 @@ export class PlayerMovementController {
       );
       return false;
     }
+    if (!this.queuePathToInteractionTile(walkTarget)) {
+      console.warn(
+        `[PlayerMovement] No path to interaction tile near (${targetX}, ${targetY})`,
+      );
+      return false;
+    }
 
-    this.queueClientMove(walkTarget.x, walkTarget.y, this.currentMapId, "click");
     this.setArrivalCallback((_arrivedX, _arrivedY) => {
       if (
         !this.canInteractWithTile(targetX, targetY)
@@ -1046,6 +1124,7 @@ export class PlayerMovementController {
   requestInteractionPathToMovingTarget(
     getTarget: () => InteractionTarget | null,
     onReach: () => void,
+    attempt = 0,
   ): boolean {
     if (this.inputFrozenChecker()) return false;
     if (this.playerId === null || !this.mapRenderer) return false;
@@ -1066,8 +1145,13 @@ export class PlayerMovementController {
       );
       return false;
     }
+    if (!this.queuePathToInteractionTile(walkTarget)) {
+      console.warn(
+        `[PlayerMovement] No path to interaction tile near moving target (${target.x}, ${target.y})`,
+      );
+      return false;
+    }
 
-    this.queueClientMove(walkTarget.x, walkTarget.y, this.currentMapId, "click");
     this.setArrivalCallback((_arrivedX, _arrivedY) => {
       const latestTarget = getTarget();
       if (!latestTarget) {
@@ -1084,9 +1168,25 @@ export class PlayerMovementController {
         return true;
       }
 
-      if (!this.inputFrozenChecker()) {
+      const nextWalkTarget = this.findReachableInteractionTile(
+        latestTarget.x,
+        latestTarget.y,
+      );
+      const canRetry =
+        attempt < 2 &&
+        nextWalkTarget !== null &&
+        (nextWalkTarget.x !== this.currentTileX ||
+          nextWalkTarget.y !== this.currentTileY);
+
+      if (canRetry && !this.inputFrozenChecker()) {
         window.setTimeout(() => {
-          this.requestInteractionPathToMovingTarget(getTarget, onReach);
+          if (!this.isMoving) {
+            this.requestInteractionPathToMovingTarget(
+              getTarget,
+              onReach,
+              attempt + 1,
+            );
+          }
         }, 0);
       }
       return true;
@@ -1539,6 +1639,35 @@ export class PlayerMovementController {
         return this.requestWarpActivationFromCurrentTile(currentWarp, direction);
       }
 
+      if (
+        targetWarp &&
+        this.isCurrentTileDirectionalWarp(targetWarp) &&
+        this.canActivateWarpWithDirection(targetWarp, direction)
+      ) {
+        this.queuePredictedKeyboardMove(
+          targetX,
+          targetY,
+          this.currentMapId,
+          direction,
+          targetWarp.id,
+        );
+        return true;
+      }
+
+      if (
+        targetWarp &&
+        this.isCurrentTileDirectionalWarp(targetWarp) &&
+        !this.canActivateWarpWithDirection(targetWarp, direction)
+      ) {
+        this.queuePredictedKeyboardMove(
+          targetX,
+          targetY,
+          this.currentMapId,
+          direction,
+        );
+        return true;
+      }
+
       if (this.isPairedWarpTileStep(targetX, targetY, direction)) {
         this.queuePredictedKeyboardMove(
           targetX,
@@ -1648,10 +1777,12 @@ export class PlayerMovementController {
     }
     this.currentMapId = mapId;
     this.updateTravelMapForTile(this.currentTileX, this.currentTileY);
+    this.emitPlayerPositionChanged();
   }
 
   syncDirection(direction: string): void {
     this.currentDirection = direction;
+    this.emitPlayerPositionChanged();
   }
 
   applySurfingSuccess(
@@ -1773,9 +1904,6 @@ export class PlayerMovementController {
         return;
       }
 
-      const destPixelX = stepX * TILE_SIZE + TILE_SIZE / 2;
-      const destPixelY = stepY * TILE_SIZE + TILE_SIZE / 2;
-
       debugPlayerMovement(
         `[PlayerMovement] animateStepToward: tweening from (${this.currentTileX},${this.currentTileY}) to (${stepX},${stepY}), direction=${direction}`,
       );
@@ -1798,7 +1926,35 @@ export class PlayerMovementController {
         }
       }, 1000);
 
-      // Create a direct tween — no server update, no collision check
+      const movementController = this.mapRenderer.getMovementController();
+      if (movementController.getActorState(this.playerId)) {
+        this.mapRenderer.updateActorPosition(
+          this.playerId,
+          this.currentTileX,
+          this.currentTileY,
+          stepX,
+          stepY,
+          direction,
+        );
+        void this.mapRenderer.waitForActorIdle(this.playerId).then(() => {
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(timeout);
+            debugPlayerMovement(
+              `[PlayerMovement] animateStepToward: tween complete at (${stepX},${stepY})`,
+            );
+            this.currentTileX = stepX;
+            this.currentTileY = stepY;
+            this.emitPlayerPositionChanged();
+            resolve();
+          }
+        });
+        return;
+      }
+
+      const destPixelX = stepX * TILE_SIZE + TILE_SIZE / 2;
+      const destPixelY = stepY * TILE_SIZE + TILE_SIZE / 2;
+
       this.scene.tweens.add({
         targets: sprite,
         x: destPixelX,
@@ -1810,7 +1966,7 @@ export class PlayerMovementController {
             resolved = true;
             clearTimeout(timeout);
             debugPlayerMovement(
-              `[PlayerMovement] animateStepToward: tween complete at (${stepX},${stepY})`,
+              `[PlayerMovement] animateStepToward: fallback tween complete at (${stepX},${stepY})`,
             );
             this.currentTileX = stepX;
             this.currentTileY = stepY;
@@ -1835,5 +1991,6 @@ export class PlayerMovementController {
     this.preSurfSpriteName = null;
     this.playerId = null;
     this.mapRenderer = null;
+    useGameStatusStore.getState().clearPlayerTileContext();
   }
 }

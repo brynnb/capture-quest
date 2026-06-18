@@ -128,6 +128,43 @@ func TestResolveLastMapWarpDestinationsFallsBackToUniqueIncomingMap(t *testing.T
 	}
 }
 
+func TestResolveLastMapWarpDestinationsDoesNotOverwriteConcreteDestination(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	execStatements(t, db,
+		`CREATE TABLE phaser_maps (id INTEGER PRIMARY KEY, name TEXT, is_overworld INTEGER)`,
+		`CREATE TABLE phaser_warp_events (id INTEGER PRIMARY KEY, map_name TEXT, map_id INTEGER, x INTEGER, y INTEGER, dest_map TEXT, dest_warp_index INTEGER)`,
+		`CREATE TABLE phaser_warps (id INTEGER PRIMARY KEY, source_map_id INTEGER, x INTEGER, y INTEGER, destination_map_id INTEGER, destination_map TEXT, destination_x INTEGER, destination_y INTEGER)`,
+		`INSERT INTO phaser_maps (id, name, is_overworld) VALUES
+			(8, 'CINNABAR_ISLAND', 1),
+			(167, 'CINNABAR_LAB', 0),
+			(168, 'CINNABAR_LAB_TRADE_ROOM', 0)`,
+		`INSERT INTO phaser_warp_events (id, map_name, map_id, x, y, dest_map, dest_warp_index) VALUES
+			(125, 'CinnabarIsland', 8, 6, 9, 'CINNABAR_LAB', 1),
+			(128, 'CinnabarLab', 167, 2, 7, 'LAST_MAP', 3),
+			(137, 'CinnabarLabTradeRoom', 168, 2, 7, 'CINNABAR_LAB', 3)`,
+		`INSERT INTO phaser_warps (id, source_map_id, x, y, destination_map_id, destination_map) VALUES
+			(63, 167, 2, 7, 8, 'CINNABAR_ISLAND')`,
+	)
+
+	if err := resolveLastMapWarpDestinationsPostgres(db); err != nil {
+		t.Fatalf("resolveLastMapWarpDestinationsPostgres: %v", err)
+	}
+
+	var destinationMapID int
+	var destinationMap string
+	if err := db.QueryRow(`SELECT destination_map_id, destination_map FROM phaser_warps WHERE id = 63`).Scan(&destinationMapID, &destinationMap); err != nil {
+		t.Fatalf("query resolved warp: %v", err)
+	}
+	if destinationMapID != 8 || destinationMap != "CINNABAR_ISLAND" {
+		t.Fatalf("resolved destination = (%d, %q), want original concrete Cinnabar Island destination", destinationMapID, destinationMap)
+	}
+}
+
 func execStatements(t *testing.T, db *sql.DB, statements ...string) {
 	t.Helper()
 	for _, statement := range statements {

@@ -1,0 +1,33 @@
+{
+  "name": "debug_warp_oaks_lab_exit_mat",
+  "description": "Debug setup: stand near Oak's Lab's left exit mat.",
+  "fixture": {
+    "characterName": "DebugWarpOaksLabExitMat",
+    "mapName": "OAKS_LAB",
+    "x": 4,
+    "y": 10,
+    "direction": "DOWN",
+    "flags": [
+      "EVENT_OAK_ASKED_TO_CHOOSE_MON",
+      "EVENT_GOT_STARTER",
+      "EVENT_RIVAL_PICKED_STARTER",
+      "EVENT_PLAYER_CHOSE_CHARMANDER",
+      "EVENT_BATTLED_RIVAL_IN_OAKS_LAB",
+      "EVENT_OAKS_LAB_RIVAL_EXITED"
+    ],
+    "party": [{ "speciesId": 25, "level": 25 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "fixture_state",
+    "mapName": "OAKS_LAB"
+  },
+  "expect": {
+    "scriptLabel": "FixtureState",
+    "finalX": 4,
+    "finalY": 10,
+    "finalDirection": "DOWN",
+    "activeBattleAbsent": true
+  }
+}

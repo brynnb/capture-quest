@@ -1,0 +1,32 @@
+{
+  "name": "debug_inventory_blocked_items_ready",
+  "description": "Debug setup: inventory contains items that should not attach to the party-use cursor.",
+  "fixture": {
+    "characterName": "DebugInventoryBlockedItemsReady",
+    "mapName": "PALLET_TOWN",
+    "x": 9,
+    "y": 4,
+    "direction": "DOWN",
+    "party": [{ "speciesId": 25, "level": 5 }],
+    "inventory": [
+      { "itemId": 65, "quantity": 1 },
+      { "itemId": 49, "quantity": 1 }
+    ],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "fixture_state",
+    "mapName": "PALLET_TOWN"
+  },
+  "expect": {
+    "scriptLabel": "FixtureState",
+    "finalX": 9,
+    "finalY": 4,
+    "finalDirection": "DOWN",
+    "inventoryContains": [
+      { "itemId": 65, "quantity": 1 },
+      { "itemId": 49, "quantity": 1 }
+    ],
+    "activeBattleAbsent": true
+  }
+}

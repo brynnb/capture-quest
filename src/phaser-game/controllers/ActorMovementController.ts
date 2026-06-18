@@ -20,6 +20,7 @@ interface MovementUpdate {
   y: number;
   direction: string;
   timestamp: number;
+  localPath?: boolean;
 }
 
 // State for a tracked actor
@@ -271,6 +272,7 @@ export class ActorMovementController {
           y: step.y,
           direction,
           timestamp: Date.now() + i * ActorMovementController.DEFAULT_MOVE_SPEED,
+          localPath: true,
         });
         fromX = step.x;
         fromY = step.y;
@@ -312,7 +314,11 @@ export class ActorMovementController {
     state.isAnimating = true;
 
     // If we have a massive queue (unprocessed while backgrounded), jump to the end
-    if (state.queue.length >= ActorMovementController.WARP_QUEUE_THRESHOLD) {
+    const isLocalPath = state.queue.some((update) => update.localPath);
+    if (
+      !isLocalPath &&
+      state.queue.length >= ActorMovementController.WARP_QUEUE_THRESHOLD
+    ) {
       const last = state.queue[state.queue.length - 1];
       this.warpActor(actorId, last.x, last.y, last.direction);
       return;
@@ -324,7 +330,10 @@ export class ActorMovementController {
     // If this update is too old (e.g. from when the tab was hidden),
     // snap immediately to the most recent position in the queue
     const now = Date.now();
-    if (now - update.timestamp > ActorMovementController.MAX_STEP_AGE) {
+    if (
+      !update.localPath &&
+      now - update.timestamp > ActorMovementController.MAX_STEP_AGE
+    ) {
       const lastUpdate =
         state.queue.length > 0 ? state.queue[state.queue.length - 1] : update;
       this.warpActor(actorId, lastUpdate.x, lastUpdate.y, lastUpdate.direction);
@@ -355,7 +364,10 @@ export class ActorMovementController {
       state.actor.moveSpeed || ActorMovementController.DEFAULT_MOVE_SPEED;
 
     // Speed up if queue is getting deep
-    if (state.queue.length > ActorMovementController.QUEUE_THRESHOLD) {
+    if (
+      !update.localPath &&
+      state.queue.length > ActorMovementController.QUEUE_THRESHOLD
+    ) {
       duration *= ActorMovementController.CATCHUP_SPEED_MULTIPLIER;
     }
 

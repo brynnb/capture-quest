@@ -3,7 +3,7 @@ Description: Game Corner Clerk 1 refuses a coin purchase when the player has a C
 Character: ScriptSimGameCornerClerk1InsufficientMoney
 
 Initial state
-  location: GAME_CORNER[135] (3,3)
+  location: GAME_CORNER[135] (5,8)
   flags: none
   money: 999
   coins: 10
@@ -32,7 +32,7 @@ the coins!]
   - unlockInput
 
 Final state
-  location: GAME_CORNER[135] (3,3)
+  location: GAME_CORNER[135] (5,8)
   flags: none
   money: 999
   coins: 10

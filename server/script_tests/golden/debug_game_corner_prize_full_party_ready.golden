@@ -1,0 +1,50 @@
+Scenario: debug_game_corner_prize_full_party_ready
+Description: Debug setup: stand in the Game Corner prize room with a full party, a Coin Case, and enough coins to buy a prize Pokemon.
+Character: DebugGameCornerPrizeFullPartyReady
+
+Initial state
+  location: GAME_CORNER_PRIZE_ROOM[137] (2,4)
+  flags: none
+  coins: 9999
+  party:
+    slot 0: #1 BULBASAUR L30 moves LEECH_SEED, VINE_WHIP, POISONPOWDER, RAZOR_LEAF
+    slot 1: #4 CHARMANDER L30 moves EMBER, LEER, RAGE, SLASH
+    slot 2: #7 SQUIRTLE L30 moves BUBBLE, WATER_GUN, BITE, WITHDRAW
+    slot 3: #25 PIKACHU L30 moves GROWL, THUNDER_WAVE, QUICK_ATTACK, SWIFT
+    slot 4: #16 PIDGEY L30 moves SAND-ATTACK, QUICK_ATTACK, WHIRLWIND, WING_ATTACK
+    slot 5: #19 RATTATA L30 moves TACKLE, QUICK_ATTACK, HYPER_FANG, FOCUS_ENERGY
+  pc:
+    box 0 slot 0: #10 CATERPIE L5
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FixtureState
+  map: GAME_CORNER_PRIZE_ROOM
+  trigger: fixture_state
+
+Actions
+
+Final state
+  location: GAME_CORNER_PRIZE_ROOM[137] (2,4)
+  flags: none
+  coins: 9999
+  party:
+    slot 0: #1 BULBASAUR L30 moves LEECH_SEED, VINE_WHIP, POISONPOWDER, RAZOR_LEAF
+    slot 1: #4 CHARMANDER L30 moves EMBER, LEER, RAGE, SLASH
+    slot 2: #7 SQUIRTLE L30 moves BUBBLE, WATER_GUN, BITE, WITHDRAW
+    slot 3: #25 PIKACHU L30 moves GROWL, THUNDER_WAVE, QUICK_ATTACK, SWIFT
+    slot 4: #16 PIDGEY L30 moves SAND-ATTACK, QUICK_ATTACK, WHIRLWIND, WING_ATTACK
+    slot 5: #19 RATTATA L30 moves TACKLE, QUICK_ATTACK, HYPER_FANG, FOCUS_ENERGY
+  pc:
+    box 0 slot 0: #10 CATERPIE L5
+  inventory:
+    #69 COIN CASE x1
+  hidden objects:
+    none
+  active battle:
+    none
