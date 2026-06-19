@@ -132,11 +132,62 @@ export class WarpManager {
           return;
         }
 
+        if (this.isPairedWarpTileStep(warp, x, y, normalizedDirection)) return;
+
         if (warpDirection && warpDirection !== normalizedDirection) return;
 
         this.activateWarp(warp, normalizedDirection);
       },
     );
+  }
+
+  private directionDelta(direction: string): { dx: number; dy: number } | null {
+    if (direction === "UP") return { dx: 0, dy: -1 };
+    if (direction === "DOWN") return { dx: 0, dy: 1 };
+    if (direction === "LEFT") return { dx: -1, dy: 0 };
+    if (direction === "RIGHT") return { dx: 1, dy: 0 };
+    return null;
+  }
+
+  private isPairedWarpTileStep(
+    targetWarp: PhaserWarp,
+    targetX: number,
+    targetY: number,
+    direction: string,
+  ): boolean {
+    const delta = this.directionDelta(direction);
+    if (!delta) return false;
+
+    const previousWarp = this.getWarpAt(targetX - delta.dx, targetY - delta.dy);
+    if (!previousWarp) return false;
+
+    const previousDirection = previousWarp.warpDirection?.trim().toUpperCase();
+    const targetDirection = targetWarp.warpDirection?.trim().toUpperCase();
+    if (
+      (previousDirection && previousDirection === direction) ||
+      (targetDirection && targetDirection === direction)
+    ) {
+      return false;
+    }
+    if (previousWarp.sourceMapId !== targetWarp.sourceMapId) return false;
+    if (previousWarp.destinationMapId !== targetWarp.destinationMapId) {
+      return false;
+    }
+    if (
+      previousWarp.destinationX == null ||
+      previousWarp.destinationY == null ||
+      targetWarp.destinationX == null ||
+      targetWarp.destinationY == null
+    ) {
+      return false;
+    }
+
+    const destinationDx = targetWarp.destinationX - previousWarp.destinationX;
+    const destinationDy = targetWarp.destinationY - previousWarp.destinationY;
+    const sameDestination = destinationDx === 0 && destinationDy === 0;
+    const parallelDestination =
+      destinationDx === delta.dx && destinationDy === delta.dy;
+    return sameDestination || parallelDestination;
   }
 
   private normalizeWarpType(warp: PhaserWarp): "door" | "carpet" {

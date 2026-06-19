@@ -120,6 +120,7 @@ func NewWorldOpCodeRegistry() *HandlerRegistry {
 		opcodes.DebugSceneListRequest:        HandleDebugSceneListRequest,
 		opcodes.DebugSceneJumpRequest:        HandleDebugSceneJumpRequest,
 		opcodes.DebugGivePowerPokemonRequest: HandleDebugGivePowerPokemonRequest,
+		opcodes.DebugWarpProbeCasesRequest:   HandleDebugWarpProbeCasesRequest,
 		// Tile Editor handlers (Dynamic World)
 		opcodes.TileEditorPlaceRequest:    HandleTileEditorPlace,
 		opcodes.TileEditorEraseRequest:    HandleTileEditorErase,

@@ -357,19 +357,13 @@ export class PlayerMovementController {
     );
     const targetWarp = this.warpAtProvider(targetX, targetY);
     if (!currentWarp || !targetWarp) return false;
-    if (
-      !this.isCurrentTileDirectionalWarp(currentWarp) ||
-      !this.isCurrentTileDirectionalWarp(targetWarp)
-    ) {
-      return false;
-    }
 
     const currentDirection = currentWarp.warpDirection?.trim().toUpperCase();
     const targetDirection = targetWarp.warpDirection?.trim().toUpperCase();
-    if (!currentDirection || currentDirection !== targetDirection) {
-      return false;
-    }
-    if (direction === currentDirection) {
+    if (
+      (currentDirection && direction === currentDirection) ||
+      (targetDirection && direction === targetDirection)
+    ) {
       return false;
     }
     if (currentWarp.sourceMapId !== targetWarp.sourceMapId) {
@@ -379,12 +373,22 @@ export class PlayerMovementController {
       return false;
     }
     if (
-      currentWarp.destinationX !== targetWarp.destinationX ||
-      currentWarp.destinationY !== targetWarp.destinationY
+      currentWarp.destinationX == null ||
+      currentWarp.destinationY == null ||
+      targetWarp.destinationX == null ||
+      targetWarp.destinationY == null
     ) {
       return false;
     }
-    return true;
+
+    const sourceDx = targetX - this.currentTileX;
+    const sourceDy = targetY - this.currentTileY;
+    const destinationDx = targetWarp.destinationX - currentWarp.destinationX;
+    const destinationDy = targetWarp.destinationY - currentWarp.destinationY;
+    const sameDestination = destinationDx === 0 && destinationDy === 0;
+    const parallelDestination =
+      destinationDx === sourceDx && destinationDy === sourceDy;
+    return sameDestination || parallelDestination;
   }
 
   private requestWarpActivationFromCurrentTile(
@@ -1415,11 +1419,30 @@ export class PlayerMovementController {
         this.currentMapId,
         this.currentDirection,
       );
+      const requestedWarpId = this.activeMoveDestination?.activateWarpId;
       const reachedMoveDestination =
         this.activeMoveDestination !== null &&
         this.activeMoveDestination.x === x &&
         this.activeMoveDestination.y === y &&
         this.activeMoveDestination.mapId === this.currentMapId;
+
+      if (reachedMoveDestination && requestedWarpId != null) {
+        const requestedWarp = this.warpAtProvider(x, y);
+        if (requestedWarp?.id === requestedWarpId) {
+          const warpDirection =
+            this.normalizeDirection(requestedWarp.warpDirection ?? "") ??
+            this.normalizeDirection(this.currentDirection) ??
+            "DOWN";
+          this.currentPath = [];
+          this.isMoving = false;
+          this.activeMoveDestination = null;
+          this.requestWarpActivationFromCurrentTile(
+            requestedWarp,
+            warpDirection,
+          );
+          return;
+        }
+      }
 
       // Emit step event so WarpManager can detect warp arrivals. Click pathing
       // gets the final-destination flag so intermediate exit tiles are ignored.
@@ -1621,19 +1644,28 @@ export class PlayerMovementController {
     // Update facing direction even if we can't move
     this.currentDirection = direction;
 
+    const currentWarp = this.warpAtProvider(
+      this.currentTileX,
+      this.currentTileY,
+    );
+    if (
+      currentWarp &&
+      this.isCurrentTileDirectionalWarp(currentWarp) &&
+      this.canActivateWarpWithDirection(currentWarp, direction)
+    ) {
+      return this.requestWarpActivationFromCurrentTile(currentWarp, direction);
+    }
+
     if (
       targetWarp &&
       !this.isCurrentTileDirectionalWarp(targetWarp) &&
+      !this.isPairedWarpTileStep(targetX, targetY, direction) &&
       this.canActivateWarpWithDirection(targetWarp, direction)
     ) {
       return this.requestWarpActivationFromCurrentTile(targetWarp, direction);
     }
 
     if (!this.isWalkable(targetX, targetY)) {
-      const currentWarp = this.warpAtProvider(
-        this.currentTileX,
-        this.currentTileY,
-      );
       if (
         currentWarp &&
         (this.isCurrentTileDirectionalWarp(currentWarp) ||
@@ -1734,7 +1766,6 @@ export class PlayerMovementController {
       targetY,
       this.currentMapId,
       direction,
-      targetWarp?.id,
     );
     return true;
   }

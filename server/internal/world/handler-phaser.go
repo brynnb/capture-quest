@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"log"
+	"os"
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
@@ -765,7 +766,12 @@ func handleClientReportedStepEffects(ses *session.Session, wh *WorldHandler, cha
 		return
 	}
 
-	if wh.WildEncounter != nil && (wh.PlayerMovement == nil || !wh.PlayerMovement.isWildEncounterSuppressed(state, charID)) {
+	testModeSuppressesRandomEncounters :=
+		os.Getenv("CAPTUREQUEST_TEST_MODE") == "true" &&
+			os.Getenv("CAPTUREQUEST_TEST_RANDOM_ENCOUNTERS") != "true"
+	if wh.WildEncounter != nil &&
+		!testModeSuppressesRandomEncounters &&
+		(wh.PlayerMovement == nil || !wh.PlayerMovement.isWildEncounterSuppressed(state, charID)) {
 		wh.WildEncounter.CheckPlayerStep(charID, x, y, mapID, ses)
 	}
 }

@@ -203,4 +203,6 @@ const (
 	MapChangeRequest              OpCode = 176
 	FieldMoveUseRequest           OpCode = 177
 	FieldMoveUseResponse          OpCode = 178
+	DebugWarpProbeCasesRequest    OpCode = 179
+	DebugWarpProbeCasesResponse   OpCode = 180
 )

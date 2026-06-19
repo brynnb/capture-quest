@@ -19,6 +19,8 @@ type sqliteWarpPoint struct {
 	Y int
 }
 
+type sqliteTileCollisionMap map[int]map[string]int
+
 type warpActivationClassification struct {
 	MapID       int
 	MapName     string
@@ -129,6 +131,10 @@ func classifyWarpActivations(sqlite *sql.DB) ([]warpActivationClassification, er
 	if err != nil {
 		return nil, err
 	}
+	tileCollisionsByMapID, err := loadSQLiteTileCollisionsByMapID(sqlite)
+	if err != nil {
+		return nil, err
+	}
 
 	rows, err := sqlite.Query(`
 		SELECT w.map_id, m.name, w.x, w.y, w.dest_map, w.dest_warp_index,
@@ -199,6 +205,7 @@ func classifyWarpActivations(sqlite *sql.DB) ([]warpActivationClassification, er
 				mapHeight*2,
 				destMap,
 				destWarpIndex,
+				tileCollisionsByMapID[mapID],
 				mapInfoByName,
 				warpPointsByMapID,
 			)
@@ -258,6 +265,33 @@ func loadSQLiteWarpPointsByMapID(sqlite *sql.DB) (map[int][]sqliteWarpPoint, err
 	return result, nil
 }
 
+func loadSQLiteTileCollisionsByMapID(sqlite *sql.DB) (sqliteTileCollisionMap, error) {
+	rows, err := sqlite.Query(`
+		SELECT map_id, COALESCE(local_x, x), COALESCE(local_y, y), collision_type
+		FROM tiles
+		WHERE map_id IS NOT NULL`)
+	if err != nil {
+		return nil, fmt.Errorf("load tile collision maps: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(sqliteTileCollisionMap)
+	for rows.Next() {
+		var mapID, x, y, collisionType int
+		if err := rows.Scan(&mapID, &x, &y, &collisionType); err != nil {
+			return nil, fmt.Errorf("scan tile collision map: %w", err)
+		}
+		if result[mapID] == nil {
+			result[mapID] = make(map[string]int)
+		}
+		result[mapID][fmt.Sprintf("%d,%d", x, y)] = collisionType
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read tile collision maps: %w", err)
+	}
+	return result, nil
+}
+
 func loadWarpBlockData(sqlite *sql.DB, cache map[string][]byte, tilesetID, blockIndex int) ([]byte, bool, error) {
 	lookupTilesetID := remapWarpTilesetForBlockData(tilesetID)
 	key := fmt.Sprintf("%d:%d", lookupTilesetID, blockIndex)
@@ -310,10 +344,14 @@ func inferWarpDirection(
 	sourceHeightTiles int,
 	destMapName string,
 	destWarpIndex int,
+	sourceCollisions map[string]int,
 	mapInfoByName map[string]sqliteMapDimensions,
 	warpPointsByMapID map[int][]sqliteWarpPoint,
 ) string {
 	if direction, ok := inferWarpDirectionFromSourceMapEdge(sourceX, sourceY, sourceWidthTiles, sourceHeightTiles); ok {
+		return direction
+	}
+	if direction, ok := inferWarpDirectionFromSourceWalkability(sourceX, sourceY, sourceCollisions); ok {
 		return direction
 	}
 	destInfo, ok := mapInfoByName[normalizeMapName(destMapName)]
@@ -325,6 +363,33 @@ func inferWarpDirection(
 		}
 	}
 	return inferWarpDirectionFromSourceEdge(sourceX, sourceY, sourceWidthTiles, sourceHeightTiles)
+}
+
+func inferWarpDirectionFromSourceWalkability(sourceX, sourceY int, sourceCollisions map[string]int) (string, bool) {
+	if len(sourceCollisions) == 0 {
+		return "", false
+	}
+	sourceCollision, sourceExists := sourceCollisions[fmt.Sprintf("%d,%d", sourceX, sourceY)]
+	if !sourceExists || sourceCollision == 1 {
+		return "", false
+	}
+
+	candidates := []struct {
+		x         int
+		y         int
+		direction string
+	}{
+		{x: sourceX, y: sourceY + 1, direction: "UP"},
+		{x: sourceX, y: sourceY - 1, direction: "DOWN"},
+		{x: sourceX - 1, y: sourceY, direction: "RIGHT"},
+		{x: sourceX + 1, y: sourceY, direction: "LEFT"},
+	}
+	for _, candidate := range candidates {
+		if sourceCollisions[fmt.Sprintf("%d,%d", candidate.x, candidate.y)] == 1 {
+			return candidate.direction, true
+		}
+	}
+	return "", false
 }
 
 func inferWarpDirectionFromSourceMapEdge(sourceX, sourceY, sourceWidthTiles, sourceHeightTiles int) (string, bool) {

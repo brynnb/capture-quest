@@ -91,7 +91,7 @@ export async function activateDoorWarpWithKeyboard(
   direction: MovementDirection,
 ) {
   const before = tileBeforeWarp(warp, direction);
-  await moveToTileAndWait(page, before.x, before.y);
+  await moveToTileByKeyboardAndWait(page, before.x, before.y);
 
   const startingMapId = (await getGameState(page)).map.id;
   await pressMovement(page, direction);

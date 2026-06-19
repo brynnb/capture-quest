@@ -27,7 +27,7 @@ export async function pressMovement(
   for (let i = 0; i < count; i += 1) {
     await blurActiveElement(page);
     await page.keyboard.down(movementKeys[direction]);
-    await page.waitForTimeout(120);
+    await page.waitForTimeout(35);
     await page.keyboard.up(movementKeys[direction]);
     await page.waitForTimeout(60);
   }

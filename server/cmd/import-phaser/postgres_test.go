@@ -154,12 +154,17 @@ func TestBakeOverworldCoordinatesUsesTileSourceMapID(t *testing.T) {
 		`CREATE TABLE phaser_maps (id INTEGER PRIMARY KEY, name TEXT, is_overworld INTEGER)`,
 		`CREATE TABLE phaser_tiles (x INTEGER, y INTEGER, local_x INTEGER, local_y INTEGER, map_id INTEGER, source_map_id INTEGER)`,
 		`CREATE TABLE phaser_objects (map_id INTEGER, x INTEGER, y INTEGER, local_x INTEGER, local_y INTEGER)`,
-		`CREATE TABLE phaser_warps (id INTEGER PRIMARY KEY, source_map_id INTEGER, x INTEGER, y INTEGER)`,
+		`CREATE TABLE phaser_warp_events (id INTEGER PRIMARY KEY, map_id INTEGER, x INTEGER, y INTEGER, dest_map TEXT)`,
+		`CREATE TABLE phaser_warps (id INTEGER PRIMARY KEY, source_map_id INTEGER, x INTEGER, y INTEGER, destination_map TEXT)`,
 		`INSERT INTO phaser_maps (id, name, is_overworld) VALUES (17, 'ROUTE_6', 1)`,
 		`INSERT INTO phaser_tiles (x, y, local_x, local_y, map_id, source_map_id) VALUES
 			(180, -90, 0, 0, NULL, 17),
 			(189, -83, 9, 7, NULL, 17)`,
-		`INSERT INTO phaser_warps (id, source_map_id, x, y) VALUES (85, 17, 10, 7)`,
+		`INSERT INTO phaser_warp_events (id, map_id, x, y, dest_map) VALUES
+			(441, 17, 10, 7, 'ROUTE_6_GATE')`,
+		`INSERT INTO phaser_warps (id, source_map_id, x, y, destination_map) VALUES
+			(85, 17, 10, 7, 'ROUTE_6_GATE'),
+			(86, 17, 190, -83, 'ROUTE_6_GATE')`,
 	)
 
 	if err := bakeOverworldCoordinatesPostgres(db); err != nil {
@@ -172,6 +177,13 @@ func TestBakeOverworldCoordinatesUsesTileSourceMapID(t *testing.T) {
 	}
 	if x != 190 || y != -83 {
 		t.Fatalf("baked Route 6 warp = (%d,%d), want global (190,-83)", x, y)
+	}
+
+	if err := db.QueryRow(`SELECT x, y FROM phaser_warps WHERE id = 86`).Scan(&x, &y); err != nil {
+		t.Fatalf("query already-global baked warp: %v", err)
+	}
+	if x != 190 || y != -83 {
+		t.Fatalf("already-global Route 6 warp = (%d,%d), want unchanged global (190,-83)", x, y)
 	}
 }
 

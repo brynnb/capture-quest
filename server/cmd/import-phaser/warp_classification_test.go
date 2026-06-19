@@ -22,6 +22,7 @@ func TestClassifyWarpActivationsDirectionalMats(t *testing.T) {
 	requireWarpClassification(t, classifications, 40, 4, 11, "carpet", "DOWN")
 	requireWarpClassification(t, classifications, 40, 5, 11, "carpet", "DOWN")
 	requireWarpClassification(t, classifications, 47, 4, 0, "carpet", "UP")
+	requireWarpClassification(t, classifications, 6, 39, 19, "carpet", "UP")
 }
 
 func TestInferWarpDirectionPrefersSourceEdge(t *testing.T) {
@@ -45,6 +46,7 @@ func TestInferWarpDirectionPrefersSourceEdge(t *testing.T) {
 		12,
 		"LANCES_ROOM",
 		1,
+		nil,
 		mapInfoByName,
 		warpPointsByMapID,
 	)

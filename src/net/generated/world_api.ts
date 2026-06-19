@@ -439,6 +439,47 @@ export interface DebugScene {
   e2eMode?: string;
   driver?: string;
 }
+/**
+ * DebugWarpProbeCase is a test-only browser-driving fixture for one configured warp.
+ */
+export interface DebugWarpProbeCase {
+  id: number /* int */;
+  sourceMapId: number /* int */;
+  sourceClientMapId: number /* int */;
+  sourceMapName: string;
+  sourceIsOverworld: boolean;
+  x: number /* int */;
+  y: number /* int */;
+  destinationMapId: number /* int */;
+  destinationClientMapId: number /* int */;
+  destinationMapName: string;
+  destinationIsOverworld: boolean;
+  destinationX: number /* int */;
+  destinationY: number /* int */;
+  expectedX: number /* int */;
+  expectedY: number /* int */;
+  warpType: string;
+  warpDirection: string;
+  keyboardSetupX: number /* int */;
+  keyboardSetupY: number /* int */;
+  keyboardDirection: string;
+  clickSetupX: number /* int */;
+  clickSetupY: number /* int */;
+  postWarpMoveX: number /* int */;
+  postWarpMoveY: number /* int */;
+  postWarpMoveDirection: string;
+}
+/**
+ * DebugWarpProbeSkippedCase explains why a configured warp cannot be driven by the browser matrix.
+ */
+export interface DebugWarpProbeSkippedCase {
+  id: number /* int */;
+  sourceMapId: number /* int */;
+  sourceMapName: string;
+  x: number /* int */;
+  y: number /* int */;
+  reason: string;
+}
 
 //////////
 // source: handler-dialogue-choice.go

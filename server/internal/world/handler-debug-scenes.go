@@ -34,6 +34,45 @@ type DebugScene struct {
 	Driver       string `json:"driver,omitempty"`
 }
 
+// DebugWarpProbeCase is a test-only browser-driving fixture for one configured warp.
+type DebugWarpProbeCase struct {
+	ID                     int    `json:"id"`
+	SourceMapID            int    `json:"sourceMapId"`
+	SourceClientMapID      int    `json:"sourceClientMapId"`
+	SourceMapName          string `json:"sourceMapName"`
+	SourceIsOverworld      bool   `json:"sourceIsOverworld"`
+	X                      int    `json:"x"`
+	Y                      int    `json:"y"`
+	DestinationMapID       int    `json:"destinationMapId"`
+	DestinationClientMapID int    `json:"destinationClientMapId"`
+	DestinationMapName     string `json:"destinationMapName"`
+	DestinationIsOverworld bool   `json:"destinationIsOverworld"`
+	DestinationX           int    `json:"destinationX"`
+	DestinationY           int    `json:"destinationY"`
+	ExpectedX              int    `json:"expectedX"`
+	ExpectedY              int    `json:"expectedY"`
+	WarpType               string `json:"warpType"`
+	WarpDirection          string `json:"warpDirection"`
+	KeyboardSetupX         int    `json:"keyboardSetupX"`
+	KeyboardSetupY         int    `json:"keyboardSetupY"`
+	KeyboardDirection      string `json:"keyboardDirection"`
+	ClickSetupX            int    `json:"clickSetupX"`
+	ClickSetupY            int    `json:"clickSetupY"`
+	PostWarpMoveX          int    `json:"postWarpMoveX"`
+	PostWarpMoveY          int    `json:"postWarpMoveY"`
+	PostWarpMoveDirection  string `json:"postWarpMoveDirection"`
+}
+
+// DebugWarpProbeSkippedCase explains why a configured warp cannot be driven by the browser matrix.
+type DebugWarpProbeSkippedCase struct {
+	ID            int    `json:"id"`
+	SourceMapID   int    `json:"sourceMapId"`
+	SourceMapName string `json:"sourceMapName"`
+	X             int    `json:"x"`
+	Y             int    `json:"y"`
+	Reason        string `json:"reason"`
+}
+
 type debugScenarioFile struct {
 	SeqNum   int
 	Path     string
@@ -281,6 +320,341 @@ func HandleDebugSceneJumpRequest(ses *session.Session, payload []byte, wh *World
 func sendDebugFixtureSnapshots(ses *session.Session, charID int64) {
 	sendPCUpdate(ses, charID, debugCurrentPCBox(charID))
 	sendCQInventorySnapshot(ses, int32(charID))
+}
+
+// HandleDebugWarpProbeCasesRequest returns test-only warp cases for Playwright's
+// exhaustive entrance/exit matrix. It is available only in CAPTUREQUEST_TEST_MODE.
+func HandleDebugWarpProbeCasesRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
+	if os.Getenv("CAPTUREQUEST_TEST_MODE") != "true" {
+		ses.SendStreamJSON(map[string]interface{}{
+			"success": false,
+			"error":   "debug warp probes require CAPTUREQUEST_TEST_MODE=true",
+		}, opcodes.DebugWarpProbeCasesResponse)
+		return false
+	}
+
+	var req struct {
+		Limit       int `json:"limit"`
+		Offset      int `json:"offset"`
+		SourceMapID int `json:"sourceMapId"`
+	}
+	if err := json.Unmarshal(payload, &req); err != nil {
+		ses.SendStreamJSON(map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		}, opcodes.DebugWarpProbeCasesResponse)
+		return false
+	}
+	if req.Limit <= 0 {
+		req.Limit = 10000
+	}
+	if req.Offset < 0 {
+		req.Offset = 0
+	}
+
+	total, cases, skipped, err := loadDebugWarpProbeCases(wh, req.Limit, req.Offset, req.SourceMapID)
+	if err != nil {
+		ses.SendStreamJSON(map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		}, opcodes.DebugWarpProbeCasesResponse)
+		return false
+	}
+
+	ses.SendStreamJSON(map[string]interface{}{
+		"success":        true,
+		"totalCaseCount": total,
+		"cases":          cases,
+		"skippedCases":   skipped,
+	}, opcodes.DebugWarpProbeCasesResponse)
+	return false
+}
+
+type debugWarpProbeRow struct {
+	id                     int
+	sourceMapID            int
+	sourceMapName          string
+	sourceWidth            int
+	sourceHeight           int
+	sourceIsOverworld      bool
+	x                      int
+	y                      int
+	destinationMapID       int
+	destinationMapName     string
+	destinationIsOverworld bool
+	destinationX           int
+	destinationY           int
+	warpType               string
+	warpDirection          string
+}
+
+func loadDebugWarpProbeCases(wh *WorldHandler, limit, offset, sourceMapID int) (int, []DebugWarpProbeCase, []DebugWarpProbeSkippedCase, error) {
+	var total int
+	if err := db.GlobalWorldDB.DB.QueryRow(`
+		SELECT COUNT(*)
+		FROM phaser_warps pw
+		WHERE pw.destination_map_id IS NOT NULL
+		  AND pw.destination_x IS NOT NULL
+		  AND pw.destination_y IS NOT NULL
+		  AND ($1 = 0 OR pw.source_map_id = $1)`,
+		sourceMapID,
+	).Scan(&total); err != nil {
+		return 0, nil, nil, fmt.Errorf("count warp probe cases: %w", err)
+	}
+
+	rows, err := db.GlobalWorldDB.DB.Query(`
+		SELECT
+			pw.id,
+			pw.source_map_id,
+			source_map.name,
+			source_map.width * 2,
+			source_map.height * 2,
+			source_map.is_overworld = 1,
+			pw.x,
+			pw.y,
+			pw.destination_map_id,
+			destination_map.name,
+			destination_map.is_overworld = 1,
+			pw.destination_x,
+			pw.destination_y,
+			COALESCE(pw.warp_type, 'door'),
+			COALESCE(pw.warp_direction, '')
+		FROM phaser_warps pw
+		JOIN phaser_maps source_map ON source_map.id = pw.source_map_id
+		JOIN phaser_maps destination_map ON destination_map.id = pw.destination_map_id
+		WHERE pw.destination_map_id IS NOT NULL
+		  AND pw.destination_x IS NOT NULL
+		  AND pw.destination_y IS NOT NULL
+		  AND ($3 = 0 OR pw.source_map_id = $3)
+		ORDER BY source_map.is_overworld DESC, source_map.name, pw.y, pw.x, pw.id
+		LIMIT $1 OFFSET $2`,
+		limit,
+		offset,
+		sourceMapID,
+	)
+	if err != nil {
+		return 0, nil, nil, fmt.Errorf("load warp probe cases: %w", err)
+	}
+	defer rows.Close()
+
+	cases := make([]DebugWarpProbeCase, 0)
+	skipped := make([]DebugWarpProbeSkippedCase, 0)
+	for rows.Next() {
+		var row debugWarpProbeRow
+		if err := rows.Scan(
+			&row.id,
+			&row.sourceMapID,
+			&row.sourceMapName,
+			&row.sourceWidth,
+			&row.sourceHeight,
+			&row.sourceIsOverworld,
+			&row.x,
+			&row.y,
+			&row.destinationMapID,
+			&row.destinationMapName,
+			&row.destinationIsOverworld,
+			&row.destinationX,
+			&row.destinationY,
+			&row.warpType,
+			&row.warpDirection,
+		); err != nil {
+			return 0, nil, nil, fmt.Errorf("scan warp probe case: %w", err)
+		}
+
+		probe, reason := buildDebugWarpProbeCase(wh, row)
+		if reason != "" {
+			skipped = append(skipped, DebugWarpProbeSkippedCase{
+				ID:            row.id,
+				SourceMapID:   row.sourceMapID,
+				SourceMapName: row.sourceMapName,
+				X:             row.x,
+				Y:             row.y,
+				Reason:        reason,
+			})
+			continue
+		}
+		cases = append(cases, probe)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, nil, nil, fmt.Errorf("read warp probe cases: %w", err)
+	}
+
+	return total, cases, skipped, nil
+}
+
+func buildDebugWarpProbeCase(wh *WorldHandler, row debugWarpProbeRow) (DebugWarpProbeCase, string) {
+	sourceClientMapID := debugWarpClientMapID(row.sourceMapID, row.sourceIsOverworld)
+	destinationClientMapID := debugWarpClientMapID(row.destinationMapID, row.destinationIsOverworld)
+
+	keyboardSetupX, keyboardSetupY, keyboardDirection, ok := debugWarpActivationSetup(wh, sourceClientMapID, row)
+	if !ok {
+		return DebugWarpProbeCase{}, "no walkable setup tile for keyboard/click activation"
+	}
+
+	expectedX := row.destinationX
+	expectedY := row.destinationY
+	if row.destinationIsOverworld && !row.sourceIsOverworld && keyboardDirection == "DOWN" {
+		expectedY++
+	}
+
+	postMoveX, postMoveY, postMoveDirection, ok := debugWarpPostMoveTarget(wh, destinationClientMapID, expectedX, expectedY)
+	if !ok {
+		return DebugWarpProbeCase{}, "destination has no adjacent non-warp walkable tile"
+	}
+
+	return DebugWarpProbeCase{
+		ID:                     row.id,
+		SourceMapID:            row.sourceMapID,
+		SourceClientMapID:      sourceClientMapID,
+		SourceMapName:          row.sourceMapName,
+		SourceIsOverworld:      row.sourceIsOverworld,
+		X:                      row.x,
+		Y:                      row.y,
+		DestinationMapID:       row.destinationMapID,
+		DestinationClientMapID: destinationClientMapID,
+		DestinationMapName:     row.destinationMapName,
+		DestinationIsOverworld: row.destinationIsOverworld,
+		DestinationX:           row.destinationX,
+		DestinationY:           row.destinationY,
+		ExpectedX:              expectedX,
+		ExpectedY:              expectedY,
+		WarpType:               normalizeWarpType(row.warpType),
+		WarpDirection:          normalizeWarpDirection(row.warpDirection),
+		KeyboardSetupX:         keyboardSetupX,
+		KeyboardSetupY:         keyboardSetupY,
+		KeyboardDirection:      keyboardDirection,
+		ClickSetupX:            keyboardSetupX,
+		ClickSetupY:            keyboardSetupY,
+		PostWarpMoveX:          postMoveX,
+		PostWarpMoveY:          postMoveY,
+		PostWarpMoveDirection:  postMoveDirection,
+	}, ""
+}
+
+func debugWarpActivationSetup(wh *WorldHandler, clientMapID int, row debugWarpProbeRow) (int, int, string, bool) {
+	normalizedType := normalizeWarpType(row.warpType)
+	normalizedDirection := normalizeWarpDirection(row.warpDirection)
+	if normalizedType == "carpet" &&
+		normalizedDirection != "" &&
+		debugWarpTileIsWalkable(wh, clientMapID, row.x, row.y) {
+		return row.x, row.y, normalizedDirection, true
+	}
+
+	directions := debugWarpDirectionOrder(row)
+	for _, direction := range directions {
+		dx, dy, ok := warpDirectionDelta(direction)
+		if !ok {
+			continue
+		}
+		setupX := row.x - dx
+		setupY := row.y - dy
+		if debugWarpTileIsWalkable(wh, clientMapID, setupX, setupY) {
+			return setupX, setupY, direction, true
+		}
+	}
+
+	return 0, 0, "", false
+}
+
+func debugWarpPostMoveTarget(wh *WorldHandler, clientMapID, x, y int) (int, int, string, bool) {
+	fallbackX := 0
+	fallbackY := 0
+	fallbackDirection := ""
+	hasFallback := false
+	var currentWarp *phaserMapWarp
+	if wh != nil && wh.phaserWarps != nil {
+		currentWarp = wh.phaserWarps.warpAt(clientMapID, x, y)
+	}
+
+	for _, direction := range []string{"DOWN", "UP", "LEFT", "RIGHT"} {
+		if currentWarp != nil &&
+			currentWarp.isCarpet() &&
+			normalizeWarpDirection(currentWarp.WarpDirection) == direction {
+			continue
+		}
+		dx, dy, ok := warpDirectionDelta(direction)
+		if !ok {
+			continue
+		}
+		targetX := x + dx
+		targetY := y + dy
+		if !debugWarpTileIsWalkable(wh, clientMapID, targetX, targetY) {
+			continue
+		}
+		if debugWarpTileHasEncounter(wh, clientMapID, targetX, targetY) {
+			continue
+		}
+		if wh != nil && wh.phaserWarps != nil && wh.phaserWarps.warpAt(clientMapID, targetX, targetY) != nil {
+			if !hasFallback {
+				fallbackX = targetX
+				fallbackY = targetY
+				fallbackDirection = direction
+				hasFallback = true
+			}
+			continue
+		}
+		return targetX, targetY, direction, true
+	}
+	if hasFallback {
+		return fallbackX, fallbackY, fallbackDirection, true
+	}
+	return 0, 0, "", false
+}
+
+func debugWarpDirectionOrder(row debugWarpProbeRow) []string {
+	normalized := normalizeWarpDirection(row.warpDirection)
+	all := []string{"DOWN", "UP", "LEFT", "RIGHT"}
+	if normalized != "" {
+		return []string{normalized}
+	}
+
+	preferred := ""
+	switch {
+	case row.x == 0:
+		preferred = "LEFT"
+	case row.sourceWidth > 0 && row.x == row.sourceWidth-1:
+		preferred = "RIGHT"
+	case row.y == 0:
+		preferred = "UP"
+	case row.sourceHeight > 0 && row.y == row.sourceHeight-1:
+		preferred = "DOWN"
+	}
+	if preferred == "" {
+		return all
+	}
+
+	ordered := []string{preferred}
+	for _, direction := range all {
+		if direction != preferred {
+			ordered = append(ordered, direction)
+		}
+	}
+	return ordered
+}
+
+func debugWarpTileIsWalkable(wh *WorldHandler, clientMapID, x, y int) bool {
+	if wh == nil || wh.ActorManager == nil {
+		return false
+	}
+	collisionType, exists := wh.ActorManager.CollisionTypeAt(clientMapID, x, y)
+	return exists && collisionType == collisionLand
+}
+
+func debugWarpTileHasEncounter(wh *WorldHandler, clientMapID, x, y int) bool {
+	if os.Getenv("CAPTUREQUEST_TEST_MODE") == "true" &&
+		os.Getenv("CAPTUREQUEST_TEST_RANDOM_ENCOUNTERS") != "true" {
+		return false
+	}
+	return wh != nil &&
+		wh.WildEncounter != nil &&
+		wh.WildEncounter.getEncounterAreaID(clientMapID, x, y) != 0
+}
+
+func debugWarpClientMapID(mapID int, isOverworld bool) int {
+	if isOverworld {
+		return UnifiedOverworldMapID
+	}
+	return mapID
 }
 
 // HandleDebugGivePowerPokemonRequest gives the current debug player a

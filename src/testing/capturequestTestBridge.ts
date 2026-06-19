@@ -1,4 +1,4 @@
-import { WorldSocket } from "@/net";
+import { WorldSocket, OpCodes } from "@/net";
 import AudioManager from "@/services/audio/AudioManager";
 import useAudioActivityStore from "@/stores/AudioActivityStore";
 import useChatStore from "@/stores/ChatStore";
@@ -200,11 +200,62 @@ export interface CaptureQuestTileViewerDiagnostics {
   centerTileInView?: (x: number, y: number) => void;
 }
 
+export interface CaptureQuestWarpProbeCase {
+  id: number;
+  sourceMapId: number;
+  sourceClientMapId: number;
+  sourceMapName: string;
+  sourceIsOverworld: boolean;
+  x: number;
+  y: number;
+  destinationMapId: number;
+  destinationClientMapId: number;
+  destinationMapName: string;
+  destinationIsOverworld: boolean;
+  destinationX: number;
+  destinationY: number;
+  expectedX: number;
+  expectedY: number;
+  warpType: string;
+  warpDirection: string;
+  keyboardSetupX: number;
+  keyboardSetupY: number;
+  keyboardDirection: string;
+  clickSetupX: number;
+  clickSetupY: number;
+  postWarpMoveX: number;
+  postWarpMoveY: number;
+  postWarpMoveDirection: string;
+}
+
+export interface CaptureQuestWarpProbeSkippedCase {
+  id: number;
+  sourceMapId: number;
+  sourceMapName: string;
+  x: number;
+  y: number;
+  reason: string;
+}
+
+export interface CaptureQuestWarpProbeCasesResponse {
+  success: boolean;
+  totalCaseCount: number;
+  cases: CaptureQuestWarpProbeCase[];
+  skippedCases: CaptureQuestWarpProbeSkippedCase[];
+  error?: string;
+}
+
 export interface CaptureQuestTestBridge {
   getState: () => CaptureQuestTestState;
   waitForEvent: (type: string, timeoutMs?: number) => Promise<unknown>;
   tileToViewport: (x: number, y: number) => TileViewportPoint | null;
   centerTileInView: (x: number, y: number) => void;
+  warpToMap: (mapId: number, x: number, y: number, direction?: string) => void;
+  requestWarpProbeCases: (options?: {
+    limit?: number;
+    offset?: number;
+    sourceMapId?: number;
+  }) => Promise<CaptureQuestWarpProbeCasesResponse>;
   requestGameCornerCoinBalance: () => void;
   buyGameCornerCoins: () => void;
   playGameCornerSlot: (bet: number, isLucky?: boolean) => void;
@@ -462,6 +513,27 @@ function centerTileInView(x: number, y: number): void {
   tileViewerDiagnostics?.centerTileInView?.(x, y);
 }
 
+function warpToMap(mapId: number, x: number, y: number, direction = "DOWN"): void {
+  window.dispatchEvent(
+    new CustomEvent("warpTileTeleport", {
+      detail: { mapId, x, y, direction },
+    }),
+  );
+}
+
+function requestWarpProbeCases(options: {
+  limit?: number;
+  offset?: number;
+  sourceMapId?: number;
+} = {}): Promise<CaptureQuestWarpProbeCasesResponse> {
+  return WorldSocket.sendJsonRequest<CaptureQuestWarpProbeCasesResponse>(
+    OpCodes.DebugWarpProbeCasesRequest,
+    OpCodes.DebugWarpProbeCasesResponse,
+    options,
+    30_000,
+  );
+}
+
 export function installCaptureQuestTestBridge(): void {
   if (!IS_TEST_MODE || typeof window === "undefined" || installed) return;
   installed = true;
@@ -471,6 +543,8 @@ export function installCaptureQuestTestBridge(): void {
     waitForEvent,
     tileToViewport,
     centerTileInView,
+    warpToMap,
+    requestWarpProbeCases,
     requestGameCornerCoinBalance: requestCoinBalance,
     buyGameCornerCoins: buyCoins,
     playGameCornerSlot: (bet, isLucky = false) => playSlotMachine(bet, isLucky),

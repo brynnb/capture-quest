@@ -216,3 +216,5 @@ export const CharacterQuitRequest: OpCode = 175;
 export const MapChangeRequest: OpCode = 176;
 export const FieldMoveUseRequest: OpCode = 177;
 export const FieldMoveUseResponse: OpCode = 178;
+export const DebugWarpProbeCasesRequest: OpCode = 179;
+export const DebugWarpProbeCasesResponse: OpCode = 180;

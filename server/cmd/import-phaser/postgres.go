@@ -1274,9 +1274,10 @@ func bakeOverworldCoordinatesPostgres(pg *sql.DB) error {
 
 	result, err = pg.Exec(`
 		UPDATE phaser_warps AS pw
-		SET x = pw.x + offsets.offset_x,
-			y = pw.y + offsets.offset_y
+		SET x = source_event.x + offsets.offset_x,
+			y = source_event.y + offsets.offset_y
 		FROM phaser_maps AS pm,
+			phaser_warp_events AS source_event,
 			(
 				SELECT source_map_id AS map_id,
 					MIN(x) - MIN(local_x) AS offset_x,
@@ -1287,6 +1288,12 @@ func bakeOverworldCoordinatesPostgres(pg *sql.DB) error {
 			) AS offsets
 		WHERE pw.source_map_id = pm.id
 		  AND offsets.map_id = pw.source_map_id
+		  AND source_event.map_id = pw.source_map_id
+		  AND LOWER(REPLACE(source_event.dest_map, '_', '')) = LOWER(REPLACE(COALESCE(pw.destination_map, ''), '_', ''))
+		  AND (
+		  	(pw.x = source_event.x AND pw.y = source_event.y)
+		  	OR (pw.x = source_event.x + offsets.offset_x AND pw.y = source_event.y + offsets.offset_y)
+		  )
 		  AND pm.is_overworld = 1`)
 	if err != nil {
 		return fmt.Errorf("bake overworld warp coordinates: %w", err)
