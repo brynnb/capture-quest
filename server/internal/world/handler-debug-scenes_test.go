@@ -47,6 +47,40 @@ func TestDebugSceneCategoryFieldMove(t *testing.T) {
 	}
 }
 
+func TestDebugSceneSummariesIncludeStoryMetadata(t *testing.T) {
+	files, err := loadDebugScenarioFiles()
+	if err != nil {
+		t.Fatalf("load debug scenarios: %v", err)
+	}
+
+	var found bool
+	for _, file := range files {
+		if file.Scenario.Name != "viridian_mart_oaks_parcel" {
+			continue
+		}
+		found = true
+		scene := debugSceneSummary(file)
+		if scene.StoryChapter != "01_intro_pallet" {
+			t.Fatalf("story chapter = %q, want 01_intro_pallet", scene.StoryChapter)
+		}
+		if scene.StoryKind != "mainline" {
+			t.Fatalf("story kind = %q, want mainline", scene.StoryKind)
+		}
+		if scene.E2EMode != "interactive" {
+			t.Fatalf("e2e mode = %q, want interactive", scene.E2EMode)
+		}
+		if scene.Driver != "npcClick" {
+			t.Fatalf("driver = %q, want npcClick", scene.Driver)
+		}
+		if scene.StoryOrder <= 0 {
+			t.Fatalf("story order = %d, want positive", scene.StoryOrder)
+		}
+	}
+	if !found {
+		t.Fatal("viridian_mart_oaks_parcel scenario not found")
+	}
+}
+
 func TestDebugFixtureParsesSafariState(t *testing.T) {
 	var scene debugScenario
 	err := json.Unmarshal([]byte(`{

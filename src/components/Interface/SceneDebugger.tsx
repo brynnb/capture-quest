@@ -372,14 +372,23 @@ const copyTextToClipboard = async (text: string) => {
   document.body.removeChild(textarea);
 };
 
-type SceneFilterCategory = "all" | "trade" | "field";
+type SceneFilterCategory = "all" | "story" | "trade" | "field";
 
-const getSceneCategory = (scene: DebugSceneEntry): SceneFilterCategory | "" => {
+const getSceneCategory = (scene: DebugSceneEntry): Exclude<SceneFilterCategory, "all" | "story"> | "" => {
   if (scene.category === "trade" || scene.category === "field") {
     return scene.category;
   }
   return scene.triggerType === "field_move_permission" ? "field" : "";
 };
+
+const isSceneInCategory = (scene: DebugSceneEntry, category: SceneFilterCategory) => {
+  if (category === "all") return true;
+  if (category === "story") return Boolean(scene.storyOrder);
+  return getSceneCategory(scene) === category;
+};
+
+const storySortValue = (scene: DebugSceneEntry) =>
+  scene.storyOrder && scene.storyOrder > 0 ? scene.storyOrder : Number.MAX_SAFE_INTEGER;
 
 const SceneDebugger = () => {
   const {
@@ -403,9 +412,9 @@ const SceneDebugger = () => {
 
   const filteredScenes = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return scenes.filter((scene) => {
+    const matches = scenes.filter((scene) => {
       const sceneCategory = getSceneCategory(scene);
-      if (category !== "all" && sceneCategory !== category) {
+      if (!isSceneInCategory(scene, category)) {
         return false;
       }
       if (!q) {
@@ -418,14 +427,30 @@ const SceneDebugger = () => {
         scene.triggerType,
         scene.mapName,
         scene.scriptLabel || "",
+        scene.storyChapter || "",
+        scene.storyKind || "",
+        scene.e2eMode || "",
+        scene.driver || "",
         sceneCategory,
       ]
         .join(" ")
         .toLowerCase()
         .includes(q);
     });
+    if (category === "story") {
+      return [...matches].sort((a, b) => {
+        const orderDiff = storySortValue(a) - storySortValue(b);
+        if (orderDiff !== 0) return orderDiff;
+        return a.scenarioName.localeCompare(b.scenarioName);
+      });
+    }
+    return matches;
   }, [category, query, scenes]);
 
+  const storySceneCount = useMemo(
+    () => scenes.filter((scene) => isSceneInCategory(scene, "story")).length,
+    [scenes]
+  );
   const tradeSceneCount = useMemo(
     () => scenes.filter((scene) => getSceneCategory(scene) === "trade").length,
     [scenes]
@@ -528,6 +553,9 @@ const SceneDebugger = () => {
               <CategoryButton $active={category === "all"} onClick={() => setCategory("all")}>
                 All
               </CategoryButton>
+              <CategoryButton $active={category === "story"} onClick={() => setCategory("story")}>
+                Story {storySceneCount}
+              </CategoryButton>
               <CategoryButton $active={category === "trade"} onClick={() => setCategory("trade")}>
                 Trades {tradeSceneCount}
               </CategoryButton>
@@ -557,6 +585,8 @@ const SceneDebugger = () => {
                       <MetaBadge>{scene.triggerType}</MetaBadge>
                       <MetaBadge>{scene.mapName}</MetaBadge>
                       {scene.scriptLabel && <MetaBadge>{scene.scriptLabel}</MetaBadge>}
+                      {scene.storyKind && <MetaBadge>{scene.storyKind}</MetaBadge>}
+                      {scene.e2eMode && <MetaBadge>{scene.e2eMode}</MetaBadge>}
                     </SceneMeta>
                     <SceneDesc>{scene.description}</SceneDesc>
                   </SceneInfo>

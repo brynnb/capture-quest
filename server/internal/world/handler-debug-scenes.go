@@ -27,6 +27,11 @@ type DebugScene struct {
 	MapName      string `json:"mapName"`
 	ScriptLabel  string `json:"scriptLabel,omitempty"`
 	Category     string `json:"category,omitempty"`
+	StoryChapter string `json:"storyChapter,omitempty"`
+	StoryOrder   int    `json:"storyOrder,omitempty"`
+	StoryKind    string `json:"storyKind,omitempty"`
+	E2EMode      string `json:"e2eMode,omitempty"`
+	Driver       string `json:"driver,omitempty"`
 }
 
 type debugScenarioFile struct {
@@ -34,6 +39,27 @@ type debugScenarioFile struct {
 	Path     string
 	RawJSON  string
 	Scenario debugScenario
+	Story    *debugStoryScenario
+}
+
+type debugStoryManifest struct {
+	Version   int                           `json:"version"`
+	Chapters  []debugStoryChapter           `json:"chapters"`
+	Scenarios map[string]debugStoryScenario `json:"scenarios"`
+}
+
+type debugStoryChapter struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	Order int    `json:"order"`
+}
+
+type debugStoryScenario struct {
+	Chapter    string `json:"chapter"`
+	StoryOrder int    `json:"storyOrder"`
+	Kind       string `json:"kind"`
+	E2EMode    string `json:"e2eMode"`
+	Driver     string `json:"driver"`
 }
 
 type debugScenario struct {
@@ -418,6 +444,10 @@ func loadDebugScenarioFiles() ([]debugScenarioFile, error) {
 	if err != nil {
 		return nil, err
 	}
+	storyManifest, err := loadDebugStoryManifest(dir)
+	if err != nil {
+		return nil, err
+	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("read scenario dir %s: %w", dir, err)
@@ -440,7 +470,14 @@ func loadDebugScenarioFiles() ([]debugScenarioFile, error) {
 		if scenario.Name == "" {
 			scenario.Name = strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
 		}
-		files = append(files, debugScenarioFile{Path: path, RawJSON: string(data), Scenario: scenario})
+		var story *debugStoryScenario
+		if storyManifest != nil {
+			if entry, ok := storyManifest.Scenarios[scenario.Name]; ok {
+				copy := entry
+				story = &copy
+			}
+		}
+		files = append(files, debugScenarioFile{Path: path, RawJSON: string(data), Scenario: scenario, Story: story})
 	}
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].Scenario.Name < files[j].Scenario.Name
@@ -454,12 +491,42 @@ func loadDebugScenarioFiles() ([]debugScenarioFile, error) {
 	return files, nil
 }
 
+func loadDebugStoryManifest(scenarioDir string) (*debugStoryManifest, error) {
+	candidates := []string{
+		filepath.Join(filepath.Dir(scenarioDir), "story_checkpoints.json"),
+		filepath.Join("script_tests", "story_checkpoints.json"),
+		filepath.Join("server", "script_tests", "story_checkpoints.json"),
+		filepath.Join("..", "server", "script_tests", "story_checkpoints.json"),
+		filepath.Join("..", "script_tests", "story_checkpoints.json"),
+	}
+	for _, candidate := range candidates {
+		data, err := os.ReadFile(candidate)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, fmt.Errorf("read story checkpoint manifest %s: %w", candidate, err)
+		}
+		var manifest debugStoryManifest
+		if err := json.Unmarshal(data, &manifest); err != nil {
+			return nil, fmt.Errorf("parse story checkpoint manifest %s: %w", candidate, err)
+		}
+		if manifest.Scenarios == nil {
+			manifest.Scenarios = map[string]debugStoryScenario{}
+		}
+		return &manifest, nil
+	}
+	return nil, nil
+}
+
 func debugScenarioDir() (string, error) {
 	candidates := []string{
 		filepath.Join("script_tests", "scenarios"),
 		filepath.Join("server", "script_tests", "scenarios"),
 		filepath.Join("..", "server", "script_tests", "scenarios"),
 		filepath.Join("..", "script_tests", "scenarios"),
+		filepath.Join("..", "..", "script_tests", "scenarios"),
+		filepath.Join("..", "..", "..", "server", "script_tests", "scenarios"),
 	}
 	for _, candidate := range candidates {
 		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
@@ -483,7 +550,7 @@ func debugSceneSummary(file debugScenarioFile) DebugScene {
 	if description == "" {
 		description = fmt.Sprintf("%s on %s", s.Trigger.Type, mapName)
 	}
-	return DebugScene{
+	scene := DebugScene{
 		SeqNum:       file.SeqNum,
 		Label:        s.Name,
 		Description:  description,
@@ -494,6 +561,14 @@ func debugSceneSummary(file debugScenarioFile) DebugScene {
 		ScriptLabel:  scriptLabel,
 		Category:     debugSceneCategory(s, scriptLabel),
 	}
+	if file.Story != nil {
+		scene.StoryChapter = file.Story.Chapter
+		scene.StoryOrder = file.Story.StoryOrder
+		scene.StoryKind = file.Story.Kind
+		scene.E2EMode = file.Story.E2EMode
+		scene.Driver = file.Story.Driver
+	}
+	return scene
 }
 
 func debugSceneCategory(s debugScenario, scriptLabel string) string {

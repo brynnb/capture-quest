@@ -565,7 +565,11 @@ func HandlePhaserWarpsRequest(ses *session.Session, payload []byte, wh *WorldHan
 
 	query := `
 		SELECT id, source_map_id, x, y, destination_map_id, destination_map, destination_x, destination_y, warp_type, warp_direction
-		FROM phaser_warps WHERE source_map_id = $1`
+		FROM phaser_warps
+		WHERE source_map_id = $1
+		  AND destination_map_id IS NOT NULL
+		  AND destination_x IS NOT NULL
+		  AND destination_y IS NOT NULL`
 	queryArgs := []interface{}{req.MapID}
 
 	if req.MapID == UnifiedOverworldMapID {
@@ -574,7 +578,10 @@ func HandlePhaserWarpsRequest(ses *session.Session, payload []byte, wh *WorldHan
 			SELECT pw.id, pw.source_map_id, pw.x, pw.y, pw.destination_map_id, pw.destination_map, pw.destination_x, pw.destination_y, pw.warp_type, pw.warp_direction
 			FROM phaser_warps pw
 			JOIN phaser_maps pm ON pw.source_map_id = pm.id
-			WHERE pm.is_overworld = 1`
+			WHERE pm.is_overworld = 1
+			  AND pw.destination_map_id IS NOT NULL
+			  AND pw.destination_x IS NOT NULL
+			  AND pw.destination_y IS NOT NULL`
 		queryArgs = nil
 	}
 

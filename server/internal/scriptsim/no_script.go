@@ -3,6 +3,7 @@ package scriptsim
 import (
 	"fmt"
 
+	"capturequest/internal/db"
 	"capturequest/internal/world"
 )
 
@@ -35,6 +36,47 @@ func runClickNoScript(
 		ActionEffects: []ActionEffect{{
 			Type:   "noScript",
 			Detail: fmt.Sprintf("%s keys=%v", scenario.Trigger.MapName, keys),
+		}},
+	}
+	if err := result.ValidateExpectations(); err != nil {
+		return result, err
+	}
+	return result, nil
+}
+
+func runCoordNoScript(
+	scenario *Scenario,
+	applied *AppliedFixture,
+	initial *Snapshot,
+	cutscenes *world.CutsceneManager,
+	efm *world.EventFlagManager,
+) (*Result, error) {
+	triggers := world.NewCoordinateTriggerManager(db.GlobalWorldDB.DB)
+	triggers.Load()
+	x, y := scenario.Trigger.X, scenario.Trigger.Y
+	if x == 0 && y == 0 {
+		x, y = scenario.Fixture.X, scenario.Fixture.Y
+	}
+	for _, trigger := range triggers.CheckTileTriggers(applied.MapID, x, y) {
+		if cs := cutscenes.FindEligibleCoordCutsceneForTrigger(trigger, applied.CharacterID, efm, scenario.Fixture.Direction); cs != nil {
+			return nil, fmt.Errorf("expected no eligible coord cutscene for %s (%d,%d), got %s",
+				scenario.Trigger.MapName, x, y, cs.ScriptLabel)
+		}
+	}
+
+	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	if err != nil {
+		return nil, err
+	}
+	result := &Result{
+		Scenario:    scenario,
+		CharacterID: applied.CharacterID,
+		Script:      basicScript("NoScript:"+scenario.Trigger.MapName, scenario.Trigger.MapName, "coord_no_script"),
+		Initial:     initial,
+		Final:       final,
+		ActionEffects: []ActionEffect{{
+			Type:   "noScript",
+			Detail: fmt.Sprintf("%s (%d,%d)", scenario.Trigger.MapName, x, y),
 		}},
 	}
 	if err := result.ValidateExpectations(); err != nil {

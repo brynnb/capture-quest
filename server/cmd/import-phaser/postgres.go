@@ -189,6 +189,9 @@ func importPhaserToPostgres(sqlite, pg *sql.DB) error {
 	if err := resolveLastMapWarpDestinationsPostgres(pg); err != nil {
 		return err
 	}
+	if err := clearWarpDestinationCoordinatePlaceholdersPostgres(pg); err != nil {
+		return err
+	}
 	if err := resolveWarpDestinationCoordinatesPostgres(sqlite, pg); err != nil {
 		return err
 	}
@@ -922,6 +925,7 @@ type importedWarpEvent struct {
 	MapName       string
 	X             int
 	Y             int
+	DestMap       string
 	DestWarpIndex int
 }
 
@@ -1001,7 +1005,7 @@ func loadImportedMapInfoPostgres(pg *sql.DB) (map[int]importedMapInfo, error) {
 
 func loadImportedWarpEventsPostgres(pg *sql.DB) ([]importedWarpEvent, error) {
 	rows, err := pg.Query(`
-		SELECT map_id, map_name, x, y, dest_warp_index
+		SELECT map_id, map_name, x, y, dest_map, dest_warp_index
 		FROM phaser_warp_events
 		WHERE map_id IS NOT NULL
 		ORDER BY map_id, id`)
@@ -1013,7 +1017,7 @@ func loadImportedWarpEventsPostgres(pg *sql.DB) ([]importedWarpEvent, error) {
 	var events []importedWarpEvent
 	for rows.Next() {
 		var event importedWarpEvent
-		if err := rows.Scan(&event.MapID, &event.MapName, &event.X, &event.Y, &event.DestWarpIndex); err != nil {
+		if err := rows.Scan(&event.MapID, &event.MapName, &event.X, &event.Y, &event.DestMap, &event.DestWarpIndex); err != nil {
 			return nil, fmt.Errorf("scan imported warp event: %w", err)
 		}
 		events = append(events, event)
@@ -1061,13 +1065,19 @@ func resolveLastMapWarpDestinationsPostgres(pg *sql.DB) error {
 				source_event.dest_warp_index,
 				source_map.name AS source_map_name
 			FROM phaser_warps AS pw
+			JOIN phaser_maps AS source_map
+			  ON source_map.id = pw.source_map_id
 			JOIN phaser_warp_events AS source_event
-			  ON source_event.map_id = pw.source_map_id
+			  ON (
+			  	source_event.map_id = pw.source_map_id
+			  	OR (
+			  		source_event.map_id IS NULL
+			  		AND LOWER(REPLACE(source_event.map_name, '_', '')) = LOWER(REPLACE(source_map.name, '_', ''))
+			  	)
+			  )
 			 AND source_event.x = pw.x
 			 AND source_event.y = pw.y
 			 AND UPPER(source_event.dest_map) = 'LAST_MAP'
-			JOIN phaser_maps AS source_map
-			  ON source_map.id = pw.source_map_id
 			WHERE pw.destination_map_id IS NULL
 			   OR UPPER(COALESCE(pw.destination_map, '')) = 'LAST_MAP'
 		),
@@ -1094,6 +1104,21 @@ func resolveLastMapWarpDestinationsPostgres(pg *sql.DB) error {
 			GROUP BY last_map_warps.warp_id
 			HAVING COUNT(DISTINCT incoming.map_id) = 1
 		),
+		underground_route_last_map_sources AS (
+			SELECT
+				last_map_warps.warp_id,
+				MIN(incoming.map_id) AS destination_map_id
+			FROM last_map_warps
+			JOIN phaser_warp_events AS incoming
+			  ON incoming.map_id IS NOT NULL
+			 AND LOWER(REPLACE(incoming.dest_map, '_', '')) = LOWER(REPLACE(last_map_warps.source_map_name, '_', ''))
+			JOIN phaser_maps AS incoming_map
+			  ON incoming_map.id = incoming.map_id
+			WHERE LOWER(REPLACE(last_map_warps.source_map_name, '_', '')) LIKE 'undergroundpathroute%'
+			  AND incoming_map.is_overworld = 1
+			GROUP BY last_map_warps.warp_id
+			HAVING COUNT(DISTINCT incoming.map_id) = 1
+		),
 		last_map_sources AS (
 			SELECT warp_id, destination_map_id FROM exact_last_map_sources
 			UNION ALL
@@ -1102,6 +1127,15 @@ func resolveLastMapWarpDestinationsPostgres(pg *sql.DB) error {
 			LEFT JOIN exact_last_map_sources
 			  ON exact_last_map_sources.warp_id = unique_last_map_sources.warp_id
 			WHERE exact_last_map_sources.warp_id IS NULL
+			UNION ALL
+			SELECT underground_route_last_map_sources.warp_id, underground_route_last_map_sources.destination_map_id
+			FROM underground_route_last_map_sources
+			LEFT JOIN exact_last_map_sources
+			  ON exact_last_map_sources.warp_id = underground_route_last_map_sources.warp_id
+			LEFT JOIN unique_last_map_sources
+			  ON unique_last_map_sources.warp_id = underground_route_last_map_sources.warp_id
+			WHERE exact_last_map_sources.warp_id IS NULL
+			  AND unique_last_map_sources.warp_id IS NULL
 		),
 		resolved AS (
 			SELECT
@@ -1123,6 +1157,21 @@ func resolveLastMapWarpDestinationsPostgres(pg *sql.DB) error {
 	}
 	affected, _ := result.RowsAffected()
 	log.Printf("  -> Resolved %d deterministic LAST_MAP warp destinations", affected)
+	return nil
+}
+
+func clearWarpDestinationCoordinatePlaceholdersPostgres(pg *sql.DB) error {
+	result, err := pg.Exec(`
+		UPDATE phaser_warps
+		SET destination_x = NULL,
+			destination_y = NULL
+		WHERE destination_x = 0
+		  AND destination_y = 0`)
+	if err != nil {
+		return fmt.Errorf("clear placeholder warp destination coordinates: %w", err)
+	}
+	affected, _ := result.RowsAffected()
+	log.Printf("  -> Cleared %d placeholder warp destination coordinates", affected)
 	return nil
 }
 

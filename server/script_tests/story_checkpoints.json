@@ -1,0 +1,3367 @@
+{
+  "version": 1,
+  "description": "Story ordering and browser coverage metadata for script simulator scenarios.",
+  "sources": [
+    "https://bulbapedia.bulbagarden.net/wiki/Walkthrough:Pok%C3%A9mon_Red_and_Blue",
+    "https://bulbapedia.bulbagarden.net/wiki/Badge_sequence"
+  ],
+  "chapters": [
+    {
+      "id": "01_intro_pallet",
+      "title": "Intro, Pallet Town, and Oak's Parcel",
+      "order": 100
+    },
+    {
+      "id": "02_viridian_pewter",
+      "title": "Viridian Forest, Pewter City, and Brock",
+      "order": 200
+    },
+    {
+      "id": "03_mt_moon_cerulean",
+      "title": "Mt. Moon, Cerulean City, Misty, and Bill",
+      "order": 300
+    },
+    {
+      "id": "04_vermilion_ss_anne",
+      "title": "Vermilion City, S.S. Anne, Cut, and Lt. Surge",
+      "order": 400
+    },
+    {
+      "id": "05_celadon_rocket_lavender",
+      "title": "Celadon City, Rocket Hideout, and Lavender Tower",
+      "order": 500
+    },
+    {
+      "id": "06_fuchsia_safari",
+      "title": "Snorlax, Fuchsia City, Safari Zone, Surf, Strength, and Koga",
+      "order": 600
+    },
+    {
+      "id": "07_saffron_silph",
+      "title": "Saffron City, Silph Co., and Sabrina",
+      "order": 700
+    },
+    {
+      "id": "08_cinnabar_blaine",
+      "title": "Cinnabar Island, Pokemon Mansion, Fossils, and Blaine",
+      "order": 800
+    },
+    {
+      "id": "09_viridian_victory_road",
+      "title": "Viridian Gym, Badge Gates, and Victory Road",
+      "order": 900
+    },
+    {
+      "id": "10_elite_four_hall_of_fame",
+      "title": "Elite Four, Champion, and Hall of Fame",
+      "order": 1000
+    },
+    {
+      "id": "80_side_content",
+      "title": "Side Content and Optional Rewards",
+      "order": 8000
+    },
+    {
+      "id": "90_system_mechanics",
+      "title": "Reusable Mechanics and System Scripts",
+      "order": 9000
+    },
+    {
+      "id": "99_debug_fixtures",
+      "title": "Debug Fixtures",
+      "order": 9900
+    }
+  ],
+  "scenarios": {
+    "active_battle_fixture_trainer_blackout_money": {
+      "chapter": "99_debug_fixtures",
+      "storyOrder": 99005901,
+      "kind": "debug",
+      "e2eMode": "scriptOnly",
+      "driver": "resolveActiveBattle"
+    },
+    "active_battle_fixture_trainer_lose": {
+      "chapter": "99_debug_fixtures",
+      "storyOrder": 99005902,
+      "kind": "debug",
+      "e2eMode": "scriptOnly",
+      "driver": "resolveActiveBattle"
+    },
+    "active_battle_fixture_wild": {
+      "chapter": "99_debug_fixtures",
+      "storyOrder": 99005903,
+      "kind": "debug",
+      "e2eMode": "interactive",
+      "driver": "stateOnly"
+    },
+    "agathas_room_exit_block_closed": {
+      "chapter": "10_elite_four_hall_of_fame",
+      "storyOrder": 10005901,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "agathas_room_exit_block_open": {
+      "chapter": "10_elite_four_hall_of_fame",
+      "storyOrder": 10005902,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "agathas_room_post_battle": {
+      "chapter": "10_elite_four_hall_of_fame",
+      "storyOrder": 10000700,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "mapScript"
+    },
+    "bike_shop_already_has_bicycle": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005501,
+      "kind": "side",
+      "e2eMode": "stateOnly",
+      "driver": "npcClick"
+    },
+    "bike_shop_exchange_voucher": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005502,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "bike_shop_no_voucher_yes": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005503,
+      "kind": "side",
+      "e2eMode": "interactive",
+      "driver": "npcClick"
+    },
+    "bike_shop_youngster_has_bicycle": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005504,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "bike_shop_youngster_no_bicycle": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005505,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "bills_house_bill_exits_machine": {
+      "chapter": "03_mt_moon_cerulean",
+      "storyOrder": 3005301,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "mapScript"
+    },
+    "bills_house_bill_pokemon_no_still_helps": {
+      "chapter": "03_mt_moon_cerulean",
+      "storyOrder": 3005502,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "bills_house_ss_ticket": {
+      "chapter": "03_mt_moon_cerulean",
+      "storyOrder": 3000180,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "npcClick"
+    },
+    "blues_house_daisy_town_map": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005506,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "blues_house_default_script_flag_side_effects": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005307,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "mapScript"
+    },
+    "brunos_room_post_battle": {
+      "chapter": "10_elite_four_hall_of_fame",
+      "storyOrder": 10000690,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "mapScript"
+    },
+    "celadon_city_script_flag_side_effects": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005301,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "mapScript"
+    },
+    "celadon_city_tm41_softboiled": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005502,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "celadon_diner_coin_case": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005503,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "celadon_mansion_eevee": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005604,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "objectClick"
+    },
+    "celadon_mansion_eevee_party_full_to_pc": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005605,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "objectClick"
+    },
+    "celadon_mart_3f_tm18_counter": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005506,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "celadon_mart_elevator_floors": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005907,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "elevatorFloors"
+    },
+    "celadon_mart_elevator_select_5f": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005908,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "elevatorSelect"
+    },
+    "celadon_mart_roof_tm13_trade": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005509,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "celadon_mart_roof_tm13_trade_no": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005510,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "celadon_mart_roof_tm48_trade": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005511,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "celadon_mart_roof_tm49_trade": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005512,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "cerulean_cave_b1f_mewtwo_catch": {
+      "chapter": "03_mt_moon_cerulean",
+      "storyOrder": 3005504,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "cerulean_cave_b1f_mewtwo_start": {
+      "chapter": "03_mt_moon_cerulean",
+      "storyOrder": 3005505,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "cerulean_cave_b1f_mewtwo_win": {
+      "chapter": "03_mt_moon_cerulean",
+      "storyOrder": 3005506,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "cerulean_city_rocket_battle_start": {
+      "chapter": "03_mt_moon_cerulean",
+      "storyOrder": 3005507,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "cerulean_city_rocket_battle_win": {
+      "chapter": "03_mt_moon_cerulean",
+      "storyOrder": 3005508,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "cerulean_gym_guide_after_misty": {
+      "chapter": "03_mt_moon_cerulean",
+      "storyOrder": 3005509,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "cerulean_gym_guide_before_misty": {
+      "chapter": "03_mt_moon_cerulean",
+      "storyOrder": 3005510,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "cerulean_rival_bulbasaur_start": {
+      "chapter": "03_mt_moon_cerulean",
+      "storyOrder": 3005411,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "cerulean_rival_charmander_start": {
+      "chapter": "03_mt_moon_cerulean",
+      "storyOrder": 3000160,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "cerulean_rival_charmander_win": {
+      "chapter": "03_mt_moon_cerulean",
+      "storyOrder": 3000170,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "cerulean_rival_squirtle_start": {
+      "chapter": "03_mt_moon_cerulean",
+      "storyOrder": 3005414,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "cerulean_trade_house_lola_trade_ready": {
+      "chapter": "03_mt_moon_cerulean",
+      "storyOrder": 3005115,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "champions_room_rival_bulbasaur_start": {
+      "chapter": "10_elite_four_hall_of_fame",
+      "storyOrder": 10005405,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "champions_room_rival_charmander_start": {
+      "chapter": "10_elite_four_hall_of_fame",
+      "storyOrder": 10000730,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "champions_room_rival_charmander_win": {
+      "chapter": "10_elite_four_hall_of_fame",
+      "storyOrder": 10000740,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "champions_room_rival_squirtle_start": {
+      "chapter": "10_elite_four_hall_of_fame",
+      "storyOrder": 10005408,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "champions_room_victory_to_hall_of_fame": {
+      "chapter": "10_elite_four_hall_of_fame",
+      "storyOrder": 10000750,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "mapScript"
+    },
+    "cinnabar_gym_map_load_reset": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005301,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "mapScript"
+    },
+    "cinnabar_gym_quiz_1_correct": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005702,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "dialogueChoice"
+    },
+    "cinnabar_gym_quiz_1_wrong_battle_win": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005703,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "dialogueChoice"
+    },
+    "cinnabar_gym_quiz_2_correct": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005704,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "dialogueChoice"
+    },
+    "cinnabar_gym_quiz_2_wrong_battle_win": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005705,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "dialogueChoice"
+    },
+    "cinnabar_gym_quiz_3_correct": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005706,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "dialogueChoice"
+    },
+    "cinnabar_gym_quiz_3_wrong_battle_win": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005707,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "dialogueChoice"
+    },
+    "cinnabar_gym_quiz_4_correct": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005708,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "dialogueChoice"
+    },
+    "cinnabar_gym_quiz_4_wrong_battle_win": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005709,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "dialogueChoice"
+    },
+    "cinnabar_gym_quiz_5_correct": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005710,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "dialogueChoice"
+    },
+    "cinnabar_gym_quiz_5_wrong_battle_win": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005711,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "dialogueChoice"
+    },
+    "cinnabar_gym_quiz_6_correct": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005712,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "dialogueChoice"
+    },
+    "cinnabar_gym_quiz_6_wrong_battle_win": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005713,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "dialogueChoice"
+    },
+    "cinnabar_gym_quiz_gates_initial_closed": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005914,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "cinnabar_gym_quiz_gates_open_after_flags": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005915,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "cinnabar_gym_super_nerd4_generated_after_battle": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005516,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "cinnabar_gym_super_nerd4_generated_battle_win": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005517,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "cinnabar_island_script_flag_side_effects": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005318,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "mapScript"
+    },
+    "cinnabar_lab_fossil_missing_item_no_fossils": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005519,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "cinnabar_lab_fossil_no_fossils": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005520,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "cinnabar_lab_fossil_ready_after_walk": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005321,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "mapScript"
+    },
+    "cinnabar_lab_fossil_room_sailor_trade_ready": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005122,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "cinnabar_lab_fossil_still_reviving": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005523,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "cinnabar_lab_receive_aerodactyl": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8000520,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "npcClick"
+    },
+    "cinnabar_lab_receive_kabuto": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005525,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "cinnabar_lab_receive_omanyte": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005526,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "cinnabar_lab_submit_dome_fossil": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005527,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "cinnabar_lab_submit_helix_fossil": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005528,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "cinnabar_lab_submit_old_amber": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8000510,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "npcClick"
+    },
+    "cinnabar_lab_tm35_metronome": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005530,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "cinnabar_lab_trade_room_crinkles_trade_ready": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005131,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "cinnabar_lab_trade_room_doris_trade_ready": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005132,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "copycats_house_tm31_trade": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005501,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "daycare_deposit_pikachu": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005901,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "daycareDeposit"
+    },
+    "daycare_step_pikachu_growth": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005902,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "daycareStep"
+    },
+    "daycare_withdraw_pikachu_fee": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005903,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "daycareWithdraw"
+    },
+    "daycare_withdraw_pikachu_learns_move": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005904,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "daycareWithdraw"
+    },
+    "debug_celadon_diner_coin_case_ready": {
+      "chapter": "99_debug_fixtures",
+      "storyOrder": 99005104,
+      "kind": "debug",
+      "e2eMode": "interactive",
+      "driver": "stateOnly"
+    },
+    "debug_field_move_cut_ready": {
+      "chapter": "99_debug_fixtures",
+      "storyOrder": 99005905,
+      "kind": "debug",
+      "e2eMode": "interactive",
+      "driver": "fieldMovePermission"
+    },
+    "debug_field_move_surf_ready": {
+      "chapter": "99_debug_fixtures",
+      "storyOrder": 99005906,
+      "kind": "debug",
+      "e2eMode": "interactive",
+      "driver": "fieldMovePermission"
+    },
+    "debug_game_corner_buy_coins_ready": {
+      "chapter": "99_debug_fixtures",
+      "storyOrder": 99005107,
+      "kind": "debug",
+      "e2eMode": "interactive",
+      "driver": "stateOnly"
+    },
+    "debug_game_corner_prize_full_party_ready": {
+      "chapter": "99_debug_fixtures",
+      "storyOrder": 99005108,
+      "kind": "debug",
+      "e2eMode": "interactive",
+      "driver": "stateOnly"
+    },
+    "debug_game_corner_slots_ready": {
+      "chapter": "99_debug_fixtures",
+      "storyOrder": 99005109,
+      "kind": "debug",
+      "e2eMode": "interactive",
+      "driver": "stateOnly"
+    },
+    "debug_inventory_blocked_items_ready": {
+      "chapter": "99_debug_fixtures",
+      "storyOrder": 99005110,
+      "kind": "debug",
+      "e2eMode": "interactive",
+      "driver": "stateOnly"
+    },
+    "debug_inventory_old_rod_land_ready": {
+      "chapter": "99_debug_fixtures",
+      "storyOrder": 99005111,
+      "kind": "debug",
+      "e2eMode": "interactive",
+      "driver": "stateOnly"
+    },
+    "debug_inventory_old_rod_water_ready": {
+      "chapter": "99_debug_fixtures",
+      "storyOrder": 99005112,
+      "kind": "debug",
+      "e2eMode": "interactive",
+      "driver": "stateOnly"
+    },
+    "debug_inventory_potion_ready": {
+      "chapter": "99_debug_fixtures",
+      "storyOrder": 99005113,
+      "kind": "debug",
+      "e2eMode": "interactive",
+      "driver": "stateOnly"
+    },
+    "debug_pokemon_center_pc_ready": {
+      "chapter": "99_debug_fixtures",
+      "storyOrder": 99005114,
+      "kind": "debug",
+      "e2eMode": "interactive",
+      "driver": "stateOnly"
+    },
+    "debug_warp_cerulean_trashed_house_upper_exit": {
+      "chapter": "99_debug_fixtures",
+      "storyOrder": 99005115,
+      "kind": "debug",
+      "e2eMode": "stateOnly",
+      "driver": "stateOnly"
+    },
+    "debug_warp_cinnabar_lab_fossil_door": {
+      "chapter": "99_debug_fixtures",
+      "storyOrder": 99005116,
+      "kind": "debug",
+      "e2eMode": "stateOnly",
+      "driver": "stateOnly"
+    },
+    "debug_warp_cinnabar_lab_lobby_exit": {
+      "chapter": "99_debug_fixtures",
+      "storyOrder": 99005117,
+      "kind": "debug",
+      "e2eMode": "stateOnly",
+      "driver": "stateOnly"
+    },
+    "debug_warp_cinnabar_lab_metronome_door": {
+      "chapter": "99_debug_fixtures",
+      "storyOrder": 99005118,
+      "kind": "debug",
+      "e2eMode": "stateOnly",
+      "driver": "stateOnly"
+    },
+    "debug_warp_cinnabar_lab_trade_door": {
+      "chapter": "99_debug_fixtures",
+      "storyOrder": 99005119,
+      "kind": "debug",
+      "e2eMode": "stateOnly",
+      "driver": "stateOnly"
+    },
+    "debug_warp_oaks_lab_exit_mat": {
+      "chapter": "99_debug_fixtures",
+      "storyOrder": 99005120,
+      "kind": "debug",
+      "e2eMode": "stateOnly",
+      "driver": "stateOnly"
+    },
+    "debug_warp_reds_house_1f_exit_mat": {
+      "chapter": "99_debug_fixtures",
+      "storyOrder": 99005121,
+      "kind": "debug",
+      "e2eMode": "stateOnly",
+      "driver": "stateOnly"
+    },
+    "debug_warp_route11_gate_1f_center": {
+      "chapter": "99_debug_fixtures",
+      "storyOrder": 99005122,
+      "kind": "debug",
+      "e2eMode": "stateOnly",
+      "driver": "stateOnly"
+    },
+    "debug_warp_underground_path_route6_exit_mat": {
+      "chapter": "99_debug_fixtures",
+      "storyOrder": 99005123,
+      "kind": "debug",
+      "e2eMode": "stateOnly",
+      "driver": "stateOnly"
+    },
+    "debug_warp_viridian_mart_exit_mat": {
+      "chapter": "99_debug_fixtures",
+      "storyOrder": 99005124,
+      "kind": "debug",
+      "e2eMode": "stateOnly",
+      "driver": "stateOnly"
+    },
+    "field_move_cut_no_badge": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005901,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "fieldMovePermission"
+    },
+    "field_move_dig_no_badge_required": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005902,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "fieldMovePermission"
+    },
+    "field_move_flash_with_boulder_badge": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005903,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "fieldMovePermission"
+    },
+    "field_move_fly_with_thunder_badge": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005904,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "fieldMovePermission"
+    },
+    "field_move_strength_with_rainbow_badge": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005905,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "fieldMovePermission"
+    },
+    "field_move_surf_no_badge": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005906,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "fieldMovePermission"
+    },
+    "field_move_surf_no_known_move": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005907,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "fieldMovePermission"
+    },
+    "field_move_surf_with_badge": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005908,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "fieldMovePermission"
+    },
+    "field_move_teleport_no_badge_required": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005909,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "fieldMovePermission"
+    },
+    "fighting_dojo_hitmonchan": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005502,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "fighting_dojo_hitmonlee": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005503,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "fighting_dojo_hitmonlee_already_got": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005504,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "fighting_dojo_karate_master_battle_start": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005505,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "fighting_dojo_karate_master_reward_prompt": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005306,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "mapScript"
+    },
+    "fixture_party_detailed_state": {
+      "chapter": "99_debug_fixtures",
+      "storyOrder": 99005125,
+      "kind": "debug",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "fuchsia_city_fossil_sign_dome": {
+      "chapter": "06_fuchsia_safari",
+      "storyOrder": 6005501,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "fuchsia_city_fossil_sign_helix": {
+      "chapter": "06_fuchsia_safari",
+      "storyOrder": 6005502,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "fuchsia_city_fossil_sign_priority": {
+      "chapter": "06_fuchsia_safari",
+      "storyOrder": 6005503,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "fuchsia_city_fossil_sign_undetermined": {
+      "chapter": "06_fuchsia_safari",
+      "storyOrder": 6005504,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "fuchsia_good_rod_house_good_rod": {
+      "chapter": "06_fuchsia_safari",
+      "storyOrder": 6005505,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "fuchsia_gym_guide_after_koga": {
+      "chapter": "06_fuchsia_safari",
+      "storyOrder": 6005506,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "fuchsia_gym_guide_before_koga": {
+      "chapter": "06_fuchsia_safari",
+      "storyOrder": 6005507,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "game_corner_buy_coins_exact_fee": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005905,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "gameCornerBuyCoins"
+    },
+    "game_corner_buy_coins_existing_balance": {
+      "chapter": "10_elite_four_hall_of_fame",
+      "storyOrder": 10005910,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "gameCornerBuyCoins"
+    },
+    "game_corner_buy_coins_full_coin_case": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005906,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "gameCornerBuyCoins"
+    },
+    "game_corner_buy_coins_insufficient_money": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005907,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "gameCornerBuyCoins"
+    },
+    "game_corner_buy_coins_missing_coin_case": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005908,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "gameCornerBuyCoins"
+    },
+    "game_corner_clerk1_buy_coins": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005509,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "game_corner_clerk1_coin_case_full": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005510,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "game_corner_clerk1_insufficient_money": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005511,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "game_corner_clerk1_no_coin_case": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005512,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "game_corner_clerk2_already_got": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005513,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "game_corner_clerk2_coin_case_full": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005514,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "game_corner_clerk2_coin_gift": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005515,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "game_corner_clerk2_no_coin_case": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005516,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "game_corner_gym_guide_after_erika": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005517,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "game_corner_gym_guide_before_erika": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005518,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "game_corner_hidden_coin_40_argument_awards_20": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005919,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "gameCornerHiddenCoin"
+    },
+    "game_corner_hidden_coin_coin_case_full": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005920,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "gameCornerHiddenCoin"
+    },
+    "game_corner_hidden_coin_no_coin_case": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005921,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "gameCornerHiddenCoin"
+    },
+    "game_corner_hidden_coin_repeat_once": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005922,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "gameCornerHiddenCoin"
+    },
+    "game_corner_hidden_coin_twenty": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005923,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "gameCornerHiddenCoin"
+    },
+    "game_corner_poster_opens_rocket_hideout": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5000260,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "npcClick"
+    },
+    "game_corner_prize_buy_abra_exact_coins": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005924,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "gameCornerPrizeBuy"
+    },
+    "game_corner_prize_buy_insufficient_coins": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005925,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "gameCornerPrizeBuy"
+    },
+    "game_corner_prize_buy_missing_coin_case": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005926,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "gameCornerPrizeBuy"
+    },
+    "game_corner_prize_buy_nidorina": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005927,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "gameCornerPrizeBuy"
+    },
+    "game_corner_prize_buy_tm23": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005928,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "gameCornerPrizeBuy"
+    },
+    "game_corner_prize_list_no_coin_case": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005929,
+      "kind": "side",
+      "e2eMode": "stateOnly",
+      "driver": "gameCornerPrizeList"
+    },
+    "game_corner_prize_list_with_coin_case": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005930,
+      "kind": "side",
+      "e2eMode": "interactive",
+      "driver": "gameCornerPrizeList"
+    },
+    "game_corner_rocket_defeated": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005331,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "mapScript"
+    },
+    "game_corner_rocket_hideout_entrance_open": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005914,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "game_corner_slot_insufficient_coins": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005932,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "gameCornerSlotPlay"
+    },
+    "game_corner_slot_loss_deducts_bet": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005933,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "gameCornerSlotPlay"
+    },
+    "game_corner_slot_middle_777_win": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005934,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "gameCornerSlotPlay"
+    },
+    "game_corner_slot_no_coin_case": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005935,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "gameCornerSlotPlay"
+    },
+    "gym_blaine_reward": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8000530,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "mapScript"
+    },
+    "gym_brock_reward": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2000130,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "mapScript"
+    },
+    "gym_erika_reward": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005315,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "mapScript"
+    },
+    "gym_giovanni_reward": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9000550,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "mapScript"
+    },
+    "gym_koga_reward": {
+      "chapter": "06_fuchsia_safari",
+      "storyOrder": 6000410,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "mapScript"
+    },
+    "gym_lt_surge_reward": {
+      "chapter": "04_vermilion_ss_anne",
+      "storyOrder": 4000250,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "mapScript"
+    },
+    "gym_misty_reward": {
+      "chapter": "03_mt_moon_cerulean",
+      "storyOrder": 3000190,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "mapScript"
+    },
+    "gym_sabrina_reward": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7000490,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "mapScript"
+    },
+    "hall_of_fame_oak_congratulations": {
+      "chapter": "10_elite_four_hall_of_fame",
+      "storyOrder": 10000760,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "mapScript"
+    },
+    "indigo_plateau_lobby_map_load_reset": {
+      "chapter": "10_elite_four_hall_of_fame",
+      "storyOrder": 10005312,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "mapScript"
+    },
+    "lances_room_entrance_blocks_closed": {
+      "chapter": "10_elite_four_hall_of_fame",
+      "storyOrder": 10005913,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "lances_room_entrance_blocks_open": {
+      "chapter": "10_elite_four_hall_of_fame",
+      "storyOrder": 10005914,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "lances_room_entrance_lock_coord": {
+      "chapter": "10_elite_four_hall_of_fame",
+      "storyOrder": 10005415,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "lances_room_lance_coord_battle_start": {
+      "chapter": "10_elite_four_hall_of_fame",
+      "storyOrder": 10000710,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "lances_room_post_battle": {
+      "chapter": "10_elite_four_hall_of_fame",
+      "storyOrder": 10000720,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "mapScript"
+    },
+    "lances_room_walk_to_lance_coord": {
+      "chapter": "10_elite_four_hall_of_fame",
+      "storyOrder": 10005418,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "lavender_cubone_house_girl_after_fuji": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005516,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "lavender_cubone_house_girl_before_fuji": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005517,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "lavender_town_little_girl_ghost_no": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005518,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "lavender_town_little_girl_ghost_yes": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005519,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "loreleis_room_dont_run_away": {
+      "chapter": "10_elite_four_hall_of_fame",
+      "storyOrder": 10005419,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "loreleis_room_entrance_auto_walk": {
+      "chapter": "10_elite_four_hall_of_fame",
+      "storyOrder": 10005420,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "loreleis_room_exit_block_closed": {
+      "chapter": "10_elite_four_hall_of_fame",
+      "storyOrder": 10005921,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "loreleis_room_exit_block_open": {
+      "chapter": "10_elite_four_hall_of_fame",
+      "storyOrder": 10005922,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "loreleis_room_post_battle": {
+      "chapter": "10_elite_four_hall_of_fame",
+      "storyOrder": 10000680,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "mapScript"
+    },
+    "mr_fujis_house_poke_flute": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5000350,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "mapScript"
+    },
+    "mr_fujis_house_poke_flute_already_got": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005521,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "mr_psychics_house_tm29": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005508,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "mt_moon_b2f_dome_fossil": {
+      "chapter": "03_mt_moon_cerulean",
+      "storyOrder": 3000150,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "npcClick"
+    },
+    "mt_moon_b2f_dome_fossil_no": {
+      "chapter": "03_mt_moon_cerulean",
+      "storyOrder": 3005518,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "mt_moon_b2f_dome_fossil_prompt": {
+      "chapter": "03_mt_moon_cerulean",
+      "storyOrder": 3005519,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "mt_moon_b2f_fossil_prompt": {
+      "chapter": "03_mt_moon_cerulean",
+      "storyOrder": 3000140,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "mapScript"
+    },
+    "mt_moon_b2f_helix_fossil": {
+      "chapter": "03_mt_moon_cerulean",
+      "storyOrder": 3005521,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "mt_moon_b2f_helix_fossil_no": {
+      "chapter": "03_mt_moon_cerulean",
+      "storyOrder": 3005522,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "mt_moon_b2f_helix_fossil_prompt": {
+      "chapter": "03_mt_moon_cerulean",
+      "storyOrder": 3005523,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "mt_moon_pokecenter_magikarp_salesman_already_bought": {
+      "chapter": "03_mt_moon_cerulean",
+      "storyOrder": 3005824,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "directScript"
+    },
+    "mt_moon_pokecenter_magikarp_salesman_insufficient_money": {
+      "chapter": "03_mt_moon_cerulean",
+      "storyOrder": 3005825,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "directScript"
+    },
+    "mt_moon_pokecenter_magikarp_salesman_purchase": {
+      "chapter": "03_mt_moon_cerulean",
+      "storyOrder": 3005826,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "directScript"
+    },
+    "museum_1f_entry_ticket_already_bought": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005836,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "directScript"
+    },
+    "museum_1f_entry_ticket_insufficient_money": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005837,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "directScript"
+    },
+    "museum_1f_entry_ticket_purchase": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005838,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "directScript"
+    },
+    "museum_1f_old_amber": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005539,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "oak_first_rival_battle_bulbasaur_lose": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005510,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "oak_first_rival_battle_bulbasaur_win": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005511,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "oak_first_rival_battle_charmander_lose": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005512,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "oak_first_rival_battle_charmander_win": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1000040,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "npcClick"
+    },
+    "oak_first_rival_battle_squirtle_lose": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005514,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "oak_first_rival_battle_squirtle_win": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005515,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "oak_lab_choose_starter_intro": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1000010,
+      "kind": "mainline",
+      "e2eMode": "interactive",
+      "driver": "mapScript"
+    },
+    "oak_lab_oak_come_see_after_free_pokeballs_spent": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005517,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "oak_lab_oak_give_pokeballs_after_route22_rival": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005518,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "oak_lab_oak_no_free_pokeballs_if_already_has_ball": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005519,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "oak_lab_oak_pokemon_around_world": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005520,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "oak_lab_oak_raise_young_pokemon": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005521,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "oak_lab_pokedex_delivery": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1000070,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "mapScript"
+    },
+    "oak_lab_rival_exits_after_battle": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1000050,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "mapScript"
+    },
+    "oak_starter_bulbasaur": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005524,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "oak_starter_bulbasaur_no": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005525,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "oak_starter_bulbasaur_prompt": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005526,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "oak_starter_charmander": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1000030,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "npcClick"
+    },
+    "oak_starter_charmander_no": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005528,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "oak_starter_charmander_prompt": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1000020,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "npcClick"
+    },
+    "oak_starter_squirtle": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005530,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "oak_starter_squirtle_no": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005531,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "oak_starter_squirtle_prompt": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005532,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "pallet_town_after_oak_pokeballs_flag": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2000100,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "mapScript"
+    },
+    "pallet_town_daisy_map_load_visibility": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005233,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "pallet_town_daisy_post_pokeballs_flag": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005234,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "pallet_town_oak_stops_player": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1000000,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "pewter_city_super_nerd1_museum_no": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005503,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "pewter_city_super_nerd1_museum_yes": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005504,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "pewter_city_super_nerd2_repel_yes": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005505,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "pewter_city_youngster_gym_guide": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2000110,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "pewter_gym_brock_generated_post_tm_advice": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005507,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "pewter_gym_brock_generated_pre_battle": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2000120,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "npcClick"
+    },
+    "pewter_gym_guide_after_brock": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005509,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "pewter_gym_guide_before_brock_yes": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005510,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "pokemon_fan_club_bike_voucher": {
+      "chapter": "04_vermilion_ss_anne",
+      "storyOrder": 4005502,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "pokemon_fan_club_bike_voucher_already_got": {
+      "chapter": "04_vermilion_ss_anne",
+      "storyOrder": 4005503,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "pokemon_fan_club_bike_voucher_has_voucher": {
+      "chapter": "04_vermilion_ss_anne",
+      "storyOrder": 4005504,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "pokemon_fan_club_pikachu_fan_better_resets_pikachu_boast": {
+      "chapter": "04_vermilion_ss_anne",
+      "storyOrder": 4005505,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "pokemon_fan_club_pikachu_fan_normal_sets_seel_boast": {
+      "chapter": "04_vermilion_ss_anne",
+      "storyOrder": 4005506,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "pokemon_fan_club_seel_fan_better_resets_seel_boast": {
+      "chapter": "04_vermilion_ss_anne",
+      "storyOrder": 4005507,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "pokemon_fan_club_seel_fan_normal_sets_pikachu_boast": {
+      "chapter": "04_vermilion_ss_anne",
+      "storyOrder": 4005508,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "pokemon_mansion_1f_generated_switch_no_keeps_off": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005834,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "directScript"
+    },
+    "pokemon_mansion_1f_generated_switch_turn_off": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005835,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "directScript"
+    },
+    "pokemon_mansion_1f_generated_switch_turn_on": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8000500,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "directScript"
+    },
+    "pokemon_mansion_1f_switch_tiles_off": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005937,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "pokemon_mansion_1f_switch_tiles_on": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005938,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "pokemon_mansion_2f_switch_tiles_off": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005939,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "pokemon_mansion_2f_switch_tiles_on": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005940,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "pokemon_mansion_3f_switch_tiles_off": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005941,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "pokemon_mansion_3f_switch_tiles_on": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005942,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "pokemon_mansion_b1f_generated_switch_turn_on": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005843,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "directScript"
+    },
+    "pokemon_mansion_b1f_switch_tiles_off": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005944,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "pokemon_mansion_b1f_switch_tiles_on": {
+      "chapter": "08_cinnabar_blaine",
+      "storyOrder": 8005945,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "pokemon_tower_2f_rival_bulbasaur_below_start": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005422,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "pokemon_tower_2f_rival_bulbasaur_start": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005423,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "pokemon_tower_2f_rival_charmander_below_start": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005424,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "pokemon_tower_2f_rival_charmander_right_side_win": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5000310,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "pokemon_tower_2f_rival_charmander_start": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5000300,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "pokemon_tower_2f_rival_squirtle_below_win": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005427,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "pokemon_tower_2f_rival_squirtle_right_side_start": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005428,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "pokemon_tower_2f_rival_squirtle_start": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005429,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "pokemon_tower_5f_purified_zone_heal": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005430,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "pokemon_tower_6f_marowak_start": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5000320,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "pokemon_tower_6f_marowak_win": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5000330,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "pokemon_tower_7f_mr_fuji_rescue": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5000340,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "npcClick"
+    },
+    "power_plant_voltorb1_start": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005540,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "power_plant_voltorb1_win": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005541,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "power_plant_zapdos_start": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005542,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "power_plant_zapdos_win": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005543,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "repel_use_already_active": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005911,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "repelUse"
+    },
+    "repel_use_consumes_item": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005912,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "repelUse"
+    },
+    "repel_wears_off_after_steps": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005913,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "repelStep"
+    },
+    "rocket_hideout_b1f_door_open_tiles": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005934,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "rocket_hideout_b1f_door_unlock": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005335,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "mapScript"
+    },
+    "rocket_hideout_b4f_door_open_tiles": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005936,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "rocket_hideout_b4f_door_unlock": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005337,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "mapScript"
+    },
+    "rocket_hideout_b4f_giovanni_start": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5000280,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "npcClick"
+    },
+    "rocket_hideout_b4f_giovanni_win": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5000290,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "npcClick"
+    },
+    "rocket_hideout_b4f_rocket3_lift_key_drop": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5000270,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "npcClick"
+    },
+    "rocket_hideout_elevator_no_lift_key": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005941,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "elevatorFloors"
+    },
+    "rocket_hideout_elevator_select_b4f": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005942,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "elevatorSelect"
+    },
+    "rocket_hideout_elevator_with_lift_key": {
+      "chapter": "05_celadon_rocket_lavender",
+      "storyOrder": 5005943,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "elevatorFloors"
+    },
+    "route11_gate2f_left_binoculars_clear_view": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005514,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "route11_gate2f_left_binoculars_not_facing_up": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005915,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "clickNoScript"
+    },
+    "route11_gate2f_left_binoculars_snorlax_blocking": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005516,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "route11_gate_2f_oaks_aide_itemfinder_blocked": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005536,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "route11_gate_2f_oaks_aide_itemfinder_reward": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005537,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "route11_gate_2f_terry_trade_ready": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005117,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "route12_gate_2f_tm39_swift": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005518,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "route12_snorlax_start": {
+      "chapter": "06_fuchsia_safari",
+      "storyOrder": 6000360,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "route12_snorlax_win": {
+      "chapter": "06_fuchsia_safari",
+      "storyOrder": 6000370,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "route12_super_rod_house_super_rod": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005519,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "route15_gate_2f_oaks_aide_exp_all_blocked": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005538,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "route15_gate_2f_oaks_aide_exp_all_reward": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005539,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "route16_fly_house_hm02": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005520,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "route16_gate_cycling_road_blocked": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005421,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "route16_snorlax_start": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005422,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "route16_snorlax_win": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005423,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "route18_gate_2f_marc_trade_ready": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005124,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "route18_gate_cycling_road_blocked": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005425,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "route20_no_seafoam_marker_no_boulder_reset": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005209,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "route20_seafoam_reset_after_b2f_drops": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005210,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "route20_seafoam_reset_after_b3f_drops": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005211,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "route22_gate_boulder_badge_blocked": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9005402,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "route22_gate_boulder_badge_pass": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9000580,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "route22_rival1_bulbasaur_start": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9005404,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "route22_rival1_bulbasaur_win": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9005405,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "route22_rival1_charmander_start": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9005406,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "route22_rival1_charmander_win": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9005407,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "route22_rival1_squirtle_start": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9005408,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "route22_rival1_squirtle_win": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9005409,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "route22_rival2_bulbasaur_start": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9005410,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "route22_rival2_bulbasaur_win": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9005411,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "route22_rival2_charmander_start": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9000560,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "route22_rival2_charmander_win": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9000570,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "route22_rival2_squirtle_start": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9005414,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "route22_rival2_squirtle_win": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9005415,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "route23_cascade_badge_blocked": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9005416,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "route23_cascade_badge_pass": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9000590,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "route23_earth_badge_blocked": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9005418,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "route23_earth_badge_pass": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9000650,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "route23_marsh_badge_blocked": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9005420,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "route23_marsh_badge_pass": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9000630,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "route23_rainbow_badge_blocked": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9005422,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "route23_rainbow_badge_pass": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9000610,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "route23_soul_badge_blocked": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9005424,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "route23_soul_badge_pass": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9000620,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "route23_thunder_badge_blocked": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9005426,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "route23_thunder_badge_pass": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9000600,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "route23_volcano_badge_blocked": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9005428,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "route23_volcano_badge_pass": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9000640,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "route25_bill_pokemon_visible_before_help": {
+      "chapter": "03_mt_moon_cerulean",
+      "storyOrder": 3005327,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "mapScript"
+    },
+    "route25_bill_returned_outside_after_ss_ticket": {
+      "chapter": "03_mt_moon_cerulean",
+      "storyOrder": 3005328,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "mapScript"
+    },
+    "route2_gate_oaks_aide_hm05_blocked": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005540,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "route2_gate_oaks_aide_hm05_reward": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005541,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "route2_trade_house_marcel_trade_ready": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005126,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "route5_gate_saffron_guard_drink": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005508,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "route_1_youngster_1_potion_sample": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005527,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "safari_battle_run": {
+      "chapter": "06_fuchsia_safari",
+      "storyOrder": 6005911,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "safariBattleAction"
+    },
+    "safari_secret_house_hm03": {
+      "chapter": "06_fuchsia_safari",
+      "storyOrder": 6000390,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "npcClick"
+    },
+    "safari_step_expiry": {
+      "chapter": "06_fuchsia_safari",
+      "storyOrder": 6005913,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "safariStep"
+    },
+    "safari_step_ongoing_session": {
+      "chapter": "06_fuchsia_safari",
+      "storyOrder": 6005914,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "safariStep"
+    },
+    "safari_zone_enter_exact_fee": {
+      "chapter": "06_fuchsia_safari",
+      "storyOrder": 6005915,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "safariEnter"
+    },
+    "safari_zone_enter_insufficient_money": {
+      "chapter": "06_fuchsia_safari",
+      "storyOrder": 6005916,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "safariEnter"
+    },
+    "safari_zone_enter_rich": {
+      "chapter": "06_fuchsia_safari",
+      "storyOrder": 6005917,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "safariEnter"
+    },
+    "safari_zone_gate_entry_offer_no": {
+      "chapter": "06_fuchsia_safari",
+      "storyOrder": 6005418,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "safari_zone_gate_entry_offer_yes": {
+      "chapter": "06_fuchsia_safari",
+      "storyOrder": 6000380,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "safari_zone_gate_exit": {
+      "chapter": "06_fuchsia_safari",
+      "storyOrder": 6005420,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "safari_zone_gate_worker2_explanation_yes": {
+      "chapter": "06_fuchsia_safari",
+      "storyOrder": 6005521,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "seafoam_1f_boulder1_down_hole": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005912,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "seafoamBoulderHole"
+    },
+    "seafoam_1f_boulder2_down_hole": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005913,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "seafoamBoulderHole"
+    },
+    "seafoam_1f_boulder_push_into_hole": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005914,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "boulderPush"
+    },
+    "seafoam_1f_boulder_push_needs_strength": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005915,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "boulderPush"
+    },
+    "seafoam_1f_boulder_push_one_tile": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005916,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "boulderPush"
+    },
+    "seafoam_1f_map_load_sets_route20_marker": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005217,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "seafoam_1f_pathfind_allows_hidden_dropped_boulder_tile": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005918,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "seafoam_1f_pathfind_avoids_visible_boulder": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005919,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "seafoam_1f_runtime_boulder_push_facing_attempt": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005920,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "runtimeBoulderPush"
+    },
+    "seafoam_1f_runtime_boulder_push_facing_update": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005921,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "runtimeBoulderPush"
+    },
+    "seafoam_b1f_boulder1_down_hole": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005922,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "seafoamBoulderHole"
+    },
+    "seafoam_b1f_boulder2_down_hole": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005923,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "seafoamBoulderHole"
+    },
+    "seafoam_b1f_boulders_initial_hidden": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005924,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "seafoam_b2f_boulder1_down_hole": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005925,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "seafoamBoulderHole"
+    },
+    "seafoam_b2f_boulder2_down_hole": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005926,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "seafoamBoulderHole"
+    },
+    "seafoam_b3f_boulder1_down_hole": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005927,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "seafoamBoulderHole"
+    },
+    "seafoam_b3f_boulder2_down_hole": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005928,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "seafoamBoulderHole"
+    },
+    "seafoam_b3f_current_near_left_boulder": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005929,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "seafoamCurrent"
+    },
+    "seafoam_b3f_current_near_right_boulder": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005930,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "seafoamCurrent"
+    },
+    "seafoam_b3f_current_near_steps": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005931,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "seafoamCurrent"
+    },
+    "seafoam_b3f_fallen_boulders_visible_after_b2f_drops": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005932,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "seafoam_b4f_articuno_start": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005544,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "seafoam_b4f_articuno_win": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005545,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "seafoam_b4f_current_near_left_boulder": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005933,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "seafoamCurrent"
+    },
+    "seafoam_b4f_current_surf_exit": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005934,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "seafoamCurrent"
+    },
+    "seafoam_b4f_surf_allowed_without_boulders": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005935,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "seafoam_b4f_surf_blocked_at_stairs_current": {
+      "chapter": "90_system_mechanics",
+      "storyOrder": 90005936,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "silph_card_key_10f_door1_open": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005909,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "silphCardKey"
+    },
+    "silph_card_key_11f_door1_open": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005910,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "silphCardKey"
+    },
+    "silph_card_key_2f_door1_no_key": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005911,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "silphCardKey"
+    },
+    "silph_card_key_2f_door1_open": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005912,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "silphCardKey"
+    },
+    "silph_card_key_2f_door2_open": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005913,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "silphCardKey"
+    },
+    "silph_card_key_3f_door1_open": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005914,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "silphCardKey"
+    },
+    "silph_card_key_3f_door2_open": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005915,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "silphCardKey"
+    },
+    "silph_card_key_4f_door1_open": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005916,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "silphCardKey"
+    },
+    "silph_card_key_4f_door2_open": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005917,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "silphCardKey"
+    },
+    "silph_card_key_5f_door1_open": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7000420,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "silphCardKey"
+    },
+    "silph_card_key_5f_door2_open": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005919,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "silphCardKey"
+    },
+    "silph_card_key_5f_door3_open": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005920,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "silphCardKey"
+    },
+    "silph_card_key_6f_door1_open": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005921,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "silphCardKey"
+    },
+    "silph_card_key_7f_door1_open": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005922,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "silphCardKey"
+    },
+    "silph_card_key_7f_door2_open": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005923,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "silphCardKey"
+    },
+    "silph_card_key_7f_door3_open": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005924,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "silphCardKey"
+    },
+    "silph_card_key_8f_door1_open": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005925,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "silphCardKey"
+    },
+    "silph_card_key_9f_door1_open": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005926,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "silphCardKey"
+    },
+    "silph_card_key_9f_door2_open": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005927,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "silphCardKey"
+    },
+    "silph_card_key_9f_door3_open": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005928,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "silphCardKey"
+    },
+    "silph_card_key_9f_door4_open": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005929,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "silphCardKey"
+    },
+    "silph_co9f_nurse_after_giovanni": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005530,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "silph_co9f_nurse_heal_before_giovanni": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005531,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "silph_co_11f_giovanni_start": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7000460,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "silph_co_11f_giovanni_win": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7000470,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "silph_co_11f_master_ball": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7000480,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "npcClick"
+    },
+    "silph_co_1f_receptionist_after_giovanni": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005335,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "mapScript"
+    },
+    "silph_co_2f_tm36_selfdestruct": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005536,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "silph_co_6f_worker_m1_after_giovanni": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005537,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "silph_co_6f_worker_m1_before_giovanni": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005538,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "silph_co_7f_lapras": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7000450,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "npcClick"
+    },
+    "silph_co_7f_rival_bulbasaur_lower_start": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005440,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "silph_co_7f_rival_bulbasaur_start": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005441,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "silph_co_7f_rival_charmander_lower_start": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005442,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "silph_co_7f_rival_charmander_start": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7000430,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "silph_co_7f_rival_charmander_upper_win": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7000440,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "silph_co_7f_rival_squirtle_lower_win": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005445,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "silph_co_7f_rival_squirtle_start": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005446,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "silph_co_7f_rival_squirtle_upper_start": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005447,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "silph_co_elevator_floors": {
+      "chapter": "07_saffron_silph",
+      "storyOrder": 7005948,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "elevatorFloors"
+    },
+    "ss_anne_2f_rival_bulbasaur_start": {
+      "chapter": "04_vermilion_ss_anne",
+      "storyOrder": 4005409,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "ss_anne_2f_rival_charmander_start": {
+      "chapter": "04_vermilion_ss_anne",
+      "storyOrder": 4000210,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "ss_anne_2f_rival_charmander_win": {
+      "chapter": "04_vermilion_ss_anne",
+      "storyOrder": 4000220,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "ss_anne_2f_rival_squirtle_start": {
+      "chapter": "04_vermilion_ss_anne",
+      "storyOrder": 4005412,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "ss_anne_captain_hm01": {
+      "chapter": "04_vermilion_ss_anne",
+      "storyOrder": 4000230,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "npcClick"
+    },
+    "underground_path_route5_spot_trade_ready": {
+      "chapter": "80_side_content",
+      "storyOrder": 80005146,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "vermilion_city_ss_anne_departure": {
+      "chapter": "04_vermilion_ss_anne",
+      "storyOrder": 4000240,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "mapScript"
+    },
+    "vermilion_city_ss_anne_guard_already_passed": {
+      "chapter": "04_vermilion_ss_anne",
+      "storyOrder": 4005915,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordNoScript"
+    },
+    "vermilion_city_ss_anne_guard_no_ticket_blocked": {
+      "chapter": "04_vermilion_ss_anne",
+      "storyOrder": 4005416,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "vermilion_city_ss_anne_guard_pass": {
+      "chapter": "04_vermilion_ss_anne",
+      "storyOrder": 4000200,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "vermilion_city_ss_anne_guard_ship_departed_blocked": {
+      "chapter": "04_vermilion_ss_anne",
+      "storyOrder": 4005418,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "vermilion_gym_guide_after_surge": {
+      "chapter": "04_vermilion_ss_anne",
+      "storyOrder": 4005519,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "vermilion_gym_guide_before_surge": {
+      "chapter": "04_vermilion_ss_anne",
+      "storyOrder": 4005520,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "vermilion_gym_trash_door_closed": {
+      "chapter": "04_vermilion_ss_anne",
+      "storyOrder": 4005921,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "vermilion_gym_trash_door_open": {
+      "chapter": "04_vermilion_ss_anne",
+      "storyOrder": 4005922,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "vermilion_gym_trash_first_lock_success": {
+      "chapter": "04_vermilion_ss_anne",
+      "storyOrder": 4005923,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "vermilionGymTrash"
+    },
+    "vermilion_gym_trash_second_lock_success": {
+      "chapter": "04_vermilion_ss_anne",
+      "storyOrder": 4005924,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "vermilionGymTrash"
+    },
+    "vermilion_gym_trash_wrong_first_can": {
+      "chapter": "04_vermilion_ss_anne",
+      "storyOrder": 4005925,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "vermilionGymTrash"
+    },
+    "vermilion_gym_trash_wrong_second_resets": {
+      "chapter": "04_vermilion_ss_anne",
+      "storyOrder": 4005926,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "vermilionGymTrash"
+    },
+    "vermilion_old_rod_house_old_rod": {
+      "chapter": "04_vermilion_ss_anne",
+      "storyOrder": 4005527,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "vermilion_old_rod_house_old_rod_already_got": {
+      "chapter": "04_vermilion_ss_anne",
+      "storyOrder": 4005528,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "vermilion_trade_house_dux_trade_ready": {
+      "chapter": "04_vermilion_ss_anne",
+      "storyOrder": 4005129,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "victory_road_1f_boulder_switch": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9005930,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "boulderPush"
+    },
+    "victory_road_2f_boulder_switch1": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9005931,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "boulderPush"
+    },
+    "victory_road_2f_boulder_switch2": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9005932,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "boulderPush"
+    },
+    "victory_road_2f_map_load_resets_1f_switch": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9005233,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "victory_road_2f_moltres_start": {
+      "chapter": "10_elite_four_hall_of_fame",
+      "storyOrder": 10000660,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "npcClick"
+    },
+    "victory_road_2f_moltres_win": {
+      "chapter": "10_elite_four_hall_of_fame",
+      "storyOrder": 10000670,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "npcClick"
+    },
+    "victory_road_3f_boulder_hole": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9005934,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "boulderPush"
+    },
+    "victory_road_3f_boulder_switch": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9005935,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "boulderPush"
+    },
+    "victory_road_indigo_lobby_reset_1f_switch": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9005236,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "victory_road_route23_reset_boulders": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9005237,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "viridian_city_gambler_gym_closed": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005528,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "viridian_city_gambler_gym_returned_after_giovanni": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005529,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "viridian_city_gambler_gym_returned_earth_badge": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005530,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "viridian_city_gym_locked_blocked": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005431,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "viridian_city_gym_open_from_earth_badge": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9000540,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "coordinate"
+    },
+    "viridian_city_old_man_catch_demo_done": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005532,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "viridian_city_old_man_catch_demo_hurry": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005533,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "viridian_city_old_man_catch_demo_start": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2000080,
+      "kind": "mainline",
+      "e2eMode": "interactive",
+      "driver": "npcClick"
+    },
+    "viridian_city_old_man_catch_demo_win": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2000090,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "npcClick"
+    },
+    "viridian_city_old_man_sleepy_blocked": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005436,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "coordinate"
+    },
+    "viridian_city_old_man_visibility_after_pokedex": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005937,
+      "kind": "system",
+      "e2eMode": "scriptOnly",
+      "driver": "stateOnly"
+    },
+    "viridian_city_tm42_dream_eater": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005538,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "viridian_city_youngster2_caterpie_weedle_yes": {
+      "chapter": "02_viridian_pewter",
+      "storyOrder": 2005539,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "viridian_gym_guide_after_giovanni": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9005539,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "viridian_gym_guide_before_giovanni": {
+      "chapter": "09_viridian_victory_road",
+      "storyOrder": 9005540,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "viridian_mart_clerk_after_oak_delivery_shop_available": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005942,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "clickNoScript"
+    },
+    "viridian_mart_oaks_parcel": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1000060,
+      "kind": "mainline",
+      "e2eMode": "interactive",
+      "driver": "npcClick"
+    },
+    "viridian_mart_say_hi_to_oak": {
+      "chapter": "01_intro_pallet",
+      "storyOrder": 1005544,
+      "kind": "side",
+      "e2eMode": "scriptOnly",
+      "driver": "npcClick"
+    },
+    "wardens_house_hm04": {
+      "chapter": "06_fuchsia_safari",
+      "storyOrder": 6000400,
+      "kind": "mainline",
+      "e2eMode": "stateOnly",
+      "driver": "npcClick"
+    }
+  }
+}

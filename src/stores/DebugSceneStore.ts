@@ -10,6 +10,11 @@ export interface DebugSceneEntry {
   mapName: string;
   scriptLabel?: string;
   category?: string;
+  storyChapter?: string;
+  storyOrder?: number;
+  storyKind?: "mainline" | "side" | "system" | "debug" | string;
+  e2eMode?: "interactive" | "stateOnly" | "scriptOnly" | string;
+  driver?: string;
 }
 
 interface DebugSceneState {

@@ -1,0 +1,25 @@
+{
+  "name": "debug_warp_underground_path_route6_exit_mat",
+  "description": "Debug setup: stand on Underground Path Route 6's left exit mat.",
+  "fixture": {
+    "characterName": "DebugWarpUndergroundPathRoute6ExitMat",
+    "mapName": "UNDERGROUND_PATH_ROUTE_6",
+    "x": 3,
+    "y": 7,
+    "direction": "DOWN",
+    "party": [{ "speciesId": 25, "level": 25 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {
+    "type": "fixture_state",
+    "mapName": "UNDERGROUND_PATH_ROUTE_6"
+  },
+  "expect": {
+    "scriptLabel": "FixtureState",
+    "finalX": 3,
+    "finalY": 7,
+    "finalDirection": "DOWN",
+    "activeBattleAbsent": true
+  }
+}

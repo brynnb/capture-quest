@@ -335,6 +335,48 @@ test("normal mart exit works first try by keyboard and click", async ({
   errors.assertNoSevereErrors();
 });
 
+test("Underground Path Route 6 exit mat clicks as a warp, not Surf", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  const errors = collectPageErrors(page);
+
+  await createGuestCharacterAndEnterWorld(page);
+  await jumpToScenario(page, "debug_warp_underground_path_route6_exit_mat");
+  await waitForMap(page, "UNDERGROUND_PATH_ROUTE_6");
+  await waitForPlayerTile(page, 3, 7);
+  await waitForWarps(page);
+
+  const state = await getGameState(page);
+  const exitWarp = requireWarp(
+    state,
+    (warp) =>
+      warp.destinationMapId !== state.map.id &&
+      warp.warpDirection === "DOWN" &&
+      warp.x === 3 &&
+      warp.y === 7,
+    "Underground Path Route 6 left exit mat",
+  );
+
+  await clickTile(page, exitWarp.x, exitWarp.y);
+  await waitForMapChange(page, state.map.id);
+
+  const afterWarp = await getGameState(page);
+  expect(afterWarp.map.id).not.toBe(exitWarp.sourceMapId);
+  expect(afterWarp.dialogue.isOpen).toBe(false);
+  expect(afterWarp.worldInput.frozen).toBe(false);
+  expect(
+    afterWarp.messages.some((message) =>
+      /No Pokémon knows that move|No Pokemon knows that move/i.test(
+        message.text,
+      ),
+    ),
+  ).toBe(false);
+
+  await quitToCharacterSelect(page);
+  errors.assertNoSevereErrors();
+});
+
 test("Cinnabar Lab lobby and room warps route to the correct destinations", async ({
   page,
 }) => {

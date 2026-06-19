@@ -1,10 +1,10 @@
-Scenario: vermilion_city_ss_anne_guard_pass
-Description: The S.S. Anne guard lets the player pass when they face the dock gate with a ticket before the ship leaves.
-Character: ScriptSimSSAnneGuardPass
+Scenario: vermilion_city_ss_anne_guard_already_passed
+Description: After the S.S. Anne guard has already admitted the player, stepping onto the dock gate coordinate does not replay the guard dialogue.
+Character: ScriptSimSSAnneGuardAlreadyPassed
 
 Initial state
   location: VERMILION_CITY[9999] (188,-24)
-  flags: none
+  flags: EVENT_PASSED_SS_ANNE_GUARD
   party:
     slot 0: #6 CHARIZARD L28 moves LEER, EMBER, LEER, RAGE
   inventory:
@@ -15,19 +15,12 @@ Initial state
     none
 
 Resolved script
-  label: VermilionCitySSAnneGuardPass
+  label: NoScript:VERMILION_CITY
   map: VERMILION_CITY
-  trigger: coord
+  trigger: coord_no_script
 
 Actions
-  - lockInput
-  - dialogue:  [Welcome to S.S.
-ANNE! Excuse me, do you
-have a ticket? (PLAYER) flashed
-the S.S.TICKET! Great! Welcome to
-S.S.ANNE!]
-  - setFlag *: EVENT_PASSED_SS_ANNE_GUARD
-  - unlockInput
+  - noScript: VERMILION_CITY (188,-24)
 
 Final state
   location: VERMILION_CITY[9999] (188,-24)

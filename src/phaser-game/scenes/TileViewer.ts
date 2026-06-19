@@ -249,6 +249,12 @@ export class TileViewer extends Scene {
           y: rect.top + screenY * (rect.height / gameHeight),
         };
       },
+      centerTileInView: (tileX, tileY) => {
+        this.cameraController.centerOnMap(
+          tileX * TILE_SIZE + TILE_SIZE / 2,
+          tileY * TILE_SIZE + TILE_SIZE / 2,
+        );
+      },
     });
   }
 

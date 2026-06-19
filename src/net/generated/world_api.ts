@@ -433,6 +433,11 @@ export interface DebugScene {
   mapName: string;
   scriptLabel?: string;
   category?: string;
+  storyChapter?: string;
+  storyOrder?: number /* int */;
+  storyKind?: string;
+  e2eMode?: string;
+  driver?: string;
 }
 
 //////////

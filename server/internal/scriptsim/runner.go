@@ -242,6 +242,9 @@ func Run(scenario *Scenario) (*Result, error) {
 	if scenario.Trigger.Type == "click_no_script" {
 		return runClickNoScript(scenario, applied, initial, cutscenes, efm)
 	}
+	if scenario.Trigger.Type == "coord_no_script" {
+		return runCoordNoScript(scenario, applied, initial, cutscenes, efm)
+	}
 
 	cs, err := resolveScript(scenario, applied, cutscenes, efm)
 	if err != nil {

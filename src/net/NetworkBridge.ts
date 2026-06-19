@@ -995,6 +995,11 @@ export class NetworkBridge {
           mapName: string;
           scriptLabel?: string;
           category?: string;
+          storyChapter?: string;
+          storyOrder?: number;
+          storyKind?: string;
+          e2eMode?: string;
+          driver?: string;
         }>) || []
       );
     });

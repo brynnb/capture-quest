@@ -21,6 +21,7 @@ const COLLISION_LAND = 1;
 const COLLISION_WATER = 2;
 const SURF_MOVE_ID = 57;
 const CUT_TREE_RAW_FOOT_TILE_ID = 0x3d;
+const NON_SURF_WARP_MAT_RAW_FOOT_TILE_IDS = new Set([0x04]);
 const SURF_PLAYER_SPRITE = "SPRITE_RED_SURF";
 const WATER_SEARCH_LIMIT = 2000;
 const DEBUG_PLAYER_MOVEMENT = import.meta.env.VITE_DEBUG_MOVEMENT === "true";
@@ -538,7 +539,10 @@ export class PlayerMovementController {
   private isWaterTile(x: number, y: number): boolean {
     return (
       this.collisionMap.get(`${x},${y}`) === COLLISION_WATER &&
-      this.warpAtProvider(x, y) === null
+      this.warpAtProvider(x, y) === null &&
+      !NON_SURF_WARP_MAT_RAW_FOOT_TILE_IDS.has(
+        this.rawFootTileMap.get(`${x},${y}`) ?? -1,
+      )
     );
   }
 
@@ -554,7 +558,7 @@ export class PlayerMovementController {
     const collisionType = this.collisionMap.get(`${x},${y}`);
     if (
       collisionType === COLLISION_LAND ||
-      (collisionType === COLLISION_WATER && this.warpAtProvider(x, y) !== null)
+      (collisionType === COLLISION_WATER && !this.isWaterTile(x, y))
     ) {
       this.setSurfingActive(false);
     }

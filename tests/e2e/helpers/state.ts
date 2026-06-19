@@ -336,3 +336,13 @@ export async function tileToViewport(page: Page, x: number, y: number) {
 
   return point;
 }
+
+export async function centerTileInView(page: Page, x: number, y: number) {
+  await waitForTestBridge(page);
+  await page.evaluate(
+    ([tileX, tileY]) => {
+      window.__capturequestTest?.centerTileInView(tileX, tileY);
+    },
+    [x, y],
+  );
+}

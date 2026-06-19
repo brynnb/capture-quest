@@ -222,24 +222,37 @@ export class TileViewerInteractionController {
     const tileX = Math.floor(worldX / TILE_SIZE);
     const tileY = Math.floor(worldY / TILE_SIZE);
     const playerActor = this.deps.getPlayerActor();
-    const mapId = playerActor?.mapId ?? 0;
-    const playerId = playerActor?.id;
     const movement = this.deps.playerMovementController();
-    const oldPos = movement.getCurrentPosition();
+    const mapId = movement.getCurrentMapId() ?? playerActor?.mapId ?? 0;
+    const playerId = playerActor?.id;
+    const direction = movement.getCurrentDirection();
 
-    PhaserNet.sendPlayerPosition(tileX, tileY, mapId);
     movement.stopMovement();
+    movement.syncMapId(mapId);
     movement.syncPosition(tileX, tileY);
+    movement.syncDirection(direction);
+    if (playerActor) {
+      playerActor.x = tileX;
+      playerActor.y = tileY;
+      playerActor.mapId = mapId;
+      playerActor.actionDirection = direction;
+      const actorIndex = this.deps
+        .actors()
+        .findIndex((actor) => actor.id === playerActor.id);
+      if (actorIndex !== -1) {
+        this.deps.actors()[actorIndex] = playerActor;
+      }
+    }
     if (playerId != null) {
-      this.deps.mapRenderer().updateActorPosition(
+      this.deps.mapRenderer().snapActorPosition(
         playerId,
-        oldPos.x,
-        oldPos.y,
         tileX,
         tileY,
-        "DOWN",
+        direction,
+        playerActor ?? undefined,
       );
     }
+    PhaserNet.sendPlayerPosition(tileX, tileY, mapId, direction);
     const gameStatus = useGameStatusStore.getState();
     gameStatus.setWarpMode(false);
     gameStatus.setCameraFollowEnabled(true);

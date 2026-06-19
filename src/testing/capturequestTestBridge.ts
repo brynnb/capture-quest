@@ -197,12 +197,14 @@ export type CaptureQuestTestStatePatch = Partial<
 export interface CaptureQuestTileViewerDiagnostics {
   getState: () => CaptureQuestTestStatePatch;
   tileToViewport?: (x: number, y: number) => TileViewportPoint | null;
+  centerTileInView?: (x: number, y: number) => void;
 }
 
 export interface CaptureQuestTestBridge {
   getState: () => CaptureQuestTestState;
   waitForEvent: (type: string, timeoutMs?: number) => Promise<unknown>;
   tileToViewport: (x: number, y: number) => TileViewportPoint | null;
+  centerTileInView: (x: number, y: number) => void;
   requestGameCornerCoinBalance: () => void;
   buyGameCornerCoins: () => void;
   playGameCornerSlot: (bet: number, isLucky?: boolean) => void;
@@ -456,6 +458,10 @@ function tileToViewport(x: number, y: number): TileViewportPoint | null {
   return tileViewerDiagnostics?.tileToViewport?.(x, y) ?? null;
 }
 
+function centerTileInView(x: number, y: number): void {
+  tileViewerDiagnostics?.centerTileInView?.(x, y);
+}
+
 export function installCaptureQuestTestBridge(): void {
   if (!IS_TEST_MODE || typeof window === "undefined" || installed) return;
   installed = true;
@@ -464,6 +470,7 @@ export function installCaptureQuestTestBridge(): void {
     getState,
     waitForEvent,
     tileToViewport,
+    centerTileInView,
     requestGameCornerCoinBalance: requestCoinBalance,
     buyGameCornerCoins: buyCoins,
     playGameCornerSlot: (bet, isLucky = false) => playSlotMachine(bet, isLucky),
