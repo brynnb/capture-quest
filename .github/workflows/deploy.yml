@@ -29,7 +29,93 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Compute runtime asset cache key
+        id: asset-cache-key
+        run: |
+          set -euo pipefail
+          extractor_sha="$(git -C tools/pokemon-gameboy-extractor-tool rev-parse HEAD)"
+          pipeline_hash="$(
+            {
+              printf 'extractor=%s\n' "$extractor_sha"
+              git ls-files -s \
+                .github/workflows/deploy.yml \
+                package-lock.json \
+                scripts/bootstrap_capturequest.sh \
+                scripts/generate_audio_manifest.mjs \
+                scripts/sync_extractor_assets.py \
+                scripts/sync_extractor_audio_manifest.mjs \
+                server/cmd/import-script-candidates \
+                public/phaser/sprites \
+                2>/dev/null
+            } | sha256sum | awk '{print $1}'
+          )"
+          echo "key=cq-runtime-assets-v1-${pipeline_hash}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore generated runtime assets
+        id: runtime-assets-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            public/assets/pokemon
+            public/assets/trainers
+            public/phaser/assets
+            public/phaser/pokemon.db
+            public/phaser/style.css
+            public/phaser/tile_images
+            public/phaser/sprites
+            public/sound/pokemon
+            src/constants/audio_manifest.json
+            src/constants/pokemon_audio_manifest.json
+            server/scripted_events/scripts
+            server/scripted_events/*.generated.json
+          key: ${{ steps.asset-cache-key.outputs.key }}
+
+      - name: Check generated runtime assets
+        id: runtime-assets
+        run: |
+          set -euo pipefail
+
+          assets_ready() {
+            test -s public/phaser/pokemon.db
+            test -d public/phaser/assets
+            test -n "$(find public/phaser/assets -type f -print -quit)"
+            test -d public/phaser/tile_images
+            test -n "$(find public/phaser/tile_images -type f -print -quit)"
+            test -d public/phaser/sprites
+            test -n "$(find public/phaser/sprites -type f -print -quit)"
+            test -d public/assets/pokemon
+            test -n "$(find public/assets/pokemon -type f -print -quit)"
+            test -d public/assets/trainers
+            test -n "$(find public/assets/trainers -type f -print -quit)"
+            test -d public/sound/pokemon
+            test -n "$(find public/sound/pokemon -name '*.ogg' -type f -print -quit)"
+            test -s src/constants/audio_manifest.json
+            test -s src/constants/pokemon_audio_manifest.json
+            test -d server/scripted_events/scripts
+            test -n "$(find server/scripted_events/scripts -name '*.json' -type f -print -quit)"
+            node - <<'NODE'
+          const fs = require("fs");
+          const manifestPath = "src/constants/pokemon_audio_manifest.json";
+          const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+          if (!manifest.music || !manifest.sfx || !manifest.pokemonCries) {
+            process.exit(1);
+          }
+          if (!Array.isArray(manifest.mapMusic) || manifest.mapMusic.length < 200) {
+            process.exit(1);
+          }
+          NODE
+          }
+
+          if assets_ready; then
+            echo "Generated runtime assets restored from cache."
+            echo "needs_generation=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Generated runtime assets are missing or incomplete; rebuilding."
+            echo "needs_generation=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install extractor system dependencies
+        if: steps.runtime-assets.outputs.needs_generation == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential bison pkg-config libpng-dev gbsplay vorbis-tools sqlite3
@@ -43,8 +129,25 @@ jobs:
           npm ci
 
       - name: Generate runtime assets
+        if: steps.runtime-assets.outputs.needs_generation == 'true'
         run: |
           CAPTUREQUEST_RENDER_AUDIO=1 npm run bootstrap:assets
+
+      - name: Verify generated runtime assets
+        run: |
+          set -euo pipefail
+          test -s public/phaser/pokemon.db
+          test -d public/sound/pokemon
+          test -n "$(find public/sound/pokemon -name '*.ogg' -type f -print -quit)"
+          test -d server/scripted_events/scripts
+          test -n "$(find server/scripted_events/scripts -name '*.json' -type f -print -quit)"
+          node - <<'NODE'
+          const fs = require("fs");
+          const manifest = JSON.parse(fs.readFileSync("src/constants/pokemon_audio_manifest.json", "utf8"));
+          if (!Array.isArray(manifest.mapMusic) || manifest.mapMusic.length < 200) {
+            throw new Error(`Expected populated mapMusic metadata, got ${manifest.mapMusic?.length ?? 0}`);
+          }
+          NODE
 
       - name: Build Frontend
         run: |
