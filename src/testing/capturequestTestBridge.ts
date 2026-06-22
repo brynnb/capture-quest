@@ -27,6 +27,17 @@ import {
   sendPokemonPCOpen,
 } from "@/phaser-game/services/PhaserNetworkService";
 import type { PokemonDTO } from "@/net/generated/world_api";
+import {
+  ENGINE_PROBE_EVENT,
+  buildEngineProbeSnapshot,
+  createEngineProbeEvent,
+  type EngineProbeCommand,
+  type EngineProbeEvent,
+  type EngineProbeResult,
+  type EngineProbeSnapshot,
+  type EngineProbeSnapshotOptions,
+  type EngineProbeSnapshotSource,
+} from "./engineProbe";
 
 const IS_TEST_MODE = import.meta.env.VITE_TEST_MODE === "true";
 
@@ -118,7 +129,7 @@ export interface CaptureQuestTestState {
     currentMusicTrack: string | null;
     requestedMusicTrack: string | null;
     lastSFXTrack: string | null;
-    lastGeneratedSFXName: string | null;
+    recentSFXTracks: string[];
     isSurfing: boolean;
     isBicycleActive: boolean;
     wantsBicycle: boolean;
@@ -196,6 +207,16 @@ export type CaptureQuestTestStatePatch = Partial<
 
 export interface CaptureQuestTileViewerDiagnostics {
   getState: () => CaptureQuestTestStatePatch;
+  getEngineProbeSource?: () => Pick<
+    EngineProbeSnapshotSource,
+    "tiles" | "actors" | "warps"
+  >;
+  sendCommand?: (
+    command: EngineProbeCommand,
+  ) =>
+    | Promise<{ ok: boolean; events?: EngineProbeEvent[]; error?: string } | undefined>
+    | { ok: boolean; events?: EngineProbeEvent[]; error?: string }
+    | undefined;
   tileToViewport?: (x: number, y: number) => TileViewportPoint | null;
   centerTileInView?: (x: number, y: number) => void;
 }
@@ -247,6 +268,12 @@ export interface CaptureQuestWarpProbeCasesResponse {
 
 export interface CaptureQuestTestBridge {
   getState: () => CaptureQuestTestState;
+  getSnapshot: (options?: EngineProbeSnapshotOptions) => EngineProbeSnapshot;
+  sendCommand: (
+    command: EngineProbeCommand,
+    options?: EngineProbeSnapshotOptions,
+  ) => Promise<EngineProbeResult>;
+  waitForIdle: (options?: { timeoutMs?: number }) => Promise<void>;
   waitForEvent: (type: string, timeoutMs?: number) => Promise<unknown>;
   tileToViewport: (x: number, y: number) => TileViewportPoint | null;
   centerTileInView: (x: number, y: number) => void;
@@ -273,6 +300,7 @@ declare global {
 
 let tileViewerDiagnostics: CaptureQuestTileViewerDiagnostics | null = null;
 let installed = false;
+let engineProbeEvents: EngineProbeEvent[] = [];
 
 function selectedChoiceFromDOM(): "yes" | "no" | null {
   if (typeof document === "undefined") return null;
@@ -303,6 +331,12 @@ function selectedBattleIndex(prefix: string): number | null {
 
 function emitCaptureQuestTestEvent(type: string, detail?: unknown): void {
   if (!IS_TEST_MODE || typeof window === "undefined") return;
+  if (type !== "cq:stateChanged") {
+    engineProbeEvents = [
+      ...engineProbeEvents,
+      createEngineProbeEvent(type, detail),
+    ].slice(-50);
+  }
   window.dispatchEvent(new CustomEvent(type, { detail }));
   window.dispatchEvent(new CustomEvent("cq:stateChanged", { detail: { type } }));
 }
@@ -387,7 +421,7 @@ function baseState(): CaptureQuestTestState {
       currentMusicTrack: AudioManager.getCurrentMusicTrack(),
       requestedMusicTrack: AudioManager.getRequestedMusicTrack(),
       lastSFXTrack: AudioManager.getLastSFXTrack(),
-      lastGeneratedSFXName: AudioManager.getLastGeneratedSFXName(),
+      recentSFXTracks: AudioManager.getRecentSFXTracks(),
       isSurfing: audio.isSurfing,
       isBicycleActive: audio.isBicycleActive,
       wantsBicycle: audio.wantsBicycle,
@@ -490,13 +524,12 @@ function waitForEvent(type: string, timeoutMs = 10_000): Promise<unknown> {
   }
 
   return new Promise((resolve, reject) => {
-    let timeout: number;
     const handler = (event: Event) => {
       window.clearTimeout(timeout);
       resolve((event as CustomEvent).detail);
     };
 
-    timeout = window.setTimeout(() => {
+    const timeout = window.setTimeout(() => {
       window.removeEventListener(type, handler);
       reject(new Error(`Timed out waiting for ${type}`));
     }, timeoutMs);
@@ -511,6 +544,389 @@ function tileToViewport(x: number, y: number): TileViewportPoint | null {
 
 function centerTileInView(x: number, y: number): void {
   tileViewerDiagnostics?.centerTileInView?.(x, y);
+}
+
+function getSnapshot(options?: EngineProbeSnapshotOptions): EngineProbeSnapshot {
+  const state = getState();
+  const source = tileViewerDiagnostics?.getEngineProbeSource?.() ?? {
+    tiles: [],
+    actors: [],
+    warps: [],
+  };
+  return buildEngineProbeSnapshot(
+    {
+      ...source,
+      map: state.map,
+      player: state.player,
+      worldInput: state.worldInput,
+      dialogue: state.dialogue,
+      battle: state.battle,
+      inventory: state.inventory,
+      party: state.pokemon.party,
+      pc: state.pokemon.pc,
+      messages: state.messages,
+      lastEvents: engineProbeEvents,
+    },
+    options,
+  );
+}
+
+function keyboardKeyForPress(press: string): string {
+  switch (press) {
+    case "UP":
+      return "ArrowUp";
+    case "DOWN":
+      return "ArrowDown";
+    case "LEFT":
+      return "ArrowLeft";
+    case "RIGHT":
+      return "ArrowRight";
+    case "SPACE":
+      return " ";
+    default:
+      return press;
+  }
+}
+
+function keyboardCodeForPress(press: string): string {
+  switch (press) {
+    case "UP":
+      return "ArrowUp";
+    case "DOWN":
+      return "ArrowDown";
+    case "LEFT":
+      return "ArrowLeft";
+    case "RIGHT":
+      return "ArrowRight";
+    case "SPACE":
+      return "Space";
+    default:
+      return press;
+  }
+}
+
+function dispatchKeyboardPress(press: string): void {
+  const key = keyboardKeyForPress(press);
+  const code = keyboardCodeForPress(press);
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur();
+  }
+  for (const eventType of ["keydown", "keyup"]) {
+    const eventInit = { key, code, bubbles: true };
+    window.dispatchEvent(new KeyboardEvent(eventType, eventInit));
+    document.dispatchEvent(new KeyboardEvent(eventType, eventInit));
+  }
+}
+
+function dispatchTileClick(x: number, y: number): void {
+  const point = tileToViewport(x, y);
+  const canvas = document.querySelector("canvas");
+  if (!point || !canvas) return;
+  for (const eventType of ["pointerdown", "pointerup", "click"]) {
+    canvas.dispatchEvent(
+      new MouseEvent(eventType, {
+        clientX: point.x,
+        clientY: point.y,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  }
+}
+
+function inventoryItemTestId(shortName: string): string {
+  return `inventory-item-${shortName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")}`;
+}
+
+async function waitUntil(
+  predicate: () => boolean,
+  description: string,
+  timeoutMs = 15_000,
+): Promise<void> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (predicate()) return;
+    await new Promise((resolve) => window.setTimeout(resolve, 50));
+  }
+  throw new Error(`Timed out waiting for ${description}`);
+}
+
+function sendFieldMoveCommand(command: Extract<EngineProbeCommand, { useFieldMove: unknown }>): void {
+  WorldSocket.sendJsonMessage(OpCodes.FieldMoveUseRequest, {
+    moveName: command.useFieldMove.moveName,
+    targetX: command.useFieldMove.targetX,
+    targetY: command.useFieldMove.targetY,
+  });
+}
+
+async function sendScenarioCommand(
+  command: Extract<EngineProbeCommand, { scenario: unknown }>,
+): Promise<EngineProbeEvent[]> {
+  const positionChanged = waitForEvent("cq:playerPositionChanged", 30_000).catch(
+    () => null,
+  );
+  const mapChanged = waitForEvent("cq:mapChanged", 30_000).catch(() => null);
+  WorldSocket.sendJsonMessage(OpCodes.DebugSceneJumpRequest, {
+    scenarioName: command.scenario.name,
+  });
+  await waitUntil(
+    () =>
+      useDebugSceneStore.getState().lastAppliedScenario?.scenarioName ===
+      command.scenario.name,
+    `scenario ${command.scenario.name} to apply`,
+    30_000,
+  );
+  await Promise.race([
+    Promise.all([positionChanged, mapChanged]),
+    new Promise((resolve) => window.setTimeout(resolve, 3_000)),
+  ]);
+  await waitUntil(
+    () => {
+      const state = getState();
+      return !state.map.isLoading && state.player.x != null && state.player.y != null;
+    },
+    `scenario ${command.scenario.name} map state`,
+    30_000,
+  );
+  return [
+    createEngineProbeEvent(ENGINE_PROBE_EVENT.scenarioJumped, {
+      name: command.scenario.name,
+    }),
+  ];
+}
+
+function sendDialogueChoiceCommand(
+  command: Extract<EngineProbeCommand, { dialogueChoice: unknown }>,
+): EngineProbeEvent[] {
+  const choice = command.dialogueChoice.choice;
+  const button = document.querySelector<HTMLButtonElement>(
+    `[data-testid="dialogue-choice-${choice}"]`,
+  );
+  if (!button) {
+    throw new Error(`Dialogue choice ${choice} is not available`);
+  }
+  button.click();
+  return [
+    createEngineProbeEvent(ENGINE_PROBE_EVENT.dialogueChoiceSelected, {
+      choice,
+    }),
+  ];
+}
+
+function sendBattleActionCommand(
+  command: Extract<EngineProbeCommand, { battleAction: unknown }>,
+): EngineProbeEvent[] {
+  const button = document.querySelector<HTMLButtonElement>(
+    `[data-testid="battle-action-${command.battleAction.action}"]`,
+  );
+  if (!button) {
+    throw new Error(`Battle action ${command.battleAction.action} is not available`);
+  }
+  button.click();
+  return [
+    createEngineProbeEvent(ENGINE_PROBE_EVENT.battleActionSelected, {
+      action: command.battleAction.action,
+    }),
+  ];
+}
+
+function sendBattleMoveCommand(
+  command: Extract<EngineProbeCommand, { battleMove: unknown }>,
+): EngineProbeEvent[] {
+  const button = document.querySelector<HTMLButtonElement>(
+    `[data-testid="battle-move-${command.battleMove.index}"]`,
+  );
+  if (!button) {
+    throw new Error(`Battle move ${command.battleMove.index} is not available`);
+  }
+  button.click();
+  return [
+    createEngineProbeEvent(ENGINE_PROBE_EVENT.battleMoveSelected, {
+      index: command.battleMove.index,
+    }),
+  ];
+}
+
+async function sendUseItemCommand(
+  command: Extract<EngineProbeCommand, { useItem: unknown }>,
+): Promise<EngineProbeEvent[]> {
+  let testId = command.useItem.testId;
+  if (!testId) {
+    const item = getState().inventory.items.find((candidate) => {
+      if (command.useItem.itemId != null) return candidate.itemId === command.useItem.itemId;
+      if (command.useItem.itemName) {
+        const itemName = command.useItem.itemName.toLowerCase();
+        return (
+          candidate.name.toLowerCase() === itemName ||
+          candidate.shortName.toLowerCase() === itemName
+        );
+      }
+      return false;
+    });
+    if (!item) {
+      throw new Error("Inventory item is not available");
+    }
+    testId = inventoryItemTestId(item.shortName);
+  }
+
+  if (!useGameStatusStore.getState().isInventoryOpen) {
+    useGameStatusStore.getState().toggleInventory();
+  }
+  await waitUntil(
+    () => Boolean(document.querySelector(`[data-testid="${testId}"]`)),
+    `inventory item ${testId}`,
+  );
+  const element = document.querySelector<HTMLElement>(`[data-testid="${testId}"]`);
+  if (!element) {
+    throw new Error(`Inventory item ${testId} is not available`);
+  }
+  element.click();
+  return [
+    createEngineProbeEvent(ENGINE_PROBE_EVENT.itemUsed, {
+      itemId: command.useItem.itemId ?? null,
+      itemName: command.useItem.itemName ?? null,
+      testId,
+    }),
+  ];
+}
+
+function actorMatchesCommand(
+  actor: CaptureQuestTestActor,
+  command: Extract<EngineProbeCommand, { interactActor: unknown }>["interactActor"],
+): boolean {
+  if (command.actorId != null) return actor.id === command.actorId;
+  if (command.name) return actor.name === command.name;
+  if (command.text) return actor.text === command.text;
+  return false;
+}
+
+function sendInteractActorCommand(
+  command: Extract<EngineProbeCommand, { interactActor: unknown }>,
+): EngineProbeEvent[] {
+  const actor = getState().visibleActors.find((candidate) =>
+    actorMatchesCommand(candidate, command.interactActor),
+  );
+  if (!actor || actor.x == null || actor.y == null) {
+    throw new Error("Actor is not available for interaction");
+  }
+  dispatchTileClick(actor.x, actor.y);
+  return [
+    createEngineProbeEvent(ENGINE_PROBE_EVENT.actorInteracted, {
+      actorId: actor.id,
+      name: actor.name,
+      text: actor.text,
+    }),
+  ];
+}
+
+function sendActivateWarpCommand(
+  command: Extract<EngineProbeCommand, { activateWarp: unknown }>,
+): EngineProbeEvent[] {
+  dispatchTileClick(command.activateWarp.x, command.activateWarp.y);
+  return [
+    createEngineProbeEvent(ENGINE_PROBE_EVENT.warpActivated, {
+      x: command.activateWarp.x,
+      y: command.activateWarp.y,
+    }),
+  ];
+}
+
+async function waitForIdle(options: { timeoutMs?: number } = {}): Promise<void> {
+  const timeoutMs = options.timeoutMs ?? 10_000;
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const state = getState();
+    if (
+      !state.map.isLoading &&
+      !state.player.isMoving &&
+      !state.worldInput.frozen
+    ) {
+      return;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 50));
+  }
+
+  throw new Error("Timed out waiting for engine probe idle state");
+}
+
+async function sendCommand(
+  command: EngineProbeCommand,
+  options?: EngineProbeSnapshotOptions,
+): Promise<EngineProbeResult> {
+  const before = getSnapshot(options);
+  let ok = true;
+  let error: string | undefined;
+  let events: EngineProbeEvent[] = [];
+
+  try {
+    const liveResult =
+      "waitForIdle" in command
+        ? null
+        : await tileViewerDiagnostics?.sendCommand?.(command);
+    if (liveResult) {
+      ok = liveResult.ok;
+      error = liveResult.error;
+      events = liveResult.events ?? [];
+    } else if ("waitForIdle" in command) {
+      await waitForIdle({ timeoutMs: 10_000 });
+    } else if ("press" in command) {
+      dispatchKeyboardPress(command.press);
+    } else if ("clickTile" in command) {
+      dispatchTileClick(command.clickTile.x, command.clickTile.y);
+    } else if ("face" in command) {
+      dispatchKeyboardPress(command.face);
+    } else if ("scenario" in command) {
+      events = await sendScenarioCommand(command);
+    } else if ("dialogueChoice" in command) {
+      events = sendDialogueChoiceCommand(command);
+    } else if ("battleAction" in command) {
+      events = sendBattleActionCommand(command);
+    } else if ("battleMove" in command) {
+      events = sendBattleMoveCommand(command);
+    } else if ("useItem" in command) {
+      events = await sendUseItemCommand(command);
+    } else if ("interactActor" in command) {
+      events = sendInteractActorCommand(command);
+    } else if ("activateWarp" in command) {
+      events = sendActivateWarpCommand(command);
+    } else if ("useFieldMove" in command) {
+      sendFieldMoveCommand(command);
+    } else if ("warpTo" in command) {
+      warpToMap(
+        command.warpTo.mapId,
+        command.warpTo.x,
+        command.warpTo.y,
+        command.warpTo.direction,
+      );
+    }
+
+    if (!("waitForIdle" in command)) {
+      await waitForIdle({ timeoutMs: 10_000 }).catch(() => undefined);
+    }
+  } catch (err) {
+    ok = false;
+    error = err instanceof Error ? err.message : String(err);
+  }
+
+  const commandEvent = createEngineProbeEvent(ENGINE_PROBE_EVENT.engineProbeCommand, {
+    command,
+    ok,
+    error,
+  });
+  engineProbeEvents = [...engineProbeEvents, commandEvent, ...events].slice(-50);
+
+  return {
+    ok,
+    command,
+    before,
+    after: getSnapshot(options),
+    events: [commandEvent, ...events],
+    error,
+  };
 }
 
 function warpToMap(mapId: number, x: number, y: number, direction = "DOWN"): void {
@@ -540,6 +956,9 @@ export function installCaptureQuestTestBridge(): void {
 
   window.__capturequestTest = {
     getState,
+    getSnapshot,
+    sendCommand,
+    waitForIdle,
     waitForEvent,
     tileToViewport,
     centerTileInView,

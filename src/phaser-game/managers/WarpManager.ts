@@ -7,6 +7,7 @@ import useChatStore, { MessageType } from "@/stores/ChatStore";
 import type { PhaserActor, PhaserWarp } from "@/net/generated/world_api";
 import { isWorldInputFrozen } from "../utils/worldInputGuard";
 import AudioManager from "@/services/audio/AudioManager";
+import { sfxPathForConstant } from "@/services/audio/pokemonMusic";
 
 export class WarpManager {
   private scene: Scene;
@@ -323,6 +324,14 @@ export class WarpManager {
       direction: normalizedDirection,
     };
 
+    const warpSfx = sfxPathForConstant(
+      destinationIsOverworld ? "SFX_GO_OUTSIDE" : "SFX_GO_INSIDE",
+    );
+    if (warpSfx) {
+      void AudioManager.playSFX(warpSfx, 0.85);
+      detail.sfxAlreadyPlayed = true;
+    }
+
     if (
       destinationIsOverworld &&
       !sourceIsOverworld &&
@@ -336,7 +345,6 @@ export class WarpManager {
       detail.animationStartY = warp.destinationY;
     }
 
-    void AudioManager.playGeneratedSFX("warp", 0.85);
     window.dispatchEvent(
       new CustomEvent("warpTileTeleport", {
         detail,

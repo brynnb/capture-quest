@@ -399,6 +399,13 @@ test("Game Corner prize Pokemon go to party or PC when party is full", async ({
       }));
     })
     .toContainEqual({ id: 63, name: "ABRA", level: 9, boxSlot: 1 });
+  await page.getByRole("button", { name: "LOG OFF" }).click();
+  await expect
+    .poll(async () => {
+      const state = await getGameState(page);
+      return state.pokemon.pc.isOpen;
+    })
+    .toBe(false);
   await dismissDialogue(page, 6);
 
   await quitToCharacterSelect(page);

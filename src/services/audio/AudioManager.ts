@@ -17,14 +17,6 @@ async function fetchAudioBytes(folderPath: string, fileName: string): Promise<Ar
 }
 
 export type AudioManifest = typeof audioManifest;
-export type GeneratedSFXName =
-    | "battleStart"
-    | "confirm"
-    | "dialogue"
-    | "error"
-    | "heal"
-    | "itemPickup"
-    | "warp";
 
 class AudioManager {
     private static instance: AudioManager;
@@ -39,7 +31,7 @@ class AudioManager {
     private currentMusicTrack: string | null = null;
     private requestedMusicTrack: string | null = null; // What we WANT to play, even if it failed
     private lastSFXTrack: string | null = null;
-    private lastGeneratedSFXName: GeneratedSFXName | null = null;
+    private recentSFXTracks: string[] = [];
     private currentTrackMultiplier: number = 1.0;
     private initialized: boolean = false;
     private isMuted: boolean = false;
@@ -153,8 +145,8 @@ class AudioManager {
         return this.lastSFXTrack;
     }
 
-    public getLastGeneratedSFXName(): GeneratedSFXName | null {
-        return this.lastGeneratedSFXName;
+    public getRecentSFXTracks(): string[] {
+        return [...this.recentSFXTracks];
     }
 
     private async loadGlobalSounds() {
@@ -233,6 +225,7 @@ class AudioManager {
      */
     public async playSFX(filename: string, volume: number = 0.5) {
         this.lastSFXTrack = filename;
+        this.recentSFXTracks = [...this.recentSFXTracks, filename].slice(-20);
 
         if (!this.initialized || !this.audioCtx) {
             console.warn(`[AudioManager] playSFX(${filename}): Not initialized`);
@@ -279,99 +272,6 @@ class AudioManager {
         }
 
         source.start(0);
-    }
-
-    public async playGeneratedSFX(name: GeneratedSFXName, volume: number = 1) {
-        this.lastGeneratedSFXName = name;
-
-        if (!this.initialized || !this.audioCtx || this.isMuted) {
-            return;
-        }
-
-        if (this.audioCtx.state === 'suspended') {
-            await this.audioCtx.resume();
-        }
-
-        const patterns: Record<GeneratedSFXName, Array<{ freq: number; duration: number; delay?: number; type?: OscillatorType; rampTo?: number; gain?: number }>> = {
-            battleStart: [
-                { freq: 196, rampTo: 392, duration: 0.12, type: "sawtooth", gain: 0.18 },
-                { freq: 392, rampTo: 247, duration: 0.11, delay: 0.11, type: "sawtooth", gain: 0.16 },
-                { freq: 247, rampTo: 523, duration: 0.16, delay: 0.22, type: "square", gain: 0.14 },
-            ],
-            confirm: [
-                { freq: 659, duration: 0.045, type: "square", gain: 0.12 },
-                { freq: 880, duration: 0.07, delay: 0.055, type: "square", gain: 0.11 },
-            ],
-            dialogue: [
-                { freq: 880, duration: 0.025, type: "square", gain: 0.055 },
-            ],
-            error: [
-                { freq: 220, duration: 0.08, type: "triangle", gain: 0.13 },
-                { freq: 165, duration: 0.12, delay: 0.075, type: "triangle", gain: 0.12 },
-            ],
-            heal: [
-                { freq: 523, duration: 0.07, type: "triangle", gain: 0.1 },
-                { freq: 659, duration: 0.07, delay: 0.07, type: "triangle", gain: 0.1 },
-                { freq: 784, duration: 0.08, delay: 0.14, type: "triangle", gain: 0.1 },
-                { freq: 1047, duration: 0.14, delay: 0.21, type: "triangle", gain: 0.08 },
-            ],
-            itemPickup: [
-                { freq: 784, duration: 0.055, type: "square", gain: 0.12 },
-                { freq: 988, duration: 0.055, delay: 0.06, type: "square", gain: 0.12 },
-                { freq: 1175, duration: 0.12, delay: 0.12, type: "square", gain: 0.1 },
-            ],
-            warp: [
-                { freq: 247, rampTo: 988, duration: 0.28, type: "triangle", gain: 0.11 },
-                { freq: 370, rampTo: 1480, duration: 0.22, delay: 0.05, type: "sine", gain: 0.065 },
-            ],
-        };
-
-        const startAt = this.audioCtx.currentTime;
-        for (const tone of patterns[name]) {
-            this.playGeneratedTone(
-                startAt + (tone.delay ?? 0),
-                tone.freq,
-                tone.duration,
-                tone.type ?? "square",
-                (tone.gain ?? 0.1) * volume,
-                tone.rampTo,
-            );
-        }
-    }
-
-    private playGeneratedTone(
-        startAt: number,
-        frequency: number,
-        duration: number,
-        type: OscillatorType,
-        volume: number,
-        rampTo?: number,
-    ) {
-        if (!this.audioCtx) return;
-
-        const osc = this.audioCtx.createOscillator();
-        const gain = this.audioCtx.createGain();
-        const endAt = startAt + duration;
-
-        osc.type = type;
-        osc.frequency.setValueAtTime(frequency, startAt);
-        if (rampTo !== undefined) {
-            osc.frequency.linearRampToValueAtTime(rampTo, endAt);
-        }
-
-        gain.gain.setValueAtTime(0, startAt);
-        gain.gain.linearRampToValueAtTime(Math.max(0, Math.min(volume, 1)), startAt + 0.01);
-        gain.gain.linearRampToValueAtTime(0, endAt);
-
-        osc.connect(gain);
-        if (this.sfxGainNode) {
-            gain.connect(this.sfxGainNode);
-        } else {
-            gain.connect(this.audioCtx.destination);
-        }
-
-        osc.start(startAt);
-        osc.stop(endAt + 0.02);
     }
 
     public isAssetAvailable(filename: string): boolean {

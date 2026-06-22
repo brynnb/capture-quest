@@ -12,7 +12,7 @@ import { WorldSocket, OpCodes } from "@/net";
 import AudioManager from "@/services/audio/AudioManager";
 import usePokeBattleStore from "@stores/PokeBattleStore";
 import { cancelActiveCutscene } from "@/phaser-game/services/CutsceneService";
-import { sfxPathOrFallback } from "@/services/audio/pokemonMusic";
+import { sfxPathForConstant } from "@/services/audio/pokemonMusic";
 
 const HUDContainer = styled.div`
   position: absolute;
@@ -150,8 +150,8 @@ const BottomHUD: React.FC = () => {
           marginBottom="0"
           clickSound={
             isInventoryOpen
-              ? sfxPathOrFallback("SFX_TURN_OFF_PC", "/sound/buttonclick.mp3")
-              : sfxPathOrFallback("SFX_TURN_ON_PC", "/sound/SFX_TURN_ON_PC.mp3")
+              ? sfxPathForConstant("SFX_TURN_OFF_PC")
+              : sfxPathForConstant("SFX_TURN_ON_PC")
           }
         />
       </SidebarSection>

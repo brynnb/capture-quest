@@ -3,7 +3,7 @@ import useCharacterStore from "@stores/CharacterCreatorStore";
 import useStaticDataStore from "@stores/StaticDataStore";
 import styled from "styled-components";
 import AudioManager from "@/services/audio/AudioManager";
-import { sfxPathOrFallback } from "@/services/audio/pokemonMusic";
+import { sfxPathForConstant } from "@/services/audio/pokemonMusic";
 
 const ScrollableZones = styled.div`
   display: flex;
@@ -109,7 +109,8 @@ const HomeTownSelector = () => {
   const { homeTowns } = useStaticDataStore();
 
   const onSelectMap = (mapId: number) => {
-    AudioManager.playSFX(sfxPathOrFallback("SFX_PRESS_AB", "/sound/buttonclick.mp3"));
+    const sfx = sfxPathForConstant("SFX_PRESS_AB");
+    if (sfx) AudioManager.playSFX(sfx);
     const homeTown = homeTowns.find((town) => town.mapId === mapId);
     if (homeTown) {
       setSelectedHomeTown(homeTown);

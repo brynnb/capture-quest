@@ -1252,8 +1252,8 @@ func warpCoordKey(mapID, x, y int) string {
 func bakeOverworldCoordinatesPostgres(pg *sql.DB) error {
 	result, err := pg.Exec(`
 		UPDATE phaser_objects AS po
-		SET x = COALESCE(po.x, po.local_x) + offsets.offset_x,
-			y = COALESCE(po.y, po.local_y) + offsets.offset_y
+		SET x = po.local_x + offsets.offset_x,
+			y = po.local_y + offsets.offset_y
 		FROM phaser_maps AS pm,
 			(
 				SELECT source_map_id AS map_id,
@@ -1265,7 +1265,9 @@ func bakeOverworldCoordinatesPostgres(pg *sql.DB) error {
 			) AS offsets
 		WHERE po.map_id = pm.id
 		  AND offsets.map_id = po.map_id
-		  AND pm.is_overworld = 1`)
+		  AND pm.is_overworld = 1
+		  AND po.local_x IS NOT NULL
+		  AND po.local_y IS NOT NULL`)
 	if err != nil {
 		return fmt.Errorf("bake overworld object coordinates: %w", err)
 	}

@@ -483,17 +483,26 @@ func loadDebugWarpProbeCases(wh *WorldHandler, limit, offset, sourceMapID int) (
 }
 
 func buildDebugWarpProbeCase(wh *WorldHandler, row debugWarpProbeRow) (DebugWarpProbeCase, string) {
-	sourceClientMapID := debugWarpClientMapID(row.sourceMapID, row.sourceIsOverworld)
-	destinationClientMapID := debugWarpClientMapID(row.destinationMapID, row.destinationIsOverworld)
+	sourceIsOverworld := debugWarpIsOverworldMap(wh, row.sourceMapID, row.sourceIsOverworld)
+	destinationIsOverworld := debugWarpIsOverworldMap(wh, row.destinationMapID, row.destinationIsOverworld)
+	sourceClientMapID := debugWarpClientMapID(row.sourceMapID, sourceIsOverworld)
+	destinationClientMapID := debugWarpClientMapID(row.destinationMapID, destinationIsOverworld)
 
 	keyboardSetupX, keyboardSetupY, keyboardDirection, ok := debugWarpActivationSetup(wh, sourceClientMapID, row)
 	if !ok {
 		return DebugWarpProbeCase{}, "no walkable setup tile for keyboard/click activation"
 	}
+	clickSetupX, clickSetupY, ok := debugWarpClickSetup(wh, sourceClientMapID, row, keyboardSetupX, keyboardSetupY)
+	if !ok {
+		return DebugWarpProbeCase{}, "no walkable setup tile for click activation"
+	}
+	if debugWarpActivationTouchesCoordinateTrigger(wh, row.sourceMapID, sourceClientMapID, row, keyboardSetupX, keyboardSetupY, clickSetupX, clickSetupY) {
+		return DebugWarpProbeCase{}, "activation tile has coordinate script trigger"
+	}
 
 	expectedX := row.destinationX
 	expectedY := row.destinationY
-	if row.destinationIsOverworld && !row.sourceIsOverworld && keyboardDirection == "DOWN" {
+	if destinationIsOverworld && !sourceIsOverworld && keyboardDirection == "DOWN" {
 		expectedY++
 	}
 
@@ -507,13 +516,13 @@ func buildDebugWarpProbeCase(wh *WorldHandler, row debugWarpProbeRow) (DebugWarp
 		SourceMapID:            row.sourceMapID,
 		SourceClientMapID:      sourceClientMapID,
 		SourceMapName:          row.sourceMapName,
-		SourceIsOverworld:      row.sourceIsOverworld,
+		SourceIsOverworld:      sourceIsOverworld,
 		X:                      row.x,
 		Y:                      row.y,
 		DestinationMapID:       row.destinationMapID,
 		DestinationClientMapID: destinationClientMapID,
 		DestinationMapName:     row.destinationMapName,
-		DestinationIsOverworld: row.destinationIsOverworld,
+		DestinationIsOverworld: destinationIsOverworld,
 		DestinationX:           row.destinationX,
 		DestinationY:           row.destinationY,
 		ExpectedX:              expectedX,
@@ -523,8 +532,8 @@ func buildDebugWarpProbeCase(wh *WorldHandler, row debugWarpProbeRow) (DebugWarp
 		KeyboardSetupX:         keyboardSetupX,
 		KeyboardSetupY:         keyboardSetupY,
 		KeyboardDirection:      keyboardDirection,
-		ClickSetupX:            keyboardSetupX,
-		ClickSetupY:            keyboardSetupY,
+		ClickSetupX:            clickSetupX,
+		ClickSetupY:            clickSetupY,
 		PostWarpMoveX:          postMoveX,
 		PostWarpMoveY:          postMoveY,
 		PostWarpMoveDirection:  postMoveDirection,
@@ -554,6 +563,56 @@ func debugWarpActivationSetup(wh *WorldHandler, clientMapID int, row debugWarpPr
 	}
 
 	return 0, 0, "", false
+}
+
+func debugWarpClickSetup(wh *WorldHandler, clientMapID int, row debugWarpProbeRow, fallbackX, fallbackY int) (int, int, bool) {
+	if normalizeWarpType(row.warpType) != "carpet" || !debugWarpTileIsWalkable(wh, clientMapID, row.x, row.y) {
+		return fallbackX, fallbackY, true
+	}
+
+	fallbackWarpX := 0
+	fallbackWarpY := 0
+	hasWarpFallback := false
+	for _, direction := range debugWarpDirectionOrder(row) {
+		dx, dy, ok := warpDirectionDelta(direction)
+		if !ok {
+			continue
+		}
+		setupX := row.x - dx
+		setupY := row.y - dy
+		if !debugWarpTileIsWalkable(wh, clientMapID, setupX, setupY) {
+			continue
+		}
+		if wh != nil && wh.phaserWarps != nil && wh.phaserWarps.warpAt(clientMapID, setupX, setupY) != nil {
+			if !hasWarpFallback {
+				fallbackWarpX = setupX
+				fallbackWarpY = setupY
+				hasWarpFallback = true
+			}
+			continue
+		}
+		return setupX, setupY, true
+	}
+	if hasWarpFallback {
+		return fallbackWarpX, fallbackWarpY, true
+	}
+	return 0, 0, false
+}
+
+func debugWarpActivationTouchesCoordinateTrigger(wh *WorldHandler, sourceMapID, clientMapID int, row debugWarpProbeRow, keyboardSetupX, keyboardSetupY, clickSetupX, clickSetupY int) bool {
+	return debugWarpTileHasCoordinateTrigger(wh, sourceMapID, clientMapID, row.x, row.y) ||
+		debugWarpTileHasCoordinateTrigger(wh, sourceMapID, clientMapID, keyboardSetupX, keyboardSetupY) ||
+		debugWarpTileHasCoordinateTrigger(wh, sourceMapID, clientMapID, clickSetupX, clickSetupY)
+}
+
+func debugWarpTileHasCoordinateTrigger(wh *WorldHandler, sourceMapID, clientMapID, x, y int) bool {
+	if wh == nil || wh.CoordTriggers == nil {
+		return false
+	}
+	if len(wh.CoordTriggers.CheckTileTriggers(sourceMapID, x, y)) > 0 {
+		return true
+	}
+	return sourceMapID != clientMapID && len(wh.CoordTriggers.CheckTileTriggers(clientMapID, x, y)) > 0
 }
 
 func debugWarpPostMoveTarget(wh *WorldHandler, clientMapID, x, y int) (int, int, string, bool) {
@@ -648,6 +707,16 @@ func debugWarpTileHasEncounter(wh *WorldHandler, clientMapID, x, y int) bool {
 	return wh != nil &&
 		wh.WildEncounter != nil &&
 		wh.WildEncounter.getEncounterAreaID(clientMapID, x, y) != 0
+}
+
+func debugWarpIsOverworldMap(wh *WorldHandler, mapID int, rowIsOverworld bool) bool {
+	if rowIsOverworld {
+		return true
+	}
+	if mapID >= 0 && mapID <= 33 {
+		return true
+	}
+	return wh != nil && wh.ActorManager != nil && wh.ActorManager.IsOverworld(mapID)
 }
 
 func debugWarpClientMapID(mapID int, isOverworld bool) int {

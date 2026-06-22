@@ -279,6 +279,11 @@ fi
   --extractor-root "${EXTRACTOR_ROOT}" \
   --repo-root "${REPO_ROOT}"
 
+if [[ -f "${EXTRACTOR_ROOT}/audio_manifest.json" ]]; then
+  echo "Syncing Pokemon audio metadata..."
+  npm run audio:sync
+fi
+
 if [[ -f ".env" ]]; then
   set -a
   # shellcheck disable=SC1091

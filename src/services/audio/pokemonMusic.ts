@@ -15,6 +15,7 @@ type PokemonCryAsset = {
 
 type PokemonAudioManifest = {
   mapMusic?: Array<{
+    map_constant?: string;
     map_id?: number;
     music_constant?: string;
     path?: string;
@@ -24,7 +25,6 @@ type PokemonAudioManifest = {
   pokemonCries?: Record<string, PokemonCryAsset>;
 };
 
-export const DEFAULT_WORLD_MUSIC = "/sound/pokemon/music/pallet_town.ogg";
 export const TITLE_MUSIC = "/sound/title.mp3";
 
 const localAudioFiles = new Set<string>([
@@ -34,10 +34,24 @@ const localAudioFiles = new Set<string>([
 
 const pokemonAudio = pokemonAudioManifest as PokemonAudioManifest;
 const mapMusicById = new Map<number, string>();
+const mapMusicByName = new Map<string, string>();
 for (const entry of pokemonAudio.mapMusic ?? []) {
   if (typeof entry.map_id === "number" && entry.music_constant) {
     mapMusicById.set(entry.map_id, entry.music_constant);
   }
+  if (entry.map_constant && entry.music_constant) {
+    mapMusicByName.set(normalizeMapName(entry.map_constant), entry.music_constant);
+  }
+}
+
+function normalizeMapName(mapName?: string | null): string {
+  return (mapName ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/POKéMON/g, "POKEMON")
+    .replace(/POKÉMON/g, "POKEMON")
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 export function isLocalAudioFileAvailable(path?: string | null): boolean {
@@ -46,23 +60,36 @@ export function isLocalAudioFileAvailable(path?: string | null): boolean {
 
 export function musicTrackForConstant(
   musicConstant?: string | null,
-  fallback = DEFAULT_WORLD_MUSIC,
-): string {
+  fallback?: string | null,
+): string | null {
   const normalized = musicConstant?.trim().toUpperCase();
-  if (!normalized) return fallback;
+  if (!normalized) return isLocalAudioFileAvailable(fallback) ? fallback! : null;
   const path = pokemonAudio.music[normalized]?.path;
-  return isLocalAudioFileAvailable(path) ? path! : fallback;
+  if (isLocalAudioFileAvailable(path)) return path!;
+  return isLocalAudioFileAvailable(fallback) ? fallback! : null;
 }
 
 export function musicTrackForMapConstant(
   musicConstant?: string | null,
-): string {
-  return musicTrackForConstant(musicConstant, DEFAULT_WORLD_MUSIC);
+): string | null {
+  return musicTrackForConstant(musicConstant);
 }
 
-export function musicTrackForMapId(mapId?: number | null): string {
-  if (mapId == null) return DEFAULT_WORLD_MUSIC;
+export function musicTrackForMapId(mapId?: number | null): string | null {
+  if (mapId == null) return musicTrackForConstant("MUSIC_PALLET_TOWN");
   return musicTrackForMapConstant(mapMusicById.get(mapId));
+}
+
+export function musicTrackForMapName(mapName?: string | null): string | null {
+  return musicTrackForMapConstant(mapMusicByName.get(normalizeMapName(mapName)));
+}
+
+export function musicTrackForMap(
+  mapId?: number | null,
+  mapName?: string | null,
+): string | null {
+  const byId = mapId == null ? null : musicTrackForMapId(mapId);
+  return byId ?? musicTrackForMapName(mapName) ?? musicTrackForMapId(null);
 }
 
 const GYM_LEADER_CLASSES = new Set([
@@ -83,40 +110,40 @@ const GYM_LEADER_CLASSES = new Set([
 export function battleMusicTrackForState(
   battleType?: string | null,
   trainerClass?: string | null,
-): string {
+): string | null {
   const normalizedClass = trainerClass?.trim().toUpperCase() ?? "";
   if (normalizedClass === "RIVAL3" || normalizedClass === "CHAMPION") {
-    return musicTrackForConstant("MUSIC_FINAL_BATTLE", DEFAULT_WORLD_MUSIC);
+    return musicTrackForConstant("MUSIC_FINAL_BATTLE");
   }
   if (battleType === "trainer") {
     const constant = GYM_LEADER_CLASSES.has(normalizedClass)
       ? "MUSIC_GYM_LEADER_BATTLE"
       : "MUSIC_TRAINER_BATTLE";
-    return musicTrackForConstant(constant, DEFAULT_WORLD_MUSIC);
+    return musicTrackForConstant(constant);
   }
-  return musicTrackForConstant("MUSIC_WILD_BATTLE", DEFAULT_WORLD_MUSIC);
+  return musicTrackForConstant("MUSIC_WILD_BATTLE");
 }
 
 export function victoryMusicTrackForState(
   battleType?: string | null,
   trainerClass?: string | null,
-): string {
+): string | null {
   if (battleType === "trainer") {
     const normalizedClass = trainerClass?.trim().toUpperCase() ?? "";
     const constant = GYM_LEADER_CLASSES.has(normalizedClass)
       ? "MUSIC_DEFEATED_GYM_LEADER"
       : "MUSIC_DEFEATED_TRAINER";
-    return musicTrackForConstant(constant, DEFAULT_WORLD_MUSIC);
+    return musicTrackForConstant(constant);
   }
-  return musicTrackForConstant("MUSIC_DEFEATED_WILD_MON", DEFAULT_WORLD_MUSIC);
+  return musicTrackForConstant("MUSIC_DEFEATED_WILD_MON");
 }
 
-export function bikeMusicTrack(): string {
-  return musicTrackForConstant("MUSIC_BIKE_RIDING", DEFAULT_WORLD_MUSIC);
+export function bikeMusicTrack(): string | null {
+  return musicTrackForConstant("MUSIC_BIKE_RIDING");
 }
 
-export function surfingMusicTrack(): string {
-  return musicTrackForConstant("MUSIC_SURFING", DEFAULT_WORLD_MUSIC);
+export function surfingMusicTrack(): string | null {
+  return musicTrackForConstant("MUSIC_SURFING");
 }
 
 export function sfxPathForConstant(sfxConstant?: string | null): string | null {
@@ -155,11 +182,4 @@ export function cryPathForPokemon(
     return speciesPath!;
   }
   return sfxPathForConstant(fallbackSfxConstant);
-}
-
-export function sfxPathOrFallback(
-  sfxConstant: string,
-  fallback: string,
-): string {
-  return sfxPathForConstant(sfxConstant) ?? fallback;
 }

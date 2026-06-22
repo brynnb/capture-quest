@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { PokemonDTO } from "@/net/generated/world_api";
 import { WorldSocket, OpCodes } from "@/net";
+import useAudioActivityStore from "@/stores/AudioActivityStore";
 
 export type BattlePhase =
   | "none"
@@ -239,6 +240,7 @@ const usePokeBattleStore = create<PokeBattleState>((set, get) => ({
     if (!isSafari) {
       WorldSocket.sendJsonMessage(OpCodes.PokeBattleCloseRequest, {});
     }
+    useAudioActivityStore.getState().setBattleVictoryTrack(null);
     set({
       isInBattle: false,
       phase: "none",

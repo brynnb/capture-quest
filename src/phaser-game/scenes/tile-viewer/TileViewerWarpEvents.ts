@@ -17,6 +17,7 @@ interface WarpTileTeleportDetail {
   animateExitStep?: boolean;
   animationStartX?: number;
   animationStartY?: number;
+  sfxAlreadyPlayed?: boolean;
 }
 
 interface TileViewerWarpEventsDeps {
@@ -100,20 +101,22 @@ export class TileViewerWarpEvents {
       animateExitStep,
       animationStartX,
       animationStartY,
+      sfxAlreadyPlayed,
     } = event.detail;
     console.log(`[WarpTile] Teleporting to map ${mapId} (${x}, ${y})`);
     const normalizedPlayerMapId = this.deps.mapDataService.isOverworld(mapId)
       ? UNIFIED_OVERWORLD_MAP_ID
       : mapId;
-    const warpSfx = sfxPathForConstant(
-      normalizedPlayerMapId === UNIFIED_OVERWORLD_MAP_ID
-        ? "SFX_GO_OUTSIDE"
-        : "SFX_GO_INSIDE",
-    );
-    if (warpSfx) {
-      void AudioManager.playSFX(warpSfx, 0.85);
-    } else {
-      void AudioManager.playGeneratedSFX("warp", 0.85);
+    const currentMapId = this.deps.scene.game.registry.get("currentMapId");
+    if (!sfxAlreadyPlayed) {
+      const warpSfx = sfxPathForConstant(
+        normalizedPlayerMapId === UNIFIED_OVERWORLD_MAP_ID
+          ? "SFX_GO_OUTSIDE"
+          : "SFX_GO_INSIDE",
+      );
+      if (warpSfx) {
+        void AudioManager.playSFX(warpSfx, 0.85);
+      }
     }
 
     PhaserNet.sendPlayerPosition(
@@ -142,7 +145,6 @@ export class TileViewerWarpEvents {
       this.deps.setPlayerActor(playerActor);
     }
 
-    const currentMapId = this.deps.scene.game.registry.get("currentMapId");
     if (mapId !== currentMapId) {
       this.deps.scene.game.registry.set("destinationMapId", mapId);
       this.deps.scene.game.registry.set("destinationX", x);

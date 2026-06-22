@@ -11,7 +11,7 @@ import SubmitCharacter from "./SubmitCharacter";
 import styled from "styled-components";
 import SelectionButton from "../Interface/SelectionButton";
 import AudioManager from "@/services/audio/AudioManager";
-import { sfxPathOrFallback } from "@/services/audio/pokemonMusic";
+import { sfxPathForConstant } from "@/services/audio/pokemonMusic";
 
 const MainContainer = styled.div`
   display: flex;
@@ -224,7 +224,8 @@ const CharacterCreator = () => {
                 <GenderSelectorContainer style={{ marginTop: 0 }}>
                   <GenderOption
                     onClick={() => {
-                      AudioManager.playSFX(sfxPathOrFallback("SFX_PRESS_AB", "/sound/buttonclick.mp3"));
+                      const sfx = sfxPathForConstant("SFX_PRESS_AB");
+                      if (sfx) AudioManager.playSFX(sfx);
                       setSelectedGender(0);
                     }}
                   >
@@ -232,7 +233,8 @@ const CharacterCreator = () => {
                   </GenderOption>
                   <GenderOption
                     onClick={() => {
-                      AudioManager.playSFX(sfxPathOrFallback("SFX_PRESS_AB", "/sound/buttonclick.mp3"));
+                      const sfx = sfxPathForConstant("SFX_PRESS_AB");
+                      if (sfx) AudioManager.playSFX(sfx);
                       setSelectedGender(1);
                     }}
                   >
@@ -240,7 +242,8 @@ const CharacterCreator = () => {
                   </GenderOption>
                   <GenderOption
                     onClick={() => {
-                      AudioManager.playSFX(sfxPathOrFallback("SFX_PRESS_AB", "/sound/buttonclick.mp3"));
+                      const sfx = sfxPathForConstant("SFX_PRESS_AB");
+                      if (sfx) AudioManager.playSFX(sfx);
                       setSelectedGender(2);
                     }}
                   >

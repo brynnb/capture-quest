@@ -1,7 +1,7 @@
 import React from "react";
 import styled from "styled-components";
 import AudioManager from "@/services/audio/AudioManager";
-import { sfxPathOrFallback } from "@/services/audio/pokemonMusic";
+import { sfxPathForConstant } from "@/services/audio/pokemonMusic";
 import useGameStatusStore from "@stores/GameStatusStore";
 
 interface SelectionButtonProps {
@@ -80,7 +80,8 @@ const SelectionButton = ({
         muted: isMuted
       });
     }
-    AudioManager.playSFX(sfxPathOrFallback("SFX_PRESS_AB", "/sound/buttonclick.mp3"));
+    const sfx = sfxPathForConstant("SFX_PRESS_AB");
+    if (sfx) AudioManager.playSFX(sfx);
     onClick();
   };
 

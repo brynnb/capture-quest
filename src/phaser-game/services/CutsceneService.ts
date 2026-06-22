@@ -37,7 +37,7 @@ import usePokemonDialogueStore from "@/stores/PokemonDialogueStore";
 import { WorldSocket } from "@/net/index";
 import { NetworkBridge } from "@/net/NetworkBridge";
 import * as OpCodes from "@/net/generated/opcodes";
-import AudioManager, { type GeneratedSFXName } from "@/services/audio/AudioManager";
+import AudioManager from "@/services/audio/AudioManager";
 import {
   cryPathForPokemon,
   musicTrackForConstant,
@@ -477,28 +477,10 @@ function delay(ms: number, runId: number): Promise<boolean> {
   });
 }
 
-function generatedSFXForConstant(
-  sfxConstant?: string | null,
-): GeneratedSFXName | null {
-  const normalized = sfxConstant?.trim().toUpperCase() ?? "";
-  if (!normalized) return null;
-  if (normalized.includes("GET") || normalized.includes("ITEM")) return "itemPickup";
-  if (normalized.includes("DENIED") || normalized.includes("WRONG")) return "error";
-  if (normalized.includes("HEAL")) return "heal";
-  if (normalized.includes("DOOR") || normalized.includes("INSIDE") || normalized.includes("OUTSIDE")) return "warp";
-  if (normalized.includes("PRESS") || normalized.includes("PURCHASE")) return "confirm";
-  return "confirm";
-}
-
 function playSFXAction(action: CutsceneAction): void {
   const path = sfxPathForConstant(action.sfxConstant);
   if (path) {
     void AudioManager.playSFX(path, action.volume ?? 0.8);
-    return;
-  }
-  const fallback = generatedSFXForConstant(action.sfxConstant);
-  if (fallback) {
-    void AudioManager.playGeneratedSFX(fallback, action.volume ?? 0.8);
   }
 }
 

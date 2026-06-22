@@ -21,6 +21,13 @@ function hashServerPort(): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 7100;
 }
 
+function apiServerPort(): number {
+  const rawPort = process.env.VITE_API_PORT || process.env.HTTP_PORT;
+  if (!rawPort) return 8080;
+  const parsed = Number.parseInt(rawPort, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 8080;
+}
+
 // Middleware to proxy /api/hash to the Go server
 // This avoids CORS/TLS issues by fetching from same origin
 function hashProxyPlugin(): Plugin {
@@ -99,7 +106,7 @@ function tileArtProxyPlugin(): Plugin {
         if (!req.url?.startsWith("/api/tiles/")) return next();
 
         try {
-          const goUrl = `http://127.0.0.1:8080${req.url}`;
+          const goUrl = `http://127.0.0.1:${apiServerPort()}${req.url}`;
           const method = req.method || "GET";
 
           // For POST requests, pipe the body through

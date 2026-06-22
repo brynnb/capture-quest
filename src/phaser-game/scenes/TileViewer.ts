@@ -43,6 +43,7 @@ import {
   setCaptureQuestTileViewerDiagnostics,
   type CaptureQuestTestActor,
 } from "@/testing/capturequestTestBridge";
+import type { EngineProbeCommand } from "@/testing/engineProbe";
 
 export interface TileUpdateEvent {
   tileId: number;
@@ -222,6 +223,79 @@ export class TileViewer extends Scene {
             reason: this.getWorldInputFreezeReason(),
           },
         };
+      },
+      getEngineProbeSource: () => ({
+        tiles: this.tiles,
+        actors: this.actors,
+        warps: this.warps,
+      }),
+      sendCommand: async (command: EngineProbeCommand) => {
+        if ("press" in command) {
+          if (command.press === "SPACE") {
+            for (const eventType of ["keydown", "keyup"]) {
+              const eventInit = {
+                key: " ",
+                code: "Space",
+                bubbles: true,
+              };
+              window.dispatchEvent(new KeyboardEvent(eventType, eventInit));
+              document.dispatchEvent(new KeyboardEvent(eventType, eventInit));
+            }
+            return { ok: true };
+          }
+          const moved = this.playerMovementController.handleKeyboardMove(
+            command.press,
+          );
+          return {
+            ok: moved,
+            error: moved ? undefined : "Movement was blocked",
+          };
+        }
+
+        if ("clickTile" in command) {
+          this.playerMovementController.handleTileClick(
+            command.clickTile.x * TILE_SIZE + TILE_SIZE / 2,
+            command.clickTile.y * TILE_SIZE + TILE_SIZE / 2,
+          );
+          return { ok: true };
+        }
+
+        if ("face" in command) {
+          this.playerMovementController.syncDirection(command.face);
+          return { ok: true };
+        }
+
+        if ("useFieldMove" in command) {
+          const direction =
+            this.playerMovementController.getCurrentDirection().toUpperCase();
+          const position = this.playerMovementController.getCurrentPosition();
+          const dx = direction === "LEFT" ? -1 : direction === "RIGHT" ? 1 : 0;
+          const dy = direction === "UP" ? -1 : direction === "DOWN" ? 1 : 0;
+          PhaserNet.requestFieldMoveUse(
+            command.useFieldMove.moveName,
+            command.useFieldMove.targetX ?? position.x + dx,
+            command.useFieldMove.targetY ?? position.y + dy,
+            this.playerMovementController.getCurrentMapId(),
+            direction,
+          );
+          return { ok: true };
+        }
+
+        if ("warpTo" in command) {
+          window.dispatchEvent(
+            new CustomEvent("warpTileTeleport", {
+              detail: {
+                mapId: command.warpTo.mapId,
+                x: command.warpTo.x,
+                y: command.warpTo.y,
+                direction: command.warpTo.direction ?? "DOWN",
+              },
+            }),
+          );
+          return { ok: true };
+        }
+
+        return undefined;
       },
       tileToViewport: (tileX, tileY) => {
         const camera = this.cameras.main;

@@ -1,6 +1,6 @@
 import ActionButton from "../Interface/ActionButton";
 import useGameStatusStore from "@stores/GameStatusStore";
-import { sfxPathOrFallback } from "@/services/audio/pokemonMusic";
+import { sfxPathForConstant } from "@/services/audio/pokemonMusic";
 
 interface SystemOptionsProps {
   showInventory?: boolean;
@@ -29,8 +29,8 @@ const SystemOptions = ({ showInventory = true }: SystemOptionsProps) => {
           marginBottom="4px"
           clickSound={
             isInventoryOpen
-              ? sfxPathOrFallback("SFX_TURN_OFF_PC", "/sound/buttonclick.mp3")
-              : sfxPathOrFallback("SFX_TURN_ON_PC", "/sound/SFX_TURN_ON_PC.mp3")
+              ? sfxPathForConstant("SFX_TURN_OFF_PC")
+              : sfxPathForConstant("SFX_TURN_ON_PC")
           }
         />
       )}

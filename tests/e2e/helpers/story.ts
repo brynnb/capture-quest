@@ -2,8 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { expect, type Page } from "@playwright/test";
 import { pressSpace } from "./input";
-import { jumpToScenario } from "./scenarioDebugger";
-import { getGameState, waitForPlayerTile } from "./state";
+import { sendProbeCommand } from "./probe";
+import { getEngineSnapshot, getGameState, waitForPlayerTile } from "./state";
 
 export type StoryKind = "mainline" | "side" | "system" | "debug";
 export type E2EMode = "interactive" | "stateOnly" | "scriptOnly";
@@ -92,7 +92,7 @@ export function orderedStoryCheckpoints(
 }
 
 export async function jumpToStoryCheckpoint(page: Page, checkpoint: StoryCheckpoint) {
-  await jumpToScenario(page, checkpoint.name);
+  await sendProbeCommand(page, { scenario: { name: checkpoint.name } });
   await expect
     .poll(
       async () => {
@@ -139,8 +139,8 @@ export async function assertStoryCheckpointState(page: Page, checkpoint: StoryCh
     await expect
       .poll(
         async () => {
-          const state = await getGameState(page);
-          return state.battle.battleType;
+          const snapshot = await getEngineSnapshot(page);
+          return snapshot.battle.battleType;
         },
         { timeout: 15_000 },
       )

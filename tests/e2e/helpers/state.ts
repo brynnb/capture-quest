@@ -3,6 +3,10 @@ import type {
   CaptureQuestTestActor,
   CaptureQuestTestState,
 } from "../../../src/testing/capturequestTestBridge";
+import type {
+  EngineProbeSnapshot,
+  EngineProbeSnapshotOptions,
+} from "../../../src/testing/engineProbe";
 
 type MapMatcher = number | string | RegExp;
 
@@ -25,6 +29,20 @@ export async function getGameState(page: Page): Promise<CaptureQuestTestState> {
     }
     return bridge.getState();
   });
+}
+
+export async function getEngineSnapshot(
+  page: Page,
+  options?: EngineProbeSnapshotOptions,
+): Promise<EngineProbeSnapshot> {
+  await waitForTestBridge(page);
+  return page.evaluate((snapshotOptions) => {
+    const bridge = window.__capturequestTest;
+    if (!bridge) {
+      throw new Error("CaptureQuest test bridge is not available");
+    }
+    return bridge.getSnapshot(snapshotOptions);
+  }, options);
 }
 
 export async function waitForMap(page: Page, map: MapMatcher) {
@@ -306,8 +324,10 @@ export async function waitForLastSFX(
         const state = await getGameState(page);
         const candidates = [
           state.audio.lastSFXTrack,
-          state.audio.lastGeneratedSFXName,
-        ].filter((value): value is string => Boolean(value));
+          ...(state.audio.recentSFXTracks ?? []),
+        ].filter(
+          (value): value is string => Boolean(value),
+        );
         return candidates.some((last) =>
           typeof matcher === "string"
             ? last.includes(matcher)

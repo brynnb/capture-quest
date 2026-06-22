@@ -15,7 +15,7 @@ import useCQInventoryStore from "@/stores/CQInventoryStore";
 import usePokemonPCStore from "@/stores/PokemonPCStore";
 import usePokemonDialogueStore from "@/stores/PokemonDialogueStore";
 import useAudioActivityStore from "@/stores/AudioActivityStore";
-import AudioManager, { type GeneratedSFXName } from "@/services/audio/AudioManager";
+import AudioManager from "@/services/audio/AudioManager";
 import {
   cryPathForPokemon,
   sfxPathForConstant,
@@ -350,7 +350,6 @@ export class NetworkBridge {
       console.warn("[NetworkBridge] Battle start failed:", data.error);
       return;
     }
-    AudioManager.playGeneratedSFX("battleStart", 0.9);
     useAudioActivityStore.getState().setBattleVictoryTrack(null);
     usePokeBattleStore.getState().startBattle({
       playerPokemon: data.playerPokemon as PokeBattlePokemonDTO,
@@ -375,18 +374,10 @@ export class NetworkBridge {
     }
   }
 
-  private playSourceSFX(
-    sfxConstant: string,
-    volume: number,
-    fallback?: GeneratedSFXName,
-  ) {
+  private playSourceSFX(sfxConstant: string, volume: number) {
     const path = sfxPathForConstant(sfxConstant);
     if (path) {
       void AudioManager.playSFX(path, volume);
-      return;
-    }
-    if (fallback) {
-      void AudioManager.playGeneratedSFX(fallback, volume);
     }
   }
 
@@ -413,14 +404,14 @@ export class NetworkBridge {
     const playerWon = data.playerWon as boolean;
     if (playerWon) {
       const battleState = usePokeBattleStore.getState();
-      useAudioActivityStore
-        .getState()
-        .setBattleVictoryTrack(
-          victoryMusicTrackForState(
-            battleState.battleType,
-            battleState.trainerClass,
-          ),
-        );
+      const victoryTrack = victoryMusicTrackForState(
+        battleState.battleType,
+        battleState.trainerClass,
+      );
+      useAudioActivityStore.getState().setBattleVictoryTrack(victoryTrack);
+      if (victoryTrack) {
+        AudioManager.playMusic(victoryTrack);
+      }
     }
     const blackoutWarp = !playerWon && data.blackoutMapId
       ? {
@@ -440,7 +431,7 @@ export class NetworkBridge {
       console.warn("[NetworkBridge] Pokémon Center heal failed:", data.error);
       return;
     }
-    this.playSourceSFX("SFX_HEALING_MACHINE", 0.9, "heal");
+    this.playSourceSFX("SFX_HEALING_MACHINE", 0.9);
     // Don't update party store here — the client will request fresh party data
     // after the Nurse Joy dialogue finishes (via the onClose callback).
     console.log("[NetworkBridge] Pokémon Center heal confirmed by server");
@@ -488,7 +479,7 @@ export class NetworkBridge {
       console.warn("[NetworkBridge] Buy failed:", data.error);
       return;
     }
-    this.playSourceSFX("SFX_PURCHASE", 0.8, "confirm");
+    this.playSourceSFX("SFX_PURCHASE", 0.8);
     useCQInventoryStore.getState().updateAfterBuy(
       data.itemId as number,
       data.quantity as number,
@@ -506,7 +497,7 @@ export class NetworkBridge {
       console.warn("[NetworkBridge] Sell failed:", data.error);
       return;
     }
-    this.playSourceSFX("SFX_PURCHASE", 0.8, "confirm");
+    this.playSourceSFX("SFX_PURCHASE", 0.8);
     useCQInventoryStore.getState().updateAfterSell(
       data.instanceId as number,
       data.money as number,
@@ -519,7 +510,7 @@ export class NetworkBridge {
       const error = String(data.error || "It won't have any effect");
       useChatStore.getState().addMessage(error, MessageType.SYSTEM);
       console.warn("[NetworkBridge] Item use failed:", data.error);
-      this.playSourceSFX("SFX_DENIED", 0.8, "error");
+      this.playSourceSFX("SFX_DENIED", 0.8);
       return;
     }
 
@@ -531,7 +522,7 @@ export class NetworkBridge {
         const error = "Unable to choose a move for that TM/HM. Please try again.";
         useChatStore.getState().addMessage(error, MessageType.SYSTEM);
         console.warn("[NetworkBridge] TM/HM move-slot response missing context:", data);
-        this.playSourceSFX("SFX_DENIED", 0.8, "error");
+        this.playSourceSFX("SFX_DENIED", 0.8);
         return;
       }
       const store = useCQInventoryStore.getState();
@@ -547,7 +538,7 @@ export class NetworkBridge {
         message: data.message as string,
       });
       console.log("[NetworkBridge] TM/HM needs move slot:", data.message);
-      this.playSourceSFX("SFX_PRESS_AB", 0.6, "confirm");
+      this.playSourceSFX("SFX_PRESS_AB", 0.6);
       return;
     }
 
@@ -594,7 +585,7 @@ export class NetworkBridge {
       useChatStore.getState().addMessage(String(data.message), MessageType.SYSTEM);
     }
 
-    this.playSourceSFX("SFX_PRESS_AB", 0.75, "confirm");
+    this.playSourceSFX("SFX_PRESS_AB", 0.75);
     console.log("[NetworkBridge] Used item:", data.message);
   }
 
@@ -606,7 +597,7 @@ export class NetworkBridge {
         usePokemonDialogueStore.getState().openDialogue([message]);
         useChatStore.getState().addMessage(message, MessageType.SYSTEM);
       }
-      this.playSourceSFX("SFX_DENIED", 0.8, "error");
+      this.playSourceSFX("SFX_DENIED", 0.8);
       return;
     }
     if (message) {
@@ -615,11 +606,11 @@ export class NetworkBridge {
     }
     if (data.hooked) {
       console.log("[NetworkBridge] Fishing: hooked a Pokémon!");
-      this.playSourceSFX("SFX_PRESS_AB", 0.75, "confirm");
+      this.playSourceSFX("SFX_PRESS_AB", 0.75);
       // Battle start will arrive via PokeBattleStartResponse
     } else {
       console.log("[NetworkBridge] Fishing:", data.message);
-      this.playSourceSFX("SFX_DENIED", 0.6, "error");
+      this.playSourceSFX("SFX_DENIED", 0.6);
     }
   }
 
@@ -699,7 +690,7 @@ export class NetworkBridge {
       ReturnType<typeof usePokemonPartyStore.getState>["setParty"]
     >[0];
     usePokemonPartyStore.getState().setParty(party);
-    this.playSourceSFX("SFX_PRESS_AB", 0.55, "confirm");
+    this.playSourceSFX("SFX_PRESS_AB", 0.55);
     console.log("[NetworkBridge] Party reordered successfully");
   }
 
@@ -716,7 +707,7 @@ export class NetworkBridge {
         : `Picked up ${itemName || "item"}.`;
     console.log(`[NetworkBridge] Picked up ${itemName} (actor ${actorId})`);
     useChatStore.getState().addMessage(message, MessageType.LOOT);
-    this.playSourceSFX("SFX_GET_ITEM_1", 0.9, "itemPickup");
+    this.playSourceSFX("SFX_GET_ITEM_1", 0.9);
 
     // Notify Phaser scene to remove the actor sprite
     window.dispatchEvent(
@@ -737,7 +728,7 @@ export class NetworkBridge {
       party: PCPokemonDTO[];
     };
     usePokemonPCStore.getState().openPC(pcData);
-    this.playSourceSFX("SFX_TURN_ON_PC", 0.7, "confirm");
+    this.playSourceSFX("SFX_TURN_ON_PC", 0.7);
     console.log(`[NetworkBridge] PC opened, box ${pcData.currentBox} with ${pcData.box.length} Pokémon`);
   }
 
@@ -788,7 +779,7 @@ export class NetworkBridge {
       console.warn("[NetworkBridge] Move learn failed:", data.error);
       return;
     }
-    this.playSourceSFX("SFX_GET_ITEM_1", 0.75, "itemPickup");
+    this.playSourceSFX("SFX_GET_ITEM_1", 0.75);
     const message = data.message as string;
     const skipped = data.skipped as boolean;
     console.log("[NetworkBridge] Move learn:", skipped ? "skipped" : "learned", message);
@@ -919,7 +910,7 @@ export class NetworkBridge {
   private handleWarpHomeResponse(data: Record<string, unknown>) {
     const chat = useChatStore.getState();
     if (data.success) {
-      this.playSourceSFX("SFX_GO_OUTSIDE", 0.85, "warp");
+      this.playSourceSFX("SFX_GO_OUTSIDE", 0.85);
       const battleStore = usePokeBattleStore.getState();
       if (battleStore.isInBattle) {
         battleStore.closeBattle();
@@ -935,7 +926,7 @@ export class NetworkBridge {
 
   private handleCutsceneStartNotify(data: Record<string, unknown>) {
     import("@/phaser-game/services/CutsceneService").then(({ handleCutsceneStart }) => {
-      this.playSourceSFX("SFX_PRESS_AB", 0.45, "confirm");
+      this.playSourceSFX("SFX_PRESS_AB", 0.45);
       handleCutsceneStart(data as unknown as import("@/phaser-game/services/CutsceneService").CutsceneStartPayload);
     });
   }

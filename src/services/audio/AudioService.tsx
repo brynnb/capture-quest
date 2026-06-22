@@ -7,8 +7,8 @@ import AudioManager from "./AudioManager";
 import {
   battleMusicTrackForState,
   bikeMusicTrack,
-  DEFAULT_WORLD_MUSIC,
-  musicTrackForMapId,
+  musicTrackForConstant,
+  musicTrackForMap,
   surfingMusicTrack,
   TITLE_MUSIC,
 } from "./pokemonMusic";
@@ -67,6 +67,7 @@ const AudioService = () => {
   const forcedBicycle = useAudioActivityStore((state) => state.forcedBicycle);
   const setBicycleActive = useAudioActivityStore((state) => state.setBicycleActive);
   const travelMapId = useAudioActivityStore((state) => state.travelMapId);
+  const travelMapName = useAudioActivityStore((state) => state.travelMapName);
   const battleVictoryTrack = useAudioActivityStore(
     (state) => state.battleVictoryTrack,
   );
@@ -123,7 +124,10 @@ const AudioService = () => {
     // Switch from character select music to the world theme
     if (currentScreen === "game" && !isMapLoading) {
       if (AudioManager.getRequestedMusicTrack() === TITLE_MUSIC) {
-        AudioManager.playMusic(DEFAULT_WORLD_MUSIC);
+        const worldMusic = musicTrackForConstant("MUSIC_PALLET_TOWN");
+        if (worldMusic) {
+          AudioManager.playMusic(worldMusic);
+        }
       }
     }
 
@@ -153,7 +157,10 @@ const AudioService = () => {
     if (!AudioManager.isInitialized()) return;
     if (currentScreen !== "game" || !isInBattle) return;
 
-    AudioManager.playMusic(battleMusicTrackForState(battleType, trainerClass));
+    const battleMusic = battleMusicTrackForState(battleType, trainerClass);
+    if (battleMusic) {
+      AudioManager.playMusic(battleMusic);
+    }
   }, [battleType, currentScreen, isInBattle, trainerClass]);
 
   // Handle Zone Transitions (Ambient/Music)
@@ -199,27 +206,36 @@ const AudioService = () => {
     }
 
     if (battleVictoryTrack) {
-      AudioManager.playMusic(battleVictoryTrack);
-      const timeout = window.setTimeout(() => {
-        setBattleVictoryTrack(null);
-      }, 5000);
-      return () => window.clearTimeout(timeout);
+      setBattleVictoryTrack(null);
     }
 
     if (isSurfing) {
-      AudioManager.playMusic(surfingMusicTrack());
+      const surfMusic = surfingMusicTrack();
+      if (surfMusic) {
+        AudioManager.playMusic(surfMusic);
+      }
       return;
     }
 
     const isOverworldMap = isOutdoorMap(currentMapId, maps);
 
     if (isBicycleActive && isOverworldMap) {
-      AudioManager.playMusic(bikeMusicTrack());
+      const bikeMusic = bikeMusicTrack();
+      if (bikeMusic) {
+        AudioManager.playMusic(bikeMusic);
+      }
       return;
     }
 
     const effectiveMapId = travelMapId ?? currentMapId;
-    AudioManager.playMusic(musicTrackForMapId(effectiveMapId));
+    const effectiveMapName =
+      travelMapName ?? getMapNameById(effectiveMapId) ?? getMapNameById(currentMapId);
+    const mapMusic =
+      musicTrackForMap(effectiveMapId, effectiveMapName) ??
+      (currentMapId === 9999 ? musicTrackForConstant("MUSIC_PALLET_TOWN") : null);
+    if (mapMusic) {
+      AudioManager.playMusic(mapMusic);
+    }
   }, [
     battleVictoryTrack,
     currentMapId,
@@ -230,7 +246,9 @@ const AudioService = () => {
     isSurfing,
     maps,
     setBattleVictoryTrack,
+    getMapNameById,
     travelMapId,
+    travelMapName,
   ]);
 
   // Handle volume and mute sync

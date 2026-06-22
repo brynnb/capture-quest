@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useCallback, useState } from "react";
 import styled from "styled-components";
 import usePokemonDialogueStore from "@/stores/PokemonDialogueStore";
-import AudioManager from "@/services/audio/AudioManager";
 import { suppressWorldInputFor } from "@/phaser-game/utils/worldInputGuard";
 
 const TYPEWRITER_SPEED = 30; // ms per character
@@ -170,7 +169,6 @@ const PokemonDialogueBox: React.FC = () => {
     const fullText = lines[currentLineIndex];
     charIndexRef.current = 0;
     setDisplayedText("");
-    AudioManager.playGeneratedSFX("dialogue", 0.45);
 
     const tick = () => {
       charIndexRef.current++;

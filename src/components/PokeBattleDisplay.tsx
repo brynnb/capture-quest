@@ -1033,8 +1033,6 @@ const PokeBattleDisplay: React.FC = () => {
           const sfxPath = sfxPathForConstant(event.moveSfx);
           if (sfxPath) {
             void AudioManager.playSFX(sfxPath, 0.75);
-          } else {
-            void AudioManager.playGeneratedSFX("battleStart", 0.25);
           }
         }
         // On evolution event, immediately update the player sprite to the evolved form

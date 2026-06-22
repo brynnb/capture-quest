@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import styled from "styled-components";
 import Tooltip from "./Tooltip";
 import AudioManager from "@/services/audio/AudioManager";
-import { sfxPathOrFallback } from "@/services/audio/pokemonMusic";
+import { sfxPathForConstant } from "@/services/audio/pokemonMusic";
 
 const TooltipWrapper = styled.div`
   position: relative;
@@ -65,7 +65,7 @@ interface ActionButtonProps {
   isPressed?: boolean;
   tooltip?: string;
   showTooltip?: boolean;
-  clickSound?: string;
+  clickSound?: string | null;
 }
 
 const ActionButton: React.FC<ActionButtonProps> = ({
@@ -80,7 +80,7 @@ const ActionButton: React.FC<ActionButtonProps> = ({
   isPressed: isPressedProp,
   tooltip,
   showTooltip: showTooltipProp = false,
-  clickSound = sfxPathOrFallback("SFX_PRESS_AB", "/sound/buttonclick.mp3"),
+  clickSound = sfxPathForConstant("SFX_PRESS_AB"),
 }) => {
   const [isInternalPressed, setIsInternalPressed] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -90,7 +90,9 @@ const ActionButton: React.FC<ActionButtonProps> = ({
   const showTooltip = tooltip ? (isHovered || showTooltipProp) : false;
 
   const handleClick = () => {
-    AudioManager.playSFX(clickSound);
+    if (clickSound) {
+      AudioManager.playSFX(clickSound);
+    }
     if (isToggleable && isPressedProp === undefined) {
       setIsInternalPressed((prev) => !prev);
     }
