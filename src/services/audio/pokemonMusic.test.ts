@@ -20,6 +20,13 @@ describe("Pokemon music metadata", () => {
     expect(musicTrackForMap(null, "Route 1")).toBe("/sound/pokemon/music/routes1.ogg");
   });
 
+  test("does not silently fall back unknown map music to Pallet Town", () => {
+    expect(musicTrackForMapId(null)).toBeNull();
+    expect(musicTrackForMapId(9999)).toBeNull();
+    expect(musicTrackForMapName("UNKNOWN_PLACE")).toBeNull();
+    expect(musicTrackForMap(9999, "UNKNOWN_PLACE")).toBeNull();
+  });
+
   test("uses battle victory music constants without a delayed post-battle fallback", () => {
     expect(victoryMusicTrackForState("wild", null)).toBe(
       "/sound/pokemon/music/defeated_wild_mon.ogg",

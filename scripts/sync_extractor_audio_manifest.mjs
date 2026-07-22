@@ -15,6 +15,7 @@ const DESTINATION_PATH = path.resolve(
 );
 const DEFAULT_PHASER_DB = path.resolve("public", "phaser", "pokemon.db");
 const PHASER_DB_PATH = path.resolve(process.env.PHASER_DB_PATH || DEFAULT_PHASER_DB);
+const PUBLIC_DIR = path.resolve("public");
 
 if (!fs.existsSync(SOURCE_PATH)) {
   console.error(`Extractor audio manifest not found: ${SOURCE_PATH}`);
@@ -51,8 +52,41 @@ if ((!Array.isArray(manifest.mapMusic) || manifest.mapMusic.length === 0) && fs.
   }));
 }
 
+function publicAssetExists(assetPath) {
+  if (typeof assetPath !== "string" || !assetPath.startsWith("/sound/")) {
+    return true;
+  }
+  const relativePath = assetPath.replace(/^\/+/, "");
+  return fs.existsSync(path.join(PUBLIC_DIR, relativePath));
+}
+
+function removeMissingAudioPaths(value) {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      removeMissingAudioPaths(item);
+    }
+    return 0;
+  }
+  if (!value || typeof value !== "object") {
+    return 0;
+  }
+
+  let removed = 0;
+  for (const [key, child] of Object.entries(value)) {
+    if ((key === "path" || key === "basePath") && !publicAssetExists(child)) {
+      delete value[key];
+      removed += 1;
+      continue;
+    }
+    removed += removeMissingAudioPaths(child);
+  }
+  return removed;
+}
+
+const removedMissingPaths = removeMissingAudioPaths(manifest);
+
 fs.mkdirSync(path.dirname(DESTINATION_PATH), { recursive: true });
 fs.writeFileSync(DESTINATION_PATH, `${JSON.stringify(manifest, null, 2)}\n`);
 console.log(
-  `Synced ${path.relative(process.cwd(), DESTINATION_PATH)} from ${SOURCE_PATH} (${manifest.mapMusic.length} map music rows)`,
+  `Synced ${path.relative(process.cwd(), DESTINATION_PATH)} from ${SOURCE_PATH} (${manifest.mapMusic.length} map music rows, removed ${removedMissingPaths} missing audio path refs)`,
 );

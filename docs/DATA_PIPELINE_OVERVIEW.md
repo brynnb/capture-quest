@@ -1,5 +1,8 @@
 # Data Pipeline Overview
 
+Warp and elevator import/runtime behavior is documented in
+[`WARPS_AND_ELEVATORS.md`](WARPS_AND_ELEVATORS.md).
+
 CaptureQuest keeps extracted static data, generated scripted events, and runtime
 player state in separate streams.
 

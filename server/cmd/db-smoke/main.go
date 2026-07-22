@@ -4,6 +4,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -62,6 +63,12 @@ func run() error {
 		return err
 	}
 	if err := requireAgathaTopExitWarps(pg); err != nil {
+		return err
+	}
+	if err := requireSilphElevatorRuntimeConfiguration(pg); err != nil {
+		return err
+	}
+	if err := requireNoIncompletePlayableWarps(pg); err != nil {
 		return err
 	}
 	if err := requireCeruleanMartTalkOverCounter(pg); err != nil {
@@ -203,7 +210,7 @@ func countScriptEventFiles() (int, string, error) {
 		filepath.Join(root, "server", "scripted_events", "scripts"),
 		filepath.Join(root, "server", "scripted_events", "manual_scripts"),
 	}
-	count := 0
+	labels := make(map[string]struct{})
 	foundDir := false
 	for _, scriptsDir := range scriptDirs {
 		entries, err := os.ReadDir(scriptsDir)
@@ -218,13 +225,26 @@ func countScriptEventFiles() (int, string, error) {
 			if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
 				continue
 			}
-			count++
+			raw, err := os.ReadFile(filepath.Join(scriptsDir, entry.Name()))
+			if err != nil {
+				return 0, scriptsDir, fmt.Errorf("read scripted event file %s: %w", entry.Name(), err)
+			}
+			var event struct {
+				ScriptLabel string `json:"scriptLabel"`
+			}
+			if err := json.Unmarshal(raw, &event); err != nil {
+				return 0, scriptsDir, fmt.Errorf("parse scripted event file %s: %w", entry.Name(), err)
+			}
+			if event.ScriptLabel == "" {
+				return 0, scriptsDir, fmt.Errorf("scripted event file %s missing scriptLabel", entry.Name())
+			}
+			labels[event.ScriptLabel] = struct{}{}
 		}
 	}
 	if !foundDir {
 		return 0, strings.Join(scriptDirs, ", "), fmt.Errorf("no scripted event scripts dirs found")
 	}
-	return count, strings.Join(scriptDirs, ", "), nil
+	return len(labels), strings.Join(scriptDirs, ", "), nil
 }
 
 func findRepoRoot() (string, error) {
@@ -433,6 +453,90 @@ func requireAgathaTopExitWarps(pg *sql.DB) error {
 		return fmt.Errorf("Agatha's Room top exit warp count = %d, want 2", count)
 	}
 	log.Println("ok: Agatha's Room top exits to Lance activate when pressing up")
+	return nil
+}
+
+func requireSilphElevatorRuntimeConfiguration(pg *sql.DB) error {
+	var placeholderCount int
+	if err := pg.QueryRow(`
+		SELECT COUNT(*)
+		FROM phaser_warps pw
+		JOIN phaser_maps source_map ON source_map.id = pw.source_map_id
+		JOIN phaser_maps destination_map ON destination_map.id = pw.destination_map_id
+		WHERE source_map.name = 'SILPH_CO_ELEVATOR'
+		  AND destination_map.name = 'UNUSED_MAP_ED'
+		  AND pw.destination_x IS NULL
+		  AND pw.destination_y IS NULL
+		  AND pw.warp_type = 'elevator'`).Scan(&placeholderCount); err != nil {
+		return fmt.Errorf("query Silph elevator dynamic warp placeholders: %w", err)
+	}
+	if placeholderCount != 2 {
+		return fmt.Errorf("Silph elevator dynamic placeholder count = %d, want 2", placeholderCount)
+	}
+
+	var floorCount int
+	if err := pg.QueryRow(`
+		SELECT COUNT(*)
+		FROM phaser_elevator_floors ef
+		JOIN phaser_maps elevator_map ON elevator_map.id = ef.elevator_map_id
+		WHERE elevator_map.name = 'SILPH_CO_ELEVATOR'`).Scan(&floorCount); err != nil {
+		return fmt.Errorf("query Silph elevator floor rows: %w", err)
+	}
+	if floorCount != 11 {
+		return fmt.Errorf("Silph elevator floor count = %d, want 11", floorCount)
+	}
+
+	var signCount int
+	if err := pg.QueryRow(`
+		SELECT COUNT(*)
+		FROM phaser_objects po
+		JOIN phaser_maps pm ON pm.id = po.map_id
+		WHERE pm.name = 'SILPH_CO_ELEVATOR'
+		  AND po.object_type = 'sign'`).Scan(&signCount); err != nil {
+		return fmt.Errorf("query Silph elevator panel sign: %w", err)
+	}
+	if signCount < 1 {
+		return fmt.Errorf("Silph elevator has no clickable sign actor")
+	}
+
+	log.Println("ok: Silph elevator has dynamic placeholders, 11 selectable floors, and a clickable panel")
+	return nil
+}
+
+func requireNoIncompletePlayableWarps(pg *sql.DB) error {
+	rows, err := pg.Query(`
+		SELECT source_map.name, pw.id, pw.x, pw.y, COALESCE(destination_map.name, ''), COALESCE(pw.warp_type, 'door')
+		FROM phaser_warps pw
+		JOIN phaser_maps source_map ON source_map.id = pw.source_map_id
+		LEFT JOIN phaser_maps destination_map ON destination_map.id = pw.destination_map_id
+		WHERE (pw.destination_map_id IS NULL OR pw.destination_x IS NULL OR pw.destination_y IS NULL)
+		  AND COALESCE(pw.warp_type, 'door') NOT IN ('elevator', 'inactive')
+		ORDER BY source_map.name, pw.id
+		LIMIT 10`)
+	if err != nil {
+		return fmt.Errorf("query incomplete playable warps: %w", err)
+	}
+	defer rows.Close()
+
+	var incomplete []string
+	for rows.Next() {
+		var sourceMap, destinationMap, warpType string
+		var id, x, y int
+		if err := rows.Scan(&sourceMap, &id, &x, &y, &destinationMap, &warpType); err != nil {
+			return fmt.Errorf("scan incomplete playable warp: %w", err)
+		}
+		if destinationMap == "" {
+			destinationMap = "<null>"
+		}
+		incomplete = append(incomplete, fmt.Sprintf("%s #%d (%d,%d) -> %s [%s]", sourceMap, id, x, y, destinationMap, warpType))
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read incomplete playable warps: %w", err)
+	}
+	if len(incomplete) > 0 {
+		return fmt.Errorf("incomplete playable warps: %s", strings.Join(incomplete, "; "))
+	}
+	log.Println("ok: all playable warps have complete destination map and coordinates")
 	return nil
 }
 

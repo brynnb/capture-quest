@@ -76,7 +76,7 @@ export function musicTrackForMapConstant(
 }
 
 export function musicTrackForMapId(mapId?: number | null): string | null {
-  if (mapId == null) return musicTrackForConstant("MUSIC_PALLET_TOWN");
+  if (mapId == null) return null;
   return musicTrackForMapConstant(mapMusicById.get(mapId));
 }
 
@@ -89,7 +89,7 @@ export function musicTrackForMap(
   mapName?: string | null,
 ): string | null {
   const byId = mapId == null ? null : musicTrackForMapId(mapId);
-  return byId ?? musicTrackForMapName(mapName) ?? musicTrackForMapId(null);
+  return byId ?? musicTrackForMapName(mapName);
 }
 
 const GYM_LEADER_CLASSES = new Set([
