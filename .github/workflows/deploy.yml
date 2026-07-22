@@ -181,12 +181,20 @@ jobs:
           SSH_OPTS="-o StrictHostKeyChecking=no -i ~/.ssh/deploy_key"
           HOST="$DEPLOY_HOST"
           APP_DIR="$DEPLOY_APP_DIR"
+          CQ_SERVER_STOPPED=false
+          cleanup_cq_server() {
+            if [ "$CQ_SERVER_STOPPED" = "true" ]; then
+              ssh $SSH_OPTS $HOST "sudo systemctl start cq-server" || true
+            fi
+          }
+          trap cleanup_cq_server EXIT
 
           # Upload frontend
           tar --exclude='._*' --exclude='.DS_Store' -czf - -C dist . | ssh $SSH_OPTS $HOST "mkdir -p $APP_DIR/dist && cd $APP_DIR/dist && tar xzf -"
 
           # Stop services before overwriting
           ssh $SSH_OPTS $HOST "sudo systemctl stop cq-server"
+          CQ_SERVER_STOPPED=true
 
           # Upload backend
           gzip -c server/server | ssh $SSH_OPTS $HOST "gunzip > $APP_DIR/server/server && chmod +x $APP_DIR/server/server"
@@ -196,6 +204,7 @@ jobs:
           # Upload database/source artifacts for deterministic Postgres imports
           tar --exclude='._*' --exclude='.DS_Store' -czf - -C server/schema . | ssh $SSH_OPTS $HOST "mkdir -p $APP_DIR/server/schema && cd $APP_DIR/server/schema && tar xzf -"
           tar --exclude='._*' --exclude='.DS_Store' -czf - -C server/scripts . | ssh $SSH_OPTS $HOST "mkdir -p $APP_DIR/server/scripts && cd $APP_DIR/server/scripts && tar xzf -"
+          tar --exclude='._*' --exclude='.DS_Store' -czf - tools/pokemon-gameboy-extractor-tool/pokemon-game-data/data/maps/special_warps.asm tools/pokemon-gameboy-extractor-tool/pokemon-game-data/scripts | ssh $SSH_OPTS $HOST "mkdir -p $APP_DIR && cd $APP_DIR && tar xzf -"
           gzip -c public/phaser/pokemon.db | ssh $SSH_OPTS $HOST "mkdir -p $APP_DIR/public/phaser && gunzip > $APP_DIR/public/phaser/pokemon.db"
 
           # Upload file-backed scripted events
@@ -206,5 +215,6 @@ jobs:
 
           # Restart
           ssh $SSH_OPTS $HOST "sudo systemctl start cq-server && sudo systemctl reload caddy"
+          CQ_SERVER_STOPPED=false
 
           rm -f ~/.ssh/deploy_key
