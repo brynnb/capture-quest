@@ -34,6 +34,7 @@ required_counts = {
     "script_event_in_game_trades": 1,
     "script_event_tile_overrides": 1,
     "script_event_boulder_targets": 1,
+    "script_event_dungeon_hole_warps": 1,
     "spin_tiles": 1,
 }
 
@@ -190,6 +191,11 @@ Run the extractor through CaptureQuest:
 EOF
   exit 1
 fi
+
+echo "Generating dungeon hole warp seeds..."
+python3 "${REPO_ROOT}/scripts/generate_dungeon_hole_warps.py" \
+  --extractor-root "${EXTRACTOR_ROOT}" \
+  --sqlite "${DB_SOURCE}"
 
 if ! validate_extractor_artifact "${DB_SOURCE}"; then
   cat >&2 <<EOF

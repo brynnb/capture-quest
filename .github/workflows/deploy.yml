@@ -41,6 +41,7 @@ jobs:
                 .github/workflows/deploy.yml \
                 package-lock.json \
                 scripts/bootstrap_capturequest.sh \
+                scripts/generate_dungeon_hole_warps.py \
                 scripts/generate_audio_manifest.mjs \
                 scripts/sync_extractor_assets.py \
                 scripts/sync_extractor_audio_manifest.mjs \
@@ -104,6 +105,18 @@ jobs:
             process.exit(1);
           }
           NODE
+            python3 - <<'PY'
+          import sqlite3
+          conn = sqlite3.connect("public/phaser/pokemon.db")
+          try:
+              row = conn.execute(
+                  "SELECT COUNT(*) FROM script_event_dungeon_hole_warps"
+              ).fetchone()
+              if row is None or row[0] < 1:
+                  raise SystemExit(1)
+          finally:
+              conn.close()
+          PY
           }
 
           if assets_ready; then
@@ -148,6 +161,18 @@ jobs:
             throw new Error(`Expected populated mapMusic metadata, got ${manifest.mapMusic?.length ?? 0}`);
           }
           NODE
+          python3 - <<'PY'
+          import sqlite3
+          conn = sqlite3.connect("public/phaser/pokemon.db")
+          try:
+              count = conn.execute(
+                  "SELECT COUNT(*) FROM script_event_dungeon_hole_warps"
+              ).fetchone()[0]
+              if count < 1:
+                  raise SystemExit("Expected generated dungeon hole warp metadata")
+          finally:
+              conn.close()
+          PY
 
       - name: Build Frontend
         run: |
@@ -204,7 +229,6 @@ jobs:
           # Upload database/source artifacts for deterministic Postgres imports
           tar --exclude='._*' --exclude='.DS_Store' -czf - -C server/schema . | ssh $SSH_OPTS $HOST "mkdir -p $APP_DIR/server/schema && cd $APP_DIR/server/schema && tar xzf -"
           tar --exclude='._*' --exclude='.DS_Store' -czf - -C server/scripts . | ssh $SSH_OPTS $HOST "mkdir -p $APP_DIR/server/scripts && cd $APP_DIR/server/scripts && tar xzf -"
-          tar --exclude='._*' --exclude='.DS_Store' -czf - tools/pokemon-gameboy-extractor-tool/pokemon-game-data/data/maps/special_warps.asm tools/pokemon-gameboy-extractor-tool/pokemon-game-data/scripts | ssh $SSH_OPTS $HOST "mkdir -p $APP_DIR && cd $APP_DIR && tar xzf -"
           gzip -c public/phaser/pokemon.db | ssh $SSH_OPTS $HOST "mkdir -p $APP_DIR/public/phaser && gunzip > $APP_DIR/public/phaser/pokemon.db"
 
           # Upload file-backed scripted events

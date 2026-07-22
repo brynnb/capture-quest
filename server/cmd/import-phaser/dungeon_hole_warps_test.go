@@ -2,137 +2,103 @@ package main
 
 import (
 	"database/sql"
+	"strings"
 	"testing"
 
 	_ "modernc.org/sqlite"
 )
 
-func TestParseDungeonWarpLandingsASM(t *testing.T) {
-	raw := `
-DungeonWarpList:
-	db SEAFOAM_ISLANDS_B4F, 1
-	db VICTORY_ROAD_2F,     2
-	db -1 ; end
-
-DungeonWarpData:
-	fly_warp SEAFOAM_ISLANDS_B4F,  4, 14
-	fly_warp VICTORY_ROAD_2F,     22, 16
-`
-
-	landings, err := parseDungeonWarpLandingsASM(raw)
+func TestLoadDungeonHoleWarpSeedsFromSQLite(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
-		t.Fatalf("parseDungeonWarpLandingsASM: %v", err)
+		t.Fatalf("open db: %v", err)
 	}
-	if len(landings) != 2 {
-		t.Fatalf("landings = %#v, want 2", landings)
-	}
-	if landings[0] != (dungeonWarpLanding{DestinationMap: "SEAFOAM_ISLANDS_B4F", WarpIndex: 1, X: 4, Y: 14}) {
-		t.Fatalf("first landing = %#v, want Seafoam B4F #1 at (4,14)", landings[0])
-	}
-	if landings[1] != (dungeonWarpLanding{DestinationMap: "VICTORY_ROAD_2F", WarpIndex: 2, X: 22, Y: 16}) {
-		t.Fatalf("second landing = %#v, want Victory Road 2F #2 at (22,16)", landings[1])
-	}
-}
+	defer db.Close()
 
-func TestParseDungeonWarpSourceTriggersASM(t *testing.T) {
-	raw := `
-ExampleScript:
-	ld a, SEAFOAM_ISLANDS_B4F
-	ld [wDungeonWarpDestinationMap], a
-	ld hl, ExampleHolesCoords
-	call IsPlayerOnDungeonWarp
+	execStatements(t, db,
+		`CREATE TABLE script_event_dungeon_hole_warps (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			source_map TEXT NOT NULL,
+			source_x INTEGER NOT NULL,
+			source_y INTEGER NOT NULL,
+			destination_map TEXT NOT NULL,
+			destination_x INTEGER NOT NULL,
+			destination_y INTEGER NOT NULL,
+			destination_warp_index INTEGER NOT NULL,
+			source_file TEXT NOT NULL
+		)`,
+		`INSERT INTO script_event_dungeon_hole_warps (
+			source_map, source_x, source_y,
+			destination_map, destination_x, destination_y,
+			destination_warp_index, source_file
+		) VALUES
+			('SEAFOAM_ISLANDS_B3F', 3, 16, 'SEAFOAM_ISLANDS_B4F', 4, 14, 1, 'scripts/SeafoamIslandsB3F.asm'),
+			('VICTORY_ROAD_3F', 23, 15, 'VICTORY_ROAD_2F', 22, 16, 2, 'scripts/VictoryRoad3F.asm')`,
+	)
 
-ExampleHolesCoords:
-	dbmapcoord  3, 16
-	dbmapcoord  6, 16
-	db -1 ; end
-`
-
-	triggers, err := parseDungeonWarpSourceTriggersASM("SEAFOAM_ISLANDS_B3F", "Example.asm", raw)
+	seeds, err := loadDungeonHoleWarpSeedsFromSQLite(db)
 	if err != nil {
-		t.Fatalf("parseDungeonWarpSourceTriggersASM: %v", err)
+		t.Fatalf("loadDungeonHoleWarpSeedsFromSQLite: %v", err)
 	}
-	if len(triggers) != 2 {
-		t.Fatalf("triggers = %#v, want 2", triggers)
+	if len(seeds) != 2 {
+		t.Fatalf("loaded %d dungeon hole warps, want 2: %#v", len(seeds), seeds)
 	}
-	if triggers[0] != (dungeonWarpSourceTrigger{
-		SourceMap:      "SEAFOAM_ISLANDS_B3F",
-		DestinationMap: "SEAFOAM_ISLANDS_B4F",
-		WarpIndex:      1,
-		X:              3,
-		Y:              16,
-		SourceFile:     "Example.asm",
+	if seeds[0] != (dungeonHoleWarpSeed{
+		SourceMap:            "SEAFOAM_ISLANDS_B3F",
+		X:                    3,
+		Y:                    16,
+		DestinationMap:       "SEAFOAM_ISLANDS_B4F",
+		DestinationX:         4,
+		DestinationY:         14,
+		DestinationWarpIndex: 1,
+		SourceFile:           "scripts/SeafoamIslandsB3F.asm",
 	}) {
-		t.Fatalf("first trigger = %#v, want Seafoam B3F hole #1", triggers[0])
+		t.Fatalf("first seed = %#v, want Seafoam B3F hole", seeds[0])
 	}
 }
 
-func TestParseConditionalDungeonWarpSourceTriggersASM(t *testing.T) {
-	raw := `
-PokemonMansion3FDefaultScript:
-	ld hl, .holeCoords
-	call .isPlayerFallingDownHole
-	ld a, [wWhichDungeonWarp]
-	and a
-	jp z, CheckFightingMapTrainers
-	cp $3
-	ld a, POKEMON_MANSION_1F
-	jr nz, .fellDownHoleTo1F
-	ld a, POKEMON_MANSION_2F
-.fellDownHoleTo1F
-	ld [wDungeonWarpDestinationMap], a
-	ret
-
-.holeCoords:
-	dbmapcoord 16, 14
-	dbmapcoord 17, 14
-	dbmapcoord 19, 14
-	db -1 ; end
-`
-
-	triggers, err := parseDungeonWarpSourceTriggersASM("POKEMON_MANSION_3F", "PokemonMansion3F.asm", raw)
+func TestLoadDungeonHoleWarpSeedsFromSQLiteRequiresGeneratedTable(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
-		t.Fatalf("parseDungeonWarpSourceTriggersASM: %v", err)
+		t.Fatalf("open db: %v", err)
 	}
-	if len(triggers) != 3 {
-		t.Fatalf("triggers = %#v, want 3", triggers)
-	}
-	if triggers[0].DestinationMap != "POKEMON_MANSION_1F" || triggers[1].DestinationMap != "POKEMON_MANSION_1F" {
-		t.Fatalf("first two mansion holes = %#v, want destination 1F", triggers[:2])
-	}
-	if triggers[2] != (dungeonWarpSourceTrigger{
-		SourceMap:      "POKEMON_MANSION_3F",
-		DestinationMap: "POKEMON_MANSION_2F",
-		WarpIndex:      3,
-		X:              19,
-		Y:              14,
-		SourceFile:     "PokemonMansion3F.asm",
-	}) {
-		t.Fatalf("third trigger = %#v, want mansion 2F hole #3", triggers[2])
+	defer db.Close()
+
+	_, err = loadDungeonHoleWarpSeedsFromSQLite(db)
+	if err == nil || !strings.Contains(err.Error(), "script_event_dungeon_hole_warps table missing") {
+		t.Fatalf("loadDungeonHoleWarpSeedsFromSQLite error = %v, want missing generated table error", err)
 	}
 }
 
-func TestLoadDungeonHoleWarpSeedsUsesSourceDungeonWarpTables(t *testing.T) {
-	seeds, err := loadDungeonHoleWarpSeeds()
+func TestSeedDungeonHoleWarpsPostgresRejectsEmptyGeneratedTable(t *testing.T) {
+	sqlite, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
-		t.Fatalf("loadDungeonHoleWarpSeeds: %v", err)
+		t.Fatalf("open sqlite: %v", err)
 	}
-	if len(seeds) != 12 {
-		t.Fatalf("loaded %d dungeon hole warps, want 12: %#v", len(seeds), seeds)
+	defer sqlite.Close()
+	pg, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open pg fixture: %v", err)
 	}
+	defer pg.Close()
 
-	want := []dungeonHoleWarpSeed{
-		{SourceMap: "SEAFOAM_ISLANDS_B3F", X: 3, Y: 16, DestinationMap: "SEAFOAM_ISLANDS_B4F", DestinationX: 4, DestinationY: 14},
-		{SourceMap: "VICTORY_ROAD_3F", X: 23, Y: 15, DestinationMap: "VICTORY_ROAD_2F", DestinationX: 22, DestinationY: 16},
-		{SourceMap: "POKEMON_MANSION_3F", X: 19, Y: 14, DestinationMap: "POKEMON_MANSION_2F", DestinationX: 18, DestinationY: 14},
-	}
-	for _, expected := range want {
-		if !containsDungeonHoleWarpSeed(seeds, expected) {
-			t.Fatalf("missing expected source-derived dungeon hole warp %#v in %#v", expected, seeds)
-		}
-	}
-	if containsDungeonHoleWarpSeed(seeds, dungeonHoleWarpSeed{SourceMap: "SEAFOAM_ISLANDS_B3F", X: 20, Y: 17}) {
-		t.Fatalf("ordinary Seafoam B3F warp (20,17) was incorrectly treated as a dungeon hole: %#v", seeds)
+	execStatements(t, sqlite,
+		`CREATE TABLE script_event_dungeon_hole_warps (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			source_map TEXT NOT NULL,
+			source_x INTEGER NOT NULL,
+			source_y INTEGER NOT NULL,
+			destination_map TEXT NOT NULL,
+			destination_x INTEGER NOT NULL,
+			destination_y INTEGER NOT NULL,
+			destination_warp_index INTEGER NOT NULL,
+			source_file TEXT NOT NULL
+		)`,
+	)
+
+	err = seedDungeonHoleWarpsPostgres(sqlite, pg)
+	if err == nil || !strings.Contains(err.Error(), "script_event_dungeon_hole_warps exists but has no rows") {
+		t.Fatalf("seedDungeonHoleWarpsPostgres error = %v, want empty generated table error", err)
 	}
 }
 
@@ -167,7 +133,15 @@ func TestUpsertDungeonHoleWarpsPostgresDoesNotRewriteOrdinaryWarpRows(t *testing
 	)
 
 	seeds := []dungeonHoleWarpSeed{
-		{SourceMap: "SEAFOAM_ISLANDS_B3F", X: 3, Y: 16, DestinationMap: "SEAFOAM_ISLANDS_B4F", DestinationX: 4, DestinationY: 14},
+		{
+			SourceMap:      "SEAFOAM_ISLANDS_B3F",
+			X:              3,
+			Y:              16,
+			DestinationMap: "SEAFOAM_ISLANDS_B4F",
+			DestinationX:   4,
+			DestinationY:   14,
+			SourceFile:     "scripts/SeafoamIslandsB3F.asm",
+		},
 	}
 	if err := upsertDungeonHoleWarpsPostgres(db, seeds); err != nil {
 		t.Fatalf("upsertDungeonHoleWarpsPostgres: %v", err)
@@ -194,26 +168,4 @@ func TestUpsertDungeonHoleWarpsPostgresDoesNotRewriteOrdinaryWarpRows(t *testing
 	if destinationX != 20 || destinationY != 17 || warpType != "door" {
 		t.Fatalf("ordinary warp row was rewritten to (%d,%d,%q), want unchanged (20,17,door)", destinationX, destinationY, warpType)
 	}
-}
-
-func containsDungeonHoleWarpSeed(seeds []dungeonHoleWarpSeed, expected dungeonHoleWarpSeed) bool {
-	for _, seed := range seeds {
-		if expected.SourceMap != "" && seed.SourceMap != expected.SourceMap {
-			continue
-		}
-		if seed.X != expected.X || seed.Y != expected.Y {
-			continue
-		}
-		if expected.DestinationMap != "" && seed.DestinationMap != expected.DestinationMap {
-			continue
-		}
-		if expected.DestinationX != 0 && seed.DestinationX != expected.DestinationX {
-			continue
-		}
-		if expected.DestinationY != 0 && seed.DestinationY != expected.DestinationY {
-			continue
-		}
-		return true
-	}
-	return false
 }

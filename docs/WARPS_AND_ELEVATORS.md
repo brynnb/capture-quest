@@ -37,7 +37,7 @@ The relevant Postgres import order in `server/cmd/import-phaser/postgres.go` is:
 4. Resolve destination coordinates from source warp event ordinals.
 5. Bake overworld global coordinates.
 6. Classify warp activation metadata (`door` vs `carpet`).
-7. Seed source-derived dungeon hole warps.
+7. Seed generated dungeon hole warps from `script_event_dungeon_hole_warps`.
 8. Seed runtime data, including `phaser_elevator_floors`.
 9. Mark dynamic elevator placeholders with `markDynamicElevatorWarpPlaceholdersPostgres`.
 10. Mark unresolved `LAST_MAP` placeholders with `markUnresolvedLastMapWarpPlaceholdersPostgres`.
@@ -81,13 +81,20 @@ Celadon and Rocket elevator rooms also have ordinary static exit rows in `phaser
 
 Dungeon hole/fall-through warps are one-way playable warps derived from Game Boy script data, not guessed from reciprocal map exits.
 
-The importer reads:
+`npm run bootstrap:assets` runs `scripts/generate_dungeon_hole_warps.py`
+against the pokered submodule and writes the derived rows into the extractor
+SQLite database as `script_event_dungeon_hole_warps`; the normal asset sync then
+copies that table into `public/phaser/pokemon.db`.
+
+The generator reads:
 
 - `tools/pokemon-gameboy-extractor-tool/pokemon-game-data/data/maps/special_warps.asm`
-- `tools/pokemon-gameboy-extractor-tool/pokemon-game-data/engine/overworld/hidden_objects.asm`
 - map script calls to `IsPlayerOnDungeonWarp`
 
-It then seeds only those source-derived hole coordinates into `phaser_warps` as playable `carpet` rows.
+`server/cmd/import-phaser` reads only the generated SQLite table and then seeds
+those source-derived hole coordinates into `phaser_warps` as playable `carpet`
+rows. Live deployment should not require a raw pokered checkout or parse ASM on
+the server.
 
 ## Validation
 
@@ -106,4 +113,3 @@ go test ./...
 - Silph elevator has 11 floor rows.
 - Silph elevator has a clickable sign actor.
 - All playable warps have complete destination map and coordinates.
-

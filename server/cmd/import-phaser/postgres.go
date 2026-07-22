@@ -207,7 +207,7 @@ func importPhaserToPostgres(sqlite, pg *sql.DB) error {
 	if err := markOrphanedBlockedCarpetWarpsPostgres(pg); err != nil {
 		return err
 	}
-	if err := seedDungeonHoleWarpsPostgres(pg); err != nil {
+	if err := seedDungeonHoleWarpsPostgres(sqlite, pg); err != nil {
 		return err
 	}
 

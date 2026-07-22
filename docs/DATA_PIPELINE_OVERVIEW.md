@@ -29,7 +29,7 @@ ignored by Git and rebuilt with `npm run bootstrap:assets` or
 
 ```text
 pokered source data
-  -> extractor scripts
+  -> extractor scripts + CaptureQuest asset-pipeline generators
   -> CaptureQuest generated asset folders + public/phaser/pokemon.db
   -> server/cmd/import-phaser
   -> Postgres runtime database
@@ -39,6 +39,12 @@ pokered source data
 `phaser_*` static tables, derives encounter areas, seeds CaptureQuest item/shop
 runtime data, classifies warp activation metadata, and syncs scripted-event JSON
 into the database.
+
+Source-derived browser runtime helpers should be generated into SQLite before
+deploy. For example, `scripts/generate_dungeon_hole_warps.py` reads pokered ASM
+from the extractor submodule and writes `script_event_dungeon_hole_warps` into
+`public/phaser/pokemon.db`; the live importer consumes that generated table and
+does not parse raw ASM on the server.
 
 Audio has a separate static-asset flow:
 
