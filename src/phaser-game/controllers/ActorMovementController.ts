@@ -21,6 +21,7 @@ interface MovementUpdate {
   direction: string;
   timestamp: number;
   localPath?: boolean;
+  ledgeJump?: boolean;
 }
 
 // State for a tracked actor
@@ -38,6 +39,7 @@ interface ActorState {
   nameLabel?: Phaser.GameObjects.Text;
   // Optional chat bubble that follows the sprite
   chatBubble?: Phaser.GameObjects.Container;
+  jumpShadow?: Phaser.GameObjects.Ellipse;
   // Pending idle timer to defer STAY frame (avoids flicker during continuous walking)
   pendingIdleTimer?: ReturnType<typeof setTimeout>;
   // Step counter for alternating foot flip on UP/DOWN walking
@@ -48,6 +50,10 @@ export interface ActorTilePosition {
   x: number;
   y: number;
   direction: string;
+}
+
+export interface ActorMovementOptions {
+  ledgeJump?: boolean;
 }
 
 interface PathCompletion {
@@ -79,6 +85,8 @@ export class ActorMovementController {
   private static readonly DEFAULT_MOVE_SPEED = 200;
   // Maximum age of a movement update before we just warp (ms)
   private static readonly MAX_STEP_AGE = 1500;
+  private static readonly LEDGE_JUMP_LIFT_PX = 10;
+  private static readonly LEDGE_JUMP_SHADOW_OFFSET_Y = 5;
 
   constructor(scene: Scene) {
     this.scene = scene;
@@ -124,6 +132,7 @@ export class ActorMovementController {
     if (state) {
       if (state.currentTween) state.currentTween.stop();
       if (state.pendingIdleTimer) clearTimeout(state.pendingIdleTimer);
+      this.destroyJumpShadow(state);
     }
     this.actorStates.delete(actorId);
     this.resolveIdleWaiters(actorId);
@@ -152,6 +161,7 @@ export class ActorMovementController {
     newX: number,
     newY: number,
     direction: string,
+    options: ActorMovementOptions = {},
   ): void {
     const state = this.actorStates.get(actorId);
     if (!state) {
@@ -178,6 +188,7 @@ export class ActorMovementController {
       y: newY,
       direction: (direction || "DOWN").toUpperCase(),
       timestamp: Date.now(),
+      ledgeJump: options.ledgeJump === true,
     };
 
     // Add to queue
@@ -310,6 +321,7 @@ export class ActorMovementController {
       clearTimeout(state.pendingIdleTimer);
       state.pendingIdleTimer = undefined;
     }
+    this.destroyJumpShadow(state);
 
     state.isAnimating = true;
 
@@ -345,6 +357,9 @@ export class ActorMovementController {
     const currentY = state.currentY;
     const targetX = update.x;
     const targetY = update.y;
+    const tileDistance =
+      Math.abs(targetX - currentX) + Math.abs(targetY - currentY);
+    const isLedgeJump = update.ledgeJump === true && tileDistance === 2;
 
     // Calculate direction from movement (override server direction if moving)
     let moveDirection = update.direction;
@@ -361,7 +376,8 @@ export class ActorMovementController {
 
     // Determine animation duration
     let duration =
-      state.actor.moveSpeed || ActorMovementController.DEFAULT_MOVE_SPEED;
+      (state.actor.moveSpeed || ActorMovementController.DEFAULT_MOVE_SPEED) *
+      Math.max(1, tileDistance);
 
     // Speed up if queue is getting deep
     if (
@@ -385,6 +401,9 @@ export class ActorMovementController {
 
     // Start with standing frame facing the move direction
     this.updateSpriteFrame(state.sprite, "STAY", moveDirection);
+    const jumpShadow = isLedgeJump
+      ? this.createJumpShadow(state, currentX, currentY)
+      : null;
 
     // Create the movement tween
     state.currentTween = this.scene.tweens.add({
@@ -399,10 +418,21 @@ export class ActorMovementController {
         //   Second half (50-100%): Walking frame (leg out)
         // For UP/DOWN, alternateFlip toggles between tiles for foot swap
         const progress = tween.progress;
+        const groundX = state.sprite.x;
+        const groundY = state.sprite.y;
         if (progress >= 0.5) {
           this.updateSpriteFrame(state.sprite, "WALK", moveDirection, alternateFlip);
         } else {
           this.updateSpriteFrame(state.sprite, "STAY", moveDirection);
+        }
+        if (jumpShadow) {
+          jumpShadow.setPosition(
+            groundX,
+            groundY + ActorMovementController.LEDGE_JUMP_SHADOW_OFFSET_Y,
+          );
+          state.sprite.setY(
+            groundY - ActorMovementController.ledgeJumpYOffset(progress),
+          );
         }
 
         // Sync attached objects to sprite position
@@ -417,6 +447,8 @@ export class ActorMovementController {
         state.actor.y = targetY;
         state.actor.actionDirection = moveDirection;
         state.currentTween = null;
+        state.sprite.setY(targetPosY);
+        this.destroyJumpShadow(state);
 
         // Sync attached objects to final position
         this.syncAttachedObjects(state);
@@ -431,6 +463,58 @@ export class ActorMovementController {
         this.resolvePathCompletions(actorId);
       },
     });
+  }
+
+  private createJumpShadow(
+    state: ActorState,
+    x: number,
+    y: number,
+  ): Phaser.GameObjects.Ellipse | null {
+    const shadow = this.scene.add.ellipse(
+      x * TILE_SIZE + TILE_SIZE / 2,
+      y * TILE_SIZE +
+        TILE_SIZE / 2 +
+        ActorMovementController.LEDGE_JUMP_SHADOW_OFFSET_Y,
+      TILE_SIZE * 0.75,
+      TILE_SIZE * 0.25,
+      0x000000,
+      0.65,
+    );
+    const spriteDepth = Number.isFinite(state.sprite.depth)
+      ? state.sprite.depth
+      : 0;
+    shadow.setDepth(spriteDepth - 0.1);
+    const parentContainer = state.sprite.parentContainer;
+    if (parentContainer) {
+      parentContainer.add(shadow);
+      const orderedParent = parentContainer as unknown as {
+        moveBelow?: (
+          child: Phaser.GameObjects.GameObject,
+          below: Phaser.GameObjects.GameObject,
+        ) => void;
+        bringToTop?: (child: Phaser.GameObjects.GameObject) => void;
+      };
+      if (orderedParent.moveBelow) {
+        orderedParent.moveBelow(shadow, state.sprite);
+      } else {
+        orderedParent.bringToTop?.(state.sprite);
+      }
+    }
+    state.jumpShadow = shadow;
+    return shadow;
+  }
+
+  private destroyJumpShadow(state: ActorState): void {
+    if (!state.jumpShadow) return;
+    state.jumpShadow.destroy();
+    state.jumpShadow = undefined;
+  }
+
+  private static ledgeJumpYOffset(progress: number): number {
+    return (
+      Math.sin(Math.PI * progress) *
+      ActorMovementController.LEDGE_JUMP_LIFT_PX
+    );
   }
 
   private calculateDirection(
@@ -538,6 +622,7 @@ export class ActorMovementController {
       state.currentTween.stop();
       state.currentTween = null;
     }
+    this.destroyJumpShadow(state);
     if (state.pendingIdleTimer) {
       clearTimeout(state.pendingIdleTimer);
       state.pendingIdleTimer = undefined;

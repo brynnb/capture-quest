@@ -17,6 +17,12 @@ interface InteractionTarget {
   y: number;
 }
 
+interface MovementPathStep {
+  x: number;
+  y: number;
+  ledgeJump?: boolean;
+}
+
 const COLLISION_LAND = 1;
 const COLLISION_WATER = 2;
 const SURF_MOVE_ID = 57;
@@ -92,8 +98,8 @@ export class PlayerMovementController {
   private isSurfing: boolean = false;
   private preSurfSpriteName: string | null = null;
 
-  // Current path (array of {x, y} tile coordinates)
-  private currentPath: { x: number; y: number }[] = [];
+  // Current path (array of tile coordinates)
+  private currentPath: MovementPathStep[] = [];
   private isMoving: boolean = false;
   private activeMoveDestination: {
     x: number;
@@ -243,7 +249,7 @@ export class PlayerMovementController {
     destY: number,
     mapId: number,
     inputSource: "click" | "keyboard",
-    path: { x: number; y: number }[],
+    path: MovementPathStep[],
     initialDirection?: MovementDirection,
     activateWarpId?: number,
   ): void {
@@ -915,30 +921,61 @@ export class PlayerMovementController {
     ledgeX: number,
     ledgeY: number,
   ): { x: number; y: number } | null {
+    return this.ledgeLandingFromTile(
+      this.currentTileX,
+      this.currentTileY,
+      direction,
+      ledgeX,
+      ledgeY,
+    );
+  }
+
+  private ledgeLandingFromTile(
+    standingX: number,
+    standingY: number,
+    direction: MovementDirection,
+    ledgeX: number,
+    ledgeY: number,
+  ): { x: number; y: number } | null {
     if (this.currentMapId !== UNIFIED_OVERWORLD_MAP_ID) {
       return null;
     }
 
     const { dx, dy } = this.directionDelta(direction);
-    if (ledgeX !== this.currentTileX + dx || ledgeY !== this.currentTileY + dy) {
+    if (ledgeX !== standingX + dx || ledgeY !== standingY + dy) {
       return null;
     }
     if (
       !canJumpLedge(
         direction,
-        this.rawFootTileMap.get(`${this.currentTileX},${this.currentTileY}`),
+        this.rawFootTileMap.get(`${standingX},${standingY}`),
         this.rawFootTileMap.get(`${ledgeX},${ledgeY}`),
       )
     ) {
       return null;
     }
 
-    const landingX = this.currentTileX + 2 * dx;
-    const landingY = this.currentTileY + 2 * dy;
+    const landingX = standingX + 2 * dx;
+    const landingY = standingY + 2 * dy;
     if (!this.isWalkable(landingX, landingY)) {
       return null;
     }
     return { x: landingX, y: landingY };
+  }
+
+  private queueLedgeJump(
+    landing: { x: number; y: number },
+    direction: MovementDirection,
+    inputSource: "click" | "keyboard",
+  ): void {
+    this.queuePredictedPathMove(
+      landing.x,
+      landing.y,
+      this.currentMapId,
+      inputSource,
+      [{ ...landing, ledgeJump: true }],
+      direction,
+    );
   }
 
   isAdjacentToTile(targetX: number, targetY: number): boolean {
@@ -1321,12 +1358,7 @@ export class PlayerMovementController {
         debugPlayerMovement(
           `[PlayerMovement] Moving over ledge to (${ledgeLanding.x}, ${ledgeLanding.y})`,
         );
-        this.queueClientMove(
-          ledgeLanding.x,
-          ledgeLanding.y,
-          this.currentMapId,
-          "click",
-        );
+        this.queueLedgeJump(ledgeLanding, direction, "click");
         return;
       }
       const currentWarp = this.warpAtProvider(
@@ -1527,6 +1559,8 @@ export class PlayerMovementController {
       nextTile.x,
       nextTile.y,
       direction,
+      undefined,
+      nextTile.ledgeJump ? { ledgeJump: true } : undefined,
     );
   }
 
@@ -1538,10 +1572,11 @@ export class PlayerMovementController {
     startY: number,
     endX: number,
     endY: number,
-  ): { x: number; y: number }[] {
+  ): MovementPathStep[] {
     const openSet: {
       x: number;
       y: number;
+      ledgeJump?: boolean;
       g: number;
       h: number;
       f: number;
@@ -1561,11 +1596,15 @@ export class PlayerMovementController {
       parent: null,
     });
 
-    const directions = [
-      { dx: 0, dy: -1 }, // UP
-      { dx: 0, dy: 1 }, // DOWN
-      { dx: -1, dy: 0 }, // LEFT
-      { dx: 1, dy: 0 }, // RIGHT
+    const directions: Array<{
+      name: MovementDirection;
+      dx: number;
+      dy: number;
+    }> = [
+      { name: "UP", dx: 0, dy: -1 },
+      { name: "DOWN", dx: 0, dy: 1 },
+      { name: "LEFT", dx: -1, dy: 0 },
+      { name: "RIGHT", dx: 1, dy: 0 },
     ];
 
     let iterations = 0;
@@ -1578,10 +1617,14 @@ export class PlayerMovementController {
       const current = openSet.shift()!;
 
       if (current.x === endX && current.y === endY) {
-        const path: { x: number; y: number }[] = [];
+        const path: MovementPathStep[] = [];
         let node = current;
         while (node.parent) {
-          path.unshift({ x: node.x, y: node.y });
+          path.unshift({
+            x: node.x,
+            y: node.y,
+            ...(node.ledgeJump ? { ledgeJump: true } : {}),
+          });
           node = node.parent;
         }
         return path;
@@ -1595,21 +1638,44 @@ export class PlayerMovementController {
         const key = `${nx},${ny}`;
 
         if (closedSet.has(key)) continue;
-        if (!this.isWalkable(nx, ny)) continue;
+        let next: MovementPathStep = { x: nx, y: ny };
+        let nextKey = key;
+        if (!this.isWalkable(nx, ny)) {
+          const ledgeLanding = this.ledgeLandingFromTile(
+            current.x,
+            current.y,
+            dir.name,
+            nx,
+            ny,
+          );
+          if (!ledgeLanding) continue;
+          next = { ...ledgeLanding, ledgeJump: true };
+          nextKey = `${next.x},${next.y}`;
+          if (closedSet.has(nextKey)) continue;
+        }
 
         const g = current.g + 1;
-        const h = heuristic(nx, ny);
+        const h = heuristic(next.x, next.y);
         const f = g + h;
 
-        const existing = openSet.find((n) => n.x === nx && n.y === ny);
+        const existing = openSet.find((n) => n.x === next.x && n.y === next.y);
         if (existing) {
           if (g < existing.g) {
             existing.g = g;
             existing.f = f;
             existing.parent = current;
+            existing.ledgeJump = next.ledgeJump;
           }
         } else {
-          openSet.push({ x: nx, y: ny, g, h, f, parent: current });
+          openSet.push({
+            x: next.x,
+            y: next.y,
+            ledgeJump: next.ledgeJump,
+            g,
+            h,
+            f,
+            parent: current,
+          });
         }
       }
     }
@@ -1730,12 +1796,7 @@ export class PlayerMovementController {
         targetY,
       );
       if (ledgeLanding) {
-        this.queueClientMove(
-          ledgeLanding.x,
-          ledgeLanding.y,
-          this.currentMapId,
-          "keyboard",
-        );
+        this.queueLedgeJump(ledgeLanding, direction, "keyboard");
         return true;
       }
 
