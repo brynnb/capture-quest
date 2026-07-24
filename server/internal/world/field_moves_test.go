@@ -191,7 +191,8 @@ func setupFieldMoveStateTestDB(t *testing.T) *sql.DB {
 			source_map_id integer NOT NULL,
 			destination_map_id integer,
 			destination_x integer,
-			destination_y integer
+			destination_y integer,
+			warp_type text DEFAULT 'door'
 		)`,
 	}
 	for _, stmt := range stmts {

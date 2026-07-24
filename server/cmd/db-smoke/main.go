@@ -65,6 +65,9 @@ func run() error {
 	if err := requireAgathaTopExitWarps(pg); err != nil {
 		return err
 	}
+	if err := requireSilphCo1FOrdinaryFloorWarpInactive(pg); err != nil {
+		return err
+	}
 	if err := requireSilphElevatorRuntimeConfiguration(pg); err != nil {
 		return err
 	}
@@ -453,6 +456,27 @@ func requireAgathaTopExitWarps(pg *sql.DB) error {
 		return fmt.Errorf("Agatha's Room top exit warp count = %d, want 2", count)
 	}
 	log.Println("ok: Agatha's Room top exits to Lance activate when pressing up")
+	return nil
+}
+
+func requireSilphCo1FOrdinaryFloorWarpInactive(pg *sql.DB) error {
+	var id, destX, destY int
+	var warpType, direction string
+	if err := pg.QueryRow(`
+		SELECT pw.id, COALESCE(pw.warp_type, 'door'), COALESCE(pw.warp_direction, ''), pw.destination_x, pw.destination_y
+		FROM phaser_warps pw
+		JOIN phaser_maps source_map ON source_map.id = pw.source_map_id
+		JOIN phaser_maps destination_map ON destination_map.id = pw.destination_map_id
+		WHERE source_map.name = 'SILPH_CO_1F'
+		  AND destination_map.name = 'SILPH_CO_3F'
+		  AND pw.x = 16
+		  AND pw.y = 10`).Scan(&id, &warpType, &direction, &destX, &destY); err != nil {
+		return fmt.Errorf("query Silph Co 1F ordinary-floor warp: %w", err)
+	}
+	if id != 293 || warpType != "inactive" || direction != "" || destX != 27 || destY != 3 {
+		return fmt.Errorf("Silph Co 1F ordinary-floor warp = id %d type %q direction %q destination (%d,%d), want id 293 inactive with destination (27,3)", id, warpType, direction, destX, destY)
+	}
+	log.Println("ok: Silph Co 1F ordinary-floor source row is retained as inactive metadata")
 	return nil
 }
 

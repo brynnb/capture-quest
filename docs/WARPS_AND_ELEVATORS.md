@@ -9,11 +9,12 @@ This note exists so future agents can find the source-of-truth for CaptureQuest 
 - `destination_map_id`
 - `destination_x`
 - `destination_y`
+- `warp_type` other than `elevator` or `inactive`
 
-The server and client both assume complete destination data:
+The server and client both assume complete destination data for playable rows:
 
-- `server/internal/world/handler-phaser.go` only sends complete `phaser_warps` rows to the client.
-- `server/internal/world/phaser_warps.go` only loads complete rows into the runtime warp manager.
+- `server/internal/world/handler-phaser.go` only sends complete, playable `phaser_warps` rows to the client.
+- `server/internal/world/phaser_warps.go` only loads complete, playable rows into the runtime warp manager.
 - `src/phaser-game/managers/WarpManager.ts` ignores warps that do not have destination coordinates.
 
 Do not invent fallback destinations for incomplete warp rows. Fix the source/importer data, or explicitly mark the row as non-playable metadata.
@@ -23,7 +24,7 @@ Do not invent fallback destinations for incomplete warp rows. Fix the source/imp
 - `door`: activated from or next to the tile.
 - `carpet`: stepped-on or direction-sensitive warp tile.
 - `elevator`: dynamic elevator placeholder. These are not playable `phaser_warps`; destination comes from `phaser_elevator_floors`.
-- `inactive`: source `LAST_MAP` row that could not be deterministically resolved and should not be exposed as a playable browser warp.
+- `inactive`: source row kept as metadata but not exposed as a playable browser warp. This includes unresolved `LAST_MAP` rows and static source rows that fail the original Game Boy activation checks.
 
 `elevator` and `inactive` rows are intentionally allowed to have incomplete destination coordinates. Smoke tests fail if any other warp type is incomplete.
 
@@ -36,7 +37,7 @@ The relevant Postgres import order in `server/cmd/import-phaser/postgres.go` is:
 3. Clear placeholder `(0,0)` destination coordinates.
 4. Resolve destination coordinates from source warp event ordinals.
 5. Bake overworld global coordinates.
-6. Classify warp activation metadata (`door` vs `carpet`).
+6. Classify warp activation metadata (`door`, `carpet`, or `inactive`).
 7. Seed generated dungeon hole warps from `script_event_dungeon_hole_warps`.
 8. Seed runtime data, including `phaser_elevator_floors`.
 9. Mark dynamic elevator placeholders with `markDynamicElevatorWarpPlaceholdersPostgres`.
@@ -53,6 +54,7 @@ If a `LAST_MAP` row cannot be resolved to a destination map and coordinates afte
 Known current inactive row:
 
 - `SILPH_CO_11F` at `(5,5)`, source `LAST_MAP, 10`. The imported row had no deterministic destination coordinates. The rendered tile is ordinary floor, not a Silph teleporter pad tile, so the importer marks it inactive instead of guessing.
+- `SILPH_CO_1F` at `(16,10)`, source `SILPH_CO_3F, 7`. The row is present in source data, but the source tile is ordinary floor on a Facility map. In the original engine, Facility maps use the edge-facing extra warp check for non-door/non-warp tiles, so this non-edge row is not activatable during normal play.
 
 ## Elevators
 
@@ -95,6 +97,10 @@ The generator reads:
 those source-derived hole coordinates into `phaser_warps` as playable `carpet`
 rows. Live deployment should not require a raw pokered checkout or parse ASM on
 the server.
+
+## To Fix
+
+- `VIRIDIAN_FOREST_NORTH_GATE` duplicate north exit: source row `warp_event 4, 0, LAST_MAP, 2` imports as playable warp `#199` at `(4,0) -> ROUTE_2 (3,-133)` with `carpet UP`, but that tile renders as the wall-side/top-edge tile. The adjacent source row `warp_event 5, 0, LAST_MAP, 2` imports as playable door warp `#200`, and Route 2's exterior entrance targets that row. Could fix at importer level by marking the duplicate non-door edge row inactive when an adjacent real door row shares the same destination and the inverse/exterior entrance resolves to the real door row. But this may introduce errors and needs further analysis.
 
 ## Validation
 
