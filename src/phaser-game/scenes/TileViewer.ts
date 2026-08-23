@@ -7,7 +7,7 @@ import {
 } from "../constants";
 import { CameraController } from "../controllers/CameraController";
 import { PlayerMovementController } from "../controllers/PlayerMovementController";
-import { MapRenderer } from "../renderers/MapRenderer";
+import { MapRenderer, type MapItem } from "../renderers/MapRenderer";
 import { MapDataService } from "../services/MapDataService";
 import { MapLoader } from "../services/MapLoader";
 import { TileManager, ActorManager, UiManager, WarpManager } from "../managers";
@@ -83,7 +83,7 @@ export class TileViewer extends Scene {
   // Data
   private tiles: PhaserTile[] = [];
   private mapInfo: PhaserMapInfo | null = null;
-  private items: any[] = []; // Items might not have a Phaser-specific struct yet
+  private items: MapItem[] = [];
   private actors: PhaserActor[] = [];
   private actorCache: Map<number, PhaserActor> = new Map();
   private playerActor: PhaserActor | null = null; // Store player separately so it's never lost
@@ -371,7 +371,7 @@ export class TileViewer extends Scene {
     }
 
     // Add error handler for the item-marker (poke_ball) image
-    this.load.on("loaderror", (fileObj: any) => {
+    this.load.on("loaderror", (fileObj: Phaser.Loader.File) => {
       if (fileObj.key === "item-marker") {
         console.warn("Failed to load poke_ball.png, using fallback");
       }
@@ -381,7 +381,7 @@ export class TileViewer extends Scene {
     this.tileManager.preloadCommonTiles();
   }
 
-  create(data?: any) {
+  create(data?: Record<string, unknown>) {
     console.log("Creating TileViewer scene", data);
 
     // Ensure we're starting with a clean state
@@ -455,7 +455,7 @@ export class TileViewer extends Scene {
     useGameStatusStore.getState().setCameraFollowEnabled(true);
 
     // Subscribe to real-time actor updates from WebTransport
-    this.actorUpdateUnsubscribe = PhaserNet.onActorUpdate((actor: any) => {
+    this.actorUpdateUnsubscribe = PhaserNet.onActorUpdate((actor) => {
       this.handleActorUpdate({ actor });
       // If this was our player, we might need to update follow
       if (actor.objectType === "player" && actor.id === this.playerActor?.id) {
@@ -523,7 +523,7 @@ export class TileViewer extends Scene {
     this.eventBridge.register();
 
     // Subscribe to pushed actor lists (e.g. player spawn)
-    this.actorsUnsubscribe = PhaserNet.onActors((actors: any[]) => {
+    this.actorsUnsubscribe = PhaserNet.onActors((actors) => {
       if (actors && actors.length > 0) {
         console.log(
           `[TileViewer] Received ${actors.length} actors via onActors broadcast`,

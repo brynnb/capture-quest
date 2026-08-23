@@ -1,6 +1,14 @@
 import audioManifest from '../../constants/audio_manifest.json';
 
-const BASE_ASSET_URL = (import.meta as any).env.VITE_ASSET_URL || 'https://pub-04034701bf7545f291744990c97678b9.r2.dev';
+interface RuntimeAudioManifest {
+    global: string[];
+    zones: Record<string, string[]>;
+    library: string[];
+    metadata: Record<string, { loop?: boolean }>;
+}
+
+const runtimeAudioManifest = audioManifest as RuntimeAudioManifest;
+const BASE_ASSET_URL = import.meta.env.VITE_ASSET_URL || 'https://pub-04034701bf7545f291744990c97678b9.r2.dev';
 
 // Simple utility for fetching audio files (replaces zone_viewer FileSystem)
 async function fetchAudioBytes(folderPath: string, fileName: string): Promise<ArrayBuffer | undefined> {
@@ -63,7 +71,11 @@ class AudioManager {
             this.isMuted = initialSettings.muted ?? this.isMuted;
         }
 
-        this.audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextConstructor) {
+            throw new Error("Web Audio API is unavailable in this browser");
+        }
+        this.audioCtx = new AudioContextConstructor();
 
         // Master -> Destination
         this.masterGainNode = this.audioCtx.createGain();
@@ -162,7 +174,7 @@ class AudioManager {
             return;
         }
 
-        const zoneSounds = (audioManifest.zones as any)[zoneName] || [];
+        const zoneSounds = runtimeAudioManifest.zones[zoneName] || [];
         if (zoneSounds.length === 0) return;
 
         console.log(`[AudioManager] Loading sounds for zone: ${zoneName}`);
@@ -281,8 +293,8 @@ class AudioManager {
         if (audioManifest.global.includes(filename)) return true;
 
         // Step 2: Check Zones
-        for (const zone in audioManifest.zones) {
-            if ((audioManifest.zones as any)[zone].includes(filename)) return true;
+        for (const zone in runtimeAudioManifest.zones) {
+            if (runtimeAudioManifest.zones[zone].includes(filename)) return true;
         }
 
         if (audioManifest.library.includes(filename)) return true;
@@ -367,7 +379,7 @@ class AudioManager {
         const newElement = new Audio(url);
 
         // Determine looping: Consult metadata if available, otherwise use provided parameter
-        const metadata = (audioManifest as any).metadata?.[targetFilename];
+        const metadata = runtimeAudioManifest.metadata[targetFilename];
         const finalLoop = (metadata && metadata.loop !== undefined) ? metadata.loop : loop;
 
         newElement.loop = finalLoop;
@@ -491,15 +503,19 @@ class AudioManager {
                     source.stop();
                     source.disconnect();
                     gain.disconnect();
-                } catch (e) { }
+                } catch {
+                    // Nodes may already have been stopped or disconnected.
+                }
             }, 1100);
-        } catch (e) {
+        } catch {
             // Immediate stop fallback if AudioContext is unhappy
             try {
                 source.stop();
                 source.disconnect();
                 gain.disconnect();
-            } catch (inner) { }
+            } catch {
+                // The fallback is best-effort when the context is already closed.
+            }
         }
     }
 

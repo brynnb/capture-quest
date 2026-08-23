@@ -1,6 +1,19 @@
 import { Scene } from "phaser";
 import { IS_LOCAL_DEV } from "@/config";
 import { TILE_SIZE } from "../constants";
+import type {
+  PhaserActor,
+  PhaserMapInfo,
+  PhaserTile,
+  PhaserWarp,
+} from "@/net/generated/world_api";
+
+interface DebugItem {
+  x: number;
+  y: number;
+  name?: string;
+  description?: string;
+}
 
 export class UiManager {
   private scene: Scene;
@@ -138,12 +151,12 @@ export class UiManager {
 
   updateTileInfo(
     pointer: Phaser.Input.Pointer,
-    tileLookup: Map<string, any>,
-    items: any[],
-    mapInfo: any,
+    tileLookup: Map<string, PhaserTile>,
+    items: DebugItem[],
+    mapInfo: PhaserMapInfo | null,
     getWorldPoint: (x: number, y: number) => Phaser.Math.Vector2,
-    warps: any[] = [],
-    npcs: any[] = [],
+    warps: PhaserWarp[] = [],
+    npcs: PhaserActor[] = [],
   ) {
     // Convert screen coordinates to world coordinates
     const worldPoint = getWorldPoint(pointer.x, pointer.y);
@@ -183,9 +196,9 @@ export class UiManager {
     if (tile && tile.mapId) {
       info += `\nMap ID: ${tile.mapId}`;
 
-      // Use mapName directly from the tile object
-      if (tile.mapName) {
-        info += ` (${tile.mapName})`;
+      // Use the source map name directly from the tile object.
+      if (tile.sourceMapName) {
+        info += ` (${tile.sourceMapName})`;
       } else {
         info += ` (no name)`;
       }

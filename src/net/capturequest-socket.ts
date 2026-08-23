@@ -244,9 +244,9 @@ export class CaptureQuestSocket {
 
 
 
-  public registerJsonHandler(
+  public registerJsonHandler<T = unknown>(
     opCode: OpCode,
-    handler: (msg: any) => void
+    handler: (msg: T) => void
   ) {
     this.opCodeHandlers[opCode] = (buf: Uint8Array) => {
       try {
@@ -269,7 +269,7 @@ export class CaptureQuestSocket {
 
 
   /** Send a JSON request and wait for a response with the specified opcode */
-  public async sendJsonRequest<TRes = any>(
+  public async sendJsonRequest<TRes = unknown>(
     requestOpCode: OpCode,
     responseOpCode: OpCode,
     data: unknown,
@@ -506,7 +506,7 @@ export class CaptureQuestSocket {
               const text = new TextDecoder().decode(payload);
               const json = JSON.parse(text);
               this.onJson(opcode, json);
-            } catch (e) {
+            } catch {
               // Not JSON or failed to parse
             }
           }
@@ -557,7 +557,7 @@ export class CaptureQuestSocket {
                 const text = new TextDecoder().decode(payload);
                 const json = JSON.parse(text);
                 this.onJson(opcode, json);
-              } catch (e) {
+              } catch {
                 // Not JSON or failed to parse
               }
             }
@@ -621,9 +621,9 @@ export class CaptureQuestSocket {
 
   private startHeartbeat() {
     // Register a JSON handler for Heartbeat response to update latency
-    this.registerJsonHandler(
+    this.registerJsonHandler<{ timestamp: number }>(
       OpCodes.Heartbeat,
-      (payload: any) => {
+      (payload) => {
         const now = performance.now();
         this.latency = Math.round(now - payload.timestamp);
         this.onPing?.(this.latency);

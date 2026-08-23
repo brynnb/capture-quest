@@ -2,6 +2,10 @@ import { Scene } from "phaser";
 import { TileImageCacheEntry, getTileImageUrl, getSpriteUrl } from "../api";
 import { TILE_SIZE } from "../constants";
 
+interface TileImageRecord {
+  id: number;
+}
+
 export class TileManager {
   private scene: Scene;
   private tileImageCache: Map<number, TileImageCacheEntry> = new Map();
@@ -49,7 +53,7 @@ export class TileManager {
     }
   }
 
-  async loadTileImages(tileImagesData: any[]) {
+  async loadTileImages(tileImagesData: TileImageRecord[]) {
     // Track which textures we need to load
     const texturesToLoad = new Set<number>();
 
@@ -74,7 +78,7 @@ export class TileManager {
       this.scene.load.off("loaderror");
 
       // Set up error handling
-      this.scene.load.on("loaderror", (fileObj: any) => {
+      this.scene.load.on("loaderror", (fileObj: Phaser.Loader.File) => {
         // Handle loading errors by creating a fallback tile
         const tileId = fileObj.key.replace("tile-", "");
         console.warn(`Error loading tile ${tileId}, using fallback`);

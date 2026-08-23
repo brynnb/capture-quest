@@ -3,7 +3,8 @@ import styled from "styled-components";
 import usePokedexStore from "@/stores/PokedexStore";
 import useGameStatusStore from "@stores/GameStatusStore";
 import { WorldSocket, OpCodes } from "@/net";
-import { BadgeAtlasIcon, BADGE_FLAGS, BADGE_NAMES } from "./BadgeAtlasIcon";
+import { BadgeAtlasIcon } from "./BadgeAtlasIcon";
+import { BADGE_FLAGS, BADGE_NAMES } from "./badgeAtlasData";
 
 const Overlay = styled.div`
   position: fixed;

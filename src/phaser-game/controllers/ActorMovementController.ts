@@ -7,11 +7,9 @@ enum DirectionFrame {
   DOWN = 0,
   UP = 1,
   LEFT = 2,
-  RIGHT = 2, // Same as LEFT but flipped
   WALKING_DOWN = 3,
   WALKING_UP = 4,
   WALKING_LEFT = 5,
-  WALKING_RIGHT = 5, // Same as WALKING_LEFT but flipped
 }
 
 // Movement update from server
@@ -491,7 +489,7 @@ export class ActorMovementController {
         flipX = false;
         break;
       case "RIGHT":
-        frame = isWalking ? DirectionFrame.WALKING_RIGHT : DirectionFrame.RIGHT;
+        frame = isWalking ? DirectionFrame.WALKING_LEFT : DirectionFrame.LEFT;
         flipX = true;
         break;
       default:
@@ -507,11 +505,10 @@ export class ActorMovementController {
       return;
     }
 
-    if (texture.has(frameStr) || texture.has(frame as any)) {
+    if (texture.has(frameStr)) {
       sprite.setFrame(frame);
     } else if (
       texture.has("0") ||
-      texture.has(0 as any) ||
       texture.frameTotal > 0
     ) {
       // Fallback to frame 0 if requested frame doesn't exist

@@ -1462,7 +1462,6 @@ const PokeBattleDisplay: React.FC = () => {
     handleUseBall,
     handleUseItem,
     canRunFromFaintSwitch,
-    isFaintSwitchWild,
     isSafari,
     normalBattleActions,
     phase,

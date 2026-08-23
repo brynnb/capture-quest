@@ -16,6 +16,7 @@ import type {
   PhaserWarp
 } from "@/net/generated/world_api";
 import { UNIFIED_OVERWORLD_MAP_ID } from "../constants";
+import type { MapItem } from "../renderers/MapRenderer";
 
 // Default timeout for network requests (10 seconds)
 const REQUEST_TIMEOUT_MS = 10000;
@@ -217,7 +218,7 @@ export class MapDataService {
    * Items are fetched as part of actors/objects for a map.
    * For backwards compat, returns empty array - use fetchActors with mapId instead.
    */
-  async fetchItems(): Promise<any[]> {
+  async fetchItems(): Promise<MapItem[]> {
     // console.warn("fetchItems is deprecated - items come from fetchActors() objects");
     return [];
   }

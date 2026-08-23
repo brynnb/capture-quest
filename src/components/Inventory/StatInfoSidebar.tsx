@@ -1,11 +1,11 @@
 import React, { useEffect } from "react";
 import styled from "styled-components";
 import { OpCodes, WorldSocket } from "@/net";
+import { BadgeAtlasIcon } from "@/components/Interface/BadgeAtlasIcon";
 import {
-  BadgeAtlasIcon,
   BADGE_FLAGS,
   BADGE_NAMES,
-} from "@/components/Interface/BadgeAtlasIcon";
+} from "@/components/Interface/badgeAtlasData";
 import useCQInventoryStore from "@/stores/CQInventoryStore";
 import usePokedexStore from "@/stores/PokedexStore";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";

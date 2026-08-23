@@ -52,7 +52,7 @@ interface GameStatusStore {
   isGroupOpen: boolean;
   toggleGroup: () => void;
 
-  syncOptions: (options: any) => void;
+  syncOptions: (options: string | GameOptions | null | undefined) => void;
   resetPanelStates: () => void;
 
   isMapLoading: boolean;
@@ -74,6 +74,10 @@ interface GameStatusStore {
   clearBlackoutWarp: () => void;
   allowTrainerRebattles: boolean;
   toggleAllowTrainerRebattles: () => void;
+}
+
+interface GameOptions {
+  allowTrainerRebattles?: boolean;
 }
 
 const useGameStatusStore = create<GameStatusStore>()(
@@ -186,10 +190,21 @@ const useGameStatusStore = create<GameStatusStore>()(
           set((state) => ({ isGroupOpen: !state.isGroupOpen }));
         },
 
-        syncOptions: (options: any) => {
+        syncOptions: (options) => {
           if (!options) return;
+          let parsed: GameOptions;
+          if (typeof options === "string") {
+            try {
+              parsed = JSON.parse(options) as GameOptions;
+            } catch {
+              console.warn("[GameStatusStore] Ignoring malformed character options");
+              return;
+            }
+          } else {
+            parsed = options;
+          }
           set({
-            allowTrainerRebattles: !!options.allowTrainerRebattles,
+            allowTrainerRebattles: !!parsed.allowTrainerRebattles,
           });
         },
         resetPanelStates: () => {

@@ -8,8 +8,8 @@ import { API_BASE_URL } from "./constants";
 /**
  * @deprecated Use MapDataService.fetchNPCs() instead
  */
-export async function fetchNPCs(): Promise<any[]> {
+export async function fetchNPCs(): Promise<unknown[]> {
   console.warn("fetchNPCs is deprecated - use MapDataService.fetchNPCs() via WebTransport");
   const response = await fetch(`${API_BASE_URL}/npcs`);
-  return await response.json();
+  return await response.json() as unknown[];
 }

@@ -2,13 +2,14 @@ import { Scene } from "phaser";
 import { PhaserActor, PhaserMapInfo, PhaserTile, PhaserWarp } from "@/net/generated/world_api";
 import { CameraController } from "../../controllers/CameraController";
 import { UiManager } from "../../managers";
+import type { MapItem } from "../../renderers/MapRenderer";
 
 interface TileViewerDebugOverlayDeps {
   scene: Scene;
   uiManager: () => UiManager;
   cameraController: () => CameraController;
   tileLookup: () => Map<string, PhaserTile>;
-  items: () => unknown[];
+  items: () => MapItem[];
   mapInfo: () => PhaserMapInfo | null;
   warps: () => PhaserWarp[];
   actors: () => PhaserActor[];
@@ -48,8 +49,9 @@ export class TileViewerDebugOverlay {
     this.removeMapLegend();
   }
 
-  createMapLegend(_maps: PhaserMapInfo[]): void {
+  createMapLegend(maps: PhaserMapInfo[]): void {
     // Placeholder for a richer local-dev map legend.
+    void maps;
   }
 
   removeMapLegend(): void {

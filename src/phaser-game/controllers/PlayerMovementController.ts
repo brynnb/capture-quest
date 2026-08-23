@@ -9,12 +9,22 @@ import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import useAudioActivityStore from "@/stores/AudioActivityStore";
 import useGameStatusStore from "@/stores/GameStatusStore";
 import { emitCaptureQuestTestEvent } from "@/testing/capturequestTestBridge";
+import type { MapRenderer } from "../renderers/MapRenderer";
 
 type MovementDirection = "UP" | "DOWN" | "LEFT" | "RIGHT";
 
 interface InteractionTarget {
   x: number;
   y: number;
+}
+
+interface PathNode {
+  x: number;
+  y: number;
+  g: number;
+  h: number;
+  f: number;
+  parent: PathNode | null;
 }
 
 const COLLISION_LAND = 1;
@@ -80,7 +90,7 @@ function canJumpLedge(
 export class PlayerMovementController {
   private scene: Scene;
   private playerId: number | null = null;
-  private mapRenderer: any = null;
+  private mapRenderer: MapRenderer | null = null;
 
   // Collision map: key = "x,y", value = collision type (0 blocked, 1 land, 2 water)
   private collisionMap: Map<string, number> = new Map();
@@ -176,7 +186,7 @@ export class PlayerMovementController {
     startX: number,
     startY: number,
     mapId: number,
-    mapRenderer: any,
+    mapRenderer: MapRenderer,
   ): void {
     // console.log(`[PlayerMovement] setPlayer: ID=${playerId}, pos=(${startX}, ${startY}), map=${mapId}`);
     this.playerId = playerId;
@@ -826,7 +836,7 @@ export class PlayerMovementController {
     }
 
     this.queueClientMove(walkTarget.x, walkTarget.y, this.currentMapId, "click");
-    this.setArrivalCallback((_arrivedX, _arrivedY) => {
+    this.setArrivalCallback(() => {
       const direction = this.directionToInteractionTile(targetX, targetY);
       if (!direction) {
         return false;
@@ -1114,7 +1124,7 @@ export class PlayerMovementController {
       return false;
     }
 
-    this.setArrivalCallback((_arrivedX, _arrivedY) => {
+    this.setArrivalCallback(() => {
       if (
         !this.canInteractWithTile(targetX, targetY)
       ) {
@@ -1160,7 +1170,7 @@ export class PlayerMovementController {
       return false;
     }
 
-    this.setArrivalCallback((_arrivedX, _arrivedY) => {
+    this.setArrivalCallback(() => {
       const latestTarget = getTarget();
       if (!latestTarget) {
         return true;
@@ -1498,6 +1508,12 @@ export class PlayerMovementController {
    * Propose next tile in current path
    */
   private moveToNextTile(): void {
+    const mapRenderer = this.mapRenderer;
+    const playerId = this.playerId;
+    if (!mapRenderer || playerId === null) {
+      this.isMoving = false;
+      return;
+    }
     if (this.currentPath.length === 0) {
       // console.log(`[PlayerMovement] Movement reached destination.`);
       this.isMoving = false;
@@ -1520,8 +1536,8 @@ export class PlayerMovementController {
 
     // Trigger local movement update (so we see ourselves move immediately)
     // This adds to the ActorMovementController queue via MapRenderer
-    this.mapRenderer.updateActorPosition(
-      this.playerId!,
+    mapRenderer.updateActorPosition(
+      playerId,
       this.currentTileX,
       this.currentTileY,
       nextTile.x,
@@ -1539,14 +1555,7 @@ export class PlayerMovementController {
     endX: number,
     endY: number,
   ): { x: number; y: number }[] {
-    const openSet: {
-      x: number;
-      y: number;
-      g: number;
-      h: number;
-      f: number;
-      parent: any;
-    }[] = [];
+    const openSet: PathNode[] = [];
     const closedSet: Set<string> = new Set();
 
     const heuristic = (x: number, y: number) =>

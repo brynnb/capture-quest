@@ -369,7 +369,7 @@ const CharacterCreator = () => {
         return (
           <MainContainer>
             <StoryText>
-              As a {(selectedFaction as any)?.name} {selectedClass?.name}, you
+              As a {selectedFaction?.name} {selectedClass?.name}, you
               begin your journey in{" "}
               {selectedHomeTown
                 ? selectedHomeTown.name || "your new home"

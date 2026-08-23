@@ -80,7 +80,7 @@ const BottomHUD: React.FC = () => {
     await WorldSocket.sendJsonMessage(OpCodes.CharacterQuitRequest, {});
     AudioManager.stopMusic(true);
     AudioManager.stopAllAmbients();
-    await setCurrentMap(null as any);
+    await setCurrentMap(null);
     usePokeBattleStore.getState().closeBattle();
     setScreen("characterSelect");
   };

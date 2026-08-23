@@ -315,7 +315,7 @@ export class WarpManager {
     const sourceIsOverworld =
       typeof sourceMapId === "number" && this.mapDataService.isOverworld(sourceMapId);
 
-    let destinationX = warp.destinationX;
+    const destinationX = warp.destinationX;
     let destinationY = warp.destinationY;
     const detail: Record<string, unknown> = {
       mapId: warp.destinationMapId,

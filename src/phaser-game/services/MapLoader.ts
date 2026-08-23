@@ -2,7 +2,7 @@ import { Scene } from "phaser";
 import { DEFAULT_ZOOM, UNIFIED_OVERWORLD_MAP_ID } from "../constants";
 import { CameraController } from "../controllers/CameraController";
 import { PlayerMovementController } from "../controllers/PlayerMovementController";
-import { MapRenderer } from "../renderers/MapRenderer";
+import { MapRenderer, type MapItem } from "../renderers/MapRenderer";
 import { MapDataService } from "./MapDataService";
 import { TileManager, ActorManager, UiManager } from "../managers";
 import useGameStatusStore from "@/stores/GameStatusStore";
@@ -16,7 +16,7 @@ import type {
 
 export interface MapLoaderState {
   tiles: PhaserTile[];
-  items: any[]; // eslint-disable-line @typescript-eslint/no-explicit-any
+  items: MapItem[];
   warps: PhaserWarp[];
   actors: PhaserActor[];
   mapInfo: PhaserMapInfo | null;
@@ -286,12 +286,11 @@ export class MapLoader {
       if (mapInfo.name) {
         PhaserNet.requestMapScripts(mapInfo.name);
       }
-    } catch (error: any) {
-      // eslint-disable-line @typescript-eslint/no-explicit-any
+    } catch (error: unknown) {
       console.error("Error loading map data:", error);
       this.uiManager.setLoadingText(
         `Error loading map data: ${
-          error.message || "Unknown error"
+          error instanceof Error ? error.message : "Unknown error"
         }. Check console for details.`,
       );
     } finally {
@@ -518,12 +517,11 @@ export class MapLoader {
       // Hide loading text
       this.uiManager.hideLoadingText();
       await (this.scene as any).playPendingWarpExitAnimation?.(200); // eslint-disable-line @typescript-eslint/no-explicit-any
-    } catch (error: any) {
-      // eslint-disable-line @typescript-eslint/no-explicit-any
+    } catch (error: unknown) {
       console.error("Error loading overworld data:", error);
       this.uiManager.setLoadingText(
         `Error loading overworld data: ${
-          error.message || "Unknown error"
+          error instanceof Error ? error.message : "Unknown error"
         }. Check console for details.`,
       );
     } finally {

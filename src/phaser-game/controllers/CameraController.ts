@@ -10,6 +10,7 @@ export class CameraController {
   private uiCamera!: Phaser.Cameras.Scene2D.Camera; // UI camera for HUD elements
   private zoomLevel: number = DEFAULT_ZOOM;
   private isOverworld: boolean = true; // Track whether we're in overworld mode
+  private isFollowing = false;
   private cameraControls = {
     isDragging: false,
     lastPointerPosition: { x: 0, y: 0 },
@@ -61,7 +62,7 @@ export class CameraController {
     this.scene.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
       if (this.cameraControls.isDragging) {
         // Disable manual panning if camera is following something
-        if (this.mainCamera.dirty || (this.mainCamera as any)._follow) {
+        if (this.mainCamera.dirty || this.isFollowing) {
           return;
         }
 
@@ -82,7 +83,12 @@ export class CameraController {
     // Set up mouse wheel for zooming
     this.scene.input.on(
       "wheel",
-      (_pointer: any, _gameObjects: any, _deltaX: number, deltaY: number) => {
+      (
+        _pointer: Phaser.Input.Pointer,
+        _gameObjects: Phaser.GameObjects.GameObject[],
+        _deltaX: number,
+        deltaY: number,
+      ) => {
         // Zoom in/out based on wheel direction
         if (deltaY > 0) {
           this.zoomLevel = Math.max(MIN_ZOOM, this.zoomLevel - ZOOM_STEP);
@@ -105,7 +111,7 @@ export class CameraController {
     if (!cursors) return;
 
     // Skip keyboard movement if we're following a player
-    if ((this.mainCamera as any)._follow) {
+    if (this.isFollowing) {
       return;
     }
 
@@ -129,10 +135,12 @@ export class CameraController {
   }
 
   follow(target: Phaser.GameObjects.GameObject) {
+    this.isFollowing = true;
     this.mainCamera.startFollow(target, true, 0.5, 0.5);
   }
 
   stopFollow() {
+    this.isFollowing = false;
     this.mainCamera.stopFollow();
   }
 

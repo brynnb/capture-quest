@@ -8,8 +8,8 @@ import { API_BASE_URL } from "./constants";
 /**
  * @deprecated Use MapDataService.fetchWarps() instead
  */
-export async function fetchWarps(): Promise<any[]> {
+export async function fetchWarps(): Promise<unknown[]> {
   console.warn("fetchWarps is deprecated - use MapDataService.fetchWarps() via WebTransport");
   const response = await fetch(`${API_BASE_URL}/warps`);
-  return await response.json();
+  return await response.json() as unknown[];
 }
