@@ -13,16 +13,19 @@ import (
 )
 
 var phaserMoveImportColumns = []string{
-	"id", "name", "short_name", "effect", "power", "type", "accuracy", "pp",
+	"id", "constant_name", "name", "short_name", "effect", "power", "type", "accuracy", "pp",
 	"battle_animation", "battle_sound", "battle_sound_pitch", "battle_sound_tempo",
 	"battle_subanimation", "battle_tileset", "battle_delay", "is_hm", "field_move_effect",
 }
 
-func importPhaserToPostgres(sqlite, pg *sql.DB) error {
+func importPhaserToPostgres(sqlite, pg *sql.DB, context extractorImportContext) error {
 	if err := ensurePostgresSchema(pg); err != nil {
 		return err
 	}
 	if err := truncateImportedPostgresTables(pg); err != nil {
+		return err
+	}
+	if err := persistExtractorImportContext(pg, context); err != nil {
 		return err
 	}
 
@@ -58,8 +61,8 @@ func importPhaserToPostgres(sqlite, pg *sql.DB) error {
 			SourceTable: "warps",
 			TargetTable: "phaser_warps",
 			Columns: []string{
-				"id", "source_map_id", "x", "y", "destination_map_id", "destination_map",
-				"destination_x", "destination_y",
+				"id", "source_map_id", "source_warp_index", "x", "y", "destination_map_id", "destination_map",
+				"destination_x", "destination_y", "destination_kind", "destination_warp_id",
 			},
 		},
 		{
@@ -77,6 +80,13 @@ func importPhaserToPostgres(sqlite, pg *sql.DB) error {
 				"id", "name", "hp", "atk", "def", "spd", "spc", "type_1", "type_2",
 				"catch_rate", "base_exp", "default_move_1_id", "default_move_2_id",
 				"default_move_3_id", "default_move_4_id", "base_cry", "cry_pitch",
+				"cry_length", "pokedex_type", "height", "weight", "pokedex_text",
+				"evolve_level", "evolve_pokemon", "evolves_from_trade", "icon_image", "palette_type",
+			},
+			SourceColumns: []string{
+				"id", "name", "hp", "atk", "def", "spd", "spc", "type_1", "type_2",
+				"catch_rate", "base_exp", "default_move_1_name", "default_move_2_name",
+				"default_move_3_name", "default_move_4_name", "base_cry", "cry_pitch",
 				"cry_length", "pokedex_type", "height", "weight", "pokedex_text",
 				"evolve_level", "evolve_pokemon", "evolves_from_trade", "icon_image", "palette_type",
 			},
@@ -116,6 +126,8 @@ func importPhaserToPostgres(sqlite, pg *sql.DB) error {
 				"id", "map_name", "map_id", "encounter_type", "encounter_rate",
 				"slot_index", "pokemon_name", "level", "version",
 			},
+			Where: "version IN (?, 'both')",
+			Args:  []any{context.ReleaseCode},
 		},
 		{
 			SourceTable: "encounter_slots",
@@ -183,10 +195,10 @@ func importPhaserToPostgres(sqlite, pg *sql.DB) error {
 			return err
 		}
 	}
-	if err := refreshImportedMapIDsPostgres(pg, "phaser_warp_events"); err != nil {
+	if err := validatePokemonDefaultMovesPostgres(pg); err != nil {
 		return err
 	}
-	if err := resolveLastMapWarpDestinationsPostgres(pg); err != nil {
+	if err := refreshImportedMapIDsPostgres(pg, "phaser_warp_events"); err != nil {
 		return err
 	}
 	if err := clearWarpDestinationCoordinatePlaceholdersPostgres(pg); err != nil {
@@ -195,7 +207,7 @@ func importPhaserToPostgres(sqlite, pg *sql.DB) error {
 	if err := resolveWarpDestinationCoordinatesPostgres(sqlite, pg); err != nil {
 		return err
 	}
-	if err := deriveEncounterAreasPostgres(sqlite, pg); err != nil {
+	if err := deriveEncounterAreasPostgres(sqlite, pg, context.ReleaseCode); err != nil {
 		return err
 	}
 	if err := bakeOverworldCoordinatesPostgres(pg); err != nil {
@@ -232,6 +244,78 @@ func importPhaserToPostgres(sqlite, pg *sql.DB) error {
 		return err
 	}
 
+	return nil
+}
+
+func validatePokemonDefaultMovesPostgres(db *sql.DB) error {
+	rows, err := db.Query(`
+		SELECT DISTINCT defaults.move_constant
+		FROM (
+			SELECT default_move_1_id AS move_constant FROM phaser_pokemon
+			UNION ALL SELECT default_move_2_id FROM phaser_pokemon
+			UNION ALL SELECT default_move_3_id FROM phaser_pokemon
+			UNION ALL SELECT default_move_4_id FROM phaser_pokemon
+		) defaults
+		LEFT JOIN phaser_moves moves
+		  ON moves.constant_name = defaults.move_constant
+		WHERE defaults.move_constant IS NOT NULL
+		  AND defaults.move_constant <> 'NO_MOVE'
+		  AND moves.id IS NULL
+		ORDER BY defaults.move_constant`)
+	if err != nil {
+		return fmt.Errorf("validate Pokemon default moves: %w", err)
+	}
+	defer rows.Close()
+	var missing []string
+	for rows.Next() {
+		var constant string
+		if err := rows.Scan(&constant); err != nil {
+			return fmt.Errorf("scan unresolved Pokemon default move: %w", err)
+		}
+		missing = append(missing, constant)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read unresolved Pokemon default moves: %w", err)
+	}
+	if len(missing) != 0 {
+		return fmt.Errorf(
+			"Pokemon defaults reference missing move constants: %s",
+			strings.Join(missing, ", "),
+		)
+	}
+	return nil
+}
+
+func persistExtractorImportContext(pg *sql.DB, context extractorImportContext) error {
+	_, err := pg.Exec(`
+		INSERT INTO phaser_import_metadata (
+			singleton, schema_name, schema_version, minimum_reader_version,
+			extraction_run_id, extractor_revision, source_revision,
+			source_date_epoch, source_tree_sha256, release_code
+		) VALUES (true, $1, $2, $3, $4, $5, $6, $7, $8, $9)
+		ON CONFLICT (singleton) DO UPDATE SET
+			schema_name = EXCLUDED.schema_name,
+			schema_version = EXCLUDED.schema_version,
+			minimum_reader_version = EXCLUDED.minimum_reader_version,
+			extraction_run_id = EXCLUDED.extraction_run_id,
+			extractor_revision = EXCLUDED.extractor_revision,
+			source_revision = EXCLUDED.source_revision,
+			source_date_epoch = EXCLUDED.source_date_epoch,
+			source_tree_sha256 = EXCLUDED.source_tree_sha256,
+			release_code = EXCLUDED.release_code`,
+		context.SchemaName,
+		context.SchemaVersion,
+		context.MinimumReaderVersion,
+		context.RunID,
+		context.ExtractorRevision,
+		context.SourceRevision,
+		context.SourceDateEpoch,
+		context.SourceTreeSHA256,
+		context.ReleaseCode,
+	)
+	if err != nil {
+		return fmt.Errorf("persist extractor import metadata: %w", err)
+	}
 	return nil
 }
 
@@ -325,16 +409,29 @@ func truncateImportedPostgresTables(pg *sql.DB) error {
 }
 
 type staticTableSpec struct {
-	SourceTable string
-	TargetTable string
-	Columns     []string
-	Optional    bool
+	SourceTable   string
+	TargetTable   string
+	Columns       []string
+	SourceColumns []string
+	Where         string
+	Args          []any
+	Optional      bool
 }
 
 func importStaticTable(sqlite, pg *sql.DB, spec staticTableSpec) (int, error) {
 	log.Printf("Importing %s -> %s...", spec.SourceTable, spec.TargetTable)
-	query := fmt.Sprintf("SELECT %s FROM %s", strings.Join(spec.Columns, ", "), spec.SourceTable)
-	rows, err := sqlite.Query(query)
+	sourceColumns := spec.SourceColumns
+	if len(sourceColumns) == 0 {
+		sourceColumns = spec.Columns
+	}
+	if len(sourceColumns) != len(spec.Columns) {
+		return 0, fmt.Errorf("source/target column count mismatch for %s", spec.SourceTable)
+	}
+	query := fmt.Sprintf("SELECT %s FROM %s", strings.Join(sourceColumns, ", "), spec.SourceTable)
+	if spec.Where != "" {
+		query += " WHERE " + spec.Where
+	}
+	rows, err := sqlite.Query(query, spec.Args...)
 	if err != nil {
 		if spec.Optional {
 			log.Printf("  ! Optional source table %s not imported: %v", spec.SourceTable, err)
@@ -735,7 +832,7 @@ type overworldEncounterMap struct {
 	HasOffset bool
 }
 
-func deriveEncounterAreasPostgres(sqlite, pg *sql.DB) error {
+func deriveEncounterAreasPostgres(sqlite, pg *sql.DB, release string) error {
 	log.Println("Deriving grass encounter areas from wild encounter tables...")
 	offsets := loadOverworldMapOffsets(sqlite)
 	tx, err := pg.Begin()
@@ -772,7 +869,7 @@ func deriveEncounterAreasPostgres(sqlite, pg *sql.DB) error {
 	areasCreated, _ := areaResult.RowsAffected()
 
 	slotResult, err := tx.Exec(`
-		WITH red_slots AS (
+		WITH selected_slots AS (
 			SELECT
 				we.map_name,
 				we.encounter_type,
@@ -786,7 +883,7 @@ func deriveEncounterAreasPostgres(sqlite, pg *sql.DB) error {
 			WHERE we.map_id IS NOT NULL
 			  AND we.encounter_type = 'grass'
 			  AND we.encounter_rate > 0
-			  AND we.version IN ('red', 'both')
+			  AND we.version IN ($1, 'both')
 		)
 		INSERT INTO phaser_encounter_area_slots (
 			encounter_area_id, slot_index, pokemon_id, level, probability
@@ -797,13 +894,13 @@ func deriveEncounterAreasPostgres(sqlite, pg *sql.DB) error {
 			pp.id,
 			rs.level,
 			es.probability
-		FROM red_slots rs
+		FROM selected_slots rs
 		JOIN phaser_encounter_areas ea
 		  ON ea.name = rs.map_name || '_' || UPPER(rs.encounter_type)
 		JOIN phaser_pokemon pp ON pp.name = rs.pokemon_name
 		JOIN phaser_encounter_slots es ON es.slot_index = rs.normalized_slot_index
 		WHERE rs.normalized_slot_index <= 10
-		ORDER BY ea.id, rs.normalized_slot_index`)
+		ORDER BY ea.id, rs.normalized_slot_index`, release)
 	if err != nil {
 		return fmt.Errorf("derive encounter area slots: %w", err)
 	}

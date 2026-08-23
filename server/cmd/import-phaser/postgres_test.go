@@ -2,10 +2,72 @@ package main
 
 import (
 	"database/sql"
+	"strings"
 	"testing"
 
 	_ "modernc.org/sqlite"
 )
+
+func TestImportStaticTableMapsSchemaV2DefaultMoveNames(t *testing.T) {
+	source, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	target, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer target.Close()
+
+	execStatements(t, source,
+		`CREATE TABLE pokemon (id INTEGER, default_move_1_id INTEGER, default_move_1_name TEXT)`,
+		`INSERT INTO pokemon VALUES (1, 28, 'SAND_ATTACK')`,
+	)
+	execStatements(t, target,
+		`CREATE TABLE phaser_pokemon (id INTEGER, default_move_1_id TEXT)`,
+	)
+	_, err = importStaticTable(source, target, staticTableSpec{
+		SourceTable:   "pokemon",
+		TargetTable:   "phaser_pokemon",
+		Columns:       []string{"id", "default_move_1_id"},
+		SourceColumns: []string{"id", "default_move_1_name"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var constant string
+	if err := target.QueryRow(`SELECT default_move_1_id FROM phaser_pokemon`).Scan(&constant); err != nil {
+		t.Fatal(err)
+	}
+	if constant != "SAND_ATTACK" {
+		t.Fatalf("default constant = %q", constant)
+	}
+}
+
+func TestValidatePokemonDefaultMovesUsesConstantName(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	execStatements(t, db,
+		`CREATE TABLE phaser_pokemon (default_move_1_id TEXT, default_move_2_id TEXT, default_move_3_id TEXT, default_move_4_id TEXT)`,
+		`CREATE TABLE phaser_moves (id INTEGER, constant_name TEXT, short_name TEXT)`,
+		`INSERT INTO phaser_pokemon VALUES ('SAND_ATTACK', 'PSYCHIC_M', 'NO_MOVE', NULL)`,
+		`INSERT INTO phaser_moves VALUES (28, 'SAND_ATTACK', 'SAND-ATTACK')`,
+		`INSERT INTO phaser_moves VALUES (94, 'PSYCHIC_M', 'PSYCHIC')`,
+	)
+	if err := validatePokemonDefaultMovesPostgres(db); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DELETE FROM phaser_moves WHERE constant_name = 'PSYCHIC_M'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := validatePokemonDefaultMovesPostgres(db); err == nil || !strings.Contains(err.Error(), "PSYCHIC_M") {
+		t.Fatalf("error = %v", err)
+	}
+}
 
 func TestResolveWarpDestinationUpdatesRoute18OverworldEntrance(t *testing.T) {
 	updates := resolveWarpDestinationUpdates(

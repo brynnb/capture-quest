@@ -55,6 +55,7 @@ public/assets/pokemon/
 public/assets/trainers/
 public/phaser/assets/
 public/phaser/pokemon.db
+public/phaser/capturequest-pokemon-import.json
 public/phaser/style.css
 public/phaser/tile_images/
 public/phaser/sprites/*
@@ -83,6 +84,8 @@ server/certs/
 items.dat
 
 # Python virtual environments
+__pycache__/
+*.py[cod]
 venv/
 .venv/
 

@@ -34,6 +34,7 @@ type warpIntegrityRow struct {
 	Y                int
 	DestinationMapID int
 	DestinationMap   string
+	DestinationKind  string
 	HasDestination   bool
 }
 
@@ -52,7 +53,6 @@ func TestAllWarpDestinationsLandInBoundsAndCanMove(t *testing.T) {
 	offsets := loadOverworldMapOffsets(db)
 	events := loadWarpIntegrityEvents(t, db, maps)
 	warps := loadWarpIntegrityWarps(t, db)
-	resolveWarpIntegrityLastMapDestinations(events, warps)
 
 	runtimeWarps := make([]importedRuntimeWarp, 0, len(warps))
 	for _, warp := range warps {
@@ -83,17 +83,31 @@ func TestAllWarpDestinationsLandInBoundsAndCanMove(t *testing.T) {
 	var failures []string
 	skippedSpecial := 0
 	for _, warp := range warps {
-		sourceEvent, hasSourceEvent := sourceEvents[warpCoordKey(warp.SourceMapID, warp.X, warp.Y)]
+		if warp.DestinationKind == "last-map" {
+			if warp.HasDestination || warp.DestinationMap != "LAST_MAP" {
+				failures = append(failures, fmt.Sprintf("dynamic warp %d has a fabricated static destination", warp.ID))
+			}
+			skippedSpecial++
+			continue
+		}
+		sourceX, sourceY := warp.X, warp.Y
+		if info := maps[warp.SourceMapID]; info.IsOverworld {
+			if offset, ok := offsets[normalizeMapName(info.Name)]; ok {
+				sourceX += offset.X
+				sourceY += offset.Y
+			}
+		}
+		sourceEvent, hasSourceEvent := sourceEvents[warpCoordKey(warp.SourceMapID, sourceX, sourceY)]
 		if isSpecialWarpOutsideGenericValidation(warp, sourceEvent, hasSourceEvent) {
 			skippedSpecial++
 			continue
 		}
 		sourceTileMap := tiles[warp.SourceMapID]
-		if _, ok := sourceTileMap[coordKey(warp.X, warp.Y)]; !ok {
+		if _, ok := sourceTileMap[coordKey(sourceX, sourceY)]; !ok {
 			failures = append(failures, fmt.Sprintf("warp %d %s(%d,%d) source tile missing", warp.ID, warp.SourceMapName, warp.X, warp.Y))
 			continue
 		}
-		if !hasWarpActivationTile(sourceTileMap, warp.X, warp.Y) {
+		if !hasWarpActivationTile(sourceTileMap, sourceX, sourceY) {
 			failures = append(failures, fmt.Sprintf("warp %d %s(%d,%d) has no source tile/neighbor a client can path to", warp.ID, warp.SourceMapName, warp.X, warp.Y))
 		}
 
@@ -285,7 +299,8 @@ func loadWarpIntegrityEvents(t *testing.T, db *sql.DB, maps map[int]warpIntegrit
 func loadWarpIntegrityWarps(t *testing.T, db *sql.DB) []warpIntegrityRow {
 	t.Helper()
 	rows, err := db.Query(`
-		SELECT id, source_map_id, source_map, x, y, destination_map_id, destination_map
+		SELECT id, source_map_id, source_map, x, y, destination_map_id,
+		       destination_map, destination_kind
 		FROM warps
 		ORDER BY id`)
 	if err != nil {
@@ -305,6 +320,7 @@ func loadWarpIntegrityWarps(t *testing.T, db *sql.DB) []warpIntegrityRow {
 			&warp.Y,
 			&destinationMapID,
 			&warp.DestinationMap,
+			&warp.DestinationKind,
 		); err != nil {
 			t.Fatalf("scan warp: %v", err)
 		}

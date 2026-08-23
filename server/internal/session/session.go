@@ -20,6 +20,7 @@ type Session struct {
 	Authenticated bool
 	AccountID     int64
 	MapID         int     // Current map the session is in
+	PreviousMapID int     // Per-player source map for dynamic LAST_MAP exits
 	X             float32 // Current X coordinate
 	Y             float32 // Current Y coordinate
 	InstanceID    int     // Current instance ID the session is in
@@ -101,6 +102,7 @@ func (sm *SessionManager) CreateSession(messenger ClientMessenger, sessionID int
 		SessionID:     sessionID,
 		Authenticated: false,
 		MapID:         -1,
+		PreviousMapID: -1,
 		InstanceID:    0,
 		ControlStream: stream,
 		IP:            ip,

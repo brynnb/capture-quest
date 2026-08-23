@@ -103,16 +103,21 @@ func LoadPokemonFromDB(db DBTX, pokemonID int) (*Pokemon, error) {
 		defaultMoveNames[3] = dm4.String
 	}
 
-	// Load default move IDs by name
+	// The extractor publishes stable assembly constants separately from display
+	// names (notably SAND_ATTACK/SAND-ATTACK and PSYCHIC_M/PSYCHIC).
 	for i, mname := range defaultMoveNames {
 		if mname == "" {
 			continue
 		}
 		var moveID int
-		err := db.QueryRow(`SELECT id FROM phaser_moves WHERE name = $1`, mname).Scan(&moveID)
-		if err == nil {
-			p.Moves[i], _ = LoadMoveSlotFromDB(db, moveID)
+		if err := db.QueryRow(`SELECT id FROM phaser_moves WHERE constant_name = $1`, mname).Scan(&moveID); err != nil {
+			return nil, fmt.Errorf("resolve default move %q for pokemon %d: %w", mname, pokemonID, err)
 		}
+		move, err := LoadMoveSlotFromDB(db, moveID)
+		if err != nil {
+			return nil, fmt.Errorf("load default move %q for pokemon %d: %w", mname, pokemonID, err)
+		}
+		p.Moves[i] = move
 	}
 
 	return p, nil
@@ -403,7 +408,8 @@ func SelectWildEncounter(db DBTX, mapID int, encounterType string) (pokemonID, l
 		JOIN phaser_pokemon pp ON we.pokemon_name = pp.name
 		WHERE we.map_id = $1 AND we.encounter_type = $2
 		  AND we.slot_index <= 10
-		  AND (we.version = 'red' OR we.version = 'both')
+		  AND (we.version = (SELECT release_code FROM phaser_import_metadata WHERE singleton)
+		       OR we.version = 'both')
 		ORDER BY es.slot_index ASC`, mapID, encounterType)
 	if err != nil {
 		return 0, 0, fmt.Errorf("query wild encounters for map %d: %w", mapID, err)
@@ -466,7 +472,8 @@ func SelectFishingEncounter(db DBTX, mapID int, rodType string) (pokemonID, leve
 			FROM phaser_wild_encounters we
 			JOIN phaser_pokemon pp ON we.pokemon_name = pp.name
 			WHERE we.encounter_type = 'good_rod' AND we.map_id IS NULL
-			  AND (we.version = 'red' OR we.version = 'both')
+			  AND (we.version = (SELECT release_code FROM phaser_import_metadata WHERE singleton)
+			       OR we.version = 'both')
 			ORDER BY we.slot_index ASC`)
 		if err != nil {
 			return 0, 0, fmt.Errorf("query good_rod encounters: %w", err)
