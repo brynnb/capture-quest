@@ -606,18 +606,10 @@ func HandlePhaserWarpsRequest(ses *session.Session, payload []byte, wh *WorldHan
 			log.Printf("[Phaser] Error scanning warp: %v", err)
 			continue
 		}
-		if shouldResolveLastMapForPlayer(w) {
-			mapID, mapName, x, y, err := resolveLastMapWarpForPlayer(
-				db.GlobalWorldDB.DB, ses.PreviousMapID, w.DestinationWarpID,
-			)
-			if err != nil {
-				log.Printf("[Phaser] Dynamic warp %d unresolved for session %d: %v", w.ID, ses.SessionID, err)
-				continue
-			}
-			w.DestinationMapID = &mapID
-			w.DestinationMap = &mapName
-			w.DestinationX = &x
-			w.DestinationY = &y
+		w, err = resolvePhaserWarpForPlayer(db.GlobalWorldDB.DB, ses.PreviousMapID, w)
+		if err != nil {
+			log.Printf("[Phaser] Dynamic warp %d unresolved for session %d: %v", w.ID, ses.SessionID, err)
+			continue
 		}
 		warps = append(warps, w)
 	}
@@ -632,6 +624,23 @@ func HandlePhaserWarpsRequest(ses *session.Session, payload []byte, wh *WorldHan
 func shouldResolveLastMapForPlayer(w PhaserWarp) bool {
 	return w.DestinationKind == "last-map" &&
 		(w.DestinationMapID == nil || w.DestinationX == nil || w.DestinationY == nil)
+}
+
+func resolvePhaserWarpForPlayer(database *sql.DB, previousMapID int, w PhaserWarp) (PhaserWarp, error) {
+	if !shouldResolveLastMapForPlayer(w) {
+		return w, nil
+	}
+	mapID, mapName, x, y, err := resolveLastMapWarpForPlayer(
+		database, previousMapID, w.DestinationWarpID,
+	)
+	if err != nil {
+		return PhaserWarp{}, err
+	}
+	w.DestinationMapID = &mapID
+	w.DestinationMap = &mapName
+	w.DestinationX = &x
+	w.DestinationY = &y
+	return w, nil
 }
 
 func resolveLastMapWarpForPlayer(

@@ -7,7 +7,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-func TestLastMapWarpResolutionIsPerPlayer(t *testing.T) {
+func TestAmbiguousLastMapRoute22GateExitResolvesPerPlayer(t *testing.T) {
 	database, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -16,8 +16,8 @@ func TestLastMapWarpResolutionIsPerPlayer(t *testing.T) {
 	statements := []string{
 		`CREATE TABLE phaser_maps (id INTEGER PRIMARY KEY, name TEXT)`,
 		`CREATE TABLE phaser_warps (id INTEGER PRIMARY KEY, source_map_id INTEGER, source_warp_index INTEGER, x INTEGER, y INTEGER)`,
-		`INSERT INTO phaser_maps VALUES (17, 'ROUTE_6'), (18, 'ROUTE_7')`,
-		`INSERT INTO phaser_warps VALUES (1, 17, 2, 190, -83), (2, 18, 2, 205, -44)`,
+		`INSERT INTO phaser_maps VALUES (33, 'ROUTE_22'), (34, 'ROUTE_23')`,
+		`INSERT INTO phaser_warps VALUES (1, 33, 1, 8, 5), (2, 34, 1, 7, 139)`,
 	}
 	for _, statement := range statements {
 		if _, err := database.Exec(statement); err != nil {
@@ -25,19 +25,23 @@ func TestLastMapWarpResolutionIsPerPlayer(t *testing.T) {
 		}
 	}
 
-	mapA, nameA, xA, yA, err := resolveLastMapWarpForPlayer(database, 17, 2)
+	dynamic := PhaserWarp{DestinationKind: "last-map", DestinationWarpID: 1}
+	warpA, err := resolvePhaserWarpForPlayer(database, 33, dynamic)
 	if err != nil {
 		t.Fatal(err)
 	}
-	mapB, nameB, xB, yB, err := resolveLastMapWarpForPlayer(database, 18, 2)
+	warpB, err := resolvePhaserWarpForPlayer(database, 34, dynamic)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if mapA != 17 || nameA != "ROUTE_6" || xA != 190 || yA != -83 {
-		t.Fatalf("player A destination = (%d,%s,%d,%d)", mapA, nameA, xA, yA)
+	if *warpA.DestinationMapID != 33 || *warpA.DestinationMap != "ROUTE_22" || *warpA.DestinationX != 8 || *warpA.DestinationY != 5 {
+		t.Fatalf("player A destination = (%d,%s,%d,%d)", *warpA.DestinationMapID, *warpA.DestinationMap, *warpA.DestinationX, *warpA.DestinationY)
 	}
-	if mapB != 18 || nameB != "ROUTE_7" || xB != 205 || yB != -44 {
-		t.Fatalf("player B destination = (%d,%s,%d,%d)", mapB, nameB, xB, yB)
+	if *warpB.DestinationMapID != 34 || *warpB.DestinationMap != "ROUTE_23" || *warpB.DestinationX != 7 || *warpB.DestinationY != 139 {
+		t.Fatalf("player B destination = (%d,%s,%d,%d)", *warpB.DestinationMapID, *warpB.DestinationMap, *warpB.DestinationX, *warpB.DestinationY)
+	}
+	if dynamic.DestinationMapID != nil || dynamic.DestinationMap != nil || dynamic.DestinationX != nil || dynamic.DestinationY != nil {
+		t.Fatal("per-player resolution mutated the shared dynamic warp")
 	}
 }
 
@@ -52,7 +56,7 @@ func TestLastMapWarpRequiresPreviousMapContext(t *testing.T) {
 	}
 }
 
-func TestResolvedLastMapWarpDoesNotUsePreviousMapContext(t *testing.T) {
+func TestResolvedLastMapStarterHouseExitIgnoresInternalPreviousMap(t *testing.T) {
 	mapID, x, y := 0, 5, 5
 	mapName := "PALLET_TOWN"
 	warp := PhaserWarp{
@@ -62,8 +66,18 @@ func TestResolvedLastMapWarpDoesNotUsePreviousMapContext(t *testing.T) {
 		DestinationX:     &x,
 		DestinationY:     &y,
 	}
-	if shouldResolveLastMapForPlayer(warp) {
-		t.Fatal("deterministically resolved LAST_MAP warp should keep its imported destination")
+	got, err := resolvePhaserWarpForPlayer(nil, 38, warp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *got.DestinationMapID != 0 || *got.DestinationMap != "PALLET_TOWN" || *got.DestinationX != 5 || *got.DestinationY != 5 {
+		t.Fatalf(
+			"resolved Red house exit = (%d,%s,%d,%d), want Pallet Town despite previous map 38",
+			*got.DestinationMapID,
+			*got.DestinationMap,
+			*got.DestinationX,
+			*got.DestinationY,
+		)
 	}
 
 	warp.DestinationX = nil

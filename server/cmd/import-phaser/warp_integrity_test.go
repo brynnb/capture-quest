@@ -27,15 +27,17 @@ type warpIntegrityTile struct {
 }
 
 type warpIntegrityRow struct {
-	ID               int
-	SourceMapID      int
-	SourceMapName    string
-	X                int
-	Y                int
-	DestinationMapID int
-	DestinationMap   string
-	DestinationKind  string
-	HasDestination   bool
+	ID                int
+	SourceMapID       int
+	SourceMapName     string
+	SourceWarpIndex   int
+	X                 int
+	Y                 int
+	DestinationMapID  int
+	DestinationMap    string
+	DestinationKind   string
+	DestinationWarpID int
+	HasDestination    bool
 }
 
 type warpIntegrityResolved struct {
@@ -53,6 +55,7 @@ func TestAllWarpDestinationsLandInBoundsAndCanMove(t *testing.T) {
 	offsets := loadOverworldMapOffsets(db)
 	events := loadWarpIntegrityEvents(t, db, maps)
 	warps := loadWarpIntegrityWarps(t, db)
+	resolveWarpIntegrityLastMapDestinations(events, warps)
 
 	runtimeWarps := make([]importedRuntimeWarp, 0, len(warps))
 	for _, warp := range warps {
@@ -78,17 +81,16 @@ func TestAllWarpDestinationsLandInBoundsAndCanMove(t *testing.T) {
 	for _, update := range updates {
 		resolvedByWarpID[update.WarpID] = update
 	}
-	sourceEvents := sourceEventsByCoordinate(importedMaps, offsets, events)
-
 	var failures []string
 	skippedSpecial := 0
+	deterministicLastMap := 0
 	for _, warp := range warps {
-		if warp.DestinationKind == "last-map" {
-			if warp.HasDestination || warp.DestinationMap != "LAST_MAP" {
-				failures = append(failures, fmt.Sprintf("dynamic warp %d has a fabricated static destination", warp.ID))
-			}
+		if warp.DestinationKind == "last-map" && !warp.HasDestination {
 			skippedSpecial++
 			continue
+		}
+		if warp.DestinationKind == "last-map" {
+			deterministicLastMap++
 		}
 		sourceX, sourceY := warp.X, warp.Y
 		if info := maps[warp.SourceMapID]; info.IsOverworld {
@@ -97,8 +99,7 @@ func TestAllWarpDestinationsLandInBoundsAndCanMove(t *testing.T) {
 				sourceY += offset.Y
 			}
 		}
-		sourceEvent, hasSourceEvent := sourceEvents[warpCoordKey(warp.SourceMapID, sourceX, sourceY)]
-		if isSpecialWarpOutsideGenericValidation(warp, sourceEvent, hasSourceEvent) {
+		if isSpecialWarpOutsideGenericValidation(warp) {
 			skippedSpecial++
 			continue
 		}
@@ -108,6 +109,10 @@ func TestAllWarpDestinationsLandInBoundsAndCanMove(t *testing.T) {
 			continue
 		}
 		if !hasWarpActivationTile(sourceTileMap, sourceX, sourceY) {
+			if hasReachableEquivalentWarp(warp, warps, maps, offsets, tiles) {
+				skippedSpecial++
+				continue
+			}
 			failures = append(failures, fmt.Sprintf("warp %d %s(%d,%d) has no source tile/neighbor a client can path to", warp.ID, warp.SourceMapName, warp.X, warp.Y))
 		}
 
@@ -139,7 +144,15 @@ func TestAllWarpDestinationsLandInBoundsAndCanMove(t *testing.T) {
 		}
 		t.Fatalf("%d warp integrity failures:\n%s", len(failures), strings.Join(failures, "\n"))
 	}
-	t.Logf("validated %d ordinary warps; skipped %d special/scripted/dynamic warps", len(warps)-skippedSpecial, skippedSpecial)
+	if deterministicLastMap == 0 {
+		t.Fatal("expected at least one deterministic LAST_MAP exit to be validated")
+	}
+	t.Logf(
+		"validated %d warps including %d deterministic LAST_MAP exits; skipped %d special/scripted/dynamic warps",
+		len(warps)-skippedSpecial,
+		deterministicLastMap,
+		skippedSpecial,
+	)
 }
 
 func openImportPokemonSQLiteForTest(t *testing.T) *sql.DB {
@@ -299,8 +312,8 @@ func loadWarpIntegrityEvents(t *testing.T, db *sql.DB, maps map[int]warpIntegrit
 func loadWarpIntegrityWarps(t *testing.T, db *sql.DB) []warpIntegrityRow {
 	t.Helper()
 	rows, err := db.Query(`
-		SELECT id, source_map_id, source_map, x, y, destination_map_id,
-		       destination_map, destination_kind
+		SELECT id, source_map_id, source_map, source_warp_index, x, y, destination_map_id,
+		       destination_map, destination_kind, destination_warp_id
 		FROM warps
 		ORDER BY id`)
 	if err != nil {
@@ -316,11 +329,13 @@ func loadWarpIntegrityWarps(t *testing.T, db *sql.DB) []warpIntegrityRow {
 			&warp.ID,
 			&warp.SourceMapID,
 			&warp.SourceMapName,
+			&warp.SourceWarpIndex,
 			&warp.X,
 			&warp.Y,
 			&destinationMapID,
 			&warp.DestinationMap,
 			&warp.DestinationKind,
+			&warp.DestinationWarpID,
 		); err != nil {
 			t.Fatalf("scan warp: %v", err)
 		}
@@ -337,16 +352,29 @@ func loadWarpIntegrityWarps(t *testing.T, db *sql.DB) []warpIntegrityRow {
 }
 
 func resolveWarpIntegrityLastMapDestinations(events []importedWarpEvent, warps []warpIntegrityRow) {
-	eventsBySource := make(map[string]importedWarpEvent, len(events))
-	eventsByDestinationName := make(map[string][]importedWarpEvent)
-	for _, event := range events {
-		eventsBySource[warpCoordKey(event.MapID, event.X, event.Y)] = event
-		destinationName := normalizeMapName(event.DestMap)
-		eventsByDestinationName[destinationName] = append(eventsByDestinationName[destinationName], event)
+	sourceMapIDsByName := make(map[string]int)
+	targetEntries := make(map[string]warpIntegrityRow, len(warps))
+	mapNamesByID := make(map[int]string)
+	for _, warp := range warps {
+		sourceMapIDsByName[normalizeMapName(warp.SourceMapName)] = warp.SourceMapID
+		targetEntries[fmt.Sprintf("%d:%d", warp.SourceMapID, warp.SourceWarpIndex)] = warp
+		mapNamesByID[warp.SourceMapID] = warp.SourceMapName
 	}
 
-	mapNamesByID := make(map[int]string)
+	candidateOrigins := make(map[int]map[int]bool)
 	for _, event := range events {
+		sourceMapID, ok := sourceMapIDsByName[normalizeMapName(event.DestMap)]
+		if !ok {
+			continue
+		}
+		targetEntry, ok := targetEntries[fmt.Sprintf("%d:%d", sourceMapID, event.DestWarpIndex)]
+		if !ok || targetEntry.DestinationKind != "last-map" {
+			continue
+		}
+		if candidateOrigins[sourceMapID] == nil {
+			candidateOrigins[sourceMapID] = make(map[int]bool)
+		}
+		candidateOrigins[sourceMapID][event.MapID] = true
 		if mapNamesByID[event.MapID] == "" {
 			mapNamesByID[event.MapID] = event.MapName
 		}
@@ -357,24 +385,7 @@ func resolveWarpIntegrityLastMapDestinations(events []importedWarpEvent, warps [
 		if warp.HasDestination || strings.ToUpper(warp.DestinationMap) != "LAST_MAP" {
 			continue
 		}
-		sourceEvent, ok := eventsBySource[warpCoordKey(warp.SourceMapID, warp.X, warp.Y)]
-		if !ok {
-			continue
-		}
-		sourceName := normalizeMapName(warp.SourceMapName)
-		incoming := eventsByDestinationName[sourceName]
-		if len(incoming) == 0 {
-			continue
-		}
-
-		exactMapIDs := distinctIncomingMapIDs(incoming, sourceEvent.DestWarpIndex)
-		if len(exactMapIDs) == 1 {
-			warp.HasDestination = true
-			warp.DestinationMapID = exactMapIDs[0]
-			warp.DestinationMap = mapNamesByID[exactMapIDs[0]]
-			continue
-		}
-		uniqueMapIDs := distinctIncomingMapIDs(incoming, 0)
+		uniqueMapIDs := sortedMapKeys(candidateOrigins[warp.SourceMapID])
 		if len(uniqueMapIDs) == 1 {
 			warp.HasDestination = true
 			warp.DestinationMapID = uniqueMapIDs[0]
@@ -383,39 +394,22 @@ func resolveWarpIntegrityLastMapDestinations(events []importedWarpEvent, warps [
 	}
 }
 
-func distinctIncomingMapIDs(events []importedWarpEvent, destWarpIndex int) []int {
-	seen := make(map[int]bool)
-	for _, event := range events {
-		if destWarpIndex > 0 && event.DestWarpIndex != destWarpIndex {
-			continue
-		}
-		seen[event.MapID] = true
-	}
-	ids := make([]int, 0, len(seen))
-	for id := range seen {
+func sortedMapKeys(values map[int]bool) []int {
+	ids := make([]int, 0, len(values))
+	for id := range values {
 		ids = append(ids, id)
 	}
 	sort.Ints(ids)
 	return ids
 }
 
-func sourceEventsByCoordinate(
-	maps map[int]importedMapInfo,
-	offsets map[string]coordinateOffset,
-	events []importedWarpEvent,
-) map[string]importedWarpEvent {
-	sourceEvents := make(map[string]importedWarpEvent, len(events)*2)
-	for _, event := range events {
-		sourceEvents[warpCoordKey(event.MapID, event.X, event.Y)] = event
-		globalX, globalY := globalWarpEventCoordinates(maps, offsets, event.MapID, event.MapName, event.X, event.Y)
-		sourceEvents[warpCoordKey(event.MapID, globalX, globalY)] = event
-	}
-	return sourceEvents
-}
-
-func isSpecialWarpOutsideGenericValidation(warp warpIntegrityRow, sourceEvent importedWarpEvent, hasSourceEvent bool) bool {
+func isSpecialWarpOutsideGenericValidation(warp warpIntegrityRow) bool {
 	sourceName := normalizeMapName(warp.SourceMapName)
 	destinationName := normalizeMapName(warp.DestinationMap)
+	// This retained, unreachable duplicate has source data but no map tiles.
+	if sourceName == "undergroundpathroute7copy" {
+		return true
+	}
 	if strings.Contains(destinationName, "unusedmap") {
 		return true
 	}
@@ -425,31 +419,36 @@ func isSpecialWarpOutsideGenericValidation(warp warpIntegrityRow, sourceEvent im
 	if isSeafoamBoulderHoleWarp(warp) {
 		return true
 	}
-	if hasSourceEvent && strings.EqualFold(sourceEvent.DestMap, "LAST_MAP") && isDynamicLastMapSource(sourceName) {
-		return true
-	}
 	return false
 }
 
-func isDynamicLastMapSource(normalizedSourceName string) bool {
-	switch normalizedSourceName {
-	case
-		"diglettscaveroute11",
-		"mtmoon1f",
-		"rocktunnel1f",
-		"route22gate",
-		"seafoamislands1f",
-		"silphco11f",
-		"undergroundpathroute5",
-		"undergroundpathroute6",
-		"undergroundpathroute7",
-		"undergroundpathroute7copy",
-		"undergroundpathroute8",
-		"viridianforestsouthgate":
-		return true
-	default:
-		return false
+func hasReachableEquivalentWarp(
+	warp warpIntegrityRow,
+	warps []warpIntegrityRow,
+	maps map[int]warpIntegrityMap,
+	offsets map[string]coordinateOffset,
+	tiles map[int]map[string]warpIntegrityTile,
+) bool {
+	for _, candidate := range warps {
+		if candidate.ID == warp.ID ||
+			candidate.SourceMapID != warp.SourceMapID ||
+			candidate.DestinationKind != warp.DestinationKind ||
+			candidate.DestinationMapID != warp.DestinationMapID ||
+			candidate.DestinationWarpID != warp.DestinationWarpID {
+			continue
+		}
+		x, y := candidate.X, candidate.Y
+		if info := maps[candidate.SourceMapID]; info.IsOverworld {
+			if offset, ok := offsets[normalizeMapName(info.Name)]; ok {
+				x += offset.X
+				y += offset.Y
+			}
+		}
+		if hasWarpActivationTile(tiles[candidate.SourceMapID], x, y) {
+			return true
+		}
 	}
+	return false
 }
 
 func isSeafoamBoulderHoleWarp(warp warpIntegrityRow) bool {

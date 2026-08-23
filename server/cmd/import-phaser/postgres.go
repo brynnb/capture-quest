@@ -210,16 +210,7 @@ func importPhaserToPostgres(sqlite, pg *sql.DB, context extractorImportContext) 
 	if err := refreshImportedMapIDsPostgres(pg, "phaser_warp_events"); err != nil {
 		return err
 	}
-	if err := clearWarpDestinationCoordinatePlaceholdersPostgres(pg); err != nil {
-		return err
-	}
-	// LAST_MAP is dynamic only when an interior can be entered from more than
-	// one map. Resolve ordinary building exits (including Red's house) from the
-	// unique incoming warp before calculating their destination coordinates.
-	if err := resolveLastMapWarpDestinationsPostgres(pg); err != nil {
-		return err
-	}
-	if err := resolveWarpDestinationCoordinatesPostgres(sqlite, pg); err != nil {
+	if err := resolveImportedWarpDestinationsPostgres(sqlite, pg); err != nil {
 		return err
 	}
 	if err := deriveEncounterAreasPostgres(sqlite, pg, context.ReleaseCode); err != nil {
@@ -260,6 +251,22 @@ func importPhaserToPostgres(sqlite, pg *sql.DB, context extractorImportContext) 
 	}
 
 	return nil
+}
+
+func resolveImportedWarpDestinationsPostgres(sqlite, pg *sql.DB) error {
+	if err := clearWarpDestinationCoordinatePlaceholdersPostgres(pg); err != nil {
+		return err
+	}
+	// LAST_MAP is dynamic only when an interior can be entered from more than
+	// one map. Resolve ordinary building exits (including Red's house) from their
+	// unique external origin before calculating destination coordinates.
+	if err := resolveLastMapWarpDestinationsPostgres(pg); err != nil {
+		return err
+	}
+	if err := resolveWarpDestinationCoordinatesPostgres(sqlite, pg); err != nil {
+		return err
+	}
+	return validateDeterministicLastMapWarpDestinationsPostgres(pg)
 }
 
 func validatePokemonDefaultMovesPostgres(db *sql.DB) error {
@@ -1194,93 +1201,47 @@ func loadImportedRuntimeWarpsPostgres(pg *sql.DB) ([]importedRuntimeWarp, error)
 	return warps, nil
 }
 
-func resolveLastMapWarpDestinationsPostgres(pg *sql.DB) error {
-	result, err := pg.Exec(`
-		WITH last_map_warps AS (
-			SELECT
-				pw.id AS warp_id,
-				source_event.dest_warp_index,
+const lastMapOriginCTE = `
+	WITH last_map_source_maps AS (
+			SELECT DISTINCT
+				pw.source_map_id,
 				source_map.name AS source_map_name
 			FROM phaser_warps AS pw
 			JOIN phaser_maps AS source_map
 			  ON source_map.id = pw.source_map_id
-			JOIN phaser_warp_events AS source_event
-			  ON (
-			  	source_event.map_id = pw.source_map_id
-			  	OR (
-			  		source_event.map_id IS NULL
-			  		AND LOWER(REPLACE(source_event.map_name, '_', '')) = LOWER(REPLACE(source_map.name, '_', ''))
-			  	)
-			  )
-			 AND source_event.x = pw.x
-			 AND source_event.y = pw.y
-			 AND UPPER(source_event.dest_map) = 'LAST_MAP'
-			WHERE pw.destination_map_id IS NULL
-			   OR UPPER(COALESCE(pw.destination_map, '')) = 'LAST_MAP'
+			WHERE pw.destination_kind = 'last-map'
 		),
-		exact_last_map_sources AS (
+		candidate_origins AS (
 			SELECT
-				last_map_warps.warp_id,
-				MIN(incoming.map_id) AS destination_map_id
-			FROM last_map_warps
+				last_map_source_maps.source_map_id,
+				incoming.map_id AS destination_map_id
+			FROM last_map_source_maps
 			JOIN phaser_warp_events AS incoming
 			  ON incoming.map_id IS NOT NULL
-			 AND incoming.dest_warp_index = last_map_warps.dest_warp_index
-			 AND LOWER(REPLACE(incoming.dest_map, '_', '')) = LOWER(REPLACE(last_map_warps.source_map_name, '_', ''))
-			GROUP BY last_map_warps.warp_id
-			HAVING COUNT(DISTINCT incoming.map_id) = 1
+			 AND LOWER(REPLACE(incoming.dest_map, '_', '')) = LOWER(REPLACE(last_map_source_maps.source_map_name, '_', ''))
+			JOIN phaser_warps AS target_entry
+			  ON target_entry.source_map_id = last_map_source_maps.source_map_id
+			 AND target_entry.source_warp_index = incoming.dest_warp_index
+			 AND target_entry.destination_kind = 'last-map'
 		),
-		unique_last_map_sources AS (
+		unique_origins AS (
 			SELECT
-				last_map_warps.warp_id,
-				MIN(incoming.map_id) AS destination_map_id
-			FROM last_map_warps
-			JOIN phaser_warp_events AS incoming
-			  ON incoming.map_id IS NOT NULL
-			 AND LOWER(REPLACE(incoming.dest_map, '_', '')) = LOWER(REPLACE(last_map_warps.source_map_name, '_', ''))
-			GROUP BY last_map_warps.warp_id
-			HAVING COUNT(DISTINCT incoming.map_id) = 1
-		),
-		underground_route_last_map_sources AS (
-			SELECT
-				last_map_warps.warp_id,
-				MIN(incoming.map_id) AS destination_map_id
-			FROM last_map_warps
-			JOIN phaser_warp_events AS incoming
-			  ON incoming.map_id IS NOT NULL
-			 AND LOWER(REPLACE(incoming.dest_map, '_', '')) = LOWER(REPLACE(last_map_warps.source_map_name, '_', ''))
-			JOIN phaser_maps AS incoming_map
-			  ON incoming_map.id = incoming.map_id
-			WHERE LOWER(REPLACE(last_map_warps.source_map_name, '_', '')) LIKE 'undergroundpathroute%'
-			  AND incoming_map.is_overworld = 1
-			GROUP BY last_map_warps.warp_id
-			HAVING COUNT(DISTINCT incoming.map_id) = 1
-		),
-		last_map_sources AS (
-			SELECT warp_id, destination_map_id FROM exact_last_map_sources
-			UNION ALL
-			SELECT unique_last_map_sources.warp_id, unique_last_map_sources.destination_map_id
-			FROM unique_last_map_sources
-			LEFT JOIN exact_last_map_sources
-			  ON exact_last_map_sources.warp_id = unique_last_map_sources.warp_id
-			WHERE exact_last_map_sources.warp_id IS NULL
-			UNION ALL
-			SELECT underground_route_last_map_sources.warp_id, underground_route_last_map_sources.destination_map_id
-			FROM underground_route_last_map_sources
-			LEFT JOIN exact_last_map_sources
-			  ON exact_last_map_sources.warp_id = underground_route_last_map_sources.warp_id
-			LEFT JOIN unique_last_map_sources
-			  ON unique_last_map_sources.warp_id = underground_route_last_map_sources.warp_id
-			WHERE exact_last_map_sources.warp_id IS NULL
-			  AND unique_last_map_sources.warp_id IS NULL
-		),
+				source_map_id,
+				MIN(destination_map_id) AS destination_map_id
+			FROM candidate_origins
+			GROUP BY source_map_id
+			HAVING COUNT(DISTINCT destination_map_id) = 1
+		)`
+
+func resolveLastMapWarpDestinationsPostgres(pg *sql.DB) error {
+	result, err := pg.Exec(lastMapOriginCTE + `,
 		resolved AS (
 			SELECT
-				last_map_sources.warp_id,
-				last_map_sources.destination_map_id,
+				unique_origins.source_map_id,
+				unique_origins.destination_map_id,
 				pm.name AS destination_map
-			FROM last_map_sources
-			JOIN phaser_maps AS pm ON pm.id = last_map_sources.destination_map_id
+			FROM unique_origins
+			JOIN phaser_maps AS pm ON pm.id = unique_origins.destination_map_id
 		)
 		UPDATE phaser_warps AS pw
 		SET destination_map_id = resolved.destination_map_id,
@@ -1288,12 +1249,38 @@ func resolveLastMapWarpDestinationsPostgres(pg *sql.DB) error {
 			destination_x = NULL,
 			destination_y = NULL
 		FROM resolved
-		WHERE pw.id = resolved.warp_id`)
+		WHERE pw.source_map_id = resolved.source_map_id
+		  AND pw.destination_kind = 'last-map'
+		  AND pw.destination_map_id IS NULL
+		  AND UPPER(COALESCE(pw.destination_map, '')) = 'LAST_MAP'`)
 	if err != nil {
 		return fmt.Errorf("resolve LAST_MAP warp destinations: %w", err)
 	}
 	affected, _ := result.RowsAffected()
 	log.Printf("  -> Resolved %d deterministic LAST_MAP warp destinations", affected)
+	return nil
+}
+
+func validateDeterministicLastMapWarpDestinationsPostgres(pg *sql.DB) error {
+	var invalid int
+	err := pg.QueryRow(lastMapOriginCTE + `
+		SELECT COUNT(*)
+		FROM phaser_warps AS pw
+		JOIN unique_origins
+		  ON unique_origins.source_map_id = pw.source_map_id
+		WHERE pw.destination_kind = 'last-map'
+		  AND (
+			pw.destination_map_id IS NULL
+			OR pw.destination_map_id <> unique_origins.destination_map_id
+			OR pw.destination_x IS NULL
+			OR pw.destination_y IS NULL
+		  )`).Scan(&invalid)
+	if err != nil {
+		return fmt.Errorf("validate deterministic LAST_MAP warp destinations: %w", err)
+	}
+	if invalid != 0 {
+		return fmt.Errorf("%d deterministic LAST_MAP warp destinations remain unresolved or incorrect", invalid)
+	}
 	return nil
 }
 

@@ -192,6 +192,11 @@ jobs:
           go-version: '1.24'
           cache-dependency-path: server/go.sum
 
+      - name: Test warp import and runtime contracts
+        run: |
+          cd server
+          go test -p=1 -count=1 -run 'Warp|LastMap' ./cmd/import-phaser ./internal/world
+
       - name: Build Backend
         run: |
           cd server
