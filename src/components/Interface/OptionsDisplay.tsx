@@ -113,11 +113,16 @@ const OptionLabel = styled.div`
 const ToggleButton = styled.button<{ $isOn: boolean }>`
   width: 80px;
   height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 3px solid #4a4ba6;
   cursor: pointer;
   font-family: "Outfit", sans-serif;
   font-size: 16px;
   font-weight: 800;
+  line-height: 1;
   text-transform: uppercase;
   color: #2e2f66;
   background-color: ${(props) => (props.$isOn ? "#a7edfe" : "#ffaf84")};
