@@ -131,14 +131,23 @@ func (sm *SessionManager) GetSession(sessionID int) (*Session, bool) {
 	return session, ok
 }
 
-// RemoveSession deletes a session by sessionID.
-func (sm *SessionManager) RemoveSession(sessionID int) {
+// RemoveSession atomically claims and deletes a session. It returns false when
+// another disconnect path already removed the same session.
+func (sm *SessionManager) RemoveSession(sessionID int) (*Session, bool) {
 	sm.mu.Lock()
-	defer sm.mu.Unlock()
-	if sess, ok := sm.sessions[sessionID]; ok {
-		sess.Close() // free up the pools
+	sess, ok := sm.sessions[sessionID]
+	if ok {
 		delete(sm.sessions, sessionID)
 	}
+	sm.mu.Unlock()
+
+	if !ok {
+		return nil, false
+	}
+	// Closing transport resources can block, so it must happen after releasing
+	// the manager lock. Otherwise one slow client can prevent every login.
+	sess.Close()
+	return sess, true
 }
 
 // UpdateMap updates the mapID for a session.
@@ -151,12 +160,17 @@ func (sm *SessionManager) UpdateMap(sessionID int, mapID int) {
 	}
 }
 
-// ForEachSession iterates over all active sessions and calls the provided function for each.
+// ForEachSession iterates over a snapshot of active sessions. Callbacks often
+// perform network writes and must never run while holding the manager lock.
 func (sm *SessionManager) ForEachSession(fn func(*Session)) {
 	sm.mu.RLock()
-	defer sm.mu.RUnlock()
-
+	snapshot := make([]*Session, 0, len(sm.sessions))
 	for _, session := range sm.sessions {
+		snapshot = append(snapshot, session)
+	}
+	sm.mu.RUnlock()
+
+	for _, session := range snapshot {
 		fn(session)
 	}
 }

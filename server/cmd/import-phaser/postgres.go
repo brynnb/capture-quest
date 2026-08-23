@@ -10,6 +10,7 @@ import (
 	"unicode"
 
 	"capturequest/internal/phaserdata"
+	"capturequest/internal/pokebattle"
 )
 
 var phaserMoveImportColumns = []string{
@@ -138,6 +139,7 @@ func importPhaserToPostgres(sqlite, pg *sql.DB, context extractorImportContext) 
 			SourceTable: "trainer_classes",
 			TargetTable: "phaser_trainer_classes",
 			Columns:     []string{"id", "constant_name", "display_name", "base_money", "is_gym_leader", "is_elite_four", "is_rival"},
+			Transform:   normalizeTrainerClassImportValues,
 		},
 		{
 			SourceTable: "trainer_parties",
@@ -197,6 +199,13 @@ func importPhaserToPostgres(sqlite, pg *sql.DB, context extractorImportContext) 
 	}
 	if err := validatePokemonDefaultMovesPostgres(pg); err != nil {
 		return err
+	}
+	repairedPokemon, err := pokebattle.RepairPokemonWithNoMoves(pg)
+	if err != nil {
+		return fmt.Errorf("repair persisted pokemon moves: %w", err)
+	}
+	if repairedPokemon > 0 {
+		log.Printf("Repaired moves for %d persisted Pokemon", repairedPokemon)
 	}
 	if err := refreshImportedMapIDsPostgres(pg, "phaser_warp_events"); err != nil {
 		return err
@@ -416,6 +425,7 @@ type staticTableSpec struct {
 	Where         string
 	Args          []any
 	Optional      bool
+	Transform     func([]any) error
 }
 
 func importStaticTable(sqlite, pg *sql.DB, spec staticTableSpec) (int, error) {
@@ -459,6 +469,11 @@ func importStaticTable(sqlite, pg *sql.DB, spec staticTableSpec) (int, error) {
 			return count, fmt.Errorf("scan %s row: %w", spec.SourceTable, err)
 		}
 		convertSQLiteValues(values)
+		if spec.Transform != nil {
+			if err := spec.Transform(values); err != nil {
+				return count, fmt.Errorf("transform %s row %d: %w", spec.SourceTable, count+1, err)
+			}
+		}
 		if _, err := stmt.Exec(values...); err != nil {
 			return count, fmt.Errorf("insert %s row %d: %w", spec.TargetTable, count+1, err)
 		}
@@ -472,6 +487,25 @@ func importStaticTable(sqlite, pg *sql.DB, spec staticTableSpec) (int, error) {
 	}
 	log.Printf("  -> Imported %d rows into %s", count, spec.TargetTable)
 	return count, nil
+}
+
+// pokered stores trainer prize rates as bcd3 fixed-point literals: the final
+// two digits are fractional storage precision, not Pokédollars. Runtime tables
+// use actual Pokédollars per level, so 3500 becomes 35 at this boundary.
+func normalizeTrainerClassImportValues(values []any) error {
+	const baseMoneyColumn = 3
+	if len(values) <= baseMoneyColumn {
+		return fmt.Errorf("trainer class row has %d columns, want at least %d", len(values), baseMoneyColumn+1)
+	}
+	raw, ok := values[baseMoneyColumn].(int64)
+	if !ok {
+		return fmt.Errorf("base_money has type %T, want int64", values[baseMoneyColumn])
+	}
+	if raw < 0 || raw%100 != 0 {
+		return fmt.Errorf("base_money %d is not a non-negative bcd3 money literal", raw)
+	}
+	values[baseMoneyColumn] = raw / 100
+	return nil
 }
 
 func insertPostgresSQL(table string, columns []string, upsert bool) string {

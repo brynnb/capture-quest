@@ -5,9 +5,27 @@ import (
 	"testing"
 
 	"capturequest/internal/db"
+	"capturequest/internal/pokebattle"
 
 	_ "modernc.org/sqlite"
 )
+
+func TestTrainerPrizeMoneyUsesLastPokemonLevel(t *testing.T) {
+	party := []*pokebattle.Pokemon{
+		{Level: 12},
+		{Level: 8},
+	}
+	if got := trainerPrizeMoneyFromBase(35, party); got != 280 {
+		t.Fatalf("trainerPrizeMoneyFromBase() = %d, want 280", got)
+	}
+}
+
+func TestOakLabRivalPrizeMoney(t *testing.T) {
+	party := []*pokebattle.Pokemon{{Level: 5}}
+	if got := trainerPrizeMoneyFromBase(35, party); got != 175 {
+		t.Fatalf("Oak Lab rival prize = %d, want 175", got)
+	}
+}
 
 func TestTrainerApproachTargetForPlayer(t *testing.T) {
 	mgr := &TrainerEncounterManager{}

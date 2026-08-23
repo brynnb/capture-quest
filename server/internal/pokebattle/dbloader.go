@@ -103,8 +103,10 @@ func LoadPokemonFromDB(db DBTX, pokemonID int) (*Pokemon, error) {
 		defaultMoveNames[3] = dm4.String
 	}
 
-	// The extractor publishes stable assembly constants separately from display
-	// names (notably SAND_ATTACK/SAND-ATTACK and PSYCHIC_M/PSYCHIC).
+	// The Pokemon table stores stable pokered assembly constants. Resolve them
+	// against the canonical constant column so display punctuation and spacing
+	// (notably SAND_ATTACK/SAND-ATTACK and PSYCHIC_M/PSYCHIC) cannot change move
+	// identity.
 	for i, mname := range defaultMoveNames {
 		if mname == "" {
 			continue

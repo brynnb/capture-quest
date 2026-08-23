@@ -138,6 +138,81 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(stats)
 }
 
+// handleAdminChats returns the most recent player chat messages in display
+// order (oldest first) for the cross-game dashboard.
+func handleAdminChats(w http.ResponseWriter, r *http.Request) {
+	limit := 100
+	if rawLimit := r.URL.Query().Get("limit"); rawLimit != "" {
+		parsed, err := strconv.Atoi(rawLimit)
+		if err != nil || parsed < 1 || parsed > 100 {
+			http.Error(w, "limit must be between 1 and 100", http.StatusBadRequest)
+			return
+		}
+		limit = parsed
+	}
+
+	type adminChatMessage struct {
+		Sender    string `json:"sender"`
+		Text      string `json:"text"`
+		Channel   string `json:"channel"`
+		Location  string `json:"location,omitempty"`
+		Timestamp int64  `json:"timestamp"`
+	}
+
+	messages := make([]adminChatMessage, 0, limit)
+	if db.GlobalWorldDB == nil || db.GlobalWorldDB.DB == nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(messages)
+		return
+	}
+
+	rows, err := db.GlobalWorldDB.DB.QueryContext(r.Context(), `
+		SELECT character_name, text, message_type, COALESCE(map_id, 0), created_at
+		FROM chat_messages
+		ORDER BY created_at DESC, id DESC
+		LIMIT $1`, limit)
+	if err != nil {
+		log.Printf("Error fetching admin chat history: %v", err)
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var message adminChatMessage
+		var mapID int
+		var createdAt time.Time
+		if err := rows.Scan(
+			&message.Sender,
+			&message.Text,
+			&message.Channel,
+			&mapID,
+			&createdAt,
+		); err != nil {
+			log.Printf("Error scanning admin chat history: %v", err)
+			http.Error(w, "Database error", http.StatusInternalServerError)
+			return
+		}
+		if mapID > 0 {
+			message.Location = fmt.Sprintf("Zone %d", mapID)
+		}
+		message.Timestamp = createdAt.UnixMilli()
+		messages = append(messages, message)
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("Error reading admin chat history: %v", err)
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+
+	for left, right := 0, len(messages)-1; left < right; left, right = left+1, right-1 {
+		messages[left], messages[right] = messages[right], messages[left]
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(messages)
+}
+
 // handleAdminUsers returns a list of all accounts
 func handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 	type adminAccount struct {

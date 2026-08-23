@@ -159,6 +159,70 @@ type ChatMessageBroadcast struct {
 	MessageType string `json:"messageType"`
 }
 
+func (wh *WorldHandler) SetPublicChatSink(sink func(ChatMessageBroadcast)) {
+	if wh == nil {
+		return
+	}
+	wh.publicChatSinkMu.Lock()
+	wh.publicChatSink = sink
+	wh.publicChatSinkMu.Unlock()
+}
+
+func (wh *WorldHandler) emitPublicChat(message ChatMessageBroadcast) {
+	if wh == nil {
+		return
+	}
+	wh.publicChatSinkMu.RLock()
+	sink := wh.publicChatSink
+	wh.publicChatSinkMu.RUnlock()
+	if sink != nil {
+		sink(message)
+	}
+}
+
+func (wh *WorldHandler) broadcastGeneralChat(message ChatMessageBroadcast) {
+	session.GetSessionManager().ForEachSession(func(targetSes *session.Session) {
+		if !targetSes.Authenticated {
+			return
+		}
+		targetSes.SendJSON(message, opcodes.ChatMessageBroadcast)
+	})
+	wh.emitPublicChat(message)
+}
+
+// BroadcastExternalChat inserts a verified Discord message into CaptureQuest's
+// authoritative global player-chat stream.
+func (wh *WorldHandler) BroadcastExternalChat(senderName, text string) error {
+	senderName = strings.Join(strings.Fields(senderName), " ")
+	text = strings.Join(strings.Fields(text), " ")
+	if senderName == "" || text == "" {
+		return fmt.Errorf("sender and message are required")
+	}
+	textRunes := []rune(text)
+	if len(textRunes) > maxChatMessageLength {
+		text = string(textRunes[:maxChatMessageLength])
+	}
+	senderName = CensorMessage(senderName)
+	text = CensorMessage(text)
+	message := ChatMessageBroadcast{
+		SenderName: senderName, Text: text, MessageType: generalChatMessageType,
+	}
+	log.Printf("[Chat] %s: %s (source: discord)", senderName, text)
+	go func() {
+		if db.GlobalWorldDB == nil || db.GlobalWorldDB.DB == nil {
+			return
+		}
+		if _, err := db.GlobalWorldDB.DB.Exec(
+			"INSERT INTO chat_messages (character_id, character_name, message_type, text, map_id) VALUES ($1, $2, $3, $4, $5)",
+			0, senderName, generalChatMessageType, text, nil,
+		); err != nil {
+			log.Printf("[Chat] failed to persist Discord message: %v", err)
+		}
+	}()
+	wh.broadcastGeneralChat(message)
+	return nil
+}
+
 func HandleSendChatMessage(ses *session.Session, payload []byte, wh *WorldHandler) bool {
 	var req SendChatMessageRequest
 	if err := json.Unmarshal(payload, &req); err != nil {
@@ -220,18 +284,8 @@ func HandleSendChatMessage(ses *session.Session, payload []byte, wh *WorldHandle
 		}
 	}()
 
-	// Broadcast to all authenticated sessions
-	sm := session.GetSessionManager()
-	sm.ForEachSession(func(targetSes *session.Session) {
-		if !targetSes.Authenticated {
-			return
-		}
-		targetSes.SendJSON(ChatMessageBroadcast{
-			SenderID:    charID,
-			SenderName:  senderName,
-			Text:        req.Text,
-			MessageType: generalChatMessageType,
-		}, opcodes.ChatMessageBroadcast)
+	wh.broadcastGeneralChat(ChatMessageBroadcast{
+		SenderID: charID, SenderName: senderName, Text: req.Text, MessageType: generalChatMessageType,
 	})
 
 	return false

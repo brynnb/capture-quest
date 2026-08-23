@@ -28,6 +28,33 @@ interface WebTransport {
   createBidirectionalStream(): Promise<WebTransportBidirectionalStream>;
 }
 
+const TRANSPORT_CONNECT_TIMEOUT_MS = 8_000;
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
+function isAppleWebKitBrowser(): boolean {
+  const userAgent = navigator.userAgent;
+  return (
+    /AppleWebKit/i.test(userAgent) &&
+    !/(Chrome|Chromium|Edg|OPR|SamsungBrowser)/i.test(userAgent)
+  );
+}
+
 function base64ToArrayBuffer(base64: string): ArrayBuffer {
   const binaryString = atob(base64);
   const bytes = new Uint8Array(binaryString.length);
@@ -116,10 +143,22 @@ export class CaptureQuestSocket {
       new(url: string, opts?: WebTransportOptions): WebTransport;
     };
 
+    this.url = url;
+    this.port = port;
+    this.onClose = onClose;
+
     console.log(`[CaptureQuestSocket] Environment check: SecureContext=${window.isSecureContext}, WebTransportSupport=${!!WT}, Host=${window.location.hostname}`);
 
     if (FORCE_WEBSOCKET) {
       console.log("[CaptureQuestSocket] VITE_FORCE_WEBSOCKET=true, using WebSocket transport");
+      return this.connectWebSocket(onClose);
+    }
+
+    // Safari 26.4 can expose WebTransport while hanging during setup with
+    // non-Apple servers. All iOS browsers use WebKit, so prefer the reliable
+    // WebSocket path there as well.
+    if (isAppleWebKitBrowser()) {
+      console.log("[CaptureQuestSocket] WebKit browser detected, using WebSocket transport");
       return this.connectWebSocket(onClose);
     }
 
@@ -128,9 +167,7 @@ export class CaptureQuestSocket {
       return this.connectWebSocket(onClose);
     }
 
-    this.url = url;
-    this.port = port;
-    this.onClose = onClose;
+    this.useWebSocket = false;
 
     // if already open, shut it down first
     if (this.webtransport) {
@@ -164,14 +201,22 @@ export class CaptureQuestSocket {
 
       // wait for handshake
       console.log(`[CaptureQuestSocket] Waiting for WebTransport handshake...`);
-      await this.webtransport.ready;
+      await withTimeout(
+        this.webtransport.ready,
+        TRANSPORT_CONNECT_TIMEOUT_MS,
+        "WebTransport handshake timed out",
+      );
       console.log(`[CaptureQuestSocket] WebTransport connection established.`);
 
       // ——— datagram writer & loop ———
       this.datagramWriter = this.webtransport.datagrams.writable.getWriter();
       this.startDatagramLoop();
 
-      const controlStream = await this.webtransport.createBidirectionalStream();
+      const controlStream = await withTimeout(
+        this.webtransport.createBidirectionalStream(),
+        TRANSPORT_CONNECT_TIMEOUT_MS,
+        "WebTransport control stream timed out",
+      );
       this.attachControlStream(controlStream);
       console.log("[CaptureQuestSocket] Control stream ready");
 
@@ -195,9 +240,20 @@ export class CaptureQuestSocket {
 
       return true;
     } catch (e) {
-      console.warn("Connect failed:", e);
-      this.scheduleReconnect();
-      return false;
+      console.warn(
+        "[CaptureQuestSocket] WebTransport failed; falling back to WebSocket:",
+        e,
+      );
+      this.datagramWriter?.releaseLock();
+      this.controlWriter?.releaseLock();
+      this.webtransport?.close();
+      this.webtransport = null;
+      this.datagramWriter = null;
+      this.controlWriter = null;
+
+      const connected = await this.connectWebSocket(onClose);
+      if (!connected) this.scheduleReconnect();
+      return connected;
     }
   }
 
