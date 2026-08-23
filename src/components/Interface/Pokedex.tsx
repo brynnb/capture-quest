@@ -325,7 +325,7 @@ const Pokedex: React.FC = () => {
       <Container onClick={e => e.stopPropagation()}>
         <ListPanel>
           <ListHeader>
-            POK\u00c9DEX
+            POKÉDEX
             <CountBadge>Seen {seenCount} / Caught {caughtCount}</CountBadge>
           </ListHeader>
           <ListScroll ref={listRef}>
@@ -376,7 +376,7 @@ const Pokedex: React.FC = () => {
                     )}
                   </TypeRow>
                   {selected.pokedexType && (
-                    <CategoryText>{selected.pokedexType} Pok\u00e9mon</CategoryText>
+                    <CategoryText>{selected.pokedexType} Pokémon</CategoryText>
                   )}
                   <StatsRow>
                     {selected.height && <span>HT: {selected.height}</span>}

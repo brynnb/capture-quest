@@ -206,11 +206,11 @@ const TrainerCard: React.FC = () => {
 
           <PokedexRow>
             <PokedexStat>
-              <PokedexLabel>POK\u00c9DEX Seen</PokedexLabel>
+              <PokedexLabel>POKÉDEX Seen</PokedexLabel>
               <PokedexValue>{trainerCard.pokedexSeen}</PokedexValue>
             </PokedexStat>
             <PokedexStat>
-              <PokedexLabel>POK\u00c9DEX Caught</PokedexLabel>
+              <PokedexLabel>POKÉDEX Caught</PokedexLabel>
               <PokedexValue>{trainerCard.pokedexCaught}</PokedexValue>
             </PokedexStat>
           </PokedexRow>
