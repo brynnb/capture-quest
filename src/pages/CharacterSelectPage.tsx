@@ -107,6 +107,8 @@ const RightColumn = styled.div`
   flex-direction: column;
   align-items: center;
   justify-content: space-between;
+  width: 100%;
+  min-width: 0;
 `;
 
 const CharacterPreview = styled.div`
@@ -114,6 +116,8 @@ const CharacterPreview = styled.div`
   flex-direction: column;
   align-items: center;
   gap: 20px;
+  width: 100%;
+  max-width: 500px;
 `;
 
 const CharacterImageContainer = styled.div`
@@ -121,6 +125,7 @@ const CharacterImageContainer = styled.div`
   width: 100%;
   max-width: 500px;
   height: 750px;
+  box-sizing: border-box;
   display: flex;
   align-items: flex-end; /* Align images to bottom */
   justify-content: center;
