@@ -225,6 +225,13 @@ export class TileViewer extends Scene {
             frozen: this.isWorldInputFrozen(),
             reason: this.getWorldInputFreezeReason(),
           },
+          ui: {
+            cameraZoom: this.cameraController?.getZoom() ?? null,
+            cameraScrollX: this.cameras.main?.scrollX ?? null,
+            cameraScrollY: this.cameras.main?.scrollY ?? null,
+            instantWarpTargetVisible:
+              this.uiManager?.isInstantWarpTargetVisible() ?? false,
+          },
         };
       },
       getEngineProbeSource: () => ({
@@ -788,6 +795,7 @@ export class TileViewer extends Scene {
     this.interactionController = new TileViewerInteractionController({
       scene: this,
       mapRenderer: () => this.mapRenderer,
+      uiManager: () => this.uiManager,
       cameraController: () => this.cameraController,
       playerMovementController: () => this.playerMovementController,
       warpManager: () => this.warpManager,
@@ -797,6 +805,8 @@ export class TileViewer extends Scene {
       viewedMapIds: () => this.viewedMapIds,
       currentActorById: (actorId) => this.currentActorById(actorId),
       isWorldInputFrozen: () => this.isWorldInputFrozen(),
+      getWorldInputFreezeReason: () => this.getWorldInputFreezeReason(),
+      getDisplayedMapId: () => this.mapInfo?.id ?? null,
       handleTileEditorClick: (worldX, worldY) =>
         this.handleTileEditorClick(worldX, worldY),
     });
@@ -979,6 +989,7 @@ export class TileViewer extends Scene {
 
       this.mapOverviewTransitionInProgress = true;
       this.interiorMapBeforeOverview = interiorMapId;
+      useGameStatusStore.getState().clearPendingInstantWarpTarget();
       this.cancelWorldInput();
       try {
         await this.mapLoader.loadOverworldData({ viewOnly: true });
@@ -994,6 +1005,7 @@ export class TileViewer extends Scene {
     if (enabled && this.isMapOverviewMode && this.interiorMapBeforeOverview != null) {
       this.mapOverviewTransitionInProgress = true;
       const interiorMapId = this.interiorMapBeforeOverview;
+      useGameStatusStore.getState().clearPendingInstantWarpTarget();
       try {
         await this.mapLoader.loadMapData(interiorMapId);
         this.interiorMapBeforeOverview = null;
@@ -1841,6 +1853,8 @@ export class TileViewer extends Scene {
   }
 
   resetScene(resetCamera: boolean = true) {
+    useGameStatusStore.getState().setWarpMode(false);
+
     // First, store any data we need to pass to the new scene
     const data = {
       destinationMapId: this.game.registry.get("destinationMapId"),

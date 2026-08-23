@@ -1,5 +1,6 @@
 import { Scene } from "phaser";
 import { PhaserTile, PhaserActor, PhaserWarp } from "@/net/generated/world_api";
+import useGameStatusStore from "@/stores/GameStatusStore";
 import { TILE_SIZE } from "../constants";
 import { ActorMovementController } from "../controllers/ActorMovementController";
 import { ActorManager } from "../managers/ActorManager";
@@ -128,6 +129,7 @@ export class MapRenderer {
       _localY: number,
       event?: Phaser.Types.Input.EventData,
     ) => {
+      if (useGameStatusStore.getState().isWarpMode) return;
       this.consumeInteractivePointer(event);
       if (this.isWorldInputFrozen()) return;
       const latestActor =
@@ -299,6 +301,7 @@ export class MapRenderer {
         _localY: number,
         event?: Phaser.Types.Input.EventData,
       ) => {
+        if (useGameStatusStore.getState().isWarpMode) return;
         this.consumeInteractivePointer(event);
         if (this.isWorldInputFrozen()) return;
         // Emit immediately so TileViewer can start pathing the player to the warp

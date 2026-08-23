@@ -21,6 +21,9 @@ export class UiManager {
   private modeText!: Phaser.GameObjects.Text;
   private loadingText!: Phaser.GameObjects.Text;
   private tileHighlight!: Phaser.GameObjects.Graphics;
+  private instantWarpTargetMarker!: Phaser.GameObjects.Container;
+  private instantWarpTargetBeacon!: Phaser.GameObjects.Container;
+  private instantWarpTargetPulseTween: Phaser.Tweens.Tween | null = null;
   private debugOverlayEnabled = import.meta.env.DEV && IS_LOCAL_DEV;
   private tileHighlightEnabled = true;
   private debugOverlayElement: HTMLDivElement | null = null;
@@ -36,6 +39,7 @@ export class UiManager {
 
     this.createUiElements();
     this.createTileHighlight();
+    this.createInstantWarpTargetMarker();
   }
 
   cleanupExistingUi() {
@@ -47,6 +51,7 @@ export class UiManager {
       "modeText",
       "loadingText",
       "tileHighlight",
+      "instantWarpTargetMarker",
     ];
 
     for (const name of uiElementNames) {
@@ -137,6 +142,80 @@ export class UiManager {
     this.tileHighlight.setDepth(500); // Set depth to be above tiles but below UI
     this.tileHighlight.name = "tileHighlight";
     this.tileHighlight.setVisible(this.tileHighlightEnabled);
+  }
+
+  private createInstantWarpTargetMarker() {
+    const tile = this.scene.add.graphics();
+    tile.fillStyle(0xff1838, 0.34);
+    tile.fillRect(-TILE_SIZE / 2, -TILE_SIZE / 2, TILE_SIZE, TILE_SIZE);
+    tile.lineStyle(2, 0xffffff, 1);
+    tile.strokeRect(-TILE_SIZE / 2, -TILE_SIZE / 2, TILE_SIZE, TILE_SIZE);
+    tile.lineStyle(1, 0xff1838, 1);
+    tile.strokeRect(
+      -TILE_SIZE / 2 - 2,
+      -TILE_SIZE / 2 - 2,
+      TILE_SIZE + 4,
+      TILE_SIZE + 4,
+    );
+
+    const pulse = this.scene.add.graphics();
+    pulse.fillStyle(0xff1838, 0.2);
+    pulse.fillCircle(0, 0, 19);
+    pulse.lineStyle(3, 0xff1838, 1);
+    pulse.strokeCircle(0, 0, 16);
+    pulse.lineStyle(2, 0xffffff, 1);
+    pulse.strokeCircle(0, 0, 11);
+    pulse.beginPath();
+    pulse.moveTo(-23, 0);
+    pulse.lineTo(-8, 0);
+    pulse.moveTo(8, 0);
+    pulse.lineTo(23, 0);
+    pulse.moveTo(0, -23);
+    pulse.lineTo(0, -8);
+    pulse.moveTo(0, 8);
+    pulse.lineTo(0, 23);
+    pulse.strokePath();
+
+    this.instantWarpTargetBeacon = this.scene.add.container(0, 0, [pulse]);
+    this.instantWarpTargetMarker = this.scene.add.container(0, 0, [
+      tile,
+      this.instantWarpTargetBeacon,
+    ]);
+    this.instantWarpTargetMarker.name = "instantWarpTargetMarker";
+    this.instantWarpTargetMarker.setDepth(850);
+    this.instantWarpTargetMarker.setVisible(false);
+
+    this.instantWarpTargetPulseTween = this.scene.tweens.add({
+      targets: pulse,
+      scale: { from: 0.82, to: 1.22 },
+      alpha: { from: 1, to: 0.42 },
+      duration: 620,
+      ease: "Sine.InOut",
+      yoyo: true,
+      repeat: -1,
+    });
+  }
+
+  showInstantWarpTarget(tileX: number, tileY: number, cameraZoom: number) {
+    this.instantWarpTargetMarker.setPosition(
+      tileX * TILE_SIZE + TILE_SIZE / 2,
+      tileY * TILE_SIZE + TILE_SIZE / 2,
+    );
+    this.updateInstantWarpTargetZoom(cameraZoom);
+    this.instantWarpTargetMarker.setVisible(true);
+  }
+
+  clearInstantWarpTarget() {
+    this.instantWarpTargetMarker?.setVisible(false);
+  }
+
+  isInstantWarpTargetVisible() {
+    return this.instantWarpTargetMarker?.visible ?? false;
+  }
+
+  updateInstantWarpTargetZoom(cameraZoom: number) {
+    if (!this.instantWarpTargetBeacon?.active) return;
+    this.instantWarpTargetBeacon.setScale(1 / Math.max(cameraZoom, 0.01));
   }
 
   updateElementPositions() {
@@ -369,7 +448,7 @@ export class UiManager {
   }
 
   getWorldOverlayElements() {
-    return [this.tileHighlight];
+    return [this.tileHighlight, this.instantWarpTargetMarker];
   }
 
   handleResize() {
@@ -386,6 +465,8 @@ export class UiManager {
     window.removeEventListener("resize", this.debugOverlayResizeHandler);
     this.debugOverlayElement?.remove();
     this.debugOverlayElement = null;
+    this.instantWarpTargetPulseTween?.stop();
+    this.instantWarpTargetPulseTween = null;
   }
 
   // Add this method to refresh text elements after fonts are loaded

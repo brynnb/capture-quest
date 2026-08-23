@@ -13,6 +13,11 @@ export const phaserConfig: Phaser.Types.Core.GameConfig = {
     mode: Phaser.Scale.RESIZE,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
+  input: {
+    // Phaser enables one touch pointer by default. Two are required for pinch
+    // zoom; the mouse pointer is managed separately.
+    activePointers: 2,
+  },
   // Using TileViewer - Go backend is now configured for tile data via WebTransport
   scene: [TileViewer],
 };

@@ -139,7 +139,9 @@ const MobileControls = () => {
       state.isHelpOpen ||
       state.isGroupOpen ||
       state.isTileManagerOpen ||
-      state.isArtStudioOpen,
+      state.isArtStudioOpen ||
+      !state.isCameraFollowEnabled ||
+      state.isWarpMode,
   );
   const heldDirection = useRef<HeldDirection | null>(null);
 

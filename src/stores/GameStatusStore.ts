@@ -4,6 +4,7 @@ import { MapData } from "@/services/characterService";
 import { WorldSocket, OpCodes } from "@/net";
 import { OptionId } from "@/constants/optionId";
 import { displayLocationNameForMap } from "@utils/locationNames";
+import type { InstantWarpTarget } from "@/phaser-game/instantWarp";
 
 interface GameStatusStore {
   maps: MapData[];
@@ -71,6 +72,9 @@ interface GameStatusStore {
   isWarpMode: boolean;
   setWarpMode: (enabled: boolean) => void;
   toggleWarpMode: () => void;
+  pendingInstantWarpTarget: InstantWarpTarget | null;
+  setPendingInstantWarpTarget: (target: InstantWarpTarget) => void;
+  clearPendingInstantWarpTarget: () => void;
   isTileManagerOpen: boolean;
   toggleTileManager: () => void;
   isArtStudioOpen: boolean;
@@ -278,13 +282,19 @@ const useGameStatusStore = create<GameStatusStore>()(
             isGroupOpen: true,
             isMobileChatOpen: false,
             isWarpMode: false,
+            pendingInstantWarpTarget: null,
             isTileManagerOpen: false,
             isArtStudioOpen: false,
           });
         },
 
         isMapLoading: false,
-        setIsMapLoading: (isLoading) => set({ isMapLoading: isLoading }),
+        setIsMapLoading: (isLoading) => {
+          set({
+            isMapLoading: isLoading,
+            ...(isLoading ? { pendingInstantWarpTarget: null } : {}),
+          });
+        },
         uiScale: 1,
         setUIScale: (scale) => set({ uiScale: scale }),
         isCameraFollowEnabled: true,
@@ -298,10 +308,23 @@ const useGameStatusStore = create<GameStatusStore>()(
         },
         isWarpMode: false,
         setWarpMode: (enabled) => {
-          set({ isWarpMode: enabled });
+          set({
+            isWarpMode: enabled,
+            ...(enabled ? {} : { pendingInstantWarpTarget: null }),
+          });
         },
         toggleWarpMode: () => {
-          set((state) => ({ isWarpMode: !state.isWarpMode }));
+          set((state) => ({
+            isWarpMode: !state.isWarpMode,
+            pendingInstantWarpTarget: null,
+          }));
+        },
+        pendingInstantWarpTarget: null,
+        setPendingInstantWarpTarget: (target) => {
+          set({ pendingInstantWarpTarget: target });
+        },
+        clearPendingInstantWarpTarget: () => {
+          set({ pendingInstantWarpTarget: null });
         },
         isTileManagerOpen: false,
         toggleTileManager: () => {

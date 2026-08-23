@@ -96,7 +96,16 @@ export interface CaptureQuestTestState {
     isOptionsOpen: boolean;
     isHelpOpen: boolean;
     isWarpMode: boolean;
+    pendingInstantWarpTarget: {
+      mapId: number;
+      x: number;
+      y: number;
+    } | null;
     isCameraFollowEnabled: boolean;
+    cameraZoom: number | null;
+    cameraScrollX: number | null;
+    cameraScrollY: number | null;
+    instantWarpTargetVisible: boolean;
     isTileManagerOpen: boolean;
     isArtStudioOpen: boolean;
     isDebugSceneOpen: boolean;
@@ -388,7 +397,12 @@ function baseState(): CaptureQuestTestState {
       isOptionsOpen: status.isOptionsOpen,
       isHelpOpen: status.isHelpOpen,
       isWarpMode: status.isWarpMode,
+      pendingInstantWarpTarget: status.pendingInstantWarpTarget,
       isCameraFollowEnabled: status.isCameraFollowEnabled,
+      cameraZoom: null,
+      cameraScrollX: null,
+      cameraScrollY: null,
+      instantWarpTargetVisible: false,
       isTileManagerOpen: status.isTileManagerOpen,
       isArtStudioOpen: status.isArtStudioOpen,
       isDebugSceneOpen: debug.isOpen,
