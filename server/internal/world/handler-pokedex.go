@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"time"
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
@@ -187,7 +188,7 @@ func sendTrainerCardResponse(ses *session.Session, wh *WorldHandler) {
 	// Build trainer card
 	card := TrainerCardResponse{
 		Name:       charData.Name,
-		TimePlayed: int(charData.TimePlayed),
+		TimePlayed: int(ses.CurrentPlaytime(time.Now())),
 	}
 
 	err := db.GlobalWorldDB.DB.QueryRow(`

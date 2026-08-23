@@ -43,7 +43,7 @@ func HandleEnterWorld(ses *session.Session, payload []byte, wh *WorldHandler) bo
 
 	// For CaptureQuest, send character state immediately.
 	// This is the initial load, so we create a fresh client from the database
-	sendCharacterStateFromDB(ses, name)
+	sendCharacterStateFromDB(ses, wh, name)
 
 	// Load event flags for this character
 	if ses.HasValidClient() {

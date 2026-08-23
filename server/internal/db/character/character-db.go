@@ -102,15 +102,13 @@ func UpdateCharacter(charData *model.CharacterData, accountID int64) error {
 		    y = $3,
 		    z = $4,
 		    heading = $5,
-		    time_played = $6,
-		    last_login = $7
-		WHERE id = $8`,
+		    last_login = $6
+		WHERE id = $7`,
 		charData.MapID,
 		charData.X,
 		charData.Y,
 		charData.Z,
 		charData.Heading,
-		charData.TimePlayed,
 		charData.LastLogin,
 		charData.ID,
 	); err != nil {
@@ -132,6 +130,22 @@ func UpdateCharacterPosition(charID int32, mapID uint32, x, y, z, heading float6
 		mapID, x, y, z, heading, charID); err != nil {
 		return fmt.Errorf("failed to update character position: %v", err)
 	}
+	return nil
+}
+
+// AddCharacterPlaytime atomically persists active play seconds without
+// overwriting position or another session's increment.
+func AddCharacterPlaytime(charID int32, accountID int64, seconds uint32) error {
+	if seconds == 0 {
+		return nil
+	}
+	if _, err := db.GlobalWorldDB.DB.Exec(`
+		UPDATE character_data
+		SET time_played = time_played + $1
+		WHERE id = $2`, seconds, charID); err != nil {
+		return fmt.Errorf("add character playtime: %w", err)
+	}
+	cache.GetCache().Delete(fmt.Sprintf("account:characters:%d", accountID))
 	return nil
 }
 

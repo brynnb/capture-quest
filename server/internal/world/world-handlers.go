@@ -70,6 +70,7 @@ func HandleCharacterQuitRequest(ses *session.Session, payload []byte, wh *WorldH
 	if err := db_character.UpdateCharacter(charData, ses.AccountID); err != nil {
 		log.Printf("failed to save player data on camp: %v", err)
 	}
+	wh.cleanupCharacterSession(ses)
 	sendCharInfo(ses, ses.AccountID)
 	return false
 }
@@ -209,7 +210,10 @@ func sendCharInfo(ses *session.Session, accountId int64) {
 	ses.SendStreamJSON(charInfo, opcodes.SendCharInfo)
 }
 
-func sendCharacterStateFromDB(ses *session.Session, characterName string) {
+func sendCharacterStateFromDB(ses *session.Session, wh *WorldHandler, characterName string) {
+	if ses.HasValidClient() {
+		wh.cleanupCharacterSession(ses)
+	}
 	charData, err := db_character.GetCharacterByName(characterName)
 	if err != nil {
 		log.Printf("sendCharacterState: failed to get character %q: %v", characterName, err)
@@ -241,8 +245,9 @@ func sendCharacterStateFromDB(ses *session.Session, characterName string) {
 	ses.Y = float32(charData.Y)
 	ses.InstanceID = 0
 
-	// Update last login
-	charData.LastLogin = uint32(time.Now().Unix())
+	// Update last login and begin the active play interval from the same instant.
+	playStartedAt := time.Now()
+	charData.LastLogin = uint32(playStartedAt.Unix())
 	if err := db_character.UpdateCharacter(charData, ses.AccountID); err != nil {
 		log.Printf("sendCharacterStateFromDB: failed to update last login for %s: %v", characterName, err)
 	}
@@ -261,6 +266,7 @@ func sendCharacterStateFromDB(ses *session.Session, characterName string) {
 		log.Printf("sendCharacterState: failed to create client for character %q: %v", characterName, err)
 		return
 	}
+	ses.StartPlaytime(playStartedAt, charData.TimePlayed, int32(charData.ID))
 
 	buildAndSendCharacterState(ses)
 }
