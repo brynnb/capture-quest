@@ -33,6 +33,22 @@ const MainContainer = styled.div`
   }
 `;
 
+const CreatorShell = styled.div`
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 60px;
+  box-sizing: border-box;
+  overflow: hidden;
+
+  @media (max-width: 1100px), (pointer: coarse), (max-height: 700px) {
+    padding-top: 16px;
+  }
+`;
+
 const MultiColumnLayout = styled.div<{ $twoColumns?: boolean }>`
   display: grid;
   grid-template-columns: ${(props) =>
@@ -52,12 +68,14 @@ const MultiColumnLayout = styled.div<{ $twoColumns?: boolean }>`
   }
 `;
 
-const NavigationContainer = styled.div`
+const NavigationContainer = styled.div<{ $inset?: boolean }>`
   position: absolute;
   bottom: 20px;
-  right: 20px;
+  right: ${(props) => (props.$inset ? "clamp(40px, 5vw, 72px)" : "20px")};
+  z-index: 10;
   display: flex;
   gap: 10px;
+  max-width: calc(100% - 40px);
 
   @media (max-width: 900px), (pointer: coarse) {
     right: 12px;
@@ -333,7 +351,7 @@ const CharacterCreator = () => {
                 </div>
               </IdentityColumn>
             </MultiColumnLayout>
-            <NavigationContainer>
+            <NavigationContainer $inset>
               <SelectionButton
                 onClick={handleBackToCharacterSelect}
                 $isSelected={false}
@@ -442,7 +460,7 @@ const CharacterCreator = () => {
               . Your rival {rivalName || "Gary"} will be watching every step.
               Are you ready to begin?
             </StoryText>
-            <NavigationContainer>
+            <NavigationContainer $inset>
               <SelectionButton onClick={handleBack} $isSelected={false}>
                 Back
               </SelectionButton>
@@ -456,18 +474,7 @@ const CharacterCreator = () => {
   };
 
   return (
-    <div
-      style={{
-        width: "100%",
-        height: "100%",
-        display: "flex",
-        alignItems: "flex-start",
-        justifyContent: "center",
-        paddingTop: "60px",
-      }}
-    >
-      {renderStep()}
-    </div>
+    <CreatorShell>{renderStep()}</CreatorShell>
   );
 };
 

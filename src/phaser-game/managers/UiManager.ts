@@ -21,7 +21,7 @@ export class UiManager {
   private modeText!: Phaser.GameObjects.Text;
   private loadingText!: Phaser.GameObjects.Text;
   private tileHighlight!: Phaser.GameObjects.Graphics;
-  private debugOverlayEnabled = IS_LOCAL_DEV;
+  private debugOverlayEnabled = import.meta.env.DEV && IS_LOCAL_DEV;
   private tileHighlightEnabled = true;
   private debugOverlayElement: HTMLDivElement | null = null;
   private debugInfoText = "";
@@ -113,7 +113,7 @@ export class UiManager {
     overlay.style.boxSizing = "border-box";
     overlay.style.width = "260px";
     overlay.style.maxWidth = "calc(100vw - 16px)";
-    overlay.style.maxHeight = "calc(100vh - 16px)";
+    overlay.style.maxHeight = "calc(100vh - 88px)";
     overlay.style.overflow = "auto";
     overlay.style.pointerEvents = "none";
     overlay.style.whiteSpace = "pre-line";
@@ -335,7 +335,11 @@ export class UiManager {
     const overlayHeight = this.debugOverlayElement.offsetHeight || 120;
 
     let left: number;
-    let top = Math.max(8, Math.min(rect.top, viewportHeight - overlayHeight - 8));
+    const debugTopInset = 72;
+    let top = Math.max(
+      debugTopInset,
+      Math.min(rect.top, viewportHeight - overlayHeight - 8),
+    );
 
     if (rect.left >= overlayWidth + margin) {
       left = rect.left - overlayWidth - margin;
@@ -345,10 +349,10 @@ export class UiManager {
       left = Math.max(8, Math.min(rect.left, viewportWidth - overlayWidth - 8));
       const aboveTop = rect.top - overlayHeight - margin;
       const belowTop = rect.bottom + margin;
-      if (aboveTop >= 8) {
+      if (aboveTop >= debugTopInset) {
         top = aboveTop;
       } else if (belowTop + overlayHeight <= viewportHeight - 8) {
-        top = belowTop;
+        top = Math.max(debugTopInset, belowTop);
       }
     }
 
