@@ -27,6 +27,9 @@ import sys
 
 db_path = sys.argv[1]
 required_counts = {
+    "pokemon": 151,
+    "moves": 165,
+    "trainer_classes": 47,
     "tiles": 1,
     "tile_images": 1,
     "script_event_candidates": 1,
@@ -45,6 +48,7 @@ except sqlite3.Error as exc:
 
 missing = []
 empty = []
+unresolved_default_moves = []
 try:
     for table, min_count in required_counts.items():
         exists = conn.execute(
@@ -57,10 +61,31 @@ try:
         count = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         if count < min_count:
             empty.append(f"{table} ({count})")
+
+    if not missing and not empty:
+        unresolved_default_moves = [
+            row[0]
+            for row in conn.execute(
+                """
+                SELECT DISTINCT defaults.move_constant
+                FROM (
+                    SELECT default_move_1_id AS move_constant FROM pokemon
+                    UNION ALL SELECT default_move_2_id FROM pokemon
+                    UNION ALL SELECT default_move_3_id FROM pokemon
+                    UNION ALL SELECT default_move_4_id FROM pokemon
+                ) defaults
+                LEFT JOIN moves ON moves.short_name = defaults.move_constant
+                WHERE defaults.move_constant IS NOT NULL
+                  AND defaults.move_constant <> 'NO_MOVE'
+                  AND moves.id IS NULL
+                ORDER BY defaults.move_constant
+                """
+            )
+        ]
 finally:
     conn.close()
 
-if missing or empty:
+if missing or empty or unresolved_default_moves:
     if missing:
         print("Extractor artifact is missing required tables:", file=sys.stderr)
         for table in missing:
@@ -69,6 +94,10 @@ if missing or empty:
         print("Extractor artifact has empty required tables:", file=sys.stderr)
         for table in empty:
             print(f"  - {table}", file=sys.stderr)
+    if unresolved_default_moves:
+        print("Extractor artifact has unresolved Pokemon default moves:", file=sys.stderr)
+        for move in unresolved_default_moves:
+            print(f"  - {move}", file=sys.stderr)
     sys.exit(1)
 PY
 }

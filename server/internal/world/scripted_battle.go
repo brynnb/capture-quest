@@ -225,15 +225,20 @@ func partyHasAlivePokemon(party []*pokebattle.Pokemon) bool {
 }
 
 func trainerPrizeMoney(trainerClass string, trainerParty []*pokebattle.Pokemon) int {
-	highestLevel := 0
-	for _, pokemon := range trainerParty {
-		if pokemon != nil && pokemon.Level > highestLevel {
-			highestLevel = pokemon.Level
-		}
-	}
 	var baseMoney int
 	_ = db.GlobalWorldDB.DB.QueryRow(`SELECT base_money FROM phaser_trainer_classes WHERE constant_name = $1`, trainerClass).Scan(&baseMoney)
-	return baseMoney * highestLevel
+	return trainerPrizeMoneyFromBase(baseMoney, trainerParty)
+}
+
+func trainerPrizeMoneyFromBase(baseMoney int, trainerParty []*pokebattle.Pokemon) int {
+	// Red/Blue pays the class rate times the level of the last party member,
+	// rather than the highest level anywhere in the party.
+	for i := len(trainerParty) - 1; i >= 0; i-- {
+		if trainerParty[i] != nil {
+			return baseMoney * trainerParty[i].Level
+		}
+	}
+	return 0
 }
 
 func trainerDisplayName(trainerClass string) string {

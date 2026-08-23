@@ -23,6 +23,7 @@ import (
 	"capturequest/internal/cert"
 	"capturequest/internal/config"
 	"capturequest/internal/db"
+	"capturequest/internal/discordchat"
 	"capturequest/internal/logutil"
 	"capturequest/internal/session"
 	"capturequest/internal/world"
@@ -42,6 +43,7 @@ type Server struct {
 	udpConn        *net.UDPConn
 	gracePeriod    time.Duration
 	debugMode      bool
+	discordChat    *discordchat.Bridge
 }
 
 // NewServer constructs a new Server.
@@ -54,18 +56,33 @@ func NewServer(dsn string, gracePeriod time.Duration, debugMode bool) (*Server, 
 		return nil, fmt.Errorf("failed to initialize cache: %w", err)
 	}
 
-	return &Server{
+	srv := &Server{
 		worldHandler:   worldHandler,
 		sessionManager: sessionManager,
 		sessions:       make(map[int]*webtransport.Session),
 		gracePeriod:    gracePeriod,
 		debugMode:      debugMode,
-	}, nil
+	}
+	discordBridge, err := discordchat.NewFromEnvironment(worldHandler.BroadcastExternalChat)
+	if err != nil {
+		return nil, fmt.Errorf("failed to configure Discord chat bridge: %w", err)
+	}
+	if discordBridge != nil {
+		srv.discordChat = discordBridge
+		worldHandler.SetPublicChatSink(func(message world.ChatMessageBroadcast) {
+			discordBridge.Enqueue(discordchat.Message{SenderName: message.SenderName, Text: message.Text})
+		})
+	}
+	return srv, nil
 }
 
 // StartServer configures TLS, QUIC, HTTP, and begins serving WebTransport.
 func (s *Server) StartServer() {
 	InitLogging()
+	if s.discordChat != nil {
+		s.discordChat.Start()
+		log.Printf("[DiscordChat] Game-chat bridge enabled")
+	}
 	// TLS
 	tlsConf, certManager, err := cert.LoadTLSConfig()
 	if err != nil {
@@ -295,6 +312,9 @@ func (s *Server) handleSessionClose(sessionID int) {
 
 // StopServer tears down all listeners and connections.
 func (s *Server) StopServer() {
+	if s.discordChat != nil {
+		s.discordChat.Close()
+	}
 	if s.wtServer != nil {
 		s.wtServer.Close()
 	}
@@ -378,9 +398,14 @@ func (s *Server) startHTTPServer(tlsConf *tls.Config, certManager *cert.Rotating
 			return
 		}
 	})))
+	if s.discordChat != nil {
+		mux.Handle("/api/discord/game-chat", s.discordChat.Handler())
+	}
 
 	// Admin Dashboard API
 	mux.Handle("/api/admin/stats", corsMiddleware(adminAuthMiddleware(handleAdminStats)))
+	mux.Handle("/api/admin/growth", corsMiddleware(adminAuthMiddleware(handleAdminGrowth)))
+	mux.Handle("/api/admin/chats", corsMiddleware(adminAuthMiddleware(handleAdminChats)))
 	mux.Handle("/api/admin/users", corsMiddleware(adminAuthMiddleware(handleAdminUsers)))
 	mux.Handle("/api/admin/characters", corsMiddleware(adminAuthMiddleware(handleAdminCharacters)))
 	mux.Handle("/api/admin/set-gm", corsMiddleware(adminAuthMiddleware(handleAdminSetGM)))

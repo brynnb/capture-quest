@@ -3,6 +3,7 @@ package world
 import (
 	"encoding/binary"
 	"log"
+	"sync"
 	"time"
 
 	"capturequest/internal/db"
@@ -27,6 +28,8 @@ type WorldHandler struct {
 	phaserWarps      *phaserWarpManager
 	Safari           *SafariZoneManager `json:"-"`
 	CutTiles         *CutTileManager    `json:"-"`
+	publicChatSinkMu sync.RWMutex
+	publicChatSink   func(ChatMessageBroadcast)
 }
 
 // NewWorldHandler creates a new WorldHandler.
@@ -95,31 +98,31 @@ func (wh *WorldHandler) HandlePacket(ses *session.Session, data []byte) {
 
 // RemoveSession cleans up session data.
 func (wh *WorldHandler) RemoveSession(sessionID int) {
+	ses, removed := wh.sessionManager.RemoveSession(sessionID)
+	if !removed {
+		return
+	}
 	log.Printf("[WORLD] Removing session %d", sessionID)
 	// Flush and unregister player from movement manager if they have a character
-	if ses, ok := wh.sessionManager.GetSession(sessionID); ok {
-		if ses.HasValidClient() {
-			char := ses.Client.CharData()
-			charID := int(char.ID)
-			log.Printf("[WORLD] Flushing position for character %d (%s) from session %d", charID, char.Name, sessionID)
-			wh.PlayerMovement.FlushPlayerPosition(charID)
-			wh.PlayerMovement.UnregisterPlayer(charID)
-			wh.TrainerEncounter.ClearPlayer(int64(charID))
-			wh.WildEncounter.ClearPlayer(int64(charID))
-			wh.EventFlags.UnloadFlags(int64(charID))
-			saveBattleOnDisconnect(int64(charID))
+	if ses.HasValidClient() {
+		char := ses.Client.CharData()
+		charID := int(char.ID)
+		log.Printf("[WORLD] Flushing position for character %d (%s) from session %d", charID, char.Name, sessionID)
+		wh.PlayerMovement.FlushPlayerPosition(charID)
+		wh.PlayerMovement.UnregisterPlayer(charID)
+		wh.TrainerEncounter.ClearPlayer(int64(charID))
+		wh.WildEncounter.ClearPlayer(int64(charID))
+		wh.EventFlags.UnloadFlags(int64(charID))
+		saveBattleOnDisconnect(int64(charID))
 
-			// Stop the client's regen goroutine to prevent leaks
-			ses.Client.Shutdown()
+		// Stop the client's regen goroutine to prevent leaks
+		ses.Client.Shutdown()
 
-			// Notify other Phaser clients to remove this actor
-			phaserID := wh.ActorRegistry.GetPhaserID(ActorTypePlayer, charID)
-			log.Printf("[WORLD] Despawning Phaser actor %d for character %s", phaserID, char.Name)
-			wh.ActorManager.broadcastActorDespawn(phaserID, ses.MapID)
-		}
+		// Notify other Phaser clients to remove this actor
+		phaserID := wh.ActorRegistry.GetPhaserID(ActorTypePlayer, charID)
+		log.Printf("[WORLD] Despawning Phaser actor %d for character %s", phaserID, char.Name)
+		wh.ActorManager.broadcastActorDespawn(phaserID, ses.MapID)
 	}
-
-	wh.sessionManager.RemoveSession(sessionID)
 }
 
 // Shutdown is a no-op now - no zone instances to stop.

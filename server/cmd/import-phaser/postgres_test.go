@@ -7,6 +7,71 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+func TestImportTrainerClassesNormalizesBCD3Money(t *testing.T) {
+	source, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	target, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer target.Close()
+
+	execStatements(t, source,
+		`CREATE TABLE trainer_classes (id INTEGER, constant_name TEXT, display_name TEXT, base_money INTEGER, is_gym_leader INTEGER, is_elite_four INTEGER, is_rival INTEGER)`,
+		`INSERT INTO trainer_classes VALUES (9, 'RIVAL1', 'RIVAL', 3500, 0, 0, 1)`,
+	)
+	execStatements(t, target,
+		`CREATE TABLE phaser_trainer_classes (id INTEGER, constant_name TEXT, display_name TEXT, base_money INTEGER, is_gym_leader INTEGER, is_elite_four INTEGER, is_rival INTEGER)`,
+	)
+
+	_, err = importStaticTable(source, target, staticTableSpec{
+		SourceTable: "trainer_classes",
+		TargetTable: "phaser_trainer_classes",
+		Columns:     []string{"id", "constant_name", "display_name", "base_money", "is_gym_leader", "is_elite_four", "is_rival"},
+		Transform:   normalizeTrainerClassImportValues,
+	})
+	if err != nil {
+		t.Fatalf("import trainer classes: %v", err)
+	}
+
+	var baseMoney int
+	if err := target.QueryRow(`SELECT base_money FROM phaser_trainer_classes WHERE constant_name = 'RIVAL1'`).Scan(&baseMoney); err != nil {
+		t.Fatal(err)
+	}
+	if baseMoney != 35 {
+		t.Fatalf("RIVAL1 base_money = %d, want 35", baseMoney)
+	}
+}
+
+func TestValidatePokemonDefaultMovesRejectsMissingConstants(t *testing.T) {
+	raw, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	execStatements(t, raw,
+		`CREATE TABLE phaser_pokemon (default_move_1_id TEXT, default_move_2_id TEXT, default_move_3_id TEXT, default_move_4_id TEXT)`,
+		`CREATE TABLE phaser_moves (id INTEGER, short_name TEXT)`,
+		`INSERT INTO phaser_pokemon VALUES ('POISON_STING', 'STRING_SHOT', 'NO_MOVE', NULL)`,
+		`INSERT INTO phaser_moves VALUES (40, 'POISON_STING')`,
+	)
+
+	err = validatePokemonDefaultMovesPostgres(raw)
+	if err == nil || err.Error() != "pokemon defaults reference missing move constants: STRING_SHOT" {
+		t.Fatalf("validation error = %v, want missing STRING_SHOT", err)
+	}
+
+	if _, err := raw.Exec(`INSERT INTO phaser_moves VALUES (81, 'STRING_SHOT')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := validatePokemonDefaultMovesPostgres(raw); err != nil {
+		t.Fatalf("validation with complete moves: %v", err)
+	}
+}
+
 func TestResolveWarpDestinationUpdatesRoute18OverworldEntrance(t *testing.T) {
 	updates := resolveWarpDestinationUpdates(
 		map[int]importedMapInfo{

@@ -103,16 +103,23 @@ func LoadPokemonFromDB(db DBTX, pokemonID int) (*Pokemon, error) {
 		defaultMoveNames[3] = dm4.String
 	}
 
-	// Load default move IDs by name
+	// The Pokemon table stores pokered move constants (for example,
+	// POISON_STING), while phaser_moves.name is the display label (POISON
+	// STING). Resolve against the canonical constant column so punctuation and
+	// spacing can never change move identity.
 	for i, mname := range defaultMoveNames {
 		if mname == "" {
 			continue
 		}
 		var moveID int
-		err := db.QueryRow(`SELECT id FROM phaser_moves WHERE name = $1`, mname).Scan(&moveID)
-		if err == nil {
-			p.Moves[i], _ = LoadMoveSlotFromDB(db, moveID)
+		if err := db.QueryRow(`SELECT id FROM phaser_moves WHERE short_name = $1`, mname).Scan(&moveID); err != nil {
+			return nil, fmt.Errorf("resolve default move %q for pokemon %d: %w", mname, pokemonID, err)
 		}
+		move, err := LoadMoveSlotFromDB(db, moveID)
+		if err != nil {
+			return nil, fmt.Errorf("load default move %q for pokemon %d: %w", mname, pokemonID, err)
+		}
+		p.Moves[i] = move
 	}
 
 	return p, nil

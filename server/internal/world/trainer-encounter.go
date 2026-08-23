@@ -582,16 +582,7 @@ func HandleTrainerEncounterReady(ses *session.Session, payload []byte, wh *World
 		return false
 	}
 
-	// Calculate prize money: base_money * highest level in trainer's party
-	highestLevel := 0
-	for _, p := range trainerParty {
-		if p.Level > highestLevel {
-			highestLevel = p.Level
-		}
-	}
-	var baseMoney int
-	_ = myDB.QueryRow(`SELECT base_money FROM phaser_trainer_classes WHERE constant_name = $1`, t.TrainerClass).Scan(&baseMoney)
-	prizeMoney := baseMoney * highestLevel
+	prizeMoney := trainerPrizeMoney(t.TrainerClass, trainerParty)
 
 	// Mark all trainer Pokémon as seen in Pokédex (Phase 10.2)
 	for _, tp := range trainerParty {
