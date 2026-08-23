@@ -1243,9 +1243,20 @@ func applyGivePokemonAction(ses *session.Session, action CutsceneAction, charID 
 	}
 
 	myDB := db.GlobalWorldDB.DB
-	addedToParty, box, slot, err := pokebattle.AddPokemonToPartyOrPC(myDB, charID, speciesID, level)
+	tx, err := myDB.Begin()
+	if err != nil {
+		return "", fmt.Errorf("begin give pokemon transaction: %w", err)
+	}
+	defer tx.Rollback()
+	addedToParty, box, slot, err := pokebattle.AddPokemonToPartyOrPC(tx, charID, speciesID, level)
 	if err != nil {
 		return "", fmt.Errorf("give pokemon %d L%d: %w", speciesID, level, err)
+	}
+	if err := markPokemonCaught(tx, charID, speciesID); err != nil {
+		return "", fmt.Errorf("register pokemon %d in pokedex: %w", speciesID, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return "", fmt.Errorf("commit give pokemon transaction: %w", err)
 	}
 
 	name := speciesName

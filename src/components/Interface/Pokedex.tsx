@@ -5,6 +5,7 @@ import useGameStatusStore from "@stores/GameStatusStore";
 import { WorldSocket, OpCodes } from "@/net";
 import AudioManager from "@/services/audio/AudioManager";
 import { cryPathForPokemon } from "@/services/audio/pokemonMusic";
+import { getPokedexPresentation } from "./pokedexPresentation";
 
 const TYPE_COLORS: Record<string, string> = {
   NORMAL: "#A8A878", FIRE: "#F08030", WATER: "#6890F0", ELECTRIC: "#F8D030",
@@ -111,11 +112,21 @@ const EntryName = styled.span<{ $seen: boolean }>`
   flex: 1;
 `;
 
-const StatusIcon = styled.span<{ $caught: boolean }>`
-  font-size: 12px;
-  color: ${p => p.$caught ? '#e53935' : '#aaa'};
+const StatusSlot = styled.span`
   min-width: 18px;
+  width: 18px;
+  height: 18px;
   text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+`;
+
+const CaughtIcon = styled.img`
+  width: 16px;
+  height: 16px;
+  image-rendering: pixelated;
+  object-fit: contain;
 `;
 
 const DetailPanel = styled.div`
@@ -329,29 +340,42 @@ const Pokedex: React.FC = () => {
             <CountBadge>Seen {seenCount} / Caught {caughtCount}</CountBadge>
           </ListHeader>
           <ListScroll ref={listRef}>
-            {allEntries.map(entry => (
-              <ListEntry
-                key={entry.id}
-                $selected={entry.id === selectedId}
-                $seen={entry.seen}
-                onClick={() => {
-                  if (entry.seen) setSelectedId(entry.id);
-                }}
-              >
-                <StatusIcon $caught={entry.caught}>
-                  {entry.caught ? "\u25cf" : entry.seen ? "\u25cb" : "\u2014"}
-                </StatusIcon>
-                <EntryNumber>#{entry.id.toString().padStart(3, "0")}</EntryNumber>
-                <EntryName $seen={entry.seen}>
-                  {entry.seen && entry.species ? entry.species.name.toLowerCase() : "???"}
-                </EntryName>
-              </ListEntry>
-            ))}
+            {allEntries.map(entry => {
+              const presentation = getPokedexPresentation(
+                entry.species?.name,
+                entry.seen,
+                entry.caught,
+              );
+              return (
+                <ListEntry
+                  key={entry.id}
+                  $selected={entry.id === selectedId}
+                  $seen={presentation.canOpen}
+                  onClick={() => {
+                    if (presentation.canOpen) setSelectedId(entry.id);
+                  }}
+                >
+                  <StatusSlot>
+                    {presentation.isCaught && (
+                      <CaughtIcon
+                        src="/phaser/sprites/poke_ball.png"
+                        alt="Caught"
+                        title="Caught"
+                      />
+                    )}
+                  </StatusSlot>
+                  <EntryNumber>#{entry.id.toString().padStart(3, "0")}</EntryNumber>
+                  <EntryName $seen={presentation.canOpen}>
+                    {presentation.displayName}
+                  </EntryName>
+                </ListEntry>
+              );
+            })}
           </ListScroll>
         </ListPanel>
 
         <DetailPanel>
-          {selected && selectedStatus?.seen ? (
+          {selected && (selectedStatus?.seen || selectedStatus?.caught) ? (
             <>
               <SpriteArea>
                 <SpriteBox>
@@ -383,7 +407,13 @@ const Pokedex: React.FC = () => {
                     {selected.weight != null && <span>WT: {formatWeight(selected.weight)}</span>}
                   </StatsRow>
                   <StatsRow>
-                    <span>{selectedStatus.caught ? "\u25cf Caught" : "\u25cb Seen only"}</span>
+                    {selectedStatus.caught ? (
+                      <span>
+                        <CaughtIcon src="/phaser/sprites/poke_ball.png" alt="" /> Caught
+                      </span>
+                    ) : (
+                      <span>Seen</span>
+                    )}
                   </StatsRow>
                   {selected.crySfx && (
                     <CryButton onClick={() => playCry(selected)}>Cry</CryButton>

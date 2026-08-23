@@ -584,10 +584,8 @@ func HandleTrainerEncounterReady(ses *session.Session, payload []byte, wh *World
 
 	prizeMoney := trainerPrizeMoney(t.TrainerClass, trainerParty)
 
-	// Mark all trainer Pokémon as seen in Pokédex (Phase 10.2)
-	for _, tp := range trainerParty {
-		MarkPokemonSeen(charID, tp.ID)
-	}
+	// Gen I registers a trainer's Pokémon only when it is actually sent out.
+	MarkPokemonSeen(charID, trainerParty[0].ID)
 
 	// Create trainer battle
 	battle := pokebattle.NewTrainerBattle(playerParty, trainerParty)

@@ -520,7 +520,13 @@ func HandlePokeBattleAction(ses *session.Session, payload []byte, wh *WorldHandl
 		return false
 	}
 
+	previousEnemyIndex := battle.EnemyActive
 	events := battle.SubmitAction(action)
+	if battle.Trainer != nil && battle.EnemyActive != previousEnemyIndex {
+		if enemy := battle.GetEnemyPokemon(); enemy != nil {
+			MarkPokemonSeen(charID, enemy.ID)
+		}
+	}
 
 	// Award experience if the player won
 	if battle.IsOver() && battle.PlayerWon() {
@@ -577,6 +583,7 @@ func HandlePokeBattleAction(ses *session.Session, payload []byte, wh *WorldHandl
 					if err := pokebattle.EvolvePokemon(myDB, playerPoke, evolvedID); err != nil {
 						log.Printf("[PokeBattle] Failed to evolve %s: %v", oldName, err)
 					} else {
+						MarkPokemonCaught(charID, evolvedID)
 						events = append(events, pokebattle.BattleEvent{
 							Type:             pokebattle.EventEvolution,
 							Message:          fmt.Sprintf("What? %s is evolving!\n%s evolved into %s!", oldName, oldName, evolvedName),

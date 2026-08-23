@@ -57,7 +57,7 @@ const usePokedexStore = create<PokedexState>((set, get) => ({
   setStatus: (status) => {
     const map = new Map<number, { seen: boolean; caught: boolean }>();
     for (const s of status) {
-      map.set(s.pokemonId, { seen: s.seen, caught: s.caught });
+      map.set(s.pokemonId, { seen: s.seen || s.caught, caught: s.caught });
     }
     set({ statusMap: map });
   },

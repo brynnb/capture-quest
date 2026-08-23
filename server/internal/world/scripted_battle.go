@@ -75,6 +75,9 @@ func StartScriptedTrainerBattle(charID int64, spec ScriptedTrainerBattleSpec) (*
 	if err != nil {
 		return nil, nil, err
 	}
+	if len(trainerParty) == 0 {
+		return nil, nil, fmt.Errorf("trainer party is empty")
+	}
 	playerParty, err := pokebattle.LoadParty(myDB, charID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("load player party: %w", err)
@@ -93,9 +96,7 @@ func StartScriptedTrainerBattle(charID int64, spec ScriptedTrainerBattleSpec) (*
 	}
 	trainerName = trainerNameForCharacter(charID, spec.TrainerClass, trainerName)
 
-	for _, pokemon := range trainerParty {
-		MarkPokemonSeen(charID, pokemon.ID)
-	}
+	MarkPokemonSeen(charID, trainerParty[0].ID)
 
 	battle := pokebattle.NewTrainerBattle(playerParty, trainerParty)
 	configureBattleObedience(battle, charID, nil)
