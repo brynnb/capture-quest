@@ -509,6 +509,26 @@ export function clearAllHandlers(): void {
   handlers.mapMusic.clear();
 }
 
+export function normalizePhaserArrayPayload<T>(
+  data: unknown,
+  responseName: string,
+): T[] {
+  if (Array.isArray(data)) return data as T[];
+
+  const serverError =
+    data !== null &&
+    typeof data === "object" &&
+    "error" in data &&
+    typeof data.error === "string"
+      ? `: ${data.error}`
+      : "";
+  console.error(
+    `[PhaserNetwork] Invalid ${responseName} payload; expected an array${serverError}`,
+    data,
+  );
+  return [];
+}
+
 // Internal: dispatch incoming Phaser responses
 export function dispatchPhaserResponse(opcode: number, data: unknown): void {
   switch (opcode) {
@@ -516,17 +536,30 @@ export function dispatchPhaserResponse(opcode: number, data: unknown): void {
       handlers.mapInfo.forEach((h) => h(data as PhaserMapInfo));
       break;
     case OpCodes.PhaserTilesResponse:
-      handlers.tiles.forEach((h) => h(data as PhaserTile[]));
+      handlers.tiles.forEach((h) =>
+        h(normalizePhaserArrayPayload<PhaserTile>(data, "tiles response")),
+      );
       break;
     case OpCodes.PhaserOverworldMapsResponse:
-      handlers.overworldMaps.forEach((h) => h(data as PhaserMapInfo[]));
+      handlers.overworldMaps.forEach((h) =>
+        h(
+          normalizePhaserArrayPayload<PhaserMapInfo>(
+            data,
+            "overworld maps response",
+          ),
+        ),
+      );
       break;
     case OpCodes.PhaserActorsResponse:
-      handlers.actors.forEach((h) => h(data as PhaserActor[]));
+      handlers.actors.forEach((h) =>
+        h(normalizePhaserArrayPayload<PhaserActor>(data, "actors response")),
+      );
       break;
 
     case OpCodes.PhaserWarpsResponse:
-      handlers.warps.forEach((h) => h(data as PhaserWarp[]));
+      handlers.warps.forEach((h) =>
+        h(normalizePhaserArrayPayload<PhaserWarp>(data, "warps response")),
+      );
       break;
     case OpCodes.PhaserActorPositionUpdate:
       handlers.actorUpdate.forEach((h) => h(data as PhaserActor));
