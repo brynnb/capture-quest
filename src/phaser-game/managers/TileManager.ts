@@ -62,7 +62,9 @@ export class TileManager {
       const tileKey = `tile-${tileImage.id}`;
 
       // Add to the set of textures to load
-      texturesToLoad.add(tileImage.id);
+      if (!this.scene.textures.exists(tileKey)) {
+        texturesToLoad.add(tileImage.id);
+      }
 
       // Store the image path for later use
       const imgUrl = getTileImageUrl(tileImage.id);

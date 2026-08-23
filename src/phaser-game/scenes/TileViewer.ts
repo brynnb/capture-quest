@@ -101,6 +101,9 @@ export class TileViewer extends Scene {
 
   // View mode tracking
   private isOverworldMode: boolean = OVERWORLD_MODE;
+  private isMapOverviewMode: boolean = false;
+  private interiorMapBeforeOverview: number | null = null;
+  private mapOverviewTransitionInProgress = false;
   private viewedMapIds: Set<number> = new Set();
   public mapLoadInProgress: boolean = false;
   public warpDestX: number | null = null;
@@ -484,8 +487,8 @@ export class TileViewer extends Scene {
     // Subscribe to game status changes (for camera follow toggle)
     this.gameStatusUnsubscribe = useGameStatusStore.subscribe(
       (state) => state.isCameraFollowEnabled,
-      () => {
-        this.updateCameraFollow();
+      (enabled) => {
+        void this.handleCameraFollowChange(enabled);
       },
     );
 
@@ -724,6 +727,7 @@ export class TileViewer extends Scene {
           actors: this.actors,
           mapInfo: this.mapInfo,
           isOverworldMode: this.isOverworldMode,
+          isMapOverviewMode: this.isMapOverviewMode,
           viewedMapIds: this.viewedMapIds,
         }),
         setState: (partial) => {
@@ -756,6 +760,8 @@ export class TileViewer extends Scene {
           }
           if (partial.isOverworldMode !== undefined)
             this.isOverworldMode = partial.isOverworldMode;
+          if (partial.isMapOverviewMode !== undefined)
+            this.isMapOverviewMode = partial.isMapOverviewMode;
           if (partial.viewedMapIds !== undefined)
             this.viewedMapIds = partial.viewedMapIds;
         },
@@ -959,6 +965,45 @@ export class TileViewer extends Scene {
         this.cameraController.setZoom(DEFAULT_ZOOM);
       }
     }
+  }
+
+  private async handleCameraFollowChange(enabled: boolean): Promise<void> {
+    if (this.mapOverviewTransitionInProgress) return;
+
+    if (!enabled && !this.isOverworldMode) {
+      const interiorMapId = this.playerMovementController.getCurrentMapId();
+      if (interiorMapId == null || this.mapDataService.isOverworld(interiorMapId)) {
+        this.updateCameraFollow();
+        return;
+      }
+
+      this.mapOverviewTransitionInProgress = true;
+      this.interiorMapBeforeOverview = interiorMapId;
+      this.cancelWorldInput();
+      try {
+        await this.mapLoader.loadOverworldData({ viewOnly: true });
+      } finally {
+        this.mapOverviewTransitionInProgress = false;
+        if (useGameStatusStore.getState().isCameraFollowEnabled) {
+          await this.handleCameraFollowChange(true);
+        }
+      }
+      return;
+    }
+
+    if (enabled && this.isMapOverviewMode && this.interiorMapBeforeOverview != null) {
+      this.mapOverviewTransitionInProgress = true;
+      const interiorMapId = this.interiorMapBeforeOverview;
+      try {
+        await this.mapLoader.loadMapData(interiorMapId);
+        this.interiorMapBeforeOverview = null;
+      } finally {
+        this.mapOverviewTransitionInProgress = false;
+      }
+      return;
+    }
+
+    this.updateCameraFollow();
   }
 
   handleTileUpdate(event: TileUpdateEvent) {
@@ -1366,6 +1411,9 @@ export class TileViewer extends Scene {
   }
 
   private shouldRenderActorInCurrentView(actor: PhaserActor): boolean {
+    if (this.isMapOverviewMode && this.isLocalPlayerActor(actor)) {
+      return false;
+    }
     return this.isLocalPlayerActor(actor) || this.actorBelongsToLoadedView(actor);
   }
 
@@ -1557,9 +1605,13 @@ export class TileViewer extends Scene {
   }
 
   public getWorldInputFreezeReason(): WorldInputFreezeReason | null {
-    return getWorldInputFreezeReason({
+    const existingReason = getWorldInputFreezeReason({
       cutsceneInputLocked: this.cutsceneInputLocked || this.warpExitInputLocked,
     });
+    if (existingReason) return existingReason;
+    return useGameStatusStore.getState().isCameraFollowEnabled
+      ? null
+      : "map_view";
   }
 
   public isWorldInputFrozen(): boolean {

@@ -12,6 +12,7 @@ export type WorldInputFreezeReason =
   | "shop"
   | "modal"
   | "panel"
+  | "map_view"
   | "cutscene";
 
 const DEFAULT_CONSUMED_INPUT_FREEZE_MS = 250;

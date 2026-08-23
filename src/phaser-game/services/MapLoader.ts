@@ -21,7 +21,12 @@ export interface MapLoaderState {
   actors: PhaserActor[];
   mapInfo: PhaserMapInfo | null;
   isOverworldMode: boolean;
+  isMapOverviewMode: boolean;
   viewedMapIds: Set<number>;
+}
+
+interface MapLoadOptions {
+  viewOnly?: boolean;
 }
 
 function numberOrNull(value: unknown): number | null {
@@ -116,6 +121,7 @@ export class MapLoader {
         warps: [],
         actors: playerActors,
         isOverworldMode: false,
+        isMapOverviewMode: false,
         viewedMapIds,
       });
 
@@ -127,7 +133,11 @@ export class MapLoader {
       const sceneForDest = this.scene as any; // eslint-disable-line @typescript-eslint/no-explicit-any
       const warpDX = sceneForDest.warpDestX ?? undefined;
       const warpDY = sceneForDest.warpDestY ?? undefined;
-      const mapInfo = await this.mapDataService.fetchMapInfo(mapId, warpDX, warpDY);
+      const cached = this.mapDataService.getSnapshot(mapId);
+      const hasWarpDestination = warpDX !== undefined && warpDY !== undefined;
+      const mapInfo = hasWarpDestination || !cached
+        ? await this.mapDataService.fetchMapInfo(mapId, warpDX, warpDY)
+        : cached.mapInfo;
 
       if (!mapInfo) {
         throw new Error(`Map ${mapId} not found`);
@@ -139,7 +149,7 @@ export class MapLoader {
       this.uiManager.setLoadingText("Loading tiles...");
 
       // Fetch tiles
-      const tiles = await this.mapDataService.fetchTiles(mapId);
+      const tiles = cached?.tiles ?? await this.mapDataService.fetchTiles(mapId);
 
       this.uiManager.setLoadingText("Loading tile images...");
 
@@ -169,7 +179,7 @@ export class MapLoader {
       let warps: PhaserWarp[] = [];
       try {
         // Fetch warps for this map
-        warps = await this.mapDataService.fetchWarps(mapId);
+        warps = cached?.warps ?? await this.mapDataService.fetchWarps(mapId);
       } catch (warpError) {
         console.error("Error loading warps:", warpError);
       }
@@ -233,6 +243,13 @@ export class MapLoader {
       }
 
       actors = this.prepareActorsForLoadedView(actors);
+
+      this.mapDataService.setSnapshot(mapId, {
+        mapInfo,
+        tiles,
+        warps,
+        actors: actors.filter((actor) => actor.objectType !== "player"),
+      });
 
       // Update state with all loaded data
       this.setState({ tiles, items, warps, actors });
@@ -298,7 +315,7 @@ export class MapLoader {
     }
   }
 
-  async loadOverworldData() {
+  async loadOverworldData(options: MapLoadOptions = {}) {
     (this.scene as any).mapLoadInProgress = true; // eslint-disable-line @typescript-eslint/no-explicit-any
     try {
       // Check if network is ready
@@ -317,7 +334,7 @@ export class MapLoader {
       this.mapRenderer.clearLocalActorPositionOverrides();
       this.mapRenderer.clear();
       const localPlayer = this.getPlayerActor();
-      const playerActors = localPlayer ? [localPlayer] : [];
+      const playerActors = options.viewOnly ? [] : localPlayer ? [localPlayer] : [];
 
       // Map ID for the unified overworld
       const mapId = UNIFIED_OVERWORLD_MAP_ID;
@@ -331,6 +348,7 @@ export class MapLoader {
         warps: [],
         actors: playerActors,
         isOverworldMode: true,
+        isMapOverviewMode: options.viewOnly === true,
         viewedMapIds,
       });
 
@@ -344,14 +362,20 @@ export class MapLoader {
       const sceneForDest = this.scene as any; // eslint-disable-line @typescript-eslint/no-explicit-any
       const warpDX = sceneForDest.warpDestX ?? undefined;
       const warpDY = sceneForDest.warpDestY ?? undefined;
-      const mapInfo = await this.mapDataService.fetchMapInfo(mapId, warpDX, warpDY);
+      const cached = this.mapDataService.getSnapshot(mapId);
+      const hasWarpDestination = warpDX !== undefined && warpDY !== undefined;
+      const mapInfo = hasWarpDestination || !cached
+        ? await this.mapDataService.fetchMapInfo(mapId, warpDX, warpDY)
+        : cached.mapInfo;
       this.setState({ mapInfo });
-      void useGameStatusStore.getState().setCurrentMap(mapId);
+      if (!options.viewOnly) {
+        void useGameStatusStore.getState().setCurrentMap(mapId);
+      }
 
       this.uiManager.setLoadingText("Loading tiles...");
 
       // Load all tiles for the unified overworld in one request
-      const tiles = await this.mapDataService.fetchTiles(mapId);
+      const tiles = cached?.tiles ?? await this.mapDataService.fetchTiles(mapId);
 
       this.uiManager.setLoadingText("Loading tile images...");
 
@@ -367,8 +391,10 @@ export class MapLoader {
       this.uiManager.setLoadingText("Loading actors and warps...");
 
       // Load actors and warps for the unified map
-      const allActors = await this.mapDataService.fetchActors(mapId);
-      const warps = await this.mapDataService.fetchWarps(mapId);
+      const allActors = options.viewOnly && cached
+        ? cached.actors
+        : await this.mapDataService.fetchActors(mapId);
+      const warps = cached?.warps ?? await this.mapDataService.fetchWarps(mapId);
 
       // Preload actor sprites before rendering
       if (allActors.length > 0) {
@@ -412,6 +438,13 @@ export class MapLoader {
 
       actors = this.prepareActorsForLoadedView(actors);
 
+      this.mapDataService.setSnapshot(mapId, {
+        mapInfo,
+        tiles,
+        warps,
+        actors: actors.filter((actor) => actor.objectType !== "player"),
+      });
+
       // Update state
       this.setState({ tiles, items, warps, actors });
 
@@ -419,11 +452,13 @@ export class MapLoader {
       const mapBounds = this.mapRenderer.renderMap(tiles, items, warps, actors);
 
       // Update collision map for movement
-      this.playerMovementController.buildCollisionMap(tiles);
-      this.playerMovementController.setBlockingActors(actors);
+      if (!options.viewOnly) {
+        this.playerMovementController.buildCollisionMap(tiles);
+        this.playerMovementController.setBlockingActors(actors);
+      }
 
       const playerActor = this.getPlayerActor();
-      if (playerActor) {
+      if (!options.viewOnly && playerActor) {
         this.playerMovementController.setPlayer(
           playerActor.id,
           playerActor.x ?? 0,
@@ -449,7 +484,9 @@ export class MapLoader {
       // Restore saved camera position only when explicitly requested by map-view UI.
       // Normal gameplay loads should fall back to player follow/default zoom.
       let restored = false;
-      if (useSavedCamera) {
+      if (options.viewOnly && savedCameraState?.saved) {
+        restored = this.cameraController.restoreOverworldCameraState();
+      } else if (useSavedCamera) {
         // Explicitly requested restoration (e.g. from "Back to Overworld" button)
         if (savedCameraState && savedCameraState.saved) {
           restored = this.cameraController.restoreOverworldCameraState();
@@ -500,13 +537,15 @@ export class MapLoader {
       this.createMapLegend([mapInfo]);
 
       // Apply preserved facing direction from warp
-      this.applyDestinationDirection();
+      if (!options.viewOnly) {
+        this.applyDestinationDirection();
+      }
 
       // Update mode text
       this.uiManager.setModeText("Overworld View");
 
       // Re-apply camera follow if enabled (overrides the zoom/center settings above)
-      if (useGameStatusStore.getState().isCameraFollowEnabled && playerActor) {
+      if (!options.viewOnly && useGameStatusStore.getState().isCameraFollowEnabled && playerActor) {
         console.log(`[MapLoader] Re-applying camera follow after map load`);
         this.updateCameraFollow();
       }
