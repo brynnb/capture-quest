@@ -51,3 +51,23 @@ func TestLastMapWarpRequiresPreviousMapContext(t *testing.T) {
 		t.Fatal("expected missing previous-map context to fail")
 	}
 }
+
+func TestResolvedLastMapWarpDoesNotUsePreviousMapContext(t *testing.T) {
+	mapID, x, y := 0, 5, 5
+	mapName := "PALLET_TOWN"
+	warp := PhaserWarp{
+		DestinationKind:  "last-map",
+		DestinationMapID: &mapID,
+		DestinationMap:   &mapName,
+		DestinationX:     &x,
+		DestinationY:     &y,
+	}
+	if shouldResolveLastMapForPlayer(warp) {
+		t.Fatal("deterministically resolved LAST_MAP warp should keep its imported destination")
+	}
+
+	warp.DestinationX = nil
+	if !shouldResolveLastMapForPlayer(warp) {
+		t.Fatal("incomplete LAST_MAP warp should use per-player previous-map context")
+	}
+}

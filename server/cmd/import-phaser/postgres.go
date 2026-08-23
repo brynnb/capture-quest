@@ -213,6 +213,12 @@ func importPhaserToPostgres(sqlite, pg *sql.DB, context extractorImportContext) 
 	if err := clearWarpDestinationCoordinatePlaceholdersPostgres(pg); err != nil {
 		return err
 	}
+	// LAST_MAP is dynamic only when an interior can be entered from more than
+	// one map. Resolve ordinary building exits (including Red's house) from the
+	// unique incoming warp before calculating their destination coordinates.
+	if err := resolveLastMapWarpDestinationsPostgres(pg); err != nil {
+		return err
+	}
 	if err := resolveWarpDestinationCoordinatesPostgres(sqlite, pg); err != nil {
 		return err
 	}

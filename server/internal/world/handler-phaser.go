@@ -606,7 +606,7 @@ func HandlePhaserWarpsRequest(ses *session.Session, payload []byte, wh *WorldHan
 			log.Printf("[Phaser] Error scanning warp: %v", err)
 			continue
 		}
-		if w.DestinationKind == "last-map" {
+		if shouldResolveLastMapForPlayer(w) {
 			mapID, mapName, x, y, err := resolveLastMapWarpForPlayer(
 				db.GlobalWorldDB.DB, ses.PreviousMapID, w.DestinationWarpID,
 			)
@@ -625,6 +625,13 @@ func HandlePhaserWarpsRequest(ses *session.Session, payload []byte, wh *WorldHan
 	ses.SendStreamJSON(StructToMap(warps), opcodes.PhaserWarpsResponse)
 	log.Printf("[Phaser] Sent %d warps for map %d", len(warps), req.MapID)
 	return false
+}
+
+// A LAST_MAP row with a complete destination was deterministically resolved
+// during import. Only genuinely ambiguous entrances need per-session context.
+func shouldResolveLastMapForPlayer(w PhaserWarp) bool {
+	return w.DestinationKind == "last-map" &&
+		(w.DestinationMapID == nil || w.DestinationX == nil || w.DestinationY == nil)
 }
 
 func resolveLastMapWarpForPlayer(
