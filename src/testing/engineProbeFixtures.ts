@@ -47,6 +47,8 @@ export function probeWarp(overrides: Partial<PhaserWarp>): PhaserWarp {
     destinationMapId: overrides.destinationMapId ?? 1,
     destinationX: overrides.destinationX ?? 0,
     destinationY: overrides.destinationY ?? 0,
+    destinationKind: overrides.destinationKind ?? "map",
+    destinationWarpId: overrides.destinationWarpId ?? 0,
     warpType: overrides.warpType ?? "door",
     ...overrides,
   };

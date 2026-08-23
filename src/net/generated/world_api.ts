@@ -915,6 +915,8 @@ export interface PhaserWarp {
   destinationMap?: string;
   destinationX?: number /* int */;
   destinationY?: number /* int */;
+  destinationKind: string;
+  destinationWarpId: number /* int */;
   warpType: string;
   warpDirection?: string;
 }
@@ -1238,6 +1240,7 @@ export interface PlayerMovementState {
   currentX: number /* int */;
   currentY: number /* int */;
   mapId: number /* int */;
+  previousMapId?: number /* int */;
   direction: string;
   path: PathNode[]; // Remaining path to destination
   isSurfing?: boolean;

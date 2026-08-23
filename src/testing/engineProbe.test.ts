@@ -123,6 +123,8 @@ describe("engine probe snapshots", () => {
         destinationMapId: 40,
         destinationX: 5,
         destinationY: 11,
+        destinationKind: "map",
+        destinationWarpId: 0,
         warpType: "door",
       },
     ];
