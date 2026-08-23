@@ -1,9 +1,18 @@
 import usePokeBattleStore from "@/stores/PokeBattleStore";
 import usePokemonDialogueStore from "@/stores/PokemonDialogueStore";
 import useCQInventoryStore from "@/stores/CQInventoryStore";
+import useGameStatusStore from "@/stores/GameStatusStore";
+import usePokemonPCStore from "@/stores/PokemonPCStore";
+import useSlotMachineStore from "@/stores/SlotMachineStore";
 import { isCutscenePlaying } from "../services/CutsceneService";
 
-export type WorldInputFreezeReason = "battle" | "dialogue" | "shop" | "cutscene";
+export type WorldInputFreezeReason =
+  | "battle"
+  | "dialogue"
+  | "shop"
+  | "modal"
+  | "panel"
+  | "cutscene";
 
 const DEFAULT_CONSUMED_INPUT_FREEZE_MS = 250;
 let worldInputSuppressedUntil = 0;
@@ -39,6 +48,26 @@ export function getWorldInputFreezeReason(
 
   if (useCQInventoryStore.getState().shopOpen) {
     return "shop";
+  }
+
+  if (
+    usePokemonPCStore.getState().isOpen ||
+    useSlotMachineStore.getState().isOpen
+  ) {
+    return "modal";
+  }
+
+  const gameStatus = useGameStatusStore.getState();
+  if (
+    gameStatus.isInventoryOpen ||
+    gameStatus.isPokedexOpen ||
+    gameStatus.isTrainerCardOpen ||
+    gameStatus.isOptionsOpen ||
+    gameStatus.isHelpOpen ||
+    gameStatus.isTileManagerOpen ||
+    gameStatus.isArtStudioOpen
+  ) {
+    return "panel";
   }
 
   if (

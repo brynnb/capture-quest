@@ -3,24 +3,27 @@ import styled from "styled-components";
 import useChatStore, { MessageType } from "@stores/ChatStore";
 
 const ChatContainer = styled.div.attrs({ className: "chat-container" })`
-  flex: 1;
+  width: 100%;
   height: 100%;
-  background: rgba(255, 255, 255, 0.57);
-  backdrop-filter: blur(12px);
-  border: 4px solid #4a4ba6;
-  border-radius: 24px;
-  padding: 12px;
+  background: rgba(244, 244, 255, 0.84);
+  backdrop-filter: blur(14px);
+  border: 3px solid #4a4ba6;
+  border-radius: 16px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  box-shadow: 0 12px 36px rgba(20, 21, 67, 0.28);
   z-index: 5;
   font-family: 'Outfit', sans-serif;
   font-weight: 500;
   transition: all 0.3s ease;
   min-width: 0;
   position: relative;
+
+  @media (max-width: 850px), (pointer: coarse) {
+    background: rgba(236, 237, 255, 0.96);
+  }
 
   .blue-vibrant-text {
     color: #008BF1;
@@ -63,12 +66,35 @@ const ChatContainer = styled.div.attrs({ className: "chat-container" })`
   }
 `;
 
+const ChatHeader = styled.header`
+  display: flex;
+  min-height: 35px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 11px;
+  color: #4a4ba6;
+  background: rgba(192, 193, 255, 0.42);
+  border-bottom: 2px solid rgba(74, 75, 166, 0.25);
+  font-family: "Outfit", sans-serif;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+`;
+
+const ConnectionStatus = styled.span<{ $connected: boolean }>`
+  color: ${(props) => (props.$connected ? "#357b4d" : "#956171")};
+`;
+
 const ChatContent = styled.div.attrs({ className: "chat-content" })`
   width: 100%;
   flex: 1;
-  padding: 10px 20px;
+  min-height: 0;
+  padding: 9px 13px;
   box-sizing: border-box;
-  overflow-y: scroll;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 
   &::-webkit-scrollbar {
     width: 8px;
@@ -87,26 +113,32 @@ const ChatContent = styled.div.attrs({ className: "chat-content" })`
 `;
 
 const ChatMessage = styled.div`
-  margin-bottom: 0px;
+  margin-bottom: 3px;
+  font-size: 13px;
+  line-height: 1.32;
+  overflow-wrap: anywhere;
 `;
 
 const ChatInputForm = styled.form`
   width: 100%;
-  padding: 0 4px;
+  padding: 8px 9px 9px;
+  background: rgba(192, 193, 255, 0.2);
+  border-top: 1px solid rgba(74, 75, 166, 0.16);
   box-sizing: border-box;
   flex-shrink: 0;
 `;
 
 const ChatInput = styled.input`
   width: 100%;
-  padding: 8px 12px;
+  min-height: 38px;
+  padding: 8px 11px;
   box-sizing: border-box;
   background: rgba(255, 255, 255, 0.7);
   border: 2px solid #4a4ba6;
-  border-radius: 12px;
+  border-radius: 9px;
   font-family: 'Outfit', sans-serif;
-  font-weight: 500;
-  font-size: 0.9rem;
+  font-weight: 650;
+  font-size: 13px;
   color: #281e16;
   outline: none;
   transition: border-color 0.2s ease, background 0.2s ease;
@@ -192,13 +224,22 @@ const ChatBox: React.FC = () => {
   // Global click: blur chat input when clicking outside the chat container
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Enter" && document.activeElement !== chatInputRef.current) {
+      const interactiveTarget = (e.target as HTMLElement | null)?.closest?.(
+        "input, button, select, textarea, [contenteditable='true']",
+      );
+      if (
+        e.key === "Enter" &&
+        document.activeElement !== chatInputRef.current &&
+        !interactiveTarget &&
+        chatInputRef.current &&
+        chatInputRef.current.offsetParent !== null
+      ) {
         e.preventDefault();
         chatInputRef.current?.focus();
       }
     };
 
-    const handleGlobalClick = (e: MouseEvent) => {
+    const handleGlobalClick = (e: PointerEvent) => {
       const chatContainer = chatInputRef.current?.closest(".chat-container");
       if (chatContainer && !chatContainer.contains(e.target as Node)) {
         chatInputRef.current?.blur();
@@ -206,10 +247,10 @@ const ChatBox: React.FC = () => {
     };
 
     window.addEventListener("keydown", handleGlobalKeyDown);
-    window.addEventListener("mousedown", handleGlobalClick);
+    window.addEventListener("pointerdown", handleGlobalClick);
     return () => {
       window.removeEventListener("keydown", handleGlobalKeyDown);
-      window.removeEventListener("mousedown", handleGlobalClick);
+      window.removeEventListener("pointerdown", handleGlobalClick);
     };
   }, []);
 
@@ -254,7 +295,20 @@ const ChatBox: React.FC = () => {
 
   return (
     <ChatContainer>
-      <ChatContent ref={chatContentRef} onScroll={handleScroll}>
+      <ChatHeader>
+        <span>Trainer Chat</span>
+        <ConnectionStatus $connected={isConnected}>
+          {isConnected ? "Online" : "Offline"}
+        </ConnectionStatus>
+      </ChatHeader>
+      <ChatContent
+        ref={chatContentRef}
+        onScroll={handleScroll}
+        onWheel={(event) => event.stopPropagation()}
+        role="log"
+        aria-live="polite"
+        aria-relevant="additions"
+      >
         {messages.map((message) => (
           <ChatMessage
             key={message.id}
@@ -271,10 +325,18 @@ const ChatBox: React.FC = () => {
           ref={chatInputRef}
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value.slice(0, MAX_CHAT_LENGTH))}
-          onKeyDown={(e) => e.stopPropagation()}
-          placeholder="Type a message..."
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              setInputValue("");
+              chatInputRef.current?.blur();
+            }
+            e.stopPropagation();
+          }}
+          placeholder={isConnected ? "Press Enter to chat…" : "Chat is offline"}
           maxLength={MAX_CHAT_LENGTH}
           autoComplete="off"
+          disabled={!isConnected}
           data-testid="chat-input"
         />
       </ChatInputForm>

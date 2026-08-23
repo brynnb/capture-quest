@@ -15,15 +15,35 @@ import type { HomeTownData } from "@/services/characterService";
 import PokemonDetailModal from "./PokemonDetailModal";
 import { WorldSocket, OpCodes } from "@/net";
 
-const PartyContainer = styled.div`
+const PartyContainer = styled.div<{ $embedded: boolean }>`
   position: absolute;
-  bottom: 345px;
-  right: 40px;
+  top: 18px;
+  right: 18px;
   width: 242px;
   display: flex;
   flex-direction: column;
   gap: 4px;
   z-index: 1000;
+
+  @media (max-width: 850px), (pointer: coarse) {
+    top: calc(64px + env(safe-area-inset-top, 0px));
+    right: calc(10px + env(safe-area-inset-right, 0px));
+    width: min(272px, calc(100vw - 20px));
+    max-height: calc(var(--cq-viewport-height, 100dvh) - 248px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+
+  @media (max-width: 850px), (pointer: coarse) {
+    ${(props) => props.$embedded && `
+      top: 12px !important;
+      right: 12px !important;
+      left: 12px !important;
+      width: auto !important;
+      max-height: calc(48% - 48px);
+    `}
+  }
 `;
 
 const PokemonEntry = styled.div<{ $isPlaceholder?: boolean; $isItemTarget?: boolean }>`
@@ -582,7 +602,11 @@ const PartyPokemonHUD: React.FC<PartyPokemonHUDProps> = ({
 
   if (party.length === 0) {
     return (
-      <PartyContainer id="party-pokemon-hud" style={containerStyle}>
+      <PartyContainer
+        id="party-pokemon-hud"
+        style={containerStyle}
+        $embedded={Boolean(containerStyle)}
+      >
         <EmptyParty>No Pokemon in Party</EmptyParty>
       </PartyContainer>
     );
@@ -593,7 +617,11 @@ const PartyPokemonHUD: React.FC<PartyPokemonHUDProps> = ({
 
   return (
     <>
-      <PartyContainer id="party-pokemon-hud" style={containerStyle}>
+      <PartyContainer
+        id="party-pokemon-hud"
+        style={containerStyle}
+        $embedded={Boolean(containerStyle)}
+      >
         {displayOrder.map((origIdx, displayIdx) => {
           const pokemon = party[origIdx];
           const hpPercent = pokemon.maxHp > 0

@@ -11,16 +11,23 @@ const Overlay = styled.div`
   top: 0; left: 0; width: 100%; height: 100%;
   display: flex; align-items: center; justify-content: center;
   z-index: 2000;
+  padding: max(10px, env(safe-area-inset-top, 0px))
+    max(10px, env(safe-area-inset-right, 0px))
+    max(10px, env(safe-area-inset-bottom, 0px))
+    max(10px, env(safe-area-inset-left, 0px));
+  box-sizing: border-box;
 `;
 
 const Card = styled.div`
-  width: 420px;
+  width: min(420px, 100%);
+  max-height: 100%;
   background: #f8f0e0;
   border: 4px solid #383838;
   border-radius: 12px;
   overflow: hidden;
   font-family: 'Outfit', monospace, sans-serif;
   filter: drop-shadow(0 16px 40px rgba(0,0,0,0.4));
+  overflow-y: auto;
 `;
 
 const CardHeader = styled.div`

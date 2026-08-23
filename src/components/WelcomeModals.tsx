@@ -7,8 +7,8 @@ const ModalOverlay = styled.div<{ $visible: boolean; $zIndex: number }>`
   position: fixed;
   inset: 0;
   width: 100vw;
-  height: 100vh;
-  rgba(3, 78, 255, 0.16);
+  height: var(--cq-viewport-height, 100dvh);
+  background: rgba(3, 78, 255, 0.16);
   backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
@@ -242,13 +242,7 @@ const ToggleSwitch = styled.div<{ $active: boolean }>`
 `;
 
 export const WelcomeModals = () => {
-  const shouldShowDesktopWarning = window.innerWidth < 768;
-  const [welcomeVisible, setWelcomeVisible] = useState(
-    !shouldShowDesktopWarning,
-  );
-  const [warningVisible, setWarningVisible] = useState(
-    shouldShowDesktopWarning,
-  );
+  const [welcomeVisible, setWelcomeVisible] = useState(true);
   const { isMuted, toggleMute } = useGameStatusStore();
 
   const initializeAudio = async () => {
@@ -270,17 +264,12 @@ export const WelcomeModals = () => {
     setWelcomeVisible(false);
   };
 
-  const handleCloseWarning = () => {
-    setWarningVisible(false);
-    setWelcomeVisible(true);
-  };
-
   const handleToggleSound = () => {
     initializeAudio();
     toggleMute();
   };
 
-  if (!welcomeVisible && !warningVisible) return null;
+  if (!welcomeVisible) return null;
 
   return (
     <>
@@ -337,23 +326,6 @@ export const WelcomeModals = () => {
             or The Pokémon Company. Pokémon is a registered trademark of
             Nintendo.
           </ModalFooter>
-        </ModalContent>
-      </ModalOverlay>
-
-      <ModalOverlay $visible={warningVisible} $zIndex={1001}>
-        <ModalContent $maxWidth="500px">
-          <ModalBody $center>
-            <h2 style={{ marginBottom: "20px" }}>🖥️ Desktop Recommended</h2>
-            <p>
-              CaptureQuest uses a fixed-size classic UI and is designed for
-              desktop browsers and larger screen resolutions. You may experience
-              limited functionality or display issues on mobile devices and
-              smaller screens.
-            </p>
-            <CloseButton onClick={handleCloseWarning}>
-              Continue Anyway
-            </CloseButton>
-          </ModalBody>
         </ModalContent>
       </ModalOverlay>
     </>

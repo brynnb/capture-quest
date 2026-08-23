@@ -22,6 +22,15 @@ const Wrapper = styled.div`
   background-size: cover;
   background-repeat: no-repeat;
   background-position: center;
+  padding: 12px 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+
+  @media (max-width: 650px), (max-height: 760px), (pointer: coarse) {
+    justify-content: flex-start;
+    padding: max(10px, env(safe-area-inset-top, 0px)) 0
+      max(10px, env(safe-area-inset-bottom, 0px));
+  }
 `;
 
 const CenterColumn = styled.div`
@@ -29,22 +38,51 @@ const CenterColumn = styled.div`
   flex-direction: column;
   align-items: center;
   gap: 24px;
+  width: min(540px, calc(100% - 24px));
+  flex: 0 0 auto;
 
   .selection-button {
-    width: 460px;
+    width: min(460px, calc(100vw - 40px));
+  }
+
+  @media (max-width: 650px), (max-height: 760px), (pointer: coarse) {
+    gap: 10px;
+  }
+
+  @media (max-height: 500px) and (min-width: 651px) {
+    display: grid;
+    width: min(800px, calc(100% - 24px));
+    grid-template-columns: minmax(180px, 0.8fr) minmax(340px, 1.2fr);
+    grid-template-areas:
+      "logo form"
+      "logo actions"
+      "logo status";
+    gap: 7px 18px;
   }
 `;
 
 const Logo = styled.img`
-  max-width: 500px;
+  width: min(500px, calc(100vw - 40px));
+  max-height: 22vh;
   height: auto;
+  object-fit: contain;
+
+  @media (max-width: 650px), (max-height: 760px), (pointer: coarse) {
+    max-height: 82px;
+  }
+
+  @media (max-height: 500px) and (min-width: 651px) {
+    grid-area: logo;
+    width: 100%;
+    max-height: 180px;
+  }
 `;
 
 const FormPanel = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: 500px;
+  width: min(500px, calc(100vw - 24px));
   gap: 10px;
   padding: 36px 40px;
   box-sizing: border-box;
@@ -53,6 +91,20 @@ const FormPanel = styled.div`
   border: 4px solid #4a4ba6;
   border-radius: 30px;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+
+  @media (max-width: 600px), (max-height: 760px) {
+    gap: 6px;
+    padding: 20px 18px;
+    border-width: 3px;
+    border-radius: 18px;
+  }
+
+  @media (max-height: 500px) and (min-width: 651px) {
+    grid-area: form;
+    width: 100%;
+    gap: 4px;
+    padding: 10px 14px;
+  }
 `;
 
 const Title = styled.h1`
@@ -61,6 +113,16 @@ const Title = styled.h1`
   color: #2e2f66;
   font-size: 36px;
   margin: 0 0 16px;
+
+  @media (max-width: 650px), (max-height: 760px), (pointer: coarse) {
+    margin-bottom: 5px;
+    font-size: 27px;
+  }
+
+  @media (max-height: 500px) and (min-width: 651px) {
+    margin-bottom: 0;
+    font-size: 23px;
+  }
 `;
 
 const InputGroup = styled.div`
@@ -69,6 +131,16 @@ const InputGroup = styled.div`
   gap: 8px;
   width: 100%;
   margin-bottom: 14px;
+
+  @media (max-width: 650px), (max-height: 760px), (pointer: coarse) {
+    gap: 4px;
+    margin-bottom: 5px;
+  }
+
+  @media (max-height: 500px) and (min-width: 651px) {
+    gap: 3px;
+    margin-bottom: 0;
+  }
 `;
 
 const InputLabel = styled.label`
@@ -79,6 +151,14 @@ const InputLabel = styled.label`
   text-transform: uppercase;
   width: 100%;
   text-align: center;
+
+  @media (max-width: 650px), (max-height: 760px), (pointer: coarse) {
+    font-size: 13px;
+  }
+
+  @media (max-height: 500px) and (min-width: 651px) {
+    font-size: 12px;
+  }
 `;
 
 const TextInput = styled.input`
@@ -114,14 +194,47 @@ const TextInput = styled.input`
     color: #4a4ba6;
     opacity: 0.6;
   }
+
+  @media (max-width: 650px), (max-height: 760px), (pointer: coarse) {
+    padding: 8px 10px;
+    font-size: 16px;
+  }
+
+  @media (max-height: 500px) and (min-width: 651px) {
+    padding: 6px 9px;
+    font-size: 15px;
+  }
 `;
 
 const SecondaryActions = styled.div`
   display: flex;
   gap: 16px;
+  width: min(460px, calc(100vw - 24px));
 
   .selection-button {
     width: 222px;
+  }
+
+  @media (max-width: 650px), (max-height: 760px), (pointer: coarse) {
+    gap: 8px;
+
+    .selection-button {
+      width: auto;
+      min-width: 0;
+      flex: 1;
+    }
+  }
+
+  @media (max-height: 500px) and (min-width: 651px) {
+    grid-area: actions;
+    width: 100%;
+    gap: 8px;
+
+    .selection-button {
+      width: auto;
+      min-width: 0;
+      flex: 1;
+    }
   }
 `;
 
@@ -136,6 +249,10 @@ const OfflineText = styled.p`
   &.offline {
     color: #ffaf84;
   }
+
+  @media (max-height: 500px) {
+    font-size: 14px;
+  }
 `;
 
 const OfflineWarning = styled(OfflineText)`
@@ -149,6 +266,11 @@ const StatusSlot = styled.div`
   align-items: center;
   justify-content: center;
   overflow: visible;
+
+  @media (max-height: 500px) and (min-width: 651px) {
+    grid-area: status;
+    height: 24px;
+  }
 `;
 
 const LoginPage = () => {

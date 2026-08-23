@@ -8,7 +8,8 @@ import { GameFrameOverlay } from "@/components/Interface/GameFrameOverlay";
 
 const PCWindow = styled.div`
   width: 640px;
-  max-height: 600px;
+  max-width: 100%;
+  max-height: min(600px, calc(var(--cq-viewport-height, 100dvh) - 24px));
   background: #f8f8f0;
   border: 4px solid #383838;
   border-radius: 12px;
@@ -19,6 +20,12 @@ const PCWindow = styled.div`
   font-size: 11px;
   color: #383838;
   overflow: hidden;
+
+  @media (max-width: 650px), (pointer: coarse) {
+    width: 100%;
+    max-height: calc(var(--cq-viewport-height, 100dvh) - 24px);
+    font-size: 9px;
+  }
 `;
 
 const PCHeader = styled.div`
@@ -32,6 +39,11 @@ const PCHeader = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
+
+  @media (max-width: 650px), (pointer: coarse) {
+    padding: 9px 10px;
+    font-size: 10px;
+  }
 `;
 
 const BoxNav = styled.div`
@@ -42,6 +54,10 @@ const BoxNav = styled.div`
   background: #e8e8d8;
   border-bottom: 2px solid #c8c8b8;
   justify-content: center;
+
+  @media (max-width: 650px), (pointer: coarse) {
+    padding: 7px 8px;
+  }
 `;
 
 const NavButton = styled.button`
@@ -61,7 +77,12 @@ const NavButton = styled.button`
 const ContentArea = styled.div`
   display: flex;
   flex: 1;
+  min-height: 0;
   overflow: hidden;
+
+  @media (max-width: 650px), (pointer: coarse) {
+    flex-direction: column;
+  }
 `;
 
 const MenuArea = styled.div`
@@ -71,6 +92,11 @@ const MenuArea = styled.div`
   gap: 10px;
   min-height: 260px;
   background: #f8f8f0;
+
+  @media (max-width: 650px), (pointer: coarse) {
+    min-height: 0;
+    padding: 12px;
+  }
 `;
 
 const MenuButton = styled.button`
@@ -110,6 +136,12 @@ const BoxPanel = styled.div`
   padding: 8px;
   overflow-y: auto;
   border-right: 2px solid #c8c8b8;
+
+  @media (max-width: 650px), (pointer: coarse) {
+    min-height: 150px;
+    border-right: 0;
+    border-bottom: 2px solid #c8c8b8;
+  }
 `;
 
 const PartyPanel = styled.div`
@@ -117,6 +149,11 @@ const PartyPanel = styled.div`
   padding: 8px;
   overflow-y: auto;
   background: #f0f0e8;
+
+  @media (max-width: 650px), (pointer: coarse) {
+    width: auto;
+    max-height: 150px;
+  }
 `;
 
 const PanelTitle = styled.div`
@@ -174,6 +211,11 @@ const Footer = styled.div`
   gap: 8px;
   justify-content: flex-end;
   background: #e8e8d8;
+
+  @media (max-width: 650px), (pointer: coarse) {
+    flex-wrap: wrap;
+    padding: 8px;
+  }
 `;
 
 const PCButton = styled.button<{

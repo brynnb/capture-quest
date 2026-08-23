@@ -215,21 +215,32 @@ function isEditableKeyboardTarget(target: EventTarget | null): boolean {
 
 const BattleOverlay = styled.div`
   position: absolute;
-  top: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 480px;
+  inset: 0;
   z-index: 2000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: max(20px, env(safe-area-inset-top, 0px))
+    max(12px, env(safe-area-inset-right, 0px))
+    max(12px, env(safe-area-inset-bottom, 0px))
+    max(12px, env(safe-area-inset-left, 0px));
+  box-sizing: border-box;
+  overflow: auto;
+  overscroll-behavior: contain;
+  pointer-events: none;
   font-family: "Press Start 2P", "Pokemon GB", monospace;
   image-rendering: pixelated;
 `;
 
 const BattleWindow = styled.div`
+  width: min(480px, 100%);
+  flex: 0 0 auto;
   background: #f8f8f8;
   border: 4px solid #383838;
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  pointer-events: auto;
 `;
 
 const BattleScene = styled.div`
@@ -246,6 +257,11 @@ const BattleScene = styled.div`
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+
+  @media (max-width: 500px), (pointer: coarse) {
+    height: 168px;
+    padding: 9px 10px;
+  }
 `;
 
 const EnemySprite = styled.img`
@@ -256,6 +272,13 @@ const EnemySprite = styled.img`
   height: 96px;
   image-rendering: pixelated;
   filter: drop-shadow(2px 2px 0 rgba(0, 0, 0, 0.2));
+
+  @media (max-width: 500px), (pointer: coarse) {
+    top: 29px;
+    right: 18px;
+    width: 72px;
+    height: 72px;
+  }
 `;
 
 const PlayerSprite = styled.img`
@@ -266,6 +289,12 @@ const PlayerSprite = styled.img`
   height: 96px;
   image-rendering: pixelated;
   filter: drop-shadow(2px 2px 0 rgba(0, 0, 0, 0.2));
+
+  @media (max-width: 500px), (pointer: coarse) {
+    left: 18px;
+    width: 72px;
+    height: 72px;
+  }
 `;
 
 const EnemyInfo = styled.div`
@@ -277,6 +306,12 @@ const EnemyInfo = styled.div`
   border-radius: 4px;
   padding: 6px 10px;
   min-width: 200px;
+
+  @media (max-width: 500px), (pointer: coarse) {
+    width: min(62%, 210px);
+    min-width: 0;
+    padding: 5px 7px;
+  }
 `;
 
 const PlayerInfo = styled.div`
@@ -288,6 +323,12 @@ const PlayerInfo = styled.div`
   border-radius: 4px;
   padding: 6px 10px;
   min-width: 220px;
+
+  @media (max-width: 500px), (pointer: coarse) {
+    width: min(66%, 220px);
+    min-width: 0;
+    padding: 5px 7px;
+  }
 `;
 
 const PokemonNameRow = styled.div`

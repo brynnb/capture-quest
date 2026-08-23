@@ -4,8 +4,8 @@ import useGameStatusStore from "@stores/GameStatusStore";
 import ActionButton from "@components/Interface/ActionButton";
 
 const CenterViewport = styled.div`
-  width: 902px;
-  height: 650px;
+  width: min(902px, calc(100% - 48px));
+  height: min(650px, calc(100% - 64px));
   position: absolute;
   left: 50%;
   top: 30px;
@@ -22,6 +22,17 @@ const CenterViewport = styled.div`
   box-shadow: 0 12px 48px rgba(0, 0, 0, 0.3);
   transition: all 0.3s ease;
   box-sizing: border-box;
+
+  @media (max-width: 850px), (pointer: coarse) {
+    inset: calc(10px + env(safe-area-inset-top, 0px)) 10px
+      calc(10px + env(safe-area-inset-bottom, 0px));
+    width: auto;
+    height: auto;
+    padding: 22px 18px 74px;
+    border-width: 3px;
+    border-radius: 16px;
+    transform: none;
+  }
 `;
 
 const HelpTitle = styled.h2`
@@ -129,8 +140,9 @@ const HelpDisplay: React.FC = () => {
         <SectionHeading>Controls</SectionHeading>
         <FeatureList>
           <li>Use WASD or arrow keys to move your character</li>
+          <li>On touch screens, use the D-pad to move and the A button to interact</li>
           <li>Click/tap on the map to move to a location</li>
-          <li>Use the toolbar icons to access the Pok&eacute;dex, inventory, fishing, and more</li>
+          <li>Use the left game menu to open your party, Bag, Pok&eacute;dex, and settings</li>
           <li>Walk into tall grass to encounter wild Pok&eacute;mon</li>
           <li>Visit Pok&eacute; Marts and Pok&eacute;mon Centers in towns</li>
           <li>Chat with other players using the chatbox</li>

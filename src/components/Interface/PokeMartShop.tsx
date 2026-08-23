@@ -9,7 +9,7 @@ import { GameFrameOverlay } from "@/components/Interface/GameFrameOverlay";
 const ShopWindow = styled.div`
   width: 420px;
   max-width: calc(100% - 48px);
-  max-height: 520px;
+  max-height: min(520px, calc(var(--cq-viewport-height, 100dvh) - 24px));
   background: #f8f8f0;
   border: 4px solid #383838;
   border-radius: 12px;
@@ -20,6 +20,13 @@ const ShopWindow = styled.div`
   font-size: 11px;
   color: #383838;
   overflow: hidden;
+
+  @media (max-width: 500px), (pointer: coarse), (max-height: 600px) {
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(var(--cq-viewport-height, 100dvh) - 24px);
+    font-size: 9px;
+  }
 `;
 
 const ShopHeader = styled.div`
@@ -83,6 +90,11 @@ const Footer = styled.div`
   gap: 8px;
   justify-content: flex-end;
   background: #e8e8d8;
+
+  @media (max-width: 500px), (pointer: coarse) {
+    flex-wrap: wrap;
+    padding: 8px;
+  }
 `;
 
 const ShopButton = styled.button<{ $variant?: "buy" | "cancel" }>`

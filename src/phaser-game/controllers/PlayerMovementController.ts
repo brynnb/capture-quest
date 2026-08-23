@@ -1429,6 +1429,15 @@ export class PlayerMovementController {
         this.currentMapId,
         this.currentDirection,
       );
+
+      // Finish the current visual step, then discard any queued user path as
+      // soon as a panel, dialogue, battle, shop, or modal takes input focus.
+      // Cutscenes are excluded because their scripted movement must continue.
+      if (isWorldInputFrozen({ includeCutscene: false })) {
+        this.stopMovement();
+        return;
+      }
+
       const requestedWarpId = this.activeMoveDestination?.activateWarpId;
       const reachedMoveDestination =
         this.activeMoveDestination !== null &&

@@ -32,6 +32,13 @@ const FilterBar = styled.div`
   gap: 4px;
   z-index: 2500;
   pointer-events: auto;
+
+  @media (max-width: 850px), (pointer: coarse) {
+    top: calc(48% - 30px);
+    right: 12px;
+    left: 12px;
+    width: auto;
+  }
 `;
 
 const FilterButton = styled.button<{ $active: boolean }>`
@@ -82,6 +89,15 @@ const ItemListContainer = styled.div`
   &::-webkit-scrollbar-thumb {
     background-color: rgba(74, 75, 166, 0.4);
     border-radius: 3px;
+  }
+
+  @media (max-width: 850px), (pointer: coarse) {
+    top: 48%;
+    right: 12px;
+    bottom: calc(68px + env(safe-area-inset-bottom, 0px));
+    left: 12px;
+    width: auto;
+    height: auto;
   }
 `;
 

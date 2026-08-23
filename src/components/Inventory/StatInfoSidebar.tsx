@@ -30,6 +30,10 @@ const StatInfoBarWrapper = styled.div.attrs({
   flex-direction: column;
   gap: 10px;
   font-family: "Pokemon GB", "Press Start 2P", "Outfit", monospace;
+
+  @media (max-width: 850px), (pointer: coarse) {
+    display: none;
+  }
 `;
 
 const TrainerHeader = styled.div`

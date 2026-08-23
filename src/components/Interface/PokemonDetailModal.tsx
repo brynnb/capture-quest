@@ -32,16 +32,24 @@ const Overlay = styled.div`
   align-items: center;
   justify-content: center;
   z-index: 5000;
+  padding: max(12px, env(safe-area-inset-top, 0px))
+    max(12px, env(safe-area-inset-right, 0px))
+    max(12px, env(safe-area-inset-bottom, 0px))
+    max(12px, env(safe-area-inset-left, 0px));
+  box-sizing: border-box;
 `;
 
 const Modal = styled.div`
   width: 420px;
+  max-width: 100%;
+  max-height: calc(var(--cq-viewport-height, 100dvh) - 24px);
   background: #f8f0e0;
   border: 4px solid #383838;
   border-radius: 8px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   font-family: 'Outfit', monospace, sans-serif;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 `;
 
 const Header = styled.div`
@@ -51,6 +59,11 @@ const Header = styled.div`
   display: flex;
   align-items: center;
   gap: 12px;
+
+  @media (max-width: 440px), (pointer: coarse) {
+    padding: 10px;
+    gap: 8px;
+  }
 `;
 
 const SpriteBox = styled.div`
@@ -69,6 +82,16 @@ const SpriteBox = styled.div`
     height: 72px;
     image-rendering: pixelated;
     object-fit: contain;
+  }
+
+  @media (max-width: 440px), (pointer: coarse) {
+    width: 64px;
+    height: 64px;
+
+    img {
+      width: 58px;
+      height: 58px;
+    }
   }
 `;
 
@@ -90,6 +113,10 @@ const PokeName = styled.span`
   font-weight: 800;
   color: #1a1a1a;
   text-transform: capitalize;
+
+  @media (max-width: 440px), (pointer: coarse) {
+    font-size: 18px;
+  }
 `;
 
 const PokeLevel = styled.span`

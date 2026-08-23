@@ -1,9 +1,26 @@
-import React from "react";
+import { useEffect, useRef, useState } from "react";
 import styled from "styled-components";
-import SystemOptions from "./SystemOptions";
+import {
+  FiBookOpen,
+  FiChevronLeft,
+  FiChevronRight,
+  FiCrosshair,
+  FiGrid,
+  FiHelpCircle,
+  FiHome,
+  FiLogOut,
+  FiMap,
+  FiMenu,
+  FiMessageSquare,
+  FiSettings,
+  FiUser,
+  FiUsers,
+  FiVolume2,
+  FiVolumeX,
+} from "react-icons/fi";
 import Chatbox from "./Chatbox";
+import MobileControls from "./MobileControls";
 import PokemonDialogueBox from "@/components/PokemonDialogueBox";
-import ActionButton from "@components/Interface/ActionButton";
 import useGameStatusStore from "@stores/GameStatusStore";
 import useGameScreenStore from "@stores/GameScreenStore";
 import useCharacterSelectStore from "@stores/CharacterSelectStore";
@@ -11,66 +28,417 @@ import usePlayerCharacterStore from "@stores/PlayerCharacterStore";
 import { WorldSocket, OpCodes } from "@/net";
 import AudioManager from "@/services/audio/AudioManager";
 import usePokeBattleStore from "@stores/PokeBattleStore";
+import usePokemonDialogueStore from "@stores/PokemonDialogueStore";
 import { cancelActiveCutscene } from "@/phaser-game/services/CutsceneService";
-import { sfxPathForConstant } from "@/services/audio/pokemonMusic";
 
-const HUDContainer = styled.div`
+const HudLayer = styled.div`
   position: absolute;
-  bottom: 30px;
-  left: 40px;
-  right: 40px;
-  height: 300px; /* Fixed height for all bottom elements */
-  display: flex;
-  gap: 15px;
-  align-items: flex-end;
+  inset: 0;
   z-index: 1000;
+  pointer-events: none;
 `;
 
-const SidebarSection = styled.div<{ $isHidden?: boolean }>`
-  width: 242px;
-  height: 100%;
-  background: rgba(192, 193, 255, 0.57);
-  backdrop-filter: blur(12px);
-  border: 4px solid #4a4ba6;
-  border-radius: 24px;
-  padding: 20px 10px;
-  box-sizing: border-box;
-  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.2);
+const Rail = styled.aside<{ $collapsed: boolean }>`
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: ${(props) => (props.$collapsed ? "64px" : "272px")};
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  color: #25265f;
+  background:
+    linear-gradient(180deg, rgba(226, 227, 255, 0.96), rgba(192, 193, 255, 0.86)),
+    url("/assets/pokewallpaper2.png");
+  background-size: auto, 260px;
+  border-right: 4px solid #4a4ba6;
+  box-shadow: 12px 0 36px rgba(20, 21, 67, 0.24);
+  backdrop-filter: blur(14px);
+  box-sizing: border-box;
+  pointer-events: auto;
   overflow: hidden;
-  justify-content: flex-start;
-  opacity: ${({ $isHidden }) => ($isHidden ? 0 : 1)};
-  pointer-events: ${({ $isHidden }) => ($isHidden ? "none" : "auto")};
-  transition: opacity 0.2s ease;
+  transition: width 180ms ease;
+
+  @media (max-width: 850px), (pointer: coarse) {
+    top: calc(10px + env(safe-area-inset-top, 0px));
+    bottom: ${(props) =>
+      props.$collapsed
+        ? "auto"
+        : "calc(10px + env(safe-area-inset-bottom, 0px))"};
+    left: calc(10px + env(safe-area-inset-left, 0px));
+    z-index: 40;
+    width: ${(props) => (props.$collapsed ? "44px" : "min(292px, calc(100vw - 20px))")};
+    height: ${(props) => (props.$collapsed ? "44px" : "auto")};
+    max-height: ${(props) => (props.$collapsed ? "44px" : "none")};
+    border: 2px solid #4a4ba6;
+    border-radius: 14px;
+    box-shadow: 0 18px 48px rgba(20, 21, 67, 0.34);
+    transition: width 160ms ease, height 160ms ease;
+  }
 `;
 
-const ChatSection = styled.div`
+const RailToggle = styled.button`
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  place-items: center;
+  color: #2e2f66;
+  background: rgba(255, 255, 255, 0.7);
+  border: 2px solid #4a4ba6;
+  border-radius: 10px;
+  box-shadow: 0 3px 0 #4a4ba6;
+
+  svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  &:hover {
+    background: #fff;
+  }
+
+  &:active {
+    transform: translateY(2px);
+    box-shadow: 0 1px 0 #4a4ba6;
+  }
+
+  @media (max-width: 850px), (pointer: coarse) {
+    top: 0;
+    right: 0;
+    width: 40px;
+    height: 40px;
+    border: 0;
+    box-shadow: none;
+  }
+`;
+
+const RailBody = styled.div<{ $collapsed: boolean }>`
+  display: ${(props) => (props.$collapsed ? "none" : "flex")};
+  min-height: 0;
   flex: 1;
-  height: 100%;
-  min-width: 0;
-  position: relative;
+  flex-direction: column;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 `;
 
-const BottomHUD: React.FC = () => {
+const Brand = styled.header`
+  padding: 18px 60px 15px 18px;
+  border-bottom: 2px solid rgba(74, 75, 166, 0.2);
+`;
+
+const BrandTitle = styled.div`
+  font-family: "Pokemon GB", "Outfit", sans-serif;
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  color: #2e2f66;
+`;
+
+const Location = styled.div`
+  margin-top: 6px;
+  overflow: hidden;
+  color: #4a4ba6;
+  font-family: "Outfit", sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+`;
+
+const TrainerSummary = styled.div`
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  margin: 12px 12px 4px;
+  padding: 11px;
+  background: rgba(255, 255, 255, 0.54);
+  border: 2px solid rgba(74, 75, 166, 0.34);
+  border-radius: 14px;
+`;
+
+const TrainerAvatar = styled.div`
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  color: #2e2f66;
+  background: #a7edfe;
+  border: 2px solid #4a4ba6;
+  border-radius: 50%;
+
+  svg {
+    width: 21px;
+    height: 21px;
+  }
+`;
+
+const TrainerName = styled.div`
+  overflow: hidden;
+  color: #25265f;
+  font-family: "Outfit", sans-serif;
+  font-size: 15px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+`;
+
+const TrainerMoney = styled.div`
+  color: #5b5c91;
+  font-family: "Outfit", sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+`;
+
+const RailSection = styled.section`
+  padding: 10px 12px 0;
+`;
+
+const SectionLabel = styled.h2`
+  margin: 0 0 7px 4px;
+  color: #63649a;
+  font-family: "Outfit", sans-serif;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+`;
+
+const ButtonGrid = styled.div<{ $columns?: number }>`
+  display: grid;
+  grid-template-columns: repeat(${(props) => props.$columns ?? 2}, minmax(0, 1fr));
+  gap: 7px;
+`;
+
+const RailButton = styled.button<{ $active?: boolean; $danger?: boolean }>`
+  display: flex;
+  min-width: 0;
+  min-height: 45px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 8px 9px;
+  color: ${(props) => (props.$danger ? "#7f2633" : "#2e2f66")};
+  background: ${(props) =>
+    props.$active
+      ? "linear-gradient(180deg, #c8f3fe, #a7edfe)"
+      : props.$danger
+        ? "rgba(255, 204, 217, 0.72)"
+        : "rgba(255, 255, 255, 0.62)"};
+  border: 2px solid ${(props) => (props.$danger ? "#a84d65" : "#4a4ba6")};
+  border-radius: 10px;
+  box-shadow: 0 3px 0 ${(props) => (props.$danger ? "#a84d65" : "#4a4ba6")};
+  font-family: "Outfit", sans-serif;
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1.05;
+  text-align: left;
+
+  svg {
+    flex: 0 0 auto;
+    width: 17px;
+    height: 17px;
+  }
+
+  &:hover {
+    background: ${(props) => (props.$danger ? "#ffdbe5" : "#fff")};
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(2px);
+    box-shadow: 0 1px 0 ${(props) => (props.$danger ? "#a84d65" : "#4a4ba6")};
+  }
+`;
+
+const RailFooter = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  margin-top: auto;
+  padding: 12px;
+  border-top: 2px solid rgba(74, 75, 166, 0.18);
+`;
+
+const ChatDock = styled.div<{ $collapsed: boolean; $mobileOpen: boolean }>`
+  position: absolute;
+  bottom: 16px;
+  left: ${(props) => (props.$collapsed ? "80px" : "288px")};
+  z-index: 20;
+  width: min(520px, calc(100vw - ${(props) => (props.$collapsed ? "176px" : "384px")}));
+  height: 214px;
+  pointer-events: auto;
+  transition: left 180ms ease;
+
+  @media (max-width: 850px), (pointer: coarse) {
+    top: calc(64px + env(safe-area-inset-top, 0px));
+    right: calc(10px + env(safe-area-inset-right, 0px));
+    bottom: calc(172px + env(safe-area-inset-bottom, 0px));
+    left: calc(10px + env(safe-area-inset-left, 0px));
+    z-index: 35;
+    display: ${(props) => (props.$mobileOpen ? "block" : "none")};
+    width: auto;
+    height: auto;
+    min-height: 220px;
+  }
+
+  @media (max-height: 600px) and (max-width: 850px),
+    (max-height: 600px) and (pointer: coarse) {
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    min-height: 0;
+  }
+`;
+
+const DialogueAnchor = styled.div<{ $collapsed: boolean }>`
+  position: absolute;
+  right: 24px;
+  bottom: 246px;
+  left: ${(props) => (props.$collapsed ? "80px" : "288px")};
+  z-index: 22;
+  height: 0;
+  pointer-events: none;
+  transition: left 180ms ease;
+
+  @media (max-width: 850px), (pointer: coarse) {
+    right: calc(10px + env(safe-area-inset-right, 0px));
+    bottom: calc(168px + env(safe-area-inset-bottom, 0px));
+    left: calc(10px + env(safe-area-inset-left, 0px));
+  }
+`;
+
+const MobileChatToggle = styled.button<{ $open: boolean }>`
+  display: none;
+
+  @media (max-width: 850px), (pointer: coarse) {
+    position: absolute;
+    top: calc(10px + env(safe-area-inset-top, 0px));
+    right: calc(10px + env(safe-area-inset-right, 0px));
+    z-index: 42;
+    display: grid;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    place-items: center;
+    color: #2e2f66;
+    background: ${(props) => (props.$open ? "#a7edfe" : "rgba(226, 227, 255, 0.88)")};
+    border: 2px solid #4a4ba6;
+    border-radius: 12px;
+    box-shadow: 0 4px 0 #4a4ba6;
+    pointer-events: auto;
+
+    svg {
+      width: 20px;
+      height: 20px;
+    }
+  }
+`;
+
+function useCompactViewport(): boolean {
+  const [compact, setCompact] = useState(false);
+
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 850px), (pointer: coarse)");
+    const update = () => setCompact(query.matches);
+    update();
+    query.addEventListener?.("change", update);
+    return () => query.removeEventListener?.("change", update);
+  }, []);
+
+  return compact;
+}
+
+const BottomHUD = () => {
   const {
+    currentMap,
+    getMapNameById,
     isPokedexOpen,
     togglePokedex,
+    isTrainerCardOpen,
+    toggleTrainerCard,
     isGroupOpen,
     toggleGroup,
     setCurrentMap,
     isInventoryOpen,
     toggleInventory,
+    isOptionsOpen,
+    toggleOptions,
+    isHelpOpen,
+    toggleHelp,
+    isMuted,
+    toggleMute,
     isWarpMode,
     toggleWarpMode,
     isCameraFollowEnabled,
     toggleCameraFollow,
+    isHudSidebarCollapsed,
+    setHudSidebarCollapsed,
+    toggleHudSidebar,
+    isMobileChatOpen,
+    setMobileChatOpen,
+    toggleMobileChat,
   } = useGameStatusStore();
-
+  const compact = useCompactViewport();
+  const dialogueOpen = usePokemonDialogueStore((state) => state.isOpen);
+  const previousCompact = useRef<boolean | null>(null);
   const { setScreen } = useGameScreenStore();
   const { setPendingSelectName } = useCharacterSelectStore();
   const { characterProfile } = usePlayerCharacterStore();
+
+  useEffect(() => {
+    const enteringCompact = compact && previousCompact.current !== true;
+    previousCompact.current = compact;
+    if (!enteringCompact) return;
+    setHudSidebarCollapsed(true);
+    setMobileChatOpen(false);
+    if (isGroupOpen) toggleGroup();
+  }, [
+    compact,
+    isGroupOpen,
+    setHudSidebarCollapsed,
+    setMobileChatOpen,
+    toggleGroup,
+  ]);
+
+  useEffect(() => {
+    if (!compact || !dialogueOpen) return;
+    setMobileChatOpen(false);
+    setHudSidebarCollapsed(true);
+  }, [
+    compact,
+    dialogueOpen,
+    setHudSidebarCollapsed,
+    setMobileChatOpen,
+  ]);
+
+  useEffect(() => {
+    if (!compact) return;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (isMobileChatOpen) setMobileChatOpen(false);
+      if (!isHudSidebarCollapsed) setHudSidebarCollapsed(true);
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [
+    compact,
+    isHudSidebarCollapsed,
+    isMobileChatOpen,
+    setHudSidebarCollapsed,
+    setMobileChatOpen,
+  ]);
+
+  const runRailAction = (action: () => void) => {
+    action();
+    if (compact) setHudSidebarCollapsed(true);
+  };
 
   const handleQuit = async () => {
     if (characterProfile?.name) {
@@ -89,73 +457,117 @@ const BottomHUD: React.FC = () => {
     await WorldSocket.sendJsonMessage(OpCodes.WarpHomeRequest, {});
   };
 
+  const locationName = currentMap == null
+    ? "Exploring Kanto"
+    : getMapNameById(currentMap) ?? `Map ${currentMap}`;
+
   return (
-    <HUDContainer id="bottom-hud">
-      <SidebarSection className="left-sidebar-bottom-section">
-        <SystemOptions showInventory={false} />
-        <ActionButton
-          text="Warp Home"
-          onClick={handleWarpHome}
-          marginBottom="4px"
-        />
-        <ActionButton
-          text="Quit"
-          onClick={handleQuit}
-          marginBottom="0"
-        />
-      </SidebarSection>
+    <HudLayer id="bottom-hud">
+      <Rail $collapsed={isHudSidebarCollapsed} aria-label="Game menu">
+        <RailToggle
+          type="button"
+          onClick={toggleHudSidebar}
+          aria-label={isHudSidebarCollapsed ? "Open game menu" : "Collapse game menu"}
+          aria-expanded={!isHudSidebarCollapsed}
+        >
+          {isHudSidebarCollapsed
+            ? compact ? <FiMenu /> : <FiChevronRight />
+            : <FiChevronLeft />}
+        </RailToggle>
+        <RailBody $collapsed={isHudSidebarCollapsed}>
+          <Brand>
+            <BrandTitle>CAPTUREQUEST</BrandTitle>
+            <Location>{locationName}</Location>
+          </Brand>
+          <TrainerSummary>
+            <TrainerAvatar><FiUser /></TrainerAvatar>
+            <div>
+              <TrainerName>{characterProfile?.name ?? "Trainer"}</TrainerName>
+              <TrainerMoney>
+                ¥{(characterProfile?.pokedollars ?? 0).toLocaleString()}
+              </TrainerMoney>
+            </div>
+          </TrainerSummary>
 
-      <ChatSection>
-        <PokemonDialogueBox />
-        <Chatbox />
-      </ChatSection>
+          <RailSection>
+            <SectionLabel>Trainer</SectionLabel>
+            <ButtonGrid>
+              <RailButton $active={isGroupOpen} onClick={() => runRailAction(toggleGroup)}>
+                <FiUsers /> Party
+              </RailButton>
+              <RailButton $active={isInventoryOpen} onClick={() => runRailAction(toggleInventory)}>
+                <FiGrid /> Bag
+              </RailButton>
+              <RailButton $active={isPokedexOpen} onClick={() => runRailAction(togglePokedex)}>
+                <FiBookOpen /> Pokédex
+              </RailButton>
+              <RailButton $active={isTrainerCardOpen} onClick={() => runRailAction(toggleTrainerCard)}>
+                <FiUser /> Trainer
+              </RailButton>
+            </ButtonGrid>
+          </RailSection>
 
-      <SidebarSection
-        className="right-sidebar-bottom-section"
-        $isHidden={isInventoryOpen}
+          <RailSection>
+            <SectionLabel>World</SectionLabel>
+            <ButtonGrid>
+              <RailButton $active={!isCameraFollowEnabled} onClick={() => runRailAction(toggleCameraFollow)}>
+                <FiMap /> View Map
+              </RailButton>
+              <RailButton $active={isWarpMode} onClick={() => runRailAction(toggleWarpMode)}>
+                <FiCrosshair /> Instant Warp
+              </RailButton>
+            </ButtonGrid>
+          </RailSection>
+
+          <RailSection>
+            <SectionLabel>System</SectionLabel>
+            <ButtonGrid>
+              <RailButton $active={isOptionsOpen} onClick={() => runRailAction(toggleOptions)}>
+                <FiSettings /> Options
+              </RailButton>
+              <RailButton $active={isHelpOpen} onClick={() => runRailAction(toggleHelp)}>
+                <FiHelpCircle /> Help
+              </RailButton>
+              <RailButton $active={isMuted} onClick={() => runRailAction(toggleMute)}>
+                {isMuted ? <FiVolumeX /> : <FiVolume2 />} Mute
+              </RailButton>
+            </ButtonGrid>
+          </RailSection>
+
+          <RailFooter>
+            <RailButton onClick={() => void handleWarpHome()}>
+              <FiHome /> Warp Home
+            </RailButton>
+            <RailButton $danger onClick={() => void handleQuit()}>
+              <FiLogOut /> Quit
+            </RailButton>
+          </RailFooter>
+        </RailBody>
+      </Rail>
+
+      {!dialogueOpen && (
+        <MobileChatToggle
+          type="button"
+          $open={isMobileChatOpen}
+          onClick={toggleMobileChat}
+          aria-label={isMobileChatOpen ? "Close trainer chat" : "Open trainer chat"}
+          aria-expanded={isMobileChatOpen}
+        >
+          <FiMessageSquare />
+        </MobileChatToggle>
+      )}
+
+      <ChatDock
+        $collapsed={isHudSidebarCollapsed}
+        $mobileOpen={isMobileChatOpen}
       >
-        <ActionButton
-          text="Party"
-          onClick={toggleGroup}
-          isPressed={isGroupOpen}
-          isToggleable={true}
-          marginBottom="4px"
-        />
-        <ActionButton
-          text="Pokédex"
-          onClick={togglePokedex}
-          isPressed={isPokedexOpen}
-          isToggleable={true}
-          marginBottom="4px"
-        />
-        <ActionButton
-          text="Instant Warp"
-          onClick={toggleWarpMode}
-          isPressed={isWarpMode}
-          isToggleable={true}
-          marginBottom="4px"
-        />
-        <ActionButton
-          text="View Map"
-          onClick={toggleCameraFollow}
-          isPressed={!isCameraFollowEnabled}
-          isToggleable={true}
-          marginBottom="4px"
-        />
-        <ActionButton
-          text="Inventory"
-          onClick={toggleInventory}
-          isPressed={isInventoryOpen}
-          isToggleable={true}
-          marginBottom="0"
-          clickSound={
-            isInventoryOpen
-              ? sfxPathForConstant("SFX_TURN_OFF_PC")
-              : sfxPathForConstant("SFX_TURN_ON_PC")
-          }
-        />
-      </SidebarSection>
-    </HUDContainer>
+        <Chatbox />
+      </ChatDock>
+      <DialogueAnchor $collapsed={isHudSidebarCollapsed}>
+        <PokemonDialogueBox />
+      </DialogueAnchor>
+      <MobileControls />
+    </HudLayer>
   );
 };
 

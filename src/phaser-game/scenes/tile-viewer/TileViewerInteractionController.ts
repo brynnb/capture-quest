@@ -17,6 +17,11 @@ import {
 } from "../../services/PhaserNetworkService";
 import * as PhaserNet from "../../services/PhaserNetworkService";
 import { TileViewerOverlays } from "./TileViewerOverlays";
+import {
+  MOBILE_INTERACT_EVENT,
+  MOBILE_MOVE_EVENT,
+  type MobileMovementDirection,
+} from "../../mobileControls";
 
 type MovementDirection = "UP" | "DOWN" | "LEFT" | "RIGHT";
 
@@ -66,6 +71,14 @@ export class TileViewerInteractionController {
   private readonly focusedButtonSpaceHandler = (event: KeyboardEvent) => {
     this.handleFocusedButtonSpace(event);
   };
+  private readonly mobileMoveHandler = (event: Event) => {
+    const direction = (event as CustomEvent<MobileMovementDirection>).detail;
+    if (!["UP", "DOWN", "LEFT", "RIGHT"].includes(direction)) return;
+    this.deps.playerMovementController().handleKeyboardMove(direction);
+  };
+  private readonly mobileInteractHandler = () => {
+    this.activatePrimaryInteraction();
+  };
 
   constructor(private readonly deps: TileViewerInteractionDeps) {}
 
@@ -81,6 +94,8 @@ export class TileViewerInteractionController {
       this.mapInteractivePointerDownHandler,
     );
     window.addEventListener("keydown", this.focusedButtonSpaceHandler, true);
+    window.addEventListener(MOBILE_MOVE_EVENT, this.mobileMoveHandler);
+    window.addEventListener(MOBILE_INTERACT_EVENT, this.mobileInteractHandler);
   }
 
   cleanup(): void {
@@ -91,6 +106,8 @@ export class TileViewerInteractionController {
       this.mapInteractivePointerDownHandler,
     );
     window.removeEventListener("keydown", this.focusedButtonSpaceHandler, true);
+    window.removeEventListener(MOBILE_MOVE_EVENT, this.mobileMoveHandler);
+    window.removeEventListener(MOBILE_INTERACT_EVENT, this.mobileInteractHandler);
     this.suppressNextWorldPointerUp = false;
   }
 
@@ -401,6 +418,10 @@ export class TileViewerInteractionController {
   private handleKeyboardInteract(): void {
     if (!this.spaceKey) return;
     if (!Phaser.Input.Keyboard.JustDown(this.spaceKey)) return;
+    this.activatePrimaryInteraction();
+  }
+
+  public activatePrimaryInteraction(): void {
     if (this.isTextInputFocused()) return;
     if (this.deps.isWorldInputFrozen()) return;
     if (this.deps.playerMovementController().getIsMoving()) return;

@@ -51,6 +51,12 @@ interface GameStatusStore {
   toggleHelp: () => void;
   isGroupOpen: boolean;
   toggleGroup: () => void;
+  isHudSidebarCollapsed: boolean;
+  setHudSidebarCollapsed: (collapsed: boolean) => void;
+  toggleHudSidebar: () => void;
+  isMobileChatOpen: boolean;
+  setMobileChatOpen: (open: boolean) => void;
+  toggleMobileChat: () => void;
 
   syncOptions: (options: string | GameOptions | null | undefined) => void;
   resetPanelStates: () => void;
@@ -142,6 +148,11 @@ const useGameStatusStore = create<GameStatusStore>()(
             const nextValue = !state.isInventoryOpen;
             return {
               isInventoryOpen: nextValue,
+              isPokedexOpen: nextValue ? false : state.isPokedexOpen,
+              isTrainerCardOpen: nextValue ? false : state.isTrainerCardOpen,
+              isOptionsOpen: nextValue ? false : state.isOptionsOpen,
+              isHelpOpen: nextValue ? false : state.isHelpOpen,
+              isGroupOpen: nextValue ? false : state.isGroupOpen,
             };
           });
         },
@@ -152,6 +163,10 @@ const useGameStatusStore = create<GameStatusStore>()(
             return {
               isPokedexOpen: nextValue,
               isTrainerCardOpen: false,
+              isInventoryOpen: nextValue ? false : state.isInventoryOpen,
+              isOptionsOpen: nextValue ? false : state.isOptionsOpen,
+              isHelpOpen: nextValue ? false : state.isHelpOpen,
+              isGroupOpen: nextValue ? false : state.isGroupOpen,
             };
           });
         },
@@ -162,6 +177,10 @@ const useGameStatusStore = create<GameStatusStore>()(
             return {
               isTrainerCardOpen: nextValue,
               isPokedexOpen: false,
+              isInventoryOpen: nextValue ? false : state.isInventoryOpen,
+              isOptionsOpen: nextValue ? false : state.isOptionsOpen,
+              isHelpOpen: nextValue ? false : state.isHelpOpen,
+              isGroupOpen: nextValue ? false : state.isGroupOpen,
             };
           });
         },
@@ -172,6 +191,10 @@ const useGameStatusStore = create<GameStatusStore>()(
             return {
               isOptionsOpen: nextValue,
               isHelpOpen: false,
+              isInventoryOpen: nextValue ? false : state.isInventoryOpen,
+              isPokedexOpen: nextValue ? false : state.isPokedexOpen,
+              isTrainerCardOpen: nextValue ? false : state.isTrainerCardOpen,
+              isGroupOpen: nextValue ? false : state.isGroupOpen,
             };
           });
         },
@@ -182,12 +205,50 @@ const useGameStatusStore = create<GameStatusStore>()(
             return {
               isHelpOpen: nextValue,
               isOptionsOpen: false,
+              isInventoryOpen: nextValue ? false : state.isInventoryOpen,
+              isPokedexOpen: nextValue ? false : state.isPokedexOpen,
+              isTrainerCardOpen: nextValue ? false : state.isTrainerCardOpen,
+              isGroupOpen: nextValue ? false : state.isGroupOpen,
             };
           });
         },
         isGroupOpen: true,
         toggleGroup: () => {
-          set((state) => ({ isGroupOpen: !state.isGroupOpen }));
+          set((state) => {
+            const nextValue = !state.isGroupOpen;
+            return {
+              isGroupOpen: nextValue,
+              isInventoryOpen: nextValue ? false : state.isInventoryOpen,
+              isPokedexOpen: nextValue ? false : state.isPokedexOpen,
+              isTrainerCardOpen: nextValue ? false : state.isTrainerCardOpen,
+              isOptionsOpen: nextValue ? false : state.isOptionsOpen,
+              isHelpOpen: nextValue ? false : state.isHelpOpen,
+            };
+          });
+        },
+        isHudSidebarCollapsed: false,
+        setHudSidebarCollapsed: (collapsed) => {
+          set({ isHudSidebarCollapsed: collapsed });
+        },
+        toggleHudSidebar: () => {
+          set((state) => ({
+            isHudSidebarCollapsed: !state.isHudSidebarCollapsed,
+            isMobileChatOpen: state.isHudSidebarCollapsed
+              ? false
+              : state.isMobileChatOpen,
+          }));
+        },
+        isMobileChatOpen: false,
+        setMobileChatOpen: (open) => {
+          set({ isMobileChatOpen: open });
+        },
+        toggleMobileChat: () => {
+          set((state) => ({
+            isMobileChatOpen: !state.isMobileChatOpen,
+            isHudSidebarCollapsed: state.isMobileChatOpen
+              ? state.isHudSidebarCollapsed
+              : true,
+          }));
         },
 
         syncOptions: (options) => {
@@ -215,6 +276,7 @@ const useGameStatusStore = create<GameStatusStore>()(
             isOptionsOpen: false,
             isHelpOpen: false,
             isGroupOpen: true,
+            isMobileChatOpen: false,
             isWarpMode: false,
             isTileManagerOpen: false,
             isArtStudioOpen: false,

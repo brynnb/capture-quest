@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useCallback, useState } from "react";
 import styled from "styled-components";
 import usePokemonDialogueStore from "@/stores/PokemonDialogueStore";
 import { suppressWorldInputFor } from "@/phaser-game/utils/worldInputGuard";
+import { MOBILE_INTERACT_EVENT } from "@/phaser-game/mobileControls";
 
 const TYPEWRITER_SPEED = 30; // ms per character
 
@@ -297,6 +298,22 @@ const PokemonDialogueBox: React.FC = () => {
   }, [handleKeyDown]);
 
   useEffect(() => {
+    const handleMobileInteract = () => {
+      if (!isOpen) return;
+      suppressWorldInputFor();
+      if (isChoicePending) {
+        resolveChoice(selectedChoice === "yes");
+      } else {
+        advanceLine();
+      }
+    };
+    window.addEventListener(MOBILE_INTERACT_EVENT, handleMobileInteract);
+    return () => {
+      window.removeEventListener(MOBILE_INTERACT_EVENT, handleMobileInteract);
+    };
+  }, [advanceLine, isChoicePending, isOpen, resolveChoice, selectedChoice]);
+
+  useEffect(() => {
     if (!canDismiss) return;
     // Small delay so the click that triggered the last advance doesn't immediately close
     const timer = setTimeout(() => {
@@ -370,11 +387,11 @@ const PokemonDialogueBox: React.FC = () => {
           ) : (
             <>
               <AdvanceIndicator $visible={showIndicator}>
-                <AdvanceHint>Click to continue</AdvanceHint>
+                <AdvanceHint>Continue</AdvanceHint>
                 <AdvanceArrow>▼</AdvanceArrow>
               </AdvanceIndicator>
               <AdvanceIndicator $visible={showCloseHint}>
-                <AdvanceHint>Click anywhere to close</AdvanceHint>
+                <AdvanceHint>Close dialogue</AdvanceHint>
               </AdvanceIndicator>
             </>
           )}

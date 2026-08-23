@@ -18,11 +18,16 @@ const Overlay = styled.div`
   top: 0; left: 0; width: 100%; height: 100%;
   display: flex; align-items: center; justify-content: center;
   z-index: 2000;
+  padding: max(10px, env(safe-area-inset-top, 0px))
+    max(10px, env(safe-area-inset-right, 0px))
+    max(10px, env(safe-area-inset-bottom, 0px))
+    max(10px, env(safe-area-inset-left, 0px));
+  box-sizing: border-box;
 `;
 
 const Container = styled.div`
-  width: 780px;
-  height: 560px;
+  width: min(780px, 100%);
+  height: min(560px, 100%);
   display: flex;
   font-family: 'Outfit', monospace, sans-serif;
   filter: drop-shadow(0 20px 50px rgba(0,0,0,0.5));
@@ -30,6 +35,10 @@ const Container = styled.div`
   overflow: hidden;
   border: 4px solid #383838;
   background: #f8f0e0;
+
+  @media (max-width: 650px) {
+    flex-direction: column;
+  }
 `;
 
 const ListPanel = styled.div`
@@ -38,6 +47,13 @@ const ListPanel = styled.div`
   border-right: 3px solid #383838;
   display: flex;
   flex-direction: column;
+
+  @media (max-width: 650px) {
+    width: 100%;
+    height: 42%;
+    border-right: 0;
+    border-bottom: 3px solid #383838;
+  }
 `;
 
 const ListHeader = styled.div`
@@ -108,6 +124,13 @@ const DetailPanel = styled.div`
   flex-direction: column;
   padding: 20px;
   gap: 16px;
+
+  @media (max-width: 650px) {
+    min-height: 0;
+    padding: 12px;
+    gap: 10px;
+    overflow-y: auto;
+  }
 `;
 
 const SpriteArea = styled.div`
@@ -131,6 +154,16 @@ const SpriteBox = styled.div`
     height: 96px;
     image-rendering: pixelated;
     object-fit: contain;
+  }
+
+  @media (max-width: 650px) {
+    width: 88px;
+    height: 88px;
+
+    img {
+      width: 72px;
+      height: 72px;
+    }
   }
 `;
 

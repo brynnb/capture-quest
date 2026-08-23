@@ -17,6 +17,15 @@ const Wrapper = styled.div`
   background-size: cover;
   background-repeat: no-repeat;
   background-position: center;
+  padding: 12px 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+
+  @media (max-height: 560px), (pointer: coarse) {
+    justify-content: flex-start;
+    padding: max(10px, env(safe-area-inset-top, 0px)) 0
+      max(10px, env(safe-area-inset-bottom, 0px));
+  }
 `;
 
 const CenterColumn = styled.div`
@@ -24,9 +33,15 @@ const CenterColumn = styled.div`
   flex-direction: column;
   align-items: center;
   gap: 24px;
+  width: min(520px, calc(100% - 32px));
+  flex: 0 0 auto;
 
   .selection-button {
-    width: 460px;
+    width: min(460px, calc(100vw - 40px));
+  }
+
+  @media (max-height: 560px), (pointer: coarse) {
+    gap: 10px;
   }
 `;
 
@@ -34,11 +49,21 @@ const ButtonStack = styled.div`
   display: flex;
   flex-direction: column;
   gap: 16px;
+
+  @media (max-height: 560px), (pointer: coarse) {
+    gap: 8px;
+  }
 `;
 
 const Logo = styled.img`
-  max-width: 520px;
+  width: min(520px, calc(100vw - 40px));
+  max-height: 34vh;
   height: auto;
+  object-fit: contain;
+
+  @media (max-height: 560px), (pointer: coarse) {
+    max-height: 90px;
+  }
 `;
 
 const StatusText = styled.p`

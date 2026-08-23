@@ -21,7 +21,8 @@ const StyledButton = styled.button.attrs({ className: "selection-button" }) <{
   $height?: string;
 }>`
   width: ${({ $width }) => $width ?? "auto"};
-  min-width: ${({ $width }) => $width ?? "230px"};
+  min-width: min(${({ $width }) => $width ?? "230px"}, 100%);
+  max-width: 100%;
   padding: ${({ $width }) => ($width ? "0 10px" : "0 40px")};
   height: ${({ $height }) => $height ?? "70px"};
   background-color: ${({ $isSelected }) => ($isSelected ? "#a7edfe" : "#c0c1ff")};
@@ -44,6 +45,19 @@ const StyledButton = styled.button.attrs({ className: "selection-button" }) <{
   overflow: hidden;
   box-shadow: 0 4px 0 #4a4ba6;
   transition: all 0.1s ease-in-out;
+  box-sizing: border-box;
+
+  @media (max-width: 650px), (pointer: coarse) {
+    min-width: 0;
+    padding-right: 12px;
+    padding-left: 12px;
+    font-size: clamp(12px, 5vw, 20px);
+  }
+
+  @media (max-height: 500px) {
+    height: min(${({ $height }) => $height ?? "52px"}, 52px);
+    min-height: 44px;
+  }
 
   &:focus {
     outline: none;

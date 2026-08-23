@@ -17,7 +17,15 @@ const Wrapper = styled.div`
   justify-content: center;
   position: relative;
   box-sizing: border-box;
-  overflow: hidden;
+  padding: 12px 0 92px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+
+  @media (max-width: 700px), (max-height: 760px), (pointer: coarse) {
+    justify-content: flex-start;
+    padding: max(10px, env(safe-area-inset-top, 0px)) 0
+      calc(88px + env(safe-area-inset-bottom, 0px));
+  }
 `;
 
 const BottomButtons = styled.div`
@@ -29,10 +37,27 @@ const BottomButtons = styled.div`
   justify-content: space-between;
   align-items: center;
   pointer-events: none;
+  z-index: 20;
 
   & > * {
     pointer-events: auto;
     width: 350px;
+  }
+
+  @media (max-width: 700px) {
+    right: 16px;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    left: 16px;
+    gap: 10px;
+
+    & > * {
+      width: auto;
+      flex: 1;
+    }
+  }
+
+  @media (max-height: 500px) {
+    bottom: calc(7px + env(safe-area-inset-bottom, 0px));
   }
 `;
 
@@ -43,11 +68,27 @@ const CenterContent = styled.div`
   justify-content: center;
   gap: 24px;
   z-index: 10;
+  width: min(540px, calc(100% - 24px));
+  flex: 0 0 auto;
+
+  @media (max-width: 700px), (max-height: 760px), (pointer: coarse) {
+    gap: 10px;
+  }
 `;
 
 const Logo = styled.img`
-  max-width: 500px;
+  width: min(500px, calc(100vw - 40px));
+  max-height: 20vh;
   height: auto;
+  object-fit: contain;
+
+  @media (max-width: 700px), (max-height: 760px), (pointer: coarse) {
+    max-height: 76px;
+  }
+
+  @media (max-height: 500px) and (min-width: 651px) {
+    display: none;
+  }
 `;
 
 const FormPanel = styled.div`
@@ -55,7 +96,7 @@ const FormPanel = styled.div`
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 500px;
+  width: min(500px, calc(100vw - 24px));
   gap: 10px;
   padding: 40px;
   box-sizing: border-box;
@@ -64,6 +105,17 @@ const FormPanel = styled.div`
   border: 4px solid #4a4ba6;
   border-radius: 30px;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+
+  @media (max-width: 600px), (max-height: 760px) {
+    padding: 20px 18px;
+    border-width: 3px;
+    border-radius: 18px;
+  }
+
+  @media (max-height: 500px) and (min-width: 651px) {
+    gap: 4px;
+    padding: 10px 16px;
+  }
 `;
 
 const Title = styled.h1`
@@ -73,6 +125,16 @@ const Title = styled.h1`
   font-size: 36px;
   margin-bottom: 20px;
   text-transform: none;
+
+  @media (max-width: 700px), (max-height: 760px), (pointer: coarse) {
+    margin: 0 0 5px;
+    font-size: 26px;
+  }
+
+  @media (max-height: 500px) and (min-width: 651px) {
+    margin-bottom: 0;
+    font-size: 23px;
+  }
 `;
 
 const InputGroup = styled.div`
@@ -81,6 +143,16 @@ const InputGroup = styled.div`
   gap: 8px;
   width: 100%;
   margin-bottom: 20px;
+
+  @media (max-width: 700px), (max-height: 760px), (pointer: coarse) {
+    gap: 3px;
+    margin-bottom: 4px;
+  }
+
+  @media (max-height: 500px) and (min-width: 651px) {
+    gap: 3px;
+    margin-bottom: 0;
+  }
 `;
 
 const InputLabel = styled.label`
@@ -91,6 +163,15 @@ const InputLabel = styled.label`
   text-transform: uppercase;
   width: 100%;
   text-align: center;
+
+  @media (max-width: 700px), (max-height: 760px), (pointer: coarse) {
+    font-size: 12px;
+  }
+
+  @media (max-height: 500px) and (min-width: 651px) {
+    padding: 6px 9px;
+    font-size: 15px;
+  }
 `;
 
 const TextInput = styled.input`
@@ -131,6 +212,11 @@ const TextInput = styled.input`
     color: #4a4ba6;
     opacity: 0.6;
   }
+
+  @media (max-width: 700px), (max-height: 760px), (pointer: coarse) {
+    padding: 8px 10px;
+    font-size: 16px;
+  }
 `;
 
 const StatusText = styled.p`
@@ -153,6 +239,10 @@ const StatusSlot = styled.div`
   align-items: center;
   justify-content: center;
   overflow: visible;
+
+  @media (max-height: 500px) {
+    height: 24px;
+  }
 `;
 
 const RegisterPage = () => {

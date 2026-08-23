@@ -26,7 +26,7 @@ const InventorySidebarContainer = styled.div`
   right: 0;
   top: 0;
   width: 272px;
-  height: 1080px;
+  height: 100%;
   background: rgba(192, 193, 255, 0.4);
   backdrop-filter: blur(10px);
   border-left: 4px solid #4a4ba6;
@@ -34,6 +34,11 @@ const InventorySidebarContainer = styled.div`
   display: flex;
   flex-direction: column;
   z-index: 5;
+
+  @media (max-width: 850px), (pointer: coarse) {
+    width: 100%;
+    border-left: 0;
+  }
 `;
 
 const inventoryPartyStyle: React.CSSProperties = {
