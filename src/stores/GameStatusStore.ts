@@ -157,6 +157,7 @@ const useGameStatusStore = create<GameStatusStore>()(
               isOptionsOpen: nextValue ? false : state.isOptionsOpen,
               isHelpOpen: nextValue ? false : state.isHelpOpen,
               isGroupOpen: nextValue ? false : state.isGroupOpen,
+              isTileManagerOpen: nextValue ? false : state.isTileManagerOpen,
             };
           });
         },
@@ -171,6 +172,7 @@ const useGameStatusStore = create<GameStatusStore>()(
               isOptionsOpen: nextValue ? false : state.isOptionsOpen,
               isHelpOpen: nextValue ? false : state.isHelpOpen,
               isGroupOpen: nextValue ? false : state.isGroupOpen,
+              isTileManagerOpen: nextValue ? false : state.isTileManagerOpen,
             };
           });
         },
@@ -185,6 +187,7 @@ const useGameStatusStore = create<GameStatusStore>()(
               isOptionsOpen: nextValue ? false : state.isOptionsOpen,
               isHelpOpen: nextValue ? false : state.isHelpOpen,
               isGroupOpen: nextValue ? false : state.isGroupOpen,
+              isTileManagerOpen: nextValue ? false : state.isTileManagerOpen,
             };
           });
         },
@@ -199,6 +202,7 @@ const useGameStatusStore = create<GameStatusStore>()(
               isPokedexOpen: nextValue ? false : state.isPokedexOpen,
               isTrainerCardOpen: nextValue ? false : state.isTrainerCardOpen,
               isGroupOpen: nextValue ? false : state.isGroupOpen,
+              isTileManagerOpen: nextValue ? false : state.isTileManagerOpen,
             };
           });
         },
@@ -213,6 +217,7 @@ const useGameStatusStore = create<GameStatusStore>()(
               isPokedexOpen: nextValue ? false : state.isPokedexOpen,
               isTrainerCardOpen: nextValue ? false : state.isTrainerCardOpen,
               isGroupOpen: nextValue ? false : state.isGroupOpen,
+              isTileManagerOpen: nextValue ? false : state.isTileManagerOpen,
             };
           });
         },
@@ -227,6 +232,7 @@ const useGameStatusStore = create<GameStatusStore>()(
               isTrainerCardOpen: nextValue ? false : state.isTrainerCardOpen,
               isOptionsOpen: nextValue ? false : state.isOptionsOpen,
               isHelpOpen: nextValue ? false : state.isHelpOpen,
+              isTileManagerOpen: nextValue ? false : state.isTileManagerOpen,
             };
           });
         },
@@ -332,7 +338,17 @@ const useGameStatusStore = create<GameStatusStore>()(
             const nextValue = !state.isTileManagerOpen;
             return {
               isTileManagerOpen: nextValue,
+              isInventoryOpen: nextValue ? false : state.isInventoryOpen,
+              isPokedexOpen: nextValue ? false : state.isPokedexOpen,
+              isTrainerCardOpen: nextValue ? false : state.isTrainerCardOpen,
               isOptionsOpen: nextValue ? false : state.isOptionsOpen,
+              isHelpOpen: nextValue ? false : state.isHelpOpen,
+              isGroupOpen: nextValue ? false : state.isGroupOpen,
+              isMobileChatOpen: nextValue ? false : state.isMobileChatOpen,
+              isWarpMode: nextValue ? false : state.isWarpMode,
+              pendingInstantWarpTarget: nextValue
+                ? null
+                : state.pendingInstantWarpTarget,
             };
           });
         },

@@ -15,6 +15,7 @@ import PartyPokemonHUD from "@/components/Interface/PartyPokemonHUD";
 import PokeMartShop from "@/components/Interface/PokeMartShop";
 import PokemonPC from "@/components/Interface/PokemonPC";
 import SlotMachine from "@/components/Interface/SlotMachine";
+import TileEditorPanel from "@/components/TileEditor/TileEditorPanel";
 import {
   COMPACT_TOUCH_LAYOUT_QUERY,
   CONFIRM_INSTANT_WARP_EVENT,
@@ -119,6 +120,25 @@ const GameScreenRoot = styled.div`
   display: contents;
 `;
 
+const TileManagerDock = styled.section`
+  position: absolute;
+  z-index: 2100;
+  top: 30px;
+  right: 24px;
+  bottom: 30px;
+  width: min(640px, calc(100vw - 112px));
+  min-width: 0;
+  pointer-events: auto;
+
+  @media (max-width: 850px), (pointer: coarse) {
+    top: calc(70px + env(safe-area-inset-top, 0px));
+    right: calc(10px + env(safe-area-inset-right, 0px));
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    left: calc(10px + env(safe-area-inset-left, 0px));
+    width: auto;
+  }
+`;
+
 function useCompactTouchLayout(): boolean {
   const [compact, setCompact] = useState(isCompactTouchLayout);
 
@@ -151,6 +171,7 @@ const MainPage: React.FC = () => {
     isGroupOpen,
     isWarpMode,
     isMapLoading,
+    isTileManagerOpen,
     pendingInstantWarpTarget,
     setWarpMode,
   } = useGameStatusStore();
@@ -240,6 +261,16 @@ const MainPage: React.FC = () => {
       )}
 
       <BottomHUD />
+
+      {isTileManagerOpen && (characterProfile?.gm ?? 0) > 0 && (
+        <TileManagerDock
+          role="dialog"
+          aria-label="Tile Manager"
+          data-testid="tile-manager-panel"
+        >
+          <TileEditorPanel />
+        </TileManagerDock>
+      )}
 
       {isInventoryOpen && <InventoryLayout />}
 

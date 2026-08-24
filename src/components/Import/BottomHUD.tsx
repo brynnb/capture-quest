@@ -13,6 +13,7 @@ import {
   FiMenu,
   FiMessageSquare,
   FiSettings,
+  FiTool,
   FiUser,
   FiUsers,
   FiVolume2,
@@ -384,6 +385,8 @@ const BottomHUD = () => {
     isMobileChatOpen,
     setMobileChatOpen,
     toggleMobileChat,
+    isTileManagerOpen,
+    toggleTileManager,
   } = useGameStatusStore();
   const compact = useCompactViewport();
   const dialogueOpen = usePokemonDialogueStore((state) => state.isOpen);
@@ -516,6 +519,16 @@ const BottomHUD = () => {
               <RailButton $active={isWarpMode} onClick={() => runRailAction(toggleWarpMode)}>
                 <FiCrosshair /> Instant Warp
               </RailButton>
+              {(characterProfile?.gm ?? 0) > 0 && (
+                <RailButton
+                  type="button"
+                  $active={isTileManagerOpen}
+                  onClick={() => runRailAction(toggleTileManager)}
+                  data-testid="tile-manager-toggle"
+                >
+                  <FiTool /> Tile Manager
+                </RailButton>
+              )}
             </ButtonGrid>
           </RailSection>
 

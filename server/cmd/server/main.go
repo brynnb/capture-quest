@@ -27,6 +27,9 @@ func main() {
 	if err := db.InitWorldDB(target.DriverName, target.DSN); err != nil {
 		log.Fatalf("failed to initialize db.WorldDB: %v", err)
 	}
+	if err := db.EnsureWorldTileMutationSchema(db.GlobalWorldDB.DB); err != nil {
+		log.Fatalf("failed to upgrade world tile schema: %v", err)
+	}
 	if err := scriptedevents.SyncDefault(db.GlobalWorldDB.DB); err != nil {
 		log.Fatalf("failed to sync scripted events: %v", err)
 	}
