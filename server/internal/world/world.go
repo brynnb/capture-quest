@@ -7,8 +7,11 @@ import (
 	"time"
 
 	"capturequest/internal/db"
+	db_character "capturequest/internal/db/character"
 	"capturequest/internal/session"
 )
+
+const playtimeFlushInterval = time.Minute
 
 // WorldHandler manages global game message routing.
 type WorldHandler struct {
@@ -103,37 +106,59 @@ func (wh *WorldHandler) RemoveSession(sessionID int) {
 		return
 	}
 	log.Printf("[WORLD] Removing session %d", sessionID)
-	// Flush and unregister player from movement manager if they have a character
-	if ses.HasValidClient() {
-		char := ses.Client.CharData()
-		charID := int(char.ID)
-		log.Printf("[WORLD] Flushing position for character %d (%s) from session %d", charID, char.Name, sessionID)
-		wh.PlayerMovement.FlushPlayerPosition(charID)
-		wh.PlayerMovement.UnregisterPlayer(charID)
-		wh.TrainerEncounter.ClearPlayer(int64(charID))
-		wh.WildEncounter.ClearPlayer(int64(charID))
-		wh.EventFlags.UnloadFlags(int64(charID))
-		saveBattleOnDisconnect(int64(charID))
+	wh.cleanupCharacterSession(ses)
+}
 
-		// Stop the client's regen goroutine to prevent leaks
-		ses.Client.Shutdown()
+func (wh *WorldHandler) cleanupCharacterSession(ses *session.Session) {
+	if !ses.HasValidClient() {
+		return
+	}
+	char := ses.Client.CharData()
+	charID := int(char.ID)
+	log.Printf("[WORLD] Flushing position for character %d (%s) from session %d", charID, char.Name, ses.SessionID)
+	wh.PlayerMovement.FlushPlayerPosition(charID)
+	wh.PlayerMovement.UnregisterPlayer(charID)
+	wh.TrainerEncounter.ClearPlayer(int64(charID))
+	wh.WildEncounter.ClearPlayer(int64(charID))
+	wh.EventFlags.UnloadFlags(int64(charID))
+	saveBattleOnDisconnect(int64(charID))
+	wh.persistSessionPlaytime(ses, time.Now())
+	ses.StopPlaytime()
 
-		// Notify other Phaser clients to remove this actor
-		phaserID := wh.ActorRegistry.GetPhaserID(ActorTypePlayer, charID)
-		log.Printf("[WORLD] Despawning Phaser actor %d for character %s", phaserID, char.Name)
-		wh.ActorManager.broadcastActorDespawn(phaserID, ses.MapID)
+	// Stop the client's regen goroutine to prevent leaks.
+	ses.Client.Shutdown()
+
+	// Notify other Phaser clients to remove this actor.
+	phaserID := wh.ActorRegistry.GetPhaserID(ActorTypePlayer, charID)
+	log.Printf("[WORLD] Despawning Phaser actor %d for character %s", phaserID, char.Name)
+	wh.ActorManager.broadcastActorDespawn(phaserID, ses.MapID)
+	ses.Client = nil
+	ses.CharacterName = ""
+	ses.MapID = -1
+}
+
+func (wh *WorldHandler) persistSessionPlaytime(ses *session.Session, now time.Time) {
+	_, err := ses.PersistPlaytime(now, func(characterID int32, seconds uint32) error {
+		return db_character.AddCharacterPlaytime(characterID, ses.AccountID, seconds)
+	})
+	if err != nil {
+		log.Printf("[WORLD] Failed to persist playtime for session %d: %v", ses.SessionID, err)
 	}
 }
 
-// Shutdown is a no-op now - no zone instances to stop.
+// Shutdown flushes active playtime before the database connection closes.
 func (wh *WorldHandler) Shutdown() {
-	// No-op: No zone instances to shut down
+	now := time.Now()
+	wh.sessionManager.ForEachSession(func(ses *session.Session) {
+		wh.persistSessionPlaytime(ses, now)
+	})
 }
 
 func (wh *WorldHandler) StartSessionTimeoutChecker() {
 	go func() {
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
+		nextPlaytimeFlush := time.Now().Add(playtimeFlushInterval)
 
 		for range ticker.C {
 			now := time.Now()
@@ -149,6 +174,13 @@ func (wh *WorldHandler) StartSessionTimeoutChecker() {
 
 			for _, sessionID := range timedOutSessions {
 				wh.RemoveSession(sessionID)
+			}
+
+			if !now.Before(nextPlaytimeFlush) {
+				wh.sessionManager.ForEachSession(func(ses *session.Session) {
+					wh.persistSessionPlaytime(ses, now)
+				})
+				nextPlaytimeFlush = now.Add(playtimeFlushInterval)
 			}
 		}
 	}()

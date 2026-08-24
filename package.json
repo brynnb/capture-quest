@@ -27,7 +27,7 @@
     "dev:test": "VITE_TEST_MODE=true VITE_FORCE_WEBSOCKET=true CAPTUREQUEST_TEST_MODE=true npm run dev:all"
   },
   "dependencies": {
-    "@swc/plugin-styled-components": "3.0.0",
+    "@swc/plugin-styled-components": "13.0.0",
     "@tanstack/react-query-devtools": "^5.58.0",
     "jszip": "^3.10.1",
     "phaser": "^3.88.2",

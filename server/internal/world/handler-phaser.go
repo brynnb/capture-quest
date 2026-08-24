@@ -3,6 +3,7 @@ package world
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 
@@ -36,6 +37,12 @@ type PhaserTile struct {
 	CollisionType int     `json:"collisionType"`
 	RawFootTileID *int    `json:"rawFootTileId,omitempty"`
 	TalkOverTile  bool    `json:"talkOverTile"`
+	// CoordinateOrigin describes whether this square existed in the extracted
+	// game data. ContentOrigin describes who supplied its current appearance.
+	// Keeping both prevents a user edit from erasing native provenance.
+	IsNativeGameData bool   `json:"isNativeGameData"`
+	CoordinateOrigin string `json:"coordinateOrigin"`
+	ContentOrigin    string `json:"contentOrigin"`
 }
 
 // PhaserActor represents an actor or object in the game
@@ -81,16 +88,18 @@ func playerSpriteName(gender uint8, ridingBicycle bool, surfing bool) string {
 
 // PhaserWarp represents a warp point between maps
 type PhaserWarp struct {
-	ID               int     `json:"id"`
-	SourceMapID      int     `json:"sourceMapId"`
-	X                int     `json:"x"`
-	Y                int     `json:"y"`
-	DestinationMapID *int    `json:"destinationMapId,omitempty"`
-	DestinationMap   *string `json:"destinationMap,omitempty"`
-	DestinationX     *int    `json:"destinationX,omitempty"`
-	DestinationY     *int    `json:"destinationY,omitempty"`
-	WarpType         string  `json:"warpType"`
-	WarpDirection    *string `json:"warpDirection,omitempty"`
+	ID                int     `json:"id"`
+	SourceMapID       int     `json:"sourceMapId"`
+	X                 int     `json:"x"`
+	Y                 int     `json:"y"`
+	DestinationMapID  *int    `json:"destinationMapId,omitempty"`
+	DestinationMap    *string `json:"destinationMap,omitempty"`
+	DestinationX      *int    `json:"destinationX,omitempty"`
+	DestinationY      *int    `json:"destinationY,omitempty"`
+	DestinationKind   string  `json:"destinationKind"`
+	DestinationWarpID int     `json:"destinationWarpId"`
+	WarpType          string  `json:"warpType"`
+	WarpDirection     *string `json:"warpDirection,omitempty"`
 }
 
 // PhaserMapInfoRequest is the request payload
@@ -350,7 +359,8 @@ func HandlePhaserTilesRequest(ses *session.Session, payload []byte, wh *WorldHan
 	query := `
 		SELECT pt.id, pt.x, pt.y, pt.tile_image_id, pt.local_x, pt.local_y,
 			pt.map_id, pt.source_map_id, pm.name AS source_map_name,
-			pt.collision_type, pt.raw_foot_tile_id, pt.talk_over_tile
+			pt.collision_type, pt.raw_foot_tile_id, pt.talk_over_tile,
+			pt.is_native_game_data, pt.coordinate_origin, pt.content_origin
 		FROM phaser_tiles pt
 		LEFT JOIN phaser_maps pm ON pm.id = COALESCE(pt.source_map_id, pt.map_id)
 		WHERE pt.map_id = $1`
@@ -361,7 +371,8 @@ func HandlePhaserTilesRequest(ses *session.Session, payload []byte, wh *WorldHan
 		query = `
 			SELECT pt.id, pt.x, pt.y, pt.tile_image_id, pt.local_x, pt.local_y,
 				pt.map_id, pt.source_map_id, pm.name AS source_map_name,
-				pt.collision_type, pt.raw_foot_tile_id, pt.talk_over_tile
+				pt.collision_type, pt.raw_foot_tile_id, pt.talk_over_tile,
+				pt.is_native_game_data, pt.coordinate_origin, pt.content_origin
 			FROM phaser_tiles pt
 			LEFT JOIN phaser_maps pm ON pm.id = pt.source_map_id
 			WHERE pt.map_id IS NULL`
@@ -383,7 +394,12 @@ func HandlePhaserTilesRequest(ses *session.Session, payload []byte, wh *WorldHan
 		var sourceMapID sql.NullInt64
 		var sourceMapName sql.NullString
 		var rawFootTileID sql.NullInt64
-		if err := rows.Scan(&t.ID, &t.X, &t.Y, &t.TileImageID, &t.LocalX, &t.LocalY, &mapID, &sourceMapID, &sourceMapName, &t.CollisionType, &rawFootTileID, &t.TalkOverTile); err != nil {
+		if err := rows.Scan(
+			&t.ID, &t.X, &t.Y, &t.TileImageID, &t.LocalX, &t.LocalY,
+			&mapID, &sourceMapID, &sourceMapName, &t.CollisionType,
+			&rawFootTileID, &t.TalkOverTile, &t.IsNativeGameData,
+			&t.CoordinateOrigin, &t.ContentOrigin,
+		); err != nil {
 			log.Printf("[Phaser] Error scanning tile: %v", err)
 			continue
 		}
@@ -565,18 +581,20 @@ func HandlePhaserWarpsRequest(ses *session.Session, payload []byte, wh *WorldHan
 	}
 
 	query := `
-		SELECT id, source_map_id, x, y, destination_map_id, destination_map, destination_x, destination_y, warp_type, warp_direction
+		SELECT id, source_map_id, x, y, destination_map_id, destination_map,
+		       destination_x, destination_y, destination_kind,
+		       destination_warp_id, warp_type, warp_direction
 		FROM phaser_warps
-		WHERE source_map_id = $1
-		  AND destination_map_id IS NOT NULL
-		  AND destination_x IS NOT NULL
-		  AND destination_y IS NOT NULL`
+		WHERE source_map_id = $1`
 	queryArgs := []interface{}{req.MapID}
 
 	if req.MapID == UnifiedOverworldMapID {
 		// Overworld warps have global coordinates baked in by the importer.
 		query = `
-			SELECT pw.id, pw.source_map_id, pw.x, pw.y, pw.destination_map_id, pw.destination_map, pw.destination_x, pw.destination_y, pw.warp_type, pw.warp_direction
+			SELECT pw.id, pw.source_map_id, pw.x, pw.y, pw.destination_map_id,
+			       pw.destination_map, pw.destination_x, pw.destination_y,
+			       pw.destination_kind, pw.destination_warp_id,
+			       pw.warp_type, pw.warp_direction
 			FROM phaser_warps pw
 			JOIN phaser_maps pm ON pw.source_map_id = pm.id
 			WHERE pm.is_overworld = 1
@@ -597,8 +615,13 @@ func HandlePhaserWarpsRequest(ses *session.Session, payload []byte, wh *WorldHan
 	var warps []PhaserWarp
 	for rows.Next() {
 		var w PhaserWarp
-		if err := rows.Scan(&w.ID, &w.SourceMapID, &w.X, &w.Y, &w.DestinationMapID, &w.DestinationMap, &w.DestinationX, &w.DestinationY, &w.WarpType, &w.WarpDirection); err != nil {
+		if err := rows.Scan(&w.ID, &w.SourceMapID, &w.X, &w.Y, &w.DestinationMapID, &w.DestinationMap, &w.DestinationX, &w.DestinationY, &w.DestinationKind, &w.DestinationWarpID, &w.WarpType, &w.WarpDirection); err != nil {
 			log.Printf("[Phaser] Error scanning warp: %v", err)
+			continue
+		}
+		w, err = resolvePhaserWarpForPlayer(db.GlobalWorldDB.DB, ses.PreviousMapID, w)
+		if err != nil {
+			log.Printf("[Phaser] Dynamic warp %d unresolved for session %d: %v", w.ID, ses.SessionID, err)
 			continue
 		}
 		warps = append(warps, w)
@@ -607,6 +630,56 @@ func HandlePhaserWarpsRequest(ses *session.Session, payload []byte, wh *WorldHan
 	ses.SendStreamJSON(StructToMap(warps), opcodes.PhaserWarpsResponse)
 	log.Printf("[Phaser] Sent %d warps for map %d", len(warps), req.MapID)
 	return false
+}
+
+// A LAST_MAP row with a complete destination was deterministically resolved
+// during import. Only genuinely ambiguous entrances need per-session context.
+func shouldResolveLastMapForPlayer(w PhaserWarp) bool {
+	return w.DestinationKind == "last-map" &&
+		(w.DestinationMapID == nil || w.DestinationX == nil || w.DestinationY == nil)
+}
+
+func resolvePhaserWarpForPlayer(database *sql.DB, previousMapID int, w PhaserWarp) (PhaserWarp, error) {
+	if !shouldResolveLastMapForPlayer(w) {
+		return w, nil
+	}
+	mapID, mapName, x, y, err := resolveLastMapWarpForPlayer(
+		database, previousMapID, w.DestinationWarpID,
+	)
+	if err != nil {
+		return PhaserWarp{}, err
+	}
+	w.DestinationMapID = &mapID
+	w.DestinationMap = &mapName
+	w.DestinationX = &x
+	w.DestinationY = &y
+	return w, nil
+}
+
+func resolveLastMapWarpForPlayer(
+	database *sql.DB, previousMapID, destinationWarpIndex int,
+) (int, string, int, int, error) {
+	if previousMapID < 0 {
+		return 0, "", 0, 0, fmt.Errorf("player has no previous-map context")
+	}
+	var mapID, x, y int
+	var mapName string
+	err := database.QueryRow(`
+		SELECT warp.source_map_id, map.name, warp.x, warp.y
+		FROM phaser_warps AS warp
+		JOIN phaser_maps AS map ON map.id = warp.source_map_id
+		WHERE warp.source_map_id = $1 AND warp.source_warp_index = $2
+		ORDER BY warp.id
+		LIMIT 1`, previousMapID, destinationWarpIndex).Scan(
+		&mapID, &mapName, &x, &y,
+	)
+	if err != nil {
+		return 0, "", 0, 0, fmt.Errorf(
+			"resolve previous map %d warp %d: %w",
+			previousMapID, destinationWarpIndex, err,
+		)
+	}
+	return mapID, mapName, x, y, nil
 }
 
 // PhaserPlayerPositionUpdateRequest is the request payload from client.

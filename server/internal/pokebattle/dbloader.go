@@ -103,16 +103,16 @@ func LoadPokemonFromDB(db DBTX, pokemonID int) (*Pokemon, error) {
 		defaultMoveNames[3] = dm4.String
 	}
 
-	// The Pokemon table stores pokered move constants (for example,
-	// POISON_STING), while phaser_moves.name is the display label (POISON
-	// STING). Resolve against the canonical constant column so punctuation and
-	// spacing can never change move identity.
+	// The Pokemon table stores stable pokered assembly constants. Resolve them
+	// against the canonical constant column so display punctuation and spacing
+	// (notably SAND_ATTACK/SAND-ATTACK and PSYCHIC_M/PSYCHIC) cannot change move
+	// identity.
 	for i, mname := range defaultMoveNames {
 		if mname == "" {
 			continue
 		}
 		var moveID int
-		if err := db.QueryRow(`SELECT id FROM phaser_moves WHERE short_name = $1`, mname).Scan(&moveID); err != nil {
+		if err := db.QueryRow(`SELECT id FROM phaser_moves WHERE constant_name = $1`, mname).Scan(&moveID); err != nil {
 			return nil, fmt.Errorf("resolve default move %q for pokemon %d: %w", mname, pokemonID, err)
 		}
 		move, err := LoadMoveSlotFromDB(db, moveID)
@@ -410,7 +410,8 @@ func SelectWildEncounter(db DBTX, mapID int, encounterType string) (pokemonID, l
 		JOIN phaser_pokemon pp ON we.pokemon_name = pp.name
 		WHERE we.map_id = $1 AND we.encounter_type = $2
 		  AND we.slot_index <= 10
-		  AND (we.version = 'red' OR we.version = 'both')
+		  AND (we.version = (SELECT release_code FROM phaser_import_metadata WHERE singleton)
+		       OR we.version = 'both')
 		ORDER BY es.slot_index ASC`, mapID, encounterType)
 	if err != nil {
 		return 0, 0, fmt.Errorf("query wild encounters for map %d: %w", mapID, err)
@@ -473,7 +474,8 @@ func SelectFishingEncounter(db DBTX, mapID int, rodType string) (pokemonID, leve
 			FROM phaser_wild_encounters we
 			JOIN phaser_pokemon pp ON we.pokemon_name = pp.name
 			WHERE we.encounter_type = 'good_rod' AND we.map_id IS NULL
-			  AND (we.version = 'red' OR we.version = 'both')
+			  AND (we.version = (SELECT release_code FROM phaser_import_metadata WHERE singleton)
+			       OR we.version = 'both')
 			ORDER BY we.slot_index ASC`)
 		if err != nil {
 			return 0, 0, fmt.Errorf("query good_rod encounters: %w", err)

@@ -417,6 +417,7 @@ func HandleCQItemUse(ses *session.Session, payload []byte, wh *WorldHandler) boo
 			if err := pokebattle.EvolvePokemon(myDB, targetPoke, evolvedID); err != nil {
 				log.Printf("[CQItems] Failed to evolve %s: %v", oldName, err)
 			} else {
+				MarkPokemonCaught(int64(charID), evolvedID)
 				msg += fmt.Sprintf("\nWhat? %s is evolving!\n%s evolved into %s!", oldName, oldName, evolvedName)
 			}
 		}
@@ -431,6 +432,7 @@ func HandleCQItemUse(ses *session.Session, payload []byte, wh *WorldHandler) boo
 			// If all slots full, skip (no prompt outside battle for now)
 		}
 	} else if isEvolutionStone(item) {
+		originalSpeciesID := targetPoke.ID
 		var applyErr error
 		msg, applyErr = applyStoneEvolution(myDB, item, targetPoke)
 		if applyErr != nil {
@@ -439,6 +441,9 @@ func HandleCQItemUse(ses *session.Session, payload []byte, wh *WorldHandler) boo
 				"error":   applyErr.Error(),
 			}, opcodes.CQItemUseResponse)
 			return false
+		}
+		if targetPoke.ID != originalSpeciesID {
+			MarkPokemonCaught(int64(charID), targetPoke.ID)
 		}
 	} else if _, _, ok := vitaminTarget(item); ok {
 		var applyErr error

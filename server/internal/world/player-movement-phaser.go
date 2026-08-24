@@ -23,6 +23,7 @@ type PlayerMovementState struct {
 	CurrentX      int           `json:"currentX"`
 	CurrentY      int           `json:"currentY"`
 	MapID         int           `json:"mapId"`
+	PreviousMapID int           `json:"previousMapId,omitempty"`
 	Direction     string        `json:"direction"`
 	Path          []PathNode    `json:"path"` // Remaining path to destination
 	IsSurfing     bool          `json:"isSurfing,omitempty"`
@@ -126,16 +127,17 @@ func (m *PlayerMovementManager) RegisterPlayer(ses *session.Session, charID int,
 	}
 
 	state := &PlayerMovementState{
-		SessionID:    ses.SessionID,
-		CharacterID:  charID,
-		CurrentX:     x,
-		CurrentY:     y,
-		MapID:        mapID,
-		Direction:    direction,
-		Path:         nil,
-		LastMoveTime: time.Now(),
-		LastSaveTime: time.Now(),
-		MoveSpeed:    defaultPlayerMoveSpeed,
+		SessionID:     ses.SessionID,
+		CharacterID:   charID,
+		CurrentX:      x,
+		CurrentY:      y,
+		MapID:         mapID,
+		PreviousMapID: -1,
+		Direction:     direction,
+		Path:          nil,
+		LastMoveTime:  time.Now(),
+		LastSaveTime:  time.Now(),
+		MoveSpeed:     defaultPlayerMoveSpeed,
 	}
 	m.applyBicycleMapRules(state)
 	m.players[charID] = state
@@ -302,7 +304,19 @@ func (m *PlayerMovementManager) UpdateMapID(charID int, mapID int) {
 		if m.wh != nil && m.wh.CutTiles != nil {
 			m.wh.CutTiles.ClearMap(int64(charID), state.MapID)
 		}
+		previousMapID := state.MapID
+		if m.wh != nil && m.wh.phaserWarps != nil {
+			if warp := m.wh.phaserWarps.warpAt(state.MapID, state.CurrentX, state.CurrentY); warp != nil {
+				previousMapID = warp.SourceMapID
+			}
+		}
+		state.PreviousMapID = previousMapID
 		state.MapID = mapID
+		if m.wh != nil && m.wh.sessionManager != nil {
+			if ses, found := m.wh.sessionManager.GetSession(state.SessionID); found {
+				ses.PreviousMapID = previousMapID
+			}
+		}
 		state.Path = nil // Clear any pending path on old map
 		m.applyBicycleMapRules(state)
 	}
@@ -322,6 +336,14 @@ func (m *PlayerMovementManager) UpdatePosition(charID int, x, y, mapID int, dire
 		m.wh.CutTiles.ClearMap(int64(charID), state.MapID)
 	}
 
+	if state.MapID != mapID {
+		state.PreviousMapID = state.MapID
+		if m.wh != nil && m.wh.sessionManager != nil {
+			if ses, found := m.wh.sessionManager.GetSession(state.SessionID); found {
+				ses.PreviousMapID = state.MapID
+			}
+		}
+	}
 	state.CurrentX = x
 	state.CurrentY = y
 	state.MapID = mapID
@@ -351,6 +373,20 @@ func (m *PlayerMovementManager) UpdateReportedPosition(charID int, x, y, mapID i
 
 	if state.MapID != mapID && m.wh != nil && m.wh.CutTiles != nil {
 		m.wh.CutTiles.ClearMap(int64(charID), state.MapID)
+	}
+	if state.MapID != mapID {
+		previousMapID := state.MapID
+		if m.wh != nil && m.wh.phaserWarps != nil {
+			if warp := m.wh.phaserWarps.warpAt(state.MapID, state.CurrentX, state.CurrentY); warp != nil {
+				previousMapID = warp.SourceMapID
+			}
+		}
+		state.PreviousMapID = previousMapID
+		if m.wh != nil && m.wh.sessionManager != nil {
+			if ses, found := m.wh.sessionManager.GetSession(state.SessionID); found {
+				ses.PreviousMapID = previousMapID
+			}
+		}
 	}
 
 	state.CurrentX = x
@@ -591,6 +627,7 @@ func (m *PlayerMovementManager) processTick() {
 				endSafariSessionIfLeavingMap(int64(state.CharacterID), state.MapID, wt.DestMapID, m.wh)
 
 				previousMapID := state.MapID
+				state.PreviousMapID = previousMapID
 
 				// Update the server-visible position for this forced warp tile.
 				state.CurrentX = wt.DestX
@@ -601,6 +638,7 @@ func (m *PlayerMovementManager) processTick() {
 
 				// Send teleport notification to client
 				if ok && ses.HasValidClient() {
+					ses.PreviousMapID = previousMapID
 					ses.X = float32(wt.DestX)
 					ses.Y = float32(wt.DestY)
 					if m.wh.ActorManager.IsOverworld(wt.DestMapID) {

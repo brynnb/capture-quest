@@ -206,6 +206,9 @@ func tryBuyGameCornerPrize(charID int64, prize GameCornerPrize) GameCornerPrizeP
 		if err != nil {
 			return gameCornerPrizeFailure(charID, "Failed to create Pokemon.", &prize)
 		}
+		if err := markPokemonCaught(db.GlobalWorldDB.DB, charID, *prize.PokemonID); err != nil {
+			return gameCornerPrizeFailure(charID, "Failed to register Pokemon.", &prize)
+		}
 		result.PrizeLevel = level
 		result.AddedToParty = added
 		result.PCBox = box

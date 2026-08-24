@@ -55,12 +55,12 @@ const useStaticDataStore = create<StaticDataStore>()((set, get) => ({
 
     try {
       // Add timeout to prevent hanging forever
-      const timeoutPromise = new Promise((_, reject) =>
+      const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("Static data fetch timeout")), 5000),
       );
 
       // Always set loaded with Pokemon theme data (local fallback if server missing)
-      let serverData: any = null;
+      let serverData: Awaited<ReturnType<typeof getStaticData>> | null = null;
       try {
         serverData = await Promise.race([getStaticData(), timeoutPromise]);
       } catch (fetchError) {

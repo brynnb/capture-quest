@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -149,8 +150,9 @@ def first_existing_png(directory: Path, stems: list[str], suffix: str = "") -> P
     return None
 
 
-def copy_pokemon_battle_sprites(extractor_root: Path, repo_root: Path) -> None:
-    db_path = extractor_root / "pokemon.db"
+def copy_pokemon_battle_sprites(
+    extractor_root: Path, repo_root: Path, db_path: Path
+) -> None:
     front_source = extractor_root / "pokemon-game-data/gfx/pokemon/front"
     back_source = extractor_root / "pokemon-game-data/gfx/pokemon/back"
     front_dest = repo_root / "public/assets/pokemon/front"
@@ -248,11 +250,15 @@ def copy_trainer_battle_sprites(extractor_root: Path, repo_root: Path) -> None:
     print(f"Copied {copied} trainer battle sprites.")
 
 
-def copy_phaser_assets(extractor_root: Path, repo_root: Path) -> None:
-    viewer_public = extractor_root / "pokemon-phaser/public"
+def copy_phaser_assets(
+    extractor_root: Path,
+    repo_root: Path,
+    db_path: Path,
+    viewer_public: Path,
+) -> None:
     phaser_root = repo_root / "public/phaser"
 
-    copy_file(extractor_root / "pokemon.db", phaser_root / "pokemon.db")
+    copy_file(db_path, phaser_root / "pokemon.db")
     copy_file(viewer_public / "style.css", phaser_root / "style.css")
 
     clean_dir(phaser_root / "assets")
@@ -283,7 +289,51 @@ def copy_phaser_assets(extractor_root: Path, repo_root: Path) -> None:
     print(f"Copied {sprite_count} overworld sprites and {tileset_count} tilesets.")
 
 
-def sync_audio_metadata(extractor_root: Path, repo_root: Path) -> None:
+def _validated_audio_artifacts(audio_root: Path) -> list[Path]:
+    manifest_path = audio_root / "audio-render-manifest.json"
+    if not manifest_path.is_file():
+        return []
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    artifacts = manifest.get("artifacts")
+    if not isinstance(artifacts, list) or len(artifacts) != 561:
+        raise RuntimeError(
+            f"Expected 561 rendered audio assets, found {len(artifacts) if isinstance(artifacts, list) else 'invalid manifest'}"
+        )
+    validated: list[Path] = []
+    asset_keys: set[str] = set()
+    logical_paths: set[str] = set()
+    for artifact in artifacts:
+        asset_key = artifact.get("assetKey")
+        if not isinstance(asset_key, str) or not asset_key or asset_key in asset_keys:
+            raise RuntimeError(f"Invalid or duplicate audio asset key: {asset_key!r}")
+        asset_keys.add(asset_key)
+        for representation in ("master", "distribution"):
+            record = artifact.get(representation, {})
+            logical_path = record.get("path")
+            expected_hash = record.get("sha256")
+            if not isinstance(logical_path, str) or not logical_path.startswith("/sound/pokemon/"):
+                raise RuntimeError(f"Invalid audio path in render manifest: {logical_path!r}")
+            if logical_path in logical_paths:
+                raise RuntimeError(f"Duplicate audio path in render manifest: {logical_path!r}")
+            logical_paths.add(logical_path)
+            relative = Path(logical_path.removeprefix("/"))
+            if relative.is_absolute() or ".." in relative.parts:
+                raise RuntimeError(f"Unsafe audio path: {logical_path!r}")
+            source = audio_root / relative
+            if not source.is_file():
+                raise RuntimeError(f"Missing rendered audio file: {source}")
+            actual_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+            if actual_hash != expected_hash:
+                raise RuntimeError(f"Rendered audio hash mismatch: {source}")
+            validated.append(source)
+    if len(asset_keys) != 561 or len(logical_paths) != 1122:
+        raise RuntimeError("Audio manifest does not describe 561 distinct master/distribution pairs")
+    return validated
+
+
+def sync_audio_metadata(
+    extractor_root: Path, repo_root: Path, audio_root: Path
+) -> None:
     source_manifest = extractor_root / "audio_manifest.json"
     destination_manifest = repo_root / "src/constants/pokemon_audio_manifest.json"
 
@@ -309,11 +359,16 @@ def sync_audio_metadata(extractor_root: Path, repo_root: Path) -> None:
         )
         print("No extractor audio_manifest.json found; wrote empty Pokemon audio manifest.")
 
-    rendered_audio = extractor_root / "rendered-audio/sound/pokemon"
+    validated_audio = _validated_audio_artifacts(audio_root)
+    rendered_audio = audio_root / "sound/pokemon"
     destination_audio = repo_root / "public/sound/pokemon"
-    if rendered_audio.exists():
+    if validated_audio:
         clean_dir(destination_audio)
         count = copy_tree_contents(rendered_audio, destination_audio)
+        copy_file(
+            audio_root / "audio-render-manifest.json",
+            destination_audio / "audio-render-manifest.json",
+        )
         print(f"Copied {count} rendered Pokemon audio files.")
     elif destination_audio.exists() and any(destination_audio.rglob("*.ogg")):
         print("Rendered Pokemon audio already exists in CaptureQuest public/sound/pokemon.")
@@ -325,15 +380,21 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--extractor-root", type=Path, required=True)
     parser.add_argument("--repo-root", type=Path, required=True)
+    parser.add_argument("--database", type=Path, required=True)
+    parser.add_argument("--viewer-public", type=Path)
+    parser.add_argument("--audio-root", type=Path)
     args = parser.parse_args()
 
     extractor_root = args.extractor_root.resolve()
     repo_root = args.repo_root.resolve()
+    database = args.database.resolve()
+    viewer_public = (args.viewer_public or extractor_root / "pokemon-phaser/public").resolve()
+    audio_root = (args.audio_root or extractor_root / "build/audio").resolve()
 
-    copy_phaser_assets(extractor_root, repo_root)
-    copy_pokemon_battle_sprites(extractor_root, repo_root)
+    copy_phaser_assets(extractor_root, repo_root, database, viewer_public)
+    copy_pokemon_battle_sprites(extractor_root, repo_root, database)
     copy_trainer_battle_sprites(extractor_root, repo_root)
-    sync_audio_metadata(extractor_root, repo_root)
+    sync_audio_metadata(extractor_root, repo_root, audio_root)
     return 0
 
 

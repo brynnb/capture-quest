@@ -5,8 +5,13 @@ import usePokemonDialogueStore from "@/stores/PokemonDialogueStore";
 import useSlotMachineStore from "@/stores/SlotMachineStore";
 import { TILE_SIZE } from "../../constants";
 import { CameraController } from "../../controllers/CameraController";
+import {
+  CONFIRM_INSTANT_WARP_EVENT,
+  isCompactTouchLayout,
+} from "../../instantWarp";
 import { PlayerMovementController } from "../../controllers/PlayerMovementController";
 import { WarpManager } from "../../managers";
+import { UiManager } from "../../managers/UiManager";
 import { MapRenderer } from "../../renderers/MapRenderer";
 import {
   fetchDialogueWithBranching,
@@ -17,6 +22,12 @@ import {
 } from "../../services/PhaserNetworkService";
 import * as PhaserNet from "../../services/PhaserNetworkService";
 import { TileViewerOverlays } from "./TileViewerOverlays";
+import {
+  MOBILE_INTERACT_EVENT,
+  MOBILE_MOVE_EVENT,
+  type MobileMovementDirection,
+} from "../../mobileControls";
+import type { WorldInputFreezeReason } from "../../utils/worldInputGuard";
 
 type MovementDirection = "UP" | "DOWN" | "LEFT" | "RIGHT";
 
@@ -32,6 +43,7 @@ const POKEMON_CENTER_PC_CLICK_TILES = [
 interface TileViewerInteractionDeps {
   scene: Scene;
   mapRenderer: () => MapRenderer;
+  uiManager: () => UiManager;
   cameraController: () => CameraController;
   playerMovementController: () => PlayerMovementController;
   warpManager: () => WarpManager;
@@ -41,6 +53,8 @@ interface TileViewerInteractionDeps {
   viewedMapIds: () => Set<number>;
   currentActorById: (actorId: number) => PhaserActor | null;
   isWorldInputFrozen: () => boolean;
+  getWorldInputFreezeReason: () => WorldInputFreezeReason | null;
+  getDisplayedMapId: () => number | null;
   handleTileEditorClick: (worldX: number, worldY: number) => void;
 }
 
@@ -54,6 +68,7 @@ export class TileViewerInteractionController {
   };
   private spaceKey?: Phaser.Input.Keyboard.Key;
   private suppressNextWorldPointerUp = false;
+  private instantWarpTargetUnsubscribe: (() => void) | null = null;
   private readonly pointerUpHandler = (pointer: Phaser.Input.Pointer) => {
     this.handlePointerUp(pointer);
   };
@@ -61,10 +76,22 @@ export class TileViewerInteractionController {
     void this.handleActorClicked(actor);
   };
   private readonly mapInteractivePointerDownHandler = () => {
+    if (useGameStatusStore.getState().isWarpMode) return;
     this.suppressNextWorldPointerUp = true;
+  };
+  private readonly confirmInstantWarpHandler = () => {
+    this.confirmPendingInstantWarp();
   };
   private readonly focusedButtonSpaceHandler = (event: KeyboardEvent) => {
     this.handleFocusedButtonSpace(event);
+  };
+  private readonly mobileMoveHandler = (event: Event) => {
+    const direction = (event as CustomEvent<MobileMovementDirection>).detail;
+    if (!["UP", "DOWN", "LEFT", "RIGHT"].includes(direction)) return;
+    this.deps.playerMovementController().handleKeyboardMove(direction);
+  };
+  private readonly mobileInteractHandler = () => {
+    this.activatePrimaryInteraction();
   };
 
   constructor(private readonly deps: TileViewerInteractionDeps) {}
@@ -81,6 +108,34 @@ export class TileViewerInteractionController {
       this.mapInteractivePointerDownHandler,
     );
     window.addEventListener("keydown", this.focusedButtonSpaceHandler, true);
+    window.addEventListener(MOBILE_MOVE_EVENT, this.mobileMoveHandler);
+    window.addEventListener(MOBILE_INTERACT_EVENT, this.mobileInteractHandler);
+    window.addEventListener(
+      CONFIRM_INSTANT_WARP_EVENT,
+      this.confirmInstantWarpHandler,
+    );
+    this.instantWarpTargetUnsubscribe = useGameStatusStore.subscribe(
+      (state) => state.pendingInstantWarpTarget,
+      (target) => {
+        if (!target) {
+          this.deps.uiManager().clearInstantWarpTarget();
+          return;
+        }
+        this.deps.uiManager().showInstantWarpTarget(
+          target.x,
+          target.y,
+          this.deps.cameraController().getZoom(),
+        );
+      },
+    );
+    const target = useGameStatusStore.getState().pendingInstantWarpTarget;
+    if (target) {
+      this.deps.uiManager().showInstantWarpTarget(
+        target.x,
+        target.y,
+        this.deps.cameraController().getZoom(),
+      );
+    }
   }
 
   cleanup(): void {
@@ -91,10 +146,22 @@ export class TileViewerInteractionController {
       this.mapInteractivePointerDownHandler,
     );
     window.removeEventListener("keydown", this.focusedButtonSpaceHandler, true);
+    window.removeEventListener(MOBILE_MOVE_EVENT, this.mobileMoveHandler);
+    window.removeEventListener(MOBILE_INTERACT_EVENT, this.mobileInteractHandler);
+    window.removeEventListener(
+      CONFIRM_INSTANT_WARP_EVENT,
+      this.confirmInstantWarpHandler,
+    );
+    this.instantWarpTargetUnsubscribe?.();
+    this.instantWarpTargetUnsubscribe = null;
+    this.deps.uiManager().clearInstantWarpTarget();
     this.suppressNextWorldPointerUp = false;
   }
 
   update(): void {
+    this.deps.uiManager().updateInstantWarpTargetZoom(
+      this.deps.cameraController().getZoom(),
+    );
     this.handleKeyboardInteract();
 
     const movement = this.deps.playerMovementController();
@@ -164,15 +231,23 @@ export class TileViewerInteractionController {
       this.suppressNextWorldPointerUp = false;
       return;
     }
-    if (this.deps.isWorldInputFrozen()) return;
+    if (this.deps.cameraController().consumePointerGesture(pointer.id)) return;
     if (pointer.getDistance() >= 10) return;
+
+    const gameStatus = useGameStatusStore.getState();
+    const freezeReason = this.deps.getWorldInputFreezeReason();
+    if (gameStatus.isWarpMode) {
+      if (freezeReason && freezeReason !== "map_view") return;
+    } else if (freezeReason) {
+      return;
+    }
 
     const worldPoint = this.deps.scene.cameras.main.getWorldPoint(
       pointer.x,
       pointer.y,
     );
 
-    if (useGameStatusStore.getState().isWarpMode) {
+    if (gameStatus.isWarpMode) {
       this.handleWarpModeClick(worldPoint.x, worldPoint.y);
       return;
     }
@@ -221,20 +296,75 @@ export class TileViewerInteractionController {
   private handleWarpModeClick(worldX: number, worldY: number): void {
     const tileX = Math.floor(worldX / TILE_SIZE);
     const tileY = Math.floor(worldY / TILE_SIZE);
+    const mapId = this.deps.getDisplayedMapId();
+    if (mapId == null || this.deps.mapRenderer().getTileAt(tileX, tileY) == null) {
+      return;
+    }
+
+    const target = { mapId, x: tileX, y: tileY };
+    if (isCompactTouchLayout()) {
+      useGameStatusStore.getState().setPendingInstantWarpTarget(target);
+      return;
+    }
+
+    this.commitInstantWarp(target);
+  }
+
+  private confirmPendingInstantWarp(): void {
+    const gameStatus = useGameStatusStore.getState();
+    const target = gameStatus.pendingInstantWarpTarget;
+    const freezeReason = this.deps.getWorldInputFreezeReason();
+    if (
+      !gameStatus.isWarpMode ||
+      gameStatus.isMapLoading ||
+      !target ||
+      (freezeReason !== null && freezeReason !== "map_view") ||
+      target.mapId !== this.deps.getDisplayedMapId() ||
+      this.deps.mapRenderer().getTileAt(target.x, target.y) == null
+    ) {
+      gameStatus.clearPendingInstantWarpTarget();
+      return;
+    }
+
+    this.commitInstantWarp(target);
+  }
+
+  private commitInstantWarp(target: {
+    mapId: number;
+    x: number;
+    y: number;
+  }): void {
     const playerActor = this.deps.getPlayerActor();
     const movement = this.deps.playerMovementController();
-    const mapId = movement.getCurrentMapId() ?? playerActor?.mapId ?? 0;
+    const currentMapId = movement.getCurrentMapId() ?? playerActor?.mapId;
     const playerId = playerActor?.id;
     const direction = movement.getCurrentDirection();
+    const gameStatus = useGameStatusStore.getState();
 
+    gameStatus.setWarpMode(false);
     movement.stopMovement();
-    movement.syncMapId(mapId);
-    movement.syncPosition(tileX, tileY);
+
+    if (currentMapId !== target.mapId) {
+      window.dispatchEvent(
+        new CustomEvent("warpTileTeleport", {
+          detail: {
+            mapId: target.mapId,
+            x: target.x,
+            y: target.y,
+            direction,
+          },
+        }),
+      );
+      return;
+    }
+
+    movement.syncMapId(target.mapId);
+    movement.syncPosition(target.x, target.y);
     movement.syncDirection(direction);
     if (playerActor) {
-      playerActor.x = tileX;
-      playerActor.y = tileY;
-      playerActor.mapId = mapId;
+      playerActor.x = target.x;
+      playerActor.y = target.y;
+      playerActor.mapId = target.mapId;
       playerActor.actionDirection = direction;
       const actorIndex = this.deps
         .actors()
@@ -246,15 +376,13 @@ export class TileViewerInteractionController {
     if (playerId != null) {
       this.deps.mapRenderer().snapActorPosition(
         playerId,
-        tileX,
-        tileY,
+        target.x,
+        target.y,
         direction,
         playerActor ?? undefined,
       );
     }
-    PhaserNet.sendPlayerPosition(tileX, tileY, mapId, direction);
-    const gameStatus = useGameStatusStore.getState();
-    gameStatus.setWarpMode(false);
+    PhaserNet.sendPlayerPosition(target.x, target.y, target.mapId, direction);
     gameStatus.setCameraFollowEnabled(true);
   }
 
@@ -401,6 +529,10 @@ export class TileViewerInteractionController {
   private handleKeyboardInteract(): void {
     if (!this.spaceKey) return;
     if (!Phaser.Input.Keyboard.JustDown(this.spaceKey)) return;
+    this.activatePrimaryInteraction();
+  }
+
+  public activatePrimaryInteraction(): void {
     if (this.isTextInputFocused()) return;
     if (this.deps.isWorldInputFrozen()) return;
     if (this.deps.playerMovementController().getIsMoving()) return;

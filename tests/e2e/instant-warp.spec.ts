@@ -157,3 +157,34 @@ test("instant warp from map view to a far overworld tile keeps the new movement 
   await quitToCharacterSelect(page);
   errors.assertNoSevereErrors();
 });
+
+test("instant warp from an indoor map overview targets the displayed overworld", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  const errors = collectPageErrors(page);
+
+  await page.setViewportSize({ width: 1900, height: 1000 });
+  await createGuestCharacterAndEnterWorld(page);
+  await jumpToScenario(page, "debug_warp_reds_house_1f_exit_mat");
+  await waitForMap(page, "REDS_HOUSE_1F");
+  await waitForNoMapLoading(page);
+
+  await page.getByRole("button", { name: "View Map" }).click();
+  await waitForMap(page, 9999);
+  await waitForNoMapLoading(page);
+  await centerTileInView(page, 5, 6);
+
+  await instantWarpTo(page, 5, 6);
+  await waitForMap(page, 9999);
+  await waitForNoMapLoading(page);
+  await waitForPlayerTile(page, 5, 6);
+
+  const state = await getGameState(page);
+  expect(state.player).toMatchObject({ x: 5, y: 6 });
+  expect(state.map.name).toMatch(/Kanto|Unified Overworld/);
+  expect(state.ui.isCameraFollowEnabled).toBe(true);
+
+  await quitToCharacterSelect(page);
+  errors.assertNoSevereErrors();
+});

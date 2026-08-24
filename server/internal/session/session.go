@@ -20,6 +20,7 @@ type Session struct {
 	Authenticated bool
 	AccountID     int64
 	MapID         int     // Current map the session is in
+	PreviousMapID int     // Per-player source map for dynamic LAST_MAP exits
 	X             float32 // Current X coordinate
 	Y             float32 // Current Y coordinate
 	InstanceID    int     // Current instance ID the session is in
@@ -34,12 +35,69 @@ type Session struct {
 	sendMu   sync.Mutex
 	closed   bool
 	closedMu sync.RWMutex
+
+	playtimeMu        sync.Mutex
+	playtimeStartedAt time.Time
+	playtimePersisted uint32
+	playtimeCharacter int32
 }
 
 // HasValidClient returns true if the session has a valid client with character data.
 // Use this to guard handlers that require a logged-in character.
 func (s *Session) HasValidClient() bool {
 	return s.Client != nil && s.Client.CharData() != nil
+}
+
+// StartPlaytime begins tracking active play for the selected character.
+func (s *Session) StartPlaytime(now time.Time, persistedSeconds uint32, characterID int32) {
+	s.playtimeMu.Lock()
+	s.playtimeStartedAt = now
+	s.playtimePersisted = persistedSeconds
+	s.playtimeCharacter = characterID
+	s.playtimeMu.Unlock()
+}
+
+// CurrentPlaytime includes both persisted playtime and the active interval.
+func (s *Session) CurrentPlaytime(now time.Time) uint32 {
+	s.playtimeMu.Lock()
+	defer s.playtimeMu.Unlock()
+	return s.playtimePersisted + elapsedWholeSeconds(s.playtimeStartedAt, now)
+}
+
+// PersistPlaytime writes and then advances the whole-second persistence
+// boundary while holding the per-session playtime lock. Quit and periodic
+// flushes therefore cannot claim the same interval or race a rollback.
+func (s *Session) PersistPlaytime(
+	now time.Time,
+	persist func(characterID int32, seconds uint32) error,
+) (uint32, error) {
+	s.playtimeMu.Lock()
+	defer s.playtimeMu.Unlock()
+	seconds := elapsedWholeSeconds(s.playtimeStartedAt, now)
+	if seconds == 0 || s.playtimeCharacter == 0 {
+		return 0, nil
+	}
+	if err := persist(s.playtimeCharacter, seconds); err != nil {
+		return 0, err
+	}
+	s.playtimeStartedAt = s.playtimeStartedAt.Add(time.Duration(seconds) * time.Second)
+	s.playtimePersisted += seconds
+	return seconds, nil
+}
+
+// StopPlaytime pauses accumulation while the session is at character select.
+func (s *Session) StopPlaytime() {
+	s.playtimeMu.Lock()
+	s.playtimeStartedAt = time.Time{}
+	s.playtimeCharacter = 0
+	s.playtimeMu.Unlock()
+}
+
+func elapsedWholeSeconds(start, now time.Time) uint32 {
+	if start.IsZero() || !now.After(start) {
+		return 0
+	}
+	return uint32(now.Sub(start) / time.Second)
 }
 
 // SessionManager manages active sessions.
@@ -101,6 +159,7 @@ func (sm *SessionManager) CreateSession(messenger ClientMessenger, sessionID int
 		SessionID:     sessionID,
 		Authenticated: false,
 		MapID:         -1,
+		PreviousMapID: -1,
 		InstanceID:    0,
 		ControlStream: stream,
 		IP:            ip,

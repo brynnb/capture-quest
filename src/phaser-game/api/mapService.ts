@@ -8,7 +8,7 @@ import { API_BASE_URL } from "./constants";
 /**
  * @deprecated Use MapDataService.fetchMapInfo() instead
  */
-export const fetchMapInfo = async (mapId: number): Promise<any> => {
+export const fetchMapInfo = async (mapId: number): Promise<unknown> => {
   console.warn("fetchMapInfo is deprecated - use MapDataService.fetchMapInfo() via WebTransport");
   const response = await fetch(`${API_BASE_URL}/map-info/${mapId}`);
   return await response.json();
@@ -17,8 +17,8 @@ export const fetchMapInfo = async (mapId: number): Promise<any> => {
 /**
  * @deprecated Use MapDataService.fetchOverworldMaps() instead
  */
-export const fetchOverworldMaps = async (): Promise<any[]> => {
+export const fetchOverworldMaps = async (): Promise<unknown[]> => {
   console.warn("fetchOverworldMaps is deprecated - use MapDataService.fetchOverworldMaps() via WebTransport");
   const response = await fetch(`${API_BASE_URL}/overworld-maps`);
-  return await response.json();
+  return await response.json() as unknown[];
 };

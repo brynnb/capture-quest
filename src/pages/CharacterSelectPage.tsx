@@ -18,19 +18,30 @@ const Wrapper = styled.div`
   justify-content: center;
   height: 100%;
   width: 100%;
+  overflow: auto;
 `;
 
 const ContentContainer = styled.div`
   display: grid;
-  grid-template-columns: 840px 500px;
+  width: min(1360px, 100%);
+  grid-template-columns: minmax(0, 1.68fr) minmax(320px, 1fr);
   gap: 10px;
-  padding: 40px;
+  padding: clamp(20px, 3vw, 40px);
+  box-sizing: border-box;
+
+  @media (max-width: 900px), (pointer: coarse) {
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr);
+    padding: 64px 16px 20px;
+    box-sizing: border-box;
+  }
 `;
 
 const LeftColumn = styled.div`
   display: flex;
   flex-direction: column;
   gap: 15px;
+  min-width: 0;
 `;
 
 const CharacterList = styled.div`
@@ -39,6 +50,10 @@ const CharacterList = styled.div`
   gap: 5px;
   flex: 1;
   align-items: center;
+
+  & > button {
+    max-width: 100%;
+  }
 `;
 
 const Title = styled.h2`
@@ -51,6 +66,10 @@ const Title = styled.h2`
   margin: 0 0 10px 0;
   color: #2e2f66;
   width: 100%;
+
+  @media (max-width: 600px), (pointer: coarse) {
+    font-size: 32px;
+  }
 `;
 
 const BottomButtons = styled.div`
@@ -58,13 +77,29 @@ const BottomButtons = styled.div`
   flex-direction: row;
   margin-top: 10px;
   justify-content: space-between;
-  width: 690px;
+  width: min(690px, 100%);
   align-self: center;
+
+  @media (max-width: 900px), (pointer: coarse) {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
 `;
 
 const ButtonGroup = styled.div`
   display: flex;
   gap: 10px;
+
+  @media (max-width: 600px), (pointer: coarse) {
+    width: 100%;
+    flex-wrap: wrap;
+
+    & > button {
+      min-width: 0;
+      flex: 1;
+    }
+  }
 `;
 
 const RightColumn = styled.div`
@@ -72,6 +107,8 @@ const RightColumn = styled.div`
   flex-direction: column;
   align-items: center;
   justify-content: space-between;
+  width: 100%;
+  min-width: 0;
 `;
 
 const CharacterPreview = styled.div`
@@ -79,12 +116,16 @@ const CharacterPreview = styled.div`
   flex-direction: column;
   align-items: center;
   gap: 20px;
+  width: 100%;
+  max-width: 500px;
 `;
 
 const CharacterImageContainer = styled.div`
   position: relative;
-  width: 500px;
+  width: 100%;
+  max-width: 500px;
   height: 750px;
+  box-sizing: border-box;
   display: flex;
   align-items: flex-end; /* Align images to bottom */
   justify-content: center;
@@ -95,6 +136,11 @@ const CharacterImageContainer = styled.div`
   background-image: url("/assets/charselectbg.png");
   background-size: cover;
   background-position: center;
+
+  @media (max-width: 900px), (pointer: coarse) {
+    width: min(100%, 500px);
+    height: min(44vh, 420px);
+  }
 `;
 
 const CharacterImage = styled.img`

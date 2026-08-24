@@ -29,6 +29,9 @@ function tile(
     mapId: 9999,
     collisionType,
     talkOverTile: false,
+    isNativeGameData: true,
+    coordinateOrigin: "native",
+    contentOrigin: "native",
     ...overrides,
   };
 }
@@ -123,6 +126,8 @@ describe("engine probe snapshots", () => {
         destinationMapId: 40,
         destinationX: 5,
         destinationY: 11,
+        destinationKind: "map",
+        destinationWarpId: 0,
         warpType: "door",
       },
     ];

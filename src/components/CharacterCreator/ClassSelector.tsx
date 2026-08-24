@@ -1,8 +1,10 @@
+import { useEffect } from "react";
 import useCharacterCreatorStore from "@stores/CharacterCreatorStore";
 import useStaticDataStore from "@stores/StaticDataStore";
 import { ClassData } from "@/services/characterService";
 import styled from "styled-components";
 import SelectionButton from "../Interface/SelectionButton";
+import { findDefaultCharacterClass } from "./classDefaults";
 
 interface ClassSelectorProps {
   onClassSelect?: (classId: number) => void;
@@ -28,6 +30,14 @@ const Title = styled.div`
 const ClassSelector = ({ onClassSelect }: ClassSelectorProps) => {
   const { selectedClass, setSelectedClass } = useCharacterCreatorStore();
   const classes = useStaticDataStore((state) => state.classes);
+
+  useEffect(() => {
+    if (selectedClass) return;
+    const defaultClass = findDefaultCharacterClass(classes);
+    if (defaultClass) {
+      setSelectedClass(defaultClass);
+    }
+  }, [classes, selectedClass, setSelectedClass]);
 
   const onSelectClass = (charClass: ClassData) => {
     setSelectedClass(charClass);

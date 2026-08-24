@@ -21,7 +21,7 @@ import {
   tileBeforeWarp,
 } from "./helpers/warps";
 
-test("player can use real tile clicks to move through starting house warps", async ({
+test("new player exits Red's House 2F through 1F into Pallet Town", async ({
   page,
 }) => {
   test.setTimeout(120_000);
@@ -33,8 +33,16 @@ test("player can use real tile clicks to move through starting house warps", asy
 
   const upstairsState = await getGameState(page);
   const upstairsMapId = upstairsState.map.id;
-  const stairsWarp = upstairsState.warps[0];
-  expect(stairsWarp).toBeTruthy();
+  expect(upstairsState.map.id).toBe(38);
+  expect(upstairsState.player).toMatchObject({ x: 3, y: 6 });
+  const stairsWarp = requireWarp(
+    upstairsState,
+    (warp) =>
+      warp.destinationMapId === 37 &&
+      warp.destinationX === 7 &&
+      warp.destinationY === 1,
+    "Red's House 2F stairs to 1F",
+  );
 
   await clickTile(page, stairsWarp.x, stairsWarp.y);
   await expect
@@ -52,11 +60,17 @@ test("player can use real tile clicks to move through starting house warps", asy
 
   const downstairsState = await getGameState(page);
   const downstairsMapId = downstairsState.map.id;
-  const exitWarp =
-    downstairsState.warps.find(
-      (warp) => warp.destinationMapId !== upstairsMapId,
-    ) ?? downstairsState.warps[0];
-  expect(exitWarp).toBeTruthy();
+  expect(downstairsMapId).toBe(37);
+  const exitWarp = requireWarp(
+    downstairsState,
+    (warp) =>
+      warp.destinationMapId === 0 &&
+      warp.destinationX === 5 &&
+      warp.destinationY === 5 &&
+      warp.x === 2 &&
+      warp.y === 7,
+    "Red's House 1F exit to Pallet Town after using the internal stairs",
+  );
 
   await clickTile(page, exitWarp.x, exitWarp.y);
   await expect
@@ -71,7 +85,11 @@ test("player can use real tile clicks to move through starting house warps", asy
   await waitForNoMapLoading(page);
   await waitForPlayerIdle(page);
 
+  await waitForPlayerTile(page, 5, 6);
+
   const outsideState = await getGameState(page);
+  expect(outsideState.map.id).toBe(9999);
+  expect(outsideState.map.name).toMatch(/Kanto|Unified Overworld/);
   expect(outsideState.worldInput.frozen).toBe(false);
   expect(outsideState.player.x).not.toBeNull();
   expect(outsideState.player.y).not.toBeNull();

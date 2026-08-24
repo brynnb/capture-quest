@@ -63,6 +63,7 @@ func ApplyEventTileOverridesToTiles(charID int64, mapID int, efm *EventFlagManag
 		props := tileRuntimePropertiesForTileImage(override.TileImageID)
 		tiles[i].RawFootTileID = props.RawFootTileID
 		tiles[i].TalkOverTile = props.TalkOverTile
+		tiles[i].ContentOrigin = "event"
 	}
 	return tiles
 }

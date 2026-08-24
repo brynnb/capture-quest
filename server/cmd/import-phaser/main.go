@@ -24,6 +24,16 @@ import (
 func main() {
 	defaultSQLite := defaultSQLitePath()
 	sqliteFlag := flag.String("sqlite", defaultSQLite, "path to the extracted Pokemon SQLite database")
+	releaseFlag := flag.String(
+		"release",
+		environmentDefault("CAPTUREQUEST_POKEMON_RELEASE", "red"),
+		"Pokemon release to import (red or blue)",
+	)
+	preflightOnly := flag.Bool(
+		"preflight-only",
+		false,
+		"validate the extractor schema and selected release without opening Postgres",
+	)
 	flag.Parse()
 
 	sqlitePath := *sqliteFlag
@@ -35,6 +45,28 @@ func main() {
 			log.Fatalf("Use either -sqlite or a positional SQLite path, not both")
 		}
 		sqlitePath = flag.Arg(0)
+	}
+
+	// Negotiate the immutable extractor contract before even opening Postgres.
+	// An incompatible or stale SQLite file must never reach a destructive reset.
+	sqlite, err := sql.Open("sqlite", sqlitePath)
+	if err != nil {
+		log.Fatalf("Failed to open SQLite database: %v", err)
+	}
+	defer sqlite.Close()
+	importContext, err := negotiateExtractorSource(sqlite, *releaseFlag)
+	if err != nil {
+		log.Fatalf("Extractor contract rejected: %v", err)
+	}
+	if *preflightOnly {
+		log.Printf(
+			"Extractor contract accepted: schema=%s/%d run=%s release=%s",
+			importContext.SchemaName,
+			importContext.SchemaVersion,
+			importContext.RunID,
+			importContext.ReleaseCode,
+		)
+		return
 	}
 
 	target, err := config.GetDatabaseTarget()
@@ -54,13 +86,7 @@ func main() {
 		log.Fatalf("Failed to ping Postgres: %v", err)
 	}
 
-	sqlite, err := sql.Open("sqlite", sqlitePath)
-	if err != nil {
-		log.Fatalf("Failed to open SQLite database: %v", err)
-	}
-	defer sqlite.Close()
-
-	if err := importPhaserToPostgres(sqlite, postgres); err != nil {
+	if err := importPhaserToPostgres(sqlite, postgres, importContext); err != nil {
 		log.Fatalf("Failed to import Phaser data into Postgres: %v", err)
 	}
 	if err := scriptedevents.SyncDefault(postgres); err != nil {
@@ -68,6 +94,13 @@ func main() {
 	}
 
 	log.Println("Phaser database import complete.")
+}
+
+func environmentDefault(name, fallback string) string {
+	if value := os.Getenv(name); value != "" {
+		return value
+	}
+	return fallback
 }
 
 func defaultSQLitePath() string {

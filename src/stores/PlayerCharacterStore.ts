@@ -53,16 +53,12 @@ const usePlayerCharacterStore = create<PlayerCharacterStore>()((set, get) => ({
     if (!charData) return;
 
     if (charData.options) {
-      useGameStatusStore.getState().syncOptions(charData.options as string);
+      useGameStatusStore.getState().syncOptions(charData.options);
     }
 
     const sd = useStaticDataStore.getState();
-    const factionData = (sd as any).factions?.find(
-      (f: any) => f.id === charData.factionId,
-    );
-    const classData = (sd as any).classes?.find(
-      (c: any) => c.id === charData.class,
-    );
+    const factionData = sd.factions.find((f) => f.id === charData.factionId);
+    const classData = sd.classes.find((c) => c.id === charData.class);
     const oldMapId =
       get().characterProfile.mapId ?? get().characterProfile.zoneId;
     const newMapId = charData.mapId;
@@ -74,7 +70,7 @@ const usePlayerCharacterStore = create<PlayerCharacterStore>()((set, get) => ({
     set((state) => ({
       characterProfile: {
         ...state.characterProfile,
-        ...(charData as any),
+        ...charData,
         mapId: charData.mapId,
         zoneId: charData.mapId,
         faction: factionData,
@@ -107,7 +103,7 @@ const usePlayerCharacterStore = create<PlayerCharacterStore>()((set, get) => ({
 }));
 
 if (typeof window !== "undefined") {
-  (window as any).__PLAYER_STORE__ = usePlayerCharacterStore;
+  window.__PLAYER_STORE__ = usePlayerCharacterStore;
 }
 
 export default usePlayerCharacterStore;

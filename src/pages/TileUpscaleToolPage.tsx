@@ -27,7 +27,11 @@ type Mapping = {
 };
 
 const Page = styled.main`
-  min-height: 100vh;
+  width: 100%;
+  height: var(--cq-viewport-height, 100dvh);
+  min-height: 0;
+  overflow: auto;
+  box-sizing: border-box;
   background: #11151b;
   color: #f5f2e8;
   font-family: Inter, "Segoe UI", sans-serif;

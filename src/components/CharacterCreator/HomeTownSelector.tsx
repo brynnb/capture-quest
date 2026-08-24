@@ -5,6 +5,27 @@ import styled from "styled-components";
 import AudioManager from "@/services/audio/AudioManager";
 import { sfxPathForConstant } from "@/services/audio/pokemonMusic";
 
+const SelectorShell = styled.div`
+  display: flex;
+  width: 100%;
+  max-width: 1290px;
+  min-width: 0;
+  flex-direction: column;
+`;
+
+const TownGrid = styled.div`
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: 350px minmax(0, 1fr);
+  gap: 45px;
+
+  @media (max-width: 900px), (pointer: coarse) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+`;
+
 const ScrollableZones = styled.div`
   display: flex;
   flex-direction: column;
@@ -13,6 +34,13 @@ const ScrollableZones = styled.div`
   max-height: 800px;
   overflow-y: auto;
   padding-right: 10px;
+
+  @media (max-width: 900px), (pointer: coarse) {
+    min-width: 0;
+    width: 100%;
+    max-height: 240px;
+    padding-right: 4px;
+  }
 
   /* Scrollbar styling */
   &::-webkit-scrollbar {
@@ -55,6 +83,14 @@ const ZoneButton = styled.button<{
   transition: all 0.1s ease-in-out;
   margin-bottom: 6px;
 
+  @media (max-width: 900px), (pointer: coarse) {
+    width: 100%;
+    min-height: 44px;
+    height: auto;
+    padding: 8px 10px;
+    font-size: 18px;
+  }
+
   &:focus {
     outline: none;
   }
@@ -80,6 +116,11 @@ const Title = styled.h2`
   margin: 0 0 20px 0;
   color: #2e2f66;
   width: 100%;
+
+  @media (max-width: 900px), (pointer: coarse) {
+    margin-bottom: 12px;
+    font-size: 28px;
+  }
 `;
 
 const DescriptionBox = styled.div`
@@ -96,12 +137,45 @@ const DescriptionBox = styled.div`
   min-height: 400px;
   overflow-y: auto;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+
+  @media (max-width: 900px), (pointer: coarse) {
+    min-height: 180px;
+    padding: 18px;
+    font-size: 16px;
+  }
 `;
 
 const ZoneText = styled.div`
   font-size: 24px;
   text-align: left;
   color: #2e2f66;
+
+  @media (max-width: 900px), (pointer: coarse) {
+    font-size: 17px;
+  }
+`;
+
+const TownName = styled.div`
+  padding-bottom: 10px;
+  color: #4a4ba6;
+  border-bottom: 4px solid #ffccd9;
+  font-size: 24px;
+  font-weight: bold;
+  text-transform: uppercase;
+
+  @media (max-width: 900px), (pointer: coarse) {
+    font-size: 19px;
+  }
+`;
+
+const EmptyDescription = styled.div`
+  padding-top: 100px;
+  opacity: 0.5;
+  text-align: center;
+
+  @media (max-width: 900px), (pointer: coarse) {
+    padding-top: 42px;
+  }
 `;
 
 const HomeTownSelector = () => {
@@ -128,24 +202,10 @@ const HomeTownSelector = () => {
   );
 
   return (
-    <div
-      style={{
-        width: "100%",
-        maxWidth: "1290px",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
+    <SelectorShell>
       <Title>Choose Your Home City</Title>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "350px 1fr",
-          gap: "45px",
-          width: "100%",
-        }}
-      >
+      <TownGrid>
         <ScrollableZones>
           {uniqueHomeTowns.map((town) => (
             <ZoneButton
@@ -158,38 +218,25 @@ const HomeTownSelector = () => {
           ))}
         </ScrollableZones>
 
-        <DescriptionBox style={{ marginTop: "0px" }}>
+        <DescriptionBox>
           {selectedHomeTown ? (
             <div
               style={{ display: "flex", flexDirection: "column", gap: "20px" }}
             >
-              <div
-                style={{
-                  fontWeight: "bold",
-                  fontSize: "24px",
-                  textTransform: "uppercase",
-                  color: "#4a4ba6",
-                  borderBottom: "4px solid #ffccd9",
-                  paddingBottom: "10px",
-                }}
-              >
-                {selectedHomeTown.name}
-              </div>
+              <TownName>{selectedHomeTown.name}</TownName>
               <ZoneText>
                 {selectedHomeTown.description ||
                   "A bustling city in the heart of the region, full of mystery and opportunity."}
               </ZoneText>
             </div>
           ) : (
-            <div
-              style={{ opacity: 0.5, textAlign: "center", paddingTop: "100px" }}
-            >
+            <EmptyDescription>
               Select a home city to view details
-            </div>
+            </EmptyDescription>
           )}
         </DescriptionBox>
-      </div>
-    </div>
+      </TownGrid>
+    </SelectorShell>
   );
 };
 

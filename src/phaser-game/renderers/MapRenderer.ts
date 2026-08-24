@@ -1,5 +1,6 @@
 import { Scene } from "phaser";
 import { PhaserTile, PhaserActor, PhaserWarp } from "@/net/generated/world_api";
+import useGameStatusStore from "@/stores/GameStatusStore";
 import { TILE_SIZE } from "../constants";
 import { ActorMovementController } from "../controllers/ActorMovementController";
 import { ActorManager } from "../managers/ActorManager";
@@ -10,6 +11,17 @@ interface LocalActorPositionOverride {
   y: number;
   direction?: string;
 }
+
+export interface MapItem {
+  x: number;
+  y: number;
+  name?: string;
+  description?: string;
+}
+
+type ActorSprite = Phaser.GameObjects.Sprite & { actorData?: PhaserActor };
+type ItemSprite = Phaser.GameObjects.Image & { itemData?: MapItem };
+type WarpZone = Phaser.GameObjects.Zone & { warpData?: PhaserWarp };
 
 export class MapRenderer {
   // Maximum texture dimension before falling back to individual sprites
@@ -117,6 +129,7 @@ export class MapRenderer {
       _localY: number,
       event?: Phaser.Types.Input.EventData,
     ) => {
+      if (useGameStatusStore.getState().isWarpMode) return;
       this.consumeInteractivePointer(event);
       if (this.isWorldInputFrozen()) return;
       const latestActor =
@@ -129,7 +142,7 @@ export class MapRenderer {
 
   renderMap(
     tiles: PhaserTile[],
-    items: any[], // eslint-disable-line @typescript-eslint/no-explicit-any
+    items: MapItem[],
     warps: PhaserWarp[] = [],
     actors: PhaserActor[] = [],
   ) {
@@ -259,7 +272,7 @@ export class MapRenderer {
       }
 
       // Store item data in the sprite for hover info
-      (itemSprite as any).itemData = item;
+      (itemSprite as ItemSprite).itemData = item;
 
       // Add to container
       this.mapContainer.add(itemSprite);
@@ -276,7 +289,7 @@ export class MapRenderer {
       );
 
       // Store warp data in the zone for hover/debug info.
-      (warpZone as any).warpData = warp;
+      (warpZone as WarpZone).warpData = warp;
 
       // Make the warp interactive
       warpZone.setInteractive({ useHandCursor: true });
@@ -288,6 +301,7 @@ export class MapRenderer {
         _localY: number,
         event?: Phaser.Types.Input.EventData,
       ) => {
+        if (useGameStatusStore.getState().isWarpMode) return;
         this.consumeInteractivePointer(event);
         if (this.isWorldInputFrozen()) return;
         // Emit immediately so TileViewer can start pathing the player to the warp
@@ -649,7 +663,7 @@ export class MapRenderer {
       direction || this.calculateDirection(oldX, oldY, newX, newY);
 
     // Update actor data
-    const actorData = (actorSprite as any).actorData;
+    const actorData = (actorSprite as ActorSprite).actorData;
     if (actorData) {
       actorData.x = newX;
       actorData.y = newY;
@@ -746,7 +760,7 @@ export class MapRenderer {
       // Safety check: ensure the frame exists in the texture
       const texture = actorSprite.texture;
       const frameStr = frame.toString();
-      if (texture && (texture.has(frameStr) || texture.has(frame as any))) {
+      if (texture && texture.has(frameStr)) {
         actorSprite.setFrame(frame);
       } else {
         // Fallback to frame 0 if requested frame doesn't exist
@@ -754,7 +768,7 @@ export class MapRenderer {
       }
 
       // Also update the frame in the actor data
-      const actorData = (actorSprite as any).actorData;
+      const actorData = (actorSprite as ActorSprite).actorData;
       if (actorData) {
         actorData.frame = frame;
       }
@@ -765,7 +779,7 @@ export class MapRenderer {
       actorSprite.setFlipX(flipX);
 
       // Also update the flipX in the actor data
-      const actorData = (actorSprite as any).actorData;
+      const actorData = (actorSprite as ActorSprite).actorData;
       if (actorData) {
         actorData.flipX = flipX;
       }
@@ -878,8 +892,8 @@ export class MapRenderer {
     this.movementController.setChatBubble(actorId, undefined);
   }
 
-  renderActor(actor: any): boolean {
-    const renderActor = this.actorWithLocalOverride(actor as PhaserActor);
+  renderActor(actor: PhaserActor): boolean {
+    const renderActor = this.actorWithLocalOverride(actor);
 
     if (renderActor.objectType === "sign" || renderActor.movementType === "HIDDEN") {
       this.createActorClickZone(renderActor);
@@ -919,7 +933,7 @@ export class MapRenderer {
     this.loadActorSpriteAsync(renderActor, actorSprite);
 
     // Store actor data in the sprite for hover info
-    (actorSprite as any).actorData = renderActor;
+    (actorSprite as ActorSprite).actorData = renderActor;
     this.configureActorSpriteInteraction(actorSprite, renderActor);
 
     // Add to container
@@ -947,7 +961,7 @@ export class MapRenderer {
     return true;
   }
 
-  calculateMapBounds(tiles: any[]) {
+  calculateMapBounds(tiles: PhaserTile[]) {
     if (tiles.length === 0) {
       return { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 0, height: 0 };
     }

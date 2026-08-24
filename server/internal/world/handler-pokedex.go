@@ -4,9 +4,11 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"time"
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
+	"capturequest/internal/pokebattle"
 	"capturequest/internal/session"
 )
 
@@ -104,6 +106,9 @@ func HandlePokedexListRequest(ses *session.Session, payload []byte, wh *WorldHan
 	// Fetch seen/caught status for this character
 	var status []PokedexStatusEntry
 	if charID > 0 {
+		if err := reconcileOwnedPokemonPokedex(db.GlobalWorldDB.DB, charID); err != nil {
+			log.Printf("[Pokedex] Error reconciling owned pokemon for char %d: %v", charID, err)
+		}
 		statusRows, err := db.GlobalWorldDB.DB.Query(`
 			SELECT pokemon_id, seen, caught
 			FROM character_pokedex WHERE character_id = $1 ORDER BY pokemon_id`, charID)
@@ -140,6 +145,9 @@ func HandlePokedexStatusRequest(ses *session.Session, payload []byte, wh *WorldH
 	if charID == 0 {
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "not logged in"}, opcodes.PokedexStatusResponse)
 		return false
+	}
+	if err := reconcileOwnedPokemonPokedex(db.GlobalWorldDB.DB, charID); err != nil {
+		log.Printf("[Pokedex] Error reconciling owned pokemon for char %d: %v", charID, err)
 	}
 
 	statusRows, err := db.GlobalWorldDB.DB.Query(`
@@ -183,11 +191,14 @@ func sendTrainerCardResponse(ses *session.Session, wh *WorldHandler) {
 
 	charData := ses.Client.CharData()
 	charID := int64(charData.ID)
+	if err := reconcileOwnedPokemonPokedex(db.GlobalWorldDB.DB, charID); err != nil {
+		log.Printf("[TrainerCard] Error reconciling owned pokemon for char %d: %v", charID, err)
+	}
 
 	// Build trainer card
 	card := TrainerCardResponse{
 		Name:       charData.Name,
-		TimePlayed: int(charData.TimePlayed),
+		TimePlayed: int(ses.CurrentPlaytime(time.Now())),
 	}
 
 	err := db.GlobalWorldDB.DB.QueryRow(`
@@ -224,13 +235,7 @@ func sendTrainerCardResponse(ses *session.Session, wh *WorldHandler) {
 // MarkPokemonSeen marks a Pokémon as seen in the character's Pokédex.
 // Called when a wild/trainer battle starts.
 func MarkPokemonSeen(charID int64, pokemonID int) {
-	_, err := db.GlobalWorldDB.DB.Exec(`
-		INSERT INTO character_pokedex (character_id, pokemon_id, seen, first_seen_at)
-		VALUES ($1, $2, 1, NOW())
-		ON CONFLICT (character_id, pokemon_id) DO UPDATE SET
-			seen = 1,
-			first_seen_at = COALESCE(character_pokedex.first_seen_at, CURRENT_TIMESTAMP)`,
-		charID, pokemonID)
+	err := markPokemonSeen(db.GlobalWorldDB.DB, charID, pokemonID)
 	if err != nil {
 		log.Printf("[Pokedex] Error marking pokemon %d seen for char %d: %v", pokemonID, charID, err)
 	} else {
@@ -238,21 +243,65 @@ func MarkPokemonSeen(charID int64, pokemonID int) {
 	}
 }
 
+func markPokemonSeen(database pokebattle.DBTX, charID int64, pokemonID int) error {
+	if charID <= 0 || pokemonID < 1 || pokemonID > 151 {
+		return fmt.Errorf("invalid pokedex identity character=%d pokemon=%d", charID, pokemonID)
+	}
+	_, err := database.Exec(`
+		INSERT INTO character_pokedex (character_id, pokemon_id, seen, first_seen_at)
+		VALUES ($1, $2, 1, CURRENT_TIMESTAMP)
+		ON CONFLICT (character_id, pokemon_id) DO UPDATE SET
+			seen = 1,
+			first_seen_at = COALESCE(character_pokedex.first_seen_at, CURRENT_TIMESTAMP)`,
+		charID, pokemonID)
+	return err
+}
+
 // MarkPokemonCaught marks a Pokémon as caught (and seen) in the character's Pokédex.
 // Called when a Pokémon is successfully caught.
 func MarkPokemonCaught(charID int64, pokemonID int) {
-	_, err := db.GlobalWorldDB.DB.Exec(`
+	if err := markPokemonCaught(db.GlobalWorldDB.DB, charID, pokemonID); err != nil {
+		log.Printf("[Pokedex] Error marking pokemon %d caught for char %d: %v", pokemonID, charID, err)
+	}
+}
+
+func markPokemonCaught(database pokebattle.DBTX, charID int64, pokemonID int) error {
+	if charID <= 0 || pokemonID < 1 || pokemonID > 151 {
+		return fmt.Errorf("invalid pokedex identity character=%d pokemon=%d", charID, pokemonID)
+	}
+	_, err := database.Exec(`
 		INSERT INTO character_pokedex (character_id, pokemon_id, seen, caught, first_seen_at, first_caught_at)
-		VALUES ($1, $2, 1, 1, NOW(), NOW())
+		VALUES ($1, $2, 1, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
 		ON CONFLICT (character_id, pokemon_id) DO UPDATE SET
 			seen = 1,
 			caught = 1,
 			first_seen_at = COALESCE(character_pokedex.first_seen_at, EXCLUDED.first_seen_at),
 			first_caught_at = COALESCE(character_pokedex.first_caught_at, EXCLUDED.first_caught_at)`,
 		charID, pokemonID)
-	if err != nil {
-		log.Printf("[Pokedex] Error marking pokemon %d caught for char %d: %v", pokemonID, charID, err)
+	return err
+}
+
+// reconcileOwnedPokemonPokedex enforces the Gen I invariant that every species
+// currently owned by the trainer is both seen and caught. It also repairs saves
+// created before all acquisition paths updated the Pokédex directly.
+func reconcileOwnedPokemonPokedex(database pokebattle.DBTX, charID int64) error {
+	if charID <= 0 {
+		return fmt.Errorf("invalid pokedex character=%d", charID)
 	}
+	_, err := database.Exec(`
+		INSERT INTO character_pokedex (
+			character_id, pokemon_id, seen, caught, first_seen_at, first_caught_at
+		)
+		SELECT $1, pokemon_id, 1, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+		FROM character_pokemon
+		WHERE character_id = $1 AND pokemon_id BETWEEN 1 AND 151
+		GROUP BY pokemon_id
+		ON CONFLICT (character_id, pokemon_id) DO UPDATE SET
+			seen = 1,
+			caught = 1,
+			first_seen_at = COALESCE(character_pokedex.first_seen_at, EXCLUDED.first_seen_at),
+			first_caught_at = COALESCE(character_pokedex.first_caught_at, EXCLUDED.first_caught_at)`, charID)
+	return err
 }
 
 // StructToMap helper is already defined in handler-phaser-data.go, reuse it.

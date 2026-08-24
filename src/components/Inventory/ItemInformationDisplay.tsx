@@ -28,6 +28,10 @@ const ItemDisplayContainer = styled.div.attrs({
     color: black;
     font-weight: 600;
   }
+
+  @media (max-width: 850px), (pointer: coarse) {
+    display: none;
+  }
 `;
 
 const ItemDisplayContent = styled.div`

@@ -14,16 +14,19 @@ import (
 )
 
 var phaserMoveImportColumns = []string{
-	"id", "name", "short_name", "effect", "power", "type", "accuracy", "pp",
+	"id", "constant_name", "name", "short_name", "effect", "power", "type", "accuracy", "pp",
 	"battle_animation", "battle_sound", "battle_sound_pitch", "battle_sound_tempo",
 	"battle_subanimation", "battle_tileset", "battle_delay", "is_hm", "field_move_effect",
 }
 
-func importPhaserToPostgres(sqlite, pg *sql.DB) error {
+func importPhaserToPostgres(sqlite, pg *sql.DB, context extractorImportContext) error {
 	if err := ensurePostgresSchema(pg); err != nil {
 		return err
 	}
 	if err := truncateImportedPostgresTables(pg); err != nil {
+		return err
+	}
+	if err := persistExtractorImportContext(pg, context); err != nil {
 		return err
 	}
 
@@ -59,8 +62,8 @@ func importPhaserToPostgres(sqlite, pg *sql.DB) error {
 			SourceTable: "warps",
 			TargetTable: "phaser_warps",
 			Columns: []string{
-				"id", "source_map_id", "x", "y", "destination_map_id", "destination_map",
-				"destination_x", "destination_y",
+				"id", "source_map_id", "source_warp_index", "x", "y", "destination_map_id", "destination_map",
+				"destination_x", "destination_y", "destination_kind", "destination_warp_id",
 			},
 		},
 		{
@@ -78,6 +81,13 @@ func importPhaserToPostgres(sqlite, pg *sql.DB) error {
 				"id", "name", "hp", "atk", "def", "spd", "spc", "type_1", "type_2",
 				"catch_rate", "base_exp", "default_move_1_id", "default_move_2_id",
 				"default_move_3_id", "default_move_4_id", "base_cry", "cry_pitch",
+				"cry_length", "pokedex_type", "height", "weight", "pokedex_text",
+				"evolve_level", "evolve_pokemon", "evolves_from_trade", "icon_image", "palette_type",
+			},
+			SourceColumns: []string{
+				"id", "name", "hp", "atk", "def", "spd", "spc", "type_1", "type_2",
+				"catch_rate", "base_exp", "default_move_1_name", "default_move_2_name",
+				"default_move_3_name", "default_move_4_name", "base_cry", "cry_pitch",
 				"cry_length", "pokedex_type", "height", "weight", "pokedex_text",
 				"evolve_level", "evolve_pokemon", "evolves_from_trade", "icon_image", "palette_type",
 			},
@@ -117,6 +127,8 @@ func importPhaserToPostgres(sqlite, pg *sql.DB) error {
 				"id", "map_name", "map_id", "encounter_type", "encounter_rate",
 				"slot_index", "pokemon_name", "level", "version",
 			},
+			Where: "version IN (?, 'both')",
+			Args:  []any{context.ReleaseCode},
 		},
 		{
 			SourceTable: "encounter_slots",
@@ -198,16 +210,10 @@ func importPhaserToPostgres(sqlite, pg *sql.DB) error {
 	if err := refreshImportedMapIDsPostgres(pg, "phaser_warp_events"); err != nil {
 		return err
 	}
-	if err := resolveLastMapWarpDestinationsPostgres(pg); err != nil {
+	if err := resolveImportedWarpDestinationsPostgres(sqlite, pg); err != nil {
 		return err
 	}
-	if err := clearWarpDestinationCoordinatePlaceholdersPostgres(pg); err != nil {
-		return err
-	}
-	if err := resolveWarpDestinationCoordinatesPostgres(sqlite, pg); err != nil {
-		return err
-	}
-	if err := deriveEncounterAreasPostgres(sqlite, pg); err != nil {
+	if err := deriveEncounterAreasPostgres(sqlite, pg, context.ReleaseCode); err != nil {
 		return err
 	}
 	if err := bakeOverworldCoordinatesPostgres(pg); err != nil {
@@ -244,6 +250,94 @@ func importPhaserToPostgres(sqlite, pg *sql.DB) error {
 		return err
 	}
 
+	return nil
+}
+
+func resolveImportedWarpDestinationsPostgres(sqlite, pg *sql.DB) error {
+	if err := clearWarpDestinationCoordinatePlaceholdersPostgres(pg); err != nil {
+		return err
+	}
+	// LAST_MAP is dynamic only when an interior can be entered from more than
+	// one map. Resolve ordinary building exits (including Red's house) from their
+	// unique external origin before calculating destination coordinates.
+	if err := resolveLastMapWarpDestinationsPostgres(pg); err != nil {
+		return err
+	}
+	if err := resolveWarpDestinationCoordinatesPostgres(sqlite, pg); err != nil {
+		return err
+	}
+	return validateDeterministicLastMapWarpDestinationsPostgres(pg)
+}
+
+func validatePokemonDefaultMovesPostgres(db *sql.DB) error {
+	rows, err := db.Query(`
+		SELECT DISTINCT defaults.move_constant
+		FROM (
+			SELECT default_move_1_id AS move_constant FROM phaser_pokemon
+			UNION ALL SELECT default_move_2_id FROM phaser_pokemon
+			UNION ALL SELECT default_move_3_id FROM phaser_pokemon
+			UNION ALL SELECT default_move_4_id FROM phaser_pokemon
+		) defaults
+		LEFT JOIN phaser_moves moves
+		  ON moves.constant_name = defaults.move_constant
+		WHERE defaults.move_constant IS NOT NULL
+		  AND defaults.move_constant <> 'NO_MOVE'
+		  AND moves.id IS NULL
+		ORDER BY defaults.move_constant`)
+	if err != nil {
+		return fmt.Errorf("validate Pokemon default moves: %w", err)
+	}
+	defer rows.Close()
+	var missing []string
+	for rows.Next() {
+		var constant string
+		if err := rows.Scan(&constant); err != nil {
+			return fmt.Errorf("scan unresolved Pokemon default move: %w", err)
+		}
+		missing = append(missing, constant)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read unresolved Pokemon default moves: %w", err)
+	}
+	if len(missing) != 0 {
+		return fmt.Errorf(
+			"Pokemon defaults reference missing move constants: %s",
+			strings.Join(missing, ", "),
+		)
+	}
+	return nil
+}
+
+func persistExtractorImportContext(pg *sql.DB, context extractorImportContext) error {
+	_, err := pg.Exec(`
+		INSERT INTO phaser_import_metadata (
+			singleton, schema_name, schema_version, minimum_reader_version,
+			extraction_run_id, extractor_revision, source_revision,
+			source_date_epoch, source_tree_sha256, release_code
+		) VALUES (true, $1, $2, $3, $4, $5, $6, $7, $8, $9)
+		ON CONFLICT (singleton) DO UPDATE SET
+			schema_name = EXCLUDED.schema_name,
+			schema_version = EXCLUDED.schema_version,
+			minimum_reader_version = EXCLUDED.minimum_reader_version,
+			extraction_run_id = EXCLUDED.extraction_run_id,
+			extractor_revision = EXCLUDED.extractor_revision,
+			source_revision = EXCLUDED.source_revision,
+			source_date_epoch = EXCLUDED.source_date_epoch,
+			source_tree_sha256 = EXCLUDED.source_tree_sha256,
+			release_code = EXCLUDED.release_code`,
+		context.SchemaName,
+		context.SchemaVersion,
+		context.MinimumReaderVersion,
+		context.RunID,
+		context.ExtractorRevision,
+		context.SourceRevision,
+		context.SourceDateEpoch,
+		context.SourceTreeSHA256,
+		context.ReleaseCode,
+	)
+	if err != nil {
+		return fmt.Errorf("persist extractor import metadata: %w", err)
+	}
 	return nil
 }
 
@@ -337,17 +431,30 @@ func truncateImportedPostgresTables(pg *sql.DB) error {
 }
 
 type staticTableSpec struct {
-	SourceTable string
-	TargetTable string
-	Columns     []string
-	Optional    bool
-	Transform   func([]any) error
+	SourceTable   string
+	TargetTable   string
+	Columns       []string
+	SourceColumns []string
+	Where         string
+	Args          []any
+	Optional      bool
+	Transform     func([]any) error
 }
 
 func importStaticTable(sqlite, pg *sql.DB, spec staticTableSpec) (int, error) {
 	log.Printf("Importing %s -> %s...", spec.SourceTable, spec.TargetTable)
-	query := fmt.Sprintf("SELECT %s FROM %s", strings.Join(spec.Columns, ", "), spec.SourceTable)
-	rows, err := sqlite.Query(query)
+	sourceColumns := spec.SourceColumns
+	if len(sourceColumns) == 0 {
+		sourceColumns = spec.Columns
+	}
+	if len(sourceColumns) != len(spec.Columns) {
+		return 0, fmt.Errorf("source/target column count mismatch for %s", spec.SourceTable)
+	}
+	query := fmt.Sprintf("SELECT %s FROM %s", strings.Join(sourceColumns, ", "), spec.SourceTable)
+	if spec.Where != "" {
+		query += " WHERE " + spec.Where
+	}
+	rows, err := sqlite.Query(query, spec.Args...)
 	if err != nil {
 		if spec.Optional {
 			log.Printf("  ! Optional source table %s not imported: %v", spec.SourceTable, err)
@@ -411,42 +518,6 @@ func normalizeTrainerClassImportValues(values []any) error {
 		return fmt.Errorf("base_money %d is not a non-negative bcd3 money literal", raw)
 	}
 	values[baseMoneyColumn] = raw / 100
-	return nil
-}
-
-func validatePokemonDefaultMovesPostgres(db *sql.DB) error {
-	rows, err := db.Query(`
-		SELECT DISTINCT defaults.move_constant
-		FROM (
-			SELECT default_move_1_id AS move_constant FROM phaser_pokemon
-			UNION ALL SELECT default_move_2_id FROM phaser_pokemon
-			UNION ALL SELECT default_move_3_id FROM phaser_pokemon
-			UNION ALL SELECT default_move_4_id FROM phaser_pokemon
-		) defaults
-		LEFT JOIN phaser_moves moves ON moves.short_name = defaults.move_constant
-		WHERE defaults.move_constant IS NOT NULL
-		  AND defaults.move_constant <> 'NO_MOVE'
-		  AND moves.id IS NULL
-		ORDER BY defaults.move_constant`)
-	if err != nil {
-		return fmt.Errorf("validate pokemon default moves: %w", err)
-	}
-	defer rows.Close()
-
-	var missing []string
-	for rows.Next() {
-		var moveConstant string
-		if err := rows.Scan(&moveConstant); err != nil {
-			return fmt.Errorf("scan unresolved pokemon default move: %w", err)
-		}
-		missing = append(missing, moveConstant)
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("read unresolved pokemon default moves: %w", err)
-	}
-	if len(missing) > 0 {
-		return fmt.Errorf("pokemon defaults reference missing move constants: %s", strings.Join(missing, ", "))
-	}
 	return nil
 }
 
@@ -598,8 +669,12 @@ func importTilesPostgres(sqlite, pg *sql.DB, tileImageMetadata map[int64]tileIma
 	defer sourceRows.Close()
 
 	stmt, err := pg.Prepare(`
-		INSERT INTO phaser_tiles (id, x, y, tile_image_id, local_x, local_y, map_id, source_map_id, collision_type, raw_foot_tile_id, talk_over_tile)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`)
+		INSERT INTO phaser_tiles (
+			id, x, y, tile_image_id, local_x, local_y, map_id, source_map_id,
+			collision_type, raw_foot_tile_id, talk_over_tile,
+			is_native_game_data, coordinate_origin, content_origin
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, TRUE, 'native', 'native')`)
 	if err != nil {
 		return fmt.Errorf("prepare phaser_tiles insert: %w", err)
 	}
@@ -808,7 +883,7 @@ type overworldEncounterMap struct {
 	HasOffset bool
 }
 
-func deriveEncounterAreasPostgres(sqlite, pg *sql.DB) error {
+func deriveEncounterAreasPostgres(sqlite, pg *sql.DB, release string) error {
 	log.Println("Deriving grass encounter areas from wild encounter tables...")
 	offsets := loadOverworldMapOffsets(sqlite)
 	tx, err := pg.Begin()
@@ -845,7 +920,7 @@ func deriveEncounterAreasPostgres(sqlite, pg *sql.DB) error {
 	areasCreated, _ := areaResult.RowsAffected()
 
 	slotResult, err := tx.Exec(`
-		WITH red_slots AS (
+		WITH selected_slots AS (
 			SELECT
 				we.map_name,
 				we.encounter_type,
@@ -859,7 +934,7 @@ func deriveEncounterAreasPostgres(sqlite, pg *sql.DB) error {
 			WHERE we.map_id IS NOT NULL
 			  AND we.encounter_type = 'grass'
 			  AND we.encounter_rate > 0
-			  AND we.version IN ('red', 'both')
+			  AND we.version IN ($1, 'both')
 		)
 		INSERT INTO phaser_encounter_area_slots (
 			encounter_area_id, slot_index, pokemon_id, level, probability
@@ -870,13 +945,13 @@ func deriveEncounterAreasPostgres(sqlite, pg *sql.DB) error {
 			pp.id,
 			rs.level,
 			es.probability
-		FROM red_slots rs
+		FROM selected_slots rs
 		JOIN phaser_encounter_areas ea
 		  ON ea.name = rs.map_name || '_' || UPPER(rs.encounter_type)
 		JOIN phaser_pokemon pp ON pp.name = rs.pokemon_name
 		JOIN phaser_encounter_slots es ON es.slot_index = rs.normalized_slot_index
 		WHERE rs.normalized_slot_index <= 10
-		ORDER BY ea.id, rs.normalized_slot_index`)
+		ORDER BY ea.id, rs.normalized_slot_index`, release)
 	if err != nil {
 		return fmt.Errorf("derive encounter area slots: %w", err)
 	}
@@ -1130,93 +1205,47 @@ func loadImportedRuntimeWarpsPostgres(pg *sql.DB) ([]importedRuntimeWarp, error)
 	return warps, nil
 }
 
-func resolveLastMapWarpDestinationsPostgres(pg *sql.DB) error {
-	result, err := pg.Exec(`
-		WITH last_map_warps AS (
-			SELECT
-				pw.id AS warp_id,
-				source_event.dest_warp_index,
+const lastMapOriginCTE = `
+	WITH last_map_source_maps AS (
+			SELECT DISTINCT
+				pw.source_map_id,
 				source_map.name AS source_map_name
 			FROM phaser_warps AS pw
 			JOIN phaser_maps AS source_map
 			  ON source_map.id = pw.source_map_id
-			JOIN phaser_warp_events AS source_event
-			  ON (
-			  	source_event.map_id = pw.source_map_id
-			  	OR (
-			  		source_event.map_id IS NULL
-			  		AND LOWER(REPLACE(source_event.map_name, '_', '')) = LOWER(REPLACE(source_map.name, '_', ''))
-			  	)
-			  )
-			 AND source_event.x = pw.x
-			 AND source_event.y = pw.y
-			 AND UPPER(source_event.dest_map) = 'LAST_MAP'
-			WHERE pw.destination_map_id IS NULL
-			   OR UPPER(COALESCE(pw.destination_map, '')) = 'LAST_MAP'
+			WHERE pw.destination_kind = 'last-map'
 		),
-		exact_last_map_sources AS (
+		candidate_origins AS (
 			SELECT
-				last_map_warps.warp_id,
-				MIN(incoming.map_id) AS destination_map_id
-			FROM last_map_warps
+				last_map_source_maps.source_map_id,
+				incoming.map_id AS destination_map_id
+			FROM last_map_source_maps
 			JOIN phaser_warp_events AS incoming
 			  ON incoming.map_id IS NOT NULL
-			 AND incoming.dest_warp_index = last_map_warps.dest_warp_index
-			 AND LOWER(REPLACE(incoming.dest_map, '_', '')) = LOWER(REPLACE(last_map_warps.source_map_name, '_', ''))
-			GROUP BY last_map_warps.warp_id
-			HAVING COUNT(DISTINCT incoming.map_id) = 1
+			 AND LOWER(REPLACE(incoming.dest_map, '_', '')) = LOWER(REPLACE(last_map_source_maps.source_map_name, '_', ''))
+			JOIN phaser_warps AS target_entry
+			  ON target_entry.source_map_id = last_map_source_maps.source_map_id
+			 AND target_entry.source_warp_index = incoming.dest_warp_index
+			 AND target_entry.destination_kind = 'last-map'
 		),
-		unique_last_map_sources AS (
+		unique_origins AS (
 			SELECT
-				last_map_warps.warp_id,
-				MIN(incoming.map_id) AS destination_map_id
-			FROM last_map_warps
-			JOIN phaser_warp_events AS incoming
-			  ON incoming.map_id IS NOT NULL
-			 AND LOWER(REPLACE(incoming.dest_map, '_', '')) = LOWER(REPLACE(last_map_warps.source_map_name, '_', ''))
-			GROUP BY last_map_warps.warp_id
-			HAVING COUNT(DISTINCT incoming.map_id) = 1
-		),
-		underground_route_last_map_sources AS (
-			SELECT
-				last_map_warps.warp_id,
-				MIN(incoming.map_id) AS destination_map_id
-			FROM last_map_warps
-			JOIN phaser_warp_events AS incoming
-			  ON incoming.map_id IS NOT NULL
-			 AND LOWER(REPLACE(incoming.dest_map, '_', '')) = LOWER(REPLACE(last_map_warps.source_map_name, '_', ''))
-			JOIN phaser_maps AS incoming_map
-			  ON incoming_map.id = incoming.map_id
-			WHERE LOWER(REPLACE(last_map_warps.source_map_name, '_', '')) LIKE 'undergroundpathroute%'
-			  AND incoming_map.is_overworld = 1
-			GROUP BY last_map_warps.warp_id
-			HAVING COUNT(DISTINCT incoming.map_id) = 1
-		),
-		last_map_sources AS (
-			SELECT warp_id, destination_map_id FROM exact_last_map_sources
-			UNION ALL
-			SELECT unique_last_map_sources.warp_id, unique_last_map_sources.destination_map_id
-			FROM unique_last_map_sources
-			LEFT JOIN exact_last_map_sources
-			  ON exact_last_map_sources.warp_id = unique_last_map_sources.warp_id
-			WHERE exact_last_map_sources.warp_id IS NULL
-			UNION ALL
-			SELECT underground_route_last_map_sources.warp_id, underground_route_last_map_sources.destination_map_id
-			FROM underground_route_last_map_sources
-			LEFT JOIN exact_last_map_sources
-			  ON exact_last_map_sources.warp_id = underground_route_last_map_sources.warp_id
-			LEFT JOIN unique_last_map_sources
-			  ON unique_last_map_sources.warp_id = underground_route_last_map_sources.warp_id
-			WHERE exact_last_map_sources.warp_id IS NULL
-			  AND unique_last_map_sources.warp_id IS NULL
-		),
+				source_map_id,
+				MIN(destination_map_id) AS destination_map_id
+			FROM candidate_origins
+			GROUP BY source_map_id
+			HAVING COUNT(DISTINCT destination_map_id) = 1
+		)`
+
+func resolveLastMapWarpDestinationsPostgres(pg *sql.DB) error {
+	result, err := pg.Exec(lastMapOriginCTE + `,
 		resolved AS (
 			SELECT
-				last_map_sources.warp_id,
-				last_map_sources.destination_map_id,
+				unique_origins.source_map_id,
+				unique_origins.destination_map_id,
 				pm.name AS destination_map
-			FROM last_map_sources
-			JOIN phaser_maps AS pm ON pm.id = last_map_sources.destination_map_id
+			FROM unique_origins
+			JOIN phaser_maps AS pm ON pm.id = unique_origins.destination_map_id
 		)
 		UPDATE phaser_warps AS pw
 		SET destination_map_id = resolved.destination_map_id,
@@ -1224,12 +1253,38 @@ func resolveLastMapWarpDestinationsPostgres(pg *sql.DB) error {
 			destination_x = NULL,
 			destination_y = NULL
 		FROM resolved
-		WHERE pw.id = resolved.warp_id`)
+		WHERE pw.source_map_id = resolved.source_map_id
+		  AND pw.destination_kind = 'last-map'
+		  AND pw.destination_map_id IS NULL
+		  AND UPPER(COALESCE(pw.destination_map, '')) = 'LAST_MAP'`)
 	if err != nil {
 		return fmt.Errorf("resolve LAST_MAP warp destinations: %w", err)
 	}
 	affected, _ := result.RowsAffected()
 	log.Printf("  -> Resolved %d deterministic LAST_MAP warp destinations", affected)
+	return nil
+}
+
+func validateDeterministicLastMapWarpDestinationsPostgres(pg *sql.DB) error {
+	var invalid int
+	err := pg.QueryRow(lastMapOriginCTE + `
+		SELECT COUNT(*)
+		FROM phaser_warps AS pw
+		JOIN unique_origins
+		  ON unique_origins.source_map_id = pw.source_map_id
+		WHERE pw.destination_kind = 'last-map'
+		  AND (
+			pw.destination_map_id IS NULL
+			OR pw.destination_map_id <> unique_origins.destination_map_id
+			OR pw.destination_x IS NULL
+			OR pw.destination_y IS NULL
+		  )`).Scan(&invalid)
+	if err != nil {
+		return fmt.Errorf("validate deterministic LAST_MAP warp destinations: %w", err)
+	}
+	if invalid != 0 {
+		return fmt.Errorf("%d deterministic LAST_MAP warp destinations remain unresolved or incorrect", invalid)
+	}
 	return nil
 }
 

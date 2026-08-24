@@ -30,11 +30,17 @@ const Overlay = styled.div`
   align-items: center;
   justify-content: center;
   background: rgba(0, 0, 0, 0.25);
+  padding: max(12px, env(safe-area-inset-top, 0px))
+    max(12px, env(safe-area-inset-right, 0px))
+    max(12px, env(safe-area-inset-bottom, 0px))
+    max(12px, env(safe-area-inset-left, 0px));
+  box-sizing: border-box;
 `;
 
 const Modal = styled.div`
   width: 620px;
-  max-height: 86vh;
+  max-width: 100%;
+  max-height: calc(var(--cq-viewport-height, 100dvh) - 24px);
   background: #f8f0e0;
   border: 4px solid #383838;
   border-radius: 8px;
@@ -43,6 +49,10 @@ const Modal = styled.div`
   overflow: hidden;
   display: flex;
   flex-direction: column;
+
+  @media (max-width: 650px), (pointer: coarse) {
+    width: 100%;
+  }
 `;
 
 const Header = styled.div`

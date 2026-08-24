@@ -5,8 +5,8 @@ import ActionButton from "@components/Interface/ActionButton";
 
 // Center viewport container - matching other display components
 const CenterViewport = styled.div`
-  width: 902px;
-  height: 650px; /* Reduced slightly to clear chatbox */
+  width: min(902px, calc(100% - 48px));
+  height: min(650px, calc(100% - 64px));
   position: absolute;
   left: 50%;
   top: 30px;
@@ -22,6 +22,18 @@ const CenterViewport = styled.div`
   padding-top: 40px;
   box-shadow: 0 12px 48px rgba(0, 0, 0, 0.3);
   transition: all 0.3s ease;
+  box-sizing: border-box;
+
+  @media (max-width: 850px), (pointer: coarse) {
+    inset: calc(10px + env(safe-area-inset-top, 0px)) 10px
+      calc(10px + env(safe-area-inset-bottom, 0px));
+    width: auto;
+    height: auto;
+    padding: 22px 12px 72px;
+    border-width: 3px;
+    border-radius: 16px;
+    transform: none;
+  }
 `;
 
 const OptionsTitle = styled.h2`
@@ -32,16 +44,32 @@ const OptionsTitle = styled.h2`
   text-align: center;
   margin: 0 0 30px 0;
   color: #2e2f66;
+
+  @media (max-width: 850px), (pointer: coarse), (max-height: 600px) {
+    margin-bottom: 10px;
+    font-size: 25px;
+  }
 `;
 
 const OptionsGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 25px 40px;
-  width: 800px;
+  width: calc(100% - 48px);
   max-height: 420px;
   overflow-y: auto;
   padding: 20px;
+  box-sizing: border-box;
+
+  @media (max-width: 850px), (pointer: coarse) {
+    flex: 1;
+    min-height: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px 12px;
+    width: 100%;
+    max-height: none;
+    padding: 8px;
+  }
 
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.5) transparent;
@@ -85,11 +113,16 @@ const OptionLabel = styled.div`
 const ToggleButton = styled.button<{ $isOn: boolean }>`
   width: 80px;
   height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 3px solid #4a4ba6;
   cursor: pointer;
   font-family: "Outfit", sans-serif;
   font-size: 16px;
   font-weight: 800;
+  line-height: 1;
   text-transform: uppercase;
   color: #2e2f66;
   background-color: ${(props) => (props.$isOn ? "#a7edfe" : "#ffaf84")};
@@ -119,6 +152,13 @@ const VolumeContainer = styled.div`
   background: rgba(0, 0, 0, 0.3);
   border-radius: 5px;
   border: 1px solid rgba(255, 255, 255, 0.1);
+
+  @media (max-width: 850px), (pointer: coarse) {
+    grid-column: span 2;
+    gap: 8px;
+    margin-top: 2px;
+    padding: 10px;
+  }
 `;
 
 const VolumeRow = styled.div`
@@ -126,6 +166,16 @@ const VolumeRow = styled.div`
   align-items: center;
   gap: 20px;
   width: 100%;
+
+  @media (max-width: 850px), (pointer: coarse) {
+    gap: 10px;
+  }
+
+  @media (max-width: 500px) {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 4px;
+  }
 `;
 
 const VolumeLabel = styled.div`
@@ -136,6 +186,15 @@ const VolumeLabel = styled.div`
   text-transform: uppercase;
   width: 120px;
   flex-shrink: 0;
+
+  @media (max-width: 850px), (pointer: coarse) {
+    width: 90px;
+    font-size: 13px;
+  }
+
+  @media (max-width: 500px) {
+    width: 100%;
+  }
 `;
 
 const SliderWrapper = styled.div`
@@ -143,10 +202,17 @@ const SliderWrapper = styled.div`
   display: flex;
   align-items: center;
   gap: 15px;
+  min-width: 0;
+
+  @media (max-width: 850px), (pointer: coarse) {
+    gap: 8px;
+  }
 `;
 
 const RangeInput = styled.input`
   flex: 1;
+  width: 100%;
+  min-width: 0;
   cursor: pointer;
   accent-color: #d4c4a8;
   height: 6px;
@@ -197,6 +263,10 @@ const TooltipBox = styled.div`
   font-size: 14px;
   line-height: 1.4;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+
+  @media (max-width: 850px), (pointer: coarse) {
+    display: none;
+  }
 `;
 
 const TooltipLabel = styled.div`

@@ -2,10 +2,72 @@ package main
 
 import (
 	"database/sql"
+	"strings"
 	"testing"
 
 	_ "modernc.org/sqlite"
 )
+
+func TestImportStaticTableMapsSchemaV2DefaultMoveNames(t *testing.T) {
+	source, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	target, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer target.Close()
+
+	execStatements(t, source,
+		`CREATE TABLE pokemon (id INTEGER, default_move_1_id INTEGER, default_move_1_name TEXT)`,
+		`INSERT INTO pokemon VALUES (1, 28, 'SAND_ATTACK')`,
+	)
+	execStatements(t, target,
+		`CREATE TABLE phaser_pokemon (id INTEGER, default_move_1_id TEXT)`,
+	)
+	_, err = importStaticTable(source, target, staticTableSpec{
+		SourceTable:   "pokemon",
+		TargetTable:   "phaser_pokemon",
+		Columns:       []string{"id", "default_move_1_id"},
+		SourceColumns: []string{"id", "default_move_1_name"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var constant string
+	if err := target.QueryRow(`SELECT default_move_1_id FROM phaser_pokemon`).Scan(&constant); err != nil {
+		t.Fatal(err)
+	}
+	if constant != "SAND_ATTACK" {
+		t.Fatalf("default constant = %q", constant)
+	}
+}
+
+func TestValidatePokemonDefaultMovesUsesConstantName(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	execStatements(t, db,
+		`CREATE TABLE phaser_pokemon (default_move_1_id TEXT, default_move_2_id TEXT, default_move_3_id TEXT, default_move_4_id TEXT)`,
+		`CREATE TABLE phaser_moves (id INTEGER, constant_name TEXT, short_name TEXT)`,
+		`INSERT INTO phaser_pokemon VALUES ('SAND_ATTACK', 'PSYCHIC_M', 'NO_MOVE', NULL)`,
+		`INSERT INTO phaser_moves VALUES (28, 'SAND_ATTACK', 'SAND-ATTACK')`,
+		`INSERT INTO phaser_moves VALUES (94, 'PSYCHIC_M', 'PSYCHIC')`,
+	)
+	if err := validatePokemonDefaultMovesPostgres(db); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DELETE FROM phaser_moves WHERE constant_name = 'PSYCHIC_M'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := validatePokemonDefaultMovesPostgres(db); err == nil || !strings.Contains(err.Error(), "PSYCHIC_M") {
+		t.Fatalf("error = %v", err)
+	}
+}
 
 func TestImportTrainerClassesNormalizesBCD3Money(t *testing.T) {
 	source, err := sql.Open("sqlite", ":memory:")
@@ -54,13 +116,13 @@ func TestValidatePokemonDefaultMovesRejectsMissingConstants(t *testing.T) {
 	defer raw.Close()
 	execStatements(t, raw,
 		`CREATE TABLE phaser_pokemon (default_move_1_id TEXT, default_move_2_id TEXT, default_move_3_id TEXT, default_move_4_id TEXT)`,
-		`CREATE TABLE phaser_moves (id INTEGER, short_name TEXT)`,
+		`CREATE TABLE phaser_moves (id INTEGER, constant_name TEXT)`,
 		`INSERT INTO phaser_pokemon VALUES ('POISON_STING', 'STRING_SHOT', 'NO_MOVE', NULL)`,
 		`INSERT INTO phaser_moves VALUES (40, 'POISON_STING')`,
 	)
 
 	err = validatePokemonDefaultMovesPostgres(raw)
-	if err == nil || err.Error() != "pokemon defaults reference missing move constants: STRING_SHOT" {
+	if err == nil || err.Error() != "Pokemon defaults reference missing move constants: STRING_SHOT" {
 		t.Fatalf("validation error = %v, want missing STRING_SHOT", err)
 	}
 
@@ -252,7 +314,7 @@ func TestBakeOverworldCoordinatesUsesTileSourceMapID(t *testing.T) {
 	}
 }
 
-func TestResolveLastMapWarpDestinationsFallsBackToUniqueIncomingMap(t *testing.T) {
+func TestResolveLastMapWarpDestinationsResolvesUniqueExternalOrigin(t *testing.T) {
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatalf("open db: %v", err)
@@ -262,7 +324,7 @@ func TestResolveLastMapWarpDestinationsFallsBackToUniqueIncomingMap(t *testing.T
 	execStatements(t, db,
 		`CREATE TABLE phaser_maps (id INTEGER PRIMARY KEY, name TEXT, is_overworld INTEGER)`,
 		`CREATE TABLE phaser_warp_events (id INTEGER PRIMARY KEY, map_name TEXT, map_id INTEGER, x INTEGER, y INTEGER, dest_map TEXT, dest_warp_index INTEGER)`,
-		`CREATE TABLE phaser_warps (id INTEGER PRIMARY KEY, source_map_id INTEGER, x INTEGER, y INTEGER, destination_map_id INTEGER, destination_map TEXT, destination_x INTEGER, destination_y INTEGER)`,
+		`CREATE TABLE phaser_warps (id INTEGER PRIMARY KEY, source_map_id INTEGER, source_warp_index INTEGER, x INTEGER, y INTEGER, destination_map_id INTEGER, destination_map TEXT, destination_x INTEGER, destination_y INTEGER, destination_kind TEXT)`,
 		`INSERT INTO phaser_maps (id, name, is_overworld) VALUES
 			(17, 'ROUTE_6', 1),
 			(73, 'ROUTE_6_GATE', 0)`,
@@ -271,8 +333,8 @@ func TestResolveLastMapWarpDestinationsFallsBackToUniqueIncomingMap(t *testing.T
 			(440, 'Route6', 17, 10, 1, 'ROUTE_6_GATE', 3),
 			(441, 'Route6', 17, 10, 7, 'ROUTE_6_GATE', 1),
 			(445, 'Route6Gate', 73, 3, 0, 'LAST_MAP', 2)`,
-		`INSERT INTO phaser_warps (id, source_map_id, x, y, destination_map_id, destination_map) VALUES
-			(460, 73, 3, 0, NULL, 'LAST_MAP')`,
+		`INSERT INTO phaser_warps VALUES
+			(460, 73, 1, 3, 0, NULL, 'LAST_MAP', NULL, NULL, 'last-map')`,
 	)
 
 	if err := resolveLastMapWarpDestinationsPostgres(db); err != nil {
@@ -289,7 +351,7 @@ func TestResolveLastMapWarpDestinationsFallsBackToUniqueIncomingMap(t *testing.T
 	}
 }
 
-func TestResolveLastMapWarpDestinationsMatchesNullMapIDBySourceMapName(t *testing.T) {
+func TestResolveLastMapWarpDestinationsIgnoresFixedInternalIncomingMap(t *testing.T) {
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatalf("open db: %v", err)
@@ -299,7 +361,7 @@ func TestResolveLastMapWarpDestinationsMatchesNullMapIDBySourceMapName(t *testin
 	execStatements(t, db,
 		`CREATE TABLE phaser_maps (id INTEGER PRIMARY KEY, name TEXT, is_overworld INTEGER)`,
 		`CREATE TABLE phaser_warp_events (id INTEGER PRIMARY KEY, map_name TEXT, map_id INTEGER, x INTEGER, y INTEGER, dest_map TEXT, dest_warp_index INTEGER)`,
-		`CREATE TABLE phaser_warps (id INTEGER PRIMARY KEY, source_map_id INTEGER, x INTEGER, y INTEGER, destination_map_id INTEGER, destination_map TEXT, destination_x INTEGER, destination_y INTEGER)`,
+		`CREATE TABLE phaser_warps (id INTEGER PRIMARY KEY, source_map_id INTEGER, source_warp_index INTEGER, x INTEGER, y INTEGER, destination_map_id INTEGER, destination_map TEXT, destination_x INTEGER, destination_y INTEGER, destination_kind TEXT)`,
 		`INSERT INTO phaser_maps (id, name, is_overworld) VALUES
 			(17, 'ROUTE_6', 1),
 			(74, 'UNDERGROUND_PATH_ROUTE_6', 0),
@@ -309,16 +371,17 @@ func TestResolveLastMapWarpDestinationsMatchesNullMapIDBySourceMapName(t *testin
 			(720, 'UndergroundPathNorthSouth', 119, 2, 41, 'UNDERGROUND_PATH_ROUTE_6', 3),
 			(724, 'UndergroundPathRoute6', NULL, 3, 7, 'LAST_MAP', 4),
 			(725, 'UndergroundPathRoute6', NULL, 4, 7, 'LAST_MAP', 4)`,
-		`INSERT INTO phaser_warps (id, source_map_id, x, y, destination_map_id, destination_map) VALUES
-			(114, 74, 3, 7, NULL, 'LAST_MAP'),
-			(115, 74, 4, 7, NULL, 'LAST_MAP')`,
+		`INSERT INTO phaser_warps VALUES
+			(114, 74, 1, 3, 7, NULL, 'LAST_MAP', NULL, NULL, 'last-map'),
+			(115, 74, 2, 4, 7, NULL, 'LAST_MAP', NULL, NULL, 'last-map'),
+			(116, 74, 3, 2, 3, 119, 'UNDERGROUND_PATH_NORTH_SOUTH', 2, 41, 'fixed')`,
 	)
 
 	if err := resolveLastMapWarpDestinationsPostgres(db); err != nil {
 		t.Fatalf("resolveLastMapWarpDestinationsPostgres: %v", err)
 	}
 
-	rows, err := db.Query(`SELECT id, destination_map_id, destination_map FROM phaser_warps ORDER BY id`)
+	rows, err := db.Query(`SELECT id, destination_map_id, destination_map FROM phaser_warps WHERE id IN (114, 115) ORDER BY id`)
 	if err != nil {
 		t.Fatalf("query resolved warps: %v", err)
 	}
@@ -352,7 +415,7 @@ func TestResolveLastMapWarpDestinationsDoesNotOverwriteConcreteDestination(t *te
 	execStatements(t, db,
 		`CREATE TABLE phaser_maps (id INTEGER PRIMARY KEY, name TEXT, is_overworld INTEGER)`,
 		`CREATE TABLE phaser_warp_events (id INTEGER PRIMARY KEY, map_name TEXT, map_id INTEGER, x INTEGER, y INTEGER, dest_map TEXT, dest_warp_index INTEGER)`,
-		`CREATE TABLE phaser_warps (id INTEGER PRIMARY KEY, source_map_id INTEGER, x INTEGER, y INTEGER, destination_map_id INTEGER, destination_map TEXT, destination_x INTEGER, destination_y INTEGER)`,
+		`CREATE TABLE phaser_warps (id INTEGER PRIMARY KEY, source_map_id INTEGER, source_warp_index INTEGER, x INTEGER, y INTEGER, destination_map_id INTEGER, destination_map TEXT, destination_x INTEGER, destination_y INTEGER, destination_kind TEXT)`,
 		`INSERT INTO phaser_maps (id, name, is_overworld) VALUES
 			(8, 'CINNABAR_ISLAND', 1),
 			(167, 'CINNABAR_LAB', 0),
@@ -361,8 +424,8 @@ func TestResolveLastMapWarpDestinationsDoesNotOverwriteConcreteDestination(t *te
 			(125, 'CinnabarIsland', 8, 6, 9, 'CINNABAR_LAB', 1),
 			(128, 'CinnabarLab', 167, 2, 7, 'LAST_MAP', 3),
 			(137, 'CinnabarLabTradeRoom', 168, 2, 7, 'CINNABAR_LAB', 3)`,
-		`INSERT INTO phaser_warps (id, source_map_id, x, y, destination_map_id, destination_map) VALUES
-			(63, 167, 2, 7, 8, 'CINNABAR_ISLAND')`,
+		`INSERT INTO phaser_warps VALUES
+			(63, 167, 1, 2, 7, 8, 'CINNABAR_ISLAND', 6, 9, 'last-map')`,
 	)
 
 	if err := resolveLastMapWarpDestinationsPostgres(db); err != nil {
@@ -376,6 +439,126 @@ func TestResolveLastMapWarpDestinationsDoesNotOverwriteConcreteDestination(t *te
 	}
 	if destinationMapID != 8 || destinationMap != "CINNABAR_ISLAND" {
 		t.Fatalf("resolved destination = (%d, %q), want original concrete Cinnabar Island destination", destinationMapID, destinationMap)
+	}
+}
+
+func TestResolveImportedWarpDestinationsResolvesStarterHouseExit(t *testing.T) {
+	source, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	target, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer target.Close()
+
+	execStatements(t, source,
+		`CREATE TABLE overworld_map_positions (map_name TEXT, x_offset INTEGER, y_offset INTEGER)`,
+		`INSERT INTO overworld_map_positions VALUES ('PalletTown', 0, 0)`,
+	)
+	execStatements(t, target,
+		`CREATE TABLE phaser_maps (id INTEGER PRIMARY KEY, name TEXT, is_overworld INTEGER)`,
+		`CREATE TABLE phaser_warp_events (id INTEGER PRIMARY KEY, map_name TEXT, map_id INTEGER, x INTEGER, y INTEGER, dest_map TEXT, dest_warp_index INTEGER)`,
+		`CREATE TABLE phaser_warps (id INTEGER PRIMARY KEY, source_map_id INTEGER, source_warp_index INTEGER, x INTEGER, y INTEGER, destination_map_id INTEGER, destination_map TEXT, destination_x INTEGER, destination_y INTEGER, destination_kind TEXT)`,
+		`INSERT INTO phaser_maps VALUES
+			(0, 'PALLET_TOWN', 1),
+			(37, 'REDS_HOUSE_1F', 0),
+			(38, 'REDS_HOUSE_2F', 0)`,
+		`INSERT INTO phaser_warp_events VALUES
+			(245, 'PalletTown', 0, 5, 5, 'REDS_HOUSE_1F', 1),
+			(300, 'RedsHouse1F', 37, 2, 7, 'LAST_MAP', 1),
+			(301, 'RedsHouse1F', 37, 3, 7, 'LAST_MAP', 1),
+			(302, 'RedsHouse1F', 37, 7, 1, 'REDS_HOUSE_2F', 1),
+			(303, 'RedsHouse2F', 38, 7, 1, 'REDS_HOUSE_1F', 3)`,
+		`INSERT INTO phaser_warps VALUES
+			(300, 37, 1, 2, 7, NULL, 'LAST_MAP', NULL, NULL, 'last-map'),
+			(301, 37, 2, 3, 7, NULL, 'LAST_MAP', NULL, NULL, 'last-map'),
+			(302, 37, 3, 7, 1, 38, 'REDS_HOUSE_2F', 7, 1, 'fixed')`,
+	)
+
+	if err := validateDeterministicLastMapWarpDestinationsPostgres(target); err == nil {
+		t.Fatal("expected unresolved deterministic starter-house exits to fail validation")
+	}
+	if err := resolveImportedWarpDestinationsPostgres(source, target); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := target.Query(`
+		SELECT destination_map_id, destination_map, destination_x, destination_y
+		FROM phaser_warps WHERE id IN (300, 301) ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	count := 0
+	for rows.Next() {
+		var destinationMapID, destinationX, destinationY int
+		var destinationMap string
+		if err := rows.Scan(&destinationMapID, &destinationMap, &destinationX, &destinationY); err != nil {
+			t.Fatal(err)
+		}
+		if destinationMapID != 0 || destinationMap != "PALLET_TOWN" || destinationX != 5 || destinationY != 5 {
+			t.Fatalf(
+				"starter house exit = (%d,%s,%d,%d), want (0,PALLET_TOWN,5,5)",
+				destinationMapID,
+				destinationMap,
+				destinationX,
+				destinationY,
+			)
+		}
+		count++
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Fatalf("resolved starter house exits = %d, want 2", count)
+	}
+}
+
+func TestResolveLastMapWarpDestinationsLeavesRoute22GateDynamic(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	execStatements(t, db,
+		`CREATE TABLE phaser_maps (id INTEGER PRIMARY KEY, name TEXT, is_overworld INTEGER)`,
+		`CREATE TABLE phaser_warp_events (id INTEGER PRIMARY KEY, map_name TEXT, map_id INTEGER, x INTEGER, y INTEGER, dest_map TEXT, dest_warp_index INTEGER)`,
+		`CREATE TABLE phaser_warps (id INTEGER PRIMARY KEY, source_map_id INTEGER, source_warp_index INTEGER, x INTEGER, y INTEGER, destination_map_id INTEGER, destination_map TEXT, destination_x INTEGER, destination_y INTEGER, destination_kind TEXT)`,
+		`INSERT INTO phaser_maps VALUES
+			(33, 'ROUTE_22', 1),
+			(34, 'ROUTE_23', 1),
+			(193, 'ROUTE_22_GATE', 0)`,
+		`INSERT INTO phaser_warp_events VALUES
+			(1, 'Route22', 33, 8, 5, 'ROUTE_22_GATE', 1),
+			(2, 'Route23', 34, 7, 139, 'ROUTE_22_GATE', 3),
+			(3, 'Route23', 34, 8, 139, 'ROUTE_22_GATE', 4)`,
+		`INSERT INTO phaser_warps VALUES
+			(1, 193, 1, 4, 7, NULL, 'LAST_MAP', NULL, NULL, 'last-map'),
+			(2, 193, 2, 5, 7, NULL, 'LAST_MAP', NULL, NULL, 'last-map'),
+			(3, 193, 3, 4, 0, NULL, 'LAST_MAP', NULL, NULL, 'last-map'),
+			(4, 193, 4, 5, 0, NULL, 'LAST_MAP', NULL, NULL, 'last-map')`,
+	)
+
+	if err := resolveLastMapWarpDestinationsPostgres(db); err != nil {
+		t.Fatal(err)
+	}
+
+	var total, unresolved int
+	if err := db.QueryRow(`
+		SELECT COUNT(*), SUM(CASE WHEN destination_map_id IS NULL
+			AND destination_map = 'LAST_MAP'
+			AND destination_x IS NULL
+			AND destination_y IS NULL THEN 1 ELSE 0 END)
+		FROM phaser_warps WHERE source_map_id = 193`).Scan(&total, &unresolved); err != nil {
+		t.Fatal(err)
+	}
+	if total != 4 || unresolved != 4 {
+		t.Fatalf("Route 22 Gate dynamic exits = %d/%d unresolved, want 4/4", unresolved, total)
 	}
 }
 

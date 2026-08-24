@@ -92,7 +92,8 @@ func openDefaultMoveTestDB(t *testing.T) *sql.DB {
 			evolve_level INTEGER, evolve_pokemon TEXT
 		);
 		CREATE TABLE phaser_moves (
-			id INTEGER PRIMARY KEY, name TEXT NOT NULL, short_name TEXT NOT NULL,
+			id INTEGER PRIMARY KEY, name TEXT NOT NULL, constant_name TEXT NOT NULL,
+			short_name TEXT NOT NULL,
 			type TEXT, power INTEGER, accuracy INTEGER, pp INTEGER, effect TEXT,
 			battle_sound TEXT, battle_sound_pitch INTEGER, battle_sound_tempo INTEGER
 		);
@@ -109,10 +110,10 @@ func openDefaultMoveTestDB(t *testing.T) *sql.DB {
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		);
 		INSERT INTO phaser_moves (
-			id, name, short_name, type, power, accuracy, pp
+			id, name, constant_name, short_name, type, power, accuracy, pp
 		) VALUES
-			(40, 'POISON STING', 'POISON_STING', 'POISON', 15, 255, 35),
-			(81, 'STRING SHOT', 'STRING_SHOT', 'BUG', 0, 242, 40);
+			(40, 'POISON STING', 'POISON_STING', 'POISON_STING', 'POISON', 15, 255, 35),
+			(81, 'STRING SHOT', 'STRING_SHOT', 'STRING_SHOT', 'BUG', 0, 242, 40);
 	`); err != nil {
 		t.Fatalf("create default move test db: %v", err)
 	}

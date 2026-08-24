@@ -1,5 +1,14 @@
 /// <reference types="vite/client" />
 
+import type usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
+
+declare global {
+  interface Window {
+    __PLAYER_STORE__?: typeof usePlayerCharacterStore;
+    webkitAudioContext?: typeof AudioContext;
+  }
+}
+
 interface ImportMetaEnv {
     readonly VITE_TEST_MODE: string;
     readonly VITE_WT_CERT_HASH?: string;

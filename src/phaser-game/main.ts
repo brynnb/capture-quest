@@ -5,13 +5,18 @@ import Phaser from "phaser";
 // Adapted for integration with React
 export const phaserConfig: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
-  width: 1440, // Match capture-quest design width
-  height: 1080, // Match capture-quest design height
-  parent: "phaser-game-container",
+  width: 1440,
+  height: 1080,
   backgroundColor: "#000000",
   pixelArt: true, // Nearest-neighbor scaling, no antialias, roundPixels — eliminates tile tears
   scale: {
-    mode: Phaser.Scale.NONE,
+    mode: Phaser.Scale.RESIZE,
+    autoCenter: Phaser.Scale.CENTER_BOTH,
+  },
+  input: {
+    // Phaser enables one touch pointer by default. Two are required for pinch
+    // zoom; the mouse pointer is managed separately.
+    activePointers: 2,
   },
   // Using TileViewer - Go backend is now configured for tile data via WebTransport
   scene: [TileViewer],
@@ -19,6 +24,11 @@ export const phaserConfig: Phaser.Types.Core.GameConfig = {
 
 // Factory function to create a new game instance
 // This is called by the React component
-export function createPhaserGame(): Phaser.Game {
-  return new Phaser.Game(phaserConfig);
+export function createPhaserGame(parent: HTMLElement): Phaser.Game {
+  return new Phaser.Game({
+    ...phaserConfig,
+    parent,
+    width: Math.max(parent.clientWidth, 320),
+    height: Math.max(parent.clientHeight, 320),
+  });
 }

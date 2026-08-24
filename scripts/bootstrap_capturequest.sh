@@ -7,6 +7,8 @@ DEFAULT_EXTRACTOR_ROOT="${REPO_ROOT}/tools/pokemon-gameboy-extractor-tool"
 EXTRACTOR_ROOT="${POKEMON_EXTRACTOR_ROOT:-${DEFAULT_EXTRACTOR_ROOT}}"
 PHASER_DB_DEST="${REPO_ROOT}/public/phaser/pokemon.db"
 DB_SOURCE="${POKEMON_DB_SOURCE:-${EXTRACTOR_ROOT}/pokemon.db}"
+CAPTUREQUEST_RELEASE="${CAPTUREQUEST_POKEMON_RELEASE:-red}"
+ADAPTER_BUNDLE_DEST="${REPO_ROOT}/public/phaser/capturequest-pokemon-import.json"
 
 ASSETS_ONLY=0
 SKIP_EXTRACTOR=0
@@ -15,91 +17,17 @@ BOOTSTRAP_ARGS=()
 
 validate_extractor_artifact() {
   local db_path="$1"
-
-  if ! command -v python3 >/dev/null 2>&1; then
-    echo "python3 is required to validate the extractor SQLite artifact." >&2
-    exit 1
+  local python_bin="${EXTRACTOR_ROOT}/.venv/bin/python"
+  if [[ ! -x "${python_bin}" ]]; then
+    python_bin="$(command -v python3)"
   fi
-
-  python3 - "$db_path" <<'PY'
-import sqlite3
-import sys
-
-db_path = sys.argv[1]
-required_counts = {
-    "pokemon": 151,
-    "moves": 165,
-    "trainer_classes": 47,
-    "tiles": 1,
-    "tile_images": 1,
-    "script_event_candidates": 1,
-    "script_event_candidate_diagnostics": 1,
-    "script_event_in_game_trades": 1,
-    "script_event_tile_overrides": 1,
-    "script_event_boulder_targets": 1,
-    "spin_tiles": 1,
-}
-
-try:
-    conn = sqlite3.connect(db_path)
-except sqlite3.Error as exc:
-    print(f"Could not open extractor artifact {db_path}: {exc}", file=sys.stderr)
-    sys.exit(1)
-
-missing = []
-empty = []
-unresolved_default_moves = []
-try:
-    for table, min_count in required_counts.items():
-        exists = conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
-            (table,),
-        ).fetchone()
-        if not exists:
-            missing.append(table)
-            continue
-        count = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
-        if count < min_count:
-            empty.append(f"{table} ({count})")
-
-    if not missing and not empty:
-        unresolved_default_moves = [
-            row[0]
-            for row in conn.execute(
-                """
-                SELECT DISTINCT defaults.move_constant
-                FROM (
-                    SELECT default_move_1_id AS move_constant FROM pokemon
-                    UNION ALL SELECT default_move_2_id FROM pokemon
-                    UNION ALL SELECT default_move_3_id FROM pokemon
-                    UNION ALL SELECT default_move_4_id FROM pokemon
-                ) defaults
-                LEFT JOIN moves ON moves.short_name = defaults.move_constant
-                WHERE defaults.move_constant IS NOT NULL
-                  AND defaults.move_constant <> 'NO_MOVE'
-                  AND moves.id IS NULL
-                ORDER BY defaults.move_constant
-                """
-            )
-        ]
-finally:
-    conn.close()
-
-if missing or empty or unresolved_default_moves:
-    if missing:
-        print("Extractor artifact is missing required tables:", file=sys.stderr)
-        for table in missing:
-            print(f"  - {table}", file=sys.stderr)
-    if empty:
-        print("Extractor artifact has empty required tables:", file=sys.stderr)
-        for table in empty:
-            print(f"  - {table}", file=sys.stderr)
-    if unresolved_default_moves:
-        print("Extractor artifact has unresolved Pokemon default moves:", file=sys.stderr)
-        for move in unresolved_default_moves:
-            print(f"  - {move}", file=sys.stderr)
-    sys.exit(1)
-PY
+  local bundle_stage="${ADAPTER_BUNDLE_DEST}.stage"
+  mkdir -p "$(dirname "${ADAPTER_BUNDLE_DEST}")"
+  rm -f "${bundle_stage}"
+  PYTHONPATH="${EXTRACTOR_ROOT}/export_scripts" \
+    "${python_bin}" -m adapters.capturequest_v2 \
+    "${db_path}" --release "${CAPTUREQUEST_RELEASE}" --output "${bundle_stage}"
+  mv -f "${bundle_stage}" "${ADAPTER_BUNDLE_DEST}"
 }
 
 usage() {
@@ -128,6 +56,7 @@ Environment:
   POKEMON_EXTRACTOR_ROOT     Extractor checkout. Defaults to tools/pokemon-gameboy-extractor-tool.
   POKEMON_DB_SOURCE          Explicit pokemon.db source path. Defaults to \$POKEMON_EXTRACTOR_ROOT/pokemon.db.
   CAPTUREQUEST_RENDER_AUDIO  auto, 0, or 1. Defaults to auto.
+  CAPTUREQUEST_POKEMON_RELEASE  red or blue. Defaults to red.
 
 Extractor artifact:
   ${DB_SOURCE}
@@ -191,9 +120,28 @@ EOF
   exit 1
 fi
 
+GENERATE_SCRIPT="generate"
+if [[ "${SKIP_AUDIO_RENDER}" -eq 0 ]]; then
+  render_mode="${CAPTUREQUEST_RENDER_AUDIO:-auto}"
+  if [[ "${render_mode}" != "0" && "${render_mode}" != "false" ]]; then
+    missing_tools=()
+    for tool in gbsplay ffmpeg rgbasm rgblink; do
+      command -v "${tool}" >/dev/null 2>&1 || missing_tools+=("${tool}")
+    done
+    if [[ ${#missing_tools[@]} -eq 0 ]]; then
+      GENERATE_SCRIPT="generate:complete"
+    elif [[ "${render_mode}" == "1" || "${render_mode}" == "true" ]]; then
+      echo "Missing complete audio tool(s): ${missing_tools[*]}" >&2
+      exit 1
+    else
+      echo "Missing complete audio tool(s): ${missing_tools[*]}; generating metadata only."
+    fi
+  fi
+fi
+
 if [[ "${SKIP_EXTRACTOR}" -eq 0 ]]; then
-  echo "Running extractor pipeline..."
-  (cd "${EXTRACTOR_ROOT}" && npm run generate)
+  echo "Running extractor pipeline (${GENERATE_SCRIPT})..."
+  (cd "${EXTRACTOR_ROOT}" && npm run "${GENERATE_SCRIPT}")
 else
   echo "Skipping extractor generation; reusing ${EXTRACTOR_ROOT}"
 fi
@@ -231,74 +179,6 @@ EOF
   exit 1
 fi
 
-render_extractor_audio() {
-  local render_mode="${CAPTUREQUEST_RENDER_AUDIO:-auto}"
-
-  if [[ "${SKIP_AUDIO_RENDER}" -eq 1 || "${render_mode}" == "0" || "${render_mode}" == "false" ]]; then
-    echo "Skipping original audio render."
-    return 0
-  fi
-
-  if ! node -e "const p=require(process.argv[1]); process.exit(p.scripts && p.scripts['render:audio'] ? 0 : 1)" "${EXTRACTOR_ROOT}/package.json" >/dev/null 2>&1; then
-    if [[ "${render_mode}" == "1" || "${render_mode}" == "true" ]]; then
-      echo "Extractor does not provide npm run render:audio." >&2
-      exit 1
-    fi
-    echo "Extractor does not yet provide npm run render:audio; skipping original audio render."
-    return 0
-  fi
-
-  local missing_tools=()
-  for tool in gbsplay oggenc rgbasm rgblink rgbfix; do
-    if ! command -v "${tool}" >/dev/null 2>&1; then
-      missing_tools+=("${tool}")
-    fi
-  done
-  if [[ ${#missing_tools[@]} -gt 0 ]]; then
-    if [[ "${render_mode}" == "1" || "${render_mode}" == "true" ]]; then
-      echo "Missing audio render tool(s): ${missing_tools[*]}" >&2
-      exit 1
-    fi
-    echo "Missing audio render tool(s): ${missing_tools[*]}; skipping original audio render."
-    return 0
-  fi
-
-  if [[ -f "${EXTRACTOR_ROOT}/export_scripts/export_audio_manifest.py" ]]; then
-    local python_bin="${EXTRACTOR_ROOT}/.venv/bin/python"
-    if [[ ! -x "${python_bin}" ]]; then
-      python_bin="$(command -v python3)"
-    fi
-    echo "Generating source audio manifest..."
-    (cd "${EXTRACTOR_ROOT}" && "${python_bin}" export_scripts/export_audio_manifest.py)
-  fi
-
-  echo "Rendering original music..."
-  (cd "${EXTRACTOR_ROOT}" && npm run render:audio -- \
-    --build-rom \
-    --out-dir "${REPO_ROOT}/public" \
-    --kind music \
-    --seconds "${CAPTUREQUEST_AUDIO_MUSIC_SECONDS:-90}" \
-    --fade "${CAPTUREQUEST_AUDIO_MUSIC_FADE:-3}")
-
-  echo "Rendering original sound effects..."
-  (cd "${EXTRACTOR_ROOT}" && npm run render:audio -- \
-    --build-rom \
-    --out-dir "${REPO_ROOT}/public" \
-    --kind sfx \
-    --seconds "${CAPTUREQUEST_AUDIO_SFX_SECONDS:-8}" \
-    --fade "${CAPTUREQUEST_AUDIO_SFX_FADE:-0}")
-
-  echo "Rendering original Pokemon cries..."
-  (cd "${EXTRACTOR_ROOT}" && npm run render:audio -- \
-    --build-rom \
-    --out-dir "${REPO_ROOT}/public" \
-    --kind cries \
-    --seconds "${CAPTUREQUEST_AUDIO_CRY_SECONDS:-4}" \
-    --fade "${CAPTUREQUEST_AUDIO_CRY_FADE:-0}")
-}
-
-render_extractor_audio
-
 echo "Syncing extractor assets into CaptureQuest..."
 SYNC_PYTHON_BIN="${EXTRACTOR_ROOT}/.venv/bin/python"
 if [[ ! -x "${SYNC_PYTHON_BIN}" ]]; then
@@ -306,12 +186,10 @@ if [[ ! -x "${SYNC_PYTHON_BIN}" ]]; then
 fi
 "${SYNC_PYTHON_BIN}" "${REPO_ROOT}/scripts/sync_extractor_assets.py" \
   --extractor-root "${EXTRACTOR_ROOT}" \
-  --repo-root "${REPO_ROOT}"
-
-if [[ -f "${EXTRACTOR_ROOT}/audio_manifest.json" ]]; then
-  echo "Syncing Pokemon audio metadata..."
-  npm run audio:sync
-fi
+  --repo-root "${REPO_ROOT}" \
+  --database "${DB_SOURCE}" \
+  --viewer-public "${EXTRACTOR_ROOT}/pokemon-phaser/public" \
+  --audio-root "${EXTRACTOR_ROOT}/build/audio"
 
 if [[ -f ".env" ]]; then
   set -a
@@ -343,7 +221,8 @@ if [[ ${#BOOTSTRAP_ARGS[@]} -eq 0 ]]; then
 fi
 
 echo "Bootstrapping CaptureQuest Postgres..."
-"${REPO_ROOT}/server/scripts/bootstrap_postgres.sh" "${BOOTSTRAP_ARGS[@]}"
+CAPTUREQUEST_POKEMON_RELEASE="${CAPTUREQUEST_RELEASE}" \
+  "${REPO_ROOT}/server/scripts/bootstrap_postgres.sh" "${BOOTSTRAP_ARGS[@]}"
 
 echo "Generating TypeScript API bindings..."
 npm run tygo

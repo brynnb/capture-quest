@@ -1,7 +1,7 @@
 import styled, { keyframes, css } from "styled-components";
 import useGameScreenStore from "@stores/GameScreenStore";
 import ScreenRouter from "@/components/ScreenRouter";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect } from "react";
 import useGameStatusStore from "@stores/GameStatusStore";
 import LoadingScreen from "@/components/LoadingScreen";
 import AudioService from "@/services/audio/AudioService";
@@ -10,38 +10,22 @@ import { WelcomeModals } from "@/components/WelcomeModals";
 import PokeBattleDisplay from "@/components/PokeBattleDisplay";
 import { IS_LOCAL_DEV } from "@/config";
 
-// Design dimensions (frame wrapper + margins)
-const DESIGN_WIDTH = 1470; // 1440 + 30 (frame borders)
-const DESIGN_HEIGHT = 1350; // 1086 + frame borders + margins for signature/disclaimer
-const MIN_SCALE = 0.4; // Don't scale below 40%
-const MAX_SCALE = 1; // Don't scale above 100%
-
-// Responsive scaling wrapper
-const ScalerContainer = styled.div`
+const AppViewport = styled.div`
   width: 100%;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  overflow-y: auto;
-  overflow-x: hidden;
-  overscroll-behavior-y: none;
+  height: var(--cq-viewport-height, 100dvh);
+  padding: max(8px, env(safe-area-inset-top, 0px))
+    max(8px, env(safe-area-inset-right, 0px))
+    max(8px, env(safe-area-inset-bottom, 0px))
+    max(8px, env(safe-area-inset-left, 0px));
+  box-sizing: border-box;
+  overflow: hidden;
+
+  @media (max-width: 850px), (pointer: coarse) {
+    padding: 0;
+  }
 `;
 
-interface ScaledContentProps {
-  $scale: number;
-}
-
-const ScaledContent = styled.div<ScaledContentProps>`
-  transform: scale(${(props) => props.$scale});
-  transform-origin: top center;
-  width: ${DESIGN_WIDTH}px;
-  height: ${DESIGN_HEIGHT}px;
-  /* Pull up following elements (or the bottom of the page) based on how much we shrunk */
-  margin-bottom: ${(props) => DESIGN_HEIGHT * (props.$scale - 1)}px;
-`;
-
-const FRAME_BORDER = 21; // Match the pokemon frame border width
+const FRAME_BORDER = 10;
 const POKEMON_FRAME_PATH = "/assets/pokemon_frame/frame-hd.png";
 
 interface MainContainerProps {
@@ -51,11 +35,9 @@ interface MainContainerProps {
 // Outer wrapper that includes both the frame and the content
 const FrameWrapper = styled.div`
   position: relative;
-  width: ${1440 + FRAME_BORDER * 2}px;
-  height: ${1080 + FRAME_BORDER * 2}px;
-  margin: 50px auto 10px auto;
+  width: 100%;
+  height: 100%;
 
-  /* Pokemon Frame Style */
   border-style: solid;
   border-width: ${FRAME_BORDER}px;
   border-image: url("${POKEMON_FRAME_PATH}") 42 round;
@@ -63,6 +45,10 @@ const FrameWrapper = styled.div`
   background: var(--pkmn-neutral);
   background-clip: padding-box; /* Prevents background from bleeding under the border */
   box-sizing: border-box;
+
+  @media (max-width: 850px), (pointer: coarse) {
+    border-width: 0;
+  }
 `;
 
 const Disclaimer = styled.p`
@@ -74,6 +60,13 @@ const Disclaimer = styled.p`
   opacity: 0.9;
   line-height: 1.6;
   text-align: right;
+
+  @media (max-width: 850px), (max-height: 700px), (pointer: coarse) {
+    max-width: 100%;
+    font-size: 7px;
+    line-height: 1.35;
+    text-align: center;
+  }
 `;
 
 const Signature = styled.div`
@@ -94,15 +87,45 @@ const Signature = styled.div`
       text-shadow: 0 0 8px rgba(255, 204, 217, 0.4);
     }
   }
+
+  @media (max-width: 850px), (max-height: 700px), (pointer: coarse) {
+    font-size: 11px;
+    line-height: 1.35;
+    text-align: center;
+  }
 `;
 
-const FooterRow = styled.div`
-  display: flex;
+const FooterRow = styled.div<{ $hidden: boolean }>`
+  position: absolute;
+  right: 24px;
+  bottom: 18px;
+  left: 24px;
+  z-index: 40;
+  display: ${(props) => (props.$hidden ? "none" : "flex")};
   justify-content: space-between;
   align-items: flex-end;
-  width: ${1440}px;
-  margin: 0px auto 50px auto;
   gap: 40px;
+  pointer-events: none;
+
+  a {
+    pointer-events: auto;
+  }
+
+  @media (max-width: 850px), (max-height: 700px), (pointer: coarse) {
+    right: max(10px, env(safe-area-inset-right, 0px));
+    bottom: max(8px, env(safe-area-inset-bottom, 0px));
+    left: max(10px, env(safe-area-inset-left, 0px));
+    display: ${(props) => (props.$hidden ? "none" : "flex")};
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    padding: 7px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: 12px;
+    background: rgba(26, 28, 70, 0.72);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.24);
+    backdrop-filter: blur(8px);
+  }
 `;
 
 const scrollDiagonal = keyframes`
@@ -117,15 +140,9 @@ const scrollDiagonal = keyframes`
 // The actual game content area - sits under transparent portions of frame
 const MainContainer = styled.div<MainContainerProps>`
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 1440px;
-  height: 1080px;
-  display: grid;
-  gap: 0px 0px;
-  grid-auto-flow: row;
-  justify-items: center;
-  align-items: center;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   z-index: 5;
   ${(props) =>
@@ -154,47 +171,29 @@ const GlobalLoadingOverlay = () => {
 
 import { LayoutProvider, useLayout } from "@/contexts/LayoutContext";
 
-// Custom hook for responsive scaling
-const useResponsiveScale = () => {
-  const [scale, setScale] = useState(1);
-  const setUIScale = useGameStatusStore((s) => s.setUIScale);
-
-  const calculateScale = useCallback(() => {
-    const viewportWidth = window.visualViewport ? window.visualViewport.width : window.innerWidth;
-    const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-
-    // Calculate scale based on both dimensions, take the smaller to fit
-    const scaleX = viewportWidth / DESIGN_WIDTH;
-    const scaleY = viewportHeight / DESIGN_HEIGHT;
-    const newScale = Math.min(scaleX, scaleY);
-
-    // Clamp between min and max
-    const clampedScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale));
-
-    // Only update state if change is significant (> 1%) to avoid toolbar-toggle loops
-    const currentScale = useGameStatusStore.getState().uiScale;
-    if (Math.abs(clampedScale - currentScale) > 0.01) {
-      setScale(clampedScale);
-      setUIScale(clampedScale);
-    }
-  }, [setUIScale]);
-
+const useDynamicViewportHeight = () => {
   useEffect(() => {
-    // Calculate on mount
-    calculateScale();
-
-    // Recalculate on resize
-    window.addEventListener("resize", calculateScale);
-    return () => window.removeEventListener("resize", calculateScale);
-  }, [calculateScale]);
-
-  return scale;
+    const updateHeight = () => {
+      const height = window.visualViewport?.height ?? window.innerHeight;
+      document.documentElement.style.setProperty(
+        "--cq-viewport-height",
+        `${Math.round(height)}px`,
+      );
+    };
+    updateHeight();
+    window.addEventListener("resize", updateHeight);
+    window.visualViewport?.addEventListener("resize", updateHeight);
+    return () => {
+      window.removeEventListener("resize", updateHeight);
+      window.visualViewport?.removeEventListener("resize", updateHeight);
+    };
+  }, []);
 };
 
 const LayoutContent = () => {
   const { currentScreen } = useGameScreenStore();
   const { mainRef } = useLayout();
-  const scale = useResponsiveScale();
+  useDynamicViewportHeight();
 
   // Phaser game should only be active on the game screen
   const showPhaserGame = currentScreen === "game";
@@ -220,25 +219,20 @@ const LayoutContent = () => {
     <>
       {!IS_LOCAL_DEV && <WelcomeModals />}
       <AudioService />
-      <ScalerContainer>
-        <ScaledContent $scale={scale}>
-          <FrameWrapper>
-            {/* Main game content */}
-            <MainContainer
-              ref={mainRef}
-              id="main"
-              onContextMenu={handleContextMenu}
-              $backgroundType={backgroundType}
-            >
-              {/* Phaser 2D game engine - only active on game screen */}
-              <PhaserEngine isActive={showPhaserGame} />
-              <ScreenRouter />
-              <PokeBattleDisplay />
-            </MainContainer>
-            <GlobalLoadingOverlay />
-
-          </FrameWrapper>
-          <FooterRow>
+      <AppViewport>
+        <FrameWrapper>
+          <MainContainer
+            ref={mainRef}
+            id="main"
+            onContextMenu={handleContextMenu}
+            $backgroundType={backgroundType}
+          >
+            <PhaserEngine isActive={showPhaserGame} />
+            <ScreenRouter />
+            <PokeBattleDisplay />
+          </MainContainer>
+          <GlobalLoadingOverlay />
+          <FooterRow $hidden={showPhaserGame || isCharacterCreation}>
             <Signature>
               Made with ❤️ by <a href="https://www.brynnbateman.com/" target="_blank" rel="noopener noreferrer">Brynn</a> — Hire me!<br /><a href="https://discord.gg/vH4GPChWKY" target="_blank" rel="noopener noreferrer">Join the Discord!</a>
             </Signature>
@@ -248,8 +242,8 @@ const LayoutContent = () => {
               Company. Pokémon is a registered trademark of Nintendo.
             </Disclaimer>
           </FooterRow>
-        </ScaledContent>
-      </ScalerContainer>
+        </FrameWrapper>
+      </AppViewport>
     </>
   );
 };

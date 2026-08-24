@@ -878,6 +878,14 @@ export interface PhaserTile {
   collisionType: number /* int */;
   rawFootTileId?: number /* int */;
   talkOverTile: boolean;
+  /**
+   * CoordinateOrigin describes whether this square existed in the extracted
+   * game data. ContentOrigin describes who supplied its current appearance.
+   * Keeping both prevents a user edit from erasing native provenance.
+   */
+  isNativeGameData: boolean;
+  coordinateOrigin: string;
+  contentOrigin: string;
 }
 /**
  * PhaserActor represents an actor or object in the game
@@ -915,6 +923,8 @@ export interface PhaserWarp {
   destinationMap?: string;
   destinationX?: number /* int */;
   destinationY?: number /* int */;
+  destinationKind: string;
+  destinationWarpId: number /* int */;
   warpType: string;
   warpDirection?: string;
 }
@@ -1238,6 +1248,7 @@ export interface PlayerMovementState {
   currentX: number /* int */;
   currentY: number /* int */;
   mapId: number /* int */;
+  previousMapId?: number /* int */;
   direction: string;
   path: PathNode[]; // Remaining path to destination
   isSurfing?: boolean;

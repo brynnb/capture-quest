@@ -71,7 +71,7 @@ function localAssetsPlugin(): Plugin {
       if (isOffline && fs.existsSync(assetsPath)) {
         console.log(`[Vite] Serving local assets from: ${assetsPath}`);
 
-        middlewares.use('/capturequest', (req, res, next) => {
+        middlewares.use('/capturequest', (req, res) => {
           // Strip /capturequest from URL
           const urlStr = req.url?.split('?')[0] || '';
           const filePath = path.join(assetsPath, urlStr);

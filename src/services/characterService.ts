@@ -43,6 +43,29 @@ export interface HomeTownData {
   sortOrder: number;
 }
 
+interface StaticDataResponse {
+  success: boolean;
+  error?: string;
+  maps?: Array<MapData & {
+    tileset_id?: number | null;
+    north_connection?: number | null;
+    south_connection?: number | null;
+    west_connection?: number | null;
+    east_connection?: number | null;
+  }>;
+  classes?: ClassData[];
+  factions?: FactionData[];
+  startCities?: HomeTownData[];
+}
+
+interface CharacterCreationResponse {
+  success: boolean;
+  error?: string;
+  factions?: FactionData[];
+  classes?: ClassData[];
+  startCities?: HomeTownData[];
+}
+
 /**
  * Get static game data.
  */
@@ -60,14 +83,14 @@ export async function getStaticData(): Promise<{
     OpCodes.StaticDataRequest,
     OpCodes.StaticDataResponse,
     {},
-  )) as any;
+  )) as StaticDataResponse;
 
   if (!response.success) {
     throw new Error(response.error || "Failed to load static data");
   }
 
   return {
-    maps: (response.maps || []).map((m: any) => ({
+    maps: (response.maps || []).map((m) => ({
       ...m,
       tilesetId: m.tilesetId ?? m.tileset_id ?? null,
       isOverworld: !!m.isOverworld,
@@ -76,15 +99,15 @@ export async function getStaticData(): Promise<{
       westConnection: m.westConnection ?? m.west_connection ?? null,
       eastConnection: m.eastConnection ?? m.east_connection ?? null,
     })),
-    classes: (response.classes || []).map((c: any) => ({
+    classes: (response.classes || []).map((c) => ({
       ...c,
     })),
-    factions: (response.factions || []).map((f: any) => ({
+    factions: (response.factions || []).map((f) => ({
       ...f,
       isPlayable: !!f.isPlayable,
       isStarting: !!f.isStarting,
     })),
-    startCities: (response.startCities || []).map((sc: any) => ({ ...sc })),
+    startCities: (response.startCities || []).map((sc) => ({ ...sc })),
   };
 }
 
@@ -104,19 +127,19 @@ export async function getCharCreateData(): Promise<{
     OpCodes.CharCreateDataRequest,
     OpCodes.CharCreateDataResponse,
     {},
-  )) as any;
+  )) as CharacterCreationResponse;
 
   if (!response.success) {
     throw new Error(response.error || "Failed to load character creation data");
   }
 
   return {
-    factions: (response.factions || []).map((f: any) => ({
+    factions: (response.factions || []).map((f) => ({
       ...f,
       isPlayable: !!f.isPlayable,
       isStarting: !!f.isStarting,
     })),
-    classes: (response.classes || []).map((c: any) => ({ ...c })),
-    homeTowns: (response.startCities || []).map((sc: any) => ({ ...sc })),
+    classes: (response.classes || []).map((c) => ({ ...c })),
+    homeTowns: (response.startCities || []).map((sc) => ({ ...sc })),
   };
 }

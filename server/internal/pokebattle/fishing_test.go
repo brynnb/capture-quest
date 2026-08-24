@@ -60,6 +60,11 @@ func openFishingEncounterTestDB(t *testing.T) *sql.DB {
 			slot_index INTEGER NOT NULL,
 			probability REAL NOT NULL
 		);
+		CREATE TABLE phaser_import_metadata (
+			singleton BOOLEAN PRIMARY KEY,
+			release_code TEXT NOT NULL
+		);
+		INSERT INTO phaser_import_metadata VALUES (1, 'red');
 		INSERT INTO phaser_pokemon (id, name) VALUES
 			(118, 'GOLDEEN'),
 			(119, 'SEAKING'),

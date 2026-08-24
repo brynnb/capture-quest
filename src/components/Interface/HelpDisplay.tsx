@@ -4,8 +4,8 @@ import useGameStatusStore from "@stores/GameStatusStore";
 import ActionButton from "@components/Interface/ActionButton";
 
 const CenterViewport = styled.div`
-  width: 902px;
-  height: 650px;
+  width: min(902px, calc(100% - 48px));
+  height: min(650px, calc(100% - 64px));
   position: absolute;
   left: 50%;
   top: 30px;
@@ -22,6 +22,17 @@ const CenterViewport = styled.div`
   box-shadow: 0 12px 48px rgba(0, 0, 0, 0.3);
   transition: all 0.3s ease;
   box-sizing: border-box;
+
+  @media (max-width: 850px), (pointer: coarse) {
+    inset: calc(10px + env(safe-area-inset-top, 0px)) 10px
+      calc(10px + env(safe-area-inset-bottom, 0px));
+    width: auto;
+    height: auto;
+    padding: 22px 18px 74px;
+    border-width: 3px;
+    border-radius: 16px;
+    transform: none;
+  }
 `;
 
 const HelpTitle = styled.h2`
@@ -80,16 +91,16 @@ const Paragraph = styled.p`
   color: #3e3f7a;
 `;
 
-const DemoBadge = styled.div`
+const AlphaBadge = styled.div`
   display: inline-block;
-  background: #ffde75;
-  border: 3px solid #c4a830;
+  background: rgba(220, 221, 255, 0.9);
+  border: 3px solid #4a4ba6;
   border-radius: 12px;
   padding: 6px 16px;
   font-weight: 800;
   font-size: 14px;
   text-transform: uppercase;
-  color: #6b5a00;
+  color: #2e2f66;
   margin-bottom: 16px;
 `;
 
@@ -109,39 +120,49 @@ const HelpDisplay: React.FC = () => {
 
   return (
     <CenterViewport>
-      <HelpTitle>About This Project</HelpTitle>
-      <DemoBadge>Demo / Showcase Build</DemoBadge>
+      <HelpTitle>About CaptureQuest</HelpTitle>
+      <AlphaBadge>Alpha Build</AlphaBadge>
       <HelpContent>
         <Paragraph>
-          Welcome to CaptureQuest, a multiplayer online game inspired by the
-          original Pok&eacute;mon GameBoy games. Explore the Kanto region,
-          catch Pok&eacute;mon, battle trainers, and chat with other players
-          in a shared world.
+          CaptureQuest is a persistent multiplayer adventure inspired by the
+          original Pok&eacute;mon Red and Blue games. Explore Kanto, encounter
+          and catch Pok&eacute;mon, battle trainers, play through recreated story
+          events, and chat with other players in a shared world.
         </Paragraph>
 
         <Paragraph>
-          This is a demo build and not all features are fully functional.
-          Scripted in-game events are now very fully implemented, but they have
-          not been thoroughly tested, so there will still be bugs and strange
-          edges. Enjoy exploring what&rsquo;s here and have fun!
+          This alpha includes Kanto exploration, wild and trainer battles,
+          capturing, party and PC storage, inventory, Pok&eacute;dex, shops,
+          Pok&eacute;mon Centers, scripted events, and multiplayer chat. It is
+          under active development and testing, so progression details and
+          balance may change, and some bugs and unfinished edges remain.
         </Paragraph>
 
         <SectionHeading>Controls</SectionHeading>
         <FeatureList>
           <li>Use WASD or arrow keys to move your character</li>
+          <li>
+            Press Space to interact with the person or object in front of you
+          </li>
+          <li>
+            On touch screens, use the D-pad to move and the A button to interact
+          </li>
           <li>Click/tap on the map to move to a location</li>
-          <li>Use the toolbar icons to access the Pok&eacute;dex, inventory, fishing, and more</li>
+          <li>
+            Use the left sidebar for your party, Bag, Pok&eacute;dex, Trainer
+            Card, and settings
+          </li>
           <li>Walk into tall grass to encounter wild Pok&eacute;mon</li>
           <li>Visit Pok&eacute; Marts and Pok&eacute;mon Centers in towns</li>
-          <li>Chat with other players using the chatbox</li>
+          <li>Chat with other players using the desktop or mobile chat panel</li>
         </FeatureList>
 
         <SectionHeading>Disclaimer</SectionHeading>
         <Paragraph>
-          This is a personal portfolio/showcase project and is not affiliated
-          with or endorsed by Nintendo, Game Freak, or The Pok&eacute;mon
-          Company. All original Pok&eacute;mon assets and trademarks belong to
-          their respective owners.
+          CaptureQuest is an independent fan project and is not affiliated
+          with or endorsed by Nintendo, Game Freak, Creatures Inc., or The
+          Pok&eacute;mon Company. Pok&eacute;mon names, characters, assets, and
+          trademarks belong to their respective owners.
         </Paragraph>
       </HelpContent>
 

@@ -12,6 +12,23 @@ export interface JWTResponse {
     token?: string;
 }
 
+export interface CharacterCreateRequest {
+    name: string;
+    rivalName: string;
+    factionId: number;
+    charClass: number;
+    homeTownMapId: number;
+    gender: number;
+    tutorial: number;
+}
+
+interface NameValidationResponse {
+    valid?: boolean;
+    success?: boolean;
+    available?: boolean;
+    errorMessage?: string;
+}
+
 /**
  * Login with email and password
  */
@@ -92,7 +109,7 @@ export async function registerAccount(email: string, password: string): Promise<
 /**
  * Create a new character
  */
-export async function createCharacter(characterData: any): Promise<boolean> {
+export async function createCharacter(characterData: CharacterCreateRequest): Promise<boolean> {
     if (!WorldSocket.isConnected) {
         throw new Error("WorldSocket not connected");
     }
@@ -159,7 +176,7 @@ export async function validateName(name: string): Promise<{
             OpCodes.ValidateNameRequest,
             OpCodes.ValidateNameResponse,
             { name }
-        ) as any;
+        ) as NameValidationResponse;
         return {
             valid: !!(response.valid || response.success),
             available: !!response.available,

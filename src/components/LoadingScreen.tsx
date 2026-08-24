@@ -8,12 +8,9 @@ const Wrapper = styled.div<{ $isGlobal?: boolean }>`
   align-items: center;
   justify-content: center;
   position: absolute;
-  top: ${props => props.$isGlobal ? '15px' : '0'};
-  left: ${props => props.$isGlobal ? '15px' : '0'};
-  right: ${props => props.$isGlobal ? '15px' : '0'};
-  bottom: ${props => props.$isGlobal ? '21px' : '0'}; // Matches bottom of MainContainer
-  width: ${props => props.$isGlobal ? '1440px' : '100%'};
-  height: ${props => props.$isGlobal ? '1080px' : '100%'};
+  inset: 0;
+  width: 100%;
+  height: 100%;
   grid-area: 1 / 1 / -1 / -1;
   margin: 0;
   z-index: 999999;
@@ -38,7 +35,7 @@ const LoadingContainer = styled.div`
 `;
 
 const LoadingBarContainer = styled.div`
-  width: 700px;
+  width: min(700px, calc(100vw - 40px));
   height: 48px;
   background: rgba(46, 47, 102, 0.4); /* Deep navy base */
   backdrop-filter: blur(8px);

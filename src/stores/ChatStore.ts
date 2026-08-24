@@ -23,6 +23,12 @@ interface ChatMessage {
   type: MessageType;
 }
 
+interface IncomingChatMessage {
+  messageType?: string;
+  senderName?: string;
+  text: string;
+}
+
 interface ChatStore {
   messages: ChatMessage[];
   addMessage: (text: string, type: MessageType) => void;
@@ -32,10 +38,10 @@ interface ChatStore {
   isConnected: boolean;
   connectionError: string | null;
   initializeWebTransport: () => Promise<void>;
-  handleChatMessage: (data: any) => void;
+  handleChatMessage: (data: IncomingChatMessage) => void;
 }
 
-const mapMessageType = (messageType: string): MessageType => {
+const mapMessageType = (messageType?: string): MessageType => {
   switch (String(messageType || "general").toLowerCase()) {
     case "general":
       return MessageType.GENERAL_CHAT;
@@ -87,11 +93,12 @@ const useChatStore = create<ChatStore>()(
       }
     },
 
-    handleChatMessage: (data: any) => {
+    handleChatMessage: (data: IncomingChatMessage) => {
       const type = mapMessageType(data.messageType);
+      const text = data.text ?? "";
       const displayText = type === MessageType.GENERAL_CHAT && data.senderName
-        ? `${data.senderName}: ${data.text}`
-        : data.text;
+        ? `${data.senderName}: ${text}`
+        : text;
       get().addMessage(displayText, type);
     },
 

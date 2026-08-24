@@ -4,6 +4,7 @@ import { MapData } from "@/services/characterService";
 import { WorldSocket, OpCodes } from "@/net";
 import { OptionId } from "@/constants/optionId";
 import { displayLocationNameForMap } from "@utils/locationNames";
+import type { InstantWarpTarget } from "@/phaser-game/instantWarp";
 
 interface GameStatusStore {
   maps: MapData[];
@@ -51,8 +52,14 @@ interface GameStatusStore {
   toggleHelp: () => void;
   isGroupOpen: boolean;
   toggleGroup: () => void;
+  isHudSidebarCollapsed: boolean;
+  setHudSidebarCollapsed: (collapsed: boolean) => void;
+  toggleHudSidebar: () => void;
+  isMobileChatOpen: boolean;
+  setMobileChatOpen: (open: boolean) => void;
+  toggleMobileChat: () => void;
 
-  syncOptions: (options: any) => void;
+  syncOptions: (options: string | GameOptions | null | undefined) => void;
   resetPanelStates: () => void;
 
   isMapLoading: boolean;
@@ -65,6 +72,9 @@ interface GameStatusStore {
   isWarpMode: boolean;
   setWarpMode: (enabled: boolean) => void;
   toggleWarpMode: () => void;
+  pendingInstantWarpTarget: InstantWarpTarget | null;
+  setPendingInstantWarpTarget: (target: InstantWarpTarget) => void;
+  clearPendingInstantWarpTarget: () => void;
   isTileManagerOpen: boolean;
   toggleTileManager: () => void;
   isArtStudioOpen: boolean;
@@ -74,6 +84,10 @@ interface GameStatusStore {
   clearBlackoutWarp: () => void;
   allowTrainerRebattles: boolean;
   toggleAllowTrainerRebattles: () => void;
+}
+
+interface GameOptions {
+  allowTrainerRebattles?: boolean;
 }
 
 const useGameStatusStore = create<GameStatusStore>()(
@@ -138,6 +152,11 @@ const useGameStatusStore = create<GameStatusStore>()(
             const nextValue = !state.isInventoryOpen;
             return {
               isInventoryOpen: nextValue,
+              isPokedexOpen: nextValue ? false : state.isPokedexOpen,
+              isTrainerCardOpen: nextValue ? false : state.isTrainerCardOpen,
+              isOptionsOpen: nextValue ? false : state.isOptionsOpen,
+              isHelpOpen: nextValue ? false : state.isHelpOpen,
+              isGroupOpen: nextValue ? false : state.isGroupOpen,
             };
           });
         },
@@ -148,6 +167,10 @@ const useGameStatusStore = create<GameStatusStore>()(
             return {
               isPokedexOpen: nextValue,
               isTrainerCardOpen: false,
+              isInventoryOpen: nextValue ? false : state.isInventoryOpen,
+              isOptionsOpen: nextValue ? false : state.isOptionsOpen,
+              isHelpOpen: nextValue ? false : state.isHelpOpen,
+              isGroupOpen: nextValue ? false : state.isGroupOpen,
             };
           });
         },
@@ -158,6 +181,10 @@ const useGameStatusStore = create<GameStatusStore>()(
             return {
               isTrainerCardOpen: nextValue,
               isPokedexOpen: false,
+              isInventoryOpen: nextValue ? false : state.isInventoryOpen,
+              isOptionsOpen: nextValue ? false : state.isOptionsOpen,
+              isHelpOpen: nextValue ? false : state.isHelpOpen,
+              isGroupOpen: nextValue ? false : state.isGroupOpen,
             };
           });
         },
@@ -168,6 +195,10 @@ const useGameStatusStore = create<GameStatusStore>()(
             return {
               isOptionsOpen: nextValue,
               isHelpOpen: false,
+              isInventoryOpen: nextValue ? false : state.isInventoryOpen,
+              isPokedexOpen: nextValue ? false : state.isPokedexOpen,
+              isTrainerCardOpen: nextValue ? false : state.isTrainerCardOpen,
+              isGroupOpen: nextValue ? false : state.isGroupOpen,
             };
           });
         },
@@ -178,18 +209,67 @@ const useGameStatusStore = create<GameStatusStore>()(
             return {
               isHelpOpen: nextValue,
               isOptionsOpen: false,
+              isInventoryOpen: nextValue ? false : state.isInventoryOpen,
+              isPokedexOpen: nextValue ? false : state.isPokedexOpen,
+              isTrainerCardOpen: nextValue ? false : state.isTrainerCardOpen,
+              isGroupOpen: nextValue ? false : state.isGroupOpen,
             };
           });
         },
         isGroupOpen: true,
         toggleGroup: () => {
-          set((state) => ({ isGroupOpen: !state.isGroupOpen }));
+          set((state) => {
+            const nextValue = !state.isGroupOpen;
+            return {
+              isGroupOpen: nextValue,
+              isInventoryOpen: nextValue ? false : state.isInventoryOpen,
+              isPokedexOpen: nextValue ? false : state.isPokedexOpen,
+              isTrainerCardOpen: nextValue ? false : state.isTrainerCardOpen,
+              isOptionsOpen: nextValue ? false : state.isOptionsOpen,
+              isHelpOpen: nextValue ? false : state.isHelpOpen,
+            };
+          });
+        },
+        isHudSidebarCollapsed: false,
+        setHudSidebarCollapsed: (collapsed) => {
+          set({ isHudSidebarCollapsed: collapsed });
+        },
+        toggleHudSidebar: () => {
+          set((state) => ({
+            isHudSidebarCollapsed: !state.isHudSidebarCollapsed,
+            isMobileChatOpen: state.isHudSidebarCollapsed
+              ? false
+              : state.isMobileChatOpen,
+          }));
+        },
+        isMobileChatOpen: false,
+        setMobileChatOpen: (open) => {
+          set({ isMobileChatOpen: open });
+        },
+        toggleMobileChat: () => {
+          set((state) => ({
+            isMobileChatOpen: !state.isMobileChatOpen,
+            isHudSidebarCollapsed: state.isMobileChatOpen
+              ? state.isHudSidebarCollapsed
+              : true,
+          }));
         },
 
-        syncOptions: (options: any) => {
+        syncOptions: (options) => {
           if (!options) return;
+          let parsed: GameOptions;
+          if (typeof options === "string") {
+            try {
+              parsed = JSON.parse(options) as GameOptions;
+            } catch {
+              console.warn("[GameStatusStore] Ignoring malformed character options");
+              return;
+            }
+          } else {
+            parsed = options;
+          }
           set({
-            allowTrainerRebattles: !!options.allowTrainerRebattles,
+            allowTrainerRebattles: !!parsed.allowTrainerRebattles,
           });
         },
         resetPanelStates: () => {
@@ -200,14 +280,21 @@ const useGameStatusStore = create<GameStatusStore>()(
             isOptionsOpen: false,
             isHelpOpen: false,
             isGroupOpen: true,
+            isMobileChatOpen: false,
             isWarpMode: false,
+            pendingInstantWarpTarget: null,
             isTileManagerOpen: false,
             isArtStudioOpen: false,
           });
         },
 
         isMapLoading: false,
-        setIsMapLoading: (isLoading) => set({ isMapLoading: isLoading }),
+        setIsMapLoading: (isLoading) => {
+          set({
+            isMapLoading: isLoading,
+            ...(isLoading ? { pendingInstantWarpTarget: null } : {}),
+          });
+        },
         uiScale: 1,
         setUIScale: (scale) => set({ uiScale: scale }),
         isCameraFollowEnabled: true,
@@ -221,10 +308,23 @@ const useGameStatusStore = create<GameStatusStore>()(
         },
         isWarpMode: false,
         setWarpMode: (enabled) => {
-          set({ isWarpMode: enabled });
+          set({
+            isWarpMode: enabled,
+            ...(enabled ? {} : { pendingInstantWarpTarget: null }),
+          });
         },
         toggleWarpMode: () => {
-          set((state) => ({ isWarpMode: !state.isWarpMode }));
+          set((state) => ({
+            isWarpMode: !state.isWarpMode,
+            pendingInstantWarpTarget: null,
+          }));
+        },
+        pendingInstantWarpTarget: null,
+        setPendingInstantWarpTarget: (target) => {
+          set({ pendingInstantWarpTarget: target });
+        },
+        clearPendingInstantWarpTarget: () => {
+          set({ pendingInstantWarpTarget: null });
         },
         isTileManagerOpen: false,
         toggleTileManager: () => {

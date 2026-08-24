@@ -8,11 +8,9 @@ enum DirectionFrame {
   DOWN = 0, // 0th frame for facing down
   UP = 1, // 1st frame for facing up
   LEFT = 2, // 2nd frame for facing left
-  RIGHT = 2, // Same as LEFT but will be flipped
   WALKING_DOWN = 3, // 3rd frame for walking down
   WALKING_UP = 4, // 4th frame for walking up
   WALKING_LEFT = 5, // 5th frame for walking left
-  WALKING_RIGHT = 5, // Same as WALKING_LEFT but will be flipped
 }
 
 export class ActorManager {
@@ -31,7 +29,7 @@ export class ActorManager {
    * @returns An object with the frame index and whether to flip the sprite horizontally
    */
   getFrameForDirection(
-    actionType: string,
+    actionType: string | { frame: number; flipX: boolean },
     actionDirection: string,
   ): { frame: number; flipX: boolean } {
     // Default to facing down
@@ -44,20 +42,14 @@ export class ActorManager {
 
     // Convert to uppercase for consistency
     const direction = (actionDirection || "DOWN").toUpperCase();
-    const type = (actionType || "STAY").toUpperCase();
+    const type = typeof actionType === "string" ? actionType.toUpperCase() : "STAY";
 
     // Handle different action types
     const isWalking = type === "WALK";
 
     // Check if we have a specific frame and flipX from the server
-    if (
-      (actionType as any)?.frame !== undefined &&
-      (actionType as any)?.flipX !== undefined
-    ) {
-      return {
-        frame: (actionType as any).frame,
-        flipX: (actionType as any).flipX,
-      };
+    if (typeof actionType === "object") {
+      return { frame: actionType.frame, flipX: actionType.flipX };
     }
 
     // Determine the frame based on direction
@@ -73,7 +65,7 @@ export class ActorManager {
         flipX = false;
         break;
       case "RIGHT":
-        frame = isWalking ? DirectionFrame.WALKING_RIGHT : DirectionFrame.RIGHT;
+        frame = isWalking ? DirectionFrame.WALKING_LEFT : DirectionFrame.LEFT;
         flipX = true;
         break;
       case "UP_DOWN":

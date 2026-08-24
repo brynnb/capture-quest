@@ -26,7 +26,7 @@ test("audio requests fire for map music, doors, items, battle, surf, and bike", 
   await jumpToScenario(page, "debug_warp_reds_house_1f_exit_mat");
   await waitForMap(page, "REDS_HOUSE_1F");
   await waitForWarps(page);
-  let state = await getGameState(page);
+  const state = await getGameState(page);
   const exitWarp = requireWarp(
     state,
     (warp) =>

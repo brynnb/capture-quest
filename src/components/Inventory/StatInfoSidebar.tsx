@@ -1,11 +1,11 @@
 import React, { useEffect } from "react";
 import styled from "styled-components";
 import { OpCodes, WorldSocket } from "@/net";
+import { BadgeAtlasIcon } from "@/components/Interface/BadgeAtlasIcon";
 import {
-  BadgeAtlasIcon,
   BADGE_FLAGS,
   BADGE_NAMES,
-} from "@/components/Interface/BadgeAtlasIcon";
+} from "@/components/Interface/badgeAtlasData";
 import useCQInventoryStore from "@/stores/CQInventoryStore";
 import usePokedexStore from "@/stores/PokedexStore";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
@@ -30,6 +30,10 @@ const StatInfoBarWrapper = styled.div.attrs({
   flex-direction: column;
   gap: 10px;
   font-family: "Pokemon GB", "Press Start 2P", "Outfit", monospace;
+
+  @media (max-width: 850px), (pointer: coarse) {
+    display: none;
+  }
 `;
 
 const TrainerHeader = styled.div`

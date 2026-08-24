@@ -128,6 +128,17 @@ if [[ ! -f "${SQLITE_PATH}" ]]; then
   exit 1
 fi
 
+# This must precede database creation and reset. An incompatible or stale
+# extractor artifact must never authorize destructive Postgres operations.
+echo "Preflighting extractor contract for ${SQLITE_PATH}"
+(
+  cd "${SERVER_DIR}"
+  go run ./cmd/import-phaser \
+    --release "${CAPTUREQUEST_POKEMON_RELEASE:-red}" \
+    --preflight-only \
+    "${SQLITE_PATH}"
+)
+
 if [[ "${CREATE_DB}" -eq 1 ]]; then
   validate_local_database_name
   ADMIN_DATABASE_URL="$(postgres_admin_database_url)"

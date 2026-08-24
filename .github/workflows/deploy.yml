@@ -18,6 +18,8 @@ concurrency:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    env:
+      CAPTUREQUEST_POKEMON_RELEASE: ${{ vars.CAPTUREQUEST_POKEMON_RELEASE || 'red' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -49,7 +51,8 @@ jobs:
                 2>/dev/null
             } | sha256sum | awk '{print $1}'
           )"
-          echo "key=cq-runtime-assets-v1-${pipeline_hash}" >> "$GITHUB_OUTPUT"
+          release="${CAPTUREQUEST_POKEMON_RELEASE:-red}"
+          echo "key=cq-runtime-assets-v2-${release}-${pipeline_hash}" >> "$GITHUB_OUTPUT"
 
       - name: Restore generated runtime assets
         id: runtime-assets-cache
@@ -60,6 +63,7 @@ jobs:
             public/assets/trainers
             public/phaser/assets
             public/phaser/pokemon.db
+            public/phaser/capturequest-pokemon-import.json
             public/phaser/style.css
             public/phaser/tile_images
             public/phaser/sprites
@@ -77,6 +81,7 @@ jobs:
 
           assets_ready() {
             test -s public/phaser/pokemon.db
+            test -s public/phaser/capturequest-pokemon-import.json
             test -d public/phaser/assets
             test -n "$(find public/phaser/assets -type f -print -quit)"
             test -d public/phaser/tile_images
@@ -118,7 +123,7 @@ jobs:
         if: steps.runtime-assets.outputs.needs_generation == 'true'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bison pkg-config libpng-dev gbsplay vorbis-tools sqlite3
+          sudo apt-get install -y build-essential bison pkg-config libpng-dev gbsplay ffmpeg sqlite3
           git clone --depth 1 https://github.com/gbdev/rgbds.git /tmp/rgbds
           make -C /tmp/rgbds -j"$(nproc)"
           sudo make -C /tmp/rgbds install PREFIX=/usr/local
@@ -137,15 +142,43 @@ jobs:
         run: |
           set -euo pipefail
           test -s public/phaser/pokemon.db
+          test -s public/phaser/capturequest-pokemon-import.json
           test -d public/sound/pokemon
-          test -n "$(find public/sound/pokemon -name '*.ogg' -type f -print -quit)"
+          test -s public/sound/pokemon/audio-render-manifest.json
           test -d server/scripted_events/scripts
           test -n "$(find server/scripted_events/scripts -name '*.json' -type f -print -quit)"
           node - <<'NODE'
+          const crypto = require("crypto");
           const fs = require("fs");
+          const path = require("path");
           const manifest = JSON.parse(fs.readFileSync("src/constants/pokemon_audio_manifest.json", "utf8"));
           if (!Array.isArray(manifest.mapMusic) || manifest.mapMusic.length < 200) {
             throw new Error(`Expected populated mapMusic metadata, got ${manifest.mapMusic?.length ?? 0}`);
+          }
+          const rendered = JSON.parse(fs.readFileSync("public/sound/pokemon/audio-render-manifest.json", "utf8"));
+          if (!Array.isArray(rendered.artifacts) || rendered.artifacts.length !== 561) {
+            throw new Error(`Expected 561 rendered assets, got ${rendered.artifacts?.length ?? 0}`);
+          }
+          const assetKeys = new Set();
+          const logicalPaths = new Set();
+          for (const artifact of rendered.artifacts) {
+            if (!artifact.assetKey || assetKeys.has(artifact.assetKey)) {
+              throw new Error(`Invalid or duplicate audio asset key: ${artifact.assetKey}`);
+            }
+            assetKeys.add(artifact.assetKey);
+            for (const key of ["master", "distribution"]) {
+              const record = artifact[key];
+              if (!record?.path?.startsWith("/sound/pokemon/")) throw new Error(`Unsafe audio path: ${record?.path}`);
+              if (logicalPaths.has(record.path)) throw new Error(`Duplicate audio path: ${record.path}`);
+              logicalPaths.add(record.path);
+              const filename = path.join("public", record.path);
+              const bytes = fs.readFileSync(filename);
+              const actual = crypto.createHash("sha256").update(bytes).digest("hex");
+              if (actual !== record.sha256) throw new Error(`Audio hash mismatch: ${filename}`);
+            }
+          }
+          if (assetKeys.size !== 561 || logicalPaths.size !== 1122) {
+            throw new Error("Audio manifest does not contain 561 distinct asset pairs");
           }
           NODE
 
@@ -158,6 +191,11 @@ jobs:
         with:
           go-version: '1.24'
           cache-dependency-path: server/go.sum
+
+      - name: Test warp import and runtime contracts
+        run: |
+          cd server
+          go test -p=1 -count=1 -run 'Warp|LastMap' ./cmd/import-phaser ./internal/world
 
       - name: Build Backend
         run: |
@@ -197,12 +235,13 @@ jobs:
           tar --exclude='._*' --exclude='.DS_Store' -czf - -C server/schema . | ssh $SSH_OPTS $HOST "mkdir -p $APP_DIR/server/schema && cd $APP_DIR/server/schema && tar xzf -"
           tar --exclude='._*' --exclude='.DS_Store' -czf - -C server/scripts . | ssh $SSH_OPTS $HOST "mkdir -p $APP_DIR/server/scripts && cd $APP_DIR/server/scripts && tar xzf -"
           gzip -c public/phaser/pokemon.db | ssh $SSH_OPTS $HOST "mkdir -p $APP_DIR/public/phaser && gunzip > $APP_DIR/public/phaser/pokemon.db"
+          gzip -c public/phaser/capturequest-pokemon-import.json | ssh $SSH_OPTS $HOST "mkdir -p $APP_DIR/public/phaser && gunzip > $APP_DIR/public/phaser/capturequest-pokemon-import.json"
 
           # Upload file-backed scripted events
           tar --exclude='._*' --exclude='.DS_Store' -czf - -C server/scripted_events . | ssh $SSH_OPTS $HOST "rm -rf $APP_DIR/server/scripted_events && mkdir -p $APP_DIR/server/scripted_events && cd $APP_DIR/server/scripted_events && tar xzf -"
 
           # Apply tracked runtime schema and refresh deterministic imported data.
-          ssh $SSH_OPTS $HOST "set -euo pipefail; cd $APP_DIR; set -a; . /etc/capturequest/cq-server.env; set +a; : \${DATABASE_URL:?DATABASE_URL missing}; if [ \"$RESET_DATABASE\" = \"true\" ]; then psql \"\$DATABASE_URL\" -v ON_ERROR_STOP=1 -c 'DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;'; fi; psql \"\$DATABASE_URL\" -v ON_ERROR_STOP=1 -f server/schema/postgres_runtime_schema.sql; cd server; DATABASE_URL=\"\$DATABASE_URL\" ./import-phaser ../public/phaser/pokemon.db"
+          ssh $SSH_OPTS $HOST "set -euo pipefail; cd $APP_DIR; set -a; . /etc/capturequest/cq-server.env; set +a; : \${DATABASE_URL:?DATABASE_URL missing}; release=\"$CAPTUREQUEST_POKEMON_RELEASE\"; cd server; ./import-phaser --release \"\$release\" --preflight-only ../public/phaser/pokemon.db; cd ..; if [ \"$RESET_DATABASE\" = \"true\" ]; then psql \"\$DATABASE_URL\" -v ON_ERROR_STOP=1 -c 'DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;'; fi; psql \"\$DATABASE_URL\" -v ON_ERROR_STOP=1 -f server/schema/postgres_runtime_schema.sql; cd server; DATABASE_URL=\"\$DATABASE_URL\" ./import-phaser --release \"\$release\" ../public/phaser/pokemon.db"
 
           # Restart
           ssh $SSH_OPTS $HOST "sudo systemctl start cq-server && sudo systemctl reload caddy"

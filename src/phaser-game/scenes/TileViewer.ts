@@ -7,7 +7,7 @@ import {
 } from "../constants";
 import { CameraController } from "../controllers/CameraController";
 import { PlayerMovementController } from "../controllers/PlayerMovementController";
-import { MapRenderer } from "../renderers/MapRenderer";
+import { MapRenderer, type MapItem } from "../renderers/MapRenderer";
 import { MapDataService } from "../services/MapDataService";
 import { MapLoader } from "../services/MapLoader";
 import { TileManager, ActorManager, UiManager, WarpManager } from "../managers";
@@ -83,7 +83,7 @@ export class TileViewer extends Scene {
   // Data
   private tiles: PhaserTile[] = [];
   private mapInfo: PhaserMapInfo | null = null;
-  private items: any[] = []; // Items might not have a Phaser-specific struct yet
+  private items: MapItem[] = [];
   private actors: PhaserActor[] = [];
   private actorCache: Map<number, PhaserActor> = new Map();
   private playerActor: PhaserActor | null = null; // Store player separately so it's never lost
@@ -101,6 +101,9 @@ export class TileViewer extends Scene {
 
   // View mode tracking
   private isOverworldMode: boolean = OVERWORLD_MODE;
+  private isMapOverviewMode: boolean = false;
+  private interiorMapBeforeOverview: number | null = null;
+  private mapOverviewTransitionInProgress = false;
   private viewedMapIds: Set<number> = new Set();
   public mapLoadInProgress: boolean = false;
   public warpDestX: number | null = null;
@@ -221,6 +224,13 @@ export class TileViewer extends Scene {
           worldInput: {
             frozen: this.isWorldInputFrozen(),
             reason: this.getWorldInputFreezeReason(),
+          },
+          ui: {
+            cameraZoom: this.cameraController?.getZoom() ?? null,
+            cameraScrollX: this.cameras.main?.scrollX ?? null,
+            cameraScrollY: this.cameras.main?.scrollY ?? null,
+            instantWarpTargetVisible:
+              this.uiManager?.isInstantWarpTargetVisible() ?? false,
           },
         };
       },
@@ -371,7 +381,7 @@ export class TileViewer extends Scene {
     }
 
     // Add error handler for the item-marker (poke_ball) image
-    this.load.on("loaderror", (fileObj: any) => {
+    this.load.on("loaderror", (fileObj: Phaser.Loader.File) => {
       if (fileObj.key === "item-marker") {
         console.warn("Failed to load poke_ball.png, using fallback");
       }
@@ -381,7 +391,7 @@ export class TileViewer extends Scene {
     this.tileManager.preloadCommonTiles();
   }
 
-  create(data?: any) {
+  create(data?: Record<string, unknown>) {
     console.log("Creating TileViewer scene", data);
 
     // Ensure we're starting with a clean state
@@ -455,7 +465,7 @@ export class TileViewer extends Scene {
     useGameStatusStore.getState().setCameraFollowEnabled(true);
 
     // Subscribe to real-time actor updates from WebTransport
-    this.actorUpdateUnsubscribe = PhaserNet.onActorUpdate((actor: any) => {
+    this.actorUpdateUnsubscribe = PhaserNet.onActorUpdate((actor) => {
       this.handleActorUpdate({ actor });
       // If this was our player, we might need to update follow
       if (actor.objectType === "player" && actor.id === this.playerActor?.id) {
@@ -484,8 +494,8 @@ export class TileViewer extends Scene {
     // Subscribe to game status changes (for camera follow toggle)
     this.gameStatusUnsubscribe = useGameStatusStore.subscribe(
       (state) => state.isCameraFollowEnabled,
-      () => {
-        this.updateCameraFollow();
+      (enabled) => {
+        void this.handleCameraFollowChange(enabled);
       },
     );
 
@@ -523,7 +533,7 @@ export class TileViewer extends Scene {
     this.eventBridge.register();
 
     // Subscribe to pushed actor lists (e.g. player spawn)
-    this.actorsUnsubscribe = PhaserNet.onActors((actors: any[]) => {
+    this.actorsUnsubscribe = PhaserNet.onActors((actors) => {
       if (actors && actors.length > 0) {
         console.log(
           `[TileViewer] Received ${actors.length} actors via onActors broadcast`,
@@ -724,6 +734,7 @@ export class TileViewer extends Scene {
           actors: this.actors,
           mapInfo: this.mapInfo,
           isOverworldMode: this.isOverworldMode,
+          isMapOverviewMode: this.isMapOverviewMode,
           viewedMapIds: this.viewedMapIds,
         }),
         setState: (partial) => {
@@ -756,6 +767,8 @@ export class TileViewer extends Scene {
           }
           if (partial.isOverworldMode !== undefined)
             this.isOverworldMode = partial.isOverworldMode;
+          if (partial.isMapOverviewMode !== undefined)
+            this.isMapOverviewMode = partial.isMapOverviewMode;
           if (partial.viewedMapIds !== undefined)
             this.viewedMapIds = partial.viewedMapIds;
         },
@@ -782,6 +795,7 @@ export class TileViewer extends Scene {
     this.interactionController = new TileViewerInteractionController({
       scene: this,
       mapRenderer: () => this.mapRenderer,
+      uiManager: () => this.uiManager,
       cameraController: () => this.cameraController,
       playerMovementController: () => this.playerMovementController,
       warpManager: () => this.warpManager,
@@ -791,6 +805,8 @@ export class TileViewer extends Scene {
       viewedMapIds: () => this.viewedMapIds,
       currentActorById: (actorId) => this.currentActorById(actorId),
       isWorldInputFrozen: () => this.isWorldInputFrozen(),
+      getWorldInputFreezeReason: () => this.getWorldInputFreezeReason(),
+      getDisplayedMapId: () => this.mapInfo?.id ?? null,
       handleTileEditorClick: (worldX, worldY) =>
         this.handleTileEditorClick(worldX, worldY),
     });
@@ -959,6 +975,47 @@ export class TileViewer extends Scene {
         this.cameraController.setZoom(DEFAULT_ZOOM);
       }
     }
+  }
+
+  private async handleCameraFollowChange(enabled: boolean): Promise<void> {
+    if (this.mapOverviewTransitionInProgress) return;
+
+    if (!enabled && !this.isOverworldMode) {
+      const interiorMapId = this.playerMovementController.getCurrentMapId();
+      if (interiorMapId == null || this.mapDataService.isOverworld(interiorMapId)) {
+        this.updateCameraFollow();
+        return;
+      }
+
+      this.mapOverviewTransitionInProgress = true;
+      this.interiorMapBeforeOverview = interiorMapId;
+      useGameStatusStore.getState().clearPendingInstantWarpTarget();
+      this.cancelWorldInput();
+      try {
+        await this.mapLoader.loadOverworldData({ viewOnly: true });
+      } finally {
+        this.mapOverviewTransitionInProgress = false;
+        if (useGameStatusStore.getState().isCameraFollowEnabled) {
+          await this.handleCameraFollowChange(true);
+        }
+      }
+      return;
+    }
+
+    if (enabled && this.isMapOverviewMode && this.interiorMapBeforeOverview != null) {
+      this.mapOverviewTransitionInProgress = true;
+      const interiorMapId = this.interiorMapBeforeOverview;
+      useGameStatusStore.getState().clearPendingInstantWarpTarget();
+      try {
+        await this.mapLoader.loadMapData(interiorMapId);
+        this.interiorMapBeforeOverview = null;
+      } finally {
+        this.mapOverviewTransitionInProgress = false;
+      }
+      return;
+    }
+
+    this.updateCameraFollow();
   }
 
   handleTileUpdate(event: TileUpdateEvent) {
@@ -1366,6 +1423,9 @@ export class TileViewer extends Scene {
   }
 
   private shouldRenderActorInCurrentView(actor: PhaserActor): boolean {
+    if (this.isMapOverviewMode && this.isLocalPlayerActor(actor)) {
+      return false;
+    }
     return this.isLocalPlayerActor(actor) || this.actorBelongsToLoadedView(actor);
   }
 
@@ -1557,9 +1617,13 @@ export class TileViewer extends Scene {
   }
 
   public getWorldInputFreezeReason(): WorldInputFreezeReason | null {
-    return getWorldInputFreezeReason({
+    const existingReason = getWorldInputFreezeReason({
       cutsceneInputLocked: this.cutsceneInputLocked || this.warpExitInputLocked,
     });
+    if (existingReason) return existingReason;
+    return useGameStatusStore.getState().isCameraFollowEnabled
+      ? null
+      : "map_view";
   }
 
   public isWorldInputFrozen(): boolean {
@@ -1789,6 +1853,8 @@ export class TileViewer extends Scene {
   }
 
   resetScene(resetCamera: boolean = true) {
+    useGameStatusStore.getState().setWarpMode(false);
+
     // First, store any data we need to pass to the new scene
     const data = {
       destinationMapId: this.game.registry.get("destinationMapId"),

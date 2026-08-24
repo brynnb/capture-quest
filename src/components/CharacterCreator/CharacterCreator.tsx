@@ -18,25 +18,78 @@ const MainContainer = styled.div`
   flex-direction: column;
   align-items: center;
   gap: 20px;
-  width: 1400px;
+  width: min(1400px, 100%);
+  height: 100%;
   margin: 0 auto;
+  padding: 20px 20px 84px;
+  box-sizing: border-box;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+
+  @media (max-width: 1100px), (pointer: coarse) {
+    width: 100%;
+    gap: 12px;
+    padding: 16px 12px 76px;
+  }
 `;
 
-const MultiColumnLayout = styled.div`
-  display: grid;
-  grid-template-columns: 350px 500px 350px;
-  gap: 45px;
+const CreatorShell = styled.div`
+  position: relative;
   width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 60px;
+  box-sizing: border-box;
+  overflow: hidden;
+
+  @media (max-width: 1100px), (pointer: coarse), (max-height: 700px) {
+    padding-top: 16px;
+  }
+`;
+
+const MultiColumnLayout = styled.div<{ $twoColumns?: boolean }>`
+  display: grid;
+  grid-template-columns: ${(props) =>
+    props.$twoColumns
+      ? "minmax(260px, 350px) minmax(0, 1fr)"
+      : "minmax(250px, 350px) minmax(380px, 500px) minmax(250px, 350px)"};
+  gap: clamp(18px, 3vw, 45px);
+  width: 100%;
+  max-width: ${(props) => (props.$twoColumns ? "1290px" : "none")};
   justify-content: center;
   align-items: start;
+
+  @media (max-width: 1100px), (pointer: coarse) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+    width: 100%;
+  }
 `;
 
-const NavigationContainer = styled.div`
+const NavigationContainer = styled.div<{ $inset?: boolean }>`
   position: absolute;
   bottom: 20px;
-  right: 20px;
+  right: ${(props) => (props.$inset ? "clamp(40px, 5vw, 72px)" : "20px")};
+  z-index: 10;
   display: flex;
   gap: 10px;
+  max-width: calc(100% - 40px);
+
+  @media (max-width: 900px), (pointer: coarse) {
+    right: 12px;
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    left: 12px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+
+    & > button {
+      width: auto;
+      min-width: 0;
+      flex: 1 1 138px;
+    }
+  }
 `;
 
 const StoryText = styled.div`
@@ -58,12 +111,20 @@ const StoryText = styled.div`
   display: flex;
   align-items: flex-start;
   justify-content: flex-start;
+
+  @media (max-width: 900px), (pointer: coarse) {
+    min-height: 0;
+    padding: 24px;
+    font-size: 18px;
+    border-radius: 18px;
+  }
 `;
 
 const ViewportContainer = styled.div`
   position: relative;
-  width: 500px;
-  height: 750px;
+  width: 100%;
+  max-width: 500px;
+  height: clamp(420px, 70vh, 750px);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -74,6 +135,12 @@ const ViewportContainer = styled.div`
   background-image: url("/assets/charselectbg.png");
   background-size: cover;
   background-position: center;
+
+  @media (max-width: 1100px), (pointer: coarse) {
+    width: min(100%, 500px);
+    height: min(48vh, 520px);
+    align-self: center;
+  }
 `;
 
 const TrainerImage = styled.img`
@@ -88,6 +155,40 @@ const ViewportColumn = styled.div`
   flex-direction: column;
   height: 100%;
   gap: 20px;
+  margin-top: 60px;
+
+  min-width: 0;
+
+  @media (max-width: 1100px), (pointer: coarse) {
+    height: auto;
+    margin-top: 0;
+  }
+`;
+
+const IdentityColumn = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  justify-content: flex-start;
+  margin-top: 60px;
+  min-width: 0;
+
+  @media (max-width: 1100px), (pointer: coarse) {
+    margin-top: 0;
+  }
+`;
+
+const StoryColumn = styled.div`
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  margin-top: 44px;
+  flex-direction: column;
+  gap: 20px;
+
+  @media (max-width: 1100px), (pointer: coarse) {
+    margin-top: 0;
+  }
 `;
 
 const GenderSelectorContainer = styled.div`
@@ -207,20 +308,12 @@ const CharacterCreator = () => {
               <div>
                 <FactionSelector />
               </div>
-              <ViewportColumn style={{ marginTop: "60px" }}>
+              <ViewportColumn>
                 <ViewportContainer id="CharacterCreator__ViewportContainer">
                   <TrainerImage src={getTrainerImage()} alt="Trainer Preview" />
                 </ViewportContainer>
               </ViewportColumn>
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "20px",
-                  justifyContent: "flex-start",
-                  marginTop: "60px",
-                }}
-              >
+              <IdentityColumn>
                 <GenderSelectorContainer style={{ marginTop: 0 }}>
                   <GenderOption
                     onClick={() => {
@@ -256,9 +349,9 @@ const CharacterCreator = () => {
                 <div style={{ marginTop: "0px" }}>
                   <RivalNameInput />
                 </div>
-              </div>
+              </IdentityColumn>
             </MultiColumnLayout>
-            <NavigationContainer>
+            <NavigationContainer $inset>
               <SelectionButton
                 onClick={handleBackToCharacterSelect}
                 $isSelected={false}
@@ -279,19 +372,9 @@ const CharacterCreator = () => {
       case 2:
         return (
           <MainContainer>
-            <MultiColumnLayout
-              style={{ gridTemplateColumns: "350px 1fr", maxWidth: "1290px" }}
-            >
+            <MultiColumnLayout $twoColumns>
               <ClassSelector onClassSelect={handleClassSelection} />
-              <div
-                style={{
-                  marginTop: "44px",
-                  width: "100%",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "20px",
-                }}
-              >
+              <StoryColumn>
                 <StoryText
                   style={{
                     minHeight: "220px",
@@ -329,7 +412,7 @@ const CharacterCreator = () => {
                     </div>
                   )}
                 </StoryText>
-              </div>
+              </StoryColumn>
             </MultiColumnLayout>
             <NavigationContainer>
               <SelectionButton onClick={handleBack} $isSelected={false}>
@@ -369,7 +452,7 @@ const CharacterCreator = () => {
         return (
           <MainContainer>
             <StoryText>
-              As a {(selectedFaction as any)?.name} {selectedClass?.name}, you
+              As a {selectedFaction?.name} {selectedClass?.name}, you
               begin your journey in{" "}
               {selectedHomeTown
                 ? selectedHomeTown.name || "your new home"
@@ -377,7 +460,7 @@ const CharacterCreator = () => {
               . Your rival {rivalName || "Gary"} will be watching every step.
               Are you ready to begin?
             </StoryText>
-            <NavigationContainer>
+            <NavigationContainer $inset>
               <SelectionButton onClick={handleBack} $isSelected={false}>
                 Back
               </SelectionButton>
@@ -391,18 +474,7 @@ const CharacterCreator = () => {
   };
 
   return (
-    <div
-      style={{
-        width: "100%",
-        height: "100%",
-        display: "flex",
-        alignItems: "flex-start",
-        justifyContent: "center",
-        paddingTop: "60px",
-      }}
-    >
-      {renderStep()}
-    </div>
+    <CreatorShell>{renderStep()}</CreatorShell>
   );
 };
 

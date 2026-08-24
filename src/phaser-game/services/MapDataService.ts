@@ -16,6 +16,8 @@ import type {
   PhaserWarp
 } from "@/net/generated/world_api";
 import { UNIFIED_OVERWORLD_MAP_ID } from "../constants";
+import type { MapItem } from "../renderers/MapRenderer";
+import { MapSnapshotCache } from "./MapSnapshotCache";
 
 // Default timeout for network requests (10 seconds)
 const REQUEST_TIMEOUT_MS = 10000;
@@ -24,6 +26,13 @@ const REQUEST_TIMEOUT_MS = 10000;
 export interface TileImageData {
   id: number;
   image_path: string;
+}
+
+export interface MapDataSnapshot {
+  mapInfo: PhaserMapInfo;
+  tiles: PhaserTile[];
+  warps: PhaserWarp[];
+  actors: PhaserActor[];
 }
 
 /**
@@ -38,6 +47,18 @@ function createTimeoutPromise<T>(ms: number, errorMessage: string): Promise<T> {
 export class MapDataService {
   // Cache of known tile image IDs from tiles
   private knownTileImageIds: Set<number> = new Set();
+  private snapshots = new MapSnapshotCache<MapDataSnapshot>(
+    3,
+    new Set([UNIFIED_OVERWORLD_MAP_ID]),
+  );
+
+  getSnapshot(mapId: number): MapDataSnapshot | undefined {
+    return this.snapshots.get(mapId);
+  }
+
+  setSnapshot(mapId: number, snapshot: MapDataSnapshot): void {
+    this.snapshots.set(mapId, snapshot);
+  }
 
   /**
    * Check if a map ID is part of the overworld
@@ -217,7 +238,7 @@ export class MapDataService {
    * Items are fetched as part of actors/objects for a map.
    * For backwards compat, returns empty array - use fetchActors with mapId instead.
    */
-  async fetchItems(): Promise<any[]> {
+  async fetchItems(): Promise<MapItem[]> {
     // console.warn("fetchItems is deprecated - items come from fetchActors() objects");
     return [];
   }
@@ -235,5 +256,6 @@ export class MapDataService {
    */
   clearCache(): void {
     this.knownTileImageIds.clear();
+    this.snapshots.clear();
   }
 }

@@ -5,6 +5,7 @@ import useGameStatusStore from "@stores/GameStatusStore";
 import { WorldSocket, OpCodes } from "@/net";
 import AudioManager from "@/services/audio/AudioManager";
 import { cryPathForPokemon } from "@/services/audio/pokemonMusic";
+import { getPokedexPresentation } from "./pokedexPresentation";
 
 const TYPE_COLORS: Record<string, string> = {
   NORMAL: "#A8A878", FIRE: "#F08030", WATER: "#6890F0", ELECTRIC: "#F8D030",
@@ -18,11 +19,16 @@ const Overlay = styled.div`
   top: 0; left: 0; width: 100%; height: 100%;
   display: flex; align-items: center; justify-content: center;
   z-index: 2000;
+  padding: max(10px, env(safe-area-inset-top, 0px))
+    max(10px, env(safe-area-inset-right, 0px))
+    max(10px, env(safe-area-inset-bottom, 0px))
+    max(10px, env(safe-area-inset-left, 0px));
+  box-sizing: border-box;
 `;
 
 const Container = styled.div`
-  width: 780px;
-  height: 560px;
+  width: min(780px, 100%);
+  height: min(560px, 100%);
   display: flex;
   font-family: 'Outfit', monospace, sans-serif;
   filter: drop-shadow(0 20px 50px rgba(0,0,0,0.5));
@@ -30,6 +36,10 @@ const Container = styled.div`
   overflow: hidden;
   border: 4px solid #383838;
   background: #f8f0e0;
+
+  @media (max-width: 650px) {
+    flex-direction: column;
+  }
 `;
 
 const ListPanel = styled.div`
@@ -38,6 +48,13 @@ const ListPanel = styled.div`
   border-right: 3px solid #383838;
   display: flex;
   flex-direction: column;
+
+  @media (max-width: 650px) {
+    width: 100%;
+    height: 42%;
+    border-right: 0;
+    border-bottom: 3px solid #383838;
+  }
 `;
 
 const ListHeader = styled.div`
@@ -95,11 +112,21 @@ const EntryName = styled.span<{ $seen: boolean }>`
   flex: 1;
 `;
 
-const StatusIcon = styled.span<{ $caught: boolean }>`
-  font-size: 12px;
-  color: ${p => p.$caught ? '#e53935' : '#aaa'};
+const StatusSlot = styled.span`
   min-width: 18px;
+  width: 18px;
+  height: 18px;
   text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+`;
+
+const CaughtIcon = styled.img`
+  width: 16px;
+  height: 16px;
+  image-rendering: pixelated;
+  object-fit: contain;
 `;
 
 const DetailPanel = styled.div`
@@ -108,6 +135,13 @@ const DetailPanel = styled.div`
   flex-direction: column;
   padding: 20px;
   gap: 16px;
+
+  @media (max-width: 650px) {
+    min-height: 0;
+    padding: 12px;
+    gap: 10px;
+    overflow-y: auto;
+  }
 `;
 
 const SpriteArea = styled.div`
@@ -131,6 +165,16 @@ const SpriteBox = styled.div`
     height: 96px;
     image-rendering: pixelated;
     object-fit: contain;
+  }
+
+  @media (max-width: 650px) {
+    width: 88px;
+    height: 88px;
+
+    img {
+      width: 72px;
+      height: 72px;
+    }
   }
 `;
 
@@ -292,33 +336,46 @@ const Pokedex: React.FC = () => {
       <Container onClick={e => e.stopPropagation()}>
         <ListPanel>
           <ListHeader>
-            POK\u00c9DEX
+            POKÉDEX
             <CountBadge>Seen {seenCount} / Caught {caughtCount}</CountBadge>
           </ListHeader>
           <ListScroll ref={listRef}>
-            {allEntries.map(entry => (
-              <ListEntry
-                key={entry.id}
-                $selected={entry.id === selectedId}
-                $seen={entry.seen}
-                onClick={() => {
-                  if (entry.seen) setSelectedId(entry.id);
-                }}
-              >
-                <StatusIcon $caught={entry.caught}>
-                  {entry.caught ? "\u25cf" : entry.seen ? "\u25cb" : "\u2014"}
-                </StatusIcon>
-                <EntryNumber>#{entry.id.toString().padStart(3, "0")}</EntryNumber>
-                <EntryName $seen={entry.seen}>
-                  {entry.seen && entry.species ? entry.species.name.toLowerCase() : "???"}
-                </EntryName>
-              </ListEntry>
-            ))}
+            {allEntries.map(entry => {
+              const presentation = getPokedexPresentation(
+                entry.species?.name,
+                entry.seen,
+                entry.caught,
+              );
+              return (
+                <ListEntry
+                  key={entry.id}
+                  $selected={entry.id === selectedId}
+                  $seen={presentation.canOpen}
+                  onClick={() => {
+                    if (presentation.canOpen) setSelectedId(entry.id);
+                  }}
+                >
+                  <StatusSlot>
+                    {presentation.isCaught && (
+                      <CaughtIcon
+                        src="/phaser/sprites/poke_ball.png"
+                        alt="Caught"
+                        title="Caught"
+                      />
+                    )}
+                  </StatusSlot>
+                  <EntryNumber>#{entry.id.toString().padStart(3, "0")}</EntryNumber>
+                  <EntryName $seen={presentation.canOpen}>
+                    {presentation.displayName}
+                  </EntryName>
+                </ListEntry>
+              );
+            })}
           </ListScroll>
         </ListPanel>
 
         <DetailPanel>
-          {selected && selectedStatus?.seen ? (
+          {selected && (selectedStatus?.seen || selectedStatus?.caught) ? (
             <>
               <SpriteArea>
                 <SpriteBox>
@@ -343,14 +400,20 @@ const Pokedex: React.FC = () => {
                     )}
                   </TypeRow>
                   {selected.pokedexType && (
-                    <CategoryText>{selected.pokedexType} Pok\u00e9mon</CategoryText>
+                    <CategoryText>{selected.pokedexType} Pokémon</CategoryText>
                   )}
                   <StatsRow>
                     {selected.height && <span>HT: {selected.height}</span>}
                     {selected.weight != null && <span>WT: {formatWeight(selected.weight)}</span>}
                   </StatsRow>
                   <StatsRow>
-                    <span>{selectedStatus.caught ? "\u25cf Caught" : "\u25cb Seen only"}</span>
+                    {selectedStatus.caught ? (
+                      <span>
+                        <CaughtIcon src="/phaser/sprites/poke_ball.png" alt="" /> Caught
+                      </span>
+                    ) : (
+                      <span>Seen</span>
+                    )}
                   </StatsRow>
                   {selected.crySfx && (
                     <CryButton onClick={() => playCry(selected)}>Cry</CryButton>

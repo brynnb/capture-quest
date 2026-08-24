@@ -43,6 +43,10 @@ const ChaseLight = styled.div<{ $index: number; $total: number; $winning: boolea
   animation-delay: ${(p) => (p.$index / p.$total) * (p.$winning ? 0.3 : 1.2)}s;
   z-index: 11;
   pointer-events: none;
+
+  @media (max-width: 850px), (pointer: coarse) {
+    display: none;
+  }
 `;
 
 // --- Lever (pull toward viewer: shaft shrinks, ball grows) ---
@@ -70,6 +74,10 @@ const LeverContainer = styled.div`
   height: 200px;
   cursor: pointer;
   z-index: 12;
+
+  @media (max-width: 850px), (pointer: coarse) {
+    display: none;
+  }
 `;
 
 const LeverArm = styled.div<{ $pulling: boolean }>`
@@ -161,6 +169,12 @@ const WinBanner = styled.div`
     50% { transform: translate(-50%, -50%) scale(1.3) rotate(3deg); opacity: 1; }
     100% { transform: translate(-50%, -50%) scale(1) rotate(0deg); opacity: 1; }
   `} 0.5s ease-out;
+
+  @media (max-width: 600px), (pointer: coarse) {
+    width: calc(100% - 24px);
+    font-size: 28px;
+    text-align: center;
+  }
 `;
 
 const sparkle = keyframes`
@@ -172,6 +186,7 @@ const sparkle = keyframes`
 
 const Cabinet = styled.div<{ $winning: boolean }>`
   width: 840px;
+  max-width: 100%;
   background: linear-gradient(180deg, #c41e3a 0%, #8b0000 100%);
   border: 6px solid #ffd700;
   border-radius: 20px;
@@ -181,6 +196,15 @@ const Cabinet = styled.div<{ $winning: boolean }>`
   user-select: none;
   position: relative;
   ${(p) => p.$winning && css`animation: ${winGlow} 0.8s ease-in-out infinite;`}
+
+  @media (max-width: 850px), (pointer: coarse), (max-height: 700px) {
+    width: 100%;
+    max-height: calc(var(--cq-viewport-height, 100dvh) - 24px);
+    border-width: 4px;
+    border-radius: 14px;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
 `;
 
 const Header = styled.div<{ $winning: boolean }>`
@@ -196,6 +220,12 @@ const Header = styled.div<{ $winning: boolean }>`
   ${(p) => p.$winning
     ? css`animation: ${sparkle} 1s ease-in-out infinite;`
     : css`text-shadow: 2px 2px 0 rgba(255, 255, 255, 0.4);`}
+
+  @media (max-width: 600px), (pointer: coarse) {
+    padding: 13px 54px 13px 16px;
+    font-size: 24px;
+    letter-spacing: 2px;
+  }
 `;
 
 const CoinDisplay = styled.div`
@@ -206,6 +236,12 @@ const CoinDisplay = styled.div`
   font-size: 26px;
   color: #ffd700;
   font-weight: bold;
+
+  @media (max-width: 600px), (pointer: coarse) {
+    gap: 8px;
+    padding: 10px 12px;
+    font-size: 15px;
+  }
 `;
 
 const CoinBox = styled.div`
@@ -215,6 +251,12 @@ const CoinBox = styled.div`
   padding: 8px 24px;
   min-width: 160px;
   text-align: center;
+
+  @media (max-width: 600px), (pointer: coarse) {
+    min-width: 0;
+    flex: 1;
+    padding: 7px 6px;
+  }
 `;
 
 const reelGlow = keyframes`
@@ -233,6 +275,13 @@ const ReelWindow = styled.div<{ $winning: boolean }>`
   border-radius: 14px;
   position: relative;
   ${(p) => p.$winning && css`animation: ${reelGlow} 0.6s ease-in-out infinite;`}
+
+  @media (max-width: 600px), (pointer: coarse) {
+    gap: 4px;
+    margin: 0 10px;
+    padding: 10px 9px 10px 24px;
+    border-width: 3px;
+  }
 `;
 
 const ReelColumn = styled.div<{ $stopped: boolean }>`
@@ -244,6 +293,12 @@ const ReelColumn = styled.div<{ $stopped: boolean }>`
   transition: opacity 0.1s;
   &:hover {
     opacity: ${(p) => (p.$stopped ? 1 : 0.85)};
+  }
+
+  @media (max-width: 600px), (pointer: coarse) {
+    width: auto;
+    min-width: 0;
+    flex: 1;
   }
 `;
 
@@ -268,6 +323,13 @@ const SymbolCell = styled.div<{ $highlight: boolean; $isMiddle: boolean }>`
     css`
       animation: ${flash} 0.5s ease-in-out infinite;
     `}
+
+  @media (max-width: 600px), (pointer: coarse) {
+    width: 100%;
+    height: 72px;
+    box-sizing: border-box;
+    font-size: 40px;
+  }
 `;
 
 const LineIndicators = styled.div`
@@ -295,6 +357,12 @@ const Controls = styled.div`
   justify-content: center;
   gap: 16px;
   padding: 20px 32px;
+
+  @media (max-width: 600px), (pointer: coarse) {
+    flex-wrap: wrap;
+    gap: 9px;
+    padding: 12px;
+  }
 `;
 
 const pulseGreen = keyframes`
@@ -331,6 +399,13 @@ const Button = styled.button<{ $variant?: string }>`
     cursor: not-allowed;
     animation: none;
   }
+
+  @media (max-width: 600px), (pointer: coarse) {
+    min-width: 0;
+    flex: 1;
+    padding: 11px 9px;
+    font-size: 16px;
+  }
 `;
 
 const BetSelector = styled.div`
@@ -342,6 +417,12 @@ const BetSelector = styled.div`
   color: #ffd700;
   font-size: 24px;
   font-weight: bold;
+
+  @media (max-width: 600px), (pointer: coarse) {
+    gap: 7px;
+    padding: 0 12px 6px;
+    font-size: 17px;
+  }
 `;
 
 const BetButton = styled.button<{ $active: boolean }>`
@@ -358,6 +439,12 @@ const BetButton = styled.button<{ $active: boolean }>`
   &:hover {
     border-color: #ffd700;
   }
+
+  @media (max-width: 600px), (pointer: coarse) {
+    width: 52px;
+    height: 42px;
+    font-size: 18px;
+  }
 `;
 
 const PayoutTable = styled.div`
@@ -367,6 +454,12 @@ const PayoutTable = styled.div`
   padding: 12px 32px 20px;
   font-size: 20px;
   color: #ddd;
+
+  @media (max-width: 600px), (pointer: coarse) {
+    grid-template-columns: 1fr;
+    padding: 8px 12px 14px;
+    font-size: 15px;
+  }
 `;
 
 const PayoutRow = styled.div`
@@ -391,6 +484,13 @@ const MessageBar = styled.div<{ $winning: boolean }>`
   ${(p) => p.$winning && css`
     text-shadow: 0 0 10px #ffd700;
   `}
+
+  @media (max-width: 600px), (pointer: coarse) {
+    min-height: 24px;
+    margin: 7px 10px;
+    padding: 8px;
+    font-size: 15px;
+  }
 `;
 
 const CloseButton = styled.button`
@@ -416,6 +516,14 @@ const CloseButton = styled.button`
     transform: scale(1.1);
   }
   transition: all 0.15s;
+
+  @media (max-width: 600px), (pointer: coarse) {
+    top: 7px;
+    right: 7px;
+    width: 40px;
+    height: 40px;
+    font-size: 20px;
+  }
 `;
 
 // Server response shape from GameCornerSlotResultResponse

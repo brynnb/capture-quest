@@ -47,6 +47,19 @@ const dockerArgs = [
   `INTEGRATION_APP_URL=${appUrl}`,
 ];
 
+for (const key of [
+  "WARP_MATRIX_FULL",
+  "WARP_MATRIX_LIMIT",
+  "WARP_MATRIX_OFFSET",
+  "WARP_MATRIX_RANDOM_LIMIT",
+  "WARP_MATRIX_SEED",
+  "WARP_MATRIX_SOURCE_MAP_ID",
+]) {
+  if (process.env[key] != null) {
+    dockerArgs.push("-e", `${key}=${process.env[key]}`);
+  }
+}
+
 if (useHostNetwork) {
   dockerArgs.splice(2, 0, "--network", "host");
 } else {
