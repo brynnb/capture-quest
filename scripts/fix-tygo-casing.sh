@@ -36,6 +36,11 @@ for TARGET_FILE in "${TARGET_FILES[@]}"; do
         s/ID(\??:)/Id$1/g;
     ' "$TARGET_FILE"
 
+    # Tygo emits a trailing blank line for source sections with declarations
+    # that do not map to TypeScript. Keep generated output byte-stable so
+    # starting the development server does not dirty a clean checkout.
+    perl -0pi -e 's/[ \t\r\n]+\z/\n/' "$TARGET_FILE"
+
     COUNT=$((COUNT + 1))
 done
 
