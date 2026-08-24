@@ -236,6 +236,8 @@ fi
   --viewer-public "${EXTRACTOR_ROOT}/pokemon-phaser/public" \
   --audio-root "${EXTRACTOR_ROOT}/build/audio"
 
+"${SYNC_PYTHON_BIN}" "${REPO_ROOT}/scripts/validate_runtime_assets.py"
+
 if [[ -f ".env" ]]; then
   set -a
   # shellcheck disable=SC1091

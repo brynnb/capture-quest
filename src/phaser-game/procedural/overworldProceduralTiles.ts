@@ -1,4 +1,5 @@
 import type { PhaserTile } from "@/net/generated/world_api";
+import proceduralTilePalette from "@/constants/procedural_tile_palette.json";
 import { UNIFIED_OVERWORLD_MAP_ID } from "../constants";
 
 export const PROCEDURAL_OVERWORLD_GENERATE_EVENT =
@@ -61,20 +62,10 @@ type TerrainKind = "base" | "grassPatch" | "rock" | "water";
 
 const DEFAULT_SEED = 0x51c0ffee;
 
-// Extracted from the OVERWORLD tileset in public/phaser/pokemon.db.
-// Values are tile_image.id, grouped by original block_index and block position.
-const OVERWORLD_BLOCK_TILES: BlockTileCatalog = {
-  1: { 0: 5, 1: 6 },
-  4: { 0: 13 },
-  6: { 0: 16, 3: 18 },
-  11: { 0: 25 },
-  29: { 0: 42, 1: 43, 2: 44 },
-  30: { 1: 45, 3: 46 },
-  36: { 0: 56, 2: 57 },
-  37: { 1: 58, 3: 59 },
-  59: { 0: 76, 1: 77 },
-  62: { 0: 84 },
-};
+// Generated from stable decoded-art hashes during extractor asset sync. Numeric
+// tile IDs are intentionally not maintained by hand because global image
+// deduplication can renumber them between extractor schemas.
+const OVERWORLD_BLOCK_TILES = proceduralTilePalette as BlockTileCatalog;
 
 const ROCK_TILE_IMAGE_IDS = new Set<number>(
   [6, 36, 37, 59, 62]
@@ -82,8 +73,16 @@ const ROCK_TILE_IMAGE_IDS = new Set<number>(
     .filter((tileImageId): tileImageId is number => typeof tileImageId === "number"),
 );
 
-const FLAT_ROCK_TILE_IMAGE_IDS = new Set<number>([16]);
-const WATER_TILE_IMAGE_IDS = new Set<number>([13, 42, 43, 44, 45, 46, 65, 66, 113]);
+const FLAT_ROCK_TILE_IMAGE_IDS = new Set<number>(
+  [OVERWORLD_BLOCK_TILES[6]?.[0]].filter(
+    (tileImageId): tileImageId is number => typeof tileImageId === "number",
+  ),
+);
+const WATER_TILE_IMAGE_IDS = new Set<number>(
+  [4, 29, 30]
+    .flatMap((blockIndex) => Object.values(OVERWORLD_BLOCK_TILES[blockIndex] ?? {}))
+    .filter((tileImageId): tileImageId is number => typeof tileImageId === "number"),
+);
 
 const NEIGHBOR_OFFSETS = [
   [-1, -1],

@@ -414,13 +414,94 @@ func findPostgresSchemaPath() (string, error) {
 }
 
 func splitSQLStatements(sqlText string) []string {
-	parts := strings.Split(sqlText, ";")
-	statements := make([]string, 0, len(parts))
-	for _, part := range parts {
-		stmt := strings.TrimSpace(part)
-		if stmt == "" {
+	statements := make([]string, 0)
+	start := 0
+	inSingleQuote := false
+	inDoubleQuote := false
+	inLineComment := false
+	inBlockComment := false
+	dollarTag := ""
+
+	for i := 0; i < len(sqlText); i++ {
+		if dollarTag != "" {
+			if strings.HasPrefix(sqlText[i:], dollarTag) {
+				i += len(dollarTag) - 1
+				dollarTag = ""
+			}
 			continue
 		}
+		if inLineComment {
+			if sqlText[i] == '\n' {
+				inLineComment = false
+			}
+			continue
+		}
+		if inBlockComment {
+			if i+1 < len(sqlText) && sqlText[i] == '*' && sqlText[i+1] == '/' {
+				i++
+				inBlockComment = false
+			}
+			continue
+		}
+		if inSingleQuote {
+			if sqlText[i] == '\'' {
+				if i+1 < len(sqlText) && sqlText[i+1] == '\'' {
+					i++
+				} else {
+					inSingleQuote = false
+				}
+			}
+			continue
+		}
+		if inDoubleQuote {
+			if sqlText[i] == '"' {
+				if i+1 < len(sqlText) && sqlText[i+1] == '"' {
+					i++
+				} else {
+					inDoubleQuote = false
+				}
+			}
+			continue
+		}
+
+		if i+1 < len(sqlText) && sqlText[i] == '-' && sqlText[i+1] == '-' {
+			i++
+			inLineComment = true
+			continue
+		}
+		if i+1 < len(sqlText) && sqlText[i] == '/' && sqlText[i+1] == '*' {
+			i++
+			inBlockComment = true
+			continue
+		}
+		switch sqlText[i] {
+		case '\'':
+			inSingleQuote = true
+		case '"':
+			inDoubleQuote = true
+		case '$':
+			if end := strings.IndexByte(sqlText[i+1:], '$'); end >= 0 {
+				candidate := sqlText[i : i+end+2]
+				valid := true
+				for _, char := range candidate[1 : len(candidate)-1] {
+					if !(char == '_' || char >= '0' && char <= '9' || char >= 'A' && char <= 'Z' || char >= 'a' && char <= 'z') {
+						valid = false
+						break
+					}
+				}
+				if valid {
+					dollarTag = candidate
+					i += len(candidate) - 1
+				}
+			}
+		case ';':
+			if stmt := strings.TrimSpace(sqlText[start:i]); stmt != "" {
+				statements = append(statements, stmt)
+			}
+			start = i + 1
+		}
+	}
+	if stmt := strings.TrimSpace(sqlText[start:]); stmt != "" {
 		statements = append(statements, stmt)
 	}
 	return statements

@@ -9,7 +9,6 @@ import (
 	"log"
 	"time"
 
-	"capturequest/internal/config"
 	db_character "capturequest/internal/db/character"
 	"capturequest/internal/session"
 
@@ -431,18 +430,12 @@ func GetOrCreateCharacterID(ctx context.Context, accountId int64, profile *Chara
 		return 0, false, fmt.Errorf("lookup character: %w", err)
 	}
 
-	gmLevel := 0
-	serverConfig, _ := config.Get()
-	if serverConfig.Local && accountId == 1 {
-		gmLevel = 1
-	}
-
 	now := time.Now().Unix()
 	err = db.GlobalWorldDB.DB.QueryRowContext(ctx, `
 		INSERT INTO character_data (account_id, name, gm, birthday, last_login)
-		VALUES ($1, $2, $3, $4, $5)
+		VALUES ($1, $2, 0, $3, $4)
 		RETURNING id`,
-		accountId, name, gmLevel, now, now).Scan(&id)
+		accountId, name, now, now).Scan(&id)
 	if err != nil {
 		return 0, false, fmt.Errorf("insert character: %w", err)
 	}

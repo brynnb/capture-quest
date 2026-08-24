@@ -28,6 +28,22 @@ CAPTUREQUEST_ONLY_PHASER_SPRITES = {
     "sign.png",
 }
 
+# Stable art identities used by the optional procedural overworld preview.
+# Globally deduplicated tile IDs can move, but these decoded source-art hashes
+# remain stable across extractor schema changes.
+PROCEDURAL_TILE_HASHES = {
+    "1": {"0": "6b7e876b7db1eb10202bd929f02d0e83", "1": "025437b14e57a6656eaf1ef23b29a6a1"},
+    "4": {"0": "797ab87f76a724788ddbed907d8e8f37"},
+    "6": {"0": "a945eb658112a4a701fd54923bf2a304", "3": "7914fd4b5ab37ac6ba7f455354d7ba81"},
+    "11": {"0": "05c950f739d7130d4e6359eaa2c7d593"},
+    "29": {"0": "164733daf72c7a0dc5c6c59ddc352641", "1": "52af236c78e5becb8bcedea202419645", "2": "424423c06a1cca8181d0e19d12915515"},
+    "30": {"1": "f779949ec8e7a8eb1fa2df179fa57ca0", "3": "021ce51ac62ef9cf308dafedf72c02cf"},
+    "36": {"0": "e9d6654922f4228a106e6b2ffe88d89b", "2": "9c24ea23c85eb2098fe4daa4e0743b63"},
+    "37": {"1": "aaab0c6724a83a5cd8d939eba398a317", "3": "dc542cbf5040dc1b8644c46851b05804"},
+    "59": {"0": "b79e3caf967bd96cd0181953af7dd009", "1": "c5622b12de36880b7688377e8c2a1c4f"},
+    "62": {"0": "6c567c31bfd3dea400ff83a3ad843005"},
+}
+
 
 def clean_dir(path: Path, keep_names: set[str] | None = None) -> None:
     keep_names = keep_names or set()
@@ -59,6 +75,84 @@ def copy_tree_contents(source: Path, destination: Path) -> int:
         copy_file(source_file, destination / relative)
         count += 1
     return count
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def tile_catalog_sha256(tile_directory: Path) -> tuple[int, str]:
+    digest = hashlib.sha256()
+    files = sorted(tile_directory.glob("tile_*.png"))
+    for tile_file in files:
+        digest.update(tile_file.name.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(bytes.fromhex(sha256_file(tile_file)))
+    return len(files), digest.hexdigest()
+
+
+def write_runtime_asset_contract(phaser_root: Path, database: Path) -> None:
+    with sqlite3.connect(database) as conn:
+        expected_tiles = conn.execute("SELECT COUNT(*) FROM tile_images").fetchone()[0]
+        min_id, max_id = conn.execute(
+            "SELECT MIN(id), MAX(id) FROM tile_images"
+        ).fetchone()
+        schema_row = conn.execute(
+            "SELECT schema_name, schema_version, minimum_reader_version FROM schema_metadata LIMIT 1"
+        ).fetchone()
+
+    tile_count, tile_digest = tile_catalog_sha256(phaser_root / "tile_images")
+    if tile_count != expected_tiles or min_id != 1 or max_id != expected_tiles:
+        raise RuntimeError(
+            "Runtime tile assets do not form the exact 1-indexed database catalog: "
+            f"files={tile_count}, rows={expected_tiles}, ids={min_id}..{max_id}"
+        )
+
+    contract = {
+        "schemaName": schema_row[0],
+        "schemaVersion": schema_row[1],
+        "minimumReaderVersion": schema_row[2],
+        "pokemonDbSha256": sha256_file(database),
+        "tileCount": tile_count,
+        "tileCatalogSha256": tile_digest,
+    }
+    contract_path = phaser_root / "runtime_asset_contract.json"
+    contract_path.write_text(
+        json.dumps(contract, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def write_procedural_tile_palette(repo_root: Path, database: Path) -> None:
+    with sqlite3.connect(database) as conn:
+        image_ids = {
+            image_hash: image_id
+            for image_id, image_hash in conn.execute(
+                "SELECT id, image_hash FROM tile_images"
+            )
+        }
+
+    palette: dict[str, dict[str, int]] = {}
+    for block_index, positions in PROCEDURAL_TILE_HASHES.items():
+        palette[block_index] = {}
+        for position, image_hash in positions.items():
+            image_id = image_ids.get(image_hash)
+            if image_id is None:
+                raise RuntimeError(
+                    "Procedural terrain artwork is missing from the extractor "
+                    f"catalog: block={block_index}, position={position}, hash={image_hash}"
+                )
+            palette[block_index][position] = image_id
+
+    palette_path = repo_root / "src/constants/procedural_tile_palette.json"
+    palette_path.write_text(
+        json.dumps(palette, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 def make_color_transparent(path: Path, color: tuple[int, int, int]) -> None:
@@ -269,6 +363,8 @@ def copy_phaser_assets(
         viewer_public / "viewer-assets/tile_images",
         phaser_root / "tile_images",
     )
+    write_runtime_asset_contract(phaser_root, phaser_root / "pokemon.db")
+    write_procedural_tile_palette(repo_root, phaser_root / "pokemon.db")
 
     sprite_dest = phaser_root / "sprites"
     clean_dir(sprite_dest, CAPTUREQUEST_ONLY_PHASER_SPRITES)

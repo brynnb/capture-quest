@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "prebuild": "npm run assets:validate",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "preview": "vite preview",
@@ -17,13 +18,14 @@
     "terrain:test": "npm run terrain:generate && npm run terrain:validate",
     "audio:manifest": "node scripts/generate_audio_manifest.mjs",
     "audio:sync": "node scripts/sync_extractor_audio_manifest.mjs",
+    "assets:validate": "python3 scripts/validate_runtime_assets.py",
     "bootstrap:assets": "./scripts/bootstrap_capturequest.sh --assets-only",
     "bootstrap:fresh": "./scripts/bootstrap_capturequest.sh",
     "db:bootstrap": "./server/scripts/bootstrap_postgres.sh --create --reset",
     "tygo": "cd server && go run github.com/gzuidhof/tygo@latest generate && cd .. && ./scripts/fix-tygo-casing.sh",
     "server:go": "npm run tygo && cd server && if command -v air > /dev/null; then air; else go run ./cmd/server; fi",
     "server": "if [ -f .env ]; then set -a; . .env; set +a; fi; export HTTP_PORT=${HTTP_PORT:-8080}; npm run server:go",
-    "dev:all": "npm run audio:manifest && if [ -f .env ]; then set -a; . .env; set +a; fi; eval \"$(node scripts/dev-port-env.mjs)\"; export VITE_LOCAL_DEV=${VITE_LOCAL_DEV:-true}; export VITE_OFFLINE_ASSETS=${VITE_OFFLINE_ASSETS:-false}; concurrently -k -p \"[{name}]\" -n \"server,client\" -c \"magenta,cyan\" \"npm run server:go\" \"sleep 3 && npm run dev\"",
+    "dev:all": "npm run audio:manifest && npm run assets:validate && if [ -f .env ]; then set -a; . .env; set +a; fi; eval \"$(node scripts/dev-port-env.mjs)\"; export VITE_LOCAL_DEV=${VITE_LOCAL_DEV:-true}; export VITE_OFFLINE_ASSETS=${VITE_OFFLINE_ASSETS:-false}; concurrently -k -p \"[{name}]\" -n \"server,client\" -c \"magenta,cyan\" \"npm run server:go\" \"sleep 3 && npm run dev\"",
     "dev:test": "VITE_TEST_MODE=true VITE_FORCE_WEBSOCKET=true CAPTUREQUEST_TEST_MODE=true npm run dev:all"
   },
   "dependencies": {

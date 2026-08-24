@@ -31,6 +31,9 @@ import AudioManager from "@/services/audio/AudioManager";
 import usePokeBattleStore from "@stores/PokeBattleStore";
 import usePokemonDialogueStore from "@stores/PokemonDialogueStore";
 import { cancelActiveCutscene } from "@/phaser-game/services/CutsceneService";
+import { IS_LOCAL_DEV } from "@/config";
+import useWorldDebugStore from "@/stores/WorldDebugStore";
+import useDebugSceneStore from "@/stores/DebugSceneStore";
 
 const HudLayer = styled.div`
   position: absolute;
@@ -264,9 +267,37 @@ const RailFooter = styled.div`
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 7px;
-  margin-top: auto;
   padding: 12px;
   border-top: 2px solid rgba(74, 75, 166, 0.18);
+`;
+
+const DebugReadout = styled.section`
+  margin: auto 12px 0;
+  padding: 10px;
+  color: #30316e;
+  background: rgba(255, 255, 255, 0.58);
+  border: 2px solid rgba(74, 75, 166, 0.42);
+  border-radius: 12px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+`;
+
+const DebugReadoutTitle = styled.div`
+  margin-bottom: 6px;
+  color: #4a4ba6;
+  font-family: "Outfit", sans-serif;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+`;
+
+const DebugReadoutText = styled.div`
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+  font-family: "Pokemon GB", "Outfit", monospace;
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1.45;
 `;
 
 const ChatDock = styled.div<{ $collapsed: boolean; $mobileOpen: boolean }>`
@@ -394,6 +425,8 @@ const BottomHUD = () => {
   const { setScreen } = useGameScreenStore();
   const { setPendingSelectName } = useCharacterSelectStore();
   const { characterProfile } = usePlayerCharacterStore();
+  const { tileInfo, viewMode } = useWorldDebugStore();
+  const { isOpen: isDebugSceneOpen, toggleOpen: toggleDebugScene } = useDebugSceneStore();
 
   useEffect(() => {
     const enteringCompact = compact && previousCompact.current !== true;
@@ -529,6 +562,15 @@ const BottomHUD = () => {
                   <FiTool /> Tile Manager
                 </RailButton>
               )}
+              {IS_LOCAL_DEV && (
+                <RailButton
+                  type="button"
+                  $active={isDebugSceneOpen}
+                  onClick={() => runRailAction(toggleDebugScene)}
+                >
+                  <FiMap /> Map / Scenarios
+                </RailButton>
+              )}
             </ButtonGrid>
           </RailSection>
 
@@ -546,6 +588,13 @@ const BottomHUD = () => {
               </RailButton>
             </ButtonGrid>
           </RailSection>
+
+          {IS_LOCAL_DEV && (
+            <DebugReadout data-testid="world-debug-readout">
+              <DebugReadoutTitle>World Inspector</DebugReadoutTitle>
+              <DebugReadoutText>{`${tileInfo}\n\n${viewMode}`}</DebugReadoutText>
+            </DebugReadout>
+          )}
 
           <RailFooter>
             <RailButton onClick={() => void handleWarpHome()}>

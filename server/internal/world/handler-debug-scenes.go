@@ -213,6 +213,13 @@ type debugExpectedOutcome struct {
 
 // HandleDebugSceneListRequest sends the ordered script scenario list to the client.
 func HandleDebugSceneListRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
+	if !debugToolsEnabled() {
+		ses.SendStreamJSON(map[string]interface{}{
+			"scenes": []DebugScene{},
+			"error":  "debug tools are disabled",
+		}, opcodes.DebugSceneListResponse)
+		return false
+	}
 	scenarios, err := loadDebugScenarioFiles()
 	if err != nil {
 		log.Printf("[DebugScene] Failed to load scenarios: %v", err)
@@ -233,6 +240,13 @@ func HandleDebugSceneListRequest(ses *session.Session, payload []byte, wh *World
 
 // HandleDebugSceneJumpRequest applies one script simulator fixture to the current character and warps there.
 func HandleDebugSceneJumpRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
+	if !debugToolsEnabled() {
+		ses.SendStreamJSON(map[string]interface{}{
+			"success": false,
+			"error":   "debug tools are disabled",
+		}, opcodes.DebugSceneJumpResponse)
+		return false
+	}
 	var req struct {
 		SeqNum       int    `json:"seqNum"`
 		ScenarioName string `json:"scenarioName"`
@@ -731,6 +745,13 @@ func debugWarpClientMapID(mapID int, isOverworld bool) int {
 // HandleDebugGivePowerPokemonRequest gives the current debug player a
 // deliberately overpowered test Pokémon for quickly clearing battle blockers.
 func HandleDebugGivePowerPokemonRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
+	if !debugToolsEnabled() {
+		ses.SendStreamJSON(map[string]interface{}{
+			"success": false,
+			"error":   "debug tools are disabled",
+		}, opcodes.DebugGivePowerPokemonResponse)
+		return false
+	}
 	if !ses.HasValidClient() {
 		return false
 	}

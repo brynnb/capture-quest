@@ -9,32 +9,6 @@ import {
   type ProceduralOverworldGeneratedDetail,
 } from "@/phaser-game/procedural/overworldProceduralTiles";
 
-const ToggleButton = styled.button`
-  position: fixed;
-  bottom: 12px;
-  left: 12px;
-  width: 72px;
-  height: 72px;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.7);
-  border: 2px solid #555;
-  color: #ffcc00;
-  font-size: 36px;
-  font-weight: 700;
-  cursor: pointer;
-  z-index: 10001;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s;
-
-  &:hover {
-    background: rgba(0, 0, 0, 0.9);
-    border-color: #ffcc00;
-    transform: scale(1.1);
-  }
-`;
-
 const Panel = styled.div`
   position: fixed;
   bottom: 96px;
@@ -395,7 +369,6 @@ const SceneDebugger = () => {
     scenes,
     isOpen,
     powerPokemonMessage,
-    toggleOpen,
     setOpen,
     setPowerPokemonMessage,
   } = useDebugSceneStore();
@@ -524,10 +497,6 @@ const SceneDebugger = () => {
 
   return (
     <>
-      <ToggleButton onClick={toggleOpen} title="Scenario Debugger">
-        S
-      </ToggleButton>
-
       {isOpen && (
         <Panel>
           <PanelHeader>

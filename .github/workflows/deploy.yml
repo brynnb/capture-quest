@@ -64,6 +64,7 @@ jobs:
             public/assets/trainers
             public/phaser/assets
             public/phaser/pokemon.db
+            public/phaser/runtime_asset_contract.json
             public/phaser/capturequest-pokemon-import.json
             public/phaser/style.css
             public/phaser/tile_images
@@ -82,6 +83,7 @@ jobs:
 
           assets_ready() {
             test -s public/phaser/pokemon.db
+            test -s public/phaser/runtime_asset_contract.json
             test -s public/phaser/capturequest-pokemon-import.json
             test -d public/phaser/assets
             test -n "$(find public/phaser/assets -type f -print -quit)"
@@ -155,7 +157,9 @@ jobs:
         run: |
           set -euo pipefail
           test -s public/phaser/pokemon.db
+          test -s public/phaser/runtime_asset_contract.json
           test -s public/phaser/capturequest-pokemon-import.json
+          npm run assets:validate
           test -d public/sound/pokemon
           test -s public/sound/pokemon/audio-render-manifest.json
           test -d server/scripted_events/scripts

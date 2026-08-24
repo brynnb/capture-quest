@@ -1,5 +1,6 @@
 import { Scene } from "phaser";
 import { IS_LOCAL_DEV } from "@/config";
+import useWorldDebugStore from "@/stores/WorldDebugStore";
 import { TILE_SIZE } from "../constants";
 import type {
   PhaserActor,
@@ -26,10 +27,8 @@ export class UiManager {
   private instantWarpTargetPulseTween: Phaser.Tweens.Tween | null = null;
   private debugOverlayEnabled = import.meta.env.DEV && IS_LOCAL_DEV;
   private tileHighlightEnabled = true;
-  private debugOverlayElement: HTMLDivElement | null = null;
   private debugInfoText = "";
   private debugModeText = "Overworld View";
-  private debugOverlayResizeHandler = () => this.positionDebugOverlay();
 
   constructor(scene: Scene) {
     this.scene = scene;
@@ -102,39 +101,8 @@ export class UiManager {
     this.loadingText.name = "loadingText";
 
     // Position elements correctly
-    this.createDebugOverlay();
-    this.updateElementPositions();
-  }
-
-  private createDebugOverlay() {
-    if (!this.debugOverlayEnabled) {
-      return;
-    }
-
-    const overlay = document.createElement("div");
-    overlay.id = "capturequest-debug-overlay";
-    overlay.style.position = "fixed";
-    overlay.style.zIndex = "40";
-    overlay.style.boxSizing = "border-box";
-    overlay.style.width = "260px";
-    overlay.style.maxWidth = "calc(100vw - 16px)";
-    overlay.style.maxHeight = "calc(100vh - 88px)";
-    overlay.style.overflow = "auto";
-    overlay.style.pointerEvents = "none";
-    overlay.style.whiteSpace = "pre-line";
-    overlay.style.fontFamily = "'Pokemon Pixel Font', monospace, Arial";
-    overlay.style.fontSize = "12px";
-    overlay.style.lineHeight = "1.35";
-    overlay.style.color = "#ffffff";
-    overlay.style.background = "rgba(0, 0, 0, 0.82)";
-    overlay.style.border = "1px solid rgba(255, 255, 255, 0.22)";
-    overlay.style.padding = "8px";
-    overlay.style.boxShadow = "0 3px 12px rgba(0, 0, 0, 0.25)";
-    document.body.appendChild(overlay);
-
-    this.debugOverlayElement = overlay;
-    window.addEventListener("resize", this.debugOverlayResizeHandler);
     this.renderDebugOverlay();
+    this.updateElementPositions();
   }
 
   createTileHighlight() {
@@ -225,7 +193,7 @@ export class UiManager {
     }
 
     this.loadingText.setPosition(10, 10);
-    this.positionDebugOverlay();
+    this.renderDebugOverlay();
   }
 
   updateTileInfo(
@@ -391,52 +359,14 @@ export class UiManager {
   }
 
   private renderDebugOverlay() {
-    if (!this.debugOverlayElement) {
+    if (!this.debugOverlayEnabled) {
       return;
     }
-
-    const lines = [this.debugInfoText, this.debugModeText].filter(Boolean);
-    this.debugOverlayElement.textContent = lines.join("\n\n");
-    this.positionDebugOverlay();
-  }
-
-  private positionDebugOverlay() {
-    if (!this.debugOverlayElement) {
-      return;
-    }
-
-    const canvas = this.scene.game.canvas;
-    const rect = canvas.getBoundingClientRect();
-    const margin = 12;
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-    const overlayWidth = this.debugOverlayElement.offsetWidth || 260;
-    const overlayHeight = this.debugOverlayElement.offsetHeight || 120;
-
-    let left: number;
-    const debugTopInset = 72;
-    let top = Math.max(
-      debugTopInset,
-      Math.min(rect.top, viewportHeight - overlayHeight - 8),
+    const debugStore = useWorldDebugStore.getState();
+    debugStore.setTileInfo(
+      this.debugInfoText || "Move over the map to inspect a tile.",
     );
-
-    if (rect.left >= overlayWidth + margin) {
-      left = rect.left - overlayWidth - margin;
-    } else if (viewportWidth - rect.right >= overlayWidth + margin) {
-      left = rect.right + margin;
-    } else {
-      left = Math.max(8, Math.min(rect.left, viewportWidth - overlayWidth - 8));
-      const aboveTop = rect.top - overlayHeight - margin;
-      const belowTop = rect.bottom + margin;
-      if (aboveTop >= debugTopInset) {
-        top = aboveTop;
-      } else if (belowTop + overlayHeight <= viewportHeight - 8) {
-        top = Math.max(debugTopInset, belowTop);
-      }
-    }
-
-    this.debugOverlayElement.style.left = `${Math.round(left)}px`;
-    this.debugOverlayElement.style.top = `${Math.round(top)}px`;
+    debugStore.setViewMode(this.debugModeText);
   }
 
   getUiElements() {
@@ -458,13 +388,10 @@ export class UiManager {
     }
 
     this.updateElementPositions();
-
   }
 
   destroy() {
-    window.removeEventListener("resize", this.debugOverlayResizeHandler);
-    this.debugOverlayElement?.remove();
-    this.debugOverlayElement = null;
+    useWorldDebugStore.getState().reset();
     this.instantWarpTargetPulseTween?.stop();
     this.instantWarpTargetPulseTween = null;
   }
@@ -487,7 +414,7 @@ export class UiManager {
       this.setTextSafely(this.loadingText, currentText);
     }
 
-    this.positionDebugOverlay();
+    this.renderDebugOverlay();
   }
 
   private setTextSafely(

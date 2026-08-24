@@ -251,6 +251,7 @@ func sendCharacterStateFromDB(ses *session.Session, wh *WorldHandler, characterN
 	if err := db_character.UpdateCharacter(charData, ses.AccountID); err != nil {
 		log.Printf("sendCharacterStateFromDB: failed to update last login for %s: %v", characterName, err)
 	}
+	applyLocalCharacterPrivileges(charData)
 
 	ensureLocalDevFixtures(int64(charData.ID))
 

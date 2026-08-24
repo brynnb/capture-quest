@@ -8,6 +8,27 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+func TestSplitSQLStatementsPreservesDollarQuotedBlocks(t *testing.T) {
+	sqlText := `
+		CREATE TABLE example (value text);
+		DO $$
+		BEGIN
+			IF TRUE THEN
+				INSERT INTO example VALUES ('inside;block');
+			END IF;
+		END
+		$$;
+		INSERT INTO example VALUES ('after;block');
+	`
+	statements := splitSQLStatements(sqlText)
+	if len(statements) != 3 {
+		t.Fatalf("statements = %d, want 3: %#v", len(statements), statements)
+	}
+	if !strings.Contains(statements[1], "END IF;") || !strings.Contains(statements[1], "$$") {
+		t.Fatalf("DO block was split: %q", statements[1])
+	}
+}
+
 func TestImportStaticTableMapsSchemaV2DefaultMoveNames(t *testing.T) {
 	source, err := sql.Open("sqlite", ":memory:")
 	if err != nil {

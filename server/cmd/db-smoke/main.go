@@ -476,8 +476,8 @@ func requireSilphCo1FOrdinaryFloorWarpInactive(pg *sql.DB) error {
 		  AND pw.y = 10`).Scan(&id, &warpType, &direction, &destX, &destY); err != nil {
 		return fmt.Errorf("query Silph Co 1F ordinary-floor warp: %w", err)
 	}
-	if id != 293 || warpType != "inactive" || direction != "" || destX != 27 || destY != 3 {
-		return fmt.Errorf("Silph Co 1F ordinary-floor warp = id %d type %q direction %q destination (%d,%d), want id 293 inactive with destination (27,3)", id, warpType, direction, destX, destY)
+	if warpType != "inactive" || direction != "" || destX != 27 || destY != 3 {
+		return fmt.Errorf("Silph Co 1F ordinary-floor warp = id %d type %q direction %q destination (%d,%d), want inactive with destination (27,3)", id, warpType, direction, destX, destY)
 	}
 	log.Println("ok: Silph Co 1F ordinary-floor source row is retained as inactive metadata")
 	return nil

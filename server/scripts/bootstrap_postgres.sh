@@ -56,6 +56,7 @@ DATABASE_NAME="${DATABASE_NAME:-capturequest}"
 export DATABASE_URL="${DATABASE_URL:-postgres://postgres@localhost:5432/${DATABASE_NAME}?sslmode=disable}"
 SCHEMA_PATH="${SERVER_DIR}/schema/postgres_runtime_schema.sql"
 SQLITE_PATH="${IMPORT_SQLITE_PATH:-${REPO_ROOT}/public/phaser/pokemon.db}"
+RUNTIME_SQLITE_PATH="${REPO_ROOT}/public/phaser/pokemon.db"
 
 postgres_admin_database_url() {
   local base="${DATABASE_URL}"
@@ -125,6 +126,20 @@ fi
 
 if [[ ! -f "${SQLITE_PATH}" ]]; then
   echo "SQLite source database not found: ${SQLITE_PATH}" >&2
+  exit 1
+fi
+
+if [[ ! -f "${RUNTIME_SQLITE_PATH}" ]] || ! cmp -s "${SQLITE_PATH}" "${RUNTIME_SQLITE_PATH}"; then
+  cat >&2 <<EOF
+The Postgres import database does not match public/phaser/pokemon.db.
+Importing it directly would desynchronize tile IDs from the runtime PNG assets.
+
+Run the top-level matched artifact bootstrap instead:
+  npm run bootstrap:fresh
+
+Source:  ${SQLITE_PATH}
+Runtime: ${RUNTIME_SQLITE_PATH}
+EOF
   exit 1
 fi
 
