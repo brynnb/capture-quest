@@ -29,6 +29,7 @@ type WarpZone = Phaser.GameObjects.Zone & { warpData?: PhaserWarp };
 export class MapRenderer {
   // Maximum texture dimension before falling back to individual sprites
   private static readonly MAX_RENDER_TEXTURE_SIZE = 8192;
+  private static readonly EMPTY_TILE_TEXTURE_KEY = "tile-editor-empty";
 
   private scene: Scene;
   private mapContainer: Phaser.GameObjects.Container;
@@ -53,6 +54,7 @@ export class MapRenderer {
   // Tile editor: cursor preview sprites
   private cursorPreviewSprites: Phaser.GameObjects.GameObject[] = [];
   private cursorPreviewContainer: Phaser.GameObjects.Container | null = null;
+  private tileTextureLoadPromises: Map<number, Promise<boolean>> = new Map();
 
   // Tile animations: tileImageId -> array of frame image paths + duration
   private tileAnimations: Map<number, { frames: string[]; durationMs: number }> = new Map();
@@ -77,6 +79,22 @@ export class MapRenderer {
       graphics.lineStyle(1, 0xffffff);
       graphics.strokeRect(0, 0, TILE_SIZE, TILE_SIZE);
       graphics.generateTexture("actor-fallback", TILE_SIZE, TILE_SIZE);
+      graphics.destroy();
+    }
+
+    // RenderTexture.fill() can leave partially updated cells when it is mixed
+    // with frame batching on the large overworld texture. Use an opaque tile
+    // frame for editor erases instead, so painting and erasing follow the same
+    // pixel-aligned draw path as the initial map render.
+    if (!this.scene.textures.exists(MapRenderer.EMPTY_TILE_TEXTURE_KEY)) {
+      const graphics = this.scene.make.graphics({ x: 0, y: 0 });
+      graphics.fillStyle(0x000000, 1);
+      graphics.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
+      graphics.generateTexture(
+        MapRenderer.EMPTY_TILE_TEXTURE_KEY,
+        TILE_SIZE,
+        TILE_SIZE,
+      );
       graphics.destroy();
     }
 
@@ -1182,20 +1200,10 @@ export class MapRenderer {
       const rtHeight = this.tileRenderTexture.height;
 
       if (localX >= 0 && localY >= 0 && localX < rtWidth && localY < rtHeight) {
-        // Replace the entire old cell before stamping the new artwork. Without
-        // this, transparent pixels can leave the prior tile visible underneath.
-        this.tileRenderTexture.fill(
-          0x000000,
-          1,
-          localX,
-          localY,
-          TILE_SIZE,
-          TILE_SIZE,
-        );
-        // Within bounds — stamp onto RenderTexture using batch mode to avoid sub-pixel gaps
-        this.tileRenderTexture.beginDraw();
-        this.tileRenderTexture.batchDrawFrame(tileKey, undefined, localX, localY);
-        this.tileRenderTexture.endDraw();
+        // A single direct frame draw is both pixel-aligned and immediately
+        // flushed. The previous fill + beginDraw sequence could leave black
+        // seams or stale fragments until the whole map was reloaded.
+        this.tileRenderTexture.drawFrame(tileKey, undefined, localX, localY);
 
         // Remove any individual sprite at this position (if it was previously out-of-bounds)
         const existingSprite = this.userTileSprites.get(key);
@@ -1312,7 +1320,12 @@ export class MapRenderer {
       const rtHeight = this.tileRenderTexture.height;
 
       if (localX >= 0 && localY >= 0 && localX < rtWidth && localY < rtHeight) {
-        this.tileRenderTexture.fill(0x000000, 1, localX, localY, TILE_SIZE, TILE_SIZE);
+        this.tileRenderTexture.drawFrame(
+          MapRenderer.EMPTY_TILE_TEXTURE_KEY,
+          undefined,
+          localX,
+          localY,
+        );
       }
     }
 
@@ -1444,19 +1457,46 @@ export class MapRenderer {
    * Load a tile texture if it doesn't exist yet (for dynamically loading tile images).
    * Returns a promise that resolves when the texture is ready.
    */
-  async loadTileTextureIfNeeded(tileImageId: number): Promise<boolean> {
+  loadTileTextureIfNeeded(tileImageId: number): Promise<boolean> {
     const tileKey = `tile-${tileImageId}`;
-    if (this.scene.textures.exists(tileKey)) return true;
+    if (this.scene.textures.exists(tileKey)) return Promise.resolve(true);
+    const pendingLoad = this.tileTextureLoadPromises.get(tileImageId);
+    if (pendingLoad) return pendingLoad;
 
-    const { getTileImageUrl } = await import("../api/tileService");
-    const url = getTileImageUrl(tileImageId);
+    const loadPromise = import("../api/tileService")
+      .then(({ getTileImageUrl }) => new Promise<boolean>((resolve) => {
+        const url = getTileImageUrl(tileImageId);
+        let settled = false;
+        const settle = (loaded: boolean) => {
+          if (settled) return;
+          settled = true;
+          resolve(loaded);
+        };
 
-    return new Promise<boolean>((resolve) => {
-      this.scene.load.image(tileKey, url);
-      this.scene.load.once("complete", () => resolve(true));
-      this.scene.load.once("loaderror", () => resolve(false));
-      this.scene.load.start();
-    });
+        this.scene.load.once(`filecomplete-image-${tileKey}`, () => settle(true));
+        this.scene.load.once("complete", () => {
+          settle(this.scene.textures.exists(tileKey));
+        });
+        this.scene.load.once("loaderror", (file: { key?: string }) => {
+          if (file.key === tileKey) settle(false);
+        });
+
+        try {
+          this.scene.load.image(tileKey, url);
+          if (!this.scene.load.isLoading()) {
+            this.scene.load.start();
+          }
+        } catch (error) {
+          console.error(`[MapRenderer] Failed to queue texture ${tileKey}:`, error);
+          settle(false);
+        }
+      }))
+      .finally(() => {
+        this.tileTextureLoadPromises.delete(tileImageId);
+      });
+
+    this.tileTextureLoadPromises.set(tileImageId, loadPromise);
+    return loadPromise;
   }
 
   /**
