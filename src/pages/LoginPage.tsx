@@ -28,8 +28,8 @@ const Wrapper = styled.div`
 
   @media (max-width: 650px), (max-height: 760px), (pointer: coarse) {
     justify-content: flex-start;
-    padding: max(10px, env(safe-area-inset-top, 0px)) 0
-      max(10px, env(safe-area-inset-bottom, 0px));
+    padding: calc(30px + env(safe-area-inset-top, 0px)) 0
+      calc(92px + env(safe-area-inset-bottom, 0px));
   }
 `;
 

@@ -406,10 +406,58 @@ CREATE TABLE IF NOT EXISTS phaser_tiles (
     raw_foot_tile_id integer DEFAULT NULL,
     talk_over_tile boolean NOT NULL DEFAULT false,
     encounter_area_id integer DEFAULT NULL,
+    is_native_game_data boolean NOT NULL DEFAULT false,
+    coordinate_origin varchar(16) NOT NULL DEFAULT 'user'
+        CHECK (coordinate_origin IN ('native', 'generated', 'user')),
+    content_origin varchar(16) NOT NULL DEFAULT 'user'
+        CHECK (content_origin IN ('native', 'generated', 'user', 'event')),
     is_user_placed smallint NOT NULL DEFAULT 0,
     placed_by_char_id integer DEFAULT NULL,
     placed_at timestamp DEFAULT NULL
 );
+ALTER TABLE phaser_tiles
+    ADD COLUMN IF NOT EXISTS is_native_game_data boolean NOT NULL DEFAULT false;
+ALTER TABLE phaser_tiles
+    ADD COLUMN IF NOT EXISTS coordinate_origin varchar(16) NOT NULL DEFAULT 'user';
+ALTER TABLE phaser_tiles
+    ADD COLUMN IF NOT EXISTS content_origin varchar(16) NOT NULL DEFAULT 'user';
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'phaser_tiles_coordinate_origin_check'
+          AND conrelid = 'phaser_tiles'::regclass
+    ) THEN
+        ALTER TABLE phaser_tiles
+            ADD CONSTRAINT phaser_tiles_coordinate_origin_check
+            CHECK (coordinate_origin IN ('native', 'generated', 'user'));
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'phaser_tiles_content_origin_check'
+          AND conrelid = 'phaser_tiles'::regclass
+    ) THEN
+        ALTER TABLE phaser_tiles
+            ADD CONSTRAINT phaser_tiles_content_origin_check
+            CHECK (content_origin IN ('native', 'generated', 'user', 'event'));
+    END IF;
+END $$;
+
+-- Backfill databases created before explicit tile provenance existed. Imported
+-- source-map coordinates remain native even when a user changes their content.
+UPDATE phaser_tiles
+SET is_native_game_data = (source_map_id IS NOT NULL),
+    coordinate_origin = CASE
+        WHEN source_map_id IS NOT NULL THEN 'native'
+        WHEN is_user_placed = 1 THEN 'user'
+        ELSE coordinate_origin
+    END,
+    content_origin = CASE
+        WHEN is_user_placed = 1 THEN 'user'
+        WHEN source_map_id IS NOT NULL THEN 'native'
+        ELSE content_origin
+    END;
 CREATE INDEX IF NOT EXISTS phaser_tiles_map_idx ON phaser_tiles (map_id);
 CREATE INDEX IF NOT EXISTS phaser_tiles_source_map_idx ON phaser_tiles (source_map_id);
 CREATE INDEX IF NOT EXISTS phaser_tiles_encounter_area_idx ON phaser_tiles (encounter_area_id);

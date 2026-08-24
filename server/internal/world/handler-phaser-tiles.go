@@ -165,13 +165,18 @@ func HandleTileEditorPlace(ses *session.Session, payload []byte, wh *WorldHandle
 
 		// Upsert into phaser_tiles — overworld tiles have map_id = NULL
 		_, err := tx.Exec(`
-			INSERT INTO phaser_tiles (x, y, tile_image_id, map_id, collision_type, raw_foot_tile_id, talk_over_tile, is_user_placed, placed_by_char_id, placed_at)
-			VALUES ($1, $2, $3, NULL, $4, $5, $6, 1, $7, CURRENT_TIMESTAMP)
+			INSERT INTO phaser_tiles (
+				x, y, tile_image_id, map_id, collision_type, raw_foot_tile_id,
+				talk_over_tile, is_native_game_data, coordinate_origin,
+				content_origin, is_user_placed, placed_by_char_id, placed_at
+			)
+			VALUES ($1, $2, $3, NULL, $4, $5, $6, FALSE, 'user', 'user', 1, $7, CURRENT_TIMESTAMP)
 			ON CONFLICT (x, y, COALESCE(map_id, -1)) DO UPDATE SET
 				tile_image_id = EXCLUDED.tile_image_id,
 				collision_type = EXCLUDED.collision_type,
 				raw_foot_tile_id = EXCLUDED.raw_foot_tile_id,
 				talk_over_tile = EXCLUDED.talk_over_tile,
+				content_origin = 'user',
 				is_user_placed = 1,
 				placed_by_char_id = EXCLUDED.placed_by_char_id,
 				placed_at = CURRENT_TIMESTAMP`,
@@ -411,13 +416,18 @@ func HandleTileEditorFill(ses *session.Session, payload []byte, wh *WorldHandler
 	var broadcastEdits []TileEdit
 	for _, p := range fillPoints {
 		_, err := tx.Exec(`
-			INSERT INTO phaser_tiles (x, y, tile_image_id, map_id, collision_type, raw_foot_tile_id, talk_over_tile, is_user_placed, placed_by_char_id, placed_at)
-			VALUES ($1, $2, $3, NULL, $4, $5, $6, 1, $7, CURRENT_TIMESTAMP)
+			INSERT INTO phaser_tiles (
+				x, y, tile_image_id, map_id, collision_type, raw_foot_tile_id,
+				talk_over_tile, is_native_game_data, coordinate_origin,
+				content_origin, is_user_placed, placed_by_char_id, placed_at
+			)
+			VALUES ($1, $2, $3, NULL, $4, $5, $6, FALSE, 'user', 'user', 1, $7, CURRENT_TIMESTAMP)
 			ON CONFLICT (x, y, COALESCE(map_id, -1)) DO UPDATE SET
 				tile_image_id = EXCLUDED.tile_image_id,
 				collision_type = EXCLUDED.collision_type,
 				raw_foot_tile_id = EXCLUDED.raw_foot_tile_id,
 				talk_over_tile = EXCLUDED.talk_over_tile,
+				content_origin = 'user',
 				is_user_placed = 1,
 				placed_by_char_id = EXCLUDED.placed_by_char_id,
 				placed_at = CURRENT_TIMESTAMP`,
@@ -496,13 +506,18 @@ func HandleTileEditorUndo(ses *session.Session, payload []byte, wh *WorldHandler
 			props = tileRuntimePropertiesForTileImage(tile.TileImageID)
 
 			tx.Exec(`
-				INSERT INTO phaser_tiles (x, y, tile_image_id, map_id, collision_type, raw_foot_tile_id, talk_over_tile, is_user_placed, placed_at)
-				VALUES ($1, $2, $3, NULL, $4, $5, $6, 1, CURRENT_TIMESTAMP)
+				INSERT INTO phaser_tiles (
+					x, y, tile_image_id, map_id, collision_type, raw_foot_tile_id,
+					talk_over_tile, is_native_game_data, coordinate_origin,
+					content_origin, is_user_placed, placed_at
+				)
+				VALUES ($1, $2, $3, NULL, $4, $5, $6, FALSE, 'user', 'user', 1, CURRENT_TIMESTAMP)
 				ON CONFLICT (x, y, COALESCE(map_id, -1)) DO UPDATE SET
 					tile_image_id = EXCLUDED.tile_image_id,
 					collision_type = EXCLUDED.collision_type,
 					raw_foot_tile_id = EXCLUDED.raw_foot_tile_id,
 					talk_over_tile = EXCLUDED.talk_over_tile,
+					content_origin = 'user',
 					placed_at = CURRENT_TIMESTAMP`,
 				tile.X, tile.Y, tile.TileImageID, props.CollisionType, props.RawFootTileID, props.TalkOverTile)
 		}

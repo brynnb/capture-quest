@@ -60,6 +60,13 @@ const Disclaimer = styled.p`
   opacity: 0.9;
   line-height: 1.6;
   text-align: right;
+
+  @media (max-width: 850px), (max-height: 700px), (pointer: coarse) {
+    max-width: 100%;
+    font-size: 7px;
+    line-height: 1.35;
+    text-align: center;
+  }
 `;
 
 const Signature = styled.div`
@@ -80,6 +87,12 @@ const Signature = styled.div`
       text-shadow: 0 0 8px rgba(255, 204, 217, 0.4);
     }
   }
+
+  @media (max-width: 850px), (max-height: 700px), (pointer: coarse) {
+    font-size: 11px;
+    line-height: 1.35;
+    text-align: center;
+  }
 `;
 
 const FooterRow = styled.div<{ $hidden: boolean }>`
@@ -98,8 +111,20 @@ const FooterRow = styled.div<{ $hidden: boolean }>`
     pointer-events: auto;
   }
 
-  @media (max-width: 850px), (max-height: 700px) {
-    display: none;
+  @media (max-width: 850px), (max-height: 700px), (pointer: coarse) {
+    right: max(10px, env(safe-area-inset-right, 0px));
+    bottom: max(8px, env(safe-area-inset-bottom, 0px));
+    left: max(10px, env(safe-area-inset-left, 0px));
+    display: ${(props) => (props.$hidden ? "none" : "flex")};
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    padding: 7px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: 12px;
+    background: rgba(26, 28, 70, 0.72);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.24);
+    backdrop-filter: blur(8px);
   }
 `;
 

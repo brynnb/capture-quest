@@ -192,6 +192,9 @@ export function generateProceduralOverworldTiles(
             : chooseGroundTileImageId(x, y, kind, seed),
         collisionType: kind === "rock" ? 0 : kind === "water" ? 2 : 1,
         talkOverTile: false,
+        isNativeGameData: false,
+        coordinateOrigin: "generated",
+        contentOrigin: "generated",
         generated: true,
         generatedSource: "procedural-overworld-preview",
       });

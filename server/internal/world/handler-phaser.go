@@ -37,6 +37,12 @@ type PhaserTile struct {
 	CollisionType int     `json:"collisionType"`
 	RawFootTileID *int    `json:"rawFootTileId,omitempty"`
 	TalkOverTile  bool    `json:"talkOverTile"`
+	// CoordinateOrigin describes whether this square existed in the extracted
+	// game data. ContentOrigin describes who supplied its current appearance.
+	// Keeping both prevents a user edit from erasing native provenance.
+	IsNativeGameData bool   `json:"isNativeGameData"`
+	CoordinateOrigin string `json:"coordinateOrigin"`
+	ContentOrigin    string `json:"contentOrigin"`
 }
 
 // PhaserActor represents an actor or object in the game
@@ -353,7 +359,8 @@ func HandlePhaserTilesRequest(ses *session.Session, payload []byte, wh *WorldHan
 	query := `
 		SELECT pt.id, pt.x, pt.y, pt.tile_image_id, pt.local_x, pt.local_y,
 			pt.map_id, pt.source_map_id, pm.name AS source_map_name,
-			pt.collision_type, pt.raw_foot_tile_id, pt.talk_over_tile
+			pt.collision_type, pt.raw_foot_tile_id, pt.talk_over_tile,
+			pt.is_native_game_data, pt.coordinate_origin, pt.content_origin
 		FROM phaser_tiles pt
 		LEFT JOIN phaser_maps pm ON pm.id = COALESCE(pt.source_map_id, pt.map_id)
 		WHERE pt.map_id = $1`
@@ -364,7 +371,8 @@ func HandlePhaserTilesRequest(ses *session.Session, payload []byte, wh *WorldHan
 		query = `
 			SELECT pt.id, pt.x, pt.y, pt.tile_image_id, pt.local_x, pt.local_y,
 				pt.map_id, pt.source_map_id, pm.name AS source_map_name,
-				pt.collision_type, pt.raw_foot_tile_id, pt.talk_over_tile
+				pt.collision_type, pt.raw_foot_tile_id, pt.talk_over_tile,
+				pt.is_native_game_data, pt.coordinate_origin, pt.content_origin
 			FROM phaser_tiles pt
 			LEFT JOIN phaser_maps pm ON pm.id = pt.source_map_id
 			WHERE pt.map_id IS NULL`
@@ -386,7 +394,12 @@ func HandlePhaserTilesRequest(ses *session.Session, payload []byte, wh *WorldHan
 		var sourceMapID sql.NullInt64
 		var sourceMapName sql.NullString
 		var rawFootTileID sql.NullInt64
-		if err := rows.Scan(&t.ID, &t.X, &t.Y, &t.TileImageID, &t.LocalX, &t.LocalY, &mapID, &sourceMapID, &sourceMapName, &t.CollisionType, &rawFootTileID, &t.TalkOverTile); err != nil {
+		if err := rows.Scan(
+			&t.ID, &t.X, &t.Y, &t.TileImageID, &t.LocalX, &t.LocalY,
+			&mapID, &sourceMapID, &sourceMapName, &t.CollisionType,
+			&rawFootTileID, &t.TalkOverTile, &t.IsNativeGameData,
+			&t.CoordinateOrigin, &t.ContentOrigin,
+		); err != nil {
 			log.Printf("[Phaser] Error scanning tile: %v", err)
 			continue
 		}

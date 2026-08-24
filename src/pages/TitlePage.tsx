@@ -23,8 +23,8 @@ const Wrapper = styled.div`
 
   @media (max-height: 560px), (pointer: coarse) {
     justify-content: flex-start;
-    padding: max(10px, env(safe-area-inset-top, 0px)) 0
-      max(10px, env(safe-area-inset-bottom, 0px));
+    padding: calc(30px + env(safe-area-inset-top, 0px)) 0
+      calc(92px + env(safe-area-inset-bottom, 0px));
   }
 `;
 
@@ -41,7 +41,7 @@ const CenterColumn = styled.div`
   }
 
   @media (max-height: 560px), (pointer: coarse) {
-    gap: 10px;
+    gap: 14px;
   }
 `;
 

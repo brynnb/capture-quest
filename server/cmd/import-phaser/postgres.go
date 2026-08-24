@@ -669,8 +669,12 @@ func importTilesPostgres(sqlite, pg *sql.DB, tileImageMetadata map[int64]tileIma
 	defer sourceRows.Close()
 
 	stmt, err := pg.Prepare(`
-		INSERT INTO phaser_tiles (id, x, y, tile_image_id, local_x, local_y, map_id, source_map_id, collision_type, raw_foot_tile_id, talk_over_tile)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`)
+		INSERT INTO phaser_tiles (
+			id, x, y, tile_image_id, local_x, local_y, map_id, source_map_id,
+			collision_type, raw_foot_tile_id, talk_over_tile,
+			is_native_game_data, coordinate_origin, content_origin
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, TRUE, 'native', 'native')`)
 	if err != nil {
 		return fmt.Errorf("prepare phaser_tiles insert: %w", err)
 	}

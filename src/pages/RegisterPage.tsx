@@ -23,8 +23,8 @@ const Wrapper = styled.div`
 
   @media (max-width: 700px), (max-height: 760px), (pointer: coarse) {
     justify-content: flex-start;
-    padding: max(10px, env(safe-area-inset-top, 0px)) 0
-      calc(88px + env(safe-area-inset-bottom, 0px));
+    padding: calc(30px + env(safe-area-inset-top, 0px)) 0
+      calc(160px + env(safe-area-inset-bottom, 0px));
   }
 `;
 
@@ -46,7 +46,7 @@ const BottomButtons = styled.div`
 
   @media (max-width: 700px) {
     right: 16px;
-    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(82px + env(safe-area-inset-bottom, 0px));
     left: 16px;
     gap: 10px;
 
@@ -57,7 +57,7 @@ const BottomButtons = styled.div`
   }
 
   @media (max-height: 500px) {
-    bottom: calc(7px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
   }
 `;
 

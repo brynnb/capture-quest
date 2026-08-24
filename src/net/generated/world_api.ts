@@ -878,6 +878,14 @@ export interface PhaserTile {
   collisionType: number /* int */;
   rawFootTileId?: number /* int */;
   talkOverTile: boolean;
+  /**
+   * CoordinateOrigin describes whether this square existed in the extracted
+   * game data. ContentOrigin describes who supplied its current appearance.
+   * Keeping both prevents a user edit from erasing native provenance.
+   */
+  isNativeGameData: boolean;
+  coordinateOrigin: string;
+  contentOrigin: string;
 }
 /**
  * PhaserActor represents an actor or object in the game

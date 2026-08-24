@@ -24,6 +24,9 @@ export function probeTile(
     mapId: 9999,
     collisionType,
     talkOverTile: false,
+    isNativeGameData: true,
+    coordinateOrigin: "native",
+    contentOrigin: "native",
     ...overrides,
   };
 }
