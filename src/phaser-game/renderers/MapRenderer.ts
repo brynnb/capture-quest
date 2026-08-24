@@ -1406,6 +1406,59 @@ export class MapRenderer {
     this.mapContainer.bringToTop(this.cursorPreviewContainer);
   }
 
+  showEyedropperPreview(tileX: number, tileY: number): void {
+    this.hideCursorPreview();
+    if (!this.cursorPreviewContainer) {
+      this.cursorPreviewContainer = this.scene.add.container(0, 0);
+      this.cursorPreviewContainer.setDepth(999);
+      this.mapContainer.add(this.cursorPreviewContainer);
+    }
+
+    const outline = this.scene.add.rectangle(
+      tileX * TILE_SIZE + TILE_SIZE / 2,
+      tileY * TILE_SIZE + TILE_SIZE / 2,
+      TILE_SIZE,
+      TILE_SIZE,
+      0x35d9ff,
+      0.18,
+    );
+    outline.setStrokeStyle(2, 0xffffff, 1);
+    this.cursorPreviewContainer.add(outline);
+    this.cursorPreviewSprites.push(outline);
+    this.mapContainer.bringToTop(this.cursorPreviewContainer);
+  }
+
+  showStampCapturePreview(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+  ): void {
+    this.hideCursorPreview();
+    if (!this.cursorPreviewContainer) {
+      this.cursorPreviewContainer = this.scene.add.container(0, 0);
+      this.cursorPreviewContainer.setDepth(999);
+      this.mapContainer.add(this.cursorPreviewContainer);
+    }
+
+    const minX = Math.min(startX, endX);
+    const minY = Math.min(startY, endY);
+    const widthTiles = Math.abs(endX - startX) + 1;
+    const heightTiles = Math.abs(endY - startY) + 1;
+    const selection = this.scene.add.rectangle(
+      minX * TILE_SIZE + (widthTiles * TILE_SIZE) / 2,
+      minY * TILE_SIZE + (heightTiles * TILE_SIZE) / 2,
+      widthTiles * TILE_SIZE,
+      heightTiles * TILE_SIZE,
+      0x35d9ff,
+      0.18,
+    );
+    selection.setStrokeStyle(2, 0xffffff, 1);
+    this.cursorPreviewContainer.add(selection);
+    this.cursorPreviewSprites.push(selection);
+    this.mapContainer.bringToTop(this.cursorPreviewContainer);
+  }
+
   /**
    * Show a semi-transparent stamp preview at the given tile coordinates.
    * The stamp's top-left corner is centered on the cursor tile.
@@ -1426,17 +1479,29 @@ export class MapRenderer {
     for (let row = 0; row < heightTiles; row++) {
       for (let col = 0; col < widthTiles; col++) {
         const tid = tileImageIds[row]?.[col];
-        if (!tid) continue;
-        const tileKey = `tile-${tid}`;
-        if (!this.scene.textures.exists(tileKey)) continue;
-
         const px = (tileX - offsetX + col) * TILE_SIZE;
         const py = (tileY - offsetY + row) * TILE_SIZE;
-        const preview = this.scene.add.image(px, py, tileKey);
-        preview.setOrigin(0, 0);
-        preview.setAlpha(0.5);
-        this.cursorPreviewContainer.add(preview);
-        this.cursorPreviewSprites.push(preview);
+        if (tid) {
+          const tileKey = `tile-${tid}`;
+          if (this.scene.textures.exists(tileKey)) {
+            const preview = this.scene.add.image(px, py, tileKey);
+            preview.setOrigin(0, 0);
+            preview.setAlpha(0.55);
+            this.cursorPreviewContainer.add(preview);
+            this.cursorPreviewSprites.push(preview);
+          }
+        }
+        const outline = this.scene.add.rectangle(
+          px + TILE_SIZE / 2,
+          py + TILE_SIZE / 2,
+          TILE_SIZE,
+          TILE_SIZE,
+          0x35d9ff,
+          tid ? 0.06 : 0.16,
+        );
+        outline.setStrokeStyle(1, 0x35d9ff, 0.9);
+        this.cursorPreviewContainer.add(outline);
+        this.cursorPreviewSprites.push(outline);
       }
     }
 

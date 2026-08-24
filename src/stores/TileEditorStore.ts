@@ -1,7 +1,13 @@
 import { create } from "zustand";
 import type { TileProperty } from "@/net/generated/world_api";
 
-export type TileEditorTool = "single" | "brush" | "eraser" | "fill" | "stamp";
+export type TileEditorTool =
+  | "single"
+  | "brush"
+  | "eraser"
+  | "fill"
+  | "eyedropper"
+  | "stamp";
 
 export interface StampDefinition {
   id: number;
@@ -52,6 +58,13 @@ interface TileEditorStore {
   setSelectedStamp: (stamp: StampDefinition | null) => void;
   availableStamps: StampDefinition[];
   setAvailableStamps: (stamps: StampDefinition[]) => void;
+  addCapturedStamp: (
+    tileImageIds: number[][],
+    widthTiles: number,
+    heightTiles: number,
+  ) => StampDefinition;
+  renameCapturedStamp: (id: number, name: string) => void;
+  deleteCapturedStamp: (id: number) => void;
 
   // Drag state for continuous painting
   isDragging: boolean;
@@ -63,6 +76,37 @@ interface TileEditorStore {
 
 const MAX_UNDO_ENTRIES = 10;
 const MAX_BRUSH_SIZE = 5;
+const CAPTURED_STAMPS_STORAGE_KEY = "capturequest.tile-editor-stamps.v1";
+
+function loadCapturedStamps(): StampDefinition[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(CAPTURED_STAMPS_STORAGE_KEY) ?? "[]");
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((stamp): stamp is StampDefinition =>
+      typeof stamp?.id === "number" &&
+      stamp.id < 0 &&
+      typeof stamp.name === "string" &&
+      Number.isInteger(stamp.widthTiles) &&
+      Number.isInteger(stamp.heightTiles) &&
+      Array.isArray(stamp.tileImageIds),
+    );
+  } catch {
+    return [];
+  }
+}
+
+function persistCapturedStamps(stamps: StampDefinition[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      CAPTURED_STAMPS_STORAGE_KEY,
+      JSON.stringify(stamps.filter((stamp) => stamp.id < 0)),
+    );
+  } catch (error) {
+    console.warn("[TileEditor] Could not persist captured stamps", error);
+  }
+}
 
 const useTileEditorStore = create<TileEditorStore>()((set, get) => ({
   selectedTool: "single",
@@ -107,8 +151,49 @@ const useTileEditorStore = create<TileEditorStore>()((set, get) => ({
 
   selectedStamp: null,
   setSelectedStamp: (stamp) => set({ selectedStamp: stamp, selectedTool: stamp ? "stamp" : "single" }),
-  availableStamps: [],
-  setAvailableStamps: (stamps) => set({ availableStamps: stamps }),
+  availableStamps: loadCapturedStamps(),
+  setAvailableStamps: (stamps) => set((state) => {
+    const captured = state.availableStamps.filter((stamp) => stamp.id < 0);
+    const serverStamps = stamps.filter((stamp) => stamp.id >= 0);
+    return { availableStamps: [...captured, ...serverStamps] };
+  }),
+  addCapturedStamp: (tileImageIds, widthTiles, heightTiles) => {
+    const capturedStamps = get().availableStamps.filter((stamp) => stamp.id < 0);
+    const capturedCount = capturedStamps.length;
+    const lowestCapturedId = Math.min(0, ...capturedStamps.map((stamp) => stamp.id));
+    const stamp: StampDefinition = {
+      id: Math.min(-Date.now(), lowestCapturedId - 1),
+      name: `Captured Stamp ${capturedCount + 1}`,
+      widthTiles,
+      heightTiles,
+      tileImageIds,
+    };
+    const availableStamps = [stamp, ...get().availableStamps];
+    persistCapturedStamps(availableStamps);
+    set({ availableStamps, selectedStamp: stamp, selectedTool: "stamp" });
+    return stamp;
+  },
+  renameCapturedStamp: (id, name) => set((state) => {
+    if (id >= 0) return state;
+    const trimmedName = name.slice(0, 100);
+    const availableStamps = state.availableStamps.map((stamp) =>
+      stamp.id === id ? { ...stamp, name: trimmedName } : stamp,
+    );
+    const selectedStamp = state.selectedStamp?.id === id
+      ? { ...state.selectedStamp, name: trimmedName }
+      : state.selectedStamp;
+    persistCapturedStamps(availableStamps);
+    return { availableStamps, selectedStamp };
+  }),
+  deleteCapturedStamp: (id) => set((state) => {
+    if (id >= 0) return state;
+    const availableStamps = state.availableStamps.filter((stamp) => stamp.id !== id);
+    persistCapturedStamps(availableStamps);
+    return {
+      availableStamps,
+      selectedStamp: state.selectedStamp?.id === id ? null : state.selectedStamp,
+    };
+  }),
 
   isDragging: false,
   setIsDragging: (dragging) => set({ isDragging: dragging }),

@@ -105,6 +105,7 @@ const tools: ToolDef[] = [
   { id: "brush", label: "Brush", icon: "🖌️" },
   { id: "eraser", label: "Eraser", icon: "🧹" },
   { id: "fill", label: "Fill", icon: "🪣" },
+  { id: "eyedropper", label: "Eyedropper", icon: "💧" },
   { id: "stamp", label: "Stamp", icon: "🏗️" },
 ];
 
@@ -136,6 +137,7 @@ const ToolBar: React.FC = () => {
           $isActive={selectedTool === tool.id}
           onClick={() => setSelectedTool(tool.id)}
           title={tool.label}
+          aria-label={tool.label}
         >
           {tool.icon}
         </ToolButton>

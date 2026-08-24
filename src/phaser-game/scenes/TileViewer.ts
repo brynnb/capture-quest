@@ -39,6 +39,7 @@ import { TileViewerInteractionController } from "./tile-viewer/TileViewerInterac
 import { TileViewerOverlays } from "./tile-viewer/TileViewerOverlays";
 import { TileViewerWarpEvents } from "./tile-viewer/TileViewerWarpEvents";
 import { TrainerEncounterPresenter } from "./tile-viewer/TrainerEncounterPresenter";
+import { captureTileStamp } from "./tile-viewer/tileEditorStamp";
 import {
   clearCaptureQuestTileViewerDiagnostics,
   emitCaptureQuestTestEvent,
@@ -1065,9 +1066,10 @@ export class TileViewer extends Scene {
   private tileImageReplacedHandler: ((e: Event) => void) | null = null;
   private tileEditorPointerMoveHandler: ((pointer: Phaser.Input.Pointer) => void) | null = null;
   private tileEditorPointerDownHandler: ((pointer: Phaser.Input.Pointer) => void) | null = null;
-  private tileEditorPointerUpHandler: (() => void) | null = null;
+  private tileEditorPointerUpHandler: ((pointer: Phaser.Input.Pointer) => void) | null = null;
   private tileEditorStoreUnsubscribe: (() => void) | null = null;
   private tileEditorLastPointerTile: { x: number; y: number } | null = null;
+  private tileEditorStampCaptureStart: { x: number; y: number } | null = null;
   private tileEditorDragging = false;
   private tileEditorDragBatchOld: { x: number; y: number; tileImageId: number }[] = [];
   private tileEditorDragBatchNew: { x: number; y: number; tileImageId: number }[] = [];
@@ -1180,6 +1182,19 @@ export class TileViewer extends Scene {
 
         if (state.selectedTileImageId !== previous.selectedTileImageId && state.selectedTileImageId) {
           void this.mapRenderer.loadTileTextureIfNeeded(state.selectedTileImageId);
+        }
+        if (state.selectedStamp !== previous.selectedStamp && state.selectedStamp) {
+          const textureLoads = [...new Set(
+            state.selectedStamp.tileImageIds.flat().filter((tileImageId) => tileImageId > 0),
+          )].map((tileImageId) => this.mapRenderer.loadTileTextureIfNeeded(tileImageId));
+          void Promise.all(textureLoads).then(() => {
+            if (this.tileEditorLastPointerTile && useTileEditorStore.getState().selectedStamp === state.selectedStamp) {
+              this.updateTileEditorCursorPreview(
+                this.tileEditorLastPointerTile.x,
+                this.tileEditorLastPointerTile.y,
+              );
+            }
+          });
         }
         if (this.tileEditorLastPointerTile) {
           this.updateTileEditorCursorPreview(
@@ -1303,9 +1318,17 @@ export class TileViewer extends Scene {
       const tileX = Math.floor(worldPoint.x / TILE_SIZE);
       const tileY = Math.floor(worldPoint.y / TILE_SIZE);
       this.tileEditorLastPointerTile = { x: tileX, y: tileY };
-      this.updateTileEditorCursorPreview(tileX, tileY);
-
-      const { selectedTool } = useTileEditorStore.getState();
+      const { selectedTool, selectedStamp } = useTileEditorStore.getState();
+      if (selectedTool === "stamp" && !selectedStamp && this.tileEditorStampCaptureStart) {
+        this.mapRenderer.showStampCapturePreview(
+          this.tileEditorStampCaptureStart.x,
+          this.tileEditorStampCaptureStart.y,
+          tileX,
+          tileY,
+        );
+      } else {
+        this.updateTileEditorCursorPreview(tileX, tileY);
+      }
 
       // Handle drag painting
       if (this.tileEditorDragging && (selectedTool === "single" || selectedTool === "brush" || selectedTool === "eraser")) {
@@ -1317,7 +1340,7 @@ export class TileViewer extends Scene {
     // Pointer down for drag start
     this.tileEditorPointerDownHandler = (pointer: Phaser.Input.Pointer) => {
       if (!useGameStatusStore.getState().isTileManagerOpen || !this.canUseAdminTileTools()) return;
-      const { selectedTool } = useTileEditorStore.getState();
+      const { selectedTool, selectedStamp } = useTileEditorStore.getState();
       const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
       const tileX = Math.floor(worldPoint.x / TILE_SIZE);
       const tileY = Math.floor(worldPoint.y / TILE_SIZE);
@@ -1328,6 +1351,9 @@ export class TileViewer extends Scene {
         this.tileEditorDragBatchOld = [];
         this.tileEditorDragBatchNew = [];
         this.applyTileEditorAction(tileX, tileY);
+      } else if (selectedTool === "stamp" && !selectedStamp) {
+        this.tileEditorStampCaptureStart = { x: tileX, y: tileY };
+        this.mapRenderer.showStampCapturePreview(tileX, tileY, tileX, tileY);
       } else {
         this.handleTileEditorClick(worldPoint.x, worldPoint.y);
       }
@@ -1335,10 +1361,17 @@ export class TileViewer extends Scene {
     this.input.on("pointerdown", this.tileEditorPointerDownHandler);
 
     // Pointer up for drag end + flush batch
-    this.tileEditorPointerUpHandler = () => {
+    this.tileEditorPointerUpHandler = (pointer: Phaser.Input.Pointer) => {
       if (this.tileEditorDragging) {
         this.tileEditorDragging = false;
         this.flushTileEditorBatch();
+      }
+      if (this.tileEditorStampCaptureStart) {
+        const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+        this.captureTileEditorStamp(
+          Math.floor(worldPoint.x / TILE_SIZE),
+          Math.floor(worldPoint.y / TILE_SIZE),
+        );
       }
     };
     this.input.on("pointerup", this.tileEditorPointerUpHandler);
@@ -1405,6 +1438,7 @@ export class TileViewer extends Scene {
     this.tileEditorStoreUnsubscribe?.();
     this.tileEditorStoreUnsubscribe = null;
     this.tileEditorLastPointerTile = null;
+    this.tileEditorStampCaptureStart = null;
     if (this.tileImageReplacedHandler) {
       window.removeEventListener("tileImageReplaced", this.tileImageReplacedHandler);
       this.tileImageReplacedHandler = null;
@@ -1420,6 +1454,11 @@ export class TileViewer extends Scene {
 
     const { selectedTool, selectedTileImageId, brushSize, selectedStamp } =
       useTileEditorStore.getState();
+
+    if (selectedTool === "eyedropper") {
+      this.mapRenderer.showEyedropperPreview(tileX, tileY);
+      return;
+    }
 
     if (selectedTool === "eraser") {
       this.mapRenderer.showEraserPreview(tileX, tileY, brushSize);
@@ -1459,6 +1498,38 @@ export class TileViewer extends Scene {
         this.mapRenderer.showCursorPreview(tileX, tileY, selectedTileImageId, size);
       }
     });
+  }
+
+  private captureTileEditorStamp(endX: number, endY: number) {
+    const start = this.tileEditorStampCaptureStart;
+    this.tileEditorStampCaptureStart = null;
+    if (!start) return;
+
+    const captured = captureTileStamp(
+      start,
+      { x: endX, y: endY },
+      (x, y) => this.mapRenderer.getTileImageIdAt(x, y),
+    );
+    if (!captured) {
+      console.warn("[TileEditor] Stamp selection is limited to 500 tiles");
+      this.mapRenderer.hideCursorPreview();
+      return;
+    }
+
+    if (captured.populatedTiles === 0) {
+      this.mapRenderer.hideCursorPreview();
+      return;
+    }
+
+    const stamp = useTileEditorStore.getState().addCapturedStamp(
+      captured.tileImageIds,
+      captured.widthTiles,
+      captured.heightTiles,
+    );
+    for (const tileImageId of new Set(stamp.tileImageIds.flat().filter(Boolean))) {
+      void this.mapRenderer.loadTileTextureIfNeeded(tileImageId);
+    }
+    this.updateTileEditorCursorPreview(endX, endY);
   }
 
   private applyTileEditorAction(tileX: number, tileY: number) {
@@ -1583,6 +1654,15 @@ export class TileViewer extends Scene {
     if (!store) return;
     const { selectedTool, selectedTileImageId } = store.getState();
 
+    if (selectedTool === "eyedropper") {
+      const sampledTileImageId = this.mapRenderer.getTileImageIdAt(tileX, tileY);
+      if (sampledTileImageId > 0) {
+        store.getState().setSelectedTileImageId(sampledTileImageId);
+        store.getState().setSelectedTool("single");
+      }
+      return;
+    }
+
     if (selectedTool === "fill") {
       if (!selectedTileImageId) return;
       const mapId = 9999;
@@ -1623,6 +1703,7 @@ export class TileViewer extends Scene {
           this.mapRenderer.loadTileTextureIfNeeded(tid).then(() => {
             this.mapRenderer.addTile(tx, ty, tid);
           });
+          this.updateTileEditorLookup(tx, ty, tid);
           const ct = this.getTileCollisionType(tid);
           this.playerMovementController.updateCollisionTile(
             tx,
