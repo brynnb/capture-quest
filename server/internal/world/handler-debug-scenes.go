@@ -396,6 +396,7 @@ func loadDebugWarpProbeCases(wh *WorldHandler, limit, offset, sourceMapID int) (
 		WHERE pw.destination_map_id IS NOT NULL
 		  AND pw.destination_x IS NOT NULL
 		  AND pw.destination_y IS NOT NULL
+		  AND COALESCE(pw.warp_type, 'door') NOT IN ('elevator', 'inactive')
 		  AND ($1 = 0 OR pw.source_map_id = $1)`,
 		sourceMapID,
 	).Scan(&total); err != nil {
@@ -425,6 +426,7 @@ func loadDebugWarpProbeCases(wh *WorldHandler, limit, offset, sourceMapID int) (
 		WHERE pw.destination_map_id IS NOT NULL
 		  AND pw.destination_x IS NOT NULL
 		  AND pw.destination_y IS NOT NULL
+		  AND COALESCE(pw.warp_type, 'door') NOT IN ('elevator', 'inactive')
 		  AND ($3 = 0 OR pw.source_map_id = $3)
 		ORDER BY source_map.is_overworld DESC, source_map.name, pw.y, pw.x, pw.id
 		LIMIT $1 OFFSET $2`,

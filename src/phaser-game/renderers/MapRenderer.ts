@@ -2,7 +2,10 @@ import { Scene } from "phaser";
 import { PhaserTile, PhaserActor, PhaserWarp } from "@/net/generated/world_api";
 import useGameStatusStore from "@/stores/GameStatusStore";
 import { TILE_SIZE } from "../constants";
-import { ActorMovementController } from "../controllers/ActorMovementController";
+import {
+  ActorMovementController,
+  type ActorMovementOptions,
+} from "../controllers/ActorMovementController";
 import { ActorManager } from "../managers/ActorManager";
 import { isWorldInputFrozen } from "../utils/worldInputGuard";
 
@@ -622,6 +625,7 @@ export class MapRenderer {
     newY: number,
     direction?: string,
     actor?: PhaserActor,
+    movementOptions?: ActorMovementOptions,
   ): boolean {
     // Check if actor is registered with movement controller
     const actorState = this.movementController.getActorState(actorId);
@@ -641,6 +645,7 @@ export class MapRenderer {
         newX,
         newY,
         moveDirection,
+        movementOptions,
       );
       return true;
     }

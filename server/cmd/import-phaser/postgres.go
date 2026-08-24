@@ -222,6 +222,12 @@ func importPhaserToPostgres(sqlite, pg *sql.DB, context extractorImportContext) 
 	if err := classifyWarpActivationsPostgres(sqlite, pg); err != nil {
 		return err
 	}
+	if err := markOrphanedBlockedCarpetWarpsPostgres(pg); err != nil {
+		return err
+	}
+	if err := seedDungeonHoleWarpsPostgres(sqlite, pg); err != nil {
+		return err
+	}
 
 	if err := importTrainerHeadersPostgres(sqlite, pg); err != nil {
 		return err
@@ -235,6 +241,12 @@ func importPhaserToPostgres(sqlite, pg *sql.DB, context extractorImportContext) 
 		return err
 	}
 	if err := seedCaptureQuestRuntimeDataPostgres(pg, sqlite); err != nil {
+		return err
+	}
+	if err := markDynamicElevatorWarpPlaceholdersPostgres(pg); err != nil {
+		return err
+	}
+	if err := markUnresolvedLastMapWarpPlaceholdersPostgres(pg); err != nil {
 		return err
 	}
 	if err := importCoordinateTriggersPostgres(sqlite, pg); err != nil {

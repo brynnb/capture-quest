@@ -31,6 +31,12 @@ type warpActivationClassification struct {
 	Direction   string
 }
 
+const (
+	warpTypeDoor     = "door"
+	warpTypeCarpet   = "carpet"
+	warpTypeInactive = "inactive"
+)
+
 var doorTileIDsByTileset = map[int]map[int]bool{
 	0:  {0x1B: true, 0x58: true},
 	2:  {0x5E: true},
@@ -72,6 +78,13 @@ var warpTileIDsByTileset = map[int]map[int]bool{
 	23: {0x1B: true, 0x3B: true},
 }
 
+var warpTileInFrontExtraCheckMaps = map[string]bool{
+	"rocktunnel1f":     true,
+	"rockethideoutb1f": true,
+	"rockethideoutb2f": true,
+	"rockethideoutb4f": true,
+}
+
 func classifyWarpActivationsPostgres(sqlite, pg *sql.DB) error {
 	log.Println("Classifying warp activation metadata...")
 	classifications, err := classifyWarpActivations(sqlite)
@@ -95,13 +108,19 @@ func classifyWarpActivationsPostgres(sqlite, pg *sql.DB) error {
 
 	doorCount := 0
 	carpetCount := 0
-	updatedCarpets := int64(0)
+	inactiveCount := 0
+	updatedRows := int64(0)
 	for _, classification := range classifications {
-		if classification.WarpType == "door" {
+		if classification.WarpType == warpTypeDoor {
 			doorCount++
 			continue
 		}
-		carpetCount++
+		switch classification.WarpType {
+		case warpTypeCarpet:
+			carpetCount++
+		case warpTypeInactive:
+			inactiveCount++
+		}
 		x, y := classification.X, classification.Y
 		if classification.IsOverworld {
 			if offset, ok := offsets[normalizeMapName(classification.MapName)]; ok {
@@ -114,11 +133,11 @@ func classifyWarpActivationsPostgres(sqlite, pg *sql.DB) error {
 			return fmt.Errorf("update warp activation metadata for map %d (%d,%d): %w", classification.MapID, x, y, err)
 		}
 		affected, _ := result.RowsAffected()
-		updatedCarpets += affected
+		updatedRows += affected
 	}
 
-	log.Printf("  -> Classified %d warps: %d door, %d carpet (%d runtime rows updated)",
-		len(classifications), doorCount, carpetCount, updatedCarpets)
+	log.Printf("  -> Classified %d warps: %d door, %d carpet, %d inactive (%d runtime rows updated)",
+		len(classifications), doorCount, carpetCount, inactiveCount, updatedRows)
 	return nil
 }
 
@@ -194,21 +213,27 @@ func classifyWarpActivations(sqlite *sql.DB) ([]warpActivationClassification, er
 			X:           x,
 			Y:           y,
 			IsOverworld: isOverworldInt != 0,
-			WarpType:    "door",
+			WarpType:    warpTypeDoor,
 		}
 		if !isDoorOrWarpFootTile(tilesetID, footTileID) {
-			classification.WarpType = "carpet"
-			classification.Direction = inferWarpDirection(
-				x,
-				y,
-				mapWidth*2,
-				mapHeight*2,
-				destMap,
-				destWarpIndex,
-				tileCollisionsByMapID[mapID],
-				mapInfoByName,
-				warpPointsByMapID,
-			)
+			sourceWidthTiles := mapWidth * 2
+			sourceHeightTiles := mapHeight * 2
+			if usesEdgeExtraWarpCheck(mapName, tilesetID) && !isWarpPointOnMapEdge(x, y, sourceWidthTiles, sourceHeightTiles) {
+				classification.WarpType = warpTypeInactive
+			} else {
+				classification.WarpType = warpTypeCarpet
+				classification.Direction = inferWarpDirection(
+					x,
+					y,
+					sourceWidthTiles,
+					sourceHeightTiles,
+					destMap,
+					destWarpIndex,
+					tileCollisionsByMapID[mapID],
+					mapInfoByName,
+					warpPointsByMapID,
+				)
+			}
 		}
 		classifications = append(classifications, classification)
 	}
@@ -335,6 +360,26 @@ func isDoorOrWarpFootTile(tilesetID, footTileID int) bool {
 		return true
 	}
 	return warpTileIDsByTileset[tilesetID][footTileID]
+}
+
+func usesEdgeExtraWarpCheck(mapName string, tilesetID int) bool {
+	normalizedMapName := normalizeMapName(mapName)
+	if normalizedMapName == "ssanne3f" {
+		return true
+	}
+	if warpTileInFrontExtraCheckMaps[normalizedMapName] {
+		return false
+	}
+	switch tilesetID {
+	case 0, 13, 14, 23:
+		return false
+	default:
+		return true
+	}
+}
+
+func isWarpPointOnMapEdge(x, y, widthTiles, heightTiles int) bool {
+	return x <= 0 || y <= 0 || x >= widthTiles-1 || y >= heightTiles-1
 }
 
 func inferWarpDirection(

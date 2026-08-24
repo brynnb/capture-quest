@@ -49,6 +49,10 @@ type warpIntegrityResolved struct {
 func TestAllWarpDestinationsLandInBoundsAndCanMove(t *testing.T) {
 	db := openImportPokemonSQLiteForTest(t)
 	defer db.Close()
+	if !sqliteColumnExists(db, "warps", "source_warp_index") ||
+		!sqliteColumnExists(db, "warps", "destination_kind") {
+		t.Skip("requires a schema-v2 generated public/phaser/pokemon.db")
+	}
 
 	maps := loadWarpIntegrityMaps(t, db)
 	tiles := loadWarpIntegrityTiles(t, db)

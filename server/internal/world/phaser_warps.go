@@ -48,7 +48,8 @@ func (m *phaserWarpManager) load() {
 		FROM phaser_warps
 		WHERE destination_map_id IS NOT NULL
 		  AND destination_x IS NOT NULL
-		  AND destination_y IS NOT NULL`)
+		  AND destination_y IS NOT NULL
+		  AND COALESCE(warp_type, 'door') NOT IN ('elevator', 'inactive')`)
 	if err != nil {
 		log.Printf("[PhaserWarps] Failed to load: %v", err)
 		return

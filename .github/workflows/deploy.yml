@@ -43,6 +43,7 @@ jobs:
                 .github/workflows/deploy.yml \
                 package-lock.json \
                 scripts/bootstrap_capturequest.sh \
+                scripts/generate_dungeon_hole_warps.py \
                 scripts/generate_audio_manifest.mjs \
                 scripts/sync_extractor_assets.py \
                 scripts/sync_extractor_audio_manifest.mjs \
@@ -109,6 +110,18 @@ jobs:
             process.exit(1);
           }
           NODE
+            python3 - <<'PY'
+          import sqlite3
+          conn = sqlite3.connect("public/phaser/pokemon.db")
+          try:
+              row = conn.execute(
+                  "SELECT COUNT(*) FROM script_event_dungeon_hole_warps"
+              ).fetchone()
+              if row is None or row[0] < 1:
+                  raise SystemExit(1)
+          finally:
+              conn.close()
+          PY
           }
 
           if assets_ready; then
@@ -181,6 +194,18 @@ jobs:
             throw new Error("Audio manifest does not contain 561 distinct asset pairs");
           }
           NODE
+          python3 - <<'PY'
+          import sqlite3
+          conn = sqlite3.connect("public/phaser/pokemon.db")
+          try:
+              count = conn.execute(
+                  "SELECT COUNT(*) FROM script_event_dungeon_hole_warps"
+              ).fetchone()[0]
+              if count < 1:
+                  raise SystemExit("Expected generated dungeon hole warp metadata")
+          finally:
+              conn.close()
+          PY
 
       - name: Build Frontend
         run: |
@@ -219,12 +244,20 @@ jobs:
           SSH_OPTS="-o StrictHostKeyChecking=no -i ~/.ssh/deploy_key"
           HOST="$DEPLOY_HOST"
           APP_DIR="$DEPLOY_APP_DIR"
+          CQ_SERVER_STOPPED=false
+          cleanup_cq_server() {
+            if [ "$CQ_SERVER_STOPPED" = "true" ]; then
+              ssh $SSH_OPTS $HOST "sudo systemctl start cq-server" || true
+            fi
+          }
+          trap cleanup_cq_server EXIT
 
           # Upload frontend
           tar --exclude='._*' --exclude='.DS_Store' -czf - -C dist . | ssh $SSH_OPTS $HOST "mkdir -p $APP_DIR/dist && cd $APP_DIR/dist && tar xzf -"
 
           # Stop services before overwriting
           ssh $SSH_OPTS $HOST "sudo systemctl stop cq-server"
+          CQ_SERVER_STOPPED=true
 
           # Upload backend
           gzip -c server/server | ssh $SSH_OPTS $HOST "gunzip > $APP_DIR/server/server && chmod +x $APP_DIR/server/server"
@@ -245,5 +278,6 @@ jobs:
 
           # Restart
           ssh $SSH_OPTS $HOST "sudo systemctl start cq-server && sudo systemctl reload caddy"
+          CQ_SERVER_STOPPED=false
 
           rm -f ~/.ssh/deploy_key

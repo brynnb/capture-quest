@@ -525,6 +525,7 @@ func escapeRopeDestination(ses *session.Session, wh *WorldHandler) (int, int, in
 			AND pw.destination_map_id IS NOT NULL
 			AND pw.destination_x IS NOT NULL
 			AND pw.destination_y IS NOT NULL
+			AND COALESCE(pw.warp_type, 'door') NOT IN ('elevator', 'inactive')
 		ORDER BY CASE WHEN COALESCE(pm.is_overworld, 0) = 1 OR pw.destination_map_id = $2 THEN 0 ELSE 1 END, pw.id
 		LIMIT 1
 	`, mapID, UnifiedOverworldMapID).Scan(&destMapID, &destX, &destY)

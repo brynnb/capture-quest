@@ -21,6 +21,46 @@ validate_extractor_artifact() {
   if [[ ! -x "${python_bin}" ]]; then
     python_bin="$(command -v python3)"
   fi
+
+  "${python_bin}" - "${db_path}" <<'PY'
+import sqlite3
+import sys
+
+db_path = sys.argv[1]
+required_tables = (
+    "tiles",
+    "tile_images",
+    "script_event_candidates",
+    "script_event_candidate_diagnostics",
+    "script_event_in_game_trades",
+    "script_event_tile_overrides",
+    "script_event_boulder_targets",
+    "script_event_dungeon_hole_warps",
+    "spin_tiles",
+)
+
+with sqlite3.connect(db_path) as conn:
+    missing = []
+    empty = []
+    for table in required_tables:
+        exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (table,),
+        ).fetchone()
+        if not exists:
+            missing.append(table)
+        elif conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] < 1:
+            empty.append(table)
+
+if missing or empty:
+    details = []
+    if missing:
+        details.append("missing: " + ", ".join(missing))
+    if empty:
+        details.append("empty: " + ", ".join(empty))
+    raise SystemExit("Extractor artifact validation failed (" + "; ".join(details) + ")")
+PY
+
   local bundle_stage="${ADAPTER_BUNDLE_DEST}.stage"
   mkdir -p "$(dirname "${ADAPTER_BUNDLE_DEST}")"
   rm -f "${bundle_stage}"
@@ -167,6 +207,11 @@ Run the extractor through CaptureQuest:
 EOF
   exit 1
 fi
+
+echo "Generating dungeon hole warp seeds..."
+python3 "${REPO_ROOT}/scripts/generate_dungeon_hole_warps.py" \
+  --extractor-root "${EXTRACTOR_ROOT}" \
+  --sqlite "${DB_SOURCE}"
 
 if ! validate_extractor_artifact "${DB_SOURCE}"; then
   cat >&2 <<EOF

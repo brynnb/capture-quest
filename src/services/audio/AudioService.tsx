@@ -230,9 +230,7 @@ const AudioService = () => {
     const effectiveMapId = travelMapId ?? currentMapId;
     const effectiveMapName =
       travelMapName ?? getMapNameById(effectiveMapId) ?? getMapNameById(currentMapId);
-    const mapMusic =
-      musicTrackForMap(effectiveMapId, effectiveMapName) ??
-      (currentMapId === 9999 ? musicTrackForConstant("MUSIC_PALLET_TOWN") : null);
+    const mapMusic = musicTrackForMap(effectiveMapId, effectiveMapName);
     if (mapMusic) {
       AudioManager.playMusic(mapMusic);
     }

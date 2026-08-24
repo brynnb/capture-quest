@@ -57,3 +57,37 @@ func TestResolveWarpDestinationUpdatesConvertsOverworldDestinationToGlobalCoordi
 		t.Fatalf("resolved to (%d,%d), want global Viridian coords (13,-47)", updates[0].X, updates[0].Y)
 	}
 }
+
+func TestResolveWarpDestinationUpdatesViridianForestSouthGateExitToRoute2(t *testing.T) {
+	maps := map[int]importedMapInfo{
+		13: {Name: "ROUTE_2", IsOverworld: true},
+		50: {Name: "VIRIDIAN_FOREST_SOUTH_GATE", IsOverworld: false},
+	}
+	offsets := map[string]coordinateOffset{
+		"route2": {X: 0, Y: -144},
+	}
+	events := []importedWarpEvent{
+		{MapID: 13, MapName: "Route2", X: 12, Y: 9, DestWarpIndex: 1},
+		{MapID: 13, MapName: "Route2", X: 3, Y: 11, DestWarpIndex: 2},
+		{MapID: 13, MapName: "Route2", X: 15, Y: 19, DestWarpIndex: 1},
+		{MapID: 13, MapName: "Route2", X: 16, Y: 35, DestWarpIndex: 2},
+		{MapID: 13, MapName: "Route2", X: 15, Y: 39, DestWarpIndex: 3},
+		{MapID: 13, MapName: "Route2", X: 3, Y: 43, DestWarpIndex: 3},
+		{MapID: 50, MapName: "ViridianForestSouthGate", X: 4, Y: 7, DestWarpIndex: 6},
+		{MapID: 50, MapName: "ViridianForestSouthGate", X: 5, Y: 7, DestWarpIndex: 6},
+	}
+	warps := []importedRuntimeWarp{
+		{ID: 769, SourceMapID: 50, X: 4, Y: 7, DestinationMapID: 13, HasDestination: true},
+		{ID: 770, SourceMapID: 50, X: 5, Y: 7, DestinationMapID: 13, HasDestination: true},
+	}
+
+	updates := resolveWarpDestinationUpdates(maps, offsets, events, warps)
+	if len(updates) != 2 {
+		t.Fatalf("got %d updates, want 2: %#v", len(updates), updates)
+	}
+	for _, update := range updates {
+		if update.X != 3 || update.Y != -101 {
+			t.Fatalf("warp %d resolved to (%d,%d), want Route2 global coords (3,-101)", update.WarpID, update.X, update.Y)
+		}
+	}
+}
