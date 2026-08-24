@@ -131,7 +131,8 @@ func (m *WildEncounterManager) preloadTileCache() {
 	rows, err := myDB.Query(`
 		SELECT map_id, x, y, encounter_area_id
 		FROM phaser_tiles
-		WHERE encounter_area_id IS NOT NULL`)
+		WHERE encounter_area_id IS NOT NULL
+		  AND is_tile_erased = 0`)
 	if err != nil {
 		log.Printf("[WildEncounter] Failed to preload tile cache: %v", err)
 		return
@@ -235,11 +236,13 @@ func (m *WildEncounterManager) getEncounterAreaID(mapID, x, y int) int {
 		err = myDB.QueryRow(`
 			SELECT encounter_area_id FROM phaser_tiles
 			WHERE map_id IS NULL AND x = $1 AND y = $2
+			  AND is_tile_erased = 0
 			LIMIT 1`, x, y).Scan(&dbAreaID)
 	} else {
 		err = myDB.QueryRow(`
 			SELECT encounter_area_id FROM phaser_tiles
 			WHERE map_id = $1 AND x = $2 AND y = $3
+			  AND is_tile_erased = 0
 			LIMIT 1`, mapID, x, y).Scan(&dbAreaID)
 	}
 	if err != nil || !dbAreaID.Valid {
@@ -252,6 +255,21 @@ func (m *WildEncounterManager) getEncounterAreaID(mapID, x, y int) int {
 	m.tileCacheMu.Unlock()
 
 	return int(dbAreaID.Int64)
+}
+
+func (m *WildEncounterManager) InvalidateTiles(mapID int, tiles []TileEdit) {
+	if m == nil || len(tiles) == 0 {
+		return
+	}
+	m.tileCacheMu.Lock()
+	defer m.tileCacheMu.Unlock()
+	for _, tile := range tiles {
+		delete(m.tileCache, [3]int{mapID, tile.X, tile.Y})
+		if mapID == UnifiedOverworldMapID || (m.wh != nil && m.wh.ActorManager != nil && m.wh.ActorManager.IsOverworld(mapID)) {
+			delete(m.tileCache, [3]int{UnifiedOverworldMapID, tile.X, tile.Y})
+		}
+	}
+	m.cacheLoaded = false
 }
 
 // selectEncounterPokemon picks a random Pokémon from an encounter area's slot table.

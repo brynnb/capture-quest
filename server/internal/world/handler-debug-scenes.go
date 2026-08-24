@@ -1738,12 +1738,12 @@ func debugOverworldMapOffset(mapID int) (int, int, error) {
 	var offsetX, offsetY int
 	if err := db.GlobalWorldDB.DB.QueryRow(`
 		SELECT
-			COALESCE(MIN(x) - MIN(local_x), 0),
-			COALESCE(MIN(y) - MIN(local_y), 0)
+			COALESCE(MIN(x) - MIN(COALESCE(original_local_x, local_x)), 0),
+			COALESCE(MIN(y) - MIN(COALESCE(original_local_y, local_y)), 0)
 		FROM phaser_tiles
-		WHERE source_map_id = $1
-		  AND local_x IS NOT NULL
-		  AND local_y IS NOT NULL`,
+		WHERE COALESCE(original_source_map_id, source_map_id) = $1
+		  AND COALESCE(original_local_x, local_x) IS NOT NULL
+		  AND COALESCE(original_local_y, local_y) IS NOT NULL`,
 		mapID,
 	).Scan(&offsetX, &offsetY); err != nil {
 		return 0, 0, fmt.Errorf("lookup overworld offset for map %d: %w", mapID, err)

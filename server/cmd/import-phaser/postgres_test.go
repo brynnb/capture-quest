@@ -279,7 +279,17 @@ func TestBakeOverworldCoordinatesUsesTileSourceMapID(t *testing.T) {
 
 	execStatements(t, db,
 		`CREATE TABLE phaser_maps (id INTEGER PRIMARY KEY, name TEXT, is_overworld INTEGER)`,
-		`CREATE TABLE phaser_tiles (x INTEGER, y INTEGER, local_x INTEGER, local_y INTEGER, map_id INTEGER, source_map_id INTEGER)`,
+		`CREATE TABLE phaser_tiles (
+			x INTEGER,
+			y INTEGER,
+			local_x INTEGER,
+			local_y INTEGER,
+			map_id INTEGER,
+			source_map_id INTEGER,
+			original_local_x INTEGER,
+			original_local_y INTEGER,
+			original_source_map_id INTEGER
+		)`,
 		`CREATE TABLE phaser_objects (map_id INTEGER, x INTEGER, y INTEGER, local_x INTEGER, local_y INTEGER)`,
 		`CREATE TABLE phaser_warp_events (id INTEGER PRIMARY KEY, map_id INTEGER, x INTEGER, y INTEGER, dest_map TEXT)`,
 		`CREATE TABLE phaser_warps (id INTEGER PRIMARY KEY, source_map_id INTEGER, x INTEGER, y INTEGER, destination_map TEXT)`,
@@ -314,7 +324,130 @@ func TestBakeOverworldCoordinatesUsesTileSourceMapID(t *testing.T) {
 	}
 }
 
-func TestResolveLastMapWarpDestinationsResolvesUniqueExternalOrigin(t *testing.T) {
+func TestMergeImportedTilesPreservesEditedCurrentState(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	execStatements(t, db, `
+		CREATE TABLE phaser_tiles (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			x INTEGER NOT NULL,
+			y INTEGER NOT NULL,
+			tile_image_id INTEGER NOT NULL,
+			local_x INTEGER,
+			local_y INTEGER,
+			map_id INTEGER,
+			source_map_id INTEGER,
+			collision_type INTEGER DEFAULT 0,
+			raw_foot_tile_id INTEGER,
+			talk_over_tile BOOLEAN NOT NULL DEFAULT false,
+			encounter_area_id INTEGER,
+			is_native_game_data BOOLEAN NOT NULL DEFAULT false,
+			coordinate_origin TEXT NOT NULL DEFAULT 'user',
+			content_origin TEXT NOT NULL DEFAULT 'user',
+			is_original_tile_location INTEGER NOT NULL DEFAULT 0,
+			has_tile_edit INTEGER NOT NULL DEFAULT 0,
+			is_tile_erased INTEGER NOT NULL DEFAULT 0,
+			original_tile_image_id INTEGER,
+			original_collision_type INTEGER,
+			original_raw_foot_tile_id INTEGER,
+			original_talk_over_tile BOOLEAN,
+			original_encounter_area_id INTEGER,
+			original_local_x INTEGER,
+			original_local_y INTEGER,
+			original_source_map_id INTEGER,
+			is_user_placed INTEGER NOT NULL DEFAULT 0,
+			placed_by_char_id INTEGER,
+			placed_at TEXT,
+			last_edited_by_char_id INTEGER,
+			last_edited_at TEXT,
+			last_edit_source TEXT
+		);
+		CREATE UNIQUE INDEX phaser_tiles_coord_unique_idx ON phaser_tiles (x, y, COALESCE(map_id, -1));
+		INSERT INTO phaser_tiles (
+			x, y, tile_image_id, map_id, collision_type,
+			is_original_tile_location, has_tile_edit, is_tile_erased,
+			original_tile_image_id, original_collision_type, last_edit_source
+		) VALUES
+			(1, 1, 9, NULL, 0, 1, 1, 0, 1, 1, 'admin_editor'),
+			(4, 4, 4, NULL, 1, 1, 0, 0, 4, 1, NULL),
+			(8, 8, 8, NULL, 1, 0, 1, 0, NULL, NULL, 'admin_editor');
+	`)
+
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`
+		CREATE TEMP TABLE phaser_tiles_import_stage (
+			x INTEGER NOT NULL,
+			y INTEGER NOT NULL,
+			tile_image_id INTEGER NOT NULL,
+			local_x INTEGER,
+			local_y INTEGER,
+			map_id INTEGER,
+			source_map_id INTEGER,
+			collision_type INTEGER DEFAULT 0,
+			raw_foot_tile_id INTEGER,
+			talk_over_tile BOOLEAN NOT NULL DEFAULT false
+		)`,
+	); err != nil {
+		t.Fatalf("create stage: %v", err)
+	}
+	if _, err := tx.Exec(`
+		INSERT INTO phaser_tiles_import_stage
+			(x, y, tile_image_id, local_x, local_y, map_id, source_map_id, collision_type, raw_foot_tile_id, talk_over_tile)
+		VALUES
+			(1, 1, 2, 1, 1, NULL, 17, 1, NULL, false),
+			(2, 2, 3, 2, 2, NULL, 17, 1, NULL, false)`,
+	); err != nil {
+		t.Fatalf("seed stage: %v", err)
+	}
+	if err := mergeImportedTilesPostgres(tx); err != nil {
+		t.Fatalf("mergeImportedTilesPostgres: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit tx: %v", err)
+	}
+
+	var currentTile, originalTile, hasEdit int
+	if err := db.QueryRow(`
+		SELECT tile_image_id, original_tile_image_id, has_tile_edit
+		FROM phaser_tiles
+		WHERE map_id IS NULL AND x = 1 AND y = 1`,
+	).Scan(&currentTile, &originalTile, &hasEdit); err != nil {
+		t.Fatalf("query edited imported tile: %v", err)
+	}
+	if currentTile != 9 || originalTile != 2 || hasEdit != 1 {
+		t.Fatalf("edited row current/original/hasEdit = %d/%d/%d, want 9/2/1", currentTile, originalTile, hasEdit)
+	}
+
+	var rows int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM phaser_tiles WHERE map_id IS NULL AND x = 4 AND y = 4`).Scan(&rows); err != nil {
+		t.Fatalf("count stale base row: %v", err)
+	}
+	if rows != 0 {
+		t.Fatalf("stale unedited base rows = %d, want 0", rows)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM phaser_tiles WHERE map_id IS NULL AND x = 8 AND y = 8`).Scan(&rows); err != nil {
+		t.Fatalf("count added edit row: %v", err)
+	}
+	if rows != 1 {
+		t.Fatalf("added edited rows = %d, want 1", rows)
+	}
+	if err := db.QueryRow(`SELECT tile_image_id, original_tile_image_id FROM phaser_tiles WHERE map_id IS NULL AND x = 2 AND y = 2`).Scan(&currentTile, &originalTile); err != nil {
+		t.Fatalf("query new imported row: %v", err)
+	}
+	if currentTile != 3 || originalTile != 3 {
+		t.Fatalf("new imported row current/original = %d/%d, want 3/3", currentTile, originalTile)
+	}
+}
+
+func TestResolveLastMapWarpDestinationsFallsBackToUniqueIncomingMap(t *testing.T) {
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatalf("open db: %v", err)

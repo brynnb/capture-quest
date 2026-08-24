@@ -158,10 +158,10 @@ func currentEventTileState(charID int64, mapID int, efm *EventFlagManager, x, y 
 }
 
 func baseEventTileState(mapID, x, y int) (EventTileState, error) {
-	query := `SELECT tile_image_id, collision_type, raw_foot_tile_id, talk_over_tile FROM phaser_tiles WHERE map_id = $1 AND x = $2 AND y = $3 LIMIT 1`
+	query := `SELECT tile_image_id, collision_type, raw_foot_tile_id, talk_over_tile FROM phaser_tiles WHERE map_id = $1 AND x = $2 AND y = $3 AND is_tile_erased = 0 LIMIT 1`
 	args := []interface{}{mapID, x, y}
 	if mapID == UnifiedOverworldMapID {
-		query = `SELECT tile_image_id, collision_type, raw_foot_tile_id, talk_over_tile FROM phaser_tiles WHERE map_id IS NULL AND x = $1 AND y = $2 LIMIT 1`
+		query = `SELECT tile_image_id, collision_type, raw_foot_tile_id, talk_over_tile FROM phaser_tiles WHERE map_id IS NULL AND x = $1 AND y = $2 AND is_tile_erased = 0 LIMIT 1`
 		args = []interface{}{x, y}
 	}
 

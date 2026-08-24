@@ -60,7 +60,10 @@ export function dispatchTileEditorResponse(opcode: number, data: unknown): boole
     case OpCodes.TileEditorBroadcast: {
       const payload = data as TileEditorBroadcastPayload;
       if (payload && Array.isArray(payload.tiles)) {
-        // Dispatch a custom event that TileViewer listens for
+        // Dispatch the neutral world-tile event plus the legacy editor name.
+        window.dispatchEvent(
+          new CustomEvent("worldTileUpdate", { detail: payload }),
+        );
         window.dispatchEvent(
           new CustomEvent("tileEditorBroadcast", { detail: payload }),
         );
@@ -70,7 +73,24 @@ export function dispatchTileEditorResponse(opcode: number, data: unknown): boole
     case OpCodes.TileEditorPlaceResponse:
     case OpCodes.TileEditorEraseResponse:
     case OpCodes.TileEditorFillResponse:
-    case OpCodes.TileEditorUndoResponse:
+    case OpCodes.TileEditorUndoResponse: {
+      const response = data as { success?: boolean; error?: string };
+      if (response && response.success === false) {
+        window.dispatchEvent(
+          new CustomEvent("tileEditorMutationRejected", {
+            detail: { opcode, error: response.error },
+          }),
+        );
+      } else {
+        window.dispatchEvent(
+          new CustomEvent("tileEditorMutationAccepted", {
+            detail: { opcode },
+          }),
+        );
+      }
+      // Acknowledgements — tile rendering comes via the broadcast
+      return true;
+    }
     case OpCodes.TilePropertyUpdateResponse:
       // Acknowledgements — tile rendering comes via the broadcast
       return true;

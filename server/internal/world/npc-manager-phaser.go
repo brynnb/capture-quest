@@ -348,7 +348,8 @@ func (m *PhaserActorManager) ensureWalkableMapLoaded(mapID int) {
 		rows, err = db.GlobalWorldDB.DB.Query(`
 				SELECT x, y, collision_type, raw_foot_tile_id
 				FROM phaser_tiles
-				WHERE map_id IS NULL`)
+				WHERE map_id IS NULL
+				  AND is_tile_erased = 0`)
 		if err != nil {
 			log.Printf("[PhaserActorManager] Error loading overworld walkable maps: %v", err)
 			return
@@ -356,7 +357,10 @@ func (m *PhaserActorManager) ensureWalkableMapLoaded(mapID int) {
 	} else {
 		// For interior maps, just load that specific map
 		rows, err = db.GlobalWorldDB.DB.Query(`
-				SELECT x, y, collision_type, raw_foot_tile_id FROM phaser_tiles WHERE map_id = $1`, mapID)
+				SELECT x, y, collision_type, raw_foot_tile_id
+				FROM phaser_tiles
+				WHERE map_id = $1
+				  AND is_tile_erased = 0`, mapID)
 		if err != nil {
 			log.Printf("[PhaserActorManager] Error loading walkable map %d: %v", mapID, err)
 			return

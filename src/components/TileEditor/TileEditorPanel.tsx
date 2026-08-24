@@ -3,6 +3,8 @@ import styled from "styled-components";
 import ToolBar from "./ToolBar";
 import TilePalette from "./TilePalette";
 import useTileEditorStore from "@/stores/TileEditorStore";
+import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
+import useGameStatusStore from "@/stores/GameStatusStore";
 import * as TileEditorNet from "./TileEditorNetwork";
 
 const PanelContainer = styled.div`
@@ -33,6 +35,28 @@ const PanelTitle = styled.div`
   letter-spacing: 0.5px;
 `;
 
+const CloseButton = styled.button`
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  right: 10px;
+  min-width: 44px;
+  min-height: 40px;
+  padding: 6px 12px;
+  color: #fff;
+  background: #4a4ba6;
+  border: 2px solid #303176;
+  border-radius: 10px;
+  font-family: "Outfit", sans-serif;
+  font-weight: 800;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    background: #5d5fbd;
+  }
+`;
+
 const PanelWrapper = styled.div`
   position: relative;
   width: 100%;
@@ -41,16 +65,28 @@ const PanelWrapper = styled.div`
 
 const TileEditorPanel: React.FC = () => {
   const tilePropertiesLoaded = useTileEditorStore((s) => s.tilePropertiesLoaded);
+  const canUseAdminTileTools = usePlayerCharacterStore((s) => (s.characterProfile?.gm ?? 0) > 0);
+  const toggleTileManager = useGameStatusStore((s) => s.toggleTileManager);
 
   useEffect(() => {
-    if (!tilePropertiesLoaded) {
+    if (canUseAdminTileTools && !tilePropertiesLoaded) {
       TileEditorNet.requestTileProperties();
     }
-  }, [tilePropertiesLoaded]);
+  }, [canUseAdminTileTools, tilePropertiesLoaded]);
+
+  if (!canUseAdminTileTools) return null;
 
   return (
     <PanelWrapper>
       <PanelTitle>Tile Manager</PanelTitle>
+      <CloseButton
+        type="button"
+        onClick={toggleTileManager}
+        aria-label="Close Tile Manager"
+        data-testid="tile-manager-close"
+      >
+        Close
+      </CloseButton>
       <PanelContainer>
         <ToolBar />
         <TilePalette />

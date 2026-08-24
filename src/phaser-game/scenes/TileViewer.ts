@@ -20,6 +20,7 @@ import {
   PhaserActor,
   PhaserWarp,
 } from "@/net/generated/world_api";
+import * as OpCodes from "@/net/generated/opcodes";
 
 import useGameStatusStore from "@/stores/GameStatusStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
@@ -52,6 +53,28 @@ export interface TileUpdateEvent {
 
 export interface ActorUpdateEvent {
   actor: PhaserActor;
+}
+
+type TileEditorUndoTileEntry = { x: number; y: number; tileImageId: number };
+type TileEditorOptimisticKind = "place" | "erase" | "undo";
+type TileEditorOptimisticEntry = {
+  kind: TileEditorOptimisticKind;
+  oldTiles: TileEditorUndoTileEntry[];
+  newTiles: TileEditorUndoTileEntry[];
+  mapId: number;
+};
+
+function tileEditorOptimisticKindForOpcode(opcode: unknown): TileEditorOptimisticKind | null {
+  switch (opcode) {
+    case OpCodes.TileEditorPlaceResponse:
+      return "place";
+    case OpCodes.TileEditorEraseResponse:
+      return "erase";
+    case OpCodes.TileEditorUndoResponse:
+      return "undo";
+    default:
+      return null;
+  }
 }
 
 function numberOrNull(value: unknown): number | null {
@@ -1036,7 +1059,9 @@ export class TileViewer extends Scene {
 
   // --- Tile Editor ---
 
-  private tileEditorBroadcastHandler: ((e: Event) => void) | null = null;
+  private worldTileUpdateHandler: ((e: Event) => void) | null = null;
+  private tileEditorMutationRejectedHandler: ((e: Event) => void) | null = null;
+  private tileEditorMutationAcceptedHandler: ((e: Event) => void) | null = null;
   private tileEditorUndoHandler: ((e: Event) => void) | null = null;
   private tileImageReplacedHandler: ((e: Event) => void) | null = null;
   private tileEditorPointerMoveHandler: ((pointer: Phaser.Input.Pointer) => void) | null = null;
@@ -1046,6 +1071,7 @@ export class TileViewer extends Scene {
   private tileEditorDragBatchOld: { x: number; y: number; tileImageId: number }[] = [];
   private tileEditorDragBatchNew: { x: number; y: number; tileImageId: number }[] = [];
   private tileEditorFlushTimer: ReturnType<typeof setTimeout> | null = null;
+  private tileEditorPendingOptimisticEntries: TileEditorOptimisticEntry[] = [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private tileEditorStoreCache: any = null;
 
@@ -1081,16 +1107,47 @@ export class TileViewer extends Scene {
     return props.find((p: { tileImageId: number }) => p.tileImageId === tileImageId)?.talkOverTile === true;
   }
 
+  private takeTileEditorPendingOptimisticEntry(kind: TileEditorOptimisticKind): TileEditorOptimisticEntry | null {
+    const index = this.tileEditorPendingOptimisticEntries.findIndex((entry) => entry.kind === kind);
+    if (index === -1) return null;
+    const [entry] = this.tileEditorPendingOptimisticEntries.splice(index, 1);
+    return entry ?? null;
+  }
+
+  private applyTileEditorStoredTile(tile: TileEditorUndoTileEntry) {
+    if (tile.tileImageId === 0) {
+      this.mapRenderer.removeTile(tile.x, tile.y);
+      this.playerMovementController.updateCollisionTile(tile.x, tile.y, 0, true);
+      return;
+    }
+
+    this.mapRenderer.loadTileTextureIfNeeded(tile.tileImageId).then(() => {
+      this.mapRenderer.addTile(tile.x, tile.y, tile.tileImageId);
+    });
+    this.playerMovementController.updateCollisionTile(
+      tile.x,
+      tile.y,
+      this.getTileCollisionType(tile.tileImageId),
+      false,
+      this.getTileRawFootTileId(tile.tileImageId),
+      this.getTileTalkOverTile(tile.tileImageId),
+    );
+  }
+
+  private canUseAdminTileTools(): boolean {
+    return (usePlayerCharacterStore.getState().characterProfile?.gm ?? 0) > 0;
+  }
+
   setupTileEditorListeners() {
-    // Broadcast handler: other clients placed/erased tiles
-    this.tileEditorBroadcastHandler = (e: Event) => {
+    // Broadcast handler: committed world tile updates from the server
+    this.worldTileUpdateHandler = (e: Event) => {
       const payload = (e as CustomEvent).detail as {
-        tiles: { x: number; y: number; tileImageId: number; collisionType: number; rawFootTileId?: number; talkOverTile?: boolean }[];
+        tiles: { x: number; y: number; tileImageId: number; collisionType: number; rawFootTileId?: number; talkOverTile?: boolean; erased?: boolean }[];
         mapId: number;
       };
       if (!payload || !Array.isArray(payload.tiles)) return;
       for (const tile of payload.tiles) {
-        if (tile.tileImageId === 0) {
+        if (tile.erased || tile.tileImageId === 0) {
           this.mapRenderer.removeTile(tile.x, tile.y);
           this.playerMovementController.updateCollisionTile(tile.x, tile.y, 0, true);
         } else {
@@ -1108,31 +1165,65 @@ export class TileViewer extends Scene {
         }
       }
     };
-    window.addEventListener("tileEditorBroadcast", this.tileEditorBroadcastHandler);
+    window.addEventListener("worldTileUpdate", this.worldTileUpdateHandler);
+
+    this.tileEditorMutationRejectedHandler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { opcode?: number } | undefined;
+      const kind = tileEditorOptimisticKindForOpcode(detail?.opcode);
+      if (!kind) return;
+
+      const pending = this.takeTileEditorPendingOptimisticEntry(kind);
+      if (!pending) return;
+
+      const store = this.getTileEditorStore();
+      if (kind === "undo") {
+        for (const tile of pending.newTiles) {
+          this.applyTileEditorStoredTile(tile);
+        }
+        store?.getState().pushUndo({
+          oldTiles: pending.oldTiles,
+          newTiles: pending.newTiles,
+          mapId: pending.mapId,
+        });
+        return;
+      }
+
+      for (const tile of pending.oldTiles) {
+        this.applyTileEditorStoredTile(tile);
+      }
+      store?.getState().popUndo();
+    };
+    window.addEventListener("tileEditorMutationRejected", this.tileEditorMutationRejectedHandler);
+
+    this.tileEditorMutationAcceptedHandler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { opcode?: number } | undefined;
+      const kind = tileEditorOptimisticKindForOpcode(detail?.opcode);
+      if (kind) {
+        this.takeTileEditorPendingOptimisticEntry(kind);
+      }
+    };
+    window.addEventListener("tileEditorMutationAccepted", this.tileEditorMutationAcceptedHandler);
 
     // Undo handler: user clicked undo in the toolbar
     this.tileEditorUndoHandler = (e: Event) => {
-      const entry = (e as CustomEvent).detail as { oldTiles: { x: number; y: number; tileImageId: number }[]; mapId: number };
+      const entry = (e as CustomEvent).detail as {
+        oldTiles: TileEditorUndoTileEntry[];
+        newTiles: TileEditorUndoTileEntry[];
+        mapId: number;
+      };
       if (!entry || !Array.isArray(entry.oldTiles)) return;
 
       // Apply old tiles locally
       for (const tile of entry.oldTiles) {
-        if (tile.tileImageId === 0) {
-          this.mapRenderer.removeTile(tile.x, tile.y);
-          this.playerMovementController.updateCollisionTile(tile.x, tile.y, 0, true);
-        } else {
-          this.mapRenderer.addTile(tile.x, tile.y, tile.tileImageId);
-          const ct = this.getTileCollisionType(tile.tileImageId);
-          this.playerMovementController.updateCollisionTile(
-            tile.x,
-            tile.y,
-            ct,
-            false,
-            this.getTileRawFootTileId(tile.tileImageId),
-            this.getTileTalkOverTile(tile.tileImageId),
-          );
-        }
+        this.applyTileEditorStoredTile(tile);
       }
+
+      this.tileEditorPendingOptimisticEntries.push({
+        kind: "undo",
+        oldTiles: entry.oldTiles,
+        newTiles: entry.newTiles ?? [],
+        mapId: entry.mapId,
+      });
 
       // Send undo to server
       import("@/components/TileEditor/TileEditorNetwork").then((mod) => {
@@ -1143,7 +1234,7 @@ export class TileViewer extends Scene {
 
     // Pointer move for cursor preview
     this.tileEditorPointerMoveHandler = (pointer: Phaser.Input.Pointer) => {
-      if (!useGameStatusStore.getState().isTileManagerOpen) {
+      if (!useGameStatusStore.getState().isTileManagerOpen || !this.canUseAdminTileTools()) {
         this.mapRenderer.hideCursorPreview();
         return;
       }
@@ -1184,7 +1275,7 @@ export class TileViewer extends Scene {
     // Pointer down for drag start
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     this.tileEditorPointerDownHandler = (_pointer: Phaser.Input.Pointer) => {
-      if (!useGameStatusStore.getState().isTileManagerOpen) return;
+      if (!useGameStatusStore.getState().isTileManagerOpen || !this.canUseAdminTileTools()) return;
       const store = this.getTileEditorStore();
       if (!store) return;
       const { selectedTool } = store.getState();
@@ -1229,9 +1320,17 @@ export class TileViewer extends Scene {
   }
 
   cleanupTileEditorListeners() {
-    if (this.tileEditorBroadcastHandler) {
-      window.removeEventListener("tileEditorBroadcast", this.tileEditorBroadcastHandler);
-      this.tileEditorBroadcastHandler = null;
+    if (this.worldTileUpdateHandler) {
+      window.removeEventListener("worldTileUpdate", this.worldTileUpdateHandler);
+      this.worldTileUpdateHandler = null;
+    }
+    if (this.tileEditorMutationRejectedHandler) {
+      window.removeEventListener("tileEditorMutationRejected", this.tileEditorMutationRejectedHandler);
+      this.tileEditorMutationRejectedHandler = null;
+    }
+    if (this.tileEditorMutationAcceptedHandler) {
+      window.removeEventListener("tileEditorMutationAccepted", this.tileEditorMutationAcceptedHandler);
+      this.tileEditorMutationAcceptedHandler = null;
     }
     if (this.tileEditorUndoHandler) {
       window.removeEventListener("tileEditorUndo", this.tileEditorUndoHandler);
@@ -1249,6 +1348,7 @@ export class TileViewer extends Scene {
   }
 
   private applyTileEditorAction(tileX: number, tileY: number) {
+    if (!this.canUseAdminTileTools()) return;
     const store = this.getTileEditorStore();
     if (!store) return;
     const { selectedTool, selectedTileImageId, brushSize: bs } = store.getState();
@@ -1306,22 +1406,44 @@ export class TileViewer extends Scene {
     const store = this.getTileEditorStore();
     if (!store) return;
 
-    // Push undo entry
-    store.getState().pushUndo({
+    const undoEntry = {
       oldTiles: [...this.tileEditorDragBatchOld],
       newTiles: [...this.tileEditorDragBatchNew],
       mapId,
-    });
+    };
+
+    store.getState().pushUndo(undoEntry);
 
     // Separate into place and erase batches
     const placeTiles = this.tileEditorDragBatchNew.filter((t) => t.tileImageId !== 0);
     const eraseTiles = this.tileEditorDragBatchNew.filter((t) => t.tileImageId === 0);
+    const oldTilesByCoord = new Map(
+      undoEntry.oldTiles.map((tile) => [`${tile.x},${tile.y}`, tile]),
+    );
+    const oldTilesFor = (tiles: TileEditorUndoTileEntry[]) =>
+      tiles.map((tile) => oldTilesByCoord.get(`${tile.x},${tile.y}`) ?? {
+        x: tile.x,
+        y: tile.y,
+        tileImageId: 0,
+      });
 
     import("@/components/TileEditor/TileEditorNetwork").then((mod) => {
       if (placeTiles.length > 0) {
+        this.tileEditorPendingOptimisticEntries.push({
+          kind: "place",
+          oldTiles: oldTilesFor(placeTiles),
+          newTiles: placeTiles,
+          mapId,
+        });
         mod.sendTilePlace(placeTiles, mapId);
       }
       if (eraseTiles.length > 0) {
+        this.tileEditorPendingOptimisticEntries.push({
+          kind: "erase",
+          oldTiles: oldTilesFor(eraseTiles),
+          newTiles: eraseTiles,
+          mapId,
+        });
         mod.sendTileErase(eraseTiles.map((t) => ({ x: t.x, y: t.y })), mapId);
       }
     });
@@ -1331,6 +1453,8 @@ export class TileViewer extends Scene {
   }
 
   handleTileEditorClick(worldX: number, worldY: number) {
+    if (!this.canUseAdminTileTools()) return;
+
     const tileX = Math.floor(worldX / TILE_SIZE);
     const tileY = Math.floor(worldY / TILE_SIZE);
 
@@ -1381,18 +1505,24 @@ export class TileViewer extends Scene {
           const ct = this.getTileCollisionType(tid);
           this.playerMovementController.updateCollisionTile(
             tx,
-                ty,
-                ct,
-                false,
-                this.getTileRawFootTileId(tid),
-                this.getTileTalkOverTile(tid),
-              );
+            ty,
+            ct,
+            false,
+            this.getTileRawFootTileId(tid),
+            this.getTileTalkOverTile(tid),
+          );
         }
       }
 
       if (placeTiles.length > 0) {
-        // Push undo entry
-        store.getState().pushUndo({ oldTiles, newTiles: placeTiles, mapId });
+        const undoEntry = { oldTiles, newTiles: placeTiles, mapId };
+        store.getState().pushUndo(undoEntry);
+        this.tileEditorPendingOptimisticEntries.push({
+          kind: "place",
+          oldTiles,
+          newTiles: placeTiles,
+          mapId,
+        });
 
         // Send to server
         import("@/components/TileEditor/TileEditorNetwork").then((mod) => {

@@ -122,7 +122,8 @@ func setupActorVisibilityDB(t *testing.T) {
 			x INTEGER,
 			y INTEGER,
 			collision_type INTEGER,
-			raw_foot_tile_id INTEGER
+			raw_foot_tile_id INTEGER,
+			is_tile_erased INTEGER DEFAULT 0
 		);
 		CREATE TABLE character_object_positions (
 			character_id INTEGER,

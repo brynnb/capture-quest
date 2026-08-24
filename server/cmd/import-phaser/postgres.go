@@ -23,6 +23,9 @@ func importPhaserToPostgres(sqlite, pg *sql.DB, context extractorImportContext) 
 	if err := ensurePostgresSchema(pg); err != nil {
 		return err
 	}
+	if err := ensurePhaserTileMutationColumnsPostgres(pg); err != nil {
+		return err
+	}
 	if err := truncateImportedPostgresTables(pg); err != nil {
 		return err
 	}
@@ -371,6 +374,31 @@ func ensurePostgresSchema(pg *sql.DB) error {
 	return nil
 }
 
+func ensurePhaserTileMutationColumnsPostgres(pg *sql.DB) error {
+	statements := []string{
+		`ALTER TABLE phaser_tiles ADD COLUMN IF NOT EXISTS is_original_tile_location smallint NOT NULL DEFAULT 0`,
+		`ALTER TABLE phaser_tiles ADD COLUMN IF NOT EXISTS has_tile_edit smallint NOT NULL DEFAULT 0`,
+		`ALTER TABLE phaser_tiles ADD COLUMN IF NOT EXISTS is_tile_erased smallint NOT NULL DEFAULT 0`,
+		`ALTER TABLE phaser_tiles ADD COLUMN IF NOT EXISTS original_tile_image_id integer DEFAULT NULL`,
+		`ALTER TABLE phaser_tiles ADD COLUMN IF NOT EXISTS original_collision_type integer DEFAULT NULL`,
+		`ALTER TABLE phaser_tiles ADD COLUMN IF NOT EXISTS original_raw_foot_tile_id integer DEFAULT NULL`,
+		`ALTER TABLE phaser_tiles ADD COLUMN IF NOT EXISTS original_talk_over_tile boolean DEFAULT NULL`,
+		`ALTER TABLE phaser_tiles ADD COLUMN IF NOT EXISTS original_encounter_area_id integer DEFAULT NULL`,
+		`ALTER TABLE phaser_tiles ADD COLUMN IF NOT EXISTS original_local_x integer DEFAULT NULL`,
+		`ALTER TABLE phaser_tiles ADD COLUMN IF NOT EXISTS original_local_y integer DEFAULT NULL`,
+		`ALTER TABLE phaser_tiles ADD COLUMN IF NOT EXISTS original_source_map_id integer DEFAULT NULL`,
+		`ALTER TABLE phaser_tiles ADD COLUMN IF NOT EXISTS last_edited_by_char_id integer DEFAULT NULL`,
+		`ALTER TABLE phaser_tiles ADD COLUMN IF NOT EXISTS last_edited_at timestamp DEFAULT NULL`,
+		`ALTER TABLE phaser_tiles ADD COLUMN IF NOT EXISTS last_edit_source varchar(32) DEFAULT NULL`,
+	}
+	for _, stmt := range statements {
+		if _, err := pg.Exec(stmt); err != nil {
+			return fmt.Errorf("ensure phaser_tiles mutation column: %w", err)
+		}
+	}
+	return nil
+}
+
 func findPostgresSchemaPath() (string, error) {
 	candidates := []string{
 		filepath.Join("schema", "postgres_runtime_schema.sql"),
@@ -428,8 +456,6 @@ func truncateImportedPostgresTables(pg *sql.DB) error {
 		"phaser_items",
 		"phaser_warps",
 		"phaser_objects",
-		"phaser_tiles",
-		"phaser_tile_images",
 		"phaser_maps",
 	}
 	query := fmt.Sprintf("TRUNCATE TABLE %s RESTART IDENTITY", strings.Join(tables, ", "))
@@ -584,7 +610,14 @@ func importTileImagesPostgres(sqlite, pg *sql.DB) (map[int64]tileImageRuntimeMet
 	stmt, err := pg.Prepare(`
 		INSERT INTO phaser_tile_images
 			(id, image_path, tileset_id, block_index, position, raw_foot_tile_id, talk_over_tile)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT (id) DO UPDATE SET
+			image_path = EXCLUDED.image_path,
+			tileset_id = EXCLUDED.tileset_id,
+			block_index = EXCLUDED.block_index,
+			position = EXCLUDED.position,
+			raw_foot_tile_id = EXCLUDED.raw_foot_tile_id,
+			talk_over_tile = EXCLUDED.talk_over_tile`)
 	if err != nil {
 		return nil, fmt.Errorf("prepare phaser_tile_images insert: %w", err)
 	}
@@ -626,7 +659,7 @@ func importTileImagesPostgres(sqlite, pg *sql.DB) (map[int64]tileImageRuntimeMet
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("read tile_image rows: %w", err)
 	}
-	log.Printf("  -> Imported %d tile images", count)
+	log.Printf("  -> Imported/merged %d tile images", count)
 	return metadataByTileImageID, nil
 }
 
@@ -639,8 +672,33 @@ func nullInt64ToParam(value sql.NullInt64) any {
 
 func importTilesPostgres(sqlite, pg *sql.DB, tileImageMetadata map[int64]tileImageRuntimeMetadata) error {
 	log.Println("Importing tiles -> phaser_tiles...")
+	tx, err := pg.Begin()
+	if err != nil {
+		return fmt.Errorf("begin phaser_tiles import: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`DROP TABLE IF EXISTS phaser_tiles_import_stage`); err != nil {
+		return fmt.Errorf("drop phaser_tiles import stage: %w", err)
+	}
+	if _, err := tx.Exec(`
+		CREATE TEMP TABLE phaser_tiles_import_stage (
+			x integer NOT NULL,
+			y integer NOT NULL,
+			tile_image_id integer NOT NULL,
+			local_x integer DEFAULT NULL,
+			local_y integer DEFAULT NULL,
+			map_id integer DEFAULT NULL,
+			source_map_id integer DEFAULT NULL,
+			collision_type integer DEFAULT 0,
+			raw_foot_tile_id integer DEFAULT NULL,
+			talk_over_tile boolean NOT NULL DEFAULT false
+		) ON COMMIT DROP`); err != nil {
+		return fmt.Errorf("create phaser_tiles import stage: %w", err)
+	}
+
 	overworldMaps := make(map[int64]bool)
-	rows, err := pg.Query(`SELECT id FROM phaser_maps WHERE is_overworld = 1`)
+	rows, err := tx.Query(`SELECT id FROM phaser_maps WHERE is_overworld = 1`)
 	if err != nil {
 		return fmt.Errorf("query overworld maps: %w", err)
 	}
@@ -680,15 +738,12 @@ func importTilesPostgres(sqlite, pg *sql.DB, tileImageMetadata map[int64]tileIma
 	}
 	defer sourceRows.Close()
 
-	stmt, err := pg.Prepare(`
-		INSERT INTO phaser_tiles (
-			id, x, y, tile_image_id, local_x, local_y, map_id, source_map_id,
-			collision_type, raw_foot_tile_id, talk_over_tile,
-			is_native_game_data, coordinate_origin, content_origin
-		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, TRUE, 'native', 'native')`)
+	stmt, err := tx.Prepare(`
+		INSERT INTO phaser_tiles_import_stage
+			(x, y, tile_image_id, local_x, local_y, map_id, source_map_id, collision_type, raw_foot_tile_id, talk_over_tile)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`)
 	if err != nil {
-		return fmt.Errorf("prepare phaser_tiles insert: %w", err)
+		return fmt.Errorf("prepare phaser_tiles stage insert: %w", err)
 	}
 	defer stmt.Close()
 
@@ -716,7 +771,6 @@ func importTilesPostgres(sqlite, pg *sql.DB, tileImageMetadata map[int64]tileIma
 		}
 		talkOverTile := isTalkOverTile(mapTilesetIDs[mapID], talkOverRawFootTileID)
 		if _, err := stmt.Exec(
-			id,
 			x,
 			y,
 			tileImageID,
@@ -728,7 +782,7 @@ func importTilesPostgres(sqlite, pg *sql.DB, tileImageMetadata map[int64]tileIma
 			nullInt64ToParam(rawFootTileID),
 			talkOverTile,
 		); err != nil {
-			return fmt.Errorf("insert tile %d: %w", id, err)
+			return fmt.Errorf("stage tile %d: %w", id, err)
 		}
 		count++
 		if count%10000 == 0 {
@@ -738,7 +792,151 @@ func importTilesPostgres(sqlite, pg *sql.DB, tileImageMetadata map[int64]tileIma
 	if err := sourceRows.Err(); err != nil {
 		return fmt.Errorf("read tile rows: %w", err)
 	}
-	log.Printf("  -> Imported %d tiles", count)
+	if err := mergeImportedTilesPostgres(tx); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit phaser_tiles import: %w", err)
+	}
+	log.Printf("  -> Imported/merged %d tiles", count)
+	return nil
+}
+
+func mergeImportedTilesPostgres(tx *sql.Tx) error {
+	result, err := tx.Exec(`
+		UPDATE phaser_tiles
+		SET
+			is_original_tile_location = 1,
+			is_native_game_data = TRUE,
+			coordinate_origin = 'native',
+			content_origin = CASE WHEN has_tile_edit = 1 THEN 'user' ELSE 'native' END,
+			original_tile_image_id = (
+				SELECT s.tile_image_id FROM phaser_tiles_import_stage AS s
+				WHERE s.x = phaser_tiles.x AND s.y = phaser_tiles.y AND COALESCE(s.map_id, -1) = COALESCE(phaser_tiles.map_id, -1)
+			),
+			original_collision_type = (
+				SELECT s.collision_type FROM phaser_tiles_import_stage AS s
+				WHERE s.x = phaser_tiles.x AND s.y = phaser_tiles.y AND COALESCE(s.map_id, -1) = COALESCE(phaser_tiles.map_id, -1)
+			),
+			original_raw_foot_tile_id = (
+				SELECT s.raw_foot_tile_id FROM phaser_tiles_import_stage AS s
+				WHERE s.x = phaser_tiles.x AND s.y = phaser_tiles.y AND COALESCE(s.map_id, -1) = COALESCE(phaser_tiles.map_id, -1)
+			),
+			original_talk_over_tile = (
+				SELECT s.talk_over_tile FROM phaser_tiles_import_stage AS s
+				WHERE s.x = phaser_tiles.x AND s.y = phaser_tiles.y AND COALESCE(s.map_id, -1) = COALESCE(phaser_tiles.map_id, -1)
+			),
+			original_encounter_area_id = NULL,
+			original_local_x = (
+				SELECT s.local_x FROM phaser_tiles_import_stage AS s
+				WHERE s.x = phaser_tiles.x AND s.y = phaser_tiles.y AND COALESCE(s.map_id, -1) = COALESCE(phaser_tiles.map_id, -1)
+			),
+			original_local_y = (
+				SELECT s.local_y FROM phaser_tiles_import_stage AS s
+				WHERE s.x = phaser_tiles.x AND s.y = phaser_tiles.y AND COALESCE(s.map_id, -1) = COALESCE(phaser_tiles.map_id, -1)
+			),
+			original_source_map_id = (
+				SELECT s.source_map_id FROM phaser_tiles_import_stage AS s
+				WHERE s.x = phaser_tiles.x AND s.y = phaser_tiles.y AND COALESCE(s.map_id, -1) = COALESCE(phaser_tiles.map_id, -1)
+			),
+			tile_image_id = CASE WHEN has_tile_edit = 1 THEN tile_image_id ELSE (
+				SELECT s.tile_image_id FROM phaser_tiles_import_stage AS s
+				WHERE s.x = phaser_tiles.x AND s.y = phaser_tiles.y AND COALESCE(s.map_id, -1) = COALESCE(phaser_tiles.map_id, -1)
+			) END,
+			collision_type = CASE WHEN has_tile_edit = 1 THEN collision_type ELSE (
+				SELECT s.collision_type FROM phaser_tiles_import_stage AS s
+				WHERE s.x = phaser_tiles.x AND s.y = phaser_tiles.y AND COALESCE(s.map_id, -1) = COALESCE(phaser_tiles.map_id, -1)
+			) END,
+			raw_foot_tile_id = CASE WHEN has_tile_edit = 1 THEN raw_foot_tile_id ELSE (
+				SELECT s.raw_foot_tile_id FROM phaser_tiles_import_stage AS s
+				WHERE s.x = phaser_tiles.x AND s.y = phaser_tiles.y AND COALESCE(s.map_id, -1) = COALESCE(phaser_tiles.map_id, -1)
+			) END,
+			talk_over_tile = CASE WHEN has_tile_edit = 1 THEN talk_over_tile ELSE (
+				SELECT s.talk_over_tile FROM phaser_tiles_import_stage AS s
+				WHERE s.x = phaser_tiles.x AND s.y = phaser_tiles.y AND COALESCE(s.map_id, -1) = COALESCE(phaser_tiles.map_id, -1)
+			) END,
+			encounter_area_id = CASE WHEN has_tile_edit = 1 THEN encounter_area_id ELSE NULL END,
+			local_x = CASE WHEN has_tile_edit = 1 THEN local_x ELSE (
+				SELECT s.local_x FROM phaser_tiles_import_stage AS s
+				WHERE s.x = phaser_tiles.x AND s.y = phaser_tiles.y AND COALESCE(s.map_id, -1) = COALESCE(phaser_tiles.map_id, -1)
+			) END,
+			local_y = CASE WHEN has_tile_edit = 1 THEN local_y ELSE (
+				SELECT s.local_y FROM phaser_tiles_import_stage AS s
+				WHERE s.x = phaser_tiles.x AND s.y = phaser_tiles.y AND COALESCE(s.map_id, -1) = COALESCE(phaser_tiles.map_id, -1)
+			) END,
+			source_map_id = CASE WHEN has_tile_edit = 1 THEN source_map_id ELSE (
+				SELECT s.source_map_id FROM phaser_tiles_import_stage AS s
+				WHERE s.x = phaser_tiles.x AND s.y = phaser_tiles.y AND COALESCE(s.map_id, -1) = COALESCE(phaser_tiles.map_id, -1)
+			) END,
+			is_tile_erased = CASE WHEN has_tile_edit = 1 THEN is_tile_erased ELSE 0 END,
+			is_user_placed = CASE WHEN has_tile_edit = 1 THEN is_user_placed ELSE 0 END,
+			placed_by_char_id = CASE WHEN has_tile_edit = 1 THEN placed_by_char_id ELSE NULL END,
+			placed_at = CASE WHEN has_tile_edit = 1 THEN placed_at ELSE NULL END,
+			last_edited_by_char_id = CASE WHEN has_tile_edit = 1 THEN last_edited_by_char_id ELSE NULL END,
+			last_edited_at = CASE WHEN has_tile_edit = 1 THEN last_edited_at ELSE NULL END,
+			last_edit_source = CASE WHEN has_tile_edit = 1 THEN last_edit_source ELSE NULL END
+		WHERE EXISTS (
+			SELECT 1
+			FROM phaser_tiles_import_stage AS s
+			WHERE s.x = phaser_tiles.x
+			  AND s.y = phaser_tiles.y
+			  AND COALESCE(s.map_id, -1) = COALESCE(phaser_tiles.map_id, -1)
+		)`)
+	if err != nil {
+		return fmt.Errorf("update existing phaser_tiles from import stage: %w", err)
+	}
+	updated, _ := result.RowsAffected()
+
+	result, err = tx.Exec(`
+		INSERT INTO phaser_tiles (
+			x, y, tile_image_id, local_x, local_y, map_id, source_map_id,
+			collision_type, raw_foot_tile_id, talk_over_tile, encounter_area_id,
+			is_native_game_data, coordinate_origin, content_origin,
+			is_original_tile_location, has_tile_edit, is_tile_erased,
+			original_tile_image_id, original_collision_type, original_raw_foot_tile_id,
+			original_talk_over_tile, original_encounter_area_id, original_local_x,
+			original_local_y, original_source_map_id,
+			is_user_placed, placed_by_char_id, placed_at,
+			last_edited_by_char_id, last_edited_at, last_edit_source
+		)
+		SELECT
+			x, y, tile_image_id, local_x, local_y, map_id, source_map_id,
+			collision_type, raw_foot_tile_id, talk_over_tile, NULL,
+			TRUE, 'native', 'native',
+			1, 0, 0,
+			tile_image_id, collision_type, raw_foot_tile_id,
+			talk_over_tile, NULL, local_x, local_y, source_map_id,
+			0, NULL, NULL,
+			NULL, NULL, NULL
+		FROM phaser_tiles_import_stage
+		WHERE NOT EXISTS (
+			SELECT 1
+			FROM phaser_tiles AS t
+			WHERE t.x = phaser_tiles_import_stage.x
+			  AND t.y = phaser_tiles_import_stage.y
+			  AND COALESCE(t.map_id, -1) = COALESCE(phaser_tiles_import_stage.map_id, -1)
+		)`)
+	if err != nil {
+		return fmt.Errorf("insert new phaser_tiles from import stage: %w", err)
+	}
+	inserted, _ := result.RowsAffected()
+
+	result, err = tx.Exec(`
+		DELETE FROM phaser_tiles AS t
+		WHERE t.is_original_tile_location = 1
+		  AND t.has_tile_edit = 0
+		  AND NOT EXISTS (
+			SELECT 1
+			FROM phaser_tiles_import_stage AS s
+			WHERE s.x = t.x
+			  AND s.y = t.y
+			  AND COALESCE(s.map_id, -1) = COALESCE(t.map_id, -1)
+		  )`)
+	if err != nil {
+		return fmt.Errorf("delete stale unedited phaser_tiles: %w", err)
+	}
+	deleted, _ := result.RowsAffected()
+	log.Printf("  -> Merged %d updated and %d inserted tile rows, deleted %d stale unedited base rows", updated, inserted, deleted)
 	return nil
 }
 
@@ -904,7 +1102,10 @@ func deriveEncounterAreasPostgres(sqlite, pg *sql.DB, release string) error {
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec(`UPDATE phaser_tiles SET encounter_area_id = NULL`); err != nil {
+	if _, err := tx.Exec(`UPDATE phaser_tiles SET original_encounter_area_id = NULL WHERE is_original_tile_location = 1`); err != nil {
+		return fmt.Errorf("clear original tile encounter area ids: %w", err)
+	}
+	if _, err := tx.Exec(`UPDATE phaser_tiles SET encounter_area_id = NULL WHERE has_tile_edit = 0`); err != nil {
 		return fmt.Errorf("clear tile encounter area ids: %w", err)
 	}
 	if _, err := tx.Exec(`DELETE FROM phaser_encounter_area_slots`); err != nil {
@@ -993,15 +1194,17 @@ func deriveEncounterAreasPostgres(sqlite, pg *sql.DB, release string) error {
 func tagNonOverworldEncounterTilesPostgres(tx *sql.Tx) (int64, error) {
 	result, err := tx.Exec(`
 		UPDATE phaser_tiles AS t
-		SET encounter_area_id = ea.id
+		SET original_encounter_area_id = ea.id,
+			encounter_area_id = CASE WHEN t.has_tile_edit = 0 THEN ea.id ELSE t.encounter_area_id END
 		FROM phaser_maps AS pm
 		JOIN phaser_encounter_areas AS ea
 		  ON ea.name = pm.name || '_GRASS'
 		WHERE t.map_id = pm.id
+		  AND t.is_original_tile_location = 1
 		  AND ea.encounter_type = 'grass'
-		  AND t.collision_type = 1
+		  AND COALESCE(t.original_collision_type, t.collision_type) = 1
 		  AND (
-		      t.tile_image_id IN (25, 142, 144, 149, 825)
+		      COALESCE(t.original_tile_image_id, t.tile_image_id) IN (25, 142, 144, 149, 825)
 		      OR (pm.id >= 37 AND COALESCE(pm.tileset_id, -1) <> 3)
 		  )`)
 	if err != nil {
@@ -1045,12 +1248,14 @@ func loadOverworldEncounterMapsPostgres(tx *sql.Tx, offsets map[string]coordinat
 func tagOverworldEncounterTilesPostgres(tx *sql.Tx, maps []overworldEncounterMap) (int64, error) {
 	stmt, err := tx.Prepare(`
 		UPDATE phaser_tiles
-		SET encounter_area_id = $1
+		SET original_encounter_area_id = $1,
+			encounter_area_id = CASE WHEN has_tile_edit = 0 THEN $1 ELSE encounter_area_id END
 		WHERE map_id IS NULL
+		  AND is_original_tile_location = 1
 		  AND x >= $2 AND x < $3
 		  AND y >= $4 AND y < $5
-		  AND collision_type = 1
-		  AND tile_image_id IN (25, 142, 144, 149, 825)`)
+		  AND COALESCE(original_collision_type, collision_type) = 1
+		  AND COALESCE(original_tile_image_id, tile_image_id) IN (25, 142, 144, 149, 825)`)
 	if err != nil {
 		return 0, fmt.Errorf("prepare overworld encounter tile tagging: %w", err)
 	}
@@ -1396,12 +1601,14 @@ func bakeOverworldCoordinatesPostgres(pg *sql.DB) error {
 			y = po.local_y + offsets.offset_y
 		FROM phaser_maps AS pm,
 			(
-				SELECT source_map_id AS map_id,
-					MIN(x) - MIN(local_x) AS offset_x,
-					MIN(y) - MIN(local_y) AS offset_y
+				SELECT COALESCE(original_source_map_id, source_map_id) AS map_id,
+					MIN(x) - MIN(COALESCE(original_local_x, local_x)) AS offset_x,
+					MIN(y) - MIN(COALESCE(original_local_y, local_y)) AS offset_y
 				FROM phaser_tiles
-				WHERE local_x IS NOT NULL AND local_y IS NOT NULL AND source_map_id IS NOT NULL
-				GROUP BY source_map_id
+				WHERE COALESCE(original_local_x, local_x) IS NOT NULL
+				  AND COALESCE(original_local_y, local_y) IS NOT NULL
+				  AND COALESCE(original_source_map_id, source_map_id) IS NOT NULL
+				GROUP BY COALESCE(original_source_map_id, source_map_id)
 			) AS offsets
 		WHERE po.map_id = pm.id
 		  AND offsets.map_id = po.map_id
@@ -1421,12 +1628,14 @@ func bakeOverworldCoordinatesPostgres(pg *sql.DB) error {
 		FROM phaser_maps AS pm,
 			phaser_warp_events AS source_event,
 			(
-				SELECT source_map_id AS map_id,
-					MIN(x) - MIN(local_x) AS offset_x,
-					MIN(y) - MIN(local_y) AS offset_y
+				SELECT COALESCE(original_source_map_id, source_map_id) AS map_id,
+					MIN(x) - MIN(COALESCE(original_local_x, local_x)) AS offset_x,
+					MIN(y) - MIN(COALESCE(original_local_y, local_y)) AS offset_y
 				FROM phaser_tiles
-				WHERE local_x IS NOT NULL AND local_y IS NOT NULL AND source_map_id IS NOT NULL
-				GROUP BY source_map_id
+				WHERE COALESCE(original_local_x, local_x) IS NOT NULL
+				  AND COALESCE(original_local_y, local_y) IS NOT NULL
+				  AND COALESCE(original_source_map_id, source_map_id) IS NOT NULL
+				GROUP BY COALESCE(original_source_map_id, source_map_id)
 			) AS offsets
 		WHERE pw.source_map_id = pm.id
 		  AND offsets.map_id = pw.source_map_id

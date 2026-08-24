@@ -663,9 +663,18 @@ export class NetworkBridge {
           collisionType: number;
           rawFootTileId?: number;
           talkOverTile?: boolean;
+          erased?: boolean;
         }
       | undefined;
     if (tile) {
+      window.dispatchEvent(
+        new CustomEvent("worldTileUpdate", {
+          detail: {
+            mapId: data.mapId,
+            tiles: [tile],
+          },
+        }),
+      );
       window.dispatchEvent(
         new CustomEvent("tileEditorBroadcast", {
           detail: {

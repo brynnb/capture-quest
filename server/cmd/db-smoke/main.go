@@ -408,7 +408,10 @@ func requireRoute6GateExitTiles(pg *sql.DB) error {
 		if err := pg.QueryRow(`
 			SELECT collision_type
 			FROM phaser_tiles
-			WHERE map_id IS NULL AND x = $1 AND y = $2`,
+			WHERE map_id IS NULL
+			  AND x = $1
+			  AND y = $2
+			  AND is_tile_erased = 0`,
 			tile.X, tile.Y,
 		).Scan(&collisionType); err != nil {
 			return fmt.Errorf("Route 6 Gate exit tile (%d,%d): %w", tile.X, tile.Y, err)
@@ -572,7 +575,8 @@ func requireCeruleanMartTalkOverCounter(pg *sql.DB) error {
 		JOIN phaser_maps pm ON pm.id = pt.map_id
 		WHERE pm.name = 'CERULEAN_MART'
 		  AND pt.x = 1
-		  AND pt.y = 5`).Scan(&counterTalkOver); err != nil {
+		  AND pt.y = 5
+		  AND pt.is_tile_erased = 0`).Scan(&counterTalkOver); err != nil {
 		return fmt.Errorf("load Cerulean Mart counter tile: %w", err)
 	}
 	if !counterTalkOver {
@@ -586,7 +590,8 @@ func requireCeruleanMartTalkOverCounter(pg *sql.DB) error {
 		JOIN phaser_maps pm ON pm.id = pt.map_id
 		WHERE pm.name = 'CERULEAN_MART'
 		  AND pt.x = 2
-		  AND pt.y = 5`).Scan(&floorTalkOver); err != nil {
+		  AND pt.y = 5
+		  AND pt.is_tile_erased = 0`).Scan(&floorTalkOver); err != nil {
 		return fmt.Errorf("load Cerulean Mart floor tile: %w", err)
 	}
 	if floorTalkOver {
@@ -610,7 +615,8 @@ func requireBikeShopTalkOverCounter(pg *sql.DB) error {
 		JOIN phaser_maps pm ON pm.id = pt.map_id
 		WHERE pm.name = 'BIKE_SHOP'
 		  AND pt.x = $1
-		  AND pt.y = $2`, tile[0], tile[1]).Scan(&counterTalkOver); err != nil {
+		  AND pt.y = $2
+		  AND pt.is_tile_erased = 0`, tile[0], tile[1]).Scan(&counterTalkOver); err != nil {
 			return fmt.Errorf("load Bike Shop counter tile (%d,%d): %w", tile[0], tile[1], err)
 		}
 		if !counterTalkOver {

@@ -363,7 +363,8 @@ func HandlePhaserTilesRequest(ses *session.Session, payload []byte, wh *WorldHan
 			pt.is_native_game_data, pt.coordinate_origin, pt.content_origin
 		FROM phaser_tiles pt
 		LEFT JOIN phaser_maps pm ON pm.id = COALESCE(pt.source_map_id, pt.map_id)
-		WHERE pt.map_id = $1`
+		WHERE pt.map_id = $1
+		  AND pt.is_tile_erased = 0`
 	queryArgs := []interface{}{req.MapID}
 
 	if req.MapID == UnifiedOverworldMapID {
@@ -375,7 +376,8 @@ func HandlePhaserTilesRequest(ses *session.Session, payload []byte, wh *WorldHan
 				pt.is_native_game_data, pt.coordinate_origin, pt.content_origin
 			FROM phaser_tiles pt
 			LEFT JOIN phaser_maps pm ON pm.id = pt.source_map_id
-			WHERE pt.map_id IS NULL`
+			WHERE pt.map_id IS NULL
+			  AND pt.is_tile_erased = 0`
 		queryArgs = nil
 	}
 

@@ -787,6 +787,7 @@ export interface TileEdit {
   collisionType: number /* int */;
   rawFootTileId?: number /* int */;
   talkOverTile?: boolean;
+  erased?: boolean;
 }
 /**
  * TileEditorPlaceReq is the request payload for placing tiles
@@ -1695,3 +1696,6 @@ export interface WorldHandler {
   spinTiles?: SpinTileManager;
   warpTiles?: WarpTileManager;
 }
+
+//////////
+// source: world_tile_mutations.go

@@ -20,6 +20,7 @@ type TileEdit struct {
 	CollisionType int  `json:"collisionType"`
 	RawFootTileID *int `json:"rawFootTileId,omitempty"`
 	TalkOverTile  bool `json:"talkOverTile,omitempty"`
+	Erased        bool `json:"erased,omitempty"`
 }
 
 // TileEditorPlaceReq is the request payload for placing tiles
@@ -127,97 +128,30 @@ func HandleTileEditorPlace(ses *session.Session, payload []byte, wh *WorldHandle
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "invalid request"}, opcodes.TileEditorPlaceResponse)
 		return false
 	}
+	if !canAdminEditWorldTiles(ses) {
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "not authorized"}, opcodes.TileEditorPlaceResponse)
+		return false
+	}
 
 	if len(req.Tiles) == 0 || len(req.Tiles) > maxTilesPerRequest {
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "invalid tile count"}, opcodes.TileEditorPlaceResponse)
 		return false
 	}
 
-	// Only allow overworld edits for now
-	if req.MapID != UnifiedOverworldMapID {
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "only overworld edits allowed"}, opcodes.TileEditorPlaceResponse)
-		return false
-	}
-
-	// Get character ID for tracking who placed tiles
-	var charID int64
-	if ses.HasValidClient() {
-		charID = int64(ses.Client.CharData().ID)
-	}
-
-	// Look up runtime tile metadata from tile properties/images.
-	propertiesCache := make(map[int]tileRuntimeProperties)
-
-	tx, err := db.GlobalWorldDB.DB.Begin()
+	result, err := applyWorldTilePlacements(ses, wh, req.MapID, req.Tiles, "admin_editor")
 	if err != nil {
-		log.Printf("[TileEditor] Failed to begin transaction: %v", err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "database error"}, opcodes.TileEditorPlaceResponse)
+		log.Printf("[TileEditor] Place failed: %v", err)
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.TileEditorPlaceResponse)
 		return false
 	}
 
-	placed := 0
-	for _, tile := range req.Tiles {
-		props, ok := propertiesCache[tile.TileImageID]
-		if !ok {
-			props = tileRuntimePropertiesForTileImage(tile.TileImageID)
-			propertiesCache[tile.TileImageID] = props
-		}
+	ses.SendStreamJSON(map[string]interface{}{"success": true, "placed": result.Changed}, opcodes.TileEditorPlaceResponse)
 
-		// Upsert into phaser_tiles — overworld tiles have map_id = NULL
-		_, err := tx.Exec(`
-			INSERT INTO phaser_tiles (
-				x, y, tile_image_id, map_id, collision_type, raw_foot_tile_id,
-				talk_over_tile, is_native_game_data, coordinate_origin,
-				content_origin, is_user_placed, placed_by_char_id, placed_at
-			)
-			VALUES ($1, $2, $3, NULL, $4, $5, $6, FALSE, 'user', 'user', 1, $7, CURRENT_TIMESTAMP)
-			ON CONFLICT (x, y, COALESCE(map_id, -1)) DO UPDATE SET
-				tile_image_id = EXCLUDED.tile_image_id,
-				collision_type = EXCLUDED.collision_type,
-				raw_foot_tile_id = EXCLUDED.raw_foot_tile_id,
-				talk_over_tile = EXCLUDED.talk_over_tile,
-				content_origin = 'user',
-				is_user_placed = 1,
-				placed_by_char_id = EXCLUDED.placed_by_char_id,
-				placed_at = CURRENT_TIMESTAMP`,
-			tile.X, tile.Y, tile.TileImageID, props.CollisionType, props.RawFootTileID, props.TalkOverTile, charID)
-		if err != nil {
-			log.Printf("[TileEditor] Error upserting tile at (%d,%d): %v", tile.X, tile.Y, err)
-			continue
-		}
-
-		placed++
+	if len(result.Edits) > 0 {
+		broadcastTileChanges(wh, result.Edits, result.MapID, ses.SessionID)
 	}
 
-	if err := tx.Commit(); err != nil {
-		log.Printf("[TileEditor] Failed to commit transaction: %v", err)
-		tx.Rollback()
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "database error"}, opcodes.TileEditorPlaceResponse)
-		return false
-	}
-
-	// Invalidate server collision map so pathfinding reloads from DB
-	wh.ActorManager.InvalidateCollisionMap(req.MapID)
-
-	// Build broadcast edits with collision types
-	broadcastEdits := make([]TileEdit, 0, len(req.Tiles))
-	for _, tile := range req.Tiles {
-		broadcastEdits = append(broadcastEdits, TileEdit{
-			X: tile.X, Y: tile.Y,
-			TileImageID:   tile.TileImageID,
-			CollisionType: propertiesCache[tile.TileImageID].CollisionType,
-			RawFootTileID: propertiesCache[tile.TileImageID].RawFootTileID,
-			TalkOverTile:  propertiesCache[tile.TileImageID].TalkOverTile,
-		})
-	}
-
-	// Send success to the requesting client
-	ses.SendStreamJSON(map[string]interface{}{"success": true, "placed": placed}, opcodes.TileEditorPlaceResponse)
-
-	// Broadcast tile changes to all clients on this map
-	broadcastTileChanges(wh, broadcastEdits, req.MapID, ses.SessionID)
-
-	log.Printf("[TileEditor] Placed %d tiles on map %d by char %d", placed, req.MapID, charID)
+	log.Printf("[TileEditor] Placed %d tiles on map %d by char %d", result.Changed, req.MapID, characterIDForTileMutation(ses))
 	return false
 }
 
@@ -229,60 +163,34 @@ func HandleTileEditorErase(ses *session.Session, payload []byte, wh *WorldHandle
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "invalid request"}, opcodes.TileEditorEraseResponse)
 		return false
 	}
+	if !canAdminEditWorldTiles(ses) {
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "not authorized"}, opcodes.TileEditorEraseResponse)
+		return false
+	}
 
 	if len(req.Tiles) == 0 || len(req.Tiles) > maxTilesPerRequest {
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "invalid tile count"}, opcodes.TileEditorEraseResponse)
 		return false
 	}
 
-	if req.MapID != UnifiedOverworldMapID {
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "only overworld edits allowed"}, opcodes.TileEditorEraseResponse)
-		return false
-	}
-
-	tx, err := db.GlobalWorldDB.DB.Begin()
-	if err != nil {
-		log.Printf("[TileEditor] Failed to begin transaction: %v", err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "database error"}, opcodes.TileEditorEraseResponse)
-		return false
-	}
-
-	erased := 0
-	var broadcastEdits []TileEdit
+	coords := make([]tileCoord, 0, len(req.Tiles))
 	for _, tile := range req.Tiles {
-		// Delete from phaser_tiles — overworld tiles have map_id IS NULL
-		result, err := tx.Exec(`
-			DELETE FROM phaser_tiles WHERE x = $1 AND y = $2 AND map_id IS NULL`,
-			tile.X, tile.Y)
-		if err != nil {
-			log.Printf("[TileEditor] Error deleting tile at (%d,%d): %v", tile.X, tile.Y, err)
-			continue
-		}
-		rows, _ := result.RowsAffected()
-		if rows > 0 {
-			erased++
-			// TileImageID=0 signals erasure to clients
-			broadcastEdits = append(broadcastEdits, TileEdit{X: tile.X, Y: tile.Y, TileImageID: 0})
-		}
+		coords = append(coords, tileCoord{X: tile.X, Y: tile.Y})
 	}
-
-	if err := tx.Commit(); err != nil {
-		log.Printf("[TileEditor] Failed to commit erase transaction: %v", err)
-		tx.Rollback()
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "database error"}, opcodes.TileEditorEraseResponse)
+	result, err := applyWorldTileErasures(ses, wh, req.MapID, coords, "admin_editor")
+	if err != nil {
+		log.Printf("[TileEditor] Erase failed: %v", err)
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.TileEditorEraseResponse)
 		return false
 	}
 
-	// Invalidate server collision map so pathfinding reloads from DB
-	wh.ActorManager.InvalidateCollisionMap(req.MapID)
+	ses.SendStreamJSON(map[string]interface{}{"success": true, "erased": result.Changed}, opcodes.TileEditorEraseResponse)
 
-	ses.SendStreamJSON(map[string]interface{}{"success": true, "erased": erased}, opcodes.TileEditorEraseResponse)
-
-	if len(broadcastEdits) > 0 {
-		broadcastTileChanges(wh, broadcastEdits, req.MapID, ses.SessionID)
+	if len(result.Edits) > 0 {
+		broadcastTileChanges(wh, result.Edits, result.MapID, ses.SessionID)
 	}
 
-	log.Printf("[TileEditor] Erased %d tiles on map %d", erased, req.MapID)
+	log.Printf("[TileEditor] Erased %d tiles on map %d", result.Changed, req.MapID)
 	return false
 }
 
@@ -294,30 +202,43 @@ func HandleTileEditorFill(ses *session.Session, payload []byte, wh *WorldHandler
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "invalid request"}, opcodes.TileEditorFillResponse)
 		return false
 	}
+	if !canAdminEditWorldTiles(ses) {
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "not authorized"}, opcodes.TileEditorFillResponse)
+		return false
+	}
 
-	if req.MapID != UnifiedOverworldMapID {
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "only overworld edits allowed"}, opcodes.TileEditorFillResponse)
+	ctx, err := newWorldTileMutationContext(ses, wh, req.MapID, "admin_editor")
+	if err != nil {
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.TileEditorFillResponse)
+		return false
+	}
+	if err := validateTileImagesExist([]int{req.TileImageID}); err != nil {
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.TileEditorFillResponse)
 		return false
 	}
 
 	// Determine what tile type is at the target position (or "empty" if none)
-	var targetTileImageID int
-	var isEmptyFill bool
-	// Overworld tiles have map_id IS NULL
-	err := db.GlobalWorldDB.DB.QueryRow(`
-		SELECT tile_image_id FROM phaser_tiles
-		WHERE x = $1 AND y = $2 AND map_id IS NULL`,
-		req.X, req.Y).Scan(&targetTileImageID)
+	targetTileImageID, hasTargetTile, err := currentWorldTileImageID(ctx.MapID, req.X, req.Y)
 	if err != nil {
-		// No tile at this position — filling empty space
-		isEmptyFill = true
-		targetTileImageID = 0
+		log.Printf("[TileEditor] Fill target lookup failed: %v", err)
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "database error"}, opcodes.TileEditorFillResponse)
+		return false
 	}
+	isEmptyFill := !hasTargetTile
 
 	// Don't fill if the target is already the same tile type
 	if !isEmptyFill && targetTileImageID == req.TileImageID {
 		ses.SendStreamJSON(map[string]interface{}{"success": true, "filled": 0}, opcodes.TileEditorFillResponse)
 		return false
+	}
+
+	var mapWidth, mapHeight int
+	if ctx.MapID != UnifiedOverworldMapID {
+		if err := db.GlobalWorldDB.DB.QueryRow(`SELECT width, height FROM phaser_maps WHERE id = $1`, ctx.MapID).Scan(&mapWidth, &mapHeight); err != nil {
+			log.Printf("[TileEditor] Fill bounds lookup failed: %v", err)
+			ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "database error"}, opcodes.TileEditorFillResponse)
+			return false
+		}
 	}
 
 	// BFS flood fill
@@ -331,11 +252,23 @@ func HandleTileEditorFill(ses *session.Session, payload []byte, wh *WorldHandler
 	var existingTiles map[point]int
 	if isEmptyFill {
 		existingTiles = make(map[point]int)
-		// Load all overworld tiles (map_id IS NULL) in a bounding box
-		rows, err := db.GlobalWorldDB.DB.Query(`
-			SELECT x, y, tile_image_id FROM phaser_tiles
-			WHERE map_id IS NULL AND x BETWEEN $1 AND $2 AND y BETWEEN $3 AND $4`,
-			req.X-maxFillTiles, req.X+maxFillTiles, req.Y-maxFillTiles, req.Y+maxFillTiles)
+		var rows *sql.Rows
+		var err error
+		if ctx.MapID == UnifiedOverworldMapID {
+			rows, err = db.GlobalWorldDB.DB.Query(`
+				SELECT x, y, tile_image_id FROM phaser_tiles
+				WHERE map_id IS NULL
+				  AND is_tile_erased = 0
+				  AND x BETWEEN $1 AND $2 AND y BETWEEN $3 AND $4`,
+				req.X-maxFillTiles, req.X+maxFillTiles, req.Y-maxFillTiles, req.Y+maxFillTiles)
+		} else {
+			rows, err = db.GlobalWorldDB.DB.Query(`
+				SELECT x, y, tile_image_id FROM phaser_tiles
+				WHERE map_id = $1
+				  AND is_tile_erased = 0
+				  AND x BETWEEN $2 AND $3 AND y BETWEEN $4 AND $5`,
+				ctx.MapID, req.X-maxFillTiles, req.X+maxFillTiles, req.Y-maxFillTiles, req.Y+maxFillTiles)
+		}
 		if err == nil {
 			defer rows.Close()
 			for rows.Next() {
@@ -351,6 +284,11 @@ func HandleTileEditorFill(ses *session.Session, payload []byte, wh *WorldHandler
 		current := queue[0]
 		queue = queue[1:]
 
+		if ctx.MapID != UnifiedOverworldMapID &&
+			(current.x < 0 || current.y < 0 || current.x >= mapWidth || current.y >= mapHeight) {
+			continue
+		}
+
 		if isEmptyFill {
 			// For empty fill: only fill positions that have no tile
 			if _, hasTile := existingTiles[current]; hasTile {
@@ -358,12 +296,8 @@ func HandleTileEditorFill(ses *session.Session, payload []byte, wh *WorldHandler
 			}
 		} else {
 			// For same-tile fill: only fill positions that match the target tile type
-			var currentTileID int
-			err := db.GlobalWorldDB.DB.QueryRow(`
-				SELECT tile_image_id FROM phaser_tiles
-				WHERE x = $1 AND y = $2 AND map_id IS NULL`,
-				current.x, current.y).Scan(&currentTileID)
-			if err != nil || currentTileID != targetTileImageID {
+			currentTileID, ok, err := currentWorldTileImageID(ctx.MapID, current.x, current.y)
+			if err != nil || !ok || currentTileID != targetTileImageID {
 				continue
 			}
 		}
@@ -397,73 +331,25 @@ func HandleTileEditorFill(ses *session.Session, payload []byte, wh *WorldHandler
 		return false
 	}
 
-	// Get character ID
-	var charID int64
-	if ses.HasValidClient() {
-		charID = int64(ses.Client.CharData().ID)
-	}
-
-	props := tileRuntimePropertiesForTileImage(req.TileImageID)
-
-	// Execute the fill in a transaction
-	tx, err := db.GlobalWorldDB.DB.Begin()
-	if err != nil {
-		log.Printf("[TileEditor] Failed to begin fill transaction: %v", err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "database error"}, opcodes.TileEditorFillResponse)
-		return false
-	}
-
-	var broadcastEdits []TileEdit
+	placeTiles := make([]TileEdit, 0, len(fillPoints))
 	for _, p := range fillPoints {
-		_, err := tx.Exec(`
-			INSERT INTO phaser_tiles (
-				x, y, tile_image_id, map_id, collision_type, raw_foot_tile_id,
-				talk_over_tile, is_native_game_data, coordinate_origin,
-				content_origin, is_user_placed, placed_by_char_id, placed_at
-			)
-			VALUES ($1, $2, $3, NULL, $4, $5, $6, FALSE, 'user', 'user', 1, $7, CURRENT_TIMESTAMP)
-			ON CONFLICT (x, y, COALESCE(map_id, -1)) DO UPDATE SET
-				tile_image_id = EXCLUDED.tile_image_id,
-				collision_type = EXCLUDED.collision_type,
-				raw_foot_tile_id = EXCLUDED.raw_foot_tile_id,
-				talk_over_tile = EXCLUDED.talk_over_tile,
-				content_origin = 'user',
-				is_user_placed = 1,
-				placed_by_char_id = EXCLUDED.placed_by_char_id,
-				placed_at = CURRENT_TIMESTAMP`,
-			p.x, p.y, req.TileImageID, props.CollisionType, props.RawFootTileID, props.TalkOverTile, charID)
-		if err != nil {
-			log.Printf("[TileEditor] Error filling tile at (%d,%d): %v", p.x, p.y, err)
-			continue
-		}
-
-		broadcastEdits = append(broadcastEdits, TileEdit{
-			X:             p.x,
-			Y:             p.y,
-			TileImageID:   req.TileImageID,
-			CollisionType: props.CollisionType,
-			RawFootTileID: props.RawFootTileID,
-			TalkOverTile:  props.TalkOverTile,
-		})
+		placeTiles = append(placeTiles, TileEdit{X: p.x, Y: p.y, TileImageID: req.TileImageID})
 	}
 
-	if err := tx.Commit(); err != nil {
-		log.Printf("[TileEditor] Failed to commit fill transaction: %v", err)
-		tx.Rollback()
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "database error"}, opcodes.TileEditorFillResponse)
+	result, err := applyWorldTilePlacements(ses, wh, ctx.MapID, placeTiles, "admin_editor")
+	if err != nil {
+		log.Printf("[TileEditor] Fill failed: %v", err)
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.TileEditorFillResponse)
 		return false
 	}
 
-	// Invalidate server collision map so pathfinding reloads from DB
-	wh.ActorManager.InvalidateCollisionMap(req.MapID)
+	ses.SendStreamJSON(map[string]interface{}{"success": true, "filled": result.Changed}, opcodes.TileEditorFillResponse)
 
-	ses.SendStreamJSON(map[string]interface{}{"success": true, "filled": len(broadcastEdits)}, opcodes.TileEditorFillResponse)
-
-	if len(broadcastEdits) > 0 {
-		broadcastTileChanges(wh, broadcastEdits, req.MapID, ses.SessionID)
+	if len(result.Edits) > 0 {
+		broadcastTileChanges(wh, result.Edits, result.MapID, ses.SessionID)
 	}
 
-	log.Printf("[TileEditor] Filled %d tiles on map %d by char %d", len(broadcastEdits), req.MapID, charID)
+	log.Printf("[TileEditor] Filled %d tiles on map %d by char %d", result.Changed, ctx.MapID, characterIDForTileMutation(ses))
 	return false
 }
 
@@ -475,76 +361,56 @@ func HandleTileEditorUndo(ses *session.Session, payload []byte, wh *WorldHandler
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "invalid request"}, opcodes.TileEditorUndoResponse)
 		return false
 	}
+	if !canAdminEditWorldTiles(ses) {
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "not authorized"}, opcodes.TileEditorUndoResponse)
+		return false
+	}
 
 	if len(req.Tiles) == 0 || len(req.Tiles) > maxTilesPerRequest {
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "invalid tile count"}, opcodes.TileEditorUndoResponse)
 		return false
 	}
 
-	if req.MapID != UnifiedOverworldMapID {
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "only overworld edits allowed"}, opcodes.TileEditorUndoResponse)
-		return false
-	}
-
-	tx, err := db.GlobalWorldDB.DB.Begin()
-	if err != nil {
-		log.Printf("[TileEditor] Failed to begin undo transaction: %v", err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "database error"}, opcodes.TileEditorUndoResponse)
-		return false
-	}
-
-	restored := 0
-	var broadcastEdits []TileEdit
+	var placeTiles []TileEdit
+	var eraseCoords []tileCoord
 	for _, tile := range req.Tiles {
-		props := tileRuntimeProperties{}
 		if tile.TileImageID == 0 {
-			// Restore to empty — delete the tile (overworld: map_id IS NULL)
-			tx.Exec(`DELETE FROM phaser_tiles WHERE x = $1 AND y = $2 AND map_id IS NULL`,
-				tile.X, tile.Y)
+			eraseCoords = append(eraseCoords, tileCoord{X: tile.X, Y: tile.Y})
 		} else {
-			// Restore to previous tile
-			props = tileRuntimePropertiesForTileImage(tile.TileImageID)
-
-			tx.Exec(`
-				INSERT INTO phaser_tiles (
-					x, y, tile_image_id, map_id, collision_type, raw_foot_tile_id,
-					talk_over_tile, is_native_game_data, coordinate_origin,
-					content_origin, is_user_placed, placed_at
-				)
-				VALUES ($1, $2, $3, NULL, $4, $5, $6, FALSE, 'user', 'user', 1, CURRENT_TIMESTAMP)
-				ON CONFLICT (x, y, COALESCE(map_id, -1)) DO UPDATE SET
-					tile_image_id = EXCLUDED.tile_image_id,
-					collision_type = EXCLUDED.collision_type,
-					raw_foot_tile_id = EXCLUDED.raw_foot_tile_id,
-					talk_over_tile = EXCLUDED.talk_over_tile,
-					content_origin = 'user',
-					placed_at = CURRENT_TIMESTAMP`,
-				tile.X, tile.Y, tile.TileImageID, props.CollisionType, props.RawFootTileID, props.TalkOverTile)
+			placeTiles = append(placeTiles, tile)
 		}
-		broadcastEdits = append(broadcastEdits, TileEdit{
-			X: tile.X, Y: tile.Y,
-			TileImageID:   tile.TileImageID,
-			CollisionType: props.CollisionType,
-			RawFootTileID: props.RawFootTileID,
-			TalkOverTile:  props.TalkOverTile,
-		})
-		restored++
 	}
 
-	if err := tx.Commit(); err != nil {
-		log.Printf("[TileEditor] Failed to commit undo transaction: %v", err)
-		tx.Rollback()
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "database error"}, opcodes.TileEditorUndoResponse)
-		return false
+	var broadcastEdits []TileEdit
+	restored := 0
+	broadcastMapID := req.MapID
+	if len(eraseCoords) > 0 {
+		result, err := applyWorldTileErasures(ses, wh, req.MapID, eraseCoords, "admin_editor")
+		if err != nil {
+			log.Printf("[TileEditor] Undo erase failed: %v", err)
+			ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.TileEditorUndoResponse)
+			return false
+		}
+		broadcastEdits = append(broadcastEdits, result.Edits...)
+		restored += result.Changed
+		broadcastMapID = result.MapID
 	}
-
-	// Invalidate server collision map so pathfinding reloads from DB
-	wh.ActorManager.InvalidateCollisionMap(req.MapID)
+	if len(placeTiles) > 0 {
+		result, err := applyWorldTilePlacements(ses, wh, req.MapID, placeTiles, "admin_editor")
+		if err != nil {
+			log.Printf("[TileEditor] Undo place failed: %v", err)
+			ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.TileEditorUndoResponse)
+			return false
+		}
+		broadcastEdits = append(broadcastEdits, result.Edits...)
+		restored += result.Changed
+		broadcastMapID = result.MapID
+	}
 
 	ses.SendStreamJSON(map[string]interface{}{"success": true, "restored": restored}, opcodes.TileEditorUndoResponse)
 
 	if len(broadcastEdits) > 0 {
-		broadcastTileChanges(wh, broadcastEdits, req.MapID, ses.SessionID)
+		broadcastTileChanges(wh, broadcastEdits, broadcastMapID, ses.SessionID)
 	}
 
 	log.Printf("[TileEditor] Undid %d tiles on map %d", restored, req.MapID)
@@ -593,6 +459,10 @@ func HandleTilePropertyUpdate(ses *session.Session, payload []byte, wh *WorldHan
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "invalid request"}, opcodes.TilePropertyUpdateResponse)
 		return false
 	}
+	if !canAdminEditWorldTiles(ses) {
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "not authorized"}, opcodes.TilePropertyUpdateResponse)
+		return false
+	}
 
 	if req.Name != "" {
 		_, err := db.GlobalWorldDB.DB.Exec(
@@ -613,10 +483,16 @@ func HandleTilePropertyUpdate(ses *session.Session, payload []byte, wh *WorldHan
 
 		// Also update all existing tiles with this image to the new collision type
 		_, err = db.GlobalWorldDB.DB.Exec(
-			`UPDATE phaser_tiles SET collision_type = $1 WHERE tile_image_id = $2`,
+			`UPDATE phaser_tiles SET collision_type = $1 WHERE tile_image_id = $2 AND is_tile_erased = 0`,
 			*req.CollisionType, req.TileImageID)
 		if err != nil {
 			log.Printf("[TileEditor] Error bulk-updating tile collision: %v", err)
+		}
+		_, err = db.GlobalWorldDB.DB.Exec(
+			`UPDATE phaser_tiles SET original_collision_type = $1 WHERE original_tile_image_id = $2`,
+			*req.CollisionType, req.TileImageID)
+		if err != nil {
+			log.Printf("[TileEditor] Error bulk-updating original tile collision: %v", err)
 		}
 	}
 
@@ -629,6 +505,10 @@ func HandleTilePropertyUpdate(ses *session.Session, payload []byte, wh *WorldHan
 
 // broadcastTileChanges sends tile updates to all clients on the same map (including the originator)
 func broadcastTileChanges(wh *WorldHandler, tiles []TileEdit, mapID int, originSessionID int) {
+	if wh == nil || wh.sessionManager == nil {
+		return
+	}
+
 	payload := TileEditorBroadcastPayload{
 		Tiles: tiles,
 		MapID: mapID,
@@ -644,7 +524,7 @@ func broadcastTileChanges(wh *WorldHandler, tiles []TileEdit, mapID int, originS
 		}
 
 		// Check if the player is on the same map
-		playerOnOverworld := ses.MapID == UnifiedOverworldMapID
+		playerOnOverworld := ses.MapID == UnifiedOverworldMapID || (wh.ActorManager != nil && wh.ActorManager.IsOverworld(ses.MapID))
 		if ses.MapID == mapID || (isOverworld && playerOnOverworld) {
 			ses.SendStreamJSON(data, opcodes.TileEditorBroadcast)
 		}

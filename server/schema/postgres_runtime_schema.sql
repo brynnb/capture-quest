@@ -411,6 +411,20 @@ CREATE TABLE IF NOT EXISTS phaser_tiles (
         CHECK (coordinate_origin IN ('native', 'generated', 'user')),
     content_origin varchar(16) NOT NULL DEFAULT 'user'
         CHECK (content_origin IN ('native', 'generated', 'user', 'event')),
+    is_original_tile_location smallint NOT NULL DEFAULT 0,
+    has_tile_edit smallint NOT NULL DEFAULT 0,
+    is_tile_erased smallint NOT NULL DEFAULT 0,
+    original_tile_image_id integer DEFAULT NULL,
+    original_collision_type integer DEFAULT NULL,
+    original_raw_foot_tile_id integer DEFAULT NULL,
+    original_talk_over_tile boolean DEFAULT NULL,
+    original_encounter_area_id integer DEFAULT NULL,
+    original_local_x integer DEFAULT NULL,
+    original_local_y integer DEFAULT NULL,
+    original_source_map_id integer DEFAULT NULL,
+    last_edited_by_char_id integer DEFAULT NULL,
+    last_edited_at timestamp DEFAULT NULL,
+    last_edit_source varchar(32) DEFAULT NULL,
     is_user_placed smallint NOT NULL DEFAULT 0,
     placed_by_char_id integer DEFAULT NULL,
     placed_at timestamp DEFAULT NULL
@@ -421,6 +435,34 @@ ALTER TABLE phaser_tiles
     ADD COLUMN IF NOT EXISTS coordinate_origin varchar(16) NOT NULL DEFAULT 'user';
 ALTER TABLE phaser_tiles
     ADD COLUMN IF NOT EXISTS content_origin varchar(16) NOT NULL DEFAULT 'user';
+ALTER TABLE phaser_tiles
+    ADD COLUMN IF NOT EXISTS is_original_tile_location smallint NOT NULL DEFAULT 0;
+ALTER TABLE phaser_tiles
+    ADD COLUMN IF NOT EXISTS has_tile_edit smallint NOT NULL DEFAULT 0;
+ALTER TABLE phaser_tiles
+    ADD COLUMN IF NOT EXISTS is_tile_erased smallint NOT NULL DEFAULT 0;
+ALTER TABLE phaser_tiles
+    ADD COLUMN IF NOT EXISTS original_tile_image_id integer;
+ALTER TABLE phaser_tiles
+    ADD COLUMN IF NOT EXISTS original_collision_type integer;
+ALTER TABLE phaser_tiles
+    ADD COLUMN IF NOT EXISTS original_raw_foot_tile_id integer;
+ALTER TABLE phaser_tiles
+    ADD COLUMN IF NOT EXISTS original_talk_over_tile boolean;
+ALTER TABLE phaser_tiles
+    ADD COLUMN IF NOT EXISTS original_encounter_area_id integer;
+ALTER TABLE phaser_tiles
+    ADD COLUMN IF NOT EXISTS original_local_x integer;
+ALTER TABLE phaser_tiles
+    ADD COLUMN IF NOT EXISTS original_local_y integer;
+ALTER TABLE phaser_tiles
+    ADD COLUMN IF NOT EXISTS original_source_map_id integer;
+ALTER TABLE phaser_tiles
+    ADD COLUMN IF NOT EXISTS last_edited_by_char_id integer;
+ALTER TABLE phaser_tiles
+    ADD COLUMN IF NOT EXISTS last_edited_at timestamp;
+ALTER TABLE phaser_tiles
+    ADD COLUMN IF NOT EXISTS last_edit_source varchar(32);
 
 DO $$
 BEGIN
@@ -447,15 +489,15 @@ END $$;
 -- Backfill databases created before explicit tile provenance existed. Imported
 -- source-map coordinates remain native even when a user changes their content.
 UPDATE phaser_tiles
-SET is_native_game_data = (source_map_id IS NOT NULL),
+SET is_native_game_data = (is_original_tile_location = 1 OR source_map_id IS NOT NULL),
     coordinate_origin = CASE
-        WHEN source_map_id IS NOT NULL THEN 'native'
+        WHEN is_original_tile_location = 1 OR source_map_id IS NOT NULL THEN 'native'
         WHEN is_user_placed = 1 THEN 'user'
         ELSE coordinate_origin
     END,
     content_origin = CASE
-        WHEN is_user_placed = 1 THEN 'user'
-        WHEN source_map_id IS NOT NULL THEN 'native'
+        WHEN has_tile_edit = 1 OR is_user_placed = 1 THEN 'user'
+        WHEN is_original_tile_location = 1 OR source_map_id IS NOT NULL THEN 'native'
         ELSE content_origin
     END;
 CREATE INDEX IF NOT EXISTS phaser_tiles_map_idx ON phaser_tiles (map_id);
