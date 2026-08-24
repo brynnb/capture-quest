@@ -331,18 +331,21 @@ const ChatDock = styled.div<{ $collapsed: boolean; $mobileOpen: boolean }>`
 
 const DialogueAnchor = styled.div<{ $collapsed: boolean }>`
   position: absolute;
-  right: 24px;
+  right: auto;
   bottom: 246px;
-  left: ${(props) => (props.$collapsed ? "80px" : "288px")};
+  left: 50%;
   z-index: 22;
+  width: min(600px, calc(100vw - 32px));
   height: 0;
+  transform: translateX(-50%);
   pointer-events: none;
-  transition: left 180ms ease;
 
   @media (max-width: 850px), (pointer: coarse) {
-    right: calc(10px + env(safe-area-inset-right, 0px));
     bottom: calc(168px + env(safe-area-inset-bottom, 0px));
-    left: calc(10px + env(safe-area-inset-left, 0px));
+    width: calc(
+      100vw - 20px - env(safe-area-inset-left, 0px) -
+        env(safe-area-inset-right, 0px)
+    );
   }
 `;
 

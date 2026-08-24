@@ -26,6 +26,7 @@ import useGameStatusStore from "@/stores/GameStatusStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import usePokeBattleStore from "@/stores/PokeBattleStore";
 import useAudioActivityStore from "@/stores/AudioActivityStore";
+import useTileEditorStore from "@/stores/TileEditorStore";
 import {
   getWorldInputFreezeReason,
 } from "../utils/worldInputGuard";
@@ -830,8 +831,6 @@ export class TileViewer extends Scene {
       isWorldInputFrozen: () => this.isWorldInputFrozen(),
       getWorldInputFreezeReason: () => this.getWorldInputFreezeReason(),
       getDisplayedMapId: () => this.mapInfo?.id ?? null,
-      handleTileEditorClick: (worldX, worldY) =>
-        this.handleTileEditorClick(worldX, worldY),
     });
     this.playerMovementController.setHeldKeyboardDirectionProvider(() =>
       this.interactionController.getKeyboardDirection(),
@@ -1067,22 +1066,15 @@ export class TileViewer extends Scene {
   private tileEditorPointerMoveHandler: ((pointer: Phaser.Input.Pointer) => void) | null = null;
   private tileEditorPointerDownHandler: ((pointer: Phaser.Input.Pointer) => void) | null = null;
   private tileEditorPointerUpHandler: (() => void) | null = null;
+  private tileEditorStoreUnsubscribe: (() => void) | null = null;
+  private tileEditorLastPointerTile: { x: number; y: number } | null = null;
   private tileEditorDragging = false;
   private tileEditorDragBatchOld: { x: number; y: number; tileImageId: number }[] = [];
   private tileEditorDragBatchNew: { x: number; y: number; tileImageId: number }[] = [];
   private tileEditorFlushTimer: ReturnType<typeof setTimeout> | null = null;
   private tileEditorPendingOptimisticEntries: TileEditorOptimisticEntry[] = [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private tileEditorStoreCache: any = null;
-
   private getTileEditorStore() {
-    if (!this.tileEditorStoreCache) {
-      // Lazy-load to avoid circular dependency
-      import("@/stores/TileEditorStore").then((mod) => {
-        this.tileEditorStoreCache = mod.default;
-      });
-    }
-    return this.tileEditorStoreCache;
+    return useTileEditorStore;
   }
 
   private getTileCollisionType(tileImageId: number): number {
@@ -1117,6 +1109,7 @@ export class TileViewer extends Scene {
   private applyTileEditorStoredTile(tile: TileEditorUndoTileEntry) {
     if (tile.tileImageId === 0) {
       this.mapRenderer.removeTile(tile.x, tile.y);
+      this.tileLookup.delete(`${tile.x},${tile.y}`);
       this.playerMovementController.updateCollisionTile(tile.x, tile.y, 0, true);
       return;
     }
@@ -1124,6 +1117,7 @@ export class TileViewer extends Scene {
     this.mapRenderer.loadTileTextureIfNeeded(tile.tileImageId).then(() => {
       this.mapRenderer.addTile(tile.x, tile.y, tile.tileImageId);
     });
+    this.updateTileEditorLookup(tile.x, tile.y, tile.tileImageId);
     this.playerMovementController.updateCollisionTile(
       tile.x,
       tile.y,
@@ -1138,7 +1132,64 @@ export class TileViewer extends Scene {
     return (usePlayerCharacterStore.getState().characterProfile?.gm ?? 0) > 0;
   }
 
+  private updateTileEditorLookup(
+    x: number,
+    y: number,
+    tileImageId: number,
+    collisionType = this.getTileCollisionType(tileImageId),
+    rawFootTileId = this.getTileRawFootTileId(tileImageId),
+    talkOverTile = this.getTileTalkOverTile(tileImageId),
+  ) {
+    const key = `${x},${y}`;
+    const existing = this.tileLookup.get(key);
+    if (existing) {
+      existing.tileImageId = tileImageId;
+      existing.collisionType = collisionType;
+      existing.rawFootTileId = rawFootTileId;
+      existing.talkOverTile = talkOverTile;
+      existing.contentOrigin = "user";
+      return;
+    }
+
+    this.tileLookup.set(key, {
+      id: -(Math.abs(x * 100000 + y) + 1),
+      x,
+      y,
+      tileImageId,
+      mapId: 9999,
+      collisionType,
+      rawFootTileId,
+      talkOverTile,
+      isNativeGameData: false,
+      coordinateOrigin: "user",
+      contentOrigin: "user",
+    });
+  }
+
   setupTileEditorListeners() {
+    this.tileEditorStoreUnsubscribe = useTileEditorStore.subscribe(
+      (state, previous) => {
+        if (
+          state.selectedTool === previous.selectedTool &&
+          state.selectedTileImageId === previous.selectedTileImageId &&
+          state.brushSize === previous.brushSize &&
+          state.selectedStamp === previous.selectedStamp
+        ) {
+          return;
+        }
+
+        if (state.selectedTileImageId !== previous.selectedTileImageId && state.selectedTileImageId) {
+          void this.mapRenderer.loadTileTextureIfNeeded(state.selectedTileImageId);
+        }
+        if (this.tileEditorLastPointerTile) {
+          this.updateTileEditorCursorPreview(
+            this.tileEditorLastPointerTile.x,
+            this.tileEditorLastPointerTile.y,
+          );
+        }
+      },
+    );
+
     // Broadcast handler: committed world tile updates from the server
     this.worldTileUpdateHandler = (e: Event) => {
       const payload = (e as CustomEvent).detail as {
@@ -1149,11 +1200,20 @@ export class TileViewer extends Scene {
       for (const tile of payload.tiles) {
         if (tile.erased || tile.tileImageId === 0) {
           this.mapRenderer.removeTile(tile.x, tile.y);
+          this.tileLookup.delete(`${tile.x},${tile.y}`);
           this.playerMovementController.updateCollisionTile(tile.x, tile.y, 0, true);
         } else {
           this.mapRenderer.loadTileTextureIfNeeded(tile.tileImageId).then(() => {
             this.mapRenderer.addTile(tile.x, tile.y, tile.tileImageId);
           });
+          this.updateTileEditorLookup(
+            tile.x,
+            tile.y,
+            tile.tileImageId,
+            tile.collisionType,
+            tile.rawFootTileId,
+            tile.talkOverTile === true,
+          );
           this.playerMovementController.updateCollisionTile(
             tile.x,
             tile.y,
@@ -1242,28 +1302,10 @@ export class TileViewer extends Scene {
       const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
       const tileX = Math.floor(worldPoint.x / TILE_SIZE);
       const tileY = Math.floor(worldPoint.y / TILE_SIZE);
+      this.tileEditorLastPointerTile = { x: tileX, y: tileY };
+      this.updateTileEditorCursorPreview(tileX, tileY);
 
-      const store = this.getTileEditorStore();
-      if (!store) return;
-      const { selectedTool, selectedTileImageId, brushSize: bs } = store.getState();
-
-      if (selectedTool === "eraser") {
-        this.mapRenderer.showEraserPreview(tileX, tileY, bs);
-      } else if (selectedTool === "stamp") {
-        const { selectedStamp } = store.getState();
-        if (selectedStamp) {
-          this.mapRenderer.showStampPreview(tileX, tileY, selectedStamp.tileImageIds, selectedStamp.widthTiles, selectedStamp.heightTiles);
-        } else {
-          this.mapRenderer.hideCursorPreview();
-        }
-      } else if (selectedTileImageId && (selectedTool === "single" || selectedTool === "brush")) {
-        const size = selectedTool === "brush" ? bs : 1;
-        this.mapRenderer.showCursorPreview(tileX, tileY, selectedTileImageId, size);
-      } else if (selectedTool === "fill" && selectedTileImageId) {
-        this.mapRenderer.showCursorPreview(tileX, tileY, selectedTileImageId, 1);
-      } else {
-        this.mapRenderer.hideCursorPreview();
-      }
+      const { selectedTool } = useTileEditorStore.getState();
 
       // Handle drag painting
       if (this.tileEditorDragging && (selectedTool === "single" || selectedTool === "brush" || selectedTool === "eraser")) {
@@ -1273,16 +1315,21 @@ export class TileViewer extends Scene {
     this.input.on("pointermove", this.tileEditorPointerMoveHandler);
 
     // Pointer down for drag start
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    this.tileEditorPointerDownHandler = (_pointer: Phaser.Input.Pointer) => {
+    this.tileEditorPointerDownHandler = (pointer: Phaser.Input.Pointer) => {
       if (!useGameStatusStore.getState().isTileManagerOpen || !this.canUseAdminTileTools()) return;
-      const store = this.getTileEditorStore();
-      if (!store) return;
-      const { selectedTool } = store.getState();
+      const { selectedTool } = useTileEditorStore.getState();
+      const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+      const tileX = Math.floor(worldPoint.x / TILE_SIZE);
+      const tileY = Math.floor(worldPoint.y / TILE_SIZE);
+      this.tileEditorLastPointerTile = { x: tileX, y: tileY };
+
       if (selectedTool === "single" || selectedTool === "brush" || selectedTool === "eraser") {
         this.tileEditorDragging = true;
         this.tileEditorDragBatchOld = [];
         this.tileEditorDragBatchNew = [];
+        this.applyTileEditorAction(tileX, tileY);
+      } else {
+        this.handleTileEditorClick(worldPoint.x, worldPoint.y);
       }
     };
     this.input.on("pointerdown", this.tileEditorPointerDownHandler);
@@ -1295,6 +1342,7 @@ export class TileViewer extends Scene {
       }
     };
     this.input.on("pointerup", this.tileEditorPointerUpHandler);
+    this.input.on("pointerupoutside", this.tileEditorPointerUpHandler);
 
     // Tile image replaced handler: bust Phaser texture cache and re-render
     this.tileImageReplacedHandler = (e: Event) => {
@@ -1340,11 +1388,77 @@ export class TileViewer extends Scene {
       clearTimeout(this.tileEditorFlushTimer);
       this.tileEditorFlushTimer = null;
     }
+    if (this.tileEditorPointerMoveHandler) {
+      this.input.off("pointermove", this.tileEditorPointerMoveHandler);
+      this.tileEditorPointerMoveHandler = null;
+    }
+    if (this.tileEditorPointerDownHandler) {
+      this.input.off("pointerdown", this.tileEditorPointerDownHandler);
+      this.tileEditorPointerDownHandler = null;
+    }
+    if (this.tileEditorPointerUpHandler) {
+      this.input.off("pointerup", this.tileEditorPointerUpHandler);
+      this.input.off("pointerupoutside", this.tileEditorPointerUpHandler);
+      this.tileEditorPointerUpHandler = null;
+    }
+    this.tileEditorDragging = false;
+    this.tileEditorStoreUnsubscribe?.();
+    this.tileEditorStoreUnsubscribe = null;
+    this.tileEditorLastPointerTile = null;
     if (this.tileImageReplacedHandler) {
       window.removeEventListener("tileImageReplaced", this.tileImageReplacedHandler);
       this.tileImageReplacedHandler = null;
     }
     this.mapRenderer.hideCursorPreview();
+  }
+
+  private updateTileEditorCursorPreview(tileX: number, tileY: number) {
+    if (!useGameStatusStore.getState().isTileManagerOpen || !this.canUseAdminTileTools()) {
+      this.mapRenderer.hideCursorPreview();
+      return;
+    }
+
+    const { selectedTool, selectedTileImageId, brushSize, selectedStamp } =
+      useTileEditorStore.getState();
+
+    if (selectedTool === "eraser") {
+      this.mapRenderer.showEraserPreview(tileX, tileY, brushSize);
+      return;
+    }
+    if (selectedTool === "stamp") {
+      if (selectedStamp) {
+        this.mapRenderer.showStampPreview(
+          tileX,
+          tileY,
+          selectedStamp.tileImageIds,
+          selectedStamp.widthTiles,
+          selectedStamp.heightTiles,
+        );
+      } else {
+        this.mapRenderer.hideCursorPreview();
+      }
+      return;
+    }
+    if (!selectedTileImageId) {
+      this.mapRenderer.hideCursorPreview();
+      return;
+    }
+
+    const size = selectedTool === "brush" ? brushSize : 1;
+    this.mapRenderer.showCursorPreview(tileX, tileY, selectedTileImageId, size);
+    void this.mapRenderer.loadTileTextureIfNeeded(selectedTileImageId).then((loaded) => {
+      const current = useTileEditorStore.getState();
+      if (
+        loaded &&
+        this.tileEditorLastPointerTile?.x === tileX &&
+        this.tileEditorLastPointerTile?.y === tileY &&
+        current.selectedTileImageId === selectedTileImageId &&
+        current.selectedTool === selectedTool &&
+        (selectedTool !== "brush" || current.brushSize === size)
+      ) {
+        this.mapRenderer.showCursorPreview(tileX, tileY, selectedTileImageId, size);
+      }
+    });
   }
 
   private applyTileEditorAction(tileX: number, tileY: number) {
@@ -1369,12 +1483,19 @@ export class TileViewer extends Scene {
         if (selectedTool === "eraser") {
           if (oldTileImageId === 0) continue; // Already empty
           this.mapRenderer.removeTile(tx, ty);
+          this.tileLookup.delete(`${tx},${ty}`);
           this.playerMovementController.updateCollisionTile(tx, ty, 0, true);
           this.tileEditorDragBatchOld.push({ x: tx, y: ty, tileImageId: oldTileImageId });
           this.tileEditorDragBatchNew.push({ x: tx, y: ty, tileImageId: 0 });
         } else if (selectedTileImageId) {
           if (oldTileImageId === selectedTileImageId) continue; // Same tile
-          this.mapRenderer.addTile(tx, ty, selectedTileImageId);
+          const rendered = this.mapRenderer.addTile(tx, ty, selectedTileImageId);
+          if (!rendered) {
+            void this.mapRenderer.loadTileTextureIfNeeded(selectedTileImageId).then((loaded) => {
+              if (loaded) this.mapRenderer.addTile(tx, ty, selectedTileImageId);
+            });
+          }
+          this.updateTileEditorLookup(tx, ty, selectedTileImageId);
           const ct = this.getTileCollisionType(selectedTileImageId);
           this.playerMovementController.updateCollisionTile(
             tx,

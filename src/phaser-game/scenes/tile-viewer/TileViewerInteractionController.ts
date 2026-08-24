@@ -55,7 +55,6 @@ interface TileViewerInteractionDeps {
   isWorldInputFrozen: () => boolean;
   getWorldInputFreezeReason: () => WorldInputFreezeReason | null;
   getDisplayedMapId: () => number | null;
-  handleTileEditorClick: (worldX: number, worldY: number) => void;
 }
 
 export class TileViewerInteractionController {
@@ -76,7 +75,8 @@ export class TileViewerInteractionController {
     void this.handleActorClicked(actor);
   };
   private readonly mapInteractivePointerDownHandler = () => {
-    if (useGameStatusStore.getState().isWarpMode) return;
+    const gameStatus = useGameStatusStore.getState();
+    if (gameStatus.isWarpMode || gameStatus.isTileManagerOpen) return;
     this.suppressNextWorldPointerUp = true;
   };
   private readonly confirmInstantWarpHandler = () => {
@@ -235,6 +235,10 @@ export class TileViewerInteractionController {
     if (pointer.getDistance() >= 10) return;
 
     const gameStatus = useGameStatusStore.getState();
+    if (gameStatus.isTileManagerOpen) {
+      // TileViewer owns editor pointer down/move/up as one coherent gesture.
+      return;
+    }
     const freezeReason = this.deps.getWorldInputFreezeReason();
     if (gameStatus.isWarpMode) {
       if (freezeReason && freezeReason !== "map_view") return;
@@ -249,11 +253,6 @@ export class TileViewerInteractionController {
 
     if (gameStatus.isWarpMode) {
       this.handleWarpModeClick(worldPoint.x, worldPoint.y);
-      return;
-    }
-
-    if (useGameStatusStore.getState().isTileManagerOpen) {
-      this.deps.handleTileEditorClick(worldPoint.x, worldPoint.y);
       return;
     }
 

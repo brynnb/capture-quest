@@ -9,6 +9,7 @@ import json
 import os
 import shutil
 import sqlite3
+import time
 import urllib.error
 import urllib.request
 import warnings
@@ -270,8 +271,11 @@ def copy_pokemon_battle_sprites(
     for pokemon_id, pokemon_name in rows:
         front_output = front_dest / f"{pokemon_id}.png"
         back_output = back_dest / f"{pokemon_id}.png"
-        if fetch_pokeapi and copy_pokeapi_battle_sprite(pokemon_id, "front", front_output):
-            pokeapi_copied += 1
+        if fetch_pokeapi:
+            if copy_pokeapi_battle_sprite(pokemon_id, "front", front_output):
+                pokeapi_copied += 1
+            else:
+                missing.append(f"{pokemon_id}:{pokemon_name}:full-color-front")
         else:
             stems = source_stem_candidates(str(pokemon_name))
             front = first_existing_png(front_source, stems)
@@ -281,8 +285,11 @@ def copy_pokemon_battle_sprites(
                 save_centered_transparent_sprite(front, front_output)
                 extractor_copied += 1
 
-        if fetch_pokeapi and copy_pokeapi_battle_sprite(pokemon_id, "back", back_output):
-            pokeapi_copied += 1
+        if fetch_pokeapi:
+            if copy_pokeapi_battle_sprite(pokemon_id, "back", back_output):
+                pokeapi_copied += 1
+            else:
+                missing.append(f"{pokemon_id}:{pokemon_name}:full-color-back")
         else:
             stems = source_stem_candidates(str(pokemon_name))
             back = first_existing_png(back_source, stems, "b")
@@ -313,10 +320,16 @@ def copy_pokeapi_battle_sprite(pokemon_id: int, side: str, destination: Path) ->
     else:
         raise ValueError(f"unknown sprite side: {side}")
 
-    try:
-        with urllib.request.urlopen(url, timeout=15) as response:
-            data = response.read()
-    except (urllib.error.URLError, TimeoutError):
+    data: bytes | None = None
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(url, timeout=15) as response:
+                data = response.read()
+            break
+        except (urllib.error.URLError, TimeoutError):
+            if attempt < 2:
+                time.sleep(0.25 * (attempt + 1))
+    if data is None:
         return False
 
     destination.parent.mkdir(parents=True, exist_ok=True)

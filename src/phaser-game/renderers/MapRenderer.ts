@@ -1182,6 +1182,16 @@ export class MapRenderer {
       const rtHeight = this.tileRenderTexture.height;
 
       if (localX >= 0 && localY >= 0 && localX < rtWidth && localY < rtHeight) {
+        // Replace the entire old cell before stamping the new artwork. Without
+        // this, transparent pixels can leave the prior tile visible underneath.
+        this.tileRenderTexture.fill(
+          0x000000,
+          1,
+          localX,
+          localY,
+          TILE_SIZE,
+          TILE_SIZE,
+        );
         // Within bounds — stamp onto RenderTexture using batch mode to avoid sub-pixel gaps
         this.tileRenderTexture.beginDraw();
         this.tileRenderTexture.batchDrawFrame(tileKey, undefined, localX, localY);
@@ -1340,8 +1350,17 @@ export class MapRenderer {
         const preview = this.scene.add.image(px, py, tileKey);
         preview.setOrigin(0, 0);
         preview.setAlpha(0.5);
-        this.cursorPreviewContainer.add(preview);
-        this.cursorPreviewSprites.push(preview);
+        const outline = this.scene.add.rectangle(
+          px + TILE_SIZE / 2,
+          py + TILE_SIZE / 2,
+          TILE_SIZE,
+          TILE_SIZE,
+          0xff244f,
+          0.12,
+        );
+        outline.setStrokeStyle(2, 0xff244f, 0.95);
+        this.cursorPreviewContainer.add([preview, outline]);
+        this.cursorPreviewSprites.push(preview, outline);
       }
     }
 

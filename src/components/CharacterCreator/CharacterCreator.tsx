@@ -68,19 +68,40 @@ const MultiColumnLayout = styled.div<{ $twoColumns?: boolean }>`
   }
 `;
 
-const NavigationContainer = styled.div<{ $inset?: boolean }>`
+const NavigationContainer = styled.div<{ $inset?: boolean; $centered?: boolean }>`
   position: absolute;
   bottom: 20px;
-  right: ${(props) => (props.$inset ? "clamp(40px, 5vw, 72px)" : "20px")};
+  right: ${(props) =>
+    props.$centered
+      ? "auto"
+      : props.$inset
+        ? "clamp(40px, 5vw, 72px)"
+        : "20px"};
+  left: ${(props) => (props.$centered ? "50%" : "auto")};
+  width: ${(props) =>
+    props.$centered ? "min(500px, calc(100% - 24px))" : "auto"};
+  transform: ${(props) => (props.$centered ? "translateX(-50%)" : "none")};
   z-index: 10;
   display: flex;
   gap: 10px;
   max-width: calc(100% - 40px);
 
+  ${(props) =>
+    props.$centered &&
+    `
+      & > button {
+        flex: 1 1 0;
+        min-width: 0;
+      }
+    `}
+
   @media (max-width: 900px), (pointer: coarse) {
     right: 12px;
     bottom: calc(10px + env(safe-area-inset-bottom, 0px));
     left: 12px;
+    width: auto;
+    max-width: none;
+    transform: none;
     justify-content: flex-end;
     flex-wrap: wrap;
 
@@ -460,7 +481,7 @@ const CharacterCreator = () => {
               . Your rival {rivalName || "Gary"} will be watching every step.
               Are you ready to begin?
             </StoryText>
-            <NavigationContainer $inset>
+            <NavigationContainer $centered>
               <SelectionButton onClick={handleBack} $isSelected={false}>
                 Back
               </SelectionButton>
