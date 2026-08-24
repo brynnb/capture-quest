@@ -231,14 +231,15 @@ export class TileViewerInteractionController {
       this.suppressNextWorldPointerUp = false;
       return;
     }
+    const gameStatus = useGameStatusStore.getState();
+    if (gameStatus.isTileManagerOpen) {
+      // TileViewer owns editor pointer down/move/up as one coherent gesture,
+      // including consuming camera-pan markers after View Map drags.
+      return;
+    }
     if (this.deps.cameraController().consumePointerGesture(pointer.id)) return;
     if (pointer.getDistance() >= 10) return;
 
-    const gameStatus = useGameStatusStore.getState();
-    if (gameStatus.isTileManagerOpen) {
-      // TileViewer owns editor pointer down/move/up as one coherent gesture.
-      return;
-    }
     const freezeReason = this.deps.getWorldInputFreezeReason();
     if (gameStatus.isWarpMode) {
       if (freezeReason && freezeReason !== "map_view") return;

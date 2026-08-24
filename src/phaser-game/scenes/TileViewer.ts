@@ -1070,6 +1070,7 @@ export class TileViewer extends Scene {
   private tileEditorStoreUnsubscribe: (() => void) | null = null;
   private tileEditorLastPointerTile: { x: number; y: number } | null = null;
   private tileEditorStampCaptureStart: { x: number; y: number } | null = null;
+  private readonly tileEditorViewMapPointers = new Set<number>();
   private tileEditorDragging = false;
   private tileEditorDragBatchOld: { x: number; y: number; tileImageId: number }[] = [];
   private tileEditorDragBatchNew: { x: number; y: number; tileImageId: number }[] = [];
@@ -1339,12 +1340,20 @@ export class TileViewer extends Scene {
 
     // Pointer down for drag start
     this.tileEditorPointerDownHandler = (pointer: Phaser.Input.Pointer) => {
-      if (!useGameStatusStore.getState().isTileManagerOpen || !this.canUseAdminTileTools()) return;
+      const gameStatus = useGameStatusStore.getState();
+      if (!gameStatus.isTileManagerOpen || !this.canUseAdminTileTools()) return;
       const { selectedTool, selectedStamp } = useTileEditorStore.getState();
       const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
       const tileX = Math.floor(worldPoint.x / TILE_SIZE);
       const tileY = Math.floor(worldPoint.y / TILE_SIZE);
       this.tileEditorLastPointerTile = { x: tileX, y: tileY };
+
+      // In View Map, a press may become a camera pan. Defer all mutations
+      // until pointer-up so dragging never paints the tile under the finger.
+      if (!gameStatus.isCameraFollowEnabled) {
+        this.tileEditorViewMapPointers.add(pointer.id);
+        return;
+      }
 
       if (selectedTool === "single" || selectedTool === "brush" || selectedTool === "eraser") {
         this.tileEditorDragging = true;
@@ -1362,6 +1371,33 @@ export class TileViewer extends Scene {
 
     // Pointer up for drag end + flush batch
     this.tileEditorPointerUpHandler = (pointer: Phaser.Input.Pointer) => {
+      if (this.tileEditorViewMapPointers.delete(pointer.id)) {
+        const wasCameraGesture = this.cameraController.consumePointerGesture(pointer.id);
+        if (wasCameraGesture) {
+          this.mapRenderer.hideCursorPreview();
+          return;
+        }
+
+        const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+        const tileX = Math.floor(worldPoint.x / TILE_SIZE);
+        const tileY = Math.floor(worldPoint.y / TILE_SIZE);
+        const { selectedTool, selectedStamp } = useTileEditorStore.getState();
+
+        if (selectedTool === "single" || selectedTool === "brush" || selectedTool === "eraser") {
+          this.tileEditorDragBatchOld = [];
+          this.tileEditorDragBatchNew = [];
+          this.applyTileEditorAction(tileX, tileY);
+          this.flushTileEditorBatch();
+        } else if (selectedTool === "stamp" && !selectedStamp) {
+          this.tileEditorStampCaptureStart = { x: tileX, y: tileY };
+          this.captureTileEditorStamp(tileX, tileY);
+        } else {
+          this.handleTileEditorClick(worldPoint.x, worldPoint.y);
+        }
+        this.updateTileEditorCursorPreview(tileX, tileY);
+        return;
+      }
+
       if (this.tileEditorDragging) {
         this.tileEditorDragging = false;
         this.flushTileEditorBatch();
@@ -1439,6 +1475,7 @@ export class TileViewer extends Scene {
     this.tileEditorStoreUnsubscribe = null;
     this.tileEditorLastPointerTile = null;
     this.tileEditorStampCaptureStart = null;
+    this.tileEditorViewMapPointers.clear();
     if (this.tileImageReplacedHandler) {
       window.removeEventListener("tileImageReplaced", this.tileImageReplacedHandler);
       this.tileImageReplacedHandler = null;
