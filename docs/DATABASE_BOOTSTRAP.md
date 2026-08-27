@@ -48,6 +48,39 @@ from the flattened schema instead of mutating tables at server startup. If the
 server reports a missing column or stale constraint after a schema edit, rerun
 the fresh bootstrap path.
 
+## Refreshing Production Static Data
+
+A production refresh is not a reset. Run extractor negotiation before opening or
+mutating Postgres, apply the flattened schema, and rerun `import-phaser` without
+dropping player tables. The deployment workflow implements that order and creates
+a compressed backup immediately before the schema/import step.
+
+The importer wraps the tile stage and merge in one transaction. Never start a
+second importer because an SSH client disconnected: confirm the exact remote
+process and PostgreSQL backend have exited or completed first. See
+[`DEPLOYMENT.md`](DEPLOYMENT.md#failure-recovery) for the recovery procedure.
+
+The tile merge must remain set-based and indexed. Production currently imports
+about 95,000 tiles; correlated scans of `phaser_tiles_import_stage` for each
+column make runtime grow quadratically. Use the staging coordinate index and one
+`UPDATE ... FROM` join, and keep the existing merge regression test.
+
+## Tile Edit Preservation
+
+`phaser_tiles` separates source identity from current presentation:
+
+- `is_native_game_data` and `coordinate_origin` identify original coordinates;
+- `original_*` fields store the newest imported source values;
+- `has_tile_edit`, `is_tile_erased`, and current tile/collision fields store the
+  durable authoring override;
+- `content_origin` and editor metadata record the current content provenance.
+
+On an ordinary import, source rows refresh `original_*`; rows with
+`has_tile_edit = 1` keep their current edited or erased state. New source rows are
+inserted and stale unedited source rows are removed. Deliberate historical data
+repairs must use an idempotent `phaser_data_repairs.repair_key` so they cannot
+erase later edits on every import.
+
 ## Runtime Shape
 
 The Postgres schema intentionally contains the tables CaptureQuest currently

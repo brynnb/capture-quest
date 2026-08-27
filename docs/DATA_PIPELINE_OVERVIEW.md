@@ -25,6 +25,22 @@ The generated runtime outputs under `public/phaser`, `public/assets/pokemon`,
 ignored by Git and rebuilt with `npm run bootstrap:assets` or
 `npm run bootstrap:fresh`.
 
+The SQLite database and numeric tile artwork are published as one validated
+runtime family:
+
+```text
+public/phaser/pokemon.db
+public/phaser/tile_images/tile_*.png
+public/phaser/runtime_asset_contract.json
+src/constants/runtime_asset_version.ts
+```
+
+The contract records the exact SQLite hash, tile count, and complete tile-catalog
+hash. The generated TypeScript constant versions every browser tile URL with the
+catalog hash because numeric tile IDs are not stable across unrelated extractor
+catalogs. Never publish the database, tile directory, contract, or compiled
+frontend independently.
+
 ## Import Flow
 
 ```text
@@ -39,6 +55,12 @@ pokered source data
 `phaser_*` static tables, derives encounter areas, seeds CaptureQuest item/shop
 runtime data, classifies warp activation metadata, and syncs scripted-event JSON
 into the database.
+
+The `phaser_tiles` refresh is a transactional, indexed, set-based merge. Imported
+source values update the `original_*` snapshot; explicit manual tile mutations
+remain current when `has_tile_edit = 1`. One-time cleanup is tracked separately
+in `phaser_data_repairs`. Do not replace the set-based stage join with repeated
+correlated lookups or truncate the runtime tile table during a normal refresh.
 
 Source-derived browser runtime helpers should be generated into SQLite before
 deploy. For example, `scripts/generate_dungeon_hole_warps.py` reads pokered ASM

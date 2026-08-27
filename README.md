@@ -63,6 +63,16 @@ If you want to use an external extractor checkout instead of the submodule, set
 `POKEMON_EXTRACTOR_ROOT=/path/to/pokemon-gameboy-extractor-tool` or
 `POKEMON_DB_SOURCE=/path/to/pokemon.db`.
 
+## Operations and deployment
+
+Production deployment is data-bearing: it publishes a validated generated asset
+family, backs up Postgres, refreshes extracted static data while preserving
+runtime/player state and current tile edits, restarts the server, and verifies
+the live artifact contract. Read [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) before
+every deployment. Import/schema details are in
+[`docs/DATABASE_BOOTSTRAP.md`](docs/DATABASE_BOOTSTRAP.md), and repository-wide
+agent constraints are in [`AGENTS.md`](AGENTS.md).
+
 ## Browser Smoke Tests
 
 CaptureQuest has a small Playwright smoke-test harness for browser-level checks.

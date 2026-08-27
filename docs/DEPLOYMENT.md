@@ -40,6 +40,23 @@ settings before enabling the workflow:
 | `DEPLOY_HOST` | Secret | SSH destination, for example `ubuntu@example.com`. |
 | `DEPLOY_APP_DIR` | Repository variable | Absolute path to the app directory on the host. |
 
+The workflow is the canonical deployment path. It performs this order:
+
+1. install pinned Node, Python, and extractor dependencies;
+2. restore a validated generated-asset cache or rebuild all graphics, SQLite,
+   scripted events, and audio;
+3. validate the runtime asset contract, build the frontend, run focused importer
+   and warp tests, and build the Linux server/importer binaries;
+4. upload the frontend and binaries, stop `cq-server`, and create a compressed
+   Postgres backup under `$DEPLOY_APP_DIR/backups`;
+5. negotiate the extractor contract before touching Postgres, apply the schema,
+   and run the deterministic importer;
+6. restart `cq-server` and Caddy, validate tile rows and the served asset contract,
+   then retry the public health endpoint until startup completes.
+
+Do not reorder schema negotiation, backup, schema application, or import. Do not
+start a second deployment while an importer from the first one may still exist.
+
 ## Build
 
 Generated runtime assets are ignored by Git. They must exist before Vite builds
@@ -57,7 +74,7 @@ cmp public/phaser/runtime_asset_contract.json dist/phaser/runtime_asset_contract
 
 cd server
 go test ./...
-go build -o /tmp/capturequest-server ./cmd/server
+go build -o /var/tmp/capturequest-server ./cmd/server
 ```
 
 If the generated assets were restored from a known-good CI cache, the bootstrap
@@ -65,6 +82,25 @@ step can be skipped. Never skip the runtime-asset checks. The contract binds the
 SQLite database, the complete tile-image catalog, and the cache version compiled
 into the frontend. Tile artwork URLs use that version so browsers cannot reuse a
 numeric tile ID from an older extractor catalog.
+
+The full contract is specific to one generated run. To validate production,
+compare the SHA-256 of the database served at `/phaser/pokemon.db` with
+`pokemonDbSha256` in the contract served at
+`/phaser/runtime_asset_contract.json`. Do not require a separately generated
+local SQLite database to have the same whole-file hash. Its catalog is compatible
+only when `tileCatalogSha256` and `tileCount` also match.
+
+Tile images intentionally keep numeric filenames. Their URLs must include the
+generated tile-catalog hash from `src/constants/runtime_asset_version.ts`; do not
+remove that query parameter. Without it, a browser can display cached artwork
+from an older catalog under a newly assigned numeric ID.
+
+The CI cache key should contain only inputs that can change generated runtime
+content: extractor revision, generation/sync scripts, dependency lockfiles,
+release, and source assets. Do not include unrelated workflow formatting in that
+hash. A restored cache is accepted only after readiness checks find the database,
+runtime contract, generated catalog version, graphics, sprites, scripted events,
+and complete audio metadata; a partial or older cache must regenerate.
 
 ## Generated Audio
 
@@ -111,7 +147,9 @@ After completing the build and asset checks above, upload the complete frontend:
 
 ```bash
 tar --exclude='._*' --exclude='.DS_Store' -czf - -C dist . \
-  | ssh -o BatchMode=yes -i "$CQ_DEPLOY_KEY" "$CQ_DEPLOY_HOST" \
+  | ssh -o BatchMode=yes \
+      -o ServerAliveInterval=15 -o ServerAliveCountMax=20 -o TCPKeepAlive=yes \
+      -i "$CQ_DEPLOY_KEY" "$CQ_DEPLOY_HOST" \
       "mkdir -p '$CQ_DEPLOY_APP_DIR/dist' && cd '$CQ_DEPLOY_APP_DIR/dist' && tar xzf -"
 ```
 
@@ -149,6 +187,58 @@ DATABASE_URL="$DATABASE_URL" npm run bootstrap:fresh
 The importer is deterministic for extractor-generated static data and
 scripted-event JSON. It should be safe to rerun after source data changes.
 
+Ordinary imports preserve manual tile edits. Source data refreshes each row's
+`original_*` snapshot, while `has_tile_edit = 1` preserves the current edited
+value. Intentional historical cleanup is recorded once in
+`phaser_data_repairs`; do not turn it into a recurring reset.
+
+The production tile merge is about 95,000 rows. It must remain a set-based
+`UPDATE ... FROM phaser_tiles_import_stage` operation backed by the staging
+coordinate index. Multiple correlated staging-table lookups per destination row
+make the merge quadratic and can hold the table lock long enough for SSH and
+service startup to fail.
+
+## Failure Recovery
+
+If an SSH deployment session disconnects during import, do not immediately run
+another importer. The remote process and its PostgreSQL statement can survive
+the client connection. Establish a new keepalive-enabled SSH session and inspect
+both layers:
+
+```bash
+pgrep -af '[i]mport-phaser'
+
+set -a
+. /etc/capturequest/cq-server.env
+set +a
+psql "$DATABASE_URL" -c \
+  "SELECT pid, state, wait_event_type, wait_event, query_start, left(query, 160)
+   FROM pg_stat_activity
+   WHERE query ILIKE '%phaser_tiles%' OR query ILIKE '%import_stage%';"
+```
+
+An active CPU-using backend may still be doing useful work. A lock-waiting server
+backend is not proof the importer is dead. If a confirmed abandoned import must
+be cancelled, terminate only its exact OS PID and exact PostgreSQL backend PID;
+then wait for rollback before restarting or retrying. Never use broad `pkill` or
+start a competing importer.
+
+After any failed deployment:
+
+1. confirm the predeploy `.sql.gz` backup exists and is non-empty;
+2. ensure `cq-server` is active, or deliberately keep it stopped while a required
+   import holds schema locks;
+3. inspect `journalctl -u cq-server` for the first terminal startup error;
+4. finish or safely roll back the exact importer transaction;
+5. restart the service and wait for world initialization before probing HTTP;
+6. run every post-deploy invariant below.
+
+Startup normally takes roughly eight seconds because the server synchronizes
+scripted events and preloads collisions, actors, encounters, scripts, and warps.
+The automated health check retries for roughly one minute, and longer when an
+individual request reaches its timeout. A transient 502 during that window is
+expected; a persistent 502 after the retry window requires journal inspection.
+
 ## WebTransport
 
 Route normal HTTPS traffic to the server's HTTP API port. WebTransport uses HTTP/3
@@ -172,3 +262,24 @@ WebTransport connection in the browser.
   scripted-event generation changes.
 - Unedited native `phaser_tiles` rows still match their
   `original_tile_image_id` values after the import.
+- The served `/phaser/pokemon.db` SHA-256 equals `pokemonDbSha256` in the served
+  runtime asset contract, whose `tileCatalogSha256` and `tileCount` match the
+  deployed frontend catalog version.
+- `https://capturequest.net/api/online` succeeds after the startup retry window.
+- Production Tile Art Studio routes such as `/api/tiles/stamps` return 404.
+- Recent `journalctl -u cq-server` output contains full world initialization and
+  no terminal scripted-event, schema, panic, or fatal error.
+
+The tile-row invariant is:
+
+```sql
+SELECT COUNT(*)
+FROM phaser_tiles
+WHERE has_tile_edit = 0
+  AND original_tile_image_id IS NOT NULL
+  AND tile_image_id <> original_tile_image_id;
+```
+
+It must return `0`. Also verify that `phaser_data_repairs` contains any expected
+one-time repair key exactly once and that the imported tile count is plausible
+for the selected extractor release.
