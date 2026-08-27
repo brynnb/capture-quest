@@ -50,7 +50,6 @@ jobs:
             {
               printf 'extractor=%s\n' "$extractor_sha"
               git ls-files -s \
-                .github/workflows/deploy.yml \
                 package-lock.json \
                 scripts/bootstrap_capturequest.sh \
                 scripts/generate_dungeon_hole_warps.py \
@@ -309,6 +308,14 @@ jobs:
           expected_contract_sha="$(sha256sum public/phaser/runtime_asset_contract.json | awk '{print $1}')"
           deployed_contract_sha="$(curl --fail --silent --show-error https://capturequest.net/phaser/runtime_asset_contract.json | sha256sum | awk '{print $1}')"
           test "$deployed_contract_sha" = "$expected_contract_sha"
-          curl --fail --silent --show-error https://capturequest.net/api/online >/dev/null
+          server_ready=false
+          for attempt in $(seq 1 12); do
+            if curl --fail --silent --show-error --max-time 5 https://capturequest.net/api/online >/dev/null; then
+              server_ready=true
+              break
+            fi
+            sleep 5
+          done
+          test "$server_ready" = true
 
           rm -f ~/.ssh/deploy_key
