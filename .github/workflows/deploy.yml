@@ -259,7 +259,9 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          SSH_OPTS="-o StrictHostKeyChecking=no -i ~/.ssh/deploy_key"
+          # Long imports can be quiet for several minutes. Client keepalives
+          # prevent the SSH transport from being mistaken for an idle session.
+          SSH_OPTS="-o StrictHostKeyChecking=no -o ServerAliveInterval=15 -o ServerAliveCountMax=20 -o TCPKeepAlive=yes -i ~/.ssh/deploy_key"
           HOST="$DEPLOY_HOST"
           APP_DIR="$DEPLOY_APP_DIR"
           CQ_SERVER_STOPPED=false

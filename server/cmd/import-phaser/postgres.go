@@ -873,6 +873,11 @@ func importTilesPostgres(sqlite, pg *sql.DB, tileImageMetadata map[int64]tileIma
 	if err := sourceRows.Err(); err != nil {
 		return fmt.Errorf("read tile rows: %w", err)
 	}
+	if _, err := tx.Exec(`
+		CREATE UNIQUE INDEX phaser_tiles_import_stage_coord_idx
+		ON phaser_tiles_import_stage (x, y, COALESCE(map_id, -1))`); err != nil {
+		return fmt.Errorf("index phaser_tiles import stage: %w", err)
+	}
 	if err := discardLegacyTileEditsOnce(tx); err != nil {
 		return err
 	}
@@ -943,84 +948,39 @@ func discardLegacyTileEditsOnce(tx *sql.Tx) error {
 
 func mergeImportedTilesPostgres(tx *sql.Tx) error {
 	result, err := tx.Exec(`
-		UPDATE phaser_tiles
+		UPDATE phaser_tiles AS t
 		SET
 			is_original_tile_location = 1,
 			is_native_game_data = TRUE,
 			coordinate_origin = 'native',
-			content_origin = CASE WHEN has_tile_edit = 1 THEN 'user' ELSE 'native' END,
-			original_tile_image_id = (
-				SELECT s.tile_image_id FROM phaser_tiles_import_stage AS s
-				WHERE s.x = phaser_tiles.x AND s.y = phaser_tiles.y AND COALESCE(s.map_id, -1) = COALESCE(phaser_tiles.map_id, -1)
-			),
-			original_collision_type = (
-				SELECT s.collision_type FROM phaser_tiles_import_stage AS s
-				WHERE s.x = phaser_tiles.x AND s.y = phaser_tiles.y AND COALESCE(s.map_id, -1) = COALESCE(phaser_tiles.map_id, -1)
-			),
-			original_raw_foot_tile_id = (
-				SELECT s.raw_foot_tile_id FROM phaser_tiles_import_stage AS s
-				WHERE s.x = phaser_tiles.x AND s.y = phaser_tiles.y AND COALESCE(s.map_id, -1) = COALESCE(phaser_tiles.map_id, -1)
-			),
-			original_talk_over_tile = (
-				SELECT s.talk_over_tile FROM phaser_tiles_import_stage AS s
-				WHERE s.x = phaser_tiles.x AND s.y = phaser_tiles.y AND COALESCE(s.map_id, -1) = COALESCE(phaser_tiles.map_id, -1)
-			),
+			content_origin = CASE WHEN t.has_tile_edit = 1 THEN 'user' ELSE 'native' END,
+			original_tile_image_id = s.tile_image_id,
+			original_collision_type = s.collision_type,
+			original_raw_foot_tile_id = s.raw_foot_tile_id,
+			original_talk_over_tile = s.talk_over_tile,
 			original_encounter_area_id = NULL,
-			original_local_x = (
-				SELECT s.local_x FROM phaser_tiles_import_stage AS s
-				WHERE s.x = phaser_tiles.x AND s.y = phaser_tiles.y AND COALESCE(s.map_id, -1) = COALESCE(phaser_tiles.map_id, -1)
-			),
-			original_local_y = (
-				SELECT s.local_y FROM phaser_tiles_import_stage AS s
-				WHERE s.x = phaser_tiles.x AND s.y = phaser_tiles.y AND COALESCE(s.map_id, -1) = COALESCE(phaser_tiles.map_id, -1)
-			),
-			original_source_map_id = (
-				SELECT s.source_map_id FROM phaser_tiles_import_stage AS s
-				WHERE s.x = phaser_tiles.x AND s.y = phaser_tiles.y AND COALESCE(s.map_id, -1) = COALESCE(phaser_tiles.map_id, -1)
-			),
-			tile_image_id = CASE WHEN has_tile_edit = 1 THEN tile_image_id ELSE (
-				SELECT s.tile_image_id FROM phaser_tiles_import_stage AS s
-				WHERE s.x = phaser_tiles.x AND s.y = phaser_tiles.y AND COALESCE(s.map_id, -1) = COALESCE(phaser_tiles.map_id, -1)
-			) END,
-			collision_type = CASE WHEN has_tile_edit = 1 THEN collision_type ELSE (
-				SELECT s.collision_type FROM phaser_tiles_import_stage AS s
-				WHERE s.x = phaser_tiles.x AND s.y = phaser_tiles.y AND COALESCE(s.map_id, -1) = COALESCE(phaser_tiles.map_id, -1)
-			) END,
-			raw_foot_tile_id = CASE WHEN has_tile_edit = 1 THEN raw_foot_tile_id ELSE (
-				SELECT s.raw_foot_tile_id FROM phaser_tiles_import_stage AS s
-				WHERE s.x = phaser_tiles.x AND s.y = phaser_tiles.y AND COALESCE(s.map_id, -1) = COALESCE(phaser_tiles.map_id, -1)
-			) END,
-			talk_over_tile = CASE WHEN has_tile_edit = 1 THEN talk_over_tile ELSE (
-				SELECT s.talk_over_tile FROM phaser_tiles_import_stage AS s
-				WHERE s.x = phaser_tiles.x AND s.y = phaser_tiles.y AND COALESCE(s.map_id, -1) = COALESCE(phaser_tiles.map_id, -1)
-			) END,
-			encounter_area_id = CASE WHEN has_tile_edit = 1 THEN encounter_area_id ELSE NULL END,
-			local_x = CASE WHEN has_tile_edit = 1 THEN local_x ELSE (
-				SELECT s.local_x FROM phaser_tiles_import_stage AS s
-				WHERE s.x = phaser_tiles.x AND s.y = phaser_tiles.y AND COALESCE(s.map_id, -1) = COALESCE(phaser_tiles.map_id, -1)
-			) END,
-			local_y = CASE WHEN has_tile_edit = 1 THEN local_y ELSE (
-				SELECT s.local_y FROM phaser_tiles_import_stage AS s
-				WHERE s.x = phaser_tiles.x AND s.y = phaser_tiles.y AND COALESCE(s.map_id, -1) = COALESCE(phaser_tiles.map_id, -1)
-			) END,
-			source_map_id = CASE WHEN has_tile_edit = 1 THEN source_map_id ELSE (
-				SELECT s.source_map_id FROM phaser_tiles_import_stage AS s
-				WHERE s.x = phaser_tiles.x AND s.y = phaser_tiles.y AND COALESCE(s.map_id, -1) = COALESCE(phaser_tiles.map_id, -1)
-			) END,
-			is_tile_erased = CASE WHEN has_tile_edit = 1 THEN is_tile_erased ELSE 0 END,
-			is_user_placed = CASE WHEN has_tile_edit = 1 THEN is_user_placed ELSE 0 END,
-			placed_by_char_id = CASE WHEN has_tile_edit = 1 THEN placed_by_char_id ELSE NULL END,
-			placed_at = CASE WHEN has_tile_edit = 1 THEN placed_at ELSE NULL END,
-			last_edited_by_char_id = CASE WHEN has_tile_edit = 1 THEN last_edited_by_char_id ELSE NULL END,
-			last_edited_at = CASE WHEN has_tile_edit = 1 THEN last_edited_at ELSE NULL END,
-			last_edit_source = CASE WHEN has_tile_edit = 1 THEN last_edit_source ELSE NULL END
-		WHERE EXISTS (
-			SELECT 1
-			FROM phaser_tiles_import_stage AS s
-			WHERE s.x = phaser_tiles.x
-			  AND s.y = phaser_tiles.y
-			  AND COALESCE(s.map_id, -1) = COALESCE(phaser_tiles.map_id, -1)
-		)`)
+			original_local_x = s.local_x,
+			original_local_y = s.local_y,
+			original_source_map_id = s.source_map_id,
+			tile_image_id = CASE WHEN t.has_tile_edit = 1 THEN t.tile_image_id ELSE s.tile_image_id END,
+			collision_type = CASE WHEN t.has_tile_edit = 1 THEN t.collision_type ELSE s.collision_type END,
+			raw_foot_tile_id = CASE WHEN t.has_tile_edit = 1 THEN t.raw_foot_tile_id ELSE s.raw_foot_tile_id END,
+			talk_over_tile = CASE WHEN t.has_tile_edit = 1 THEN t.talk_over_tile ELSE s.talk_over_tile END,
+			encounter_area_id = CASE WHEN t.has_tile_edit = 1 THEN t.encounter_area_id ELSE NULL END,
+			local_x = CASE WHEN t.has_tile_edit = 1 THEN t.local_x ELSE s.local_x END,
+			local_y = CASE WHEN t.has_tile_edit = 1 THEN t.local_y ELSE s.local_y END,
+			source_map_id = CASE WHEN t.has_tile_edit = 1 THEN t.source_map_id ELSE s.source_map_id END,
+			is_tile_erased = CASE WHEN t.has_tile_edit = 1 THEN t.is_tile_erased ELSE 0 END,
+			is_user_placed = CASE WHEN t.has_tile_edit = 1 THEN t.is_user_placed ELSE 0 END,
+			placed_by_char_id = CASE WHEN t.has_tile_edit = 1 THEN t.placed_by_char_id ELSE NULL END,
+			placed_at = CASE WHEN t.has_tile_edit = 1 THEN t.placed_at ELSE NULL END,
+			last_edited_by_char_id = CASE WHEN t.has_tile_edit = 1 THEN t.last_edited_by_char_id ELSE NULL END,
+			last_edited_at = CASE WHEN t.has_tile_edit = 1 THEN t.last_edited_at ELSE NULL END,
+			last_edit_source = CASE WHEN t.has_tile_edit = 1 THEN t.last_edit_source ELSE NULL END
+		FROM phaser_tiles_import_stage AS s
+		WHERE s.x = t.x
+		  AND s.y = t.y
+		  AND COALESCE(s.map_id, -1) = COALESCE(t.map_id, -1)`)
 	if err != nil {
 		return fmt.Errorf("update existing phaser_tiles from import stage: %w", err)
 	}
