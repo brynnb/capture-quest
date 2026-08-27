@@ -166,6 +166,7 @@ export class MapRenderer {
     items: MapItem[],
     warps: PhaserWarp[] = [],
     actors: PhaserActor[] = [],
+    tileBounds?: { minX: number; minY: number; maxX: number; maxY: number },
   ) {
     console.log(
       `Rendering map with ${tiles.length} tiles, ${items.length} items, ${warps.length} warps, ${actors.length} actors`,
@@ -175,7 +176,9 @@ export class MapRenderer {
     this.clear();
 
     // Calculate bounds first so we can size the RenderTexture
-    const bounds = this.calculateMapBounds(tiles);
+    const bounds = tileBounds
+      ? this.calculateCoordinateBounds(tileBounds)
+      : this.calculateMapBounds(tiles);
     this.mapOriginX = bounds.minX;
     this.mapOriginY = bounds.minY;
 
@@ -986,7 +989,16 @@ export class MapRenderer {
 
   calculateMapBounds(tiles: PhaserTile[]) {
     if (tiles.length === 0) {
-      return { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 0, height: 0 };
+      return {
+        minX: 0,
+        minY: 0,
+        maxX: 0,
+        maxY: 0,
+        width: 0,
+        height: 0,
+        centerX: 0,
+        centerY: 0,
+      };
     }
 
     let minX = Infinity;
@@ -1002,6 +1014,16 @@ export class MapRenderer {
       maxY = Math.max(maxY, tile.y);
     }
 
+    return this.calculateCoordinateBounds({ minX, minY, maxX, maxY });
+  }
+
+  private calculateCoordinateBounds(bounds: {
+    minX: number;
+    minY: number;
+    maxX: number;
+    maxY: number;
+  }) {
+    const { minX, minY, maxX, maxY } = bounds;
     const mapWidth = (maxX - minX + 1) * TILE_SIZE;
     const mapHeight = (maxY - minY + 1) * TILE_SIZE;
 

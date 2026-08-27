@@ -862,6 +862,10 @@ export interface PhaserMapInfo {
   height: number /* int */;
   tilesetId?: number /* int */;
   isOverworld: number /* int */;
+  tileMinX?: number /* int */;
+  tileMinY?: number /* int */;
+  tileMaxX?: number /* int */;
+  tileMaxY?: number /* int */;
 }
 /**
  * PhaserTile represents a single tile in the game
@@ -942,6 +946,21 @@ export interface PhaserMapInfoRequest {
  */
 export interface PhaserTilesRequest {
   mapId: number /* int */;
+  requestId?: string;
+  minX?: number /* int */;
+  minY?: number /* int */;
+  maxX?: number /* int */;
+  maxY?: number /* int */;
+  afterId?: number /* int */;
+  limit?: number /* int */;
+}
+export interface PhaserTilesResponse {
+  mapId: number /* int */;
+  requestId: string;
+  tiles: PhaserTile[];
+  nextAfterId: number /* int */;
+  hasMore: boolean;
+  error?: string;
 }
 /**
  * PhaserActorsRequest is the request payload

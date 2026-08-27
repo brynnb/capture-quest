@@ -24,6 +24,13 @@ interface MovementPathStep {
   ledgeJump?: boolean;
 }
 
+interface MovementPathNode extends MovementPathStep {
+  g: number;
+  h: number;
+  f: number;
+  parent: MovementPathNode | null;
+}
+
 const COLLISION_LAND = 1;
 const COLLISION_WATER = 2;
 const SURF_MOVE_ID = 57;
@@ -444,21 +451,7 @@ export class PlayerMovementController {
     this.sourceMapByTile.clear();
     let walkableCount = 0;
     for (const tile of tiles) {
-      const key = `${tile.x},${tile.y}`;
-      this.collisionMap.set(key, tile.collisionType);
-      const sourceMapId = tile.sourceMapId ?? tile.mapId;
-      if (Number.isFinite(sourceMapId)) {
-        this.sourceMapByTile.set(key, {
-          id: sourceMapId,
-          name: tile.sourceMapName ?? null,
-        });
-      }
-      if (tile.rawFootTileId != null) {
-        this.rawFootTileMap.set(key, tile.rawFootTileId);
-      }
-      if (tile.talkOverTile) {
-        this.talkOverTileMap.set(key, true);
-      }
+      this.upsertCollisionTile(tile);
       if (this.isCollisionWalkable(tile.collisionType)) walkableCount++;
     }
     debugPlayerMovement(
@@ -466,6 +459,34 @@ export class PlayerMovementController {
     );
     this.updateSurfingStateForTile(this.currentTileX, this.currentTileY);
     this.updateTravelMapForTile(this.currentTileX, this.currentTileY);
+  }
+
+  addCollisionTiles(tiles: readonly PhaserTile[]): void {
+    for (const tile of tiles) {
+      this.upsertCollisionTile(tile);
+    }
+  }
+
+  private upsertCollisionTile(tile: PhaserTile): void {
+    const key = `${tile.x},${tile.y}`;
+    this.collisionMap.set(key, tile.collisionType);
+    const sourceMapId = tile.sourceMapId ?? tile.mapId;
+    if (Number.isFinite(sourceMapId)) {
+      this.sourceMapByTile.set(key, {
+        id: sourceMapId,
+        name: tile.sourceMapName ?? null,
+      });
+    }
+    if (tile.rawFootTileId != null) {
+      this.rawFootTileMap.set(key, tile.rawFootTileId);
+    } else {
+      this.rawFootTileMap.delete(key);
+    }
+    if (tile.talkOverTile) {
+      this.talkOverTileMap.set(key, true);
+    } else {
+      this.talkOverTileMap.delete(key);
+    }
   }
 
   /**
@@ -1589,15 +1610,7 @@ export class PlayerMovementController {
     endX: number,
     endY: number,
   ): MovementPathStep[] {
-    const openSet: {
-      x: number;
-      y: number;
-      ledgeJump?: boolean;
-      g: number;
-      h: number;
-      f: number;
-      parent: any;
-    }[] = [];
+    const openSet: MovementPathNode[] = [];
     const closedSet: Set<string> = new Set();
 
     const heuristic = (x: number, y: number) =>

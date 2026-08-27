@@ -3,6 +3,7 @@ package world
 import (
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"capturequest/internal/api/opcodes"
@@ -217,6 +218,13 @@ func TestPhaserTilesRequestReturnsEditedTilesAndHidesErasedOriginals(t *testing.
 	if messenger.streams[0].opcode != opcodes.PhaserTilesResponse {
 		t.Fatalf("opcode = %d, want PhaserTilesResponse", messenger.streams[0].opcode)
 	}
+	responseJSON := string(messenger.streams[0].payload)
+	if strings.Contains(responseJSON, `"sourceMapName":null`) || strings.Contains(responseJSON, `"rawFootTileId":null`) {
+		t.Fatalf("tile response retained omitted nullable fields: %s", responseJSON)
+	}
+	if !strings.Contains(responseJSON, `"tileImageId":`) || !strings.Contains(responseJSON, `"isNativeGameData":`) {
+		t.Fatalf("tile response does not use the camelCase wire contract: %s", responseJSON)
+	}
 	var tiles []PhaserTile
 	if err := json.Unmarshal(messenger.streams[0].payload, &tiles); err != nil {
 		t.Fatalf("decode tiles response: %v", err)
@@ -230,6 +238,69 @@ func TestPhaserTilesRequestReturnsEditedTilesAndHidesErasedOriginals(t *testing.
 	}
 	if got, ok := byCoord[tileCoord{X: 6, Y: 6}]; ok {
 		t.Fatalf("erased original was returned: %+v", got)
+	}
+}
+
+func TestPhaserTilesRequestSupportsBoundedCorrelatedPages(t *testing.T) {
+	raw := setupWorldTileMutationDB(t)
+	if _, err := raw.Exec(`
+		INSERT INTO phaser_tiles (
+			x, y, tile_image_id, map_id, collision_type, is_original_tile_location,
+			is_native_game_data, coordinate_origin, content_origin
+		) VALUES
+			(20, 20, 1, NULL, 1, 1, 1, 'native', 'native'),
+			(21, 20, 2, NULL, 1, 1, 1, 'native', 'native'),
+			(40, 40, 2, NULL, 1, 1, 1, 'native', 'native')`,
+	); err != nil {
+		t.Fatalf("seed paged tiles: %v", err)
+	}
+
+	messenger := &recordingMessenger{}
+	ses := session.NewSessionManager().CreateSession(messenger, 1, "test", nil)
+	requestID := "near-player"
+	minX, minY, maxX, maxY := 20, 20, 21, 20
+	limit := 1
+	payload, err := json.Marshal(PhaserTilesRequest{
+		MapID: UnifiedOverworldMapID, RequestID: requestID,
+		MinX: &minX, MinY: &minY, MaxX: &maxX, MaxY: &maxY, Limit: &limit,
+	})
+	if err != nil {
+		t.Fatalf("marshal bounded tiles request: %v", err)
+	}
+	HandlePhaserTilesRequest(ses, payload, nil)
+
+	if len(messenger.streams) != 1 {
+		t.Fatalf("messages = %d, want one", len(messenger.streams))
+	}
+	var first PhaserTilesResponse
+	if err := json.Unmarshal(messenger.streams[0].payload, &first); err != nil {
+		t.Fatalf("decode bounded response: %v", err)
+	}
+	if first.RequestID != requestID || first.MapID != UnifiedOverworldMapID {
+		t.Fatalf("response correlation = (%q, %d), want (%q, %d)", first.RequestID, first.MapID, requestID, UnifiedOverworldMapID)
+	}
+	if len(first.Tiles) != 1 || first.Tiles[0].X != 20 || first.Tiles[0].Y != 20 || !first.HasMore {
+		t.Fatalf("first page = %+v, want one bounded tile and hasMore", first)
+	}
+
+	messenger.streams = nil
+	afterID := first.NextAfterID
+	requestID = "near-player-2"
+	payload, err = json.Marshal(PhaserTilesRequest{
+		MapID: UnifiedOverworldMapID, RequestID: requestID,
+		MinX: &minX, MinY: &minY, MaxX: &maxX, MaxY: &maxY,
+		AfterID: &afterID, Limit: &limit,
+	})
+	if err != nil {
+		t.Fatalf("marshal second tiles request: %v", err)
+	}
+	HandlePhaserTilesRequest(ses, payload, nil)
+	var second PhaserTilesResponse
+	if err := json.Unmarshal(messenger.streams[0].payload, &second); err != nil {
+		t.Fatalf("decode second response: %v", err)
+	}
+	if len(second.Tiles) != 1 || second.Tiles[0].X != 21 || second.Tiles[0].Y != 20 {
+		t.Fatalf("second page = %+v, want tile (21,20)", second)
 	}
 }
 

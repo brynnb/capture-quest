@@ -6,6 +6,7 @@ import { MapRenderer, type MapItem } from "../renderers/MapRenderer";
 import { MapDataService } from "./MapDataService";
 import { TileManager, ActorManager, UiManager } from "../managers";
 import useGameStatusStore from "@/stores/GameStatusStore";
+import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import * as PhaserNet from "./PhaserNetworkService";
 import type {
   PhaserMapInfo,
@@ -47,11 +48,13 @@ export class MapLoader {
 
   // Callbacks to update TileViewer state
   private setState: (partial: Partial<MapLoaderState>) => void;
+  private getState: () => MapLoaderState;
   private getPlayerActor: () => PhaserActor | null;
   private updateCameraFollow: () => void;
   private removeMapLegend: () => void;
   private createMapLegend: (maps: PhaserMapInfo[]) => void;
   private prepareActorsForLoadedView: (actors: PhaserActor[]) => PhaserActor[];
+  private mapLoadGeneration = 0;
 
   constructor(
     scene: Scene,
@@ -80,6 +83,7 @@ export class MapLoader {
     this.cameraController = cameraController;
     this.playerMovementController = playerMovementController;
     this.uiManager = uiManager;
+    this.getState = callbacks.getState;
     this.setState = callbacks.setState;
     this.getPlayerActor = callbacks.getPlayerActor;
     this.updateCameraFollow = callbacks.updateCameraFollow;
@@ -89,6 +93,7 @@ export class MapLoader {
   }
 
   async loadMapData(mapId: number) {
+    ++this.mapLoadGeneration;
     (this.scene as any).mapLoadInProgress = true; // eslint-disable-line @typescript-eslint/no-explicit-any
     try {
       // Check if network is ready
@@ -316,6 +321,7 @@ export class MapLoader {
   }
 
   async loadOverworldData(options: MapLoadOptions = {}) {
+    const loadGeneration = ++this.mapLoadGeneration;
     (this.scene as any).mapLoadInProgress = true; // eslint-disable-line @typescript-eslint/no-explicit-any
     try {
       // Check if network is ready
@@ -374,8 +380,18 @@ export class MapLoader {
 
       this.uiManager.setLoadingText("Loading tiles...");
 
-      // Load all tiles for the unified overworld in one request
-      const tiles = cached?.tiles ?? await this.mapDataService.fetchTiles(mapId);
+      // Make the playable area available first. The rest of the overworld is
+      // streamed in bounded pages after the scene is interactive.
+      const character = usePlayerCharacterStore.getState().characterProfile;
+      const centerX = Math.round(numberOrNull(warpDX) ?? numberOrNull(character.x) ?? 0);
+      const centerY = Math.round(numberOrNull(warpDY) ?? numberOrNull(character.y) ?? 0);
+      const initialRadius = 48;
+      const tiles = cached?.tiles ?? await this.mapDataService.fetchTilesInBounds(mapId, {
+        minX: centerX - initialRadius,
+        minY: centerY - initialRadius,
+        maxX: centerX + initialRadius,
+        maxY: centerY + initialRadius,
+      });
 
       this.uiManager.setLoadingText("Loading tile images...");
 
@@ -438,18 +454,36 @@ export class MapLoader {
 
       actors = this.prepareActorsForLoadedView(actors);
 
-      this.mapDataService.setSnapshot(mapId, {
-        mapInfo,
-        tiles,
-        warps,
-        actors: actors.filter((actor) => actor.objectType !== "player"),
-      });
+      if (cached) {
+        this.mapDataService.setSnapshot(mapId, {
+          mapInfo,
+          tiles,
+          warps,
+          actors: actors.filter((actor) => actor.objectType !== "player"),
+        });
+      }
 
       // Update state
       this.setState({ tiles, items, warps, actors });
 
       // Render the map with all actors
-      const mapBounds = this.mapRenderer.renderMap(tiles, items, warps, actors);
+      const explicitTileBounds =
+        mapInfo.tileMinX !== undefined && mapInfo.tileMinY !== undefined &&
+        mapInfo.tileMaxX !== undefined && mapInfo.tileMaxY !== undefined
+          ? {
+              minX: mapInfo.tileMinX,
+              minY: mapInfo.tileMinY,
+              maxX: mapInfo.tileMaxX,
+              maxY: mapInfo.tileMaxY,
+            }
+          : undefined;
+      const mapBounds = this.mapRenderer.renderMap(
+        tiles,
+        items,
+        warps,
+        actors,
+        explicitTileBounds,
+      );
 
       // Update collision map for movement
       if (!options.viewOnly) {
@@ -556,6 +590,14 @@ export class MapLoader {
       // Hide loading text
       this.uiManager.hideLoadingText();
       await (this.scene as any).playPendingWarpExitAnimation?.(200); // eslint-disable-line @typescript-eslint/no-explicit-any
+      if (!cached) {
+        void this.hydrateOverworldTiles(
+          tiles,
+          mapInfo,
+          loadGeneration,
+          options.viewOnly === true,
+        );
+      }
     } catch (error: unknown) {
       console.error("Error loading overworld data:", error);
       this.uiManager.setLoadingText(
@@ -565,6 +607,80 @@ export class MapLoader {
       );
     } finally {
       (this.scene as any).mapLoadInProgress = false; // eslint-disable-line @typescript-eslint/no-explicit-any
+    }
+  }
+
+  private async hydrateOverworldTiles(
+    initialTiles: PhaserTile[],
+    mapInfo: PhaserMapInfo,
+    loadGeneration: number,
+    viewOnly: boolean,
+  ): Promise<void> {
+    const tilesByCoordinate = new Map(
+      initialTiles.map((tile) => [`${tile.x},${tile.y}`, tile]),
+    );
+    let afterId = 0;
+    const pageSize = 4000;
+
+    try {
+      for (;;) {
+        const page = await this.mapDataService.fetchTilePage(
+          UNIFIED_OVERWORLD_MAP_ID,
+          afterId,
+          pageSize,
+        );
+        if (
+          loadGeneration !== this.mapLoadGeneration ||
+          this.getState().mapInfo?.id !== UNIFIED_OVERWORLD_MAP_ID
+        ) {
+          return;
+        }
+
+        const newTiles = page.tiles.filter(
+          (tile) => !tilesByCoordinate.has(`${tile.x},${tile.y}`),
+        );
+        for (const tile of page.tiles) {
+          tilesByCoordinate.set(`${tile.x},${tile.y}`, tile);
+        }
+
+        if (newTiles.length > 0) {
+          await this.tileManager.loadTileImages(
+            await this.mapDataService.fetchTileImages(),
+          );
+          if (loadGeneration !== this.mapLoadGeneration) return;
+          this.mapRenderer.addTiles(newTiles);
+          if (!viewOnly) {
+            this.playerMovementController.addCollisionTiles(newTiles);
+          }
+          this.setState({ tiles: Array.from(tilesByCoordinate.values()) });
+        }
+
+        if (!page.hasMore) break;
+        if (page.nextAfterId <= afterId) {
+          throw new Error("Overworld tile paging did not advance");
+        }
+        afterId = page.nextAfterId;
+      }
+
+      const state = this.getState();
+      if (
+        loadGeneration === this.mapLoadGeneration &&
+        state.mapInfo?.id === UNIFIED_OVERWORLD_MAP_ID
+      ) {
+        this.mapDataService.setSnapshot(UNIFIED_OVERWORLD_MAP_ID, {
+          mapInfo,
+          tiles: Array.from(tilesByCoordinate.values()),
+          warps: state.warps,
+          actors: state.actors.filter((actor) => actor.objectType !== "player"),
+        });
+        console.log(
+          `[MapLoader] Streamed ${tilesByCoordinate.size} overworld tiles`,
+        );
+      }
+    } catch (error) {
+      if (loadGeneration === this.mapLoadGeneration) {
+        console.error("[MapLoader] Failed to stream remaining overworld tiles:", error);
+      }
     }
   }
 

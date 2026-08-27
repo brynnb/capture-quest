@@ -11,6 +11,8 @@ import * as OpCodes from "@/net/generated/opcodes";
 import type {
   PhaserMapInfo,
   PhaserTile,
+  PhaserTilesRequest,
+  PhaserTilesResponse,
   PhaserActor,
   PhaserWarp,
   TrainerEncounterNotifyPayload,
@@ -154,12 +156,12 @@ export function sendTrainerBattleStart(trainerActorId: number): void {
 /**
  * Request tiles for a specific map ID
  */
-export function requestTiles(mapId: number): void {
+export function requestTiles(request: PhaserTilesRequest): void {
   if (!WorldSocket.isConnected) {
     console.warn("[PhaserNetwork] Not connected - cannot request tiles");
     return;
   }
-  NetworkBridge.send({ mapId: mapId }, OpCodes.PhaserTilesRequest);
+  NetworkBridge.send(request, OpCodes.PhaserTilesRequest);
 }
 
 /**
@@ -341,7 +343,7 @@ export function buyPrize(prizeId: number): void {
 
 // Response handler registration
 export type PhaserMapInfoHandler = (data: PhaserMapInfo) => void;
-export type PhaserTilesHandler = (data: PhaserTile[]) => void;
+export type PhaserTilesHandler = (data: PhaserTilesResponse | PhaserTile[]) => void;
 export type PhaserOverworldMapsHandler = (data: PhaserMapInfo[]) => void;
 export type PhaserActorsHandler = (data: PhaserActor[]) => void;
 export type PhaserWarpsHandler = (data: PhaserWarp[]) => void;
@@ -536,9 +538,7 @@ export function dispatchPhaserResponse(opcode: number, data: unknown): void {
       handlers.mapInfo.forEach((h) => h(data as PhaserMapInfo));
       break;
     case OpCodes.PhaserTilesResponse:
-      handlers.tiles.forEach((h) =>
-        h(normalizePhaserArrayPayload<PhaserTile>(data, "tiles response")),
-      );
+      handlers.tiles.forEach((h) => h(data as PhaserTilesResponse | PhaserTile[]));
       break;
     case OpCodes.PhaserOverworldMapsResponse:
       handlers.overworldMaps.forEach((h) =>

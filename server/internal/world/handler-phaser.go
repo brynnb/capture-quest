@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
@@ -21,6 +22,10 @@ type PhaserMapInfo struct {
 	Height      int    `json:"height"`
 	TilesetID   *int   `json:"tilesetId,omitempty"`
 	IsOverworld int    `json:"isOverworld"`
+	TileMinX    *int   `json:"tileMinX,omitempty"`
+	TileMinY    *int   `json:"tileMinY,omitempty"`
+	TileMaxX    *int   `json:"tileMaxX,omitempty"`
+	TileMaxY    *int   `json:"tileMaxY,omitempty"`
 }
 
 // PhaserTile represents a single tile in the game
@@ -111,7 +116,23 @@ type PhaserMapInfoRequest struct {
 
 // PhaserTilesRequest is the request payload
 type PhaserTilesRequest struct {
-	MapID int `json:"mapId"`
+	MapID     int    `json:"mapId"`
+	RequestID string `json:"requestId,omitempty"`
+	MinX      *int   `json:"minX,omitempty"`
+	MinY      *int   `json:"minY,omitempty"`
+	MaxX      *int   `json:"maxX,omitempty"`
+	MaxY      *int   `json:"maxY,omitempty"`
+	AfterID   *int   `json:"afterId,omitempty"`
+	Limit     *int   `json:"limit,omitempty"`
+}
+
+type PhaserTilesResponse struct {
+	MapID       int          `json:"mapId"`
+	RequestID   string       `json:"requestId"`
+	Tiles       []PhaserTile `json:"tiles"`
+	NextAfterID int          `json:"nextAfterId"`
+	HasMore     bool         `json:"hasMore"`
+	Error       string       `json:"error,omitempty"`
 }
 
 // PhaserActorsRequest is the request payload
@@ -134,12 +155,27 @@ func HandlePhaserMapInfoRequest(ses *session.Session, payload []byte, wh *WorldH
 
 	var mapInfo PhaserMapInfo
 	if req.MapID == UnifiedOverworldMapID {
+		var minX, minY, maxX, maxY sql.NullInt64
+		if err := db.GlobalWorldDB.DB.QueryRow(`
+			SELECT MIN(x), MIN(y), MAX(x), MAX(y)
+			FROM phaser_tiles
+			WHERE map_id IS NULL AND is_tile_erased = 0`).Scan(&minX, &minY, &maxX, &maxY); err != nil {
+			log.Printf("[Phaser] Error querying unified overworld bounds: %v", err)
+			ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.PhaserMapInfoResponse)
+			return false
+		}
 		mapInfo = PhaserMapInfo{
 			ID:          UnifiedOverworldMapID,
 			Name:        "Unified Overworld",
-			Width:       500, // Large enough to encompass everything
-			Height:      500,
 			IsOverworld: 1,
+		}
+		if minX.Valid && minY.Valid && maxX.Valid && maxY.Valid {
+			minXV, minYV := int(minX.Int64), int(minY.Int64)
+			maxXV, maxYV := int(maxX.Int64), int(maxY.Int64)
+			mapInfo.TileMinX, mapInfo.TileMinY = &minXV, &minYV
+			mapInfo.TileMaxX, mapInfo.TileMaxY = &maxXV, &maxYV
+			mapInfo.Width = maxXV - minXV + 1
+			mapInfo.Height = maxYV - minYV + 1
 		}
 	} else {
 		err := db.GlobalWorldDB.DB.QueryRow(`
@@ -153,7 +189,7 @@ func HandlePhaserMapInfoRequest(ses *session.Session, payload []byte, wh *WorldH
 		}
 	}
 
-	ses.SendStreamJSON(StructToMap(mapInfo), opcodes.PhaserMapInfoResponse)
+	ses.SendStreamJSON(mapInfo, opcodes.PhaserMapInfoResponse)
 
 	// Normalize overworld maps to the unified ID for session tracking
 	normalizedID := mapInfo.ID
@@ -348,12 +384,64 @@ func setServerTeleportedPlayerPosition(ses *session.Session, wh *WorldHandler, m
 	return normalizedMapID
 }
 
-// HandlePhaserTilesRequest returns all tiles for a map
+const (
+	maxTileRegionCells = 20000
+	maxTilePageSize    = 5000
+)
+
+// HandlePhaserTilesRequest returns tiles for a map. New clients use a bounded
+// first request followed by id-keyset pages; requests without a request ID keep
+// the legacy all-tiles response for stale deployed clients.
 func HandlePhaserTilesRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
+	startedAt := time.Now()
 	var req PhaserTilesRequest
 	if err := json.Unmarshal(payload, &req); err != nil {
 		log.Printf("[Phaser] Invalid TilesRequest: %v", err)
 		return false
+	}
+	sendError := func(err error) {
+		if req.RequestID != "" {
+			ses.SendStreamJSON(PhaserTilesResponse{
+				MapID: req.MapID, RequestID: req.RequestID, Error: err.Error(),
+			}, opcodes.PhaserTilesResponse)
+			return
+		}
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.PhaserTilesResponse)
+	}
+
+	hasAnyBound := req.MinX != nil || req.MinY != nil || req.MaxX != nil || req.MaxY != nil
+	hasAllBounds := req.MinX != nil && req.MinY != nil && req.MaxX != nil && req.MaxY != nil
+	if hasAnyBound && !hasAllBounds {
+		err := fmt.Errorf("tile bounds require minX, minY, maxX, and maxY")
+		log.Printf("[Phaser] Invalid bounded tiles request for map %d: %v", req.MapID, err)
+		sendError(err)
+		return false
+	}
+	if hasAllBounds {
+		width := *req.MaxX - *req.MinX + 1
+		height := *req.MaxY - *req.MinY + 1
+		if width <= 0 || height <= 0 || width > maxTileRegionCells || height > maxTileRegionCells || width*height > maxTileRegionCells {
+			err := fmt.Errorf("invalid tile bounds (%d x %d; max %d cells)", width, height, maxTileRegionCells)
+			log.Printf("[Phaser] Invalid bounded tiles request for map %d: %v", req.MapID, err)
+			sendError(err)
+			return false
+		}
+	}
+	pageSize := 0
+	if req.AfterID != nil && *req.AfterID < 0 {
+		err := fmt.Errorf("invalid tile page cursor %d", *req.AfterID)
+		log.Printf("[Phaser] Invalid paged tiles request for map %d: %v", req.MapID, err)
+		sendError(err)
+		return false
+	}
+	if req.Limit != nil {
+		pageSize = *req.Limit
+		if pageSize <= 0 || pageSize > maxTilePageSize {
+			err := fmt.Errorf("invalid tile page size %d (max %d)", pageSize, maxTilePageSize)
+			log.Printf("[Phaser] Invalid paged tiles request for map %d: %v", req.MapID, err)
+			sendError(err)
+			return false
+		}
 	}
 
 	query := `
@@ -363,8 +451,7 @@ func HandlePhaserTilesRequest(ses *session.Session, payload []byte, wh *WorldHan
 			pt.is_native_game_data, pt.coordinate_origin, pt.content_origin
 		FROM phaser_tiles pt
 		LEFT JOIN phaser_maps pm ON pm.id = COALESCE(pt.source_map_id, pt.map_id)
-		WHERE pt.map_id = $1
-		  AND pt.is_tile_erased = 0`
+		WHERE pt.map_id = $1 AND pt.is_tile_erased = 0`
 	queryArgs := []interface{}{req.MapID}
 
 	if req.MapID == UnifiedOverworldMapID {
@@ -376,15 +463,28 @@ func HandlePhaserTilesRequest(ses *session.Session, payload []byte, wh *WorldHan
 				pt.is_native_game_data, pt.coordinate_origin, pt.content_origin
 			FROM phaser_tiles pt
 			LEFT JOIN phaser_maps pm ON pm.id = pt.source_map_id
-			WHERE pt.map_id IS NULL
-			  AND pt.is_tile_erased = 0`
+			WHERE pt.map_id IS NULL AND pt.is_tile_erased = 0`
 		queryArgs = nil
+	}
+	if hasAllBounds {
+		first := len(queryArgs) + 1
+		query += fmt.Sprintf(" AND pt.x BETWEEN $%d AND $%d AND pt.y BETWEEN $%d AND $%d",
+			first, first+1, first+2, first+3)
+		queryArgs = append(queryArgs, *req.MinX, *req.MaxX, *req.MinY, *req.MaxY)
+	}
+	if req.AfterID != nil {
+		query += fmt.Sprintf(" AND pt.id > $%d", len(queryArgs)+1)
+		queryArgs = append(queryArgs, *req.AfterID)
+	}
+	if pageSize > 0 {
+		query += fmt.Sprintf(" ORDER BY pt.id LIMIT $%d", len(queryArgs)+1)
+		queryArgs = append(queryArgs, pageSize)
 	}
 
 	rows, err := db.GlobalWorldDB.DB.Query(query, queryArgs...)
 	if err != nil {
 		log.Printf("[Phaser] Error querying tiles for map %d: %v", req.MapID, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.PhaserTilesResponse)
+		sendError(err)
 		return false
 	}
 	defer rows.Close()
@@ -424,14 +524,41 @@ func HandlePhaserTilesRequest(ses *session.Session, payload []byte, wh *WorldHan
 		}
 		tiles = append(tiles, t)
 	}
+	if err := rows.Err(); err != nil {
+		log.Printf("[Phaser] Error iterating tiles for map %d: %v", req.MapID, err)
+		sendError(err)
+		return false
+	}
+	loadedAt := time.Now()
 
 	if ses.HasValidClient() && wh != nil && wh.EventFlags != nil {
 		charID := int64(ses.Client.CharData().ID)
 		tiles = ApplyEventTileOverridesToTiles(charID, req.MapID, wh.EventFlags, tiles)
 	}
 
-	ses.SendStreamJSON(StructToMap(tiles), opcodes.PhaserTilesResponse)
-	log.Printf("[Phaser] Sent %d tiles for map %d", len(tiles), req.MapID)
+	// PhaserTile already has the exact camelCase JSON contract. Sending the
+	// typed slice directly also honors omitempty for its nullable source fields.
+	// Converting tens of thousands of overworld tiles into reflection-built
+	// map[string]interface{} values doubled allocation pressure, inflated the
+	// payload with null keys, and could push the response past the client timer.
+	responsePayload := interface{}(tiles)
+	if req.RequestID != "" {
+		nextAfterID := 0
+		if len(tiles) > 0 {
+			nextAfterID = tiles[len(tiles)-1].ID
+		}
+		responsePayload = PhaserTilesResponse{
+			MapID: req.MapID, RequestID: req.RequestID, Tiles: tiles,
+			NextAfterID: nextAfterID, HasMore: pageSize > 0 && len(tiles) == pageSize,
+		}
+	}
+	if err := ses.SendStreamJSON(responsePayload, opcodes.PhaserTilesResponse); err != nil {
+		log.Printf("[Phaser] Failed sending %d tiles for map %d after %s (query/scan %s): %v",
+			len(tiles), req.MapID, time.Since(startedAt).Round(time.Millisecond), loadedAt.Sub(startedAt).Round(time.Millisecond), err)
+		return false
+	}
+	log.Printf("[Phaser] Sent %d tiles for map %d in %s (query/scan %s)",
+		len(tiles), req.MapID, time.Since(startedAt).Round(time.Millisecond), loadedAt.Sub(startedAt).Round(time.Millisecond))
 	return false
 }
 

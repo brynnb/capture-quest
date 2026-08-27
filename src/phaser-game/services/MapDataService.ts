@@ -12,6 +12,7 @@ import { getTileImageUrl } from "../api/tileService";
 import type {
   PhaserMapInfo,
   PhaserTile,
+  PhaserTilesRequest,
   PhaserActor,
   PhaserWarp
 } from "@/net/generated/world_api";
@@ -21,6 +22,10 @@ import { MapSnapshotCache } from "./MapSnapshotCache";
 
 // Default timeout for network requests (10 seconds)
 const REQUEST_TIMEOUT_MS = 10000;
+// The unified overworld currently contains more than 43,000 tiles in one
+// reliable-stream response. Slow mobile or distant connections need a larger
+// transfer budget than compact interior maps.
+const OVERWORLD_TILE_REQUEST_TIMEOUT_MS = 30000;
 
 // Tile image data format (for TileManager compatibility)
 export interface TileImageData {
@@ -33,6 +38,19 @@ export interface MapDataSnapshot {
   tiles: PhaserTile[];
   warps: PhaserWarp[];
   actors: PhaserActor[];
+}
+
+export interface TileBoundsRequest {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+export interface TilePage {
+  tiles: PhaserTile[];
+  nextAfterId: number;
+  hasMore: boolean;
 }
 
 /**
@@ -51,6 +69,7 @@ export class MapDataService {
     3,
     new Set([UNIFIED_OVERWORLD_MAP_ID]),
   );
+  private tileRequestSequence = 0;
 
   getSnapshot(mapId: number): MapDataSnapshot | undefined {
     return this.snapshots.get(mapId);
@@ -107,35 +126,71 @@ export class MapDataService {
    * Fetch tiles for a specific map
    */
   async fetchTiles(mapId: number): Promise<PhaserTile[]> {
+    return (await this.requestTileBatch(mapId, {})).tiles;
+  }
+
+  async fetchTilesInBounds(mapId: number, bounds: TileBoundsRequest): Promise<PhaserTile[]> {
+    return (await this.requestTileBatch(mapId, bounds)).tiles;
+  }
+
+  async fetchTilePage(mapId: number, afterId: number, limit: number): Promise<TilePage> {
+    return this.requestTileBatch(mapId, { afterId, limit });
+  }
+
+  private async requestTileBatch(
+    mapId: number,
+    options: Omit<PhaserTilesRequest, "mapId" | "requestId">,
+  ): Promise<TilePage> {
     if (!PhaserNet.isConnected()) {
       throw new Error("Not connected to server - please log in first");
     }
 
-    const dataPromise = new Promise<PhaserTile[]>((resolve, reject) => {
+    const requestId = `tiles-${++this.tileRequestSequence}`;
+    const timeoutMs = mapId === UNIFIED_OVERWORLD_MAP_ID
+      ? OVERWORLD_TILE_REQUEST_TIMEOUT_MS
+      : REQUEST_TIMEOUT_MS;
+
+    return new Promise<TilePage>((resolve, reject) => {
       const unsubscribe = PhaserNet.onTiles((data) => {
-        if (!Array.isArray(data)) {
-          unsubscribe();
-          const errorMessage =
-            data && typeof data === "object" && "error" in data
-              ? String((data as { error?: unknown }).error)
-              : `Invalid tile response for map ${mapId}`;
-          reject(new Error(errorMessage));
+        // A raw array is the backward-compatible response from a server that
+        // predates request correlation and paging.
+        if (Array.isArray(data)) {
+          cleanup();
+          cacheTileImageIds(data);
+          resolve({ tiles: data, nextAfterId: 0, hasMore: false });
           return;
         }
-        // Cache tile image IDs from these tiles
-        for (const tile of data) {
+        if (data.requestId !== requestId) {
+          return;
+        }
+        cleanup();
+        if (data.error) {
+          reject(new Error(data.error));
+          return;
+        }
+        cacheTileImageIds(data.tiles);
+        resolve({
+          tiles: data.tiles,
+          nextAfterId: data.nextAfterId,
+          hasMore: data.hasMore,
+        });
+      });
+      const cacheTileImageIds = (tiles: PhaserTile[]) => {
+        for (const tile of tiles) {
           this.knownTileImageIds.add(tile.tileImageId);
         }
+      };
+      const cleanup = () => {
         unsubscribe();
-        resolve(data);
-      });
-      PhaserNet.requestTiles(mapId);
-    });
+        clearTimeout(timeoutId);
+      };
 
-    return Promise.race([
-      dataPromise,
-      createTimeoutPromise<PhaserTile[]>(REQUEST_TIMEOUT_MS, `Timeout fetching tiles for map ${mapId}`)
-    ]);
+      const timeoutId = setTimeout(() => {
+        cleanup();
+        reject(new Error(`Timeout fetching tiles for map ${mapId}`));
+      }, timeoutMs);
+      PhaserNet.requestTiles({ mapId, requestId, ...options });
+    });
   }
 
   /**
