@@ -101,6 +101,9 @@ release, and source assets. Do not include unrelated workflow formatting in that
 hash. A restored cache is accepted only after readiness checks find the database,
 runtime contract, generated catalog version, graphics, sprites, scripted events,
 and complete audio metadata; a partial or older cache must regenerate.
+Freshly generated assets are saved immediately after those checks pass, before
+frontend tests or deployment, so a later unrelated failure does not force the
+extractor to repeat the same work on the next run.
 
 ## Generated Audio
 

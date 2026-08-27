@@ -66,7 +66,7 @@ jobs:
 
       - name: Restore generated runtime assets
         id: runtime-assets-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: |
             public/assets/pokemon
@@ -221,6 +221,28 @@ jobs:
           finally:
               conn.close()
           PY
+
+      # Save a freshly generated, fully validated artifact set before unrelated
+      # build or deployment failures can discard the expensive extraction work.
+      - name: Save generated runtime assets
+        if: steps.runtime-assets.outputs.needs_generation == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            public/assets/pokemon
+            public/assets/trainers
+            public/phaser/assets
+            public/phaser/pokemon.db
+            public/phaser/capturequest-pokemon-import.json
+            public/phaser/runtime_asset_contract.json
+            public/sound/pokemon
+            src/constants/asset_manifest.json
+            src/constants/audio_manifest.json
+            src/constants/pokemon_audio_manifest.json
+            src/constants/runtime_asset_version.ts
+            server/scripted_events/scripts
+            server/scripted_events/*.generated.json
+          key: ${{ steps.asset-cache-key.outputs.key }}
 
       - name: Build Frontend
         run: |
