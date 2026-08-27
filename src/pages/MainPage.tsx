@@ -16,6 +16,8 @@ import PokeMartShop from "@/components/Interface/PokeMartShop";
 import PokemonPC from "@/components/Interface/PokemonPC";
 import SlotMachine from "@/components/Interface/SlotMachine";
 import TileEditorPanel from "@/components/TileEditor/TileEditorPanel";
+import { IS_LOCAL_DEV } from "@/config";
+import { canPresentTileManager } from "@/components/TileEditor/tileEditorAvailability";
 import {
   COMPACT_TOUCH_LAYOUT_QUERY,
   CONFIRM_INSTANT_WARP_EVENT,
@@ -262,7 +264,7 @@ const MainPage: React.FC = () => {
 
       <BottomHUD />
 
-      {isTileManagerOpen && (characterProfile?.gm ?? 0) > 0 && (
+      {isTileManagerOpen && canPresentTileManager(IS_LOCAL_DEV, characterProfile?.gm ?? 0) && (
         <TileManagerDock
           role="dialog"
           aria-label="Tile Manager"

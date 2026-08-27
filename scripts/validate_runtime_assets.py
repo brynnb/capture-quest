@@ -17,6 +17,7 @@ DATABASE = PHASER_ROOT / "pokemon.db"
 TILE_DIRECTORY = PHASER_ROOT / "tile_images"
 CONTRACT = PHASER_ROOT / "runtime_asset_contract.json"
 PROCEDURAL_PALETTE = REPO_ROOT / "src/constants/procedural_tile_palette.json"
+RUNTIME_ASSET_VERSION = REPO_ROOT / "src/constants/runtime_asset_version.ts"
 
 
 def sha256_file(path: Path) -> str:
@@ -38,12 +39,22 @@ def tile_catalog_sha256() -> tuple[int, str]:
 
 
 def main() -> None:
-    if not CONTRACT.is_file() or not PROCEDURAL_PALETTE.is_file():
+    if (
+        not CONTRACT.is_file()
+        or not PROCEDURAL_PALETTE.is_file()
+        or not RUNTIME_ASSET_VERSION.is_file()
+    ):
         raise SystemExit(
             "Runtime asset contract or procedural palette is missing. "
             "Run npm run bootstrap:assets."
         )
     contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
+    version_source = RUNTIME_ASSET_VERSION.read_text(encoding="utf-8")
+    if f'"{contract["tileCatalogSha256"]}"' not in version_source:
+        raise SystemExit(
+            "src/constants/runtime_asset_version.ts does not match the runtime "
+            "tile catalog. Run npm run bootstrap:assets."
+        )
     if sha256_file(DATABASE) != contract["pokemonDbSha256"]:
         raise SystemExit(
             "public/phaser/pokemon.db does not match its tile asset contract. "

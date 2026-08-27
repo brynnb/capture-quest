@@ -414,12 +414,10 @@ func (s *Server) startHTTPServer(tlsConf *tls.Config, certManager *cert.Rotating
 	mux.Handle("/api/admin/character/inventory", corsMiddleware(adminAuthMiddleware(handleAdminGetCharacterInventory)))
 	mux.Handle("/api/admin/logs", corsMiddleware(adminAuthMiddleware(handleAdminLogs)))
 
-	// Tile Art Studio API
-	mux.Handle("/api/tiles/replace", corsMiddleware(http.HandlerFunc(handleTileReplace)))
-	mux.Handle("/api/tiles/stamp", corsMiddleware(http.HandlerFunc(handleStampCreate)))
-	mux.Handle("/api/tiles/stamps", corsMiddleware(http.HandlerFunc(handleStampList)))
-	mux.Handle("/api/tiles/animation", corsMiddleware(http.HandlerFunc(handleTileAnimationCreate)))
-	mux.Handle("/api/tiles/animations", corsMiddleware(http.HandlerFunc(handleTileAnimationList)))
+	// Tile authoring is a local-development surface. Production clients still
+	// receive static tile artwork below, but cannot reach filesystem/database
+	// mutation handlers even by constructing the HTTP requests directly.
+	s.registerTileArtStudioRoutes(mux)
 
 	// Phaser static assets (tile images and sprites)
 	mux.Handle("/phaser/tiles/", corsMiddleware(http.StripPrefix("/phaser/tiles/", http.FileServer(http.Dir("../public/phaser/tile_images")))))
@@ -442,6 +440,17 @@ func (s *Server) startHTTPServer(tlsConf *tls.Config, certManager *cert.Rotating
 	tlsListener := tls.NewListener(listener, tlsConf)
 	log.Printf("Starting HTTPS server on TCP port 443 (Local TLS)")
 	go http.Serve(tlsListener, mux)
+}
+
+func (s *Server) registerTileArtStudioRoutes(mux *http.ServeMux) {
+	if !s.debugMode {
+		return
+	}
+	mux.Handle("/api/tiles/replace", corsMiddleware(http.HandlerFunc(handleTileReplace)))
+	mux.Handle("/api/tiles/stamp", corsMiddleware(http.HandlerFunc(handleStampCreate)))
+	mux.Handle("/api/tiles/stamps", corsMiddleware(http.HandlerFunc(handleStampList)))
+	mux.Handle("/api/tiles/animation", corsMiddleware(http.HandlerFunc(handleTileAnimationCreate)))
+	mux.Handle("/api/tiles/animations", corsMiddleware(http.HandlerFunc(handleTileAnimationList)))
 }
 
 // registerHandler is used by internal services.

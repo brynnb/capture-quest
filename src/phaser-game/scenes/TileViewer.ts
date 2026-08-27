@@ -1424,7 +1424,7 @@ export class TileViewer extends Scene {
       }
       // Reload the texture with a cache-buster query param
       import("@/phaser-game/api/tileService").then(({ getTileImageUrl }) => {
-        const url = getTileImageUrl(tileImageId) + `?v=${Date.now()}`;
+        const url = getTileImageUrl(tileImageId) + `&edit=${Date.now()}`;
         this.load.image(tileKey, url);
         this.load.once("complete", () => {
           // Re-render all tiles using this tileImageId

@@ -52,6 +52,8 @@ npm run build
 
 test -s dist/sound/pokemon/music/pallet_town.ogg
 test -s dist/phaser/pokemon.db
+test -s dist/phaser/runtime_asset_contract.json
+cmp public/phaser/runtime_asset_contract.json dist/phaser/runtime_asset_contract.json
 
 cd server
 go test ./...
@@ -59,7 +61,10 @@ go build -o /tmp/capturequest-server ./cmd/server
 ```
 
 If the generated assets were restored from a known-good CI cache, the bootstrap
-step can be skipped. Never skip the two `test -s` checks.
+step can be skipped. Never skip the runtime-asset checks. The contract binds the
+SQLite database, the complete tile-image catalog, and the cache version compiled
+into the frontend. Tile artwork URLs use that version so browsers cannot reuse a
+numeric tile ID from an older extractor catalog.
 
 ## Generated Audio
 
@@ -156,6 +161,8 @@ WebTransport connection in the browser.
 ## Operational Checks
 
 - `npm run build` succeeds before uploading frontend assets.
+- `dist/phaser/runtime_asset_contract.json` exists and is byte-identical to the
+  validated contract under `public/phaser/`.
 - `dist/sound/pokemon` contains rendered OGG files before upload.
 - A live town-music URL returns `Content-Type: audio/ogg`, not the SPA HTML.
 - `cd server && go test ./...` succeeds before replacing the server binary.
@@ -163,3 +170,5 @@ WebTransport connection in the browser.
   initialization.
 - The bootstrap/importer has been rerun after extractor pipeline changes or
   scripted-event generation changes.
+- Unedited native `phaser_tiles` rows still match their
+  `original_tile_image_id` values after the import.

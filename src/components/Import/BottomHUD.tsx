@@ -34,6 +34,7 @@ import { cancelActiveCutscene } from "@/phaser-game/services/CutsceneService";
 import { IS_LOCAL_DEV } from "@/config";
 import useWorldDebugStore from "@/stores/WorldDebugStore";
 import useDebugSceneStore from "@/stores/DebugSceneStore";
+import { canPresentTileManager } from "@/components/TileEditor/tileEditorAvailability";
 
 const HudLayer = styled.div`
   position: absolute;
@@ -555,7 +556,7 @@ const BottomHUD = () => {
               <RailButton $active={isWarpMode} onClick={() => runRailAction(toggleWarpMode)}>
                 <FiCrosshair /> Instant Warp
               </RailButton>
-              {(characterProfile?.gm ?? 0) > 0 && (
+              {canPresentTileManager(IS_LOCAL_DEV, characterProfile?.gm ?? 0) && (
                 <RailButton
                   type="button"
                   $active={isTileManagerOpen}

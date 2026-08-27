@@ -578,13 +578,6 @@ export function dispatchPhaserResponse(opcode: number, data: unknown): void {
   }
 }
 
-// Get tile image URL (static file from public folder)
-export function getTileImageUrl(tileImageId: number): string {
-  // Tile images are served from Vite's public folder
-  // Adjust to 0-indexed: tile_image_id 1 → tile_0.png
-  return `/phaser/tile_images/tile_${tileImageId - 1}.png`;
-}
-
 /**
  * Send an item pickup request to the server (triggered by clicking an item ball).
  */

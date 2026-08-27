@@ -6,6 +6,7 @@
  */
 
 import { API_BASE_URL, PHASER_TILES_PATH } from "./constants";
+import { RUNTIME_TILE_ASSET_VERSION } from "@/constants/runtime_asset_version";
 
 export interface TileImageCacheEntry {
   key: string;
@@ -19,5 +20,8 @@ export interface TileImageCacheEntry {
 export const getTileImageUrl = (tileImageId: number): string => {
   // Convert 1-indexed tile ID to 0-indexed filename
   const fileIndex = tileImageId - 1;
-  return `${API_BASE_URL}${PHASER_TILES_PATH}/tile_${fileIndex}.png`;
+  // Tile filenames are stable while the extractor's globally deduplicated ID
+  // catalog can change. Version by the validated catalog hash so a deployed
+  // client never reuses artwork cached for an older meaning of the same ID.
+  return `${API_BASE_URL}${PHASER_TILES_PATH}/tile_${fileIndex}.png?v=${RUNTIME_TILE_ASSET_VERSION}`;
 };

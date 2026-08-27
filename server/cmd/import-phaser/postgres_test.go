@@ -468,6 +468,90 @@ func TestMergeImportedTilesPreservesEditedCurrentState(t *testing.T) {
 	}
 }
 
+func TestDiscardLegacyTileEditsRunsOnlyOnce(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	execStatements(t, db, `
+		CREATE TABLE phaser_data_repairs (
+			repair_key TEXT PRIMARY KEY,
+			applied_at TEXT DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE phaser_tiles (
+			id INTEGER PRIMARY KEY,
+			source_map_id INTEGER,
+			is_original_tile_location INTEGER NOT NULL DEFAULT 0,
+			has_tile_edit INTEGER NOT NULL DEFAULT 0,
+			is_tile_erased INTEGER NOT NULL DEFAULT 0,
+			is_user_placed INTEGER NOT NULL DEFAULT 0,
+			placed_by_char_id INTEGER,
+			placed_at TEXT,
+			last_edited_by_char_id INTEGER,
+			last_edited_at TEXT,
+			last_edit_source TEXT,
+			content_origin TEXT NOT NULL DEFAULT 'user'
+		);
+		INSERT INTO phaser_tiles VALUES
+			(1, 17, 0, 1, 1, 1, 9, 'then', 9, 'then', 'admin_editor', 'user'),
+			(2, NULL, 0, 1, 0, 1, 9, 'then', 9, 'then', 'admin_editor', 'user');
+	`)
+
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := discardLegacyTileEditsOnce(tx); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+
+	var hasEdit, erased, userPlaced int
+	var contentOrigin string
+	if err := db.QueryRow(`
+		SELECT has_tile_edit, is_tile_erased, is_user_placed, content_origin
+		FROM phaser_tiles WHERE id = 1`,
+	).Scan(&hasEdit, &erased, &userPlaced, &contentOrigin); err != nil {
+		t.Fatal(err)
+	}
+	if hasEdit != 0 || erased != 0 || userPlaced != 0 || contentOrigin != "native" {
+		t.Fatalf("native row after repair = edit:%d erased:%d user:%d origin:%s", hasEdit, erased, userPlaced, contentOrigin)
+	}
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM phaser_tiles WHERE id = 2`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("legacy user-only rows = %d, want 0", count)
+	}
+
+	if _, err := db.Exec(`
+		UPDATE phaser_tiles
+		SET has_tile_edit = 1, is_user_placed = 1, content_origin = 'user'
+		WHERE id = 1`); err != nil {
+		t.Fatal(err)
+	}
+	tx, err = db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := discardLegacyTileEditsOnce(tx); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT has_tile_edit FROM phaser_tiles WHERE id = 1`).Scan(&hasEdit); err != nil {
+		t.Fatal(err)
+	}
+	if hasEdit != 1 {
+		t.Fatalf("post-repair edit was reset: has_tile_edit = %d", hasEdit)
+	}
+}
+
 func TestResolveLastMapWarpDestinationsFallsBackToUniqueIncomingMap(t *testing.T) {
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {

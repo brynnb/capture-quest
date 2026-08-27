@@ -259,9 +259,17 @@ export const WelcomeModals = () => {
   };
 
   const handleCloseWelcome = async () => {
-    await initializeAudio();
-    AudioManager.playMusic("/sound/title.mp3", 0, true);
+    // Start audio from the user gesture, but do not make the modal wait for
+    // network/audio decoding. On slower connections that await made the first
+    // click appear to do nothing, prompting users to click a second time.
+    const audioInitialization = initializeAudio();
     setWelcomeVisible(false);
+    try {
+      await audioInitialization;
+      AudioManager.playMusic("/sound/title.mp3", 0, true);
+    } catch (error) {
+      console.warn("[Welcome] Audio initialization failed", error);
+    }
   };
 
   const handleToggleSound = () => {

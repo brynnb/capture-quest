@@ -873,6 +873,9 @@ func importTilesPostgres(sqlite, pg *sql.DB, tileImageMetadata map[int64]tileIma
 	if err := sourceRows.Err(); err != nil {
 		return fmt.Errorf("read tile rows: %w", err)
 	}
+	if err := discardLegacyTileEditsOnce(tx); err != nil {
+		return err
+	}
 	if err := mergeImportedTilesPostgres(tx); err != nil {
 		return err
 	}
@@ -880,6 +883,61 @@ func importTilesPostgres(sqlite, pg *sql.DB, tileImageMetadata map[int64]tileIma
 		return fmt.Errorf("commit phaser_tiles import: %w", err)
 	}
 	log.Printf("  -> Imported/merged %d tiles", count)
+	return nil
+}
+
+const legacyTileEditRepairKey = "discard-pre-catalog-v2-tile-edits-20260827"
+
+// discardLegacyTileEditsOnce removes edits created before tile artwork URLs
+// and imports were tied to a validated catalog. Those rows only retained a
+// numeric tile ID, whose visual meaning could change between extractor runs.
+// The repair marker makes this a one-time cleanup; edits made after this repair
+// continue through the normal mergeImportedTilesPostgres preservation path.
+func discardLegacyTileEditsOnce(tx *sql.Tx) error {
+	var repairKey string
+	err := tx.QueryRow(`
+		INSERT INTO phaser_data_repairs (repair_key)
+		VALUES ($1)
+		ON CONFLICT (repair_key) DO NOTHING
+		RETURNING repair_key`, legacyTileEditRepairKey).Scan(&repairKey)
+	if err == sql.ErrNoRows {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("record legacy tile edit repair: %w", err)
+	}
+
+	deletedResult, err := tx.Exec(`
+		DELETE FROM phaser_tiles
+		WHERE is_original_tile_location = 0
+		  AND source_map_id IS NULL
+		  AND (has_tile_edit = 1 OR is_user_placed = 1)`)
+	if err != nil {
+		return fmt.Errorf("delete legacy user-only tile edits: %w", err)
+	}
+	resetResult, err := tx.Exec(`
+		UPDATE phaser_tiles
+		SET has_tile_edit = 0,
+			is_tile_erased = 0,
+			is_user_placed = 0,
+			placed_by_char_id = NULL,
+			placed_at = NULL,
+			last_edited_by_char_id = NULL,
+			last_edited_at = NULL,
+			last_edit_source = NULL,
+			content_origin = 'native'
+		WHERE (is_original_tile_location = 1 OR source_map_id IS NOT NULL)
+		  AND (has_tile_edit = 1 OR is_user_placed = 1 OR is_tile_erased = 1)`)
+	if err != nil {
+		return fmt.Errorf("reset legacy native tile edits: %w", err)
+	}
+	deleted, _ := deletedResult.RowsAffected()
+	reset, _ := resetResult.RowsAffected()
+	log.Printf(
+		"  -> Applied one-time legacy tile repair: deleted %d user-only rows, reset %d native rows",
+		deleted,
+		reset,
+	)
 	return nil
 }
 
