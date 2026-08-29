@@ -44,6 +44,7 @@ function createHarness(chunkSize = 64, autoComplete = true) {
     textureKey: string;
     setOrigin: ReturnType<typeof vi.fn>;
     setDisplaySize: ReturnType<typeof vi.fn>;
+    setName: ReturnType<typeof vi.fn>;
     setDepth: ReturnType<typeof vi.fn>;
     setVisible: ReturnType<typeof vi.fn>;
     destroy: ReturnType<typeof vi.fn>;
@@ -105,6 +106,7 @@ function createHarness(chunkSize = 64, autoComplete = true) {
       textureKey,
       setOrigin: vi.fn(),
       setDisplaySize: vi.fn(),
+      setName: vi.fn(),
       setDepth: vi.fn(),
       setVisible: vi.fn(),
       destroy: vi.fn(),
@@ -221,6 +223,7 @@ describe("OverworldOverviewLayer", () => {
       64 * TILE_SIZE,
       64 * TILE_SIZE,
     );
+    expect(image.setName).toHaveBeenCalledWith("overworld-overview:-1,2");
     expect(image.setDepth).toHaveBeenCalledWith(-10);
     expect(image.setVisible).toHaveBeenCalledWith(false);
     expect(mapContainer.add).toHaveBeenCalledWith(image);

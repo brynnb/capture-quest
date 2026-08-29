@@ -9,6 +9,7 @@ import {
 import { ActorManager } from "../managers/ActorManager";
 import { OVERWORLD_CHUNK_SIZE_TILES } from "../services/OverworldChunkPlanner";
 import { isWorldInputFrozen } from "../utils/worldInputGuard";
+import { OVERWORLD_OVERVIEW_IMAGE_NAME_PREFIX } from "./OverworldOverviewLayer";
 
 interface LocalActorPositionOverride {
   x: number;
@@ -592,8 +593,20 @@ export class MapRenderer {
       this.tileChunkOwnerByCoordinate.set(coordinateKey, chunkKey);
     }
 
-    this.mapContainer.add(renderTexture);
-    this.mapContainer.sendToBack(renderTexture);
+    // Keep the streamed layers deterministic even when overview PNGs and exact
+    // tile textures finish out of order. Overview images always occupy the
+    // back of the container; exact chunks sit directly above them and below
+    // actors, warps, labels, and editor overlays.
+    const firstNonOverviewIndex = this.mapContainer.list.findIndex(
+      (child) =>
+        !child.name?.startsWith(OVERWORLD_OVERVIEW_IMAGE_NAME_PREFIX),
+    );
+    this.mapContainer.addAt(
+      renderTexture,
+      firstNonOverviewIndex < 0
+        ? this.mapContainer.list.length
+        : firstNonOverviewIndex,
+    );
     return { rendered, skipped };
   }
 

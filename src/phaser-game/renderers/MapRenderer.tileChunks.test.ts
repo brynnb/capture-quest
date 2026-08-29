@@ -29,9 +29,18 @@ function createRendererHarness() {
     },
   );
   const addImage = vi.fn();
+  const containerList: Array<{ name?: string }> = [];
   const mapContainer = {
-    add: vi.fn(),
-    sendToBack: vi.fn(),
+    list: containerList,
+    add: vi.fn((child: { name?: string }) => containerList.push(child)),
+    addAt: vi.fn((child: { name?: string }, index: number) =>
+      containerList.splice(index, 0, child),
+    ),
+    sendToBack: vi.fn((child: { name?: string }) => {
+      const index = containerList.indexOf(child);
+      if (index >= 0) containerList.splice(index, 1);
+      containerList.unshift(child);
+    }),
     bringToTop: vi.fn(),
     each: vi.fn(),
   };
@@ -68,6 +77,7 @@ function createRendererHarness() {
     renderTextures,
     addImage,
     mapContainer,
+    containerList,
   };
 }
 
@@ -100,6 +110,17 @@ describe("MapRenderer exact tile chunks", () => {
     );
     expect(addImage).not.toHaveBeenCalled();
     expect(renderer.getTileImageIdAt(128, -64)).toBe(100);
+  });
+
+  it("places exact chunks above overview imagery and below world objects", () => {
+    const { renderer, renderTextures, containerList } = createRendererHarness();
+    const overview = { name: "overworld-overview:0,0" };
+    const actor = { name: "player" };
+    containerList.push(overview, actor);
+
+    renderer.upsertTileChunk("0,0", 0, 0, [tile(0, 0, 100)]);
+
+    expect(containerList).toEqual([overview, renderTextures[0], actor]);
   });
 
   it("keeps editor paint, update, and erase operations on the owning chunk", () => {

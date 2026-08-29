@@ -83,10 +83,7 @@ export class OverworldChunkStream {
   private lastMode: "exact" | "overview" = "exact";
   private stopped = false;
   private overviewChunkKeys: string[] = [];
-  private queuedCameraUpdate: {
-    camera: CameraWorldView;
-    preferOverview: boolean;
-  } | null = null;
+  private queuedCameraUpdate: CameraWorldView | null = null;
   private updateDrainRunning = false;
   private failedPlanSignature = "";
   private planRetryNotBefore = 0;
@@ -94,23 +91,17 @@ export class OverworldChunkStream {
 
   constructor(private readonly options: OverworldChunkStreamOptions) {}
 
-  async initialize(
-    camera: CameraWorldView,
-    preferOverview = false,
-  ): Promise<void> {
+  async initialize(camera: CameraWorldView): Promise<void> {
     this.stopped = false;
-    await this.applyCamera(camera, preferOverview, true);
+    await this.applyCamera(camera, true);
   }
 
-  update(camera: CameraWorldView, preferOverview = false): void {
+  update(camera: CameraWorldView): void {
     if (this.stopped) return;
     // Keep only the newest camera target. WebTransport tile requests are not
     // individually abortable, so serializing plan application is what keeps a
     // rapid drag from spawning a fresh two-request pool every 100ms.
-    this.queuedCameraUpdate = {
-      camera: { ...camera },
-      preferOverview,
-    };
+    this.queuedCameraUpdate = { ...camera };
     this.startUpdateDrain();
   }
 
@@ -147,7 +138,7 @@ export class OverworldChunkStream {
     this.invalidateCoordinates([{ x, y }]);
     if (this.lastCamera && this.lastMode === "overview") {
       this.planSignature = "";
-      this.update(this.lastCamera, true);
+      this.update(this.lastCamera);
     }
   }
 
@@ -213,7 +204,7 @@ export class OverworldChunkStream {
     if (exactTilesChanged) this.emitTiles();
     if (this.lastCamera && this.lastMode === "overview") {
       this.planSignature = "";
-      this.update(this.lastCamera, true);
+      this.update(this.lastCamera);
     }
   }
 
@@ -227,7 +218,7 @@ export class OverworldChunkStream {
     this.options.overviewLayer.clear();
     if (this.lastCamera && this.lastMode === "overview") {
       this.planSignature = "";
-      this.update(this.lastCamera, true);
+      this.update(this.lastCamera);
     }
   }
 
@@ -278,7 +269,7 @@ export class OverworldChunkStream {
       while (!this.stopped && this.queuedCameraUpdate) {
         const next = this.queuedCameraUpdate;
         this.queuedCameraUpdate = null;
-        await this.applyCamera(next.camera, next.preferOverview, false);
+        await this.applyCamera(next, false);
       }
     })()
       .catch((error) => {
@@ -294,7 +285,6 @@ export class OverworldChunkStream {
 
   private async applyCamera(
     camera: CameraWorldView,
-    preferOverview: boolean,
     throwOnFailure: boolean,
   ): Promise<void> {
     this.lastCamera = { ...camera };
@@ -302,7 +292,10 @@ export class OverworldChunkStream {
       camera,
       mapBounds: this.options.mapBounds,
     });
-    const useOverview = preferOverview || plan.mode === "overview";
+    // LOD follows the actual camera footprint. A normal gameplay camera that
+    // fits within the exact 3x3-chunk budget must never be downgraded merely
+    // because its zoom number crosses an unrelated threshold.
+    const useOverview = plan.mode === "overview";
     const exactPlan = plan.mode === "exact" ? plan : null;
     const gameplayPlan = useOverview ? this.planGameplayFootprint() : null;
     const desiredExactChunks = useOverview

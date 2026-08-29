@@ -489,7 +489,10 @@ func HandlePhaserTilesRequest(ses *session.Session, payload []byte, wh *WorldHan
 	}
 	defer rows.Close()
 
-	var tiles []PhaserTile
+	// Keep empty correlated responses as [] rather than null. Chunk requests
+	// routinely cover sparse parts of the overworld, and clients must be able to
+	// treat an empty chunk as a completed request.
+	tiles := make([]PhaserTile, 0)
 	for rows.Next() {
 		var t PhaserTile
 		var mapID sql.NullInt64

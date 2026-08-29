@@ -13,6 +13,7 @@ import type {
   PhaserMapInfo,
   PhaserTile,
   PhaserTilesRequest,
+  PhaserTilesResponse,
   PhaserActor,
   PhaserWarp
 } from "@/net/generated/world_api";
@@ -57,6 +58,17 @@ export interface TilePage {
 export interface CachedTileChunk {
   bounds: TileBoundsRequest;
   tiles: PhaserTile[];
+}
+
+function normalizeCorrelatedTiles(data: PhaserTilesResponse): PhaserTile[] {
+  const tiles = (data as { tiles?: unknown }).tiles;
+  // Go's encoding/json represents an uninitialized empty slice as null. Older
+  // servers can therefore send null for a valid sparse chunk.
+  if (tiles === null) return [];
+  if (!Array.isArray(tiles)) {
+    throw new Error("Invalid tile response: tiles must be an array");
+  }
+  return tiles as PhaserTile[];
 }
 
 /**
@@ -211,19 +223,32 @@ export class MapDataService {
           resolve({ tiles: data, nextAfterId: 0, hasMore: false });
           return;
         }
-        if (data.requestId !== requestId) {
+        if (data === null || typeof data !== "object") {
+          return;
+        }
+        const response = data as PhaserTilesResponse;
+        if (response.requestId !== requestId) {
+          return;
+        }
+        if (response.error) {
+          cleanup();
+          reject(new Error(response.error));
+          return;
+        }
+        let tiles: PhaserTile[];
+        try {
+          tiles = normalizeCorrelatedTiles(response);
+        } catch (error) {
+          cleanup();
+          reject(error);
           return;
         }
         cleanup();
-        if (data.error) {
-          reject(new Error(data.error));
-          return;
-        }
-        cacheTileImageIds(data.tiles);
+        cacheTileImageIds(tiles);
         resolve({
-          tiles: data.tiles,
-          nextAfterId: data.nextAfterId,
-          hasMore: data.hasMore,
+          tiles,
+          nextAfterId: response.nextAfterId,
+          hasMore: response.hasMore,
         });
       });
       const cacheTileImageIds = (tiles: PhaserTile[]) => {

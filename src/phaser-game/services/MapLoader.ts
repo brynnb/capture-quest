@@ -18,7 +18,6 @@ import {
   type CameraWorldView,
   type InclusiveTileBounds,
 } from "./OverworldChunkPlanner";
-import { preferOverworldOverviewAtZoom } from "./OverworldLodPolicy";
 import { TileManager, ActorManager, UiManager } from "../managers";
 import useGameStatusStore from "@/stores/GameStatusStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
@@ -76,7 +75,6 @@ export class MapLoader {
   private overworldChunkStream: OverworldChunkStream | null = null;
   private readonly overworldOverviewLayer: OverworldOverviewLayer;
   private lastOverworldStreamUpdateAt = 0;
-  private preferOverworldOverviewForZoom = false;
 
   constructor(
     scene: Scene,
@@ -636,10 +634,7 @@ export class MapLoader {
       });
       this.uiManager.setLoadingText("Loading nearby overworld chunks...");
       const initialCamera = this.currentCameraWorldView();
-      await this.overworldChunkStream.initialize(
-        initialCamera,
-        this.updateOverworldZoomPreference(),
-      );
+      await this.overworldChunkStream.initialize(initialCamera);
       if (loadGeneration !== this.mapLoadGeneration) return;
 
       // Fade in from black (matches the fade-out in WarpManager)
@@ -693,10 +688,7 @@ export class MapLoader {
       return;
     }
     this.lastOverworldStreamUpdateAt = now;
-    this.overworldChunkStream.update(
-      this.currentCameraWorldView(),
-      this.updateOverworldZoomPreference(),
-    );
+    this.overworldChunkStream.update(this.currentCameraWorldView());
   }
 
   ensureOverworldTileAvailable(x: number, y: number): Promise<boolean> {
@@ -737,7 +729,6 @@ export class MapLoader {
     this.overworldChunkStream = null;
     this.overworldOverviewLayer.clear();
     this.lastOverworldStreamUpdateAt = 0;
-    this.preferOverworldOverviewForZoom = false;
   }
 
   private currentCameraWorldView(): CameraWorldView {
@@ -750,14 +741,6 @@ export class MapLoader {
       width: Math.max(1, bottomRight.x - topLeft.x),
       height: Math.max(1, bottomRight.y - topLeft.y),
     };
-  }
-
-  private updateOverworldZoomPreference(): boolean {
-    this.preferOverworldOverviewForZoom = preferOverworldOverviewAtZoom(
-      this.preferOverworldOverviewForZoom,
-      this.cameraController.getZoom(),
-    );
-    return this.preferOverworldOverviewForZoom;
   }
 
   private overworldBoundsFromMapInfo(

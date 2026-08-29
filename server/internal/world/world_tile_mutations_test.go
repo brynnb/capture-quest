@@ -374,6 +374,37 @@ func TestPhaserTilesRequestSupportsBoundedCorrelatedPages(t *testing.T) {
 	}
 }
 
+func TestPhaserTilesRequestEncodesEmptyCorrelatedChunkAsArray(t *testing.T) {
+	setupWorldTileMutationDB(t)
+	messenger := &recordingMessenger{}
+	ses := session.NewSessionManager().CreateSession(messenger, 1, "test", nil)
+	requestID := "empty-chunk"
+	minX, minY, maxX, maxY := 1000, 1000, 1063, 1063
+	payload, err := json.Marshal(PhaserTilesRequest{
+		MapID: UnifiedOverworldMapID, RequestID: requestID,
+		MinX: &minX, MinY: &minY, MaxX: &maxX, MaxY: &maxY,
+	})
+	if err != nil {
+		t.Fatalf("marshal empty chunk request: %v", err)
+	}
+
+	HandlePhaserTilesRequest(ses, payload, nil)
+
+	if len(messenger.streams) != 1 {
+		t.Fatalf("messages = %d, want one", len(messenger.streams))
+	}
+	if !bytes.Contains(messenger.streams[0].payload, []byte(`"tiles":[]`)) {
+		t.Fatalf("empty chunk payload = %s, want tiles array", messenger.streams[0].payload)
+	}
+	var response PhaserTilesResponse
+	if err := json.Unmarshal(messenger.streams[0].payload, &response); err != nil {
+		t.Fatalf("decode empty chunk response: %v", err)
+	}
+	if response.RequestID != requestID || response.Tiles == nil || len(response.Tiles) != 0 {
+		t.Fatalf("empty chunk response = %+v, want correlated non-nil empty tiles", response)
+	}
+}
+
 func TestTileEditorBroadcastsLiveChangesAndLaterJoinLoadsPersistedMap(t *testing.T) {
 	setupWorldTileMutationDB(t)
 

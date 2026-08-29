@@ -385,7 +385,7 @@ describe("OverworldChunkStream", () => {
       expect(harness.fetchTilesInBounds).toHaveBeenCalledOnce(),
     );
 
-    harness.stream.update(tileCamera(7, 7), true);
+    harness.stream.update(tileCamera(0, 0, 256, 256));
     await vi.waitFor(() =>
       expect(harness.overviewLayer.sync).toHaveBeenCalled(),
     );

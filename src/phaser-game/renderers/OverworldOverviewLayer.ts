@@ -39,6 +39,7 @@ const OVERVIEW_LOAD_CONCURRENCY = 4;
 const OVERVIEW_FILE_XHR_TIMEOUT_MS = 12_000;
 const OVERVIEW_LOAD_TIMEOUT_MS = 15_000;
 const OVERVIEW_INITIAL_READINESS_TIMEOUT_MS = 16_000;
+export const OVERWORLD_OVERVIEW_IMAGE_NAME_PREFIX = "overworld-overview:";
 
 export class OverworldOverviewLayer {
   private readonly entries = new Map<string, OverviewChunkEntry>();
@@ -194,6 +195,7 @@ export class OverworldOverviewLayer {
       this.chunkSize * TILE_SIZE,
       this.chunkSize * TILE_SIZE,
     );
+    image.setName(`${OVERWORLD_OVERVIEW_IMAGE_NAME_PREFIX}${chunk.key}`);
     image.setDepth(-10);
     image.setVisible(this.visible);
     this.mapContainer.add(image);

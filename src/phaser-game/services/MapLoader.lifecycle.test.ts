@@ -19,7 +19,6 @@ function createPendingLoader() {
   raw.mapLoadGeneration = 0;
   raw.overworldChunkStream = null;
   raw.lastOverworldStreamUpdateAt = 0;
-  raw.preferOverworldOverviewForZoom = false;
   raw.overworldOverviewLayer = { clear };
   raw.scene = scene;
   raw.mapDataService = {
@@ -72,7 +71,6 @@ function createFailedOverworldLoader() {
     mapLoadGeneration: 0,
     overworldChunkStream: null,
     lastOverworldStreamUpdateAt: 0,
-    preferOverworldOverviewForZoom: false,
     overworldOverviewLayer: {
       clear: overviewClear,
       sync: vi.fn(async () => undefined),
@@ -227,8 +225,6 @@ describe("MapLoader async lifecycle", () => {
       scene,
       overworldChunkStream: { update },
       lastOverworldStreamUpdateAt: 0,
-      preferOverworldOverviewForZoom: false,
-      cameraController: { getZoom: () => 1 },
       getState: () => ({ mapInfo: { id: 9999 } }),
     });
     const loader = raw as unknown as MapLoader;
