@@ -26,7 +26,9 @@ export async function loginAsGuest(page: Page, guestToken = randomUUID()) {
 
   await page.goto("/");
   await page.getByRole("button", { name: "PLAY AS GUEST" }).click();
-  await expect(page.getByRole("heading", { name: "SELECT A CHARACTER" })).toBeVisible({
+  await expect(
+    page.getByRole("heading", { name: "SELECT A CHARACTER" }),
+  ).toBeVisible({
     timeout: 30_000,
   });
 }
@@ -47,44 +49,49 @@ export async function createCharacter(
     }
     await locator.click();
   };
+  const nextCreationStep = () =>
+    page
+      .getByTestId("character-creation-navigation")
+      .getByRole("button", { name: /^Next(?: Step: .+)?$/ });
+
   await click(
     page.getByRole("button", { name: "CREATE NEW CHARACTER" }).first(),
   );
 
-  await expect(page.getByText("Choose Your Faction")).toBeVisible();
+  const factionTitle = page
+    .getByText("Choose Your Faction")
+    .filter({ visible: true });
+  await expect(factionTitle).toBeVisible();
   await page.getByPlaceholder("Enter character name").fill(characterName);
   await page.getByPlaceholder("Enter rival name").fill("Blue");
   await expect(page.getByText("Name is available!")).toBeVisible({
     timeout: 15_000,
   });
 
-  await click(
-    page
-      .getByText("Choose Your Faction")
-      .locator("..")
-      .getByRole("button")
-      .first(),
-  );
-  await click(page.getByRole("button", { name: "Next Step: Class" }));
+  await click(factionTitle.locator("..").getByRole("button").first());
+  await click(nextCreationStep());
 
-  await expect(page.getByText("Choose Your Class")).toBeVisible();
-  await click(
-    page
-      .getByText("Choose Your Class")
-      .locator("..")
-      .getByRole("button")
-      .first(),
-  );
-  await click(page.getByRole("button", { name: "Next Step: Home City" }));
+  const classTitle = page
+    .getByText("Choose Your Class")
+    .filter({ visible: true });
+  await expect(classTitle).toBeVisible();
+  await click(classTitle.locator("..").getByRole("button").first());
+  await click(nextCreationStep());
 
-  await expect(page.getByText("Choose Your Home City")).toBeVisible();
-  await click(page.getByRole("button", { name: "Next Step: Confirm" }));
+  await expect(
+    page.getByText("Choose Your Home City").filter({ visible: true }),
+  ).toBeVisible();
+  await click(nextCreationStep());
 
   await click(page.getByRole("button", { name: "Create" }));
-  await expect(page.getByRole("heading", { name: "SELECT A CHARACTER" })).toBeVisible({
+  await expect(
+    page.getByRole("heading", { name: "SELECT A CHARACTER" }),
+  ).toBeVisible({
     timeout: 30_000,
   });
-  await expect(page.getByRole("button", { name: characterName })).toBeVisible();
+  await expect(
+    page.getByText(characterName, { exact: true }).filter({ visible: true }),
+  ).toBeVisible();
 }
 
 export async function enterWorld(
@@ -92,13 +99,18 @@ export async function enterWorld(
   characterName: string,
   options: CharacterCreationOptions = {},
 ) {
-  const characterButton = page.getByRole("button", { name: characterName });
-  if (options.forceClicks) {
-    await characterButton.evaluate((element: HTMLElement) => element.click());
-  } else {
-    await characterButton.click();
+  const mobilePreview = page.getByAltText(`${characterName} trainer preview`);
+  if (!(await mobilePreview.isVisible())) {
+    const characterButton = page.getByRole("button", { name: characterName });
+    if (options.forceClicks) {
+      await characterButton.evaluate((element: HTMLElement) => element.click());
+    } else {
+      await characterButton.click();
+    }
   }
-  const enterWorldButton = page.getByRole("button", { name: "ENTER WORLD" });
+  const enterWorldButton = page
+    .getByRole("button", { name: /Enter World/i })
+    .filter({ visible: true });
   await expect(enterWorldButton).toBeEnabled({ timeout: 15_000 });
   if (options.forceClicks) {
     await enterWorldButton.evaluate((element: HTMLElement) => element.click());
@@ -132,7 +144,9 @@ export async function createGuestCharacterAndEnterWorld(
 
 export async function quitToCharacterSelect(page: Page) {
   await page.getByRole("button", { name: "Quit" }).click();
-  await expect(page.getByRole("heading", { name: "SELECT A CHARACTER" })).toBeVisible({
+  await expect(
+    page.getByRole("heading", { name: "SELECT A CHARACTER" }),
+  ).toBeVisible({
     timeout: 15_000,
   });
 }

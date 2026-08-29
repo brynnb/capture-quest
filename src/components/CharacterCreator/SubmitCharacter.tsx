@@ -19,6 +19,9 @@ const SubmitCharacter: React.FC = () => {
 
   const handleSubmit = async () => {
     setLoading(true);
+    // The character-list broadcast can arrive before createCharacter resolves,
+    // so register the intended selection before sending the request.
+    setPendingSelectName(characterName);
 
     try {
       const success = await createCharacter();
@@ -26,16 +29,17 @@ const SubmitCharacter: React.FC = () => {
 
       if (success) {
         console.log("Character created successfully");
-        setPendingSelectName(characterName);
         resetStore();
         setScreen("characterSelect");
       } else {
+        setPendingSelectName(null);
         window.alert(
           "Failed to create character. Please choose a different name or try again.",
         );
       }
     } catch (error) {
       console.error("Failed to create character:", error);
+      setPendingSelectName(null);
       setLoading(false);
     }
   };

@@ -3,13 +3,20 @@ import { waitForNoMapLoading, waitForTestBridge } from "./state";
 
 export async function jumpToScenario(page: Page, scenarioName: string) {
   await waitForTestBridge(page);
-  await page.getByTitle("Scenario Debugger").click();
+  const scenarioButton = page.getByRole("button", { name: "Map / Scenarios" });
+  if (!(await scenarioButton.isVisible())) {
+    await page.getByRole("button", { name: "Open game menu" }).click();
+  }
+  await scenarioButton.click();
   await expect(page.getByText("Scenario Debugger")).toBeVisible({
     timeout: 15_000,
   });
 
   await page.getByPlaceholder("Filter scenarios").fill(scenarioName);
-  const sceneButton = page.locator("button").filter({ hasText: scenarioName }).first();
+  const sceneButton = page
+    .locator("button")
+    .filter({ hasText: scenarioName })
+    .first();
   await expect(sceneButton).toBeVisible({ timeout: 15_000 });
   await sceneButton.click();
 

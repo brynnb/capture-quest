@@ -5,9 +5,7 @@ import {
   type CDPSession,
   type Page,
 } from "@playwright/test";
-import {
-  createGuestCharacterAndEnterWorld,
-} from "./helpers/auth";
+import { createGuestCharacterAndEnterWorld } from "./helpers/auth";
 import { collectPageErrors } from "./helpers/errors";
 import { jumpToScenario } from "./helpers/scenarioDebugger";
 import {
@@ -71,6 +69,20 @@ test("mobile map view supports touch pan, pinch zoom, and confirm-to-warp", asyn
   await expect
     .poll(async () => (await getGameState(page)).ui.isCameraFollowEnabled)
     .toBe(false);
+
+  const closeMapButton = page.getByRole("button", { name: "Close Map" });
+  await expect(closeMapButton).toBeVisible();
+  await closeMapButton.click();
+  await expect
+    .poll(async () => (await getGameState(page)).ui.isCameraFollowEnabled)
+    .toBe(true);
+  await expect(closeMapButton).toBeHidden();
+
+  await clickMobileMenuAction(page, "View Map");
+  await expect
+    .poll(async () => (await getGameState(page)).ui.isCameraFollowEnabled)
+    .toBe(false);
+  await expect(closeMapButton).toBeVisible();
 
   const client = await page.context().newCDPSession(page);
   const canvas = page.locator("#phaser-game-container canvas");

@@ -4,6 +4,7 @@ import useStaticDataStore from "@stores/StaticDataStore";
 import styled from "styled-components";
 import AudioManager from "@/services/audio/AudioManager";
 import { sfxPathForConstant } from "@/services/audio/pokemonMusic";
+import CompactChoiceList from "./CompactChoiceList";
 
 const SelectorShell = styled.div`
   display: flex;
@@ -11,6 +12,12 @@ const SelectorShell = styled.div`
   max-width: 1290px;
   min-width: 0;
   flex-direction: column;
+
+  @media (max-width: 900px), (pointer: coarse) {
+    height: 100%;
+    min-height: 0;
+    flex: 1 1 auto;
+  }
 `;
 
 const TownGrid = styled.div`
@@ -23,6 +30,26 @@ const TownGrid = styled.div`
   @media (max-width: 900px), (pointer: coarse) {
     grid-template-columns: minmax(0, 1fr);
     gap: 14px;
+  }
+`;
+
+const DesktopTownContent = styled.div`
+  display: contents;
+
+  @media (max-width: 900px), (pointer: coarse) {
+    display: none;
+  }
+`;
+
+const MobileOnly = styled.div`
+  display: none;
+
+  @media (max-width: 900px), (pointer: coarse) {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    flex: 1 1 auto;
   }
 `;
 
@@ -203,39 +230,58 @@ const HomeTownSelector = () => {
 
   return (
     <SelectorShell>
-      <Title>Choose Your Home City</Title>
+      <DesktopTownContent>
+        <Title>Choose Your Home City</Title>
 
-      <TownGrid>
-        <ScrollableZones>
-          {uniqueHomeTowns.map((town) => (
-            <ZoneButton
-              key={town.mapId}
-              onClick={() => onSelectMap(town.mapId)}
-              $isSelected={selectedHomeTown?.mapId === town.mapId}
-            >
-              {town.name}
-            </ZoneButton>
-          ))}
-        </ScrollableZones>
+        <TownGrid>
+          <ScrollableZones>
+            {uniqueHomeTowns.map((town) => (
+              <ZoneButton
+                key={town.mapId}
+                onClick={() => onSelectMap(town.mapId)}
+                $isSelected={selectedHomeTown?.mapId === town.mapId}
+              >
+                {town.name}
+              </ZoneButton>
+            ))}
+          </ScrollableZones>
 
-        <DescriptionBox>
-          {selectedHomeTown ? (
-            <div
-              style={{ display: "flex", flexDirection: "column", gap: "20px" }}
-            >
-              <TownName>{selectedHomeTown.name}</TownName>
-              <ZoneText>
-                {selectedHomeTown.description ||
-                  "A bustling city in the heart of the region, full of mystery and opportunity."}
-              </ZoneText>
-            </div>
-          ) : (
-            <EmptyDescription>
-              Select a home city to view details
-            </EmptyDescription>
-          )}
-        </DescriptionBox>
-      </TownGrid>
+          <DescriptionBox>
+            {selectedHomeTown ? (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "20px",
+                }}
+              >
+                <TownName>{selectedHomeTown.name}</TownName>
+                <ZoneText>
+                  {selectedHomeTown.description ||
+                    "A bustling city in the heart of the region, full of mystery and opportunity."}
+                </ZoneText>
+              </div>
+            ) : (
+              <EmptyDescription>
+                Select a home city to view details
+              </EmptyDescription>
+            )}
+          </DescriptionBox>
+        </TownGrid>
+      </DesktopTownContent>
+      <MobileOnly>
+        <CompactChoiceList
+          title="Choose Your Home City"
+          choices={uniqueHomeTowns.map((town) => ({
+            id: town.mapId,
+            label: town.name,
+            description:
+              town.description || "A new home full of mystery and opportunity.",
+          }))}
+          selectedId={selectedHomeTown?.mapId}
+          onSelect={(id) => onSelectMap(Number(id))}
+        />
+      </MobileOnly>
     </SelectorShell>
   );
 };

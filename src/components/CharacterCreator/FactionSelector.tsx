@@ -2,23 +2,14 @@ import useCharacterCreatorStore from "@stores/CharacterCreatorStore";
 import useStaticDataStore from "@stores/StaticDataStore";
 import { FactionData } from "@/services/characterService";
 import styled from "styled-components";
-import SelectionButton from "../Interface/SelectionButton";
+import CompactChoiceCarousel from "./CompactChoiceCarousel";
+import CompactChoiceList from "./CompactChoiceList";
 
 const FactionSelectorContainer = styled.div`
   display: flex;
   flex-direction: column;
   gap: 10px;
   width: 100%;
-`;
-
-const Title = styled.div`
-  font-family: "Outfit", sans-serif;
-  text-transform: uppercase;
-  font-weight: 800;
-  font-size: 24px;
-  text-align: center;
-  color: #2e2f66;
-  margin-bottom: 12px;
 `;
 
 const FactionSelector = () => {
@@ -36,19 +27,39 @@ const FactionSelector = () => {
     setSelectedFaction(faction);
   };
 
+  const factionChoices = playableFactions.map((faction) => ({
+    id: faction.id,
+    label: faction.name,
+    description: faction.lore,
+  }));
+
   return (
     <FactionSelectorContainer>
-      <Title>Choose Your Faction</Title>
-      {playableFactions.map((faction) => (
-        <SelectionButton
-          key={faction.id}
-          onClick={() => onSelectFaction(faction)}
-          $isSelected={selectedFaction?.id === faction.id}
-          $width="100%"
-        >
-          {faction.name}
-        </SelectionButton>
-      ))}
+      <CompactChoiceList
+        title="Choose Your Faction"
+        choices={factionChoices}
+        selectedId={selectedFaction?.id}
+        showOnDesktop
+        showOnMobile={false}
+        onSelect={(id) => {
+          const faction = playableFactions.find(
+            (item) => item.id === Number(id),
+          );
+          if (faction) onSelectFaction(faction);
+        }}
+      />
+      <CompactChoiceCarousel
+        title="Choose Your Faction"
+        itemLabel="faction"
+        choices={factionChoices}
+        selectedId={selectedFaction?.id}
+        onSelect={(id) => {
+          const faction = playableFactions.find(
+            (item) => item.id === Number(id),
+          );
+          if (faction) onSelectFaction(faction);
+        }}
+      />
     </FactionSelectorContainer>
   );
 };

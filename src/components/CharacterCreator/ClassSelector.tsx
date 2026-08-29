@@ -3,8 +3,8 @@ import useCharacterCreatorStore from "@stores/CharacterCreatorStore";
 import useStaticDataStore from "@stores/StaticDataStore";
 import { ClassData } from "@/services/characterService";
 import styled from "styled-components";
-import SelectionButton from "../Interface/SelectionButton";
 import { findDefaultCharacterClass } from "./classDefaults";
+import CompactChoiceList from "./CompactChoiceList";
 
 interface ClassSelectorProps {
   onClassSelect?: (classId: number) => void;
@@ -15,16 +15,12 @@ const ClassSelectorContainer = styled.div`
   flex-direction: column;
   gap: 8px;
   width: 100%;
-`;
 
-const Title = styled.div`
-  font-family: "Outfit", sans-serif;
-  text-transform: uppercase;
-  font-weight: 800;
-  font-size: 24px;
-  text-align: center;
-  color: #2e2f66;
-  margin-bottom: 12px;
+  @media (max-width: 900px), (pointer: coarse) {
+    height: 100%;
+    min-height: 0;
+    flex: 1 1 auto;
+  }
 `;
 
 const ClassSelector = ({ onClassSelect }: ClassSelectorProps) => {
@@ -48,18 +44,22 @@ const ClassSelector = ({ onClassSelect }: ClassSelectorProps) => {
 
   return (
     <ClassSelectorContainer>
-      <Title>Choose Your Class</Title>
-      {classes.map((classItem) => (
-        <SelectionButton
-          key={classItem.id}
-          onClick={() => onSelectClass(classItem)}
-          $isSelected={selectedClass?.id === classItem.id}
-          $width="100%"
-          $height="58px"
-        >
-          <span style={{ fontSize: "22px" }}>{classItem.name}</span>
-        </SelectionButton>
-      ))}
+      <CompactChoiceList
+        title="Choose Your Class"
+        choices={classes.map((classItem) => ({
+          id: classItem.id,
+          label: classItem.name,
+          description:
+            classItem.lore ||
+            `A ${classItem.classType || "specialist"} trainer class.`,
+        }))}
+        selectedId={selectedClass?.id}
+        showOnDesktop
+        onSelect={(id) => {
+          const charClass = classes.find((item) => item.id === Number(id));
+          if (charClass) onSelectClass(charClass);
+        }}
+      />
     </ClassSelectorContainer>
   );
 };

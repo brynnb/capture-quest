@@ -9,6 +9,10 @@ const RivalNameInputContainer = styled.div`
   width: 100%;
   padding: 12px;
   box-sizing: border-box;
+
+  @media (max-width: 900px), (pointer: coarse) {
+    padding: 2px;
+  }
 `;
 
 const StyledRivalNameInput = styled.input`
@@ -19,7 +23,7 @@ const StyledRivalNameInput = styled.input`
   border-radius: 12px;
   padding: 15px;
   color: #2e2f66;
-  font-family: 'Outfit', sans-serif;
+  font-family: "Outfit", sans-serif;
   font-size: 24px;
   outline: none;
   text-align: center;
@@ -35,27 +39,62 @@ const StyledRivalNameInput = styled.input`
     color: #4a4ba6;
     opacity: 0.5;
   }
+
+  @media (max-width: 900px), (pointer: coarse) {
+    height: 46px;
+    padding: 8px 10px;
+    border-width: 2px;
+    font-size: 17px;
+  }
 `;
 
 const RandomNameButtonContainer = styled.div`
   display: flex;
   justify-content: center;
   margin-top: 15px;
+
+  @media (max-width: 900px), (pointer: coarse) {
+    margin-top: 5px;
+
+    & > button {
+      width: auto;
+      height: 38px;
+      min-width: 130px;
+      padding: 0 14px;
+      border-width: 3px;
+      border-radius: 12px;
+      font-size: 14px;
+    }
+  }
+
+  @media (max-height: 650px) and (max-width: 900px),
+    (max-height: 650px) and (pointer: coarse) {
+    display: none;
+  }
 `;
 
 const ValidationMessage = styled.div<{ $isError: boolean }>`
   color: ${(props) => (props.$isError ? "#ffaf84" : "#4a4ba6")};
-  font-family: 'Outfit', sans-serif;
+  font-family: "Outfit", sans-serif;
   font-weight: 700;
   font-size: 24px;
   text-align: center;
   margin-top: 12px;
   min-height: 28px;
+
+  @media (max-width: 900px), (pointer: coarse) {
+    min-height: 16px;
+    margin-top: 4px;
+    font-size: 13px;
+    line-height: 1.2;
+  }
 `;
 
 function formatRivalName(value: string): string {
   const lettersOnly = value.replace(/[^a-zA-Z]/g, "").slice(0, 12);
-  return lettersOnly.charAt(0).toUpperCase() + lettersOnly.slice(1).toLowerCase();
+  return (
+    lettersOnly.charAt(0).toUpperCase() + lettersOnly.slice(1).toLowerCase()
+  );
 }
 
 const RivalNameInput: React.FC = () => {

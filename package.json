@@ -32,6 +32,7 @@
     "@swc/plugin-styled-components": "13.0.0",
     "@tanstack/react-query-devtools": "^5.58.0",
     "jszip": "^3.10.1",
+    "nipplejs": "1.0.4",
     "phaser": "^3.88.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
+import nipplejs from "nipplejs";
 import styled from "styled-components";
 import usePokeBattleStore from "@stores/PokeBattleStore";
 import usePokemonDialogueStore from "@stores/PokemonDialogueStore";
@@ -9,6 +10,7 @@ import useSlotMachineStore from "@stores/SlotMachineStore";
 import {
   MOBILE_INTERACT_EVENT,
   MOBILE_MOVE_EVENT,
+  cardinalDirectionForJoystick,
   type MobileMovementDirection,
 } from "@/phaser-game/mobileControls";
 
@@ -27,51 +29,37 @@ const ControlsLayer = styled.div<{ $hidden: boolean }>`
   }
 `;
 
-const DPad = styled.div<{ $hidden: boolean }>`
+const JoystickZone = styled.div<{ $hidden: boolean }>`
   position: absolute;
   bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   left: calc(16px + env(safe-area-inset-left, 0px));
-  display: grid;
   width: 132px;
   height: 132px;
-  grid-template: repeat(3, 1fr) / repeat(3, 1fr);
   opacity: ${(props) => (props.$hidden ? 0 : 1)};
   visibility: ${(props) => (props.$hidden ? "hidden" : "visible")};
   pointer-events: ${(props) => (props.$hidden ? "none" : "auto")};
   touch-action: none;
   user-select: none;
-`;
-
-const DirectionButton = styled.button<{ $area: string }>`
-  grid-area: ${(props) => props.$area};
-  min-width: 44px;
-  min-height: 44px;
-  padding: 0;
-  color: #292b69;
-  background: rgba(220, 221, 255, 0.82);
-  border: 2px solid rgba(74, 75, 166, 0.9);
-  border-radius: 10px;
-  box-shadow: 0 5px 0 rgba(46, 47, 102, 0.82), 0 9px 20px rgba(0, 0, 0, 0.2);
-  backdrop-filter: blur(9px);
-  font-family: "Outfit", sans-serif;
-  font-size: 20px;
-  font-weight: 900;
-  line-height: 1;
-  touch-action: none;
+  -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
 
-  &:active {
-    transform: translateY(3px);
-    box-shadow: 0 2px 0 rgba(46, 47, 102, 0.82);
+  /* nipplejs renders these as inline-styled children. The important overrides
+     retain its proven geometry while keeping the control visible against the
+     Game Boy world's predominantly white tiles. */
+  & .back {
+    box-sizing: border-box;
+    background: rgba(220, 221, 255, 0.78) !important;
+    border: 3px solid rgba(74, 75, 166, 0.92);
+    box-shadow: 0 7px 0 rgba(46, 47, 102, 0.72), 0 12px 26px rgba(0, 0, 0, 0.24);
+    backdrop-filter: blur(9px);
   }
-`;
 
-const DPadCenter = styled.div`
-  grid-area: 2 / 2;
-  margin: 4px;
-  background: rgba(74, 75, 166, 0.72);
-  border-radius: 50%;
-  box-shadow: inset 0 0 0 5px rgba(192, 193, 255, 0.42);
+  & .front {
+    box-sizing: border-box;
+    background: rgba(167, 237, 254, 0.96) !important;
+    border: 2px solid #4a4ba6;
+    box-shadow: 0 4px 0 rgba(46, 47, 102, 0.72), 0 7px 15px rgba(0, 0, 0, 0.22);
+  }
 `;
 
 const ActionCluster = styled.div`
@@ -109,11 +97,6 @@ const RoundButton = styled.button<{ $secondary?: boolean }>`
   }
 `;
 
-interface HeldDirection {
-  pointerId: number;
-  interval: ReturnType<typeof setInterval>;
-}
-
 function emitMove(direction: MobileMovementDirection): void {
   window.dispatchEvent(
     new CustomEvent<MobileMovementDirection>(MOBILE_MOVE_EVENT, {
@@ -121,6 +104,8 @@ function emitMove(direction: MobileMovementDirection): void {
     }),
   );
 }
+
+const MOVEMENT_REPEAT_MS = 115;
 
 const MobileControls = () => {
   const isInBattle = usePokeBattleStore((state) => state.isInBattle);
@@ -143,36 +128,63 @@ const MobileControls = () => {
       !state.isCameraFollowEnabled ||
       state.isWarpMode,
   );
-  const heldDirection = useRef<HeldDirection | null>(null);
+  const joystickZone = useRef<HTMLDivElement | null>(null);
+  const heldDirection = useRef<MobileMovementDirection | null>(null);
+  const movementInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const releaseDirection = useCallback((pointerId?: number) => {
-    if (!heldDirection.current) return;
-    if (
-      pointerId !== undefined &&
-      heldDirection.current.pointerId !== pointerId
-    ) {
-      return;
+  const releaseDirection = useCallback(() => {
+    if (movementInterval.current) {
+      clearInterval(movementInterval.current);
+      movementInterval.current = null;
     }
-    clearInterval(heldDirection.current.interval);
     heldDirection.current = null;
   }, []);
 
-  const pressDirection = useCallback(
-    (direction: MobileMovementDirection, event: React.PointerEvent<HTMLButtonElement>) => {
-      event.preventDefault();
-      event.stopPropagation();
+  const holdDirection = useCallback(
+    (direction: MobileMovementDirection | null) => {
+      if (!direction) {
+        releaseDirection();
+        return;
+      }
+      if (heldDirection.current === direction) return;
+
       releaseDirection();
-      event.currentTarget.setPointerCapture?.(event.pointerId);
+      heldDirection.current = direction;
       emitMove(direction);
-      heldDirection.current = {
-        pointerId: event.pointerId,
-        interval: setInterval(() => emitMove(direction), 115),
-      };
+      movementInterval.current = setInterval(() => {
+        if (heldDirection.current) emitMove(heldDirection.current);
+      }, MOVEMENT_REPEAT_MS);
     },
     [releaseDirection],
   );
 
   useEffect(() => releaseDirection, [releaseDirection]);
+
+  useEffect(() => {
+    if (!joystickZone.current) return;
+
+    // Keep this aligned with New Yokosuka's proven mobile stick dimensions and
+    // behavior. Only the output mapping differs because CaptureQuest is a
+    // cardinal, tile-based game rather than an analog 3D controller.
+    const joystick = nipplejs.create({
+      zone: joystickZone.current,
+      mode: "static",
+      position: { left: "50%", top: "50%" },
+      size: 112,
+      threshold: 0.1,
+      color: "#f2f4f5",
+      restOpacity: 0.72,
+    });
+    joystick.on("move", (event) => {
+      holdDirection(cardinalDirectionForJoystick(event.data?.vector));
+    });
+    joystick.on("end", releaseDirection);
+
+    return () => {
+      releaseDirection();
+      joystick.destroy();
+    };
+  }, [holdDirection, releaseDirection]);
 
   useEffect(() => {
     if (
@@ -194,13 +206,6 @@ const MobileControls = () => {
     shopOpen,
     slotMachineOpen,
   ]);
-
-  const releasePointer = (event: React.PointerEvent<HTMLButtonElement>) => {
-    releaseDirection(event.pointerId);
-    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-  };
 
   const interact = (event: React.PointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -226,49 +231,13 @@ const MobileControls = () => {
       $hidden={isInBattle || hudBlocked || shopOpen || pcOpen || slotMachineOpen}
       aria-hidden={isInBattle || hudBlocked || shopOpen || pcOpen || slotMachineOpen}
     >
-      <DPad $hidden={dialogueOpen} aria-label="Movement controls">
-        <DirectionButton
-          $area="1 / 2"
-          aria-label="Move up"
-          onPointerDown={(event) => pressDirection("UP", event)}
-          onPointerUp={releasePointer}
-          onPointerCancel={releasePointer}
-          onLostPointerCapture={releasePointer}
-        >
-          ▲
-        </DirectionButton>
-        <DirectionButton
-          $area="2 / 1"
-          aria-label="Move left"
-          onPointerDown={(event) => pressDirection("LEFT", event)}
-          onPointerUp={releasePointer}
-          onPointerCancel={releasePointer}
-          onLostPointerCapture={releasePointer}
-        >
-          ◀
-        </DirectionButton>
-        <DPadCenter />
-        <DirectionButton
-          $area="2 / 3"
-          aria-label="Move right"
-          onPointerDown={(event) => pressDirection("RIGHT", event)}
-          onPointerUp={releasePointer}
-          onPointerCancel={releasePointer}
-          onLostPointerCapture={releasePointer}
-        >
-          ▶
-        </DirectionButton>
-        <DirectionButton
-          $area="3 / 2"
-          aria-label="Move down"
-          onPointerDown={(event) => pressDirection("DOWN", event)}
-          onPointerUp={releasePointer}
-          onPointerCancel={releasePointer}
-          onLostPointerCapture={releasePointer}
-        >
-          ▼
-        </DirectionButton>
-      </DPad>
+      <JoystickZone
+        ref={joystickZone}
+        $hidden={dialogueOpen}
+        role="application"
+        aria-label="Movement joystick"
+        aria-hidden={dialogueOpen}
+      />
       <ActionCluster aria-label="Action controls">
         <RoundButton $secondary aria-label="Cancel" onPointerDown={cancel}>
           B

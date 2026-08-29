@@ -46,8 +46,13 @@ const WarpModeOverlay = styled.div<{ $compact: boolean }>`
     props.$compact ? "none" : "warpPulse 2s ease-in-out infinite"};
 
   @keyframes warpPulse {
-    0%, 100% { opacity: 0.9; }
-    50% { opacity: 1; }
+    0%,
+    100% {
+      opacity: 0.9;
+    }
+    50% {
+      opacity: 1;
+    }
   }
 
   @media (max-width: 850px), (pointer: coarse) {
@@ -122,6 +127,38 @@ const GameScreenRoot = styled.div`
   display: contents;
 `;
 
+const MobileCloseMapButton = styled.button`
+  display: none;
+
+  @media (max-width: 850px), (pointer: coarse) {
+    position: absolute;
+    right: calc(12px + env(safe-area-inset-right, 0px));
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    left: calc(12px + env(safe-area-inset-left, 0px));
+    z-index: 2050;
+    display: block;
+    width: min(360px, calc(100vw - 24px));
+    min-height: 50px;
+    margin: 0 auto;
+    padding: 10px 18px;
+    color: #2e2f66;
+    background: linear-gradient(180deg, #fff1f5, #ffccd9);
+    border: 3px solid #4a4ba6;
+    border-radius: 14px;
+    box-shadow: 0 4px 0 #4a4ba6;
+    font-family: "Outfit", sans-serif;
+    font-size: 17px;
+    font-weight: 900;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+
+    &:active {
+      transform: translateY(2px);
+      box-shadow: 0 2px 0 #4a4ba6;
+    }
+  }
+`;
+
 const TileManagerDock = styled.section`
   position: absolute;
   z-index: 2100;
@@ -174,8 +211,10 @@ const MainPage: React.FC = () => {
     isWarpMode,
     isMapLoading,
     isTileManagerOpen,
+    isCameraFollowEnabled,
     pendingInstantWarpTarget,
     setWarpMode,
+    setCameraFollowEnabled,
   } = useGameStatusStore();
   const compactTouchLayout = useCompactTouchLayout();
 
@@ -264,21 +303,29 @@ const MainPage: React.FC = () => {
 
       <BottomHUD />
 
-      {isTileManagerOpen && canPresentTileManager(IS_LOCAL_DEV, characterProfile?.gm ?? 0) && (
-        <TileManagerDock
-          role="dialog"
-          aria-label="Tile Manager"
-          data-testid="tile-manager-panel"
+      {compactTouchLayout && !isCameraFollowEnabled && !isWarpMode && (
+        <MobileCloseMapButton
+          type="button"
+          onClick={() => setCameraFollowEnabled(true)}
         >
-          <TileEditorPanel />
-        </TileManagerDock>
+          Close Map
+        </MobileCloseMapButton>
       )}
+
+      {isTileManagerOpen &&
+        canPresentTileManager(IS_LOCAL_DEV, characterProfile?.gm ?? 0) && (
+          <TileManagerDock
+            role="dialog"
+            aria-label="Tile Manager"
+            data-testid="tile-manager-panel"
+          >
+            <TileEditorPanel />
+          </TileManagerDock>
+        )}
 
       {isInventoryOpen && <InventoryLayout />}
 
-      {isGroupOpen &&
-        !isInventoryOpen &&
-        !isOptionsOpen && <PartyPokemonHUD />}
+      {isGroupOpen && !isInventoryOpen && !isOptionsOpen && <PartyPokemonHUD />}
       {isPokedexOpen && <Pokedex />}
       {isTrainerCardOpen && <TrainerCard />}
       {isOptionsOpen && <OptionsDisplay />}

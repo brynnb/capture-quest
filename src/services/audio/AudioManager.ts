@@ -7,6 +7,13 @@ interface RuntimeAudioManifest {
     metadata: Record<string, { loop?: boolean }>;
 }
 
+interface MusicPlayback {
+    element: HTMLAudioElement;
+    sourceNode: MediaElementAudioSourceNode | null;
+    gainNode: GainNode | null;
+    mixLevel: number;
+}
+
 const runtimeAudioManifest = audioManifest as RuntimeAudioManifest;
 const BASE_ASSET_URL = import.meta.env.VITE_ASSET_URL || 'https://pub-04034701bf7545f291744990c97678b9.r2.dev';
 
@@ -31,7 +38,8 @@ class AudioManager {
     private audioCtx: AudioContext | null = null;
     private globalBuffers: Map<string, AudioBuffer> = new Map();
     private zoneBuffers: Map<string, AudioBuffer> = new Map();
-    private musicElement: HTMLAudioElement | null = null;
+    private currentMusicPlayback: MusicPlayback | null = null;
+    private activeMusicPlaybacks: Set<MusicPlayback> = new Set();
     private musicGainNode: GainNode | null = null;
     private sfxGainNode: GainNode | null = null;
     private ambientGainNode: GainNode | null = null;
@@ -115,9 +123,10 @@ class AudioManager {
         if (this.musicGainNode) {
             this.musicGainNode.gain.value = volume;
         }
-        // Also update existing music element if it's not routed through gain node
-        if (this.musicElement) {
-            this.musicElement.volume = this.isMuted ? 0 : volume * this.currentTrackMultiplier;
+        // A media element can remain as a direct-output fallback if Web Audio
+        // routing is unavailable. Keep that path synchronized too.
+        for (const playback of this.activeMusicPlaybacks) {
+            this.applyMusicMixLevel(playback, playback.mixLevel);
         }
     }
 
@@ -140,8 +149,22 @@ class AudioManager {
         if (this.masterGainNode) {
             this.masterGainNode.gain.value = muted ? 0 : 1;
         }
-        if (this.musicElement) {
-            this.musicElement.volume = muted ? 0 : this.musicVolume * this.currentTrackMultiplier;
+
+        // iOS does not support script-controlled HTMLMediaElement volume. The
+        // native muted flag is therefore the hard mute boundary for every
+        // current or fading media element; the Web Audio master gain is a
+        // second boundary for routed music, SFX, and ambients.
+        for (const playback of this.activeMusicPlaybacks) {
+            playback.element.muted = muted;
+            this.applyMusicMixLevel(playback, playback.mixLevel);
+        }
+
+        // Calling resume from the same user gesture that unmutes is required
+        // after iOS suspends an AudioContext while the page is backgrounded.
+        if (!muted && this.audioCtx?.state === 'suspended') {
+            void this.audioCtx.resume().catch((error) => {
+                console.warn('[AudioManager] Could not resume audio context:', error);
+            });
         }
     }
 
@@ -243,6 +266,7 @@ class AudioManager {
             console.warn(`[AudioManager] playSFX(${filename}): Not initialized`);
             return;
         }
+        if (this.isMuted) return;
 
         // Ensure context is running (needed after suspension)
         if (this.audioCtx.state === 'suspended') {
@@ -270,6 +294,7 @@ class AudioManager {
             console.warn(`[AudioManager] playSFX(${filename}): No buffer available`);
             return;
         }
+        if (this.isMuted) return;
 
         const source = this.audioCtx.createBufferSource();
         const localGain = this.audioCtx.createGain();
@@ -348,24 +373,23 @@ class AudioManager {
         this.currentTrackMultiplier = multiplier;
 
         // Handle crossfade
-        const oldElement = this.musicElement;
+        const oldPlayback = this.currentMusicPlayback;
         const fadeOutTime = 2000; // ms
 
-        if (oldElement) {
+        if (oldPlayback) {
             // Fade out old track
-            const startVolume = oldElement.volume;
+            const startLevel = oldPlayback.mixLevel;
             const startTime = performance.now();
 
             const fadeOut = (now: number) => {
                 const elapsed = now - startTime;
                 const progress = Math.max(0, Math.min(elapsed / fadeOutTime, 1));
-                oldElement.volume = Math.max(0, Math.min(startVolume * (1 - progress), 1));
+                this.applyMusicMixLevel(oldPlayback, startLevel * (1 - progress));
 
                 if (progress < 1) {
                     requestAnimationFrame(fadeOut);
                 } else {
-                    oldElement.pause();
-                    oldElement.remove();
+                    this.cleanupMusicPlayback(oldPlayback);
                 }
             };
             requestAnimationFrame(fadeOut);
@@ -376,31 +400,38 @@ class AudioManager {
             ? targetFilename
             : `${BASE_ASSET_URL}/capturequest/sounds_extracted/${targetFilename}`;
 
-        const newElement = new Audio(url);
+        const newElement = new Audio();
+        newElement.crossOrigin = "anonymous";
+        newElement.preload = "auto";
+        newElement.setAttribute("playsinline", "");
+        newElement.muted = this.isMuted;
+        newElement.src = url;
 
         // Determine looping: Consult metadata if available, otherwise use provided parameter
         const metadata = runtimeAudioManifest.metadata[targetFilename];
         const finalLoop = (metadata && metadata.loop !== undefined) ? metadata.loop : loop;
 
         newElement.loop = finalLoop;
-        newElement.volume = 0; // Start silent for fade-in
-        newElement.crossOrigin = "anonymous";
-        this.musicElement = newElement;
+        const newPlayback = this.createMusicPlayback(newElement);
+        this.applyMusicMixLevel(newPlayback, 0);
+        this.activeMusicPlaybacks.add(newPlayback);
+        this.currentMusicPlayback = newPlayback;
         this.currentMusicTrack = targetFilename;
 
         newElement.play().then(() => {
             // Fade in new track
-            const targetVolume = this.musicVolume;
             const startTime = performance.now();
             const fadeInTime = 2000; // ms
 
             const fadeIn = (now: number) => {
-                if (this.musicElement !== newElement) return;
+                if (this.currentMusicPlayback !== newPlayback) return;
 
                 const elapsed = now - startTime;
                 const progress = Math.max(0, Math.min(elapsed / fadeInTime, 1));
-                const currentVol = targetVolume * this.currentTrackMultiplier * progress;
-                newElement.volume = this.isMuted ? 0 : Math.max(0, Math.min(currentVol, 1));
+                this.applyMusicMixLevel(
+                    newPlayback,
+                    this.currentTrackMultiplier * progress,
+                );
 
                 if (progress < 1) {
                     requestAnimationFrame(fadeIn);
@@ -411,6 +442,56 @@ class AudioManager {
             console.warn("[AudioManager] Music play failed (might need user interaction):", e);
             // If failed, we still keep it as current but it won't play until next trigger or interaction
         });
+    }
+
+    private createMusicPlayback(element: HTMLAudioElement): MusicPlayback {
+        let sourceNode: MediaElementAudioSourceNode | null = null;
+        let gainNode: GainNode | null = null;
+
+        if (this.audioCtx && this.musicGainNode) {
+            try {
+                sourceNode = this.audioCtx.createMediaElementSource(element);
+                gainNode = this.audioCtx.createGain();
+                sourceNode.connect(gainNode);
+                gainNode.connect(this.musicGainNode);
+                element.volume = 1;
+            } catch (error) {
+                sourceNode?.disconnect();
+                gainNode?.disconnect();
+                sourceNode = null;
+                gainNode = null;
+                console.warn(
+                    '[AudioManager] Falling back to direct media playback:',
+                    error,
+                );
+            }
+        }
+
+        return { element, sourceNode, gainNode, mixLevel: 0 };
+    }
+
+    private applyMusicMixLevel(playback: MusicPlayback, level: number): void {
+        const safeLevel = Math.max(0, Math.min(level, 1));
+        playback.mixLevel = safeLevel;
+        if (playback.gainNode) {
+            playback.gainNode.gain.value = safeLevel;
+            return;
+        }
+
+        // This is only a fallback for browsers that cannot route the element
+        // through Web Audio. Native `muted` still guarantees silence on iOS,
+        // where assigning this volume has no effect.
+        playback.element.volume = this.isMuted
+            ? 0
+            : Math.max(0, Math.min(this.musicVolume * safeLevel, 1));
+    }
+
+    private cleanupMusicPlayback(playback: MusicPlayback): void {
+        playback.element.pause();
+        playback.sourceNode?.disconnect();
+        playback.gainNode?.disconnect();
+        playback.element.remove();
+        this.activeMusicPlaybacks.delete(playback);
     }
 
     private activeAmbients: Map<string, { source: AudioBufferSourceNode, gain: GainNode }> = new Map();
@@ -528,32 +609,34 @@ class AudioManager {
 
     public stopMusic(fadeOut: boolean = true) {
         this.requestedMusicTrack = null;
-        if (!this.musicElement) return;
+        if (!this.currentMusicPlayback) return;
 
         if (!fadeOut) {
-            this.musicElement.pause();
-            this.musicElement = null;
+            for (const playback of Array.from(this.activeMusicPlaybacks)) {
+                this.cleanupMusicPlayback(playback);
+            }
+            this.currentMusicPlayback = null;
             this.currentMusicTrack = null;
             this.requestedMusicTrack = null;
             return;
         }
 
-        const el = this.musicElement;
-        const startVolume = el.volume;
+        const playback = this.currentMusicPlayback;
+        const startLevel = playback.mixLevel;
         const startTime = performance.now();
         const fadeTime = 2000;
 
         const doFadeOut = (now: number) => {
             const elapsed = now - startTime;
             const progress = Math.max(0, Math.min(elapsed / fadeTime, 1));
-            el.volume = Math.max(0, Math.min(startVolume * (1 - progress), 1));
+            this.applyMusicMixLevel(playback, startLevel * (1 - progress));
 
             if (progress < 1) {
                 requestAnimationFrame(doFadeOut);
             } else {
-                el.pause();
-                if (this.musicElement === el) {
-                    this.musicElement = null;
+                this.cleanupMusicPlayback(playback);
+                if (this.currentMusicPlayback === playback) {
+                    this.currentMusicPlayback = null;
                     this.currentMusicTrack = null;
                     this.requestedMusicTrack = null;
                 }

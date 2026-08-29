@@ -5,6 +5,7 @@ import { WorldSocket, OpCodes } from "@/net";
 import { OptionId } from "@/constants/optionId";
 import { displayLocationNameForMap } from "@utils/locationNames";
 import type { InstantWarpTarget } from "@/phaser-game/instantWarp";
+import AudioManager from "@/services/audio/AudioManager";
 
 interface GameStatusStore {
   maps: MapData[];
@@ -115,7 +116,14 @@ const useGameStatusStore = create<GameStatusStore>()(
           set((state) => ({ currentVideoIndex: state.currentVideoIndex + 1 }));
         },
         toggleMute: () => {
-          set((state) => ({ isMuted: !state.isMuted }));
+          set((state) => {
+            const nextMuted = !state.isMuted;
+            // Apply the native media mute and resume Web Audio synchronously
+            // within the tap/click. iOS may reject a later effect-driven resume
+            // because it is no longer part of the user gesture.
+            AudioManager.setMuted(nextMuted);
+            return { isMuted: nextMuted };
+          });
         },
         setSFXVolume: (volume) => set({ sfxVolume: volume }),
         setAmbientVolume: (volume) => set({ ambientVolume: volume }),

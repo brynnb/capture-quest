@@ -21,19 +21,26 @@ const MainContainer = styled.div`
   width: min(1400px, 100%);
   height: 100%;
   margin: 0 auto;
-  padding: 20px 20px 84px;
+  padding: 20px;
   box-sizing: border-box;
   overflow-y: auto;
   overscroll-behavior: contain;
 
   @media (max-width: 1100px), (pointer: coarse) {
     width: 100%;
-    gap: 12px;
-    padding: 16px 12px 76px;
+    gap: 8px;
+    padding: 8px 10px max(8px, env(safe-area-inset-bottom, 0px));
+  }
+
+  @media (max-height: 650px) and (max-width: 1100px),
+    (max-height: 650px) and (pointer: coarse) {
+    gap: 4px;
+    padding: 4px 8px max(4px, env(safe-area-inset-bottom, 0px));
   }
 `;
 
 const CreatorShell = styled.div`
+  --character-choice-height: clamp(420px, 66vh, 700px);
   position: relative;
   width: 100%;
   height: 100%;
@@ -45,11 +52,14 @@ const CreatorShell = styled.div`
   overflow: hidden;
 
   @media (max-width: 1100px), (pointer: coarse), (max-height: 700px) {
-    padding-top: 16px;
+    padding-top: max(6px, env(safe-area-inset-top, 0px));
   }
 `;
 
-const MultiColumnLayout = styled.div<{ $twoColumns?: boolean }>`
+const MultiColumnLayout = styled.div<{
+  $twoColumns?: boolean;
+  $trainerStep?: boolean;
+}>`
   display: grid;
   grid-template-columns: ${(props) =>
     props.$twoColumns
@@ -63,54 +73,139 @@ const MultiColumnLayout = styled.div<{ $twoColumns?: boolean }>`
 
   @media (max-width: 1100px), (pointer: coarse) {
     grid-template-columns: minmax(0, 1fr);
-    gap: 14px;
+    gap: 8px;
     width: 100%;
+    min-height: 0;
+    flex: 1 1 auto;
+    align-items: stretch;
+  }
+
+  @media (max-height: 650px) and (min-width: 600px) and (pointer: coarse),
+    (max-height: 650px) and (min-width: 600px) and (max-width: 1100px) {
+    ${(props) =>
+      props.$trainerStep &&
+      `
+        grid-template-areas:
+          "preview identity"
+          "faction identity";
+        grid-template-columns: minmax(180px, 0.7fr) minmax(280px, 1.3fr);
+        grid-template-rows: 100px auto;
+        column-gap: 12px;
+        row-gap: 4px;
+      `}
   }
 `;
 
-const NavigationContainer = styled.div<{ $inset?: boolean; $centered?: boolean }>`
-  position: absolute;
-  bottom: 20px;
-  right: ${(props) =>
-    props.$centered
-      ? "auto"
-      : props.$inset
-        ? "clamp(40px, 5vw, 72px)"
-        : "20px"};
-  left: ${(props) => (props.$centered ? "50%" : "auto")};
-  width: ${(props) =>
-    props.$centered ? "min(500px, calc(100% - 24px))" : "auto"};
-  transform: ${(props) => (props.$centered ? "translateX(-50%)" : "none")};
+const FactionColumn = styled.div`
+  min-width: 0;
+
+  @media (max-width: 1100px), (pointer: coarse) {
+    order: 2;
+  }
+
+  @media (max-height: 650px) and (min-width: 600px) {
+    grid-area: faction;
+  }
+`;
+
+const NavigationContainer = styled.div<{
+  $inset?: boolean;
+  $centered?: boolean;
+  $wideActions?: boolean;
+}>`
+  position: relative;
   z-index: 10;
   display: flex;
+  width: 100%;
+  min-width: 0;
+  margin-top: auto;
+  padding-right: ${(props) => (props.$inset ? "clamp(20px, 4vw, 52px)" : "0")};
+  box-sizing: border-box;
   gap: 10px;
-  max-width: calc(100% - 40px);
+  justify-content: ${(props) => (props.$centered ? "center" : "flex-end")};
+
+  & > button {
+    flex-shrink: 0;
+  }
 
   ${(props) =>
-    props.$centered &&
+    props.$wideActions &&
     `
-      & > button {
-        flex: 1 1 0;
+      & > button:first-child {
+        flex: 0 0 230px;
+      }
+
+      & > button:last-child {
+        width: 340px;
         min-width: 0;
+        flex: 0 0 340px;
       }
     `}
 
   @media (max-width: 900px), (pointer: coarse) {
-    right: 12px;
-    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
-    left: 12px;
-    width: auto;
-    max-width: none;
-    transform: none;
-    justify-content: flex-end;
-    flex-wrap: wrap;
+    display: grid;
+    width: 100%;
+    margin-top: auto;
+    padding-right: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
 
     & > button {
-      width: auto;
+      width: 100%;
+      max-width: 100%;
+      height: 52px;
       min-width: 0;
-      flex: 1 1 138px;
+      padding: 0 8px;
+      font-size: clamp(13px, 4vw, 17px);
+      line-height: 1.1;
+      white-space: normal;
     }
   }
+
+  @media (max-height: 650px) and (max-width: 900px),
+    (max-height: 650px) and (pointer: coarse) {
+    & > button {
+      height: 46px;
+      font-size: 13px;
+    }
+  }
+`;
+
+const DesktopNavigationLabel = styled.span`
+  @media (max-width: 900px), (pointer: coarse) {
+    display: none;
+  }
+`;
+
+const MobileNavigationLabel = styled.span`
+  display: none;
+
+  @media (max-width: 900px), (pointer: coarse) {
+    display: inline;
+  }
+`;
+
+const StepIndicator = styled.div`
+  color: #4a4ba6;
+  font:
+    900 12px/1 "Outfit",
+    sans-serif;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+
+  @media (min-width: 901px) and (pointer: fine) {
+    display: none;
+  }
+`;
+
+const ConfirmationContent = styled.div`
+  display: flex;
+  width: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
 `;
 
 const StoryText = styled.div`
@@ -135,9 +230,11 @@ const StoryText = styled.div`
 
   @media (max-width: 900px), (pointer: coarse) {
     min-height: 0;
-    padding: 24px;
-    font-size: 18px;
-    border-radius: 18px;
+    padding: 18px;
+    font-size: 17px;
+    line-height: 1.45;
+    border-width: 3px;
+    border-radius: 16px;
   }
 `;
 
@@ -145,11 +242,12 @@ const ViewportContainer = styled.div`
   position: relative;
   width: 100%;
   max-width: 500px;
-  height: clamp(420px, 70vh, 750px);
+  height: var(--character-choice-height);
   display: flex;
   justify-content: center;
   align-items: center;
   overflow: hidden;
+  box-sizing: border-box;
   border: 4px solid #4a4ba6;
   border-radius: 24px;
   box-shadow: 0 12px 48px rgba(0, 0, 0, 0.3);
@@ -158,9 +256,18 @@ const ViewportContainer = styled.div`
   background-position: center;
 
   @media (max-width: 1100px), (pointer: coarse) {
-    width: min(100%, 500px);
-    height: min(48vh, 520px);
+    width: min(100%, 300px);
+    height: clamp(150px, 24dvh, 210px);
     align-self: center;
+    border-width: 3px;
+    border-radius: 16px;
+  }
+
+  @media (max-height: 650px) and (max-width: 1100px),
+    (max-height: 650px) and (pointer: coarse) {
+    width: min(100%, 220px);
+    height: 100px;
+    border-radius: 12px;
   }
 `;
 
@@ -169,6 +276,10 @@ const TrainerImage = styled.img`
   max-width: 90%;
   object-fit: contain;
   transform: translateY(45px);
+
+  @media (max-width: 1100px), (pointer: coarse) {
+    transform: translateY(18px);
+  }
 `;
 
 const ViewportColumn = styled.div`
@@ -183,6 +294,12 @@ const ViewportColumn = styled.div`
   @media (max-width: 1100px), (pointer: coarse) {
     height: auto;
     margin-top: 0;
+    gap: 8px;
+    order: 1;
+  }
+
+  @media (max-height: 650px) and (min-width: 600px) {
+    grid-area: preview;
   }
 `;
 
@@ -196,6 +313,17 @@ const IdentityColumn = styled.div`
 
   @media (max-width: 1100px), (pointer: coarse) {
     margin-top: 0;
+    gap: 6px;
+    order: 3;
+  }
+
+  @media (max-height: 650px) and (max-width: 1100px),
+    (max-height: 650px) and (pointer: coarse) {
+    gap: 2px;
+  }
+
+  @media (max-height: 650px) and (min-width: 600px) {
+    grid-area: identity;
   }
 `;
 
@@ -208,7 +336,7 @@ const StoryColumn = styled.div`
   gap: 20px;
 
   @media (max-width: 1100px), (pointer: coarse) {
-    margin-top: 0;
+    display: none;
   }
 `;
 
@@ -225,6 +353,15 @@ const GenderSelectorContainer = styled.div`
   padding: 15px;
   width: 100%;
   box-sizing: border-box;
+
+  @media (max-width: 1100px), (pointer: coarse) {
+    flex-direction: row;
+    gap: 4px;
+    margin-top: 0;
+    padding: 6px;
+    border-width: 3px;
+    border-radius: 14px;
+  }
 `;
 
 const GenderOption = styled.div`
@@ -243,6 +380,18 @@ const GenderOption = styled.div`
   transition: all 0.2s ease;
   &:hover {
     transform: scale(1.02);
+  }
+
+  @media (max-width: 1100px), (pointer: coarse) {
+    min-width: 0;
+    flex: 1 1 0;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    font-size: clamp(10px, 3vw, 13px);
+    line-height: 1.1;
+    text-align: center;
+    white-space: nowrap;
   }
 `;
 
@@ -265,6 +414,17 @@ const RadioButton = styled.div<{ $isActive: boolean }>`
     background-color: #2e2f66;
     border-radius: 50%;
     display: ${({ $isActive }) => ($isActive ? "block" : "none")};
+  }
+
+  @media (max-width: 1100px), (pointer: coarse) {
+    width: 16px;
+    height: 16px;
+    border-width: 2px;
+
+    &::after {
+      width: 8px;
+      height: 8px;
+    }
   }
 `;
 
@@ -324,11 +484,12 @@ const CharacterCreator = () => {
     switch (currentStep) {
       case 1:
         return (
-          <MainContainer>
-            <MultiColumnLayout>
-              <div>
+          <MainContainer data-testid="character-creator-step">
+            <StepIndicator>Step 1 of 4 · Trainer</StepIndicator>
+            <MultiColumnLayout $trainerStep>
+              <FactionColumn>
                 <FactionSelector />
-              </div>
+              </FactionColumn>
               <ViewportColumn>
                 <ViewportContainer id="CharacterCreator__ViewportContainer">
                   <TrainerImage src={getTrainerImage()} alt="Trainer Preview" />
@@ -372,7 +533,10 @@ const CharacterCreator = () => {
                 </div>
               </IdentityColumn>
             </MultiColumnLayout>
-            <NavigationContainer $inset>
+            <NavigationContainer
+              $inset
+              data-testid="character-creation-navigation"
+            >
               <SelectionButton
                 onClick={handleBackToCharacterSelect}
                 $isSelected={false}
@@ -385,14 +549,18 @@ const CharacterCreator = () => {
                 $isSelected={false}
                 $isDisabled={!canProceedToNextStep()}
               >
-                Next Step: Class
+                <DesktopNavigationLabel>
+                  Next Step: Class
+                </DesktopNavigationLabel>
+                <MobileNavigationLabel>Next</MobileNavigationLabel>
               </SelectionButton>
             </NavigationContainer>
           </MainContainer>
         );
       case 2:
         return (
-          <MainContainer>
+          <MainContainer data-testid="character-creator-step">
+            <StepIndicator>Step 2 of 4 · Class</StepIndicator>
             <MultiColumnLayout $twoColumns>
               <ClassSelector onClassSelect={handleClassSelection} />
               <StoryColumn>
@@ -435,7 +603,10 @@ const CharacterCreator = () => {
                 </StoryText>
               </StoryColumn>
             </MultiColumnLayout>
-            <NavigationContainer>
+            <NavigationContainer
+              $wideActions
+              data-testid="character-creation-navigation"
+            >
               <SelectionButton onClick={handleBack} $isSelected={false}>
                 Back
               </SelectionButton>
@@ -445,16 +616,20 @@ const CharacterCreator = () => {
                 $isSelected={false}
                 $isDisabled={!canProceedToNextStep()}
               >
-                Next Step: Home City
+                <DesktopNavigationLabel>
+                  Next Step: Home City
+                </DesktopNavigationLabel>
+                <MobileNavigationLabel>Next</MobileNavigationLabel>
               </SelectionButton>
             </NavigationContainer>
           </MainContainer>
         );
       case 3:
         return (
-          <MainContainer>
+          <MainContainer data-testid="character-creator-step">
+            <StepIndicator>Step 3 of 4 · Home</StepIndicator>
             <HomeTownSelector />
-            <NavigationContainer>
+            <NavigationContainer data-testid="character-creation-navigation">
               <SelectionButton onClick={handleBack} $isSelected={false}>
                 Back
               </SelectionButton>
@@ -464,24 +639,33 @@ const CharacterCreator = () => {
                 $isSelected={false}
                 $isDisabled={!canProceedToNextStep()}
               >
-                Next Step: Confirm
+                <DesktopNavigationLabel>
+                  Next Step: Confirm
+                </DesktopNavigationLabel>
+                <MobileNavigationLabel>Next</MobileNavigationLabel>
               </SelectionButton>
             </NavigationContainer>
           </MainContainer>
         );
       case 4:
         return (
-          <MainContainer>
-            <StoryText>
-              As a {selectedFaction?.name} {selectedClass?.name}, you
-              begin your journey in{" "}
-              {selectedHomeTown
-                ? selectedHomeTown.name || "your new home"
-                : "your new home"}
-              . Your rival {rivalName || "Gary"} will be watching every step.
-              Are you ready to begin?
-            </StoryText>
-            <NavigationContainer $centered>
+          <MainContainer data-testid="character-creator-step">
+            <ConfirmationContent data-testid="confirmation-content">
+              <StepIndicator>Step 4 of 4 · Confirm</StepIndicator>
+              <StoryText>
+                As a {selectedFaction?.name} {selectedClass?.name}, you begin
+                your journey in{" "}
+                {selectedHomeTown
+                  ? selectedHomeTown.name || "your new home"
+                  : "your new home"}
+                . Your rival {rivalName || "Gary"} will be watching every step.
+                Are you ready to begin?
+              </StoryText>
+            </ConfirmationContent>
+            <NavigationContainer
+              $centered
+              data-testid="character-creation-navigation"
+            >
               <SelectionButton onClick={handleBack} $isSelected={false}>
                 Back
               </SelectionButton>
@@ -494,9 +678,7 @@ const CharacterCreator = () => {
     }
   };
 
-  return (
-    <CreatorShell>{renderStep()}</CreatorShell>
-  );
+  return <CreatorShell>{renderStep()}</CreatorShell>;
 };
 
 export default CharacterCreator;

@@ -40,6 +40,10 @@ const CenterColumn = styled.div`
     width: min(460px, calc(100vw - 40px));
   }
 
+  @media (max-width: 850px), (pointer: coarse) {
+    margin-top: 150px;
+  }
+
   @media (max-height: 560px), (pointer: coarse) {
     gap: 14px;
   }
