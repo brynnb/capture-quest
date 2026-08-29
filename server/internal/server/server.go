@@ -25,6 +25,7 @@ import (
 	"capturequest/internal/db"
 	"capturequest/internal/discordchat"
 	"capturequest/internal/logutil"
+	"capturequest/internal/overworldoverview"
 	"capturequest/internal/session"
 	"capturequest/internal/world"
 
@@ -401,6 +402,7 @@ func (s *Server) startHTTPServer(tlsConf *tls.Config, certManager *cert.Rotating
 	if s.discordChat != nil {
 		mux.Handle("/api/discord/game-chat", s.discordChat.Handler())
 	}
+	s.registerOverworldOverviewRoute(mux)
 
 	// Admin Dashboard API
 	mux.Handle("/api/admin/stats", corsMiddleware(adminAuthMiddleware(handleAdminStats)))
@@ -440,6 +442,19 @@ func (s *Server) startHTTPServer(tlsConf *tls.Config, certManager *cert.Rotating
 	tlsListener := tls.NewListener(listener, tlsConf)
 	log.Printf("Starting HTTPS server on TCP port 443 (Local TLS)")
 	go http.Serve(tlsListener, mux)
+}
+
+func (s *Server) registerOverworldOverviewRoute(mux *http.ServeMux) {
+	service, err := overworldoverview.NewRuntimeService(db.GlobalWorldDB.DB, !s.debugMode)
+	if err != nil {
+		overworldoverview.SetDefault(nil)
+		log.Printf("[OverworldOverview] Disabled: %v", err)
+		return
+	}
+	overworldoverview.SetDefault(service)
+	mux.Handle("/api/overworld/overview", corsMiddleware(service))
+	log.Printf("[OverworldOverview] Serving %dx%d-tile chunks at %d pixels per tile",
+		overworldoverview.ChunkTileSpan, overworldoverview.ChunkTileSpan, overworldoverview.PixelsPerTile)
 }
 
 func (s *Server) registerTileArtStudioRoutes(mux *http.ServeMux) {

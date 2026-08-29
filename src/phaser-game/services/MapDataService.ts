@@ -19,6 +19,7 @@ import type {
 import { UNIFIED_OVERWORLD_MAP_ID } from "../constants";
 import type { MapItem } from "../renderers/MapRenderer";
 import { MapSnapshotCache } from "./MapSnapshotCache";
+import { ensureRuntimeTileCatalogCurrent } from "./RuntimeAssetCompatibility";
 
 // Default timeout for network requests (10 seconds)
 const REQUEST_TIMEOUT_MS = 10000;
@@ -53,6 +54,11 @@ export interface TilePage {
   hasMore: boolean;
 }
 
+export interface CachedTileChunk {
+  bounds: TileBoundsRequest;
+  tiles: PhaserTile[];
+}
+
 /**
  * Create a promise that rejects after a timeout
  */
@@ -63,6 +69,7 @@ function createTimeoutPromise<T>(ms: number, errorMessage: string): Promise<T> {
 }
 
 export class MapDataService {
+  private static readonly MAX_CACHED_OVERWORLD_CHUNKS = 18;
   // Cache of known tile image IDs from tiles
   private knownTileImageIds: Set<number> = new Set();
   private snapshots = new MapSnapshotCache<MapDataSnapshot>(
@@ -70,6 +77,7 @@ export class MapDataService {
     new Set([UNIFIED_OVERWORLD_MAP_ID]),
   );
   private tileRequestSequence = 0;
+  private overworldTileChunks = new Map<string, CachedTileChunk>();
 
   getSnapshot(mapId: number): MapDataSnapshot | undefined {
     return this.snapshots.get(mapId);
@@ -77,6 +85,44 @@ export class MapDataService {
 
   setSnapshot(mapId: number, snapshot: MapDataSnapshot): void {
     this.snapshots.set(mapId, snapshot);
+  }
+
+  getOverworldTileChunk(key: string): CachedTileChunk | undefined {
+    const cached = this.overworldTileChunks.get(key);
+    if (!cached) return undefined;
+    this.overworldTileChunks.delete(key);
+    this.overworldTileChunks.set(key, cached);
+    return cached;
+  }
+
+  setOverworldTileChunk(
+    key: string,
+    bounds: TileBoundsRequest,
+    tiles: PhaserTile[],
+  ): void {
+    this.overworldTileChunks.delete(key);
+    this.overworldTileChunks.set(key, { bounds, tiles });
+    while (
+      this.overworldTileChunks.size >
+      MapDataService.MAX_CACHED_OVERWORLD_CHUNKS
+    ) {
+      const oldestKey = this.overworldTileChunks.keys().next().value;
+      if (oldestKey === undefined) break;
+      this.overworldTileChunks.delete(oldestKey);
+    }
+  }
+
+  invalidateOverworldTileChunkAt(x: number, y: number): void {
+    for (const [key, chunk] of this.overworldTileChunks) {
+      if (
+        x >= chunk.bounds.minX &&
+        x <= chunk.bounds.maxX &&
+        y >= chunk.bounds.minY &&
+        y <= chunk.bounds.maxY
+      ) {
+        this.overworldTileChunks.delete(key);
+      }
+    }
   }
 
   /**
@@ -96,6 +142,10 @@ export class MapDataService {
    */
   isReady(): boolean {
     return PhaserNet.isConnected();
+  }
+
+  ensureRuntimeTileCatalogCurrent(force = false): Promise<void> {
+    return ensureRuntimeTileCatalogCurrent(force);
   }
 
   /**
@@ -141,6 +191,7 @@ export class MapDataService {
     mapId: number,
     options: Omit<PhaserTilesRequest, "mapId" | "requestId">,
   ): Promise<TilePage> {
+    await this.ensureRuntimeTileCatalogCurrent();
     if (!PhaserNet.isConnected()) {
       throw new Error("Not connected to server - please log in first");
     }
@@ -312,5 +363,6 @@ export class MapDataService {
   clearCache(): void {
     this.knownTileImageIds.clear();
     this.snapshots.clear();
+    this.overworldTileChunks.clear();
   }
 }

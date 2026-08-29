@@ -4,6 +4,7 @@ import {
   FOLLOW_ZOOM,
   OVERWORLD_MODE,
   TILE_SIZE,
+  UNIFIED_OVERWORLD_MAP_ID,
 } from "../constants";
 import { CameraController } from "../controllers/CameraController";
 import { PlayerMovementController } from "../controllers/PlayerMovementController";
@@ -748,6 +749,7 @@ export class TileViewer extends Scene {
       this.tileManager,
       this.actorManager,
       this.mapRenderer,
+      this.mapContainer,
       this.cameraController,
       this.playerMovementController,
       this.uiManager,
@@ -832,6 +834,9 @@ export class TileViewer extends Scene {
       isWorldInputFrozen: () => this.isWorldInputFrozen(),
       getWorldInputFreezeReason: () => this.getWorldInputFreezeReason(),
       getDisplayedMapId: () => this.mapInfo?.id ?? null,
+      ensureDisplayedTileAvailable: async (x, y) =>
+        this.mapRenderer.getTileAt(x, y) != null ||
+        (await this.mapLoader.ensureOverworldTileAvailable(x, y)),
     });
     this.playerMovementController.setHeldKeyboardDirectionProvider(() =>
       this.interactionController.getKeyboardDirection(),
@@ -1213,6 +1218,9 @@ export class TileViewer extends Scene {
         mapId: number;
       };
       if (!payload || !Array.isArray(payload.tiles)) return;
+      if (payload.mapId === UNIFIED_OVERWORLD_MAP_ID) {
+        this.mapLoader.applyCommittedOverworldTileUpdates(payload.tiles);
+      }
       for (const tile of payload.tiles) {
         if (tile.erased || tile.tileImageId === 0) {
           this.mapRenderer.removeTile(tile.x, tile.y);
@@ -1417,6 +1425,7 @@ export class TileViewer extends Scene {
     this.tileImageReplacedHandler = (e: Event) => {
       const { tileImageId } = (e as CustomEvent).detail as { tileImageId: number };
       if (!tileImageId) return;
+      this.mapLoader.invalidateOverworldOverviewCatalog();
       const tileKey = `tile-${tileImageId}`;
       // Remove the old texture so Phaser re-fetches it
       if (this.textures.exists(tileKey)) {
@@ -1983,9 +1992,11 @@ export class TileViewer extends Scene {
 
   update() {
     this.interactionController?.update();
+    this.mapLoader?.updateOverworldStreaming();
   }
 
   public getWorldInputFreezeReason(): WorldInputFreezeReason | null {
+    if (this.mapLoadInProgress) return "map_loading";
     const existingReason = getWorldInputFreezeReason({
       cutsceneInputLocked: this.cutsceneInputLocked || this.warpExitInputLocked,
     });
@@ -2105,6 +2116,7 @@ export class TileViewer extends Scene {
     }
 
     this.interactionController?.cleanup();
+    this.mapLoader?.cleanup();
     this.warpEvents?.cleanup();
     this.eventBridge?.cleanup();
     this.debugOverlay?.cleanup();

@@ -67,8 +67,10 @@
   not unrelated workflow formatting. Cache readiness must still validate the
   database, contract, tile directory, generated catalog version, scripted events,
   sprites, and complete audio manifests before accepting a restore.
-- Keep the service-restart cleanup trap. If a deployment fails after stopping
-  `cq-server`, restore service first, then diagnose the exact failed stage.
+- Keep the service-restart cleanup trap, but restart only when the deployed
+  database, frontend, and runtime asset contract are known to be one coherent
+  catalog. If an import outcome or activation is ambiguous, leave `cq-server`
+  stopped and follow the importer recovery procedure before serving traffic.
 - Do not treat a green build as a successful deployment. Verify the live service,
   recent journal, database invariants, served SQLite hash, runtime contract,
   audio MIME type, and stale-client asset behavior.

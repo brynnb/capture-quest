@@ -14,6 +14,7 @@ import (
 	"strconv"
 
 	"capturequest/internal/db"
+	"capturequest/internal/overworldoverview"
 )
 
 const tileImageDir = "../public/phaser/tile_images"
@@ -79,20 +80,50 @@ func handleTileReplace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	outFile, err := os.Create(destPath)
+	outFile, err := os.CreateTemp(tileImageDir, ".tile-replace-*.png")
 	if err != nil {
-		log.Printf("[TileArt] Failed to create file %s: %v", destPath, err)
+		log.Printf("[TileArt] Failed to create temporary tile image: %v", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"success": false, "error": "failed to write file"})
 		return
 	}
-	defer outFile.Close()
+	tempPath := outFile.Name()
+	committed := false
+	defer func() {
+		if !committed {
+			_ = os.Remove(tempPath)
+		}
+	}()
 
 	// Encode as PNG
 	if err := png.Encode(outFile, img); err != nil {
+		_ = outFile.Close()
 		log.Printf("[TileArt] Failed to encode PNG: %v", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"success": false, "error": "failed to encode image"})
 		return
 	}
+	if err := outFile.Sync(); err != nil {
+		_ = outFile.Close()
+		log.Printf("[TileArt] Failed to sync temporary tile image: %v", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"success": false, "error": "failed to write file"})
+		return
+	}
+	if err := outFile.Close(); err != nil {
+		log.Printf("[TileArt] Failed to close temporary tile image: %v", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"success": false, "error": "failed to write file"})
+		return
+	}
+	if err := os.Chmod(tempPath, 0644); err != nil {
+		log.Printf("[TileArt] Failed to set tile image permissions: %v", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"success": false, "error": "failed to write file"})
+		return
+	}
+	if err := os.Rename(tempPath, destPath); err != nil {
+		log.Printf("[TileArt] Failed to atomically replace %s: %v", destPath, err)
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{"success": false, "error": "failed to write file"})
+		return
+	}
+	committed = true
+	overworldoverview.InvalidateTileImage(tileImageId)
 
 	log.Printf("[TileArt] Replaced tile image %d at %s", tileImageId, destPath)
 	writeJSON(w, http.StatusOK, map[string]interface{}{"success": true, "tileImageId": tileImageId})

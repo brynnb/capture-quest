@@ -59,16 +59,18 @@ func Get() (*Config, error) {
 
 	// Initialize with default values
 	config = &Config{
-		DBDriver:    "postgres",
-		DBHost:      "127.0.0.1",    // Default host
-		DBPort:      5432,           // Default Postgres port
-		DBUser:      "postgres",     // Default Postgres user
-		DBPass:      "",             // Default empty password
-		DBName:      "capturequest", // Default database name
-		DBSSLMode:   "disable",      // Default local Postgres setting
-		Local:       true,           // Default local setting
-		LocalQuests: false,          // Default local setting
-		GracePeriod: 5,              // Default local setting
+		DBDriver:  "postgres",
+		DBHost:    "127.0.0.1",    // Default host
+		DBPort:    5432,           // Default Postgres port
+		DBUser:    "postgres",     // Default Postgres user
+		DBPass:    "",             // Default empty password
+		DBName:    "capturequest", // Default database name
+		DBSSLMode: "disable",      // Default local Postgres setting
+		// Debug/admin surfaces must be explicitly enabled. Local npm scripts set
+		// LOCAL=true; a missing production variable therefore fails closed.
+		Local:       false,
+		LocalQuests: false, // Default local setting
+		GracePeriod: 5,     // Default local setting
 	}
 
 	// Load default config from file (if exists)

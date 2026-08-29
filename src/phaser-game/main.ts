@@ -18,6 +18,11 @@ export const phaserConfig: Phaser.Types.Core.GameConfig = {
     // zoom; the mouse pointer is managed separately.
     activePointers: 2,
   },
+  loader: {
+    // Local overview PNGs come from the API port. Explicit CORS keeps their
+    // textures origin-clean under the app's cross-origin isolation headers.
+    crossOrigin: "anonymous",
+  },
   // Using TileViewer - Go backend is now configured for tile data via WebTransport
   scene: [TileViewer],
 };

@@ -467,6 +467,20 @@ export class PlayerMovementController {
     }
   }
 
+  removeCollisionTiles(tiles: readonly Pick<PhaserTile, "x" | "y">[]): void {
+    for (const tile of tiles) {
+      this.removeCollisionTile(tile.x, tile.y);
+    }
+  }
+
+  private removeCollisionTile(x: number, y: number): void {
+    const key = `${x},${y}`;
+    this.collisionMap.delete(key);
+    this.rawFootTileMap.delete(key);
+    this.talkOverTileMap.delete(key);
+    this.sourceMapByTile.delete(key);
+  }
+
   private upsertCollisionTile(tile: PhaserTile): void {
     const key = `${tile.x},${tile.y}`;
     this.collisionMap.set(key, tile.collisionType);
@@ -505,9 +519,7 @@ export class PlayerMovementController {
   ): void {
     const key = `${x},${y}`;
     if (remove) {
-      this.collisionMap.delete(key);
-      this.rawFootTileMap.delete(key);
-      this.talkOverTileMap.delete(key);
+      this.removeCollisionTile(x, y);
     } else {
       this.collisionMap.set(key, collisionType);
       if (rawFootTileId != null) {

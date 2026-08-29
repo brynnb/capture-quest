@@ -8,13 +8,18 @@ import json
 import sqlite3
 from pathlib import Path
 
-from sync_extractor_assets import PROCEDURAL_TILE_HASHES
+from sync_extractor_assets import (
+    CAPTUREQUEST_ONLY_PHASER_SPRITES,
+    PROCEDURAL_TILE_HASHES,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PHASER_ROOT = REPO_ROOT / "public/phaser"
 DATABASE = PHASER_ROOT / "pokemon.db"
 TILE_DIRECTORY = PHASER_ROOT / "tile_images"
+SPRITE_DIRECTORY = PHASER_ROOT / "sprites"
+PHASER_STYLE = PHASER_ROOT / "style.css"
 CONTRACT = PHASER_ROOT / "runtime_asset_contract.json"
 PROCEDURAL_PALETTE = REPO_ROOT / "src/constants/procedural_tile_palette.json"
 RUNTIME_ASSET_VERSION = REPO_ROOT / "src/constants/runtime_asset_version.ts"
@@ -43,6 +48,8 @@ def main() -> None:
         not CONTRACT.is_file()
         or not PROCEDURAL_PALETTE.is_file()
         or not RUNTIME_ASSET_VERSION.is_file()
+        or not PHASER_STYLE.is_file()
+        or PHASER_STYLE.stat().st_size == 0
     ):
         raise SystemExit(
             "Runtime asset contract or procedural palette is missing. "
@@ -69,6 +76,17 @@ def main() -> None:
             "SELECT schema_name, schema_version FROM schema_metadata LIMIT 1"
         ).fetchone()
         tile_hashes = dict(conn.execute("SELECT id, image_hash FROM tile_images"))
+        generated_sprite_names = {
+            Path(relative_path).name
+            for (relative_path,) in conn.execute(
+                """
+                SELECT ga.relative_path
+                FROM graphic_assets ga
+                JOIN graphic_categories gc ON gc.id = ga.category_id
+                WHERE gc.name IN ('sprites', 'tilesets')
+                """
+            )
+        }
 
     tile_count, tile_digest = tile_catalog_sha256()
     expected = contract["tileCount"]
@@ -96,9 +114,24 @@ def main() -> None:
                     f"tile catalog at block {block_index}, position {position}. "
                     "Run npm run bootstrap:assets."
                 )
+
+    expected_sprite_names = (
+        generated_sprite_names | CAPTUREQUEST_ONLY_PHASER_SPRITES
+    )
+    actual_sprite_names = {
+        path.name for path in SPRITE_DIRECTORY.glob("*.png") if path.is_file()
+    }
+    if actual_sprite_names != expected_sprite_names:
+        missing = sorted(expected_sprite_names - actual_sprite_names)
+        extra = sorted(actual_sprite_names - expected_sprite_names)
+        raise SystemExit(
+            "Runtime Phaser sprites do not match public/phaser/pokemon.db "
+            f"(missing={missing[:8]}, extra={extra[:8]}). "
+            "Run npm run bootstrap:assets."
+        )
     print(
         f"Runtime asset contract OK: {schema_name} v{schema_version}, "
-        f"{tile_count} tile images."
+        f"{tile_count} tile images, {len(actual_sprite_names)} sprites."
     )
 
 

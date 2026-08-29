@@ -13,7 +13,9 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # An importer can outlive a lost SSH client. Queue a newer deployment rather
+  # than cancelling the one that may still own a Postgres mutation.
+  cancel-in-progress: false
 
 jobs:
   build-and-deploy:
@@ -62,7 +64,9 @@ jobs:
             } | sha256sum | awk '{print $1}'
           )"
           release="${CAPTUREQUEST_POKEMON_RELEASE:-red}"
-          echo "key=cq-runtime-assets-v2-${release}-${pipeline_hash}" >> "$GITHUB_OUTPUT"
+          # v3 includes the tile-image, sprite, and Phaser style directories in
+          # both restore and save sets; v2 caches were permanently incomplete.
+          echo "key=cq-runtime-assets-v3-${release}-${pipeline_hash}" >> "$GITHUB_OUTPUT"
 
       - name: Restore generated runtime assets
         id: runtime-assets-cache
@@ -73,12 +77,13 @@ jobs:
             public/assets/trainers
             public/phaser/assets
             public/phaser/pokemon.db
-            public/phaser/runtime_asset_contract.json
             public/phaser/capturequest-pokemon-import.json
+            public/phaser/runtime_asset_contract.json
             public/phaser/style.css
             public/phaser/tile_images
             public/phaser/sprites
             public/sound/pokemon
+            src/constants/asset_manifest.json
             src/constants/audio_manifest.json
             src/constants/pokemon_audio_manifest.json
             src/constants/runtime_asset_version.ts
@@ -92,27 +97,31 @@ jobs:
           set -euo pipefail
 
           assets_ready() {
-            test -s public/phaser/pokemon.db
-            test -s public/phaser/runtime_asset_contract.json
-            test -s public/phaser/capturequest-pokemon-import.json
-            test -d public/phaser/assets
-            test -n "$(find public/phaser/assets -type f -print -quit)"
-            test -d public/phaser/tile_images
-            test -n "$(find public/phaser/tile_images -type f -print -quit)"
-            test -d public/phaser/sprites
-            test -n "$(find public/phaser/sprites -type f -print -quit)"
-            test -d public/assets/pokemon
-            test -n "$(find public/assets/pokemon -type f -print -quit)"
-            test -d public/assets/trainers
-            test -n "$(find public/assets/trainers -type f -print -quit)"
-            test -d public/sound/pokemon
-            test -n "$(find public/sound/pokemon -name '*.ogg' -type f -print -quit)"
-            test -s src/constants/audio_manifest.json
-            test -s src/constants/pokemon_audio_manifest.json
-            test -s src/constants/runtime_asset_version.ts
-            test -d server/scripted_events/scripts
-            test -n "$(find server/scripted_events/scripts -name '*.json' -type f -print -quit)"
-            node - <<'NODE'
+            # This function is used as an `if` condition, where Bash disables
+            # errexit inside the function body. Every invariant must therefore
+            # propagate failure explicitly instead of relying on `set -e`.
+            test -s public/phaser/pokemon.db || return 1
+            test -s public/phaser/runtime_asset_contract.json || return 1
+            test -s public/phaser/capturequest-pokemon-import.json || return 1
+            test -d public/phaser/assets || return 1
+            test -n "$(find public/phaser/assets -type f -print -quit)" || return 1
+            test -d public/phaser/tile_images || return 1
+            test -n "$(find public/phaser/tile_images -type f -print -quit)" || return 1
+            test -d public/phaser/sprites || return 1
+            test -n "$(find public/phaser/sprites -type f -print -quit)" || return 1
+            test -d public/assets/pokemon || return 1
+            test -n "$(find public/assets/pokemon -type f -print -quit)" || return 1
+            test -d public/assets/trainers || return 1
+            test -n "$(find public/assets/trainers -type f -print -quit)" || return 1
+            test -d public/sound/pokemon || return 1
+            test -n "$(find public/sound/pokemon -name '*.ogg' -type f -print -quit)" || return 1
+            test -s src/constants/asset_manifest.json || return 1
+            test -s src/constants/audio_manifest.json || return 1
+            test -s src/constants/pokemon_audio_manifest.json || return 1
+            test -s src/constants/runtime_asset_version.ts || return 1
+            test -d server/scripted_events/scripts || return 1
+            test -n "$(find server/scripted_events/scripts -name '*.json' -type f -print -quit)" || return 1
+            node - <<'NODE' || return 1
           const fs = require("fs");
           const manifestPath = "src/constants/pokemon_audio_manifest.json";
           const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
@@ -123,7 +132,7 @@ jobs:
             process.exit(1);
           }
           NODE
-            python3 - <<'PY'
+            python3 - <<'PY' || return 1
           import sqlite3
           conn = sqlite3.connect("public/phaser/pokemon.db")
           try:
@@ -135,6 +144,10 @@ jobs:
           finally:
               conn.close()
           PY
+            # A tracked placeholder sprite is not evidence that the generated
+            # catalog was restored. Validate the exact DB-backed tile/sprite
+            # families and Phaser stylesheet before accepting the cache hit.
+            python3 scripts/validate_runtime_assets.py >/dev/null || return 1
           }
 
           if assets_ready; then
@@ -235,6 +248,9 @@ jobs:
             public/phaser/pokemon.db
             public/phaser/capturequest-pokemon-import.json
             public/phaser/runtime_asset_contract.json
+            public/phaser/style.css
+            public/phaser/tile_images
+            public/phaser/sprites
             public/sound/pokemon
             src/constants/asset_manifest.json
             src/constants/audio_manifest.json
@@ -246,6 +262,8 @@ jobs:
 
       - name: Build Frontend
         run: |
+          npm run typecheck
+          npm test -- --run
           npm run build
           test -s dist/phaser/runtime_asset_contract.json
           test "$(sha256sum public/phaser/runtime_asset_contract.json | awk '{print $1}')" = "$(sha256sum dist/phaser/runtime_asset_contract.json | awk '{print $1}')"
@@ -259,7 +277,10 @@ jobs:
       - name: Test warp import and runtime contracts
         run: |
           cd server
-          go test -p=1 -count=1 -run 'Warp|LastMap' ./cmd/import-phaser ./internal/world
+          go test -p=1 -count=1 -run 'Warp|LastMap|WorldTile|TileEditor|PhaserTilesRequest' ./cmd/import-phaser ./internal/world
+          go test -p=1 -count=1 ./internal/config
+          go test -p=1 -count=1 ./internal/overworldoverview
+          go test -p=1 -count=1 -run 'TileArt|OverworldOverview' ./internal/server
 
       - name: Build Backend
         run: |
@@ -285,16 +306,36 @@ jobs:
           SSH_OPTS="-o StrictHostKeyChecking=no -o ServerAliveInterval=15 -o ServerAliveCountMax=20 -o TCPKeepAlive=yes -i ~/.ssh/deploy_key"
           HOST="$DEPLOY_HOST"
           APP_DIR="$DEPLOY_APP_DIR"
+          FRONTEND_STAGE="dist.next-${GITHUB_SHA}"
+          EXPECTED_CONTRACT_SHA="$(sha256sum public/phaser/runtime_asset_contract.json | awk '{print $1}')"
           CQ_SERVER_STOPPED=false
+          IMPORT_STARTED=false
+          IMPORT_COMPLETED=false
+          DEPLOY_ACTIVATED=false
+          DEPLOY_VERIFIED=false
+          activate_frontend() {
+            ssh $SSH_OPTS $HOST "set -euo pipefail; cd $APP_DIR; if [ -e $FRONTEND_STAGE ] || [ -L $FRONTEND_STAGE ]; then rm -rf dist.previous; if [ -e dist ] || [ -L dist ]; then mv dist dist.previous; fi; mv $FRONTEND_STAGE dist; fi; test \"\$(sha256sum dist/phaser/runtime_asset_contract.json | awk '{print \$1}')\" = \"$EXPECTED_CONTRACT_SHA\""
+          }
           cleanup_cq_server() {
+            if [ "$DEPLOY_ACTIVATED" = "true" ] && [ "$DEPLOY_VERIFIED" != "true" ]; then
+              echo "Post-deploy verification failed; stopping the unverified cq-server release." >&2
+              ssh $SSH_OPTS $HOST "sudo systemctl stop cq-server" || true
+              return
+            fi
             if [ "$CQ_SERVER_STOPPED" = "true" ]; then
-              ssh $SSH_OPTS $HOST "sudo systemctl start cq-server" || true
+              if [ "$IMPORT_STARTED" = "true" ] && [ "$IMPORT_COMPLETED" != "true" ]; then
+                echo "Import outcome is ambiguous; leaving cq-server stopped rather than serving a mixed asset catalog." >&2
+                return
+              fi
+              echo "Deployment failed after cq-server stopped; leaving it stopped until the database, binary, frontend, and asset contract are verified as one release." >&2
             fi
           }
           trap cleanup_cq_server EXIT
 
-          # Upload frontend
-          tar --exclude='._*' --exclude='.DS_Store' -czf - -C dist . | ssh $SSH_OPTS $HOST "mkdir -p $APP_DIR/dist && cd $APP_DIR/dist && tar xzf -"
+          # Upload a complete frontend release without exposing it. The live
+          # dist directory continues serving the old bundle and matching API
+          # until the database import has completed and the API is stopped.
+          tar --exclude='._*' --exclude='.DS_Store' -czf - -C dist . | ssh $SSH_OPTS $HOST "set -euo pipefail; rm -rf $APP_DIR/$FRONTEND_STAGE; mkdir -p $APP_DIR/$FRONTEND_STAGE; cd $APP_DIR/$FRONTEND_STAGE; tar xzf -; test -s phaser/runtime_asset_contract.json"
 
           # Stop services before overwriting
           ssh $SSH_OPTS $HOST "sudo systemctl stop cq-server"
@@ -316,12 +357,26 @@ jobs:
 
           # Keep a rollback point immediately before schema/import mutations.
           backup_name="capturequest-predeploy-$(date -u +%Y%m%dT%H%M%SZ).sql.gz"
-          ssh $SSH_OPTS $HOST "set -euo pipefail; set -a; . /etc/capturequest/cq-server.env; set +a; : \${DATABASE_URL:?DATABASE_URL missing}; mkdir -p $APP_DIR/backups; pg_dump --no-owner --no-privileges \"\$DATABASE_URL\" | gzip -9 > $APP_DIR/backups/$backup_name; test -s $APP_DIR/backups/$backup_name"
+          ssh $SSH_OPTS $HOST "set -euo pipefail; set -a; . /etc/capturequest/cq-server.env; set +a; : \${DATABASE_URL:?DATABASE_URL missing}; : \${LOCAL:?LOCAL missing}; test \"\$LOCAL\" = false; mkdir -p $APP_DIR/backups; pg_dump --no-owner --no-privileges \"\$DATABASE_URL\" | gzip -9 > $APP_DIR/backups/$backup_name; test -s $APP_DIR/backups/$backup_name"
 
           # Apply tracked runtime schema and refresh deterministic imported data.
+          # Once this begins, a lost SSH transport makes the remote outcome
+          # ambiguous; the EXIT trap deliberately leaves the API stopped.
+          IMPORT_STARTED=true
           ssh $SSH_OPTS $HOST "set -euo pipefail; cd $APP_DIR; set -a; . /etc/capturequest/cq-server.env; set +a; : \${DATABASE_URL:?DATABASE_URL missing}; release=\"$CAPTUREQUEST_POKEMON_RELEASE\"; cd server; ./import-phaser --release \"\$release\" --preflight-only ../public/phaser/pokemon.db; cd ..; if [ \"$RESET_DATABASE\" = \"true\" ]; then psql \"\$DATABASE_URL\" -v ON_ERROR_STOP=1 -c 'DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;'; fi; psql \"\$DATABASE_URL\" -v ON_ERROR_STOP=1 -f server/schema/postgres_runtime_schema.sql; cd server; DATABASE_URL=\"\$DATABASE_URL\" ./import-phaser --release \"\$release\" ../public/phaser/pokemon.db"
 
-          # Restart
+          IMPORT_COMPLETED=true
+
+          # Activate the already-validated frontend only while the API is
+          # stopped. Clients can see a brief unavailable response, but can
+          # never pair a new tile-ID bundle with the old Postgres catalog.
+          activate_frontend
+
+          # Restart with the matching binary, database, and frontend catalog.
+          # Mark the release fail-closed before the remote start: if the SSH
+          # transport or Caddy reload fails after systemd starts the process,
+          # the EXIT trap must stop that unverified server.
+          DEPLOY_ACTIVATED=true
           ssh $SSH_OPTS $HOST "sudo systemctl start cq-server && sudo systemctl reload caddy"
           CQ_SERVER_STOPPED=false
 
@@ -339,5 +394,24 @@ jobs:
             sleep 5
           done
           test "$server_ready" = true
+          tile_art_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' https://capturequest.net/api/tiles/stamps)"
+          test "$tile_art_status" = 404
 
+          # Probe a populated remote chunk, not a possibly transparent gap, so
+          # success proves the server decoded the deployed tile-image catalog.
+          overview_chunk="$(ssh $SSH_OPTS $HOST "set -euo pipefail; set -a; . /etc/capturequest/cq-server.env; set +a; : \${DATABASE_URL:?DATABASE_URL missing}; psql \"\$DATABASE_URL\" -v ON_ERROR_STOP=1 -At -F, -c \"SELECT floor(x / 64.0)::int, floor(y / 64.0)::int FROM phaser_tiles WHERE map_id IS NULL AND is_tile_erased = 0 ORDER BY id LIMIT 1\"")"
+          IFS=, read -r overview_chunk_x overview_chunk_y <<<"$overview_chunk"
+          test -n "$overview_chunk_x"
+          test -n "$overview_chunk_y"
+          deployed_catalog="$(curl --fail --silent --show-error 'https://capturequest.net/phaser/runtime_asset_contract.json' | python3 -c 'import json,sys; print(json.load(sys.stdin)["tileCatalogSha256"])')"
+          overview_headers="$(curl --fail --silent --show-error --head "https://capturequest.net/api/overworld/overview?chunkX=${overview_chunk_x}&chunkY=${overview_chunk_y}&catalog=${deployed_catalog}")"
+          grep -Eiq '^content-type: image/png' <<<"$overview_headers"
+          grep -Eiq '^etag: "cq-overworld-v1-[0-9a-f]{64}"' <<<"$overview_headers"
+          grep -Eiq '^cache-control: public, no-cache' <<<"$overview_headers"
+          grep -Fiq "x-overworld-tile-catalog: ${deployed_catalog}" <<<"$overview_headers"
+          stale_catalog="$(python3 -c 'import sys; current=sys.argv[1]; print(("0" if current != "0"*64 else "1")*64)' "$deployed_catalog")"
+          stale_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "https://capturequest.net/api/overworld/overview?chunkX=${overview_chunk_x}&chunkY=${overview_chunk_y}&catalog=${stale_catalog}")"
+          test "$stale_status" = 409
+
+          DEPLOY_VERIFIED=true
           rm -f ~/.ssh/deploy_key

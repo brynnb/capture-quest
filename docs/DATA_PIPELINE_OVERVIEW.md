@@ -98,6 +98,33 @@ Pokemon cry audio prefer source-derived assets when those files are present.
 - The server owns durable gameplay state; the client owns ordinary walking
   responsiveness and reports position updates for persistence and multiplayer
   visibility.
+- The unified overworld has a distant-view transport at
+  `GET /api/overworld/overview?chunkX=<signed>&chunkY=<signed>`. Each aligned
+  64-by-64 logical-tile chunk is rendered from current Postgres rows as a
+  256-by-256 PNG (4 pixels per tile). Its strong ETag includes both rendered
+  content and `tileCatalogSha256` from the atomic runtime asset contract.
+  Successful overworld paint and erase transactions invalidate only their
+  affected overview chunks. Collision and interaction always use exact tile
+  rows, never overview pixels.
+- The browser checks the no-cache `runtime_asset_contract.json` before every
+  map load and periodically during exact chunk requests. If an already-open
+  bundle's embedded tile-catalog hash differs from the newly deployed contract,
+  it performs one cache-busted page reload before accepting tile IDs. The
+  overview endpoint also rejects a mismatched `catalog` query with HTTP 409.
+- Exact data uses camera-derived aligned 64-by-64 chunks. The resident request
+  plan is capped at 3 by 3 chunks (192 by 192 tiles), includes a 50-by-50
+  minimum close-view intent, and unloads GPU textures and collision data as the
+  camera leaves them. Distant views use overview PNGs; a hysteresis band keeps
+  pinch zoom from rapidly swapping both layers near the LOD boundary.
+- Overview PNGs represent durable shared world state. Character-specific event
+  tile overrides remain in the authenticated exact layer, so a door or similar
+  event tile can resolve to that character's state only when the close layer
+  replaces the overview; overview pixels never authorize movement or warping.
+- The overview renderer reads `dist/phaser/tile_images` in deployment and
+  `public/phaser/tile_images` in local development. Set
+  `CAPTUREQUEST_TILE_IMAGE_DIR` and `CAPTUREQUEST_RUNTIME_ASSET_CONTRACT`
+  together only for a nonstandard layout; they must identify one atomic
+  generated asset family.
 - SQLite is an import/source artifact only, not a runtime database.
 - Generated scripted-event files should be changed in the extractor/import
   pipeline first. CaptureQuest-specific helper files under `server/scripted_events`

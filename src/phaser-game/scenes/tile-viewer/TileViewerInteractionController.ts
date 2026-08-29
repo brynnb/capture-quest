@@ -55,6 +55,7 @@ interface TileViewerInteractionDeps {
   isWorldInputFrozen: () => boolean;
   getWorldInputFreezeReason: () => WorldInputFreezeReason | null;
   getDisplayedMapId: () => number | null;
+  ensureDisplayedTileAvailable: (x: number, y: number) => Promise<boolean>;
 }
 
 export class TileViewerInteractionController {
@@ -67,7 +68,9 @@ export class TileViewerInteractionController {
   };
   private spaceKey?: Phaser.Input.Keyboard.Key;
   private suppressNextWorldPointerUp = false;
+  private instantWarpRequestGeneration = 0;
   private instantWarpTargetUnsubscribe: (() => void) | null = null;
+  private instantWarpErrorTimer: Phaser.Time.TimerEvent | null = null;
   private readonly pointerUpHandler = (pointer: Phaser.Input.Pointer) => {
     this.handlePointerUp(pointer);
   };
@@ -80,7 +83,7 @@ export class TileViewerInteractionController {
     this.suppressNextWorldPointerUp = true;
   };
   private readonly confirmInstantWarpHandler = () => {
-    this.confirmPendingInstantWarp();
+    void this.confirmPendingInstantWarp();
   };
   private readonly focusedButtonSpaceHandler = (event: KeyboardEvent) => {
     this.handleFocusedButtonSpace(event);
@@ -139,6 +142,8 @@ export class TileViewerInteractionController {
   }
 
   cleanup(): void {
+    this.instantWarpRequestGeneration += 1;
+    this.clearInstantWarpLoadError();
     this.deps.scene.input.off("pointerup", this.pointerUpHandler);
     this.deps.scene.events.off("actorClicked", this.actorClickHandler);
     this.deps.scene.events.off(
@@ -253,7 +258,7 @@ export class TileViewerInteractionController {
     );
 
     if (gameStatus.isWarpMode) {
-      this.handleWarpModeClick(worldPoint.x, worldPoint.y);
+      void this.handleWarpModeClick(worldPoint.x, worldPoint.y);
       return;
     }
 
@@ -293,24 +298,63 @@ export class TileViewerInteractionController {
     );
   }
 
-  private handleWarpModeClick(worldX: number, worldY: number): void {
+  private async handleWarpModeClick(
+    worldX: number,
+    worldY: number,
+  ): Promise<void> {
+    const requestGeneration = ++this.instantWarpRequestGeneration;
     const tileX = Math.floor(worldX / TILE_SIZE);
     const tileY = Math.floor(worldY / TILE_SIZE);
     const mapId = this.deps.getDisplayedMapId();
-    if (mapId == null || this.deps.mapRenderer().getTileAt(tileX, tileY) == null) {
+    const compactTouchLayout = isCompactTouchLayout();
+    const gameStatus = useGameStatusStore.getState();
+
+    // A new mobile tap supersedes the prior choice immediately. Otherwise a
+    // failed or empty second tile could leave Confirm pointing at the old tile.
+    if (compactTouchLayout) gameStatus.clearPendingInstantWarpTarget();
+    this.clearInstantWarpLoadError();
+
+    if (mapId == null) {
+      return;
+    }
+
+    let tileAvailable: boolean;
+    try {
+      tileAvailable = await this.deps.ensureDisplayedTileAvailable(tileX, tileY);
+    } catch (error) {
+      if (requestGeneration !== this.instantWarpRequestGeneration) return;
+      console.warn("[InstantWarp] Failed to verify selected tile:", error);
+      this.showInstantWarpLoadError(
+        "Couldn't load that tile. Tap a tile again to retry.",
+      );
+      return;
+    }
+    if (!tileAvailable) return;
+
+    if (requestGeneration !== this.instantWarpRequestGeneration) return;
+
+    const currentStatus = useGameStatusStore.getState();
+    const freezeReason = this.deps.getWorldInputFreezeReason();
+    if (
+      !currentStatus.isWarpMode ||
+      currentStatus.isMapLoading ||
+      mapId !== this.deps.getDisplayedMapId() ||
+      (freezeReason !== null && freezeReason !== "map_view")
+    ) {
       return;
     }
 
     const target = { mapId, x: tileX, y: tileY };
-    if (isCompactTouchLayout()) {
-      useGameStatusStore.getState().setPendingInstantWarpTarget(target);
+    if (compactTouchLayout) {
+      currentStatus.setPendingInstantWarpTarget(target);
       return;
     }
 
     this.commitInstantWarp(target);
   }
 
-  private confirmPendingInstantWarp(): void {
+  private async confirmPendingInstantWarp(): Promise<void> {
+    const requestGeneration = ++this.instantWarpRequestGeneration;
     const gameStatus = useGameStatusStore.getState();
     const target = gameStatus.pendingInstantWarpTarget;
     const freezeReason = this.deps.getWorldInputFreezeReason();
@@ -319,14 +363,78 @@ export class TileViewerInteractionController {
       gameStatus.isMapLoading ||
       !target ||
       (freezeReason !== null && freezeReason !== "map_view") ||
-      target.mapId !== this.deps.getDisplayedMapId() ||
-      this.deps.mapRenderer().getTileAt(target.x, target.y) == null
+      target.mapId !== this.deps.getDisplayedMapId()
     ) {
       gameStatus.clearPendingInstantWarpTarget();
       return;
     }
 
+    let tileAvailable: boolean;
+    try {
+      tileAvailable = await this.deps.ensureDisplayedTileAvailable(
+        target.x,
+        target.y,
+      );
+    } catch (error) {
+      if (requestGeneration !== this.instantWarpRequestGeneration) return;
+      console.warn("[InstantWarp] Failed to verify pending tile:", error);
+      this.showInstantWarpLoadError(
+        "Couldn't verify that tile. Tap Confirm Warp to retry.",
+      );
+      return;
+    }
+
+    if (!tileAvailable) {
+      gameStatus.clearPendingInstantWarpTarget();
+      return;
+    }
+
+    if (requestGeneration !== this.instantWarpRequestGeneration) return;
+
+    const currentStatus = useGameStatusStore.getState();
+    const currentFreezeReason = this.deps.getWorldInputFreezeReason();
+    if (currentStatus.pendingInstantWarpTarget !== target) return;
+    if (
+      !currentStatus.isWarpMode ||
+      currentStatus.isMapLoading ||
+      target.mapId !== this.deps.getDisplayedMapId() ||
+      (currentFreezeReason !== null && currentFreezeReason !== "map_view")
+    ) {
+      currentStatus.clearPendingInstantWarpTarget();
+      return;
+    }
+
     this.commitInstantWarp(target);
+  }
+
+  private showInstantWarpLoadError(message: string): void {
+    const status = useGameStatusStore.getState();
+    const freezeReason = this.deps.getWorldInputFreezeReason();
+    if (
+      !status.isWarpMode ||
+      status.isMapLoading ||
+      (freezeReason !== null && freezeReason !== "map_view")
+    ) {
+      return;
+    }
+
+    this.clearInstantWarpLoadError();
+    this.deps.uiManager().setLoadingText(message);
+    this.instantWarpErrorTimer = this.deps.scene.time.delayedCall(4000, () => {
+      this.instantWarpErrorTimer = null;
+      if (!useGameStatusStore.getState().isMapLoading) {
+        this.deps.uiManager().hideLoadingText();
+      }
+    });
+  }
+
+  private clearInstantWarpLoadError(): void {
+    if (!this.instantWarpErrorTimer) return;
+    this.instantWarpErrorTimer.destroy();
+    this.instantWarpErrorTimer = null;
+    if (!useGameStatusStore.getState().isMapLoading) {
+      this.deps.uiManager().hideLoadingText();
+    }
   }
 
   private commitInstantWarp(target: {

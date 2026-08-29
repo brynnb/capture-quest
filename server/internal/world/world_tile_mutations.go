@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"capturequest/internal/db"
+	"capturequest/internal/overworldoverview"
 	"capturequest/internal/session"
 )
 
@@ -392,6 +393,13 @@ func currentWorldTileImageID(mapID, x, y int) (int, bool, error) {
 }
 
 func invalidateWorldTileCaches(wh *WorldHandler, mapID int, edits []TileEdit) {
+	if mapID == UnifiedOverworldMapID {
+		coords := make([]overworldoverview.Coordinate, 0, len(edits))
+		for _, edit := range edits {
+			coords = append(coords, overworldoverview.Coordinate{X: edit.X, Y: edit.Y})
+		}
+		overworldoverview.InvalidateCoordinates(coords)
+	}
 	if wh == nil {
 		return
 	}

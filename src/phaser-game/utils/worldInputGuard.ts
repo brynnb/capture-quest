@@ -12,6 +12,7 @@ export type WorldInputFreezeReason =
   | "shop"
   | "modal"
   | "panel"
+  | "map_loading"
   | "map_view"
   | "cutscene";
 

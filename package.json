@@ -24,8 +24,8 @@
     "db:bootstrap": "./server/scripts/bootstrap_postgres.sh --create --reset",
     "tygo": "cd server && go run github.com/gzuidhof/tygo@latest generate && cd .. && ./scripts/fix-tygo-casing.sh",
     "server:go": "npm run tygo && cd server && if command -v air > /dev/null; then air; else go run ./cmd/server; fi",
-    "server": "if [ -f .env ]; then set -a; . .env; set +a; fi; export HTTP_PORT=${HTTP_PORT:-8080}; npm run server:go",
-    "dev:all": "npm run audio:manifest && npm run assets:validate && if [ -f .env ]; then set -a; . .env; set +a; fi; eval \"$(node scripts/dev-port-env.mjs)\"; export VITE_LOCAL_DEV=${VITE_LOCAL_DEV:-true}; export VITE_OFFLINE_ASSETS=${VITE_OFFLINE_ASSETS:-false}; concurrently -k -p \"[{name}]\" -n \"server,client\" -c \"magenta,cyan\" \"npm run server:go\" \"sleep 3 && npm run dev\"",
+    "server": "if [ -f .env ]; then set -a; . .env; set +a; fi; export HTTP_PORT=${HTTP_PORT:-8080}; export LOCAL=${LOCAL:-true}; npm run server:go",
+    "dev:all": "npm run audio:manifest && npm run assets:validate && if [ -f .env ]; then set -a; . .env; set +a; fi; eval \"$(node scripts/dev-port-env.mjs)\"; export LOCAL=${LOCAL:-true}; export VITE_LOCAL_DEV=${VITE_LOCAL_DEV:-true}; export VITE_OFFLINE_ASSETS=${VITE_OFFLINE_ASSETS:-false}; concurrently -k -p \"[{name}]\" -n \"server,client\" -c \"magenta,cyan\" \"npm run server:go\" \"sleep 3 && npm run dev\"",
     "dev:test": "VITE_TEST_MODE=true VITE_FORCE_WEBSOCKET=true CAPTUREQUEST_TEST_MODE=true npm run dev:all"
   },
   "dependencies": {

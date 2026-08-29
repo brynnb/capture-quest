@@ -16,6 +16,7 @@ database target is Postgres.
 | Variable | Purpose |
 | --- | --- |
 | `DATABASE_URL` | Postgres connection string. |
+| `LOCAL` | Must be exactly `false` in production; local npm scripts explicitly default it to `true`. |
 | `HTTP_PORT` | HTTP API port. Defaults to the configured value. |
 | `DISCORD_CHAT_WEBHOOK_URL` | Optional private webhook for the CaptureQuest Discord channel. |
 | `DISCORD_CHAT_SHARED_SECRET` | Optional 32+ character secret shared only with the IdleQuest Discord hub. |
@@ -47,15 +48,28 @@ The workflow is the canonical deployment path. It performs this order:
    scripted events, and audio;
 3. validate the runtime asset contract, build the frontend, run focused importer
    and warp tests, and build the Linux server/importer binaries;
-4. upload the frontend and binaries, stop `cq-server`, and create a compressed
-   Postgres backup under `$DEPLOY_APP_DIR/backups`;
+4. upload the frontend into a non-public staging directory, upload the binaries,
+   stop `cq-server`, and create a compressed Postgres backup under
+   `$DEPLOY_APP_DIR/backups`;
 5. negotiate the extractor contract before touching Postgres, apply the schema,
    and run the deterministic importer;
-6. restart `cq-server` and Caddy, validate tile rows and the served asset contract,
-   then retry the public health endpoint until startup completes.
+6. replace the live `dist` directory with the complete staged frontend while the
+   API remains stopped, then restart `cq-server` and Caddy, validate tile rows
+   and the served asset contract, and retry the public health endpoint until
+   startup completes.
 
 Do not reorder schema negotiation, backup, schema application, or import. Do not
 start a second deployment while an importer from the first one may still exist.
+Never upload directly into the live `dist` tree: exposing a new JavaScript tile
+catalog while the old server/database is still active can render every tile with
+the wrong artwork. Generated-asset cache keys are immutable; bump the cache
+generation when its saved path set changes, and validate the exact DB-backed
+tile and sprite catalogs before accepting a restored cache.
+
+If any workflow stage fails after `cq-server` has stopped, the cleanup trap
+leaves it stopped. Do not restart it until the database, server binary, staged
+frontend, and runtime asset contract have been verified as one coherent
+release; this fail-closed downtime is safer than serving a mixed tile catalog.
 
 ## Build
 
@@ -137,27 +151,18 @@ The response must contain `Content-Type: audio/ogg`. A response containing
 
 ## Manual Frontend Deployment
 
-The current production layout follows the same tar-over-SSH pattern as the
-Vayeate website. Set these explicitly for the target environment:
+Do not manually upload a complete frontend into the live `dist` directory.
+The JavaScript bundle, Postgres tile IDs, tile images, and
+`runtime_asset_contract.json` are one release unit; replacing only the static
+tree can give active clients valid numeric IDs paired with the wrong artwork.
+Use the canonical GitHub Actions deployment, which stages `dist.next-<sha>`,
+stops the API, imports the matching data, atomically activates the staged tree,
+and verifies the catalog before leaving the service running.
 
-```bash
-export CQ_DEPLOY_HOST='ubuntu@54.68.252.253'
-export CQ_DEPLOY_APP_DIR='/home/ubuntu/app/capture-quest'
-export CQ_DEPLOY_KEY='/absolute/path/to/capturequest_deploy'
-```
-
-After completing the build and asset checks above, upload the complete frontend:
-
-```bash
-tar --exclude='._*' --exclude='.DS_Store' -czf - -C dist . \
-  | ssh -o BatchMode=yes \
-      -o ServerAliveInterval=15 -o ServerAliveCountMax=20 -o TCPKeepAlive=yes \
-      -i "$CQ_DEPLOY_KEY" "$CQ_DEPLOY_HOST" \
-      "mkdir -p '$CQ_DEPLOY_APP_DIR/dist' && cd '$CQ_DEPLOY_APP_DIR/dist' && tar xzf -"
-```
-
-Caddy serves `/home/ubuntu/app/capture-quest/dist` for `capturequest.net`.
-Static-file additions do not require a Caddy reload.
+For recovery, inspect the failed workflow and the importer state as described
+above. Do not improvise a full tar-over-SSH deployment. The narrowly scoped
+audio-only procedure below is safe because it does not replace the application
+bundle or tile catalog.
 
 ### Audio-only recovery
 
@@ -205,8 +210,10 @@ service startup to fail.
 
 If an SSH deployment session disconnects during import, do not immediately run
 another importer. The remote process and its PostgreSQL statement can survive
-the client connection. Establish a new keepalive-enabled SSH session and inspect
-both layers:
+the client connection. The workflow deliberately leaves `cq-server` stopped
+when that outcome is ambiguous; do not manually restart it against the old
+frontend catalog. Establish a new keepalive-enabled SSH session and inspect both
+layers:
 
 ```bash
 pgrep -af '[i]mport-phaser'
@@ -268,6 +275,13 @@ WebTransport connection in the browser.
 - The served `/phaser/pokemon.db` SHA-256 equals `pokemonDbSha256` in the served
   runtime asset contract, whose `tileCatalogSha256` and `tileCount` match the
   deployed frontend catalog version.
+- An overview request for a chunk derived from an actual non-erased Postgres
+  tile returns `Content-Type: image/png`, a strong `ETag`, `Cache-Control:
+  public, no-cache`, and the deployed hash in `X-Overworld-Tile-Catalog`; using
+  a populated chunk proves the backend can decode the deployed tile-image
+  family, rather than merely rendering a transparent gap. The same request with
+  an intentionally different catalog hash must return HTTP 409 so an old browser
+  bundle cannot mix new IDs with old art.
 - `https://capturequest.net/api/online` succeeds after the startup retry window.
 - Production Tile Art Studio routes such as `/api/tiles/stamps` return 404.
 - Recent `journalctl -u cq-server` output contains full world initialization and

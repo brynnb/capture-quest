@@ -6,10 +6,14 @@ interface TileImageRecord {
   id: number;
 }
 
+const TILE_IMAGE_XHR_TIMEOUT_MS = 12_000;
+const TILE_IMAGE_LOAD_WATCHDOG_MS = 15_000;
+
 export class TileManager {
   private scene: Scene;
   private tileImageCache: Map<number, TileImageCacheEntry> = new Map();
   private loadingTextures: Set<string> = new Set();
+  private tileImageLoadQueue: Promise<void> = Promise.resolve();
 
   constructor(scene: Scene) {
     this.scene = scene;
@@ -53,7 +57,18 @@ export class TileManager {
     }
   }
 
-  async loadTileImages(tileImagesData: TileImageRecord[]) {
+  loadTileImages(tileImagesData: TileImageRecord[]): Promise<void> {
+    const records = [...tileImagesData];
+    const load = this.tileImageLoadQueue.then(() =>
+      this.loadTileImagesNow(records),
+    );
+    // Keep later requests moving after a failed batch while preserving the
+    // failure for the caller that owns this specific request.
+    this.tileImageLoadQueue = load.catch(() => undefined);
+    return load;
+  }
+
+  private async loadTileImagesNow(tileImagesData: TileImageRecord[]) {
     // Track which textures we need to load
     const texturesToLoad = new Set<number>();
 
@@ -75,35 +90,55 @@ export class TileManager {
     }
 
     // Load all textures in a single batch
-    if (texturesToLoad.size > 0) {
-      // Clear any previous listeners to avoid duplicates
-      this.scene.load.off("loaderror");
+    if (texturesToLoad.size === 0) return;
 
-      // Set up error handling
-      this.scene.load.on("loaderror", (fileObj: Phaser.Loader.File) => {
-        // Handle loading errors by creating a fallback tile
-        const tileId = fileObj.key.replace("tile-", "");
-        console.warn(`Error loading tile ${tileId}, using fallback`);
-        this.createFallbackTile(fileObj.key, tileId);
-      });
+    const completions: Promise<void>[] = [];
+    for (const tileId of texturesToLoad) {
+      const tileKey = `tile-${tileId}`;
+      if (this.scene.textures.exists(tileKey)) continue;
 
-      // Load all textures
-      for (const tileId of texturesToLoad) {
-        const tileKey = `tile-${tileId}`;
-        const imgUrl = getTileImageUrl(tileId);
+      this.loadingTextures.add(tileKey);
+      completions.push(
+        new Promise<void>((resolve) => {
+          const completeEvent = `filecomplete-image-${tileKey}`;
+          const timeoutId = setTimeout(() => {
+            cleanup();
+            console.warn(`Timed out loading tile ${tileId}, using fallback`);
+            this.createFallbackTile(tileKey, tileId.toString());
+            resolve();
+          }, TILE_IMAGE_LOAD_WATCHDOG_MS);
+          const cleanup = () => {
+            clearTimeout(timeoutId);
+            this.scene.load.off(completeEvent, onComplete);
+            this.scene.load.off("loaderror", onError);
+            this.loadingTextures.delete(tileKey);
+          };
+          const onComplete = () => {
+            cleanup();
+            resolve();
+          };
+          const onError = (fileObj: Phaser.Loader.File) => {
+            if (fileObj.key !== tileKey) return;
+            cleanup();
+            const displayId = fileObj.key.replace("tile-", "");
+            console.warn(`Error loading tile ${displayId}, using fallback`);
+            this.createFallbackTile(fileObj.key, displayId);
+            resolve();
+          };
 
-        // Load all textures
-        this.scene.load.image(tileKey, imgUrl);
-      }
-
-      // Start the load
-      await new Promise<void>((resolve) => {
-        this.scene.load.once("complete", () => {
-          resolve();
-        });
-        this.scene.load.start();
-      });
+          this.scene.load.once(completeEvent, onComplete);
+          this.scene.load.on("loaderror", onError);
+          this.scene.load.image(tileKey, getTileImageUrl(tileId), {
+            responseType: "blob",
+            timeout: TILE_IMAGE_XHR_TIMEOUT_MS,
+          });
+        }),
+      );
     }
+
+    if (completions.length === 0) return;
+    if (!this.scene.load.isLoading()) this.scene.load.start();
+    await Promise.all(completions);
   }
 
   // Helper method to create a fallback tile texture

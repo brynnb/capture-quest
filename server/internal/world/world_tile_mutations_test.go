@@ -1,14 +1,21 @@
 package world
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
+	"image"
+	"image/color"
+	"image/png"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
 	model "capturequest/internal/db/models"
+	"capturequest/internal/overworldoverview"
 	"capturequest/internal/session"
 
 	_ "modernc.org/sqlite"
@@ -35,7 +42,8 @@ func setupWorldTileMutationDB(t *testing.T) *sql.DB {
 			is_overworld INTEGER NOT NULL DEFAULT 0
 		);
 		CREATE TABLE phaser_tile_images (
-			id INTEGER PRIMARY KEY
+			id INTEGER PRIMARY KEY,
+			image_path TEXT NOT NULL
 		);
 		CREATE TABLE phaser_tile_properties (
 			tile_image_id INTEGER PRIMARY KEY,
@@ -81,7 +89,8 @@ func setupWorldTileMutationDB(t *testing.T) *sql.DB {
 
 		INSERT INTO account (id, status) VALUES (1, 0), (2, 1);
 		INSERT INTO phaser_maps (id, name, width, height, is_overworld) VALUES (40, 'TEST_MAP', 10, 10, 0);
-		INSERT INTO phaser_tile_images (id) VALUES (1), (2), (3);
+		INSERT INTO phaser_tile_images (id, image_path) VALUES
+			(1, 'tile_0.png'), (2, 'tile_1.png'), (3, 'tile_2.png');
 		INSERT INTO phaser_tile_properties (tile_image_id, name, collision_type, is_user_editable)
 		VALUES (1, 'grass', 1, 1), (2, 'wall', 0, 1), (3, 'floor', 1, 1);
 		INSERT INTO phaser_tiles (
@@ -103,6 +112,67 @@ func setupWorldTileMutationDB(t *testing.T) *sql.DB {
 		raw.Close()
 	})
 	return raw
+}
+
+func TestWorldTilePlacementInvalidatesOverworldOverviewChunk(t *testing.T) {
+	raw := setupWorldTileMutationDB(t)
+	tileDir := t.TempDir()
+	writeOverviewTestTile(t, filepath.Join(tileDir, "tile_0.png"), color.RGBA{R: 255, A: 255})
+	writeOverviewTestTile(t, filepath.Join(tileDir, "tile_1.png"), color.RGBA{B: 255, A: 255})
+	writeOverviewTestTile(t, filepath.Join(tileDir, "tile_2.png"), color.RGBA{G: 255, A: 255})
+	service, err := overworldoverview.NewService(raw, tileDir, strings.Repeat("a", 64))
+	if err != nil {
+		t.Fatalf("new overview service: %v", err)
+	}
+	overworldoverview.SetDefault(service)
+	t.Cleanup(func() { overworldoverview.SetDefault(nil) })
+
+	before, err := service.RenderChunk(0, 0)
+	if err != nil {
+		t.Fatalf("render overview before placement: %v", err)
+	}
+
+	if _, err := applyWorldTilePlacements(nil, nil, UnifiedOverworldMapID, []TileEdit{
+		{X: 5, Y: 5, TileImageID: 2},
+	}, "test"); err != nil {
+		t.Fatalf("apply placement: %v", err)
+	}
+	after, err := service.RenderChunk(0, 0)
+	if err != nil {
+		t.Fatalf("render overview after placement: %v", err)
+	}
+	if after.ETag == before.ETag {
+		t.Fatal("overview chunk retained its ETag after committed placement")
+	}
+	decoded, err := png.Decode(bytes.NewReader(after.PNG))
+	if err != nil {
+		t.Fatalf("decode updated overview: %v", err)
+	}
+	got := color.RGBAModel.Convert(decoded.At(5*overworldoverview.PixelsPerTile, 5*overworldoverview.PixelsPerTile)).(color.RGBA)
+	if got != (color.RGBA{B: 255, A: 255}) {
+		t.Fatalf("updated overview pixel = %#v, want blue", got)
+	}
+}
+
+func writeOverviewTestTile(t *testing.T, filename string, tileColor color.RGBA) {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, 16, 16))
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			img.SetRGBA(x, y, tileColor)
+		}
+	}
+	file, err := os.Create(filename)
+	if err != nil {
+		t.Fatalf("create overview test tile: %v", err)
+	}
+	if err := png.Encode(file, img); err != nil {
+		file.Close()
+		t.Fatalf("encode overview test tile: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close overview test tile: %v", err)
+	}
 }
 
 func TestWorldTilePlacementPreservesOriginalMetadata(t *testing.T) {

@@ -7,6 +7,7 @@ import {
   type ActorMovementOptions,
 } from "../controllers/ActorMovementController";
 import { ActorManager } from "../managers/ActorManager";
+import { OVERWORLD_CHUNK_SIZE_TILES } from "../services/OverworldChunkPlanner";
 import { isWorldInputFrozen } from "../utils/worldInputGuard";
 
 interface LocalActorPositionOverride {
@@ -26,6 +27,17 @@ type ActorSprite = Phaser.GameObjects.Sprite & { actorData?: PhaserActor };
 type ItemSprite = Phaser.GameObjects.Image & { itemData?: MapItem };
 type WarpZone = Phaser.GameObjects.Zone & { warpData?: PhaserWarp };
 
+export const MAP_TILE_CHUNK_SIZE = OVERWORLD_CHUNK_SIZE_TILES;
+
+interface TileChunkRenderTexture {
+  renderTexture: Phaser.GameObjects.RenderTexture;
+  chunkColumn: number;
+  chunkRow: number;
+  originX: number;
+  originY: number;
+  tileKeys: Set<string>;
+}
+
 export class MapRenderer {
   // Maximum texture dimension before falling back to individual sprites
   private static readonly MAX_RENDER_TEXTURE_SIZE = 8192;
@@ -37,6 +49,9 @@ export class MapRenderer {
   private tileDataMap: Map<string, number> = new Map(); // "x,y" -> tileImageId for updateTile
   private mapOriginX: number = 0; // tile-coordinate origin of the RenderTexture
   private mapOriginY: number = 0;
+  private tileChunkRenderTextures: Map<string, TileChunkRenderTexture> = new Map();
+  private tileChunkKeyByGridPosition: Map<string, string> = new Map();
+  private tileChunkOwnerByCoordinate: Map<string, string> = new Map();
   private actorSprites: Map<number, Phaser.GameObjects.Sprite> = new Map();
   private actorZones: Map<number, Phaser.GameObjects.Zone> = new Map();
   private localActorPositionOverrides: Map<number, LocalActorPositionOverride> = new Map();
@@ -469,7 +484,214 @@ export class MapRenderer {
       }
     });
 
-    return this.calculateMapBounds(tiles);
+    return bounds;
+  }
+
+  /**
+   * Replace or add one exact 64x64 overworld tile chunk.
+   *
+   * chunkColumn/chunkRow are chunk-grid indices, not tile coordinates. For
+   * example, column 2 starts at tile x=128. A chunk always uses one
+   * 1024x1024 RenderTexture, so streaming never falls back to thousands of
+   * individual tile sprites when the complete overworld exceeds GPU texture
+   * limits.
+   */
+  upsertTileChunk(
+    chunkKey: string,
+    chunkColumn: number,
+    chunkRow: number,
+    tiles: PhaserTile[],
+  ): { rendered: number; skipped: number } {
+    if (!chunkKey) {
+      throw new Error("Tile chunk key must not be empty");
+    }
+    if (!Number.isInteger(chunkColumn) || !Number.isInteger(chunkRow)) {
+      throw new Error("Tile chunk column and row must be integer grid indices");
+    }
+
+    const originX = chunkColumn * MAP_TILE_CHUNK_SIZE;
+    const originY = chunkRow * MAP_TILE_CHUNK_SIZE;
+    const maxXExclusive = originX + MAP_TILE_CHUNK_SIZE;
+    const maxYExclusive = originY + MAP_TILE_CHUNK_SIZE;
+    const uniqueTiles = new Map<string, PhaserTile>();
+
+    for (const tile of tiles) {
+      if (
+        !Number.isInteger(tile.x) ||
+        !Number.isInteger(tile.y) ||
+        tile.x < originX ||
+        tile.x >= maxXExclusive ||
+        tile.y < originY ||
+        tile.y >= maxYExclusive
+      ) {
+        throw new Error(
+          `Tile (${tile.x}, ${tile.y}) is outside chunk ${chunkKey} at grid (${chunkColumn}, ${chunkRow})`,
+        );
+      }
+      uniqueTiles.set(`${tile.x},${tile.y}`, tile);
+    }
+
+    const textureSize = MAP_TILE_CHUNK_SIZE * TILE_SIZE;
+    const renderTexture = this.scene.add.renderTexture(
+      originX * TILE_SIZE,
+      originY * TILE_SIZE,
+      textureSize,
+      textureSize,
+    );
+    renderTexture.setOrigin(0, 0);
+
+    let rendered = 0;
+    let skipped = 0;
+    renderTexture.beginDraw();
+    for (const tile of uniqueTiles.values()) {
+      const textureKey = `tile-${tile.tileImageId}`;
+      if (this.scene.textures.exists(textureKey)) {
+        renderTexture.batchDrawFrame(
+          textureKey,
+          undefined,
+          (tile.x - originX) * TILE_SIZE,
+          (tile.y - originY) * TILE_SIZE,
+        );
+        rendered++;
+      } else {
+        skipped++;
+      }
+    }
+    renderTexture.endDraw();
+
+    // A grid position has one authoritative exact-tile chunk. Remove either a
+    // prior version of this named chunk or a differently named stale occupant
+    // only after the replacement texture has been fully stamped.
+    const gridKey = this.getTileChunkGridKey(chunkColumn, chunkRow);
+    const replacedKeys = new Set<string>();
+    if (this.tileChunkRenderTextures.has(chunkKey)) {
+      replacedKeys.add(chunkKey);
+    }
+    const existingGridKey = this.tileChunkKeyByGridPosition.get(gridKey);
+    if (existingGridKey) {
+      replacedKeys.add(existingGridKey);
+    }
+    for (const replacedKey of replacedKeys) {
+      this.unloadTileChunk(replacedKey);
+    }
+
+    const chunk: TileChunkRenderTexture = {
+      renderTexture,
+      chunkColumn,
+      chunkRow,
+      originX,
+      originY,
+      tileKeys: new Set(uniqueTiles.keys()),
+    };
+    this.tileChunkRenderTextures.set(chunkKey, chunk);
+    this.tileChunkKeyByGridPosition.set(gridKey, chunkKey);
+
+    this.removeUserTileSpritesWithinChunk(chunk);
+    for (const [coordinateKey, tile] of uniqueTiles) {
+      this.tileDataMap.set(coordinateKey, tile.tileImageId);
+      this.tileChunkOwnerByCoordinate.set(coordinateKey, chunkKey);
+    }
+
+    this.mapContainer.add(renderTexture);
+    this.mapContainer.sendToBack(renderTexture);
+    return { rendered, skipped };
+  }
+
+  /** Unload one streamed tile chunk and its exact tile lookup data. */
+  unloadTileChunk(chunkKey: string): boolean {
+    const chunk = this.tileChunkRenderTextures.get(chunkKey);
+    if (!chunk) return false;
+
+    for (const coordinateKey of chunk.tileKeys) {
+      if (this.tileChunkOwnerByCoordinate.get(coordinateKey) !== chunkKey) {
+        continue;
+      }
+      this.tileDataMap.delete(coordinateKey);
+      this.tileChunkOwnerByCoordinate.delete(coordinateKey);
+    }
+
+    const gridKey = this.getTileChunkGridKey(chunk.chunkColumn, chunk.chunkRow);
+    if (this.tileChunkKeyByGridPosition.get(gridKey) === chunkKey) {
+      this.tileChunkKeyByGridPosition.delete(gridKey);
+    }
+    chunk.renderTexture.destroy();
+    this.tileChunkRenderTextures.delete(chunkKey);
+    return true;
+  }
+
+  private getTileChunkGridKey(chunkColumn: number, chunkRow: number): string {
+    return `${chunkColumn},${chunkRow}`;
+  }
+
+  private getTileChunkAt(
+    x: number,
+    y: number,
+  ): { chunkKey: string; chunk: TileChunkRenderTexture } | null {
+    const gridKey = this.getTileChunkGridKey(
+      Math.floor(x / MAP_TILE_CHUNK_SIZE),
+      Math.floor(y / MAP_TILE_CHUNK_SIZE),
+    );
+    const chunkKey = this.tileChunkKeyByGridPosition?.get(gridKey);
+    if (!chunkKey) return null;
+    const chunk = this.tileChunkRenderTextures?.get(chunkKey);
+    return chunk ? { chunkKey, chunk } : null;
+  }
+
+  private getTileRenderTarget(
+    x: number,
+    y: number,
+  ): {
+    renderTexture: Phaser.GameObjects.RenderTexture;
+    originX: number;
+    originY: number;
+    chunkKey: string | null;
+  } | null {
+    const chunkEntry = this.getTileChunkAt(x, y);
+    if (chunkEntry) {
+      return {
+        renderTexture: chunkEntry.chunk.renderTexture,
+        originX: chunkEntry.chunk.originX,
+        originY: chunkEntry.chunk.originY,
+        chunkKey: chunkEntry.chunkKey,
+      };
+    }
+
+    if (!this.tileRenderTexture) return null;
+    const localX = (x - this.mapOriginX) * TILE_SIZE;
+    const localY = (y - this.mapOriginY) * TILE_SIZE;
+    if (
+      localX < 0 ||
+      localY < 0 ||
+      localX >= this.tileRenderTexture.width ||
+      localY >= this.tileRenderTexture.height
+    ) {
+      return null;
+    }
+    return {
+      renderTexture: this.tileRenderTexture,
+      originX: this.mapOriginX,
+      originY: this.mapOriginY,
+      chunkKey: null,
+    };
+  }
+
+  private removeUserTileSpritesWithinChunk(chunk: TileChunkRenderTexture): void {
+    const maxXExclusive = chunk.originX + MAP_TILE_CHUNK_SIZE;
+    const maxYExclusive = chunk.originY + MAP_TILE_CHUNK_SIZE;
+    for (const [coordinateKey, sprite] of this.userTileSprites) {
+      const [xText, yText] = coordinateKey.split(",");
+      const x = Number(xText);
+      const y = Number(yText);
+      if (
+        x >= chunk.originX &&
+        x < maxXExclusive &&
+        y >= chunk.originY &&
+        y < maxYExclusive
+      ) {
+        sprite.destroy();
+        this.userTileSprites.delete(coordinateKey);
+      }
+    }
   }
 
   private createActorClickZone(
@@ -619,20 +841,32 @@ export class MapRenderer {
     // Update the stored tile data
     this.tileDataMap.set(key, newTileImageId);
 
-    // Re-stamp the tile on the RenderTexture
-    if (this.tileRenderTexture) {
-      const localX = (x - this.mapOriginX) * TILE_SIZE;
-      const localY = (y - this.mapOriginY) * TILE_SIZE;
-      // Clear the old tile region with a solid fill, then draw the new tile
-      this.tileRenderTexture.fill(
-        0x000000,
-        1,
-        localX,
-        localY,
-        TILE_SIZE,
-        TILE_SIZE,
-      );
-      this.tileRenderTexture.drawFrame(newTileKey, undefined, localX, localY);
+    const renderTarget = this.getTileRenderTarget(x, y);
+    if (renderTarget) {
+      const localX = (x - renderTarget.originX) * TILE_SIZE;
+      const localY = (y - renderTarget.originY) * TILE_SIZE;
+      if (renderTarget.chunkKey === null) {
+        // Preserve the existing single-texture interior replacement path.
+        renderTarget.renderTexture.fill(
+          0x000000,
+          1,
+          localX,
+          localY,
+          TILE_SIZE,
+          TILE_SIZE,
+        );
+      }
+      renderTarget.renderTexture.drawFrame(newTileKey, undefined, localX, localY);
+      const chunkEntry = this.getTileChunkAt(x, y);
+      if (chunkEntry) {
+        chunkEntry.chunk.tileKeys.add(key);
+        this.tileChunkOwnerByCoordinate.set(key, chunkEntry.chunkKey);
+      }
+    }
+
+    const userSprite = this.userTileSprites.get(key);
+    if (userSprite) {
+      userSprite.setTexture(newTileKey);
     }
 
     return true;
@@ -1132,6 +1366,10 @@ export class MapRenderer {
 
   clear() {
     try {
+      for (const chunkKey of [...this.tileChunkRenderTextures.keys()]) {
+        this.unloadTileChunk(chunkKey);
+      }
+
       // Collect non-actor children to destroy (RenderTexture, warps, items).
       // ALL actor sprites are preserved — renderMap will reuse them.
       // Uses collect-then-destroy to avoid iterate-while-mutating issues.
@@ -1160,6 +1398,9 @@ export class MapRenderer {
 
       // Clear the tile data map
       this.tileDataMap.clear();
+      this.tileChunkKeyByGridPosition.clear();
+      this.tileChunkOwnerByCoordinate.clear();
+      this.userTileSprites.clear();
       this.actorZones.clear();
 
       // Keep ALL actor sprites and movement controller registrations intact.
@@ -1214,27 +1455,28 @@ export class MapRenderer {
     // Update the data map
     this.tileDataMap.set(key, tileImageId);
 
-    // Check if within RenderTexture bounds
-    if (this.tileRenderTexture) {
-      const localX = (x - this.mapOriginX) * TILE_SIZE;
-      const localY = (y - this.mapOriginY) * TILE_SIZE;
-      const rtWidth = this.tileRenderTexture.width;
-      const rtHeight = this.tileRenderTexture.height;
+    const renderTarget = this.getTileRenderTarget(x, y);
+    if (renderTarget) {
+      const localX = (x - renderTarget.originX) * TILE_SIZE;
+      const localY = (y - renderTarget.originY) * TILE_SIZE;
+      // A single direct frame draw is both pixel-aligned and immediately
+      // flushed. The previous fill + beginDraw sequence could leave black
+      // seams or stale fragments until the whole map was reloaded.
+      renderTarget.renderTexture.drawFrame(tileKey, undefined, localX, localY);
 
-      if (localX >= 0 && localY >= 0 && localX < rtWidth && localY < rtHeight) {
-        // A single direct frame draw is both pixel-aligned and immediately
-        // flushed. The previous fill + beginDraw sequence could leave black
-        // seams or stale fragments until the whole map was reloaded.
-        this.tileRenderTexture.drawFrame(tileKey, undefined, localX, localY);
-
-        // Remove any individual sprite at this position (if it was previously out-of-bounds)
-        const existingSprite = this.userTileSprites.get(key);
-        if (existingSprite) {
-          existingSprite.destroy();
-          this.userTileSprites.delete(key);
-        }
-        return true;
+      const chunkEntry = this.getTileChunkAt(x, y);
+      if (chunkEntry) {
+        chunkEntry.chunk.tileKeys.add(key);
+        this.tileChunkOwnerByCoordinate.set(key, chunkEntry.chunkKey);
       }
+
+      // Remove any individual sprite at this position (if it was previously out-of-bounds)
+      const existingSprite = this.userTileSprites.get(key);
+      if (existingSprite) {
+        existingSprite.destroy();
+        this.userTileSprites.delete(key);
+      }
+      return true;
     }
 
     // Outside RenderTexture bounds (or no RT) — use individual sprite
@@ -1280,25 +1522,41 @@ export class MapRenderer {
 
       this.tileDataMap.set(key, tile.tileImageId);
 
-      if (this.tileRenderTexture) {
-        const localX = (tile.x - this.mapOriginX) * TILE_SIZE;
-        const localY = (tile.y - this.mapOriginY) * TILE_SIZE;
-        const rtWidth = this.tileRenderTexture.width;
-        const rtHeight = this.tileRenderTexture.height;
-
-        if (localX >= 0 && localY >= 0 && localX < rtWidth && localY < rtHeight) {
+      const renderTarget = this.getTileRenderTarget(tile.x, tile.y);
+      if (renderTarget) {
+        const localX = (tile.x - renderTarget.originX) * TILE_SIZE;
+        const localY = (tile.y - renderTarget.originY) * TILE_SIZE;
+        if (renderTarget.chunkKey === null) {
           beginRenderTextureDraw();
-          this.tileRenderTexture.batchDrawFrame(tileKey, undefined, localX, localY);
-
-          const existingSprite = this.userTileSprites.get(key);
-          if (existingSprite) {
-            existingSprite.destroy();
-            this.userTileSprites.delete(key);
-          }
-
-          rendered++;
-          continue;
+          renderTarget.renderTexture.batchDrawFrame(
+            tileKey,
+            undefined,
+            localX,
+            localY,
+          );
+        } else {
+          renderTarget.renderTexture.drawFrame(
+            tileKey,
+            undefined,
+            localX,
+            localY,
+          );
         }
+
+        const chunkEntry = this.getTileChunkAt(tile.x, tile.y);
+        if (chunkEntry) {
+          chunkEntry.chunk.tileKeys.add(key);
+          this.tileChunkOwnerByCoordinate.set(key, chunkEntry.chunkKey);
+        }
+
+        const existingSprite = this.userTileSprites.get(key);
+        if (existingSprite) {
+          existingSprite.destroy();
+          this.userTileSprites.delete(key);
+        }
+
+        rendered++;
+        continue;
       }
 
       const existingSprite = this.userTileSprites.get(key);
@@ -1334,20 +1592,21 @@ export class MapRenderer {
 
     this.tileDataMap.delete(key);
 
-    // Clear from RenderTexture if within bounds
-    if (this.tileRenderTexture) {
-      const localX = (x - this.mapOriginX) * TILE_SIZE;
-      const localY = (y - this.mapOriginY) * TILE_SIZE;
-      const rtWidth = this.tileRenderTexture.width;
-      const rtHeight = this.tileRenderTexture.height;
+    const renderTarget = this.getTileRenderTarget(x, y);
+    if (renderTarget) {
+      renderTarget.renderTexture.drawFrame(
+        MapRenderer.EMPTY_TILE_TEXTURE_KEY,
+        undefined,
+        (x - renderTarget.originX) * TILE_SIZE,
+        (y - renderTarget.originY) * TILE_SIZE,
+      );
+    }
 
-      if (localX >= 0 && localY >= 0 && localX < rtWidth && localY < rtHeight) {
-        this.tileRenderTexture.drawFrame(
-          MapRenderer.EMPTY_TILE_TEXTURE_KEY,
-          undefined,
-          localX,
-          localY,
-        );
+    const chunkEntry = this.getTileChunkAt(x, y);
+    if (chunkEntry) {
+      chunkEntry.chunk.tileKeys.delete(key);
+      if (this.tileChunkOwnerByCoordinate.get(key) === chunkEntry.chunkKey) {
+        this.tileChunkOwnerByCoordinate.delete(key);
       }
     }
 
@@ -1601,17 +1860,26 @@ export class MapRenderer {
       const x = parseInt(xStr, 10);
       const y = parseInt(yStr, 10);
 
-      // Re-stamp on RenderTexture if within bounds
-      if (this.tileRenderTexture) {
-        const localX = (x - this.mapOriginX) * TILE_SIZE;
-        const localY = (y - this.mapOriginY) * TILE_SIZE;
-        const rtWidth = this.tileRenderTexture.width;
-        const rtHeight = this.tileRenderTexture.height;
-
-        if (localX >= 0 && localY >= 0 && localX < rtWidth && localY < rtHeight) {
-          this.tileRenderTexture.beginDraw();
-          this.tileRenderTexture.batchDrawFrame(tileKey, undefined, localX, localY);
-          this.tileRenderTexture.endDraw();
+      const renderTarget = this.getTileRenderTarget(x, y);
+      if (renderTarget) {
+        const localX = (x - renderTarget.originX) * TILE_SIZE;
+        const localY = (y - renderTarget.originY) * TILE_SIZE;
+        if (renderTarget.chunkKey === null) {
+          renderTarget.renderTexture.beginDraw();
+          renderTarget.renderTexture.batchDrawFrame(
+            tileKey,
+            undefined,
+            localX,
+            localY,
+          );
+          renderTarget.renderTexture.endDraw();
+        } else {
+          renderTarget.renderTexture.drawFrame(
+            tileKey,
+            undefined,
+            localX,
+            localY,
+          );
         }
       }
 
@@ -1723,20 +1991,29 @@ export class MapRenderer {
           sprite.setTexture(textureKey);
         }
 
-        // Re-stamp on RenderTexture
-        if (this.tileRenderTexture) {
-          const [xStr, yStr] = key.split(",");
-          const x = parseInt(xStr, 10);
-          const y = parseInt(yStr, 10);
-          const localX = (x - this.mapOriginX) * TILE_SIZE;
-          const localY = (y - this.mapOriginY) * TILE_SIZE;
-          const rtWidth = this.tileRenderTexture.width;
-          const rtHeight = this.tileRenderTexture.height;
-
-          if (localX >= 0 && localY >= 0 && localX < rtWidth && localY < rtHeight) {
-            this.tileRenderTexture.beginDraw();
-            this.tileRenderTexture.batchDrawFrame(textureKey, undefined, localX, localY);
-            this.tileRenderTexture.endDraw();
+        const [xStr, yStr] = key.split(",");
+        const x = parseInt(xStr, 10);
+        const y = parseInt(yStr, 10);
+        const renderTarget = this.getTileRenderTarget(x, y);
+        if (renderTarget) {
+          const localX = (x - renderTarget.originX) * TILE_SIZE;
+          const localY = (y - renderTarget.originY) * TILE_SIZE;
+          if (renderTarget.chunkKey === null) {
+            renderTarget.renderTexture.beginDraw();
+            renderTarget.renderTexture.batchDrawFrame(
+              textureKey,
+              undefined,
+              localX,
+              localY,
+            );
+            renderTarget.renderTexture.endDraw();
+          } else {
+            renderTarget.renderTexture.drawFrame(
+              textureKey,
+              undefined,
+              localX,
+              localY,
+            );
           }
         }
       }
