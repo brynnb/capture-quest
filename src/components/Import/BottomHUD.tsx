@@ -332,21 +332,31 @@ const ChatDock = styled.div<{ $collapsed: boolean; $mobileOpen: boolean }>`
 
 const DialogueAnchor = styled.div<{ $collapsed: boolean }>`
   position: absolute;
-  right: auto;
+  right: 0;
   bottom: 246px;
-  left: 50%;
+  left: ${(props) => (props.$collapsed ? "64px" : "272px")};
   z-index: 22;
-  width: min(600px, calc(100vw - 32px));
   height: 0;
-  transform: translateX(-50%);
+  display: flex;
+  justify-content: center;
   pointer-events: none;
+  transition: left 180ms ease;
 
   @media (max-width: 850px), (pointer: coarse) {
+    right: calc(10px + env(safe-area-inset-right, 0px));
     bottom: calc(168px + env(safe-area-inset-bottom, 0px));
-    width: calc(
-      100vw - 20px - env(safe-area-inset-left, 0px) -
-        env(safe-area-inset-right, 0px)
-    );
+    left: calc(10px + env(safe-area-inset-left, 0px));
+    transition: none;
+  }
+`;
+
+const DialogueWidth = styled.div`
+  position: relative;
+  width: min(600px, calc(100% - 32px));
+  height: 0;
+
+  @media (max-width: 850px), (pointer: coarse) {
+    width: 100%;
   }
 `;
 
@@ -630,7 +640,9 @@ const BottomHUD = () => {
         <Chatbox />
       </ChatDock>
       <DialogueAnchor $collapsed={isHudSidebarCollapsed}>
-        <PokemonDialogueBox />
+        <DialogueWidth>
+          <PokemonDialogueBox />
+        </DialogueWidth>
       </DialogueAnchor>
       <MobileControls />
     </HudLayer>
