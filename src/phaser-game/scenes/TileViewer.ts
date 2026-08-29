@@ -13,7 +13,6 @@ import { MapDataService } from "../services/MapDataService";
 import { MapLoader } from "../services/MapLoader";
 import { TileManager, ActorManager, UiManager, WarpManager } from "../managers";
 import * as PhaserNet from "../services/PhaserNetworkService";
-import WebFont from "webfontloader";
 
 import {
   PhaserMapInfo,
@@ -384,26 +383,16 @@ export class TileViewer extends Scene {
     this.tileManager = new TileManager(this);
     this.actorManager = new ActorManager(this);
 
-    // Load the Pokemon font using WebFontLoader
-    try {
-      WebFont.load({
-        custom: {
-          families: ["Pokemon Pixel Font"],
-          urls: ["/src/index.css"],
+    // index.css is imported by the application entry point, so Vite publishes
+    // the font face as part of the hashed production stylesheet. Loading a
+    // source-tree CSS URL here breaks in production, where /src does not exist.
+    if (document.fonts) {
+      void document.fonts.load("12px 'Pokemon GB'").then(
+        () => this.uiManager?.refreshTextElements(),
+        (error: unknown) => {
+          console.warn("Pokemon font failed to load, using fallback fonts", error);
         },
-        active: () => {
-          console.log("Pokemon font loaded successfully");
-          // Refresh UI elements when font is loaded
-          if (this.uiManager) {
-            this.uiManager.refreshTextElements();
-          }
-        },
-        inactive: () => {
-          console.warn("Pokemon font failed to load, using fallback fonts");
-        },
-      });
-    } catch (e) {
-      console.error("Error loading WebFont:", e);
+      );
     }
 
     // Add error handler for the item-marker (poke_ball) image
@@ -811,7 +800,7 @@ export class TileViewer extends Scene {
 
     // Try to refresh UI elements if the font is already loaded
     try {
-      if (document.fonts && document.fonts.check("12px 'Pokemon Pixel Font'")) {
+      if (document.fonts && document.fonts.check("12px 'Pokemon GB'")) {
         console.log("Pokemon font already loaded, refreshing UI");
         this.uiManager.refreshTextElements();
       }

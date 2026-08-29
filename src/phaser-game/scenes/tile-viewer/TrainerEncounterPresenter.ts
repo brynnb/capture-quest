@@ -70,7 +70,7 @@ export class TrainerEncounterPresenter {
       trainerSprite.y - TILE_SIZE,
       "!",
       {
-        fontFamily: '"Pokemon Pixel Font", monospace',
+        fontFamily: '"Pokemon GB", monospace',
         fontSize: "24px",
         color: "#ff0000",
         fontStyle: "bold",

@@ -64,7 +64,7 @@ export class UiManager {
   createUiElements() {
     // Add info text for displaying tile information
     this.infoText = this.scene.add.text(10, 10, "", {
-      fontFamily: "'Pokemon Pixel Font', monospace, Arial",
+      fontFamily: "'Pokemon GB', monospace, Arial",
       fontSize: "12px",
       color: "#ffffff",
       backgroundColor: "#000000",
@@ -77,7 +77,7 @@ export class UiManager {
 
     // Add view mode indicator
     this.modeText = this.scene.add.text(10, 30, "Overworld View", {
-      fontFamily: "'Pokemon Pixel Font', monospace, Arial",
+      fontFamily: "'Pokemon GB', monospace, Arial",
       fontSize: "12px",
       color: "#ffffff",
       backgroundColor: "#000000",
@@ -90,7 +90,7 @@ export class UiManager {
 
     // Add loading text
     this.loadingText = this.scene.add.text(10, 50, "Loading map data...", {
-      fontFamily: "'Pokemon Pixel Font', monospace, Arial",
+      fontFamily: "'Pokemon GB', monospace, Arial",
       fontSize: "12px",
       color: "#ffffff",
       backgroundColor: "#000000",
