@@ -18,6 +18,8 @@ function createRendererHarness() {
   };
   harness.mapOriginX = 0;
   harness.mapOriginY = 0;
+  harness.tileChunkRenderTextures = new Map();
+  harness.tileChunkKeyByGridPosition = new Map();
   harness.userTileSprites = new Map();
 
   return {

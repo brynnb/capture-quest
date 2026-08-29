@@ -57,6 +57,7 @@ interface QueuedExactFetch {
 
 interface FetchedExactChunk {
   tiles: PhaserTile[];
+  renderTiles: PhaserTile[];
   revision: number;
 }
 
@@ -241,6 +242,7 @@ export class OverworldChunkStream {
     for (const queued of this.exactFetchQueue.splice(0)) {
       queued.resolve({
         tiles: [],
+        renderTiles: [],
         revision: this.chunkRevisionByKey.get(queued.chunk.key) ?? 0,
       });
     }
@@ -530,13 +532,14 @@ export class OverworldChunkStream {
       // Evict the previous plan before allocating replacements so GPU and
       // collision residency never exceeds the plan's <=3x3 desired set.
       this.evictNonDesiredExactChunks();
-      for (const { chunk, tiles } of staged) {
+      for (const { chunk, tiles, renderTiles } of staged) {
         if (this.loadedExactChunks.has(chunk.key)) continue;
         this.options.mapRenderer.upsertTileChunk(
           chunk.key,
           chunk.chunkX,
           chunk.chunkY,
           tiles,
+          renderTiles,
         );
         this.loadedExactChunks.set(chunk.key, tiles);
         if (!this.options.viewOnly) {
@@ -555,6 +558,7 @@ export class OverworldChunkStream {
     if (cached && this.boundsEqual(cached.bounds, chunk.bounds)) {
       return Promise.resolve({
         tiles: cached.tiles,
+        renderTiles: cached.renderTiles,
         revision: this.chunkRevisionByKey.get(chunk.key) ?? 0,
       });
     }
@@ -581,6 +585,7 @@ export class OverworldChunkStream {
     if (cached && this.boundsEqual(cached.bounds, chunk.bounds)) {
       return {
         tiles: cached.tiles,
+        renderTiles: cached.renderTiles,
         revision: this.chunkRevisionByKey.get(chunk.key) ?? 0,
       };
     }
@@ -603,6 +608,7 @@ export class OverworldChunkStream {
       if (!this.shouldFetchQueuedChunk(queued.chunk.key)) {
         queued.resolve({
           tiles: [],
+          renderTiles: [],
           revision: this.chunkRevisionByKey.get(queued.chunk.key) ?? 0,
         });
         continue;
@@ -631,14 +637,26 @@ export class OverworldChunkStream {
     const streamGeneration = this.requestGeneration;
     for (;;) {
       const revision = this.chunkRevisionByKey.get(chunk.key) ?? 0;
-      const tiles = await this.options.mapDataService.fetchTilesInBounds(
+      // Include one neighboring row and column as a render-only halo. The
+      // adjacent chunk contains the same source tiles, so their RenderTextures
+      // overlap cleanly instead of exposing transparent framebuffer edges.
+      const renderBounds = {
+        ...chunk.bounds,
+        maxX: Math.min(this.options.mapBounds.maxX, chunk.bounds.maxX + 1),
+        maxY: Math.min(this.options.mapBounds.maxY, chunk.bounds.maxY + 1),
+      };
+      const renderTiles = await this.options.mapDataService.fetchTilesInBounds(
         UNIFIED_OVERWORLD_MAP_ID,
-        chunk.bounds,
+        renderBounds,
+      );
+      const tiles = renderTiles.filter(
+        (tile) =>
+          tile.x <= chunk.bounds.maxX && tile.y <= chunk.bounds.maxY,
       );
       if (this.stopped || streamGeneration !== this.requestGeneration) {
         // A stopped or superseded stream must never repopulate the shared LRU
         // after cleanup (especially after a committed editor invalidation).
-        return { tiles: [], revision };
+        return { tiles: [], renderTiles: [], revision };
       }
       if ((this.chunkRevisionByKey.get(chunk.key) ?? 0) !== revision) {
         // A committed paint/erase landed while this request was in flight.
@@ -650,8 +668,10 @@ export class OverworldChunkStream {
         chunk.key,
         chunk.bounds,
         tiles,
+        renderBounds,
+        renderTiles,
       );
-      return { tiles, revision };
+      return { tiles, renderTiles, revision };
     }
   }
 
@@ -668,6 +688,7 @@ export class OverworldChunkStream {
       this.exactFetchQueue.splice(index, 1);
       queued.resolve({
         tiles: [],
+        renderTiles: [],
         revision: this.chunkRevisionByKey.get(queued.chunk.key) ?? 0,
       });
     }

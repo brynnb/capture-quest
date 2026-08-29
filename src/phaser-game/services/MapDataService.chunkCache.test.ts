@@ -63,6 +63,27 @@ describe("MapDataService overworld chunk cache", () => {
     ]);
   });
 
+  test("invalidates a neighboring cache whose render halo includes the edit", () => {
+    const service = new MapDataService();
+    service.setOverworldTileChunk(
+      "north",
+      { minX: 0, minY: -64, maxX: 63, maxY: -1 },
+      [tile(1, 0, -1)],
+      { minX: 0, minY: -64, maxX: 64, maxY: 0 },
+      [tile(1, 0, -1), tile(2, 0, 0)],
+    );
+    service.setOverworldTileChunk(
+      "south",
+      { minX: 0, minY: 0, maxX: 63, maxY: 63 },
+      [tile(2, 0, 0)],
+    );
+
+    service.invalidateOverworldTileChunkAt(0, 0);
+
+    expect(service.getOverworldTileChunk("north")).toBeUndefined();
+    expect(service.getOverworldTileChunk("south")).toBeUndefined();
+  });
+
   test("clears cached chunks with the rest of the map-data cache", () => {
     const service = new MapDataService();
     service.setOverworldTileChunk(

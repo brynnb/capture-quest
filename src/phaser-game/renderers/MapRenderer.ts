@@ -39,6 +39,13 @@ interface TileChunkRenderTexture {
   tileKeys: Set<string>;
 }
 
+interface TileRenderTarget {
+  renderTexture: Phaser.GameObjects.RenderTexture;
+  originX: number;
+  originY: number;
+  chunkKey: string | null;
+}
+
 export class MapRenderer {
   // Maximum texture dimension before falling back to individual sprites
   private static readonly MAX_RENDER_TEXTURE_SIZE = 8192;
@@ -492,16 +499,16 @@ export class MapRenderer {
    * Replace or add one exact 64x64 overworld tile chunk.
    *
    * chunkColumn/chunkRow are chunk-grid indices, not tile coordinates. For
-   * example, column 2 starts at tile x=128. A chunk always uses one
-   * 1024x1024 RenderTexture, so streaming never falls back to thousands of
-   * individual tile sprites when the complete overworld exceeds GPU texture
-   * limits.
+   * example, column 2 starts at tile x=128. Each chunk includes a one-tile
+   * render-only halo on its east and south edges, so adjacent framebuffers
+   * overlap with identical source pixels instead of exposing a moving seam.
    */
   upsertTileChunk(
     chunkKey: string,
     chunkColumn: number,
     chunkRow: number,
     tiles: PhaserTile[],
+    renderTiles: PhaserTile[] = tiles,
   ): { rendered: number; skipped: number } {
     if (!chunkKey) {
       throw new Error("Tile chunk key must not be empty");
@@ -515,6 +522,7 @@ export class MapRenderer {
     const maxXExclusive = originX + MAP_TILE_CHUNK_SIZE;
     const maxYExclusive = originY + MAP_TILE_CHUNK_SIZE;
     const uniqueTiles = new Map<string, PhaserTile>();
+    const uniqueRenderTiles = new Map<string, PhaserTile>();
 
     for (const tile of tiles) {
       if (
@@ -532,7 +540,23 @@ export class MapRenderer {
       uniqueTiles.set(`${tile.x},${tile.y}`, tile);
     }
 
-    const textureSize = MAP_TILE_CHUNK_SIZE * TILE_SIZE;
+    for (const tile of renderTiles) {
+      if (
+        !Number.isInteger(tile.x) ||
+        !Number.isInteger(tile.y) ||
+        tile.x < originX ||
+        tile.x > maxXExclusive ||
+        tile.y < originY ||
+        tile.y > maxYExclusive
+      ) {
+        throw new Error(
+          `Render tile (${tile.x}, ${tile.y}) is outside chunk halo ${chunkKey}`,
+        );
+      }
+      uniqueRenderTiles.set(`${tile.x},${tile.y}`, tile);
+    }
+
+    const textureSize = (MAP_TILE_CHUNK_SIZE + 1) * TILE_SIZE;
     const renderTexture = this.scene.add.renderTexture(
       originX * TILE_SIZE,
       originY * TILE_SIZE,
@@ -544,7 +568,7 @@ export class MapRenderer {
     let rendered = 0;
     let skipped = 0;
     renderTexture.beginDraw();
-    for (const tile of uniqueTiles.values()) {
+    for (const tile of uniqueRenderTiles.values()) {
       const textureKey = `tile-${tile.tileImageId}`;
       if (this.scene.textures.exists(textureKey)) {
         renderTexture.batchDrawFrame(
@@ -653,12 +677,7 @@ export class MapRenderer {
   private getTileRenderTarget(
     x: number,
     y: number,
-  ): {
-    renderTexture: Phaser.GameObjects.RenderTexture;
-    originX: number;
-    originY: number;
-    chunkKey: string | null;
-  } | null {
+  ): TileRenderTarget | null {
     const chunkEntry = this.getTileChunkAt(x, y);
     if (chunkEntry) {
       return {
@@ -686,6 +705,30 @@ export class MapRenderer {
       originY: this.mapOriginY,
       chunkKey: null,
     };
+  }
+
+  private getTileRenderTargets(x: number, y: number): TileRenderTarget[] {
+    const chunkTargets: TileRenderTarget[] = [];
+    for (const [chunkKey, chunk] of this.tileChunkRenderTextures) {
+      if (
+        x < chunk.originX ||
+        x > chunk.originX + MAP_TILE_CHUNK_SIZE ||
+        y < chunk.originY ||
+        y > chunk.originY + MAP_TILE_CHUNK_SIZE
+      ) {
+        continue;
+      }
+      chunkTargets.push({
+        renderTexture: chunk.renderTexture,
+        originX: chunk.originX,
+        originY: chunk.originY,
+        chunkKey,
+      });
+    }
+    if (chunkTargets.length > 0) return chunkTargets;
+
+    const legacyTarget = this.getTileRenderTarget(x, y);
+    return legacyTarget ? [legacyTarget] : [];
   }
 
   private removeUserTileSpritesWithinChunk(chunk: TileChunkRenderTexture): void {
@@ -854,8 +897,8 @@ export class MapRenderer {
     // Update the stored tile data
     this.tileDataMap.set(key, newTileImageId);
 
-    const renderTarget = this.getTileRenderTarget(x, y);
-    if (renderTarget) {
+    const renderTargets = this.getTileRenderTargets(x, y);
+    for (const renderTarget of renderTargets) {
       const localX = (x - renderTarget.originX) * TILE_SIZE;
       const localY = (y - renderTarget.originY) * TILE_SIZE;
       if (renderTarget.chunkKey === null) {
@@ -1468,14 +1511,16 @@ export class MapRenderer {
     // Update the data map
     this.tileDataMap.set(key, tileImageId);
 
-    const renderTarget = this.getTileRenderTarget(x, y);
-    if (renderTarget) {
-      const localX = (x - renderTarget.originX) * TILE_SIZE;
-      const localY = (y - renderTarget.originY) * TILE_SIZE;
-      // A single direct frame draw is both pixel-aligned and immediately
-      // flushed. The previous fill + beginDraw sequence could leave black
-      // seams or stale fragments until the whole map was reloaded.
-      renderTarget.renderTexture.drawFrame(tileKey, undefined, localX, localY);
+    const renderTargets = this.getTileRenderTargets(x, y);
+    if (renderTargets.length > 0) {
+      for (const renderTarget of renderTargets) {
+        const localX = (x - renderTarget.originX) * TILE_SIZE;
+        const localY = (y - renderTarget.originY) * TILE_SIZE;
+        // A single direct frame draw is both pixel-aligned and immediately
+        // flushed. The previous fill + beginDraw sequence could leave black
+        // seams or stale fragments until the whole map was reloaded.
+        renderTarget.renderTexture.drawFrame(tileKey, undefined, localX, localY);
+      }
 
       const chunkEntry = this.getTileChunkAt(x, y);
       if (chunkEntry) {
@@ -1535,25 +1580,27 @@ export class MapRenderer {
 
       this.tileDataMap.set(key, tile.tileImageId);
 
-      const renderTarget = this.getTileRenderTarget(tile.x, tile.y);
-      if (renderTarget) {
-        const localX = (tile.x - renderTarget.originX) * TILE_SIZE;
-        const localY = (tile.y - renderTarget.originY) * TILE_SIZE;
-        if (renderTarget.chunkKey === null) {
-          beginRenderTextureDraw();
-          renderTarget.renderTexture.batchDrawFrame(
-            tileKey,
-            undefined,
-            localX,
-            localY,
-          );
-        } else {
-          renderTarget.renderTexture.drawFrame(
-            tileKey,
-            undefined,
-            localX,
-            localY,
-          );
+      const renderTargets = this.getTileRenderTargets(tile.x, tile.y);
+      if (renderTargets.length > 0) {
+        for (const renderTarget of renderTargets) {
+          const localX = (tile.x - renderTarget.originX) * TILE_SIZE;
+          const localY = (tile.y - renderTarget.originY) * TILE_SIZE;
+          if (renderTarget.chunkKey === null) {
+            beginRenderTextureDraw();
+            renderTarget.renderTexture.batchDrawFrame(
+              tileKey,
+              undefined,
+              localX,
+              localY,
+            );
+          } else {
+            renderTarget.renderTexture.drawFrame(
+              tileKey,
+              undefined,
+              localX,
+              localY,
+            );
+          }
         }
 
         const chunkEntry = this.getTileChunkAt(tile.x, tile.y);
@@ -1605,8 +1652,7 @@ export class MapRenderer {
 
     this.tileDataMap.delete(key);
 
-    const renderTarget = this.getTileRenderTarget(x, y);
-    if (renderTarget) {
+    for (const renderTarget of this.getTileRenderTargets(x, y)) {
       renderTarget.renderTexture.drawFrame(
         MapRenderer.EMPTY_TILE_TEXTURE_KEY,
         undefined,
@@ -1873,8 +1919,7 @@ export class MapRenderer {
       const x = parseInt(xStr, 10);
       const y = parseInt(yStr, 10);
 
-      const renderTarget = this.getTileRenderTarget(x, y);
-      if (renderTarget) {
+      for (const renderTarget of this.getTileRenderTargets(x, y)) {
         const localX = (x - renderTarget.originX) * TILE_SIZE;
         const localY = (y - renderTarget.originY) * TILE_SIZE;
         if (renderTarget.chunkKey === null) {
@@ -2007,8 +2052,7 @@ export class MapRenderer {
         const [xStr, yStr] = key.split(",");
         const x = parseInt(xStr, 10);
         const y = parseInt(yStr, 10);
-        const renderTarget = this.getTileRenderTarget(x, y);
-        if (renderTarget) {
+        for (const renderTarget of this.getTileRenderTargets(x, y)) {
           const localX = (x - renderTarget.originX) * TILE_SIZE;
           const localY = (y - renderTarget.originY) * TILE_SIZE;
           if (renderTarget.chunkKey === null) {

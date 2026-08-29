@@ -58,6 +58,8 @@ export interface TilePage {
 export interface CachedTileChunk {
   bounds: TileBoundsRequest;
   tiles: PhaserTile[];
+  renderBounds: TileBoundsRequest;
+  renderTiles: PhaserTile[];
 }
 
 function normalizeCorrelatedTiles(data: PhaserTilesResponse): PhaserTile[] {
@@ -111,9 +113,16 @@ export class MapDataService {
     key: string,
     bounds: TileBoundsRequest,
     tiles: PhaserTile[],
+    renderBounds: TileBoundsRequest = bounds,
+    renderTiles: PhaserTile[] = tiles,
   ): void {
     this.overworldTileChunks.delete(key);
-    this.overworldTileChunks.set(key, { bounds, tiles });
+    this.overworldTileChunks.set(key, {
+      bounds,
+      tiles,
+      renderBounds,
+      renderTiles,
+    });
     while (
       this.overworldTileChunks.size >
       MapDataService.MAX_CACHED_OVERWORLD_CHUNKS
@@ -127,10 +136,10 @@ export class MapDataService {
   invalidateOverworldTileChunkAt(x: number, y: number): void {
     for (const [key, chunk] of this.overworldTileChunks) {
       if (
-        x >= chunk.bounds.minX &&
-        x <= chunk.bounds.maxX &&
-        y >= chunk.bounds.minY &&
-        y <= chunk.bounds.maxY
+        x >= chunk.renderBounds.minX &&
+        x <= chunk.renderBounds.maxX &&
+        y >= chunk.renderBounds.minY &&
+        y <= chunk.renderBounds.maxY
       ) {
         this.overworldTileChunks.delete(key);
       }

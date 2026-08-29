@@ -93,7 +93,7 @@ describe("MapRenderer exact tile chunks", () => {
 
     expect(MAP_TILE_CHUNK_SIZE).toBe(64);
     expect(result).toEqual({ rendered: 2, skipped: 0 });
-    expect(renderTexture).toHaveBeenCalledWith(2048, -1024, 1024, 1024);
+    expect(renderTexture).toHaveBeenCalledWith(2048, -1024, 1040, 1040);
     expect(renderTextures[0].batchDrawFrame).toHaveBeenNthCalledWith(
       1,
       "tile-100",
@@ -110,6 +110,52 @@ describe("MapRenderer exact tile chunks", () => {
     );
     expect(addImage).not.toHaveBeenCalled();
     expect(renderer.getTileImageIdAt(128, -64)).toBe(100);
+  });
+
+  it("renders a neighboring tile halo without claiming its data coordinate", () => {
+    const { renderer, renderTextures, tileDataMap } = createRendererHarness();
+    renderer.upsertTileChunk(
+      "0,0",
+      0,
+      0,
+      [tile(63, 0, 100)],
+      [tile(63, 0, 100), tile(64, 0, 101)],
+    );
+
+    expect(renderTextures[0].batchDrawFrame).toHaveBeenLastCalledWith(
+      "tile-101",
+      undefined,
+      1024,
+      0,
+    );
+    expect(renderer.getTileImageIdAt(63, 0)).toBe(100);
+    expect(tileDataMap.has("64,0")).toBe(false);
+  });
+
+  it("updates every loaded halo copy of a boundary tile", () => {
+    const { renderer, renderTextures } = createRendererHarness();
+    renderer.upsertTileChunk(
+      "0,-1",
+      0,
+      -1,
+      [tile(0, -1, 100)],
+      [tile(0, -1, 100), tile(0, 0, 101)],
+    );
+    renderer.upsertTileChunk("0,0", 0, 0, [tile(0, 0, 101)]);
+
+    expect(renderer.updateTile(0, 0, 202)).toBe(true);
+    expect(renderTextures[0].drawFrame).toHaveBeenCalledWith(
+      "tile-202",
+      undefined,
+      0,
+      1024,
+    );
+    expect(renderTextures[1].drawFrame).toHaveBeenCalledWith(
+      "tile-202",
+      undefined,
+      0,
+      0,
+    );
   });
 
   it("places exact chunks above overview imagery and below world objects", () => {

@@ -177,6 +177,11 @@ describe("OverworldChunkStream", () => {
     expect(status.loadedExactChunkKeys).toHaveLength(9);
     expect(new Set(status.loadedExactChunkKeys)).toHaveLength(9);
     expect(harness.fetchTilesInBounds).toHaveBeenCalledTimes(9);
+    expect(
+      harness.fetchTilesInBounds.mock.calls.find(
+        ([, bounds]) => bounds.minX === 0 && bounds.minY === 0,
+      )?.[1],
+    ).toEqual({ minX: 0, minY: 0, maxX: 64, maxY: 64 });
     expect(harness.mapRenderer.upsertTileChunk).toHaveBeenCalledTimes(9);
     expect(Math.max(...harness.emittedTiles.map((tiles) => tiles.length))).toBe(
       9,
@@ -529,6 +534,7 @@ describe("OverworldChunkStream", () => {
       "overworld:0:0",
       0,
       0,
+      [expect.objectContaining({ tileImageId: 99 })],
       [expect.objectContaining({ tileImageId: 99 })],
     );
   });
