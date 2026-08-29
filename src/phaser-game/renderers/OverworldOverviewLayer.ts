@@ -4,6 +4,7 @@ import { RUNTIME_TILE_ASSET_VERSION } from "@/constants/runtime_asset_version";
 import { getApiUrl } from "@/config";
 import { TILE_SIZE } from "../constants";
 import { ensureRuntimeTileCatalogCurrent } from "../services/RuntimeAssetCompatibility";
+import { refreshWorldTextureSampling } from "./worldTextureSampling";
 
 export interface OverviewChunkRef {
   key: string;
@@ -182,6 +183,11 @@ export class OverworldOverviewLayer {
       return;
     }
     if (this.entries.has(chunk.key)) return;
+
+    refreshWorldTextureSampling(
+      this.scene,
+      this.scene.textures.get(textureKey),
+    );
 
     const originX = chunk.column * this.chunkSize;
     const originY = chunk.row * this.chunkSize;

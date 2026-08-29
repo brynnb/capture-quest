@@ -116,6 +116,7 @@ function createHarness(chunkSize = 64, autoComplete = true) {
   });
   const textures = {
     exists: vi.fn((key: string) => textureKeys.has(key)),
+    get: vi.fn(() => ({ setFilter: vi.fn() })),
     remove: vi.fn((key: string) => textureKeys.delete(key)),
   };
   const mapContainer = {

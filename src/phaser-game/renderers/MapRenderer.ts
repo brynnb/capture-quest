@@ -10,6 +10,7 @@ import { ActorManager } from "../managers/ActorManager";
 import { OVERWORLD_CHUNK_SIZE_TILES } from "../services/OverworldChunkPlanner";
 import { isWorldInputFrozen } from "../utils/worldInputGuard";
 import { OVERWORLD_OVERVIEW_IMAGE_NAME_PREFIX } from "./OverworldOverviewLayer";
+import { refreshWorldTextureSampling } from "./worldTextureSampling";
 
 interface LocalActorPositionOverride {
   x: number;
@@ -272,6 +273,7 @@ export class MapRenderer {
         this.tileDataMap.set(`${x},${y}`, tileImageId);
       }
       this.tileRenderTexture.endDraw();
+      this.refreshRenderTextureSampling([this.tileRenderTexture]);
       console.log(
         `[MapRenderer] RenderTexture: stamped ${stampedCount} tiles, skipped ${skippedCount} (missing textures)`,
       );
@@ -583,6 +585,7 @@ export class MapRenderer {
       }
     }
     renderTexture.endDraw();
+    this.refreshRenderTextureSampling([renderTexture]);
 
     // A grid position has one authoritative exact-tile chunk. Remove either a
     // prior version of this named chunk or a differently named stale occupant
@@ -729,6 +732,17 @@ export class MapRenderer {
 
     const legacyTarget = this.getTileRenderTarget(x, y);
     return legacyTarget ? [legacyTarget] : [];
+  }
+
+  private refreshRenderTextureSampling(
+    renderTextures: Iterable<Phaser.GameObjects.RenderTexture>,
+  ): void {
+    const refreshed = new Set<Phaser.GameObjects.RenderTexture>();
+    for (const renderTexture of renderTextures) {
+      if (refreshed.has(renderTexture)) continue;
+      refreshed.add(renderTexture);
+      refreshWorldTextureSampling(this.scene, renderTexture.texture);
+    }
   }
 
   private removeUserTileSpritesWithinChunk(chunk: TileChunkRenderTexture): void {
@@ -919,6 +933,9 @@ export class MapRenderer {
         this.tileChunkOwnerByCoordinate.set(key, chunkEntry.chunkKey);
       }
     }
+    this.refreshRenderTextureSampling(
+      renderTargets.map((target) => target.renderTexture),
+    );
 
     const userSprite = this.userTileSprites.get(key);
     if (userSprite) {
@@ -1521,6 +1538,9 @@ export class MapRenderer {
         // seams or stale fragments until the whole map was reloaded.
         renderTarget.renderTexture.drawFrame(tileKey, undefined, localX, localY);
       }
+      this.refreshRenderTextureSampling(
+        renderTargets.map((target) => target.renderTexture),
+      );
 
       const chunkEntry = this.getTileChunkAt(x, y);
       if (chunkEntry) {
@@ -1562,6 +1582,7 @@ export class MapRenderer {
     let rendered = 0;
     let skipped = 0;
     let renderTextureDrawing = false;
+    const changedRenderTextures = new Set<Phaser.GameObjects.RenderTexture>();
 
     const beginRenderTextureDraw = () => {
       if (!this.tileRenderTexture || renderTextureDrawing) return;
@@ -1583,6 +1604,7 @@ export class MapRenderer {
       const renderTargets = this.getTileRenderTargets(tile.x, tile.y);
       if (renderTargets.length > 0) {
         for (const renderTarget of renderTargets) {
+          changedRenderTextures.add(renderTarget.renderTexture);
           const localX = (tile.x - renderTarget.originX) * TILE_SIZE;
           const localY = (tile.y - renderTarget.originY) * TILE_SIZE;
           if (renderTarget.chunkKey === null) {
@@ -1636,6 +1658,7 @@ export class MapRenderer {
     if (renderTextureDrawing) {
       this.tileRenderTexture?.endDraw();
     }
+    this.refreshRenderTextureSampling(changedRenderTextures);
 
     return { rendered, skipped };
   }
@@ -1652,7 +1675,8 @@ export class MapRenderer {
 
     this.tileDataMap.delete(key);
 
-    for (const renderTarget of this.getTileRenderTargets(x, y)) {
+    const renderTargets = this.getTileRenderTargets(x, y);
+    for (const renderTarget of renderTargets) {
       renderTarget.renderTexture.drawFrame(
         MapRenderer.EMPTY_TILE_TEXTURE_KEY,
         undefined,
@@ -1660,6 +1684,9 @@ export class MapRenderer {
         (y - renderTarget.originY) * TILE_SIZE,
       );
     }
+    this.refreshRenderTextureSampling(
+      renderTargets.map((target) => target.renderTexture),
+    );
 
     const chunkEntry = this.getTileChunkAt(x, y);
     if (chunkEntry) {
@@ -1912,6 +1939,7 @@ export class MapRenderer {
     const tileKey = `tile-${tileImageId}`;
     if (!this.scene.textures.exists(tileKey)) return;
 
+    const changedRenderTextures = new Set<Phaser.GameObjects.RenderTexture>();
     // Re-stamp all matching tiles onto the RenderTexture and update individual sprites
     for (const [key, tid] of this.tileDataMap.entries()) {
       if (tid !== tileImageId) continue;
@@ -1920,6 +1948,7 @@ export class MapRenderer {
       const y = parseInt(yStr, 10);
 
       for (const renderTarget of this.getTileRenderTargets(x, y)) {
+        changedRenderTextures.add(renderTarget.renderTexture);
         const localX = (x - renderTarget.originX) * TILE_SIZE;
         const localY = (y - renderTarget.originY) * TILE_SIZE;
         if (renderTarget.chunkKey === null) {
@@ -1947,6 +1976,7 @@ export class MapRenderer {
         sprite.setTexture(tileKey);
       }
     }
+    this.refreshRenderTextureSampling(changedRenderTextures);
   }
 
   /**
@@ -2024,6 +2054,7 @@ export class MapRenderer {
    */
   private tickAnimations(): void {
     this.tileAnimationFrameIndex++;
+    const changedRenderTextures = new Set<Phaser.GameObjects.RenderTexture>();
 
     for (const [tileImageId, anim] of this.tileAnimations) {
       const totalFrames = anim.frames.length + 1; // +1 for the base tile
@@ -2053,6 +2084,7 @@ export class MapRenderer {
         const x = parseInt(xStr, 10);
         const y = parseInt(yStr, 10);
         for (const renderTarget of this.getTileRenderTargets(x, y)) {
+          changedRenderTextures.add(renderTarget.renderTexture);
           const localX = (x - renderTarget.originX) * TILE_SIZE;
           const localY = (y - renderTarget.originY) * TILE_SIZE;
           if (renderTarget.chunkKey === null) {
@@ -2075,6 +2107,7 @@ export class MapRenderer {
         }
       }
     }
+    this.refreshRenderTextureSampling(changedRenderTextures);
   }
 
   /**

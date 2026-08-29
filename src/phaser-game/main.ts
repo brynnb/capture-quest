@@ -8,7 +8,9 @@ export const phaserConfig: Phaser.Types.Core.GameConfig = {
   width: 1440,
   height: 1080,
   backgroundColor: "#000000",
-  pixelArt: true, // Nearest-neighbor scaling, no antialias, roundPixels — eliminates tile tears
+  // Keep sprites and magnified pixels crisp. Composite world textures opt into
+  // mipmapped minification separately so zoomed-out terrain does not shimmer.
+  pixelArt: true,
   scale: {
     mode: Phaser.Scale.RESIZE,
     autoCenter: Phaser.Scale.CENTER_BOTH,
