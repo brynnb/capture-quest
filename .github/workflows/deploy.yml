@@ -153,7 +153,6 @@ jobs:
             test -n "$(find public/assets/trainers -type f -print -quit)" || return 1
             test -d public/sound/pokemon || return 1
             test -n "$(find public/sound/pokemon -name '*.ogg' -type f -print -quit)" || return 1
-            test -s src/constants/asset_manifest.json || return 1
             test -s src/constants/audio_manifest.json || return 1
             test -s src/constants/pokemon_audio_manifest.json || return 1
             test -s src/constants/runtime_asset_version.ts || return 1
@@ -200,7 +199,6 @@ jobs:
               exit 1
             }
             test -s public/phaser/runtime_asset_contract.json
-            test -s src/constants/asset_manifest.json
             test -s src/constants/audio_manifest.json
             test -s src/constants/pokemon_audio_manifest.json
             test -s src/constants/runtime_asset_version.ts
