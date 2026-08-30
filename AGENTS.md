@@ -67,9 +67,11 @@
   Health checks must retry for at least 60 seconds; an immediate 502 is not proof
   that startup failed.
 - Generated-asset cache keys should depend on extractor and generation inputs,
-  not unrelated workflow formatting. Cache readiness must still validate the
+  not unrelated workflow formatting. Full-data cache readiness must validate the
   database, contract, tile directory, generated catalog version, scripted events,
-  sprites, and complete audio manifests before accepting a restore.
+  sprites, and complete audio manifests before accepting a restore. A frontend
+  fast run must require the exact cache/build metadata and fail if it is absent;
+  it must never fall back to extraction for an unrelated code change.
 - Broad tests are optional in the manual fast lanes, but the production build,
   runtime-asset validation, atomic staging, live health check, contract check,
   and production debug-route check are never optional.

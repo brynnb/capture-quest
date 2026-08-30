@@ -69,7 +69,7 @@ jobs:
           node-version: '20'
 
       - name: Setup Python
-        if: steps.deployment.outputs.deploy_frontend == 'true'
+        if: steps.deployment.outputs.full_data == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -77,7 +77,7 @@ jobs:
           cache-dependency-path: tools/pokemon-gameboy-extractor-tool/requirements.txt
 
       - name: Install Python dependencies
-        if: steps.deployment.outputs.deploy_frontend == 'true'
+        if: steps.deployment.outputs.full_data == 'true'
         run: python -m pip install --requirement tools/pokemon-gameboy-extractor-tool/requirements.txt
 
       - name: Compute runtime asset cache key
@@ -188,7 +188,25 @@ jobs:
             python3 scripts/validate_runtime_assets.py >/dev/null || return 1
           }
 
-          if assets_ready; then
+          if [ "${{ steps.deployment.outputs.full_data }}" != "true" ]; then
+            # A code-only frontend release never changes the immutable runtime
+            # asset family on the host. It needs just enough restored metadata
+            # to build and prove that it matches production; silently falling
+            # back to a full extraction defeats the fast lane and can mutate
+            # data for an unrelated UI fix.
+            test "${{ steps.runtime-assets-cache.outputs.cache-hit }}" = "true" || {
+              echo "Frontend deploy requires an exact runtime-asset cache hit." >&2
+              echo "Run a full deployment to create the cache." >&2
+              exit 1
+            }
+            test -s public/phaser/runtime_asset_contract.json
+            test -s src/constants/asset_manifest.json
+            test -s src/constants/audio_manifest.json
+            test -s src/constants/pokemon_audio_manifest.json
+            test -s src/constants/runtime_asset_version.ts
+            echo "Frontend build inputs restored from the exact cache; extraction is disabled."
+            echo "needs_generation=false" >> "$GITHUB_OUTPUT"
+          elif assets_ready; then
             echo "Generated runtime assets restored from cache."
             echo "needs_generation=false" >> "$GITHUB_OUTPUT"
           else
@@ -197,7 +215,7 @@ jobs:
           fi
 
       - name: Install extractor system dependencies
-        if: steps.deployment.outputs.deploy_frontend == 'true' && steps.runtime-assets.outputs.needs_generation == 'true'
+        if: steps.deployment.outputs.full_data == 'true' && steps.runtime-assets.outputs.needs_generation == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential bison pkg-config libpng-dev gbsplay ffmpeg sqlite3
@@ -212,12 +230,12 @@ jobs:
           npm ci
 
       - name: Generate runtime assets
-        if: steps.deployment.outputs.deploy_frontend == 'true' && steps.runtime-assets.outputs.needs_generation == 'true'
+        if: steps.deployment.outputs.full_data == 'true' && steps.runtime-assets.outputs.needs_generation == 'true'
         run: |
           CAPTUREQUEST_RENDER_AUDIO=1 npm run bootstrap:assets
 
       - name: Verify generated runtime assets
-        if: steps.deployment.outputs.deploy_frontend == 'true'
+        if: steps.deployment.outputs.full_data == 'true'
         run: |
           set -euo pipefail
           test -s public/phaser/pokemon.db
@@ -290,7 +308,7 @@ jobs:
       # Save a freshly generated, fully validated artifact set before unrelated
       # build or deployment failures can discard the expensive extraction work.
       - name: Save generated runtime assets
-        if: steps.deployment.outputs.deploy_frontend == 'true' && steps.runtime-assets.outputs.needs_generation == 'true'
+        if: steps.deployment.outputs.full_data == 'true' && steps.runtime-assets.outputs.needs_generation == 'true'
         uses: actions/cache/save@v4
         with:
           path: |

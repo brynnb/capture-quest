@@ -46,7 +46,7 @@ smallest safe lane from the files changed by the push:
 
 | Lane | Used for | Work performed |
 | --- | --- | --- |
-| Frontend | React, Phaser, CSS, and browser-only code | Restore validated assets, build Vite, upload only the application shell, atomically activate it. |
+| Frontend | React, Phaser, CSS, and browser-only code | Restore the exact cached build inputs, build Vite, upload only the application shell, atomically activate it. Never run extraction. |
 | Backend | Go server code without schema/import changes | Build and replace the server binary, restart, and verify health. |
 | Code | A push containing frontend and backend code | Stage both code artifacts and activate them together without touching Postgres. |
 | Full data | Extractor, asset/audio pipeline, importer, schema, or generated scripted-event changes | Generate or restore the asset family, test, back up and import Postgres, then activate everything together. |
@@ -89,7 +89,10 @@ atomically renames the stage. Before doing so, it requires the SHA-256 of the
 staged `runtime_asset_contract.json` to equal production. A mismatch fails with
 an instruction to run the full lane; it must never be bypassed. This should turn
 an ordinary code-only deployment from roughly twelve minutes into a
-one-to-three-minute build and upload.
+one-to-three-minute build and upload. The lane also requires an exact generated
+asset cache hit for its compile-time manifests and contract. If that cache is
+missing, it fails with an instruction to run the full lane; it never silently
+turns an unrelated frontend change into a full extraction.
 
 The backend fast lane does not run the importer, schema, or database backup. It
 is valid only because schema and importer paths are classified as full-data
@@ -143,9 +146,11 @@ from an older catalog under a newly assigned numeric ID.
 The CI cache key should contain only inputs that can change generated runtime
 content: extractor revision, generation/sync scripts, dependency lockfiles,
 release, and source assets. Do not include unrelated workflow formatting in that
-hash. A restored cache is accepted only after readiness checks find the database,
-runtime contract, generated catalog version, graphics, sprites, scripted events,
-and complete audio metadata; a partial or older cache must regenerate.
+hash. A restored cache is accepted for a full-data release only after readiness
+checks find the database, runtime contract, generated catalog version, graphics,
+sprites, scripted events, and complete audio metadata; a partial or older cache
+must regenerate in that lane. A frontend-only release instead requires the exact
+cache key and its compile-time manifests, and fails rather than regenerating.
 Freshly generated assets are saved immediately after those checks pass, before
 frontend tests or deployment, so a later unrelated failure does not force the
 extractor to repeat the same work on the next run.
