@@ -31,9 +31,9 @@ requests are rejected. Keep both values out of Git and browser code.
 
 ## GitHub Actions Deploy
 
-The deploy workflow builds the frontend and server, then uploads them to a
-configured host over SSH. Configure these values in the GitHub repository
-settings before enabling the workflow:
+The deploy workflow builds and uploads only the components selected by its
+deployment lane. Configure these values in the GitHub repository settings
+before enabling the workflow:
 
 | Name | Type | Purpose |
 | --- | --- | --- |
@@ -41,7 +41,23 @@ settings before enabling the workflow:
 | `DEPLOY_HOST` | Secret | SSH destination, for example `ubuntu@example.com`. |
 | `DEPLOY_APP_DIR` | Repository variable | Absolute path to the app directory on the host. |
 
-The workflow is the canonical deployment path. It performs this order:
+The workflow is the canonical deployment path. In `auto` mode it selects the
+smallest safe lane from the files changed by the push:
+
+| Lane | Used for | Work performed |
+| --- | --- | --- |
+| Frontend | React, Phaser, CSS, and browser-only code | Restore validated assets, build Vite, upload only the application shell, atomically activate it. |
+| Backend | Go server code without schema/import changes | Build and replace the server binary, restart, and verify health. |
+| Code | A push containing frontend and backend code | Stage both code artifacts and activate them together without touching Postgres. |
+| Full data | Extractor, asset/audio pipeline, importer, schema, or generated scripted-event changes | Generate or restore the asset family, test, back up and import Postgres, then activate everything together. |
+
+Documentation-only and workflow-only pushes do not redeploy the application.
+Manual runs can override `auto` with `frontend`, `backend`, or `full`.
+`run_tests` adds broad frontend and focused backend tests to a manual fast run;
+full-data runs always execute them. `reset_database` always selects the full
+lane and remains an explicitly destructive operation.
+
+The full-data lane performs this order:
 
 1. install pinned Node, Python, and extractor dependencies;
 2. restore a validated generated-asset cache or rebuild all graphics, SQLite,
@@ -66,10 +82,25 @@ the wrong artwork. Generated-asset cache keys are immutable; bump the cache
 generation when its saved path set changes, and validate the exact DB-backed
 tile and sprite catalogs before accepting a restored cache.
 
-If any workflow stage fails after `cq-server` has stopped, the cleanup trap
-leaves it stopped. Do not restart it until the database, server binary, staged
-frontend, and runtime asset contract have been verified as one coherent
-release; this fail-closed downtime is safer than serving a mixed tile catalog.
+The frontend fast lane does not upload the large generated directories again.
+It copies the live `dist` to a staging directory on the host, removes stale
+hashed application files, overlays the new small application shell, and
+atomically renames the stage. Before doing so, it requires the SHA-256 of the
+staged `runtime_asset_contract.json` to equal production. A mismatch fails with
+an instruction to run the full lane; it must never be bypassed. This should turn
+an ordinary code-only deployment from roughly twelve minutes into a
+one-to-three-minute build and upload.
+
+The backend fast lane does not run the importer, schema, or database backup. It
+is valid only because schema and importer paths are classified as full-data
+changes. It stages the new binary, stops the service for replacement, restarts
+it, and runs the public health and production debug-route checks.
+
+If a full-data stage fails after `cq-server` has stopped, the cleanup trap leaves
+it stopped. Do not restart it until the database, server binary, staged frontend,
+and runtime asset contract have been verified as one coherent release. Fast code
+deployments retain the previous binary/static tree and roll back to them when
+post-activation verification fails.
 
 ## Build
 
@@ -119,6 +150,11 @@ Freshly generated assets are saved immediately after those checks pass, before
 frontend tests or deployment, so a later unrelated failure does not force the
 extractor to repeat the same work on the next run.
 
+`scripts/bootstrap_capturequest.sh` must generate
+`src/constants/audio_manifest.json` before calling the combined runtime asset
+validator. Otherwise a successful multi-minute extraction fails at its final
+validation step and GitHub cannot save the completed cache.
+
 ## Generated Audio
 
 Pokemon world, battle, SFX, and cry audio is generated under
@@ -160,9 +196,10 @@ Do not manually upload a complete frontend into the live `dist` directory.
 The JavaScript bundle, Postgres tile IDs, tile images, and
 `runtime_asset_contract.json` are one release unit; replacing only the static
 tree can give active clients valid numeric IDs paired with the wrong artwork.
-Use the canonical GitHub Actions deployment, which stages `dist.next-<sha>`,
-stops the API, imports the matching data, atomically activates the staged tree,
-and verifies the catalog before leaving the service running.
+Use the canonical GitHub Actions deployment. Its frontend lane verifies that the
+live runtime contract is unchanged before atomically activating
+`dist.next-<sha>`; its full-data lane stops the API and imports the matching data
+when the contract actually changes.
 
 For recovery, inspect the failed workflow and the importer state as described
 above. Do not improvise a full tar-over-SSH deployment. The narrowly scoped

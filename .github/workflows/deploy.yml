@@ -5,6 +5,21 @@ on:
     branches: [ main ]
   workflow_dispatch:
     inputs:
+      deployment_mode:
+        description: 'Deployment lane (auto chooses from changed files)'
+        required: false
+        default: auto
+        type: choice
+        options:
+          - auto
+          - frontend
+          - backend
+          - full
+      run_tests:
+        description: 'Run broad frontend and focused backend tests before deploying'
+        required: false
+        default: false
+        type: boolean
       reset_database:
         description: 'Drop and rebuild the runtime database before deploying'
         required: false
@@ -27,13 +42,34 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          fetch-depth: 0
+
+      - name: Classify deployment
+        id: deployment
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          REQUESTED_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.deployment_mode || 'auto' }}
+          RESET_DATABASE: ${{ github.event_name == 'workflow_dispatch' && inputs.reset_database || false }}
+        run: |
+          set -euo pipefail
+          reset_arg=()
+          if [ "$RESET_DATABASE" = "true" ]; then reset_arg=(--reset); fi
+          python3 scripts/classify_deployment.py \
+            --before "$BEFORE_SHA" \
+            --after "$GITHUB_SHA" \
+            --mode "$REQUESTED_MODE" \
+            "${reset_arg[@]}" \
+            --output "$GITHUB_OUTPUT"
+          cat "$GITHUB_OUTPUT"
 
       - name: Setup Node.js
+        if: steps.deployment.outputs.deploy_frontend == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
       - name: Setup Python
+        if: steps.deployment.outputs.deploy_frontend == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -41,9 +77,11 @@ jobs:
           cache-dependency-path: tools/pokemon-gameboy-extractor-tool/requirements.txt
 
       - name: Install Python dependencies
+        if: steps.deployment.outputs.deploy_frontend == 'true'
         run: python -m pip install --requirement tools/pokemon-gameboy-extractor-tool/requirements.txt
 
       - name: Compute runtime asset cache key
+        if: steps.deployment.outputs.deploy_frontend == 'true'
         id: asset-cache-key
         run: |
           set -euo pipefail
@@ -52,8 +90,6 @@ jobs:
             {
               printf 'extractor=%s\n' "$extractor_sha"
               git ls-files -s \
-                package-lock.json \
-                scripts/bootstrap_capturequest.sh \
                 scripts/generate_dungeon_hole_warps.py \
                 scripts/generate_audio_manifest.mjs \
                 scripts/sync_extractor_assets.py \
@@ -69,6 +105,7 @@ jobs:
           echo "key=cq-runtime-assets-v3-${release}-${pipeline_hash}" >> "$GITHUB_OUTPUT"
 
       - name: Restore generated runtime assets
+        if: steps.deployment.outputs.deploy_frontend == 'true'
         id: runtime-assets-cache
         uses: actions/cache/restore@v4
         with:
@@ -92,6 +129,7 @@ jobs:
           key: ${{ steps.asset-cache-key.outputs.key }}
 
       - name: Check generated runtime assets
+        if: steps.deployment.outputs.deploy_frontend == 'true'
         id: runtime-assets
         run: |
           set -euo pipefail
@@ -159,7 +197,7 @@ jobs:
           fi
 
       - name: Install extractor system dependencies
-        if: steps.runtime-assets.outputs.needs_generation == 'true'
+        if: steps.deployment.outputs.deploy_frontend == 'true' && steps.runtime-assets.outputs.needs_generation == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential bison pkg-config libpng-dev gbsplay ffmpeg sqlite3
@@ -169,15 +207,17 @@ jobs:
           rgbgfx --version
 
       - name: Install Node dependencies
+        if: steps.deployment.outputs.deploy_frontend == 'true'
         run: |
           npm ci
 
       - name: Generate runtime assets
-        if: steps.runtime-assets.outputs.needs_generation == 'true'
+        if: steps.deployment.outputs.deploy_frontend == 'true' && steps.runtime-assets.outputs.needs_generation == 'true'
         run: |
           CAPTUREQUEST_RENDER_AUDIO=1 npm run bootstrap:assets
 
       - name: Verify generated runtime assets
+        if: steps.deployment.outputs.deploy_frontend == 'true'
         run: |
           set -euo pipefail
           test -s public/phaser/pokemon.db
@@ -250,7 +290,7 @@ jobs:
       # Save a freshly generated, fully validated artifact set before unrelated
       # build or deployment failures can discard the expensive extraction work.
       - name: Save generated runtime assets
-        if: steps.runtime-assets.outputs.needs_generation == 'true'
+        if: steps.deployment.outputs.deploy_frontend == 'true' && steps.runtime-assets.outputs.needs_generation == 'true'
         uses: actions/cache/save@v4
         with:
           path: |
@@ -273,20 +313,25 @@ jobs:
           key: ${{ steps.asset-cache-key.outputs.key }}
 
       - name: Build Frontend
+        if: steps.deployment.outputs.deploy_frontend == 'true'
         run: |
-          npm run typecheck
-          npm test -- --run
+          if [ "${{ steps.deployment.outputs.full_data }}" = "true" ] || [ "${{ github.event_name == 'workflow_dispatch' && inputs.run_tests || false }}" = "true" ]; then
+            npm run typecheck
+            npm test -- --run
+          fi
           npm run build
           test -s dist/phaser/runtime_asset_contract.json
           test "$(sha256sum public/phaser/runtime_asset_contract.json | awk '{print $1}')" = "$(sha256sum dist/phaser/runtime_asset_contract.json | awk '{print $1}')"
 
       - name: Setup Go
+        if: steps.deployment.outputs.deploy_backend == 'true' || (github.event_name == 'workflow_dispatch' && inputs.run_tests)
         uses: actions/setup-go@v5
         with:
           go-version: '1.24'
           cache-dependency-path: server/go.sum
 
       - name: Test warp import and runtime contracts
+        if: steps.deployment.outputs.full_data == 'true' || (github.event_name == 'workflow_dispatch' && inputs.run_tests)
         run: |
           cd server
           go test -p=1 -count=1 -run 'Warp|LastMap|WorldTile|TileEditor|PhaserTilesRequest' ./cmd/import-phaser ./internal/world
@@ -295,12 +340,109 @@ jobs:
           go test -p=1 -count=1 -run 'TileArt|OverworldOverview' ./internal/server
 
       - name: Build Backend
+        if: steps.deployment.outputs.deploy_backend == 'true'
         run: |
           cd server
           GOOS=linux GOARCH=amd64 go build -o server ./cmd/server
-          GOOS=linux GOARCH=amd64 go build -o import-phaser ./cmd/import-phaser
+          if [ "${{ steps.deployment.outputs.full_data }}" = "true" ]; then
+            GOOS=linux GOARCH=amd64 go build -o import-phaser ./cmd/import-phaser
+          fi
+
+      - name: Deploy code without regenerating game data
+        if: steps.deployment.outputs.deploy_needed == 'true' && steps.deployment.outputs.full_data != 'true'
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_APP_DIR: ${{ vars.DEPLOY_APP_DIR }}
+          DEPLOY_FRONTEND: ${{ steps.deployment.outputs.deploy_frontend }}
+          DEPLOY_BACKEND: ${{ steps.deployment.outputs.deploy_backend }}
+        run: |
+          set -euo pipefail
+          : "${DEPLOY_HOST:?DEPLOY_HOST secret is required}"
+          : "${DEPLOY_APP_DIR:?DEPLOY_APP_DIR repository variable is required}"
+
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          SSH_OPTS="-o StrictHostKeyChecking=no -o ServerAliveInterval=15 -o ServerAliveCountMax=20 -o TCPKeepAlive=yes -i ~/.ssh/deploy_key"
+          HOST="$DEPLOY_HOST"
+          APP_DIR="$DEPLOY_APP_DIR"
+          FRONTEND_STAGE="dist.next-${GITHUB_SHA}"
+          BACKEND_STAGE="server.next-${GITHUB_SHA}"
+          SERVER_STOPPED=false
+          ACTIVATED=false
+          VERIFIED=false
+
+          cleanup_fast_deploy() {
+            rm -f ~/.ssh/deploy_key
+            if [ "$ACTIVATED" = "true" ] && [ "$VERIFIED" != "true" ]; then
+              echo "Code deployment was not verified; restoring the previous code release." >&2
+              ssh $SSH_OPTS "$HOST" "set -euo pipefail; cd '$APP_DIR'; if [ '$DEPLOY_BACKEND' = true ]; then sudo systemctl stop cq-server; if [ -e server/server.previous ]; then mv server/server 'server/server.failed-${GITHUB_SHA}'; mv server/server.previous server/server; fi; fi; if [ '$DEPLOY_FRONTEND' = true ] && [ -e dist.previous ]; then rm -rf 'dist.failed-${GITHUB_SHA}'; mv dist 'dist.failed-${GITHUB_SHA}'; mv dist.previous dist; fi; if [ '$DEPLOY_BACKEND' = true ]; then sudo systemctl start cq-server; fi; sudo systemctl reload caddy" || true
+            elif [ "$SERVER_STOPPED" = "true" ]; then
+              echo "Server replacement did not complete; leaving cq-server stopped for inspection." >&2
+            fi
+          }
+          trap cleanup_fast_deploy EXIT
+
+          if [ "$DEPLOY_FRONTEND" = "true" ]; then
+            expected_contract_sha="$(sha256sum dist/phaser/runtime_asset_contract.json | awk '{print $1}')"
+            live_contract_sha="$(ssh $SSH_OPTS "$HOST" "sha256sum '$APP_DIR/dist/phaser/runtime_asset_contract.json' | cut -d ' ' -f1")"
+            if [ "$live_contract_sha" != "$expected_contract_sha" ]; then
+              echo "Fast frontend deploy refused: generated runtime contract differs from production." >&2
+              echo "Run the full deployment lane so the database and asset catalog move together." >&2
+              exit 1
+            fi
+
+            # Reuse the already-published 80+ MiB immutable runtime family on
+            # the host and upload only the freshly built application shell.
+            ssh $SSH_OPTS "$HOST" "set -euo pipefail; rm -rf '$APP_DIR/$FRONTEND_STAGE'; cp -a '$APP_DIR/dist' '$APP_DIR/$FRONTEND_STAGE'; find '$APP_DIR/$FRONTEND_STAGE/assets' -maxdepth 1 -type f -delete"
+            tar \
+              --exclude='./phaser/assets' \
+              --exclude='./phaser/sprites' \
+              --exclude='./phaser/tile_images' \
+              --exclude='./phaser/pokemon.db' \
+              --exclude='./phaser/capturequest-pokemon-import.json' \
+              --exclude='./phaser/runtime_asset_contract.json' \
+              --exclude='./phaser/style.css' \
+              --exclude='./sound/pokemon' \
+              --exclude='./assets/pokemon' \
+              --exclude='./assets/trainers' \
+              -czf - -C dist . \
+              | ssh $SSH_OPTS "$HOST" "set -euo pipefail; cd '$APP_DIR/$FRONTEND_STAGE'; tar xzf -; test \"\$(sha256sum phaser/runtime_asset_contract.json | cut -d ' ' -f1)\" = '$expected_contract_sha'"
+          fi
+
+          if [ "$DEPLOY_BACKEND" = "true" ]; then
+            gzip -c server/server | ssh $SSH_OPTS "$HOST" "set -euo pipefail; gunzip > '$APP_DIR/server/$BACKEND_STAGE'; chmod +x '$APP_DIR/server/$BACKEND_STAGE'"
+            ssh $SSH_OPTS "$HOST" "sudo systemctl stop cq-server"
+            SERVER_STOPPED=true
+            ACTIVATED=true
+            ssh $SSH_OPTS "$HOST" "set -euo pipefail; cd '$APP_DIR'; rm -f server/server.previous; mv server/server server/server.previous; mv 'server/$BACKEND_STAGE' server/server; if [ '$DEPLOY_FRONTEND' = true ]; then rm -rf dist.previous; mv dist dist.previous; mv '$FRONTEND_STAGE' dist; fi; sudo systemctl start cq-server; sudo systemctl reload caddy"
+            SERVER_STOPPED=false
+          elif [ "$DEPLOY_FRONTEND" = "true" ]; then
+            ACTIVATED=true
+            ssh $SSH_OPTS "$HOST" "set -euo pipefail; cd '$APP_DIR'; rm -rf dist.previous; mv dist dist.previous; mv '$FRONTEND_STAGE' dist; sudo systemctl reload caddy"
+          fi
+
+          server_ready=false
+          for attempt in $(seq 1 12); do
+            if curl --fail --silent --show-error --max-time 5 https://capturequest.net/api/online >/dev/null; then
+              server_ready=true
+              break
+            fi
+            sleep 5
+          done
+          test "$server_ready" = true
+          if [ "$DEPLOY_FRONTEND" = "true" ]; then
+            deployed_contract_sha="$(curl --fail --silent --show-error https://capturequest.net/phaser/runtime_asset_contract.json | sha256sum | awk '{print $1}')"
+            test "$deployed_contract_sha" = "$expected_contract_sha"
+            curl --fail --silent --show-error https://capturequest.net/ | grep -q '<div id="root"></div>'
+          fi
+          tile_art_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' https://capturequest.net/api/tiles/stamps)"
+          test "$tile_art_status" = 404
+          VERIFIED=true
 
       - name: Deploy to Server
+        if: steps.deployment.outputs.full_data == 'true'
         env:
           DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}

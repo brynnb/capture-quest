@@ -236,6 +236,9 @@ fi
   --viewer-public "${EXTRACTOR_ROOT}/pokemon-phaser/public" \
   --audio-root "${EXTRACTOR_ROOT}/build/audio"
 
+echo "Generating audio manifest..."
+npm run audio:manifest
+
 "${SYNC_PYTHON_BIN}" "${REPO_ROOT}/scripts/validate_runtime_assets.py"
 
 if [[ -f ".env" ]]; then
@@ -254,9 +257,6 @@ echo "Importing extractor script candidates..."
 (cd "${REPO_ROOT}/server" && go run ./cmd/import-script-candidates \
   --sqlite "${PHASER_DB_DEST}" \
   --output "${REPO_ROOT}/server/scripted_events/scripts")
-
-echo "Generating audio manifest..."
-npm run audio:manifest
 
 if [[ "${ASSETS_ONLY}" -eq 1 ]]; then
   echo "CaptureQuest asset bootstrap complete."

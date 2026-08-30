@@ -50,11 +50,14 @@
 
 ## Production deployment invariants
 
-- The GitHub Actions deployment is the canonical path. A deployment includes
-  dependency installation, complete asset generation or validated cache restore,
-  asset-contract validation, frontend/backend builds, focused tests, a compressed
-  PostgreSQL backup, preflight, schema application, import, service restart, and
-  live verification.
+- The GitHub Actions deployment is the canonical path. It classifies changes
+  into frontend, backend, or full-data lanes. Frontend/backend code deployments
+  must reuse and verify the live runtime asset contract; only the full-data lane
+  generates assets, backs up Postgres, applies schema, and imports game data.
+- Do not force the full-data lane for ordinary UI or server-code changes. Do not
+  weaken the contract comparison to make a fast deployment pass: a mismatch
+  means the database, generated files, and frontend must move together through
+  the full lane.
 - Always create and verify a non-empty backup in `$DEPLOY_APP_DIR/backups`
   immediately before schema/import mutations.
 - SSH commands that can run imports must use client keepalives. Preserve
@@ -67,6 +70,9 @@
   not unrelated workflow formatting. Cache readiness must still validate the
   database, contract, tile directory, generated catalog version, scripted events,
   sprites, and complete audio manifests before accepting a restore.
+- Broad tests are optional in the manual fast lanes, but the production build,
+  runtime-asset validation, atomic staging, live health check, contract check,
+  and production debug-route check are never optional.
 - Keep the service-restart cleanup trap, but restart only when the deployed
   database, frontend, and runtime asset contract are known to be one coherent
   catalog. If an import outcome or activation is ambiguous, leave `cq-server`
