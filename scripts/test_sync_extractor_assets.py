@@ -36,9 +36,27 @@ class AudioBundleValidationTest(unittest.TestCase):
                     },
                 })
             (root / "audio-render-manifest.json").write_text(
-                json.dumps({"artifacts": artifacts}), encoding="utf-8"
+                json.dumps({
+                    "schemaVersion": 2,
+                    "renderProfile": {
+                        "distribution": {
+                            "sampleRate": 24000,
+                            "channels": 1,
+                            "codec": "ogg-vorbis",
+                            "quality": 1,
+                        }
+                    },
+                    "artifacts": artifacts,
+                }),
+                encoding="utf-8",
             )
             self.assertEqual(len(sync._validated_audio_artifacts(root)), 1122)
+
+            destination = root / "public/sound/pokemon"
+            self.assertEqual(sync._copy_audio_distributions(root, destination), 561)
+            self.assertEqual(len(list(destination.rglob("*.ogg"))), 561)
+            self.assertEqual(list(destination.rglob("*.flac")), [])
+            self.assertTrue((destination / "audio-render-manifest.json").is_file())
 
             (root / "sound/pokemon/music/example-0.ogg").write_bytes(b"tampered")
             with self.assertRaisesRegex(RuntimeError, "hash mismatch"):

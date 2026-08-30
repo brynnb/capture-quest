@@ -4,6 +4,11 @@ import path from "path";
 const SOUND_DIR = path.resolve("public/sound");
 const MANIFEST_PATH = path.resolve("src/constants/audio_manifest.json");
 const AUDIO_EXTENSIONS = new Set([".mp3", ".ogg", ".wav"]);
+const STARTUP_SOUNDS = new Set([
+  "/sound/SFX_TURN_ON_PC.mp3",
+  "/sound/button_1.mp3",
+  "/sound/buttonclick.mp3",
+]);
 
 function listLocalSounds() {
   if (!fs.existsSync(SOUND_DIR)) {
@@ -32,7 +37,9 @@ function listLocalSounds() {
 function buildManifest() {
   const localSounds = listLocalSounds();
   return {
-    global: localSounds,
+    // Only tiny, frequently used UI effects are decoded at startup. Music is
+    // streamed and the complete library remains available for on-demand SFX.
+    global: localSounds.filter((sound) => STARTUP_SOUNDS.has(sound)),
     zones: {},
     combat: {},
     library: localSounds,

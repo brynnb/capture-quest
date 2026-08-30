@@ -14,7 +14,8 @@ release negotiation.
 2. runs `adapters.capturequest_v2` for the selected Red or Blue release and
    atomically publishes `public/phaser/capturequest-pokemon-import.json`;
 3. copies the exact validated SQLite input and scoped assets;
-4. validates all 561 audio manifest records and their 1,122 FLAC/Ogg hashes;
+4. validates all 561 audio manifest records and their 1,122 upstream FLAC/Ogg
+   hashes, then publishes only the compact Ogg derivatives to the web tree;
 5. only then starts the Postgres bootstrap.
 
 Select a release with `CAPTUREQUEST_POKEMON_RELEASE=red` or `blue`. An explicit

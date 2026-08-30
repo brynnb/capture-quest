@@ -16,6 +16,7 @@ interface MusicPlayback {
 
 const runtimeAudioManifest = audioManifest as RuntimeAudioManifest;
 const BASE_ASSET_URL = import.meta.env.VITE_ASSET_URL || 'https://pub-04034701bf7545f291744990c97678b9.r2.dev';
+const GLOBAL_PRELOAD_CONCURRENCY = 4;
 
 // Simple utility for fetching audio files (replaces zone_viewer FileSystem)
 async function fetchAudioBytes(folderPath: string, fileName: string): Promise<ArrayBuffer | undefined> {
@@ -186,7 +187,19 @@ class AudioManager {
 
     private async loadGlobalSounds() {
         const globalSounds = audioManifest.global || [];
-        await Promise.all(globalSounds.map((s: string) => this.preloadSFX(s, true)));
+        let nextIndex = 0;
+        const worker = async () => {
+            while (nextIndex < globalSounds.length) {
+                const sound = globalSounds[nextIndex++];
+                await this.preloadSFX(sound, true);
+            }
+        };
+        await Promise.all(
+            Array.from(
+                { length: Math.min(GLOBAL_PRELOAD_CONCURRENCY, globalSounds.length) },
+                () => worker(),
+            ),
+        );
     }
 
     /**

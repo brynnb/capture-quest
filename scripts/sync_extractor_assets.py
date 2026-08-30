@@ -455,6 +455,33 @@ def _validated_audio_artifacts(audio_root: Path) -> list[Path]:
     return validated
 
 
+def _copy_audio_distributions(audio_root: Path, destination_audio: Path) -> int:
+    """Publish browser derivatives without copying archival FLAC masters."""
+    manifest_path = audio_root / "audio-render-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    profile = manifest.get("renderProfile", {}).get("distribution", {})
+    if profile != {
+        "sampleRate": 24000,
+        "channels": 1,
+        "codec": "ogg-vorbis",
+        "quality": 1,
+    }:
+        raise RuntimeError(f"Unexpected browser audio profile: {profile!r}")
+
+    clean_dir(destination_audio)
+    count = 0
+    for artifact in manifest["artifacts"]:
+        logical_path = artifact["distribution"]["path"]
+        relative = Path(logical_path.removeprefix("/sound/pokemon/"))
+        copy_file(
+            audio_root / "sound/pokemon" / relative,
+            destination_audio / relative,
+        )
+        count += 1
+    copy_file(manifest_path, destination_audio / "audio-render-manifest.json")
+    return count
+
+
 def sync_audio_metadata(
     extractor_root: Path, repo_root: Path, audio_root: Path
 ) -> None:
@@ -487,13 +514,8 @@ def sync_audio_metadata(
     rendered_audio = audio_root / "sound/pokemon"
     destination_audio = repo_root / "public/sound/pokemon"
     if validated_audio:
-        clean_dir(destination_audio)
-        count = copy_tree_contents(rendered_audio, destination_audio)
-        copy_file(
-            audio_root / "audio-render-manifest.json",
-            destination_audio / "audio-render-manifest.json",
-        )
-        print(f"Copied {count} rendered Pokemon audio files.")
+        count = _copy_audio_distributions(audio_root, destination_audio)
+        print(f"Copied {count} browser Pokemon audio files (FLAC masters retained upstream).")
     elif destination_audio.exists() and any(destination_audio.rglob("*.ogg")):
         print("Rendered Pokemon audio already exists in CaptureQuest public/sound/pokemon.")
     else:

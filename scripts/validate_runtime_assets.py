@@ -23,6 +23,13 @@ PHASER_STYLE = PHASER_ROOT / "style.css"
 CONTRACT = PHASER_ROOT / "runtime_asset_contract.json"
 PROCEDURAL_PALETTE = REPO_ROOT / "src/constants/procedural_tile_palette.json"
 RUNTIME_ASSET_VERSION = REPO_ROOT / "src/constants/runtime_asset_version.ts"
+AUDIO_MANIFEST = REPO_ROOT / "src/constants/audio_manifest.json"
+AUDIO_RENDER_MANIFEST = REPO_ROOT / "public/sound/pokemon/audio-render-manifest.json"
+EXPECTED_GLOBAL_AUDIO = {
+    "/sound/SFX_TURN_ON_PC.mp3",
+    "/sound/button_1.mp3",
+    "/sound/buttonclick.mp3",
+}
 
 
 def sha256_file(path: Path) -> str:
@@ -41,6 +48,57 @@ def tile_catalog_sha256() -> tuple[int, str]:
         digest.update(b"\0")
         digest.update(bytes.fromhex(sha256_file(tile_file)))
     return len(files), digest.hexdigest()
+
+
+def validate_browser_audio() -> tuple[int, int]:
+    if not AUDIO_MANIFEST.is_file() or not AUDIO_RENDER_MANIFEST.is_file():
+        raise SystemExit("Generated audio manifests are missing. Run npm run bootstrap:assets.")
+
+    runtime = json.loads(AUDIO_MANIFEST.read_text(encoding="utf-8"))
+    library = runtime.get("library")
+    global_audio = runtime.get("global")
+    if not isinstance(library, list) or not isinstance(global_audio, list):
+        raise SystemExit("Runtime audio manifest has invalid library/global arrays.")
+    if set(global_audio) != EXPECTED_GLOBAL_AUDIO:
+        raise SystemExit(
+            "Runtime audio startup set is not the three bounded UI effects. "
+            "Run npm run audio:manifest."
+        )
+    if any(
+        segment in path
+        for path in global_audio
+        for segment in ("/pokemon/music/", "/pokemon/cries/", "/pokemon/moves/")
+    ):
+        raise SystemExit("Long-form Pokemon audio must never be globally preloaded.")
+
+    rendered = json.loads(AUDIO_RENDER_MANIFEST.read_text(encoding="utf-8"))
+    expected_profile = {
+        "sampleRate": 24000,
+        "channels": 1,
+        "codec": "ogg-vorbis",
+        "quality": 1,
+    }
+    if rendered.get("schemaVersion") != 2:
+        raise SystemExit("Browser audio render manifest must use schema version 2.")
+    if rendered.get("renderProfile", {}).get("distribution") != expected_profile:
+        raise SystemExit("Browser Pokemon audio is not the compact 24 kHz mono profile.")
+
+    artifacts = rendered.get("artifacts")
+    if not isinstance(artifacts, list) or len(artifacts) != 561:
+        raise SystemExit("Browser audio render manifest must contain 561 assets.")
+    distribution_paths = {row.get("distribution", {}).get("path") for row in artifacts}
+    if None in distribution_paths or len(distribution_paths) != 561:
+        raise SystemExit("Browser audio distribution paths are missing or duplicated.")
+    for logical_path in distribution_paths:
+        audio_file = REPO_ROOT / "public" / logical_path.removeprefix("/")
+        if not audio_file.is_file():
+            raise SystemExit(f"Missing browser audio derivative: {audio_file}")
+    unexpected_masters = list((REPO_ROOT / "public/sound/pokemon").rglob("*.flac"))
+    if unexpected_masters:
+        raise SystemExit("Archival FLAC masters must not be published to the web asset tree.")
+    if not distribution_paths.issubset(set(library)):
+        raise SystemExit("Runtime audio library omits generated Pokemon derivatives.")
+    return len(distribution_paths), len(global_audio)
 
 
 def main() -> None:
@@ -129,9 +187,11 @@ def main() -> None:
             f"(missing={missing[:8]}, extra={extra[:8]}). "
             "Run npm run bootstrap:assets."
         )
+    audio_count, startup_audio_count = validate_browser_audio()
     print(
         f"Runtime asset contract OK: {schema_name} v{schema_version}, "
-        f"{tile_count} tile images, {len(actual_sprite_names)} sprites."
+        f"{tile_count} tile images, {len(actual_sprite_names)} sprites, "
+        f"{audio_count} compact audio files ({startup_audio_count} preloaded)."
     )
 
 

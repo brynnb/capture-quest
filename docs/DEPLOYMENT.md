@@ -122,8 +122,11 @@ extractor to repeat the same work on the next run.
 ## Generated Audio
 
 Pokemon world, battle, SFX, and cry audio is generated under
-`public/sound/pokemon/`. The directory is intentionally ignored by Git and is
-about 50 MB, so a checkout alone is not a deployable frontend.
+`public/sound/pokemon/`. The directory is intentionally ignored by Git, so a
+checkout alone is not a deployable frontend. The extractor retains 48 kHz
+stereo FLAC masters in its build output, but CaptureQuest publishes only 24 kHz
+mono Ogg Vorbis derivatives. Do not copy the FLAC masters into `public/` or
+`dist/`.
 
 The required flow is:
 
@@ -136,6 +139,8 @@ Verify both sides of the Vite build:
 ```bash
 test -n "$(find public/sound/pokemon -name '*.ogg' -type f -print -quit)"
 test -n "$(find dist/sound/pokemon -name '*.ogg' -type f -print -quit)"
+test -z "$(find public/sound/pokemon -name '*.flac' -type f -print -quit)"
+test -z "$(find dist/sound/pokemon -name '*.flac' -type f -print -quit)"
 ```
 
 When audio files are absent, Caddy's single-page-app fallback may return

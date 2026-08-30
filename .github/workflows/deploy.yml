@@ -197,6 +197,17 @@ jobs:
             throw new Error(`Expected populated mapMusic metadata, got ${manifest.mapMusic?.length ?? 0}`);
           }
           const rendered = JSON.parse(fs.readFileSync("public/sound/pokemon/audio-render-manifest.json", "utf8"));
+          const expectedProfile = {
+            sampleRate: 24000,
+            channels: 1,
+            codec: "ogg-vorbis",
+            quality: 1,
+          };
+          const actualProfile = rendered.renderProfile?.distribution;
+          if (rendered.schemaVersion !== 2 ||
+              Object.entries(expectedProfile).some(([key, value]) => actualProfile?.[key] !== value)) {
+            throw new Error(`Unexpected browser audio profile: ${JSON.stringify(rendered.renderProfile?.distribution)}`);
+          }
           if (!Array.isArray(rendered.artifacts) || rendered.artifacts.length !== 561) {
             throw new Error(`Expected 561 rendered assets, got ${rendered.artifacts?.length ?? 0}`);
           }
@@ -207,19 +218,20 @@ jobs:
               throw new Error(`Invalid or duplicate audio asset key: ${artifact.assetKey}`);
             }
             assetKeys.add(artifact.assetKey);
-            for (const key of ["master", "distribution"]) {
-              const record = artifact[key];
-              if (!record?.path?.startsWith("/sound/pokemon/")) throw new Error(`Unsafe audio path: ${record?.path}`);
-              if (logicalPaths.has(record.path)) throw new Error(`Duplicate audio path: ${record.path}`);
-              logicalPaths.add(record.path);
-              const filename = path.join("public", record.path);
-              const bytes = fs.readFileSync(filename);
-              const actual = crypto.createHash("sha256").update(bytes).digest("hex");
-              if (actual !== record.sha256) throw new Error(`Audio hash mismatch: ${filename}`);
-            }
+            const record = artifact.distribution;
+            if (!record?.path?.startsWith("/sound/pokemon/")) throw new Error(`Unsafe audio path: ${record?.path}`);
+            if (logicalPaths.has(record.path)) throw new Error(`Duplicate audio path: ${record.path}`);
+            logicalPaths.add(record.path);
+            const filename = path.join("public", record.path);
+            const bytes = fs.readFileSync(filename);
+            const actual = crypto.createHash("sha256").update(bytes).digest("hex");
+            if (actual !== record.sha256) throw new Error(`Audio hash mismatch: ${filename}`);
           }
-          if (assetKeys.size !== 561 || logicalPaths.size !== 1122) {
-            throw new Error("Audio manifest does not contain 561 distinct asset pairs");
+          if (assetKeys.size !== 561 || logicalPaths.size !== 561) {
+            throw new Error("Audio manifest does not contain 561 distinct browser derivatives");
+          }
+          if (fs.readdirSync("public/sound/pokemon", {recursive: true}).some(name => String(name).endsWith(".flac"))) {
+            throw new Error("Archival FLAC masters were copied into the public web tree");
           }
           NODE
           python3 - <<'PY'

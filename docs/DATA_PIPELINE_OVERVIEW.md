@@ -72,9 +72,9 @@ Audio has a separate static-asset flow:
 
 ```text
 pokered audio source data
-  -> extractor audio manifest/rendered OGG files
+  -> extractor 48 kHz stereo FLAC masters + compact 24 kHz mono Ogg derivatives
   -> npm run bootstrap:assets
-  -> generated files under public/sound/pokemon
+  -> only browser Ogg derivatives under public/sound/pokemon
   -> npm run audio:manifest
   -> client-side asset availability checks
 ```
@@ -82,6 +82,10 @@ pokered audio source data
 The login, character select, and character creation screens intentionally keep
 the CaptureQuest title music. World, battle, bike, surf, item, warp, move, and
 Pokemon cry audio prefer source-derived assets when those files are present.
+Music is streamed through an HTML media element. Only three small common UI
+effects are decoded during audio startup; cries, moves, and other effects are
+decoded on demand. Never put the full audio library in the manifest's `global`
+array, because decoded browser PCM is vastly larger than the Ogg files.
 
 ## Key CaptureQuest Files
 
