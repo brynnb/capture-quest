@@ -38,8 +38,6 @@ interface ActorState {
   // Optional chat bubble that follows the sprite
   chatBubble?: Phaser.GameObjects.Container;
   jumpShadow?: Phaser.GameObjects.Ellipse;
-  // Pending idle timer to defer STAY frame (avoids flicker during continuous walking)
-  pendingIdleTimer?: ReturnType<typeof setTimeout>;
   // Step counter for alternating foot flip on UP/DOWN walking
   stepCount: number;
 }
@@ -129,7 +127,6 @@ export class ActorMovementController {
     const state = this.actorStates.get(actorId);
     if (state) {
       if (state.currentTween) state.currentTween.stop();
-      if (state.pendingIdleTimer) clearTimeout(state.pendingIdleTimer);
       this.destroyJumpShadow(state);
     }
     this.actorStates.delete(actorId);
@@ -300,25 +297,12 @@ export class ActorMovementController {
     if (!state || state.queue.length === 0) {
       if (state) {
         state.isAnimating = false;
-        // Defer idle frame slightly so continuous walking doesn't flash standing sprite
-        if (state.pendingIdleTimer) clearTimeout(state.pendingIdleTimer);
-        state.pendingIdleTimer = setTimeout(() => {
-          // Only set idle if still not animating (no new movement arrived)
-          if (!state.isAnimating && state.sprite.active) {
-            this.updateSpriteFrame(state.sprite, "STAY", state.currentDirection);
-          }
-          state.pendingIdleTimer = undefined;
-        }, 50);
+        this.updateSpriteFrame(state.sprite, "STAY", state.currentDirection);
         this.resolveIdleWaiters(actorId);
       }
       return;
     }
 
-    // Cancel any pending idle frame since we have more movement
-    if (state.pendingIdleTimer) {
-      clearTimeout(state.pendingIdleTimer);
-      state.pendingIdleTimer = undefined;
-    }
     this.destroyJumpShadow(state);
 
     state.isAnimating = true;
@@ -451,13 +435,15 @@ export class ActorMovementController {
         // Sync attached objects to final position
         this.syncAttachedObjects(state);
 
-        // Process next item in queue
-        this.processQueue(actorId);
-
-        // Notify completion
+        // Notify the player controller first. It can synchronously enqueue the
+        // next held-key/path step while this actor is still marked animating.
+        // That lets processQueue continue without an artificial idle delay,
+        // while a genuinely finished path immediately settles on the correct
+        // directional standing frame.
         if (this.onStepComplete) {
           this.onStepComplete(actorId, targetX, targetY);
         }
+        this.processQueue(actorId);
         this.resolvePathCompletions(actorId);
       },
     });
@@ -620,11 +606,6 @@ export class ActorMovementController {
       state.currentTween = null;
     }
     this.destroyJumpShadow(state);
-    if (state.pendingIdleTimer) {
-      clearTimeout(state.pendingIdleTimer);
-      state.pendingIdleTimer = undefined;
-    }
-
     // Clear queue
     state.queue = [];
 
@@ -771,9 +752,6 @@ export class ActorMovementController {
 
       if (state.currentTween) {
         state.currentTween.stop();
-      }
-      if (state.pendingIdleTimer) {
-        clearTimeout(state.pendingIdleTimer);
       }
       this.actorStates.delete(id);
     }

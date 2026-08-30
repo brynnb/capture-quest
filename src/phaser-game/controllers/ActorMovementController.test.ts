@@ -101,4 +101,42 @@ describe("ActorMovementController", () => {
     expect(sprite.setY).toHaveBeenLastCalledWith(40);
     expect(shadow.destroy).toHaveBeenCalledTimes(1);
   });
+
+  test("settles directly on the final facing frame when movement ends", () => {
+    const durations: number[] = [];
+    const tweens: TweenConfig[] = [];
+    const controller = new ActorMovementController(fakeScene(durations, tweens));
+    const sprite = fakeSprite();
+    controller.registerActor(actor(), sprite);
+
+    controller.handlePositionUpdate(1, 1, 0, "RIGHT");
+    tweens[0].onUpdate?.({ progress: 0.75 });
+    expect(sprite.setFrame).toHaveBeenLastCalledWith(5);
+
+    tweens[0].onComplete?.();
+
+    expect(sprite.setFrame).toHaveBeenLastCalledWith(2);
+    expect(sprite.setFlipX).toHaveBeenLastCalledWith(true);
+  });
+
+  test("completion callback can queue the next step before idle is resolved", () => {
+    const durations: number[] = [];
+    const tweens: TweenConfig[] = [];
+    const controller = new ActorMovementController(fakeScene(durations, tweens));
+    const sprite = fakeSprite();
+    controller.registerActor(actor(), sprite);
+    controller.setOnStepComplete((_actorId, x) => {
+      if (x === 1) controller.handlePositionUpdate(1, 2, 0, "RIGHT");
+    });
+
+    controller.handlePositionUpdate(1, 1, 0, "RIGHT");
+    tweens[0].onComplete?.();
+
+    expect(tweens).toHaveLength(2);
+    expect(controller.getActorTilePosition(1)).toMatchObject({
+      x: 1,
+      y: 0,
+      direction: "RIGHT",
+    });
+  });
 });
