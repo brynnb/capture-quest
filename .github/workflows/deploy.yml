@@ -428,6 +428,7 @@ jobs:
           fi
 
           if [ "$DEPLOY_BACKEND" = "true" ]; then
+            ssh $SSH_OPTS "$HOST" "set -euo pipefail; set -a; . /etc/capturequest/cq-server.env; set +a; : \${ADMIN_KEY:?ADMIN_KEY missing}; test \${#ADMIN_KEY} -ge 32"
             gzip -c server/server | ssh $SSH_OPTS "$HOST" "set -euo pipefail; gunzip > '$APP_DIR/server/$BACKEND_STAGE'; chmod +x '$APP_DIR/server/$BACKEND_STAGE'"
             ssh $SSH_OPTS "$HOST" "sudo systemctl stop cq-server"
             SERVER_STOPPED=true
@@ -455,6 +456,8 @@ jobs:
           fi
           tile_art_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' https://capturequest.net/api/tiles/stamps)"
           test "$tile_art_status" = 404
+          admin_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' https://capturequest.net/api/admin/stats)"
+          test "$admin_status" = 404
           VERIFIED=true
 
       - name: Deploy to Server
@@ -501,6 +504,10 @@ jobs:
             fi
           }
           trap cleanup_cq_server EXIT
+
+          # Fail before stopping production if its backend-only key cannot meet
+          # the server's startup requirement.
+          ssh $SSH_OPTS $HOST "set -euo pipefail; set -a; . /etc/capturequest/cq-server.env; set +a; : \${ADMIN_KEY:?ADMIN_KEY missing}; test \${#ADMIN_KEY} -ge 32"
 
           # Upload a complete frontend release without exposing it. The live
           # dist directory continues serving the old bundle and matching API
@@ -566,6 +573,8 @@ jobs:
           test "$server_ready" = true
           tile_art_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' https://capturequest.net/api/tiles/stamps)"
           test "$tile_art_status" = 404
+          admin_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' https://capturequest.net/api/admin/stats)"
+          test "$admin_status" = 404
 
           # Probe a populated remote chunk, not a possibly transparent gap, so
           # success proves the server decoded the deployed tile-image catalog.

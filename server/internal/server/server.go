@@ -404,17 +404,7 @@ func (s *Server) startHTTPServer(tlsConf *tls.Config, certManager *cert.Rotating
 	}
 	s.registerOverworldOverviewRoute(mux)
 
-	// Admin Dashboard API
-	mux.Handle("/api/admin/stats", corsMiddleware(adminAuthMiddleware(handleAdminStats)))
-	mux.Handle("/api/admin/growth", corsMiddleware(adminAuthMiddleware(handleAdminGrowth)))
-	mux.Handle("/api/admin/chats", corsMiddleware(adminAuthMiddleware(handleAdminChats)))
-	mux.Handle("/api/admin/users", corsMiddleware(adminAuthMiddleware(handleAdminUsers)))
-	mux.Handle("/api/admin/characters", corsMiddleware(adminAuthMiddleware(handleAdminCharacters)))
-	mux.Handle("/api/admin/set-gm", corsMiddleware(adminAuthMiddleware(handleAdminSetGM)))
-	mux.Handle("/api/admin/db/tables", corsMiddleware(adminAuthMiddleware(handleAdminDBTables)))
-	mux.Handle("/api/admin/db/query", corsMiddleware(adminAuthMiddleware(handleAdminDBQuery)))
-	mux.Handle("/api/admin/character/inventory", corsMiddleware(adminAuthMiddleware(handleAdminGetCharacterInventory)))
-	mux.Handle("/api/admin/logs", corsMiddleware(adminAuthMiddleware(handleAdminLogs)))
+	s.registerAdminRoutes(mux)
 
 	// Tile authoring is a local-development surface. Production clients still
 	// receive static tile artwork below, but cannot reach filesystem/database
@@ -429,7 +419,7 @@ func (s *Server) startHTTPServer(tlsConf *tls.Config, certManager *cert.Rotating
 	// that handles TLS for us, so we listen on plain HTTP.
 	if port > 0 {
 		log.Printf("Starting plain HTTP server on TCP port %d (TLS terminated by proxy)", port)
-		go http.ListenAndServe(fmt.Sprintf(":%d", port), mux)
+		go http.ListenAndServe(fmt.Sprintf("127.0.0.1:%d", port), mux)
 		return
 	}
 
@@ -442,6 +432,20 @@ func (s *Server) startHTTPServer(tlsConf *tls.Config, certManager *cert.Rotating
 	tlsListener := tls.NewListener(listener, tlsConf)
 	log.Printf("Starting HTTPS server on TCP port 443 (Local TLS)")
 	go http.Serve(tlsListener, mux)
+}
+
+func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
+	register := func(path string, method string, handler http.HandlerFunc) {
+		mux.Handle(path, adminAuthMiddleware(requireAdminMethod(method, handler)))
+	}
+	register("/api/admin/stats", http.MethodGet, handleAdminStats)
+	register("/api/admin/growth", http.MethodGet, handleAdminGrowth)
+	register("/api/admin/chats", http.MethodGet, handleAdminChats)
+	register("/api/admin/users", http.MethodGet, handleAdminUsers)
+	register("/api/admin/characters", http.MethodGet, handleAdminCharacters)
+	register("/api/admin/set-gm", http.MethodPost, handleAdminSetGM)
+	register("/api/admin/character/inventory", http.MethodGet, handleAdminGetCharacterInventory)
+	register("/api/admin/logs", http.MethodGet, handleAdminLogs)
 }
 
 func (s *Server) registerOverworldOverviewRoute(mux *http.ServeMux) {

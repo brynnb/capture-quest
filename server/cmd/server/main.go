@@ -20,6 +20,14 @@ func main() {
 	log.Printf("=== CaptureQuest Server Starting ===")
 	log.Printf("Binary built at: %s", BuildTime)
 
+	serverConfig, err := config.Get()
+	if err != nil {
+		log.Fatalf("failed to read config: %v", err)
+	}
+	if err := serverConfig.ValidateServerSecurity(); err != nil {
+		log.Fatalf("unsafe server configuration: %v", err)
+	}
+
 	target, err := config.GetDatabaseTarget()
 	if err != nil {
 		log.Fatalf("failed to read database target: %v", err)
@@ -32,11 +40,6 @@ func main() {
 	}
 	if err := scriptedevents.SyncDefault(db.GlobalWorldDB.DB); err != nil {
 		log.Fatalf("failed to sync scripted events: %v", err)
-	}
-
-	serverConfig, err := config.Get()
-	if err != nil {
-		log.Fatalf("failed to read config: %v", err)
 	}
 
 	srv, err := server.NewServer(target.DSN, time.Duration(serverConfig.GracePeriod), serverConfig.Local)

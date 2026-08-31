@@ -17,7 +17,22 @@ var configFileData = "internal/config/capturequest_config.json"
 
 const (
 	DatabaseDialectPostgres = "postgres"
+	MinAdminKeyLength       = 32
 )
+
+// ValidateServerSecurity enforces production-only secrets before the server
+// opens any network listeners. Local development deliberately permits an empty
+// key because the admin surface remains loopback-only and local tooling does not
+// require the dashboard.
+func (c *Config) ValidateServerSecurity() error {
+	if c.Local {
+		return nil
+	}
+	if len(strings.TrimSpace(c.AdminKey)) < MinAdminKeyLength {
+		return fmt.Errorf("ADMIN_KEY must contain at least %d characters in production", MinAdminKeyLength)
+	}
+	return nil
+}
 
 func GetCert() (string, error) {
 	// 1. Try environment variable

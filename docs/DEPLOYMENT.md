@@ -21,13 +21,20 @@ database target is Postgres.
 | `DISCORD_CHAT_WEBHOOK_URL` | Optional private webhook for the CaptureQuest Discord channel. |
 | `DISCORD_CHAT_SHARED_SECRET` | Optional 32+ character secret shared only with the IdleQuest Discord hub. |
 | `HASH_PORT` | WebTransport certificate-hash HTTP port. |
-| `ADMIN_KEY` | Admin API authentication secret. |
+| `ADMIN_KEY` | Unique backend-only admin API secret, at least 32 characters. Never expose it to browser code or reuse another service's key. |
 | `VITE_ASSET_URL` | Optional CDN/base URL for remote assets. |
 
 Configure both Discord values or neither. A partial configuration prevents
 startup. When enabled, public game chat is mirrored to Discord and signed
 messages from the shared hub enter through `/api/discord/game-chat`; unsigned
 requests are rejected. Keep both values out of Git and browser code.
+
+The HTTP API binds to loopback in production and is published only through the
+reverse proxy. `/api/admin/*` is additionally limited inside the Go server to
+direct loopback requests without proxy forwarding headers. The dashboard must
+call it server-to-server over `127.0.0.1` with CaptureQuest's unique key. Caddy
+must return `404` for public `/api/admin/*` requests. CaptureQuest intentionally
+does not provide a raw-SQL admin endpoint.
 
 ## GitHub Actions Deploy
 
@@ -330,6 +337,8 @@ WebTransport connection in the browser.
   an intentionally different catalog hash must return HTTP 409 so an old browser
   bundle cannot mix new IDs with old art.
 - `https://capturequest.net/api/online` succeeds after the startup retry window.
+- Public `/api/admin/*` requests return 404, while the dashboard's loopback
+  server-to-server health request succeeds with its backend-only key.
 - Production Tile Art Studio routes such as `/api/tiles/stamps` return 404.
 - Recent `journalctl -u cq-server` output contains full world initialization and
   no terminal scripted-event, schema, panic, or fatal error.

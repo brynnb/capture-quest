@@ -1,9 +1,11 @@
 package server
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"runtime"
@@ -16,10 +18,22 @@ import (
 	"capturequest/internal/session"
 )
 
-// adminAuthMiddleware checks for the X-Admin-Token header
+// adminAuthMiddleware accepts only direct loopback requests from the dashboard
+// backend. Reverse-proxied public requests carry forwarding headers and are
+// rejected even when Caddy is accidentally misconfigured.
 func adminAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		cfg, _ := config.Get()
+		if !isDirectLoopbackRequest(r) {
+			http.NotFound(w, r)
+			return
+		}
+
+		cfg, err := config.Get()
+		if err != nil {
+			log.Printf("ADMIN ACCESS REJECTED: failed to read configuration: %v", err)
+			http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
+			return
+		}
 		adminKey := cfg.AdminKey
 
 		// If no admin key is set in production, we block everything
@@ -30,13 +44,36 @@ func adminAuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		token := r.Header.Get("X-Admin-Token")
-		if token != adminKey {
+		if len(token) != len(adminKey) || subtle.ConstantTimeCompare([]byte(token), []byte(adminKey)) != 1 {
 			log.Printf("⚠️ UNAUTHORIZED ADMIN ACCESS ATTEMPT FROM %s", r.RemoteAddr)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
 		next.ServeHTTP(w, r)
+	}
+}
+
+func isDirectLoopbackRequest(r *http.Request) bool {
+	if r.Header.Get("Forwarded") != "" || r.Header.Get("X-Forwarded-For") != "" || r.Header.Get("X-Real-IP") != "" {
+		return false
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func requireAdminMethod(method string, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != method {
+			w.Header().Set("Allow", method)
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		next(w, r)
 	}
 }
 
@@ -360,105 +397,6 @@ func handleAdminSetGM(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("ADMIN: Set Account %d status to %d", req.AccountID, req.Status)
 	w.WriteHeader(http.StatusOK)
-}
-
-// handleAdminDBTables returns a list of all tables in the database
-func handleAdminDBTables(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.GlobalWorldDB.DB.QueryContext(r.Context(), `
-		SELECT tablename
-		FROM pg_catalog.pg_tables
-		WHERE schemaname = 'public'
-		ORDER BY tablename`)
-	if err != nil {
-		log.Printf("Error listing tables: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	tables := []string{}
-	for rows.Next() {
-		var table string
-		if err := rows.Scan(&table); err != nil {
-			log.Printf("Error scanning table name: %v", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		tables = append(tables, table)
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(tables)
-}
-
-// handleAdminDBQuery executes a raw SQL query (READ ONLY)
-func handleAdminDBQuery(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Query string `json:"query"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	query := strings.TrimSpace(req.Query)
-	upperQuery := strings.ToUpper(query)
-
-	// Safety check: Only allow safe, read-only operations
-	allowed := false
-	prefixes := []string{"SELECT", "SHOW", "DESCRIBE", "EXPLAIN"}
-	for _, p := range prefixes {
-		if strings.HasPrefix(upperQuery, p) {
-			allowed = true
-			break
-		}
-	}
-
-	if !allowed {
-		http.Error(w, "Forbidden: Only SELECT, SHOW, DESCRIBE, and EXPLAIN queries are permitted.", http.StatusForbidden)
-		return
-	}
-
-	rows, err := db.GlobalWorldDB.DB.QueryContext(r.Context(), query)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	cols, err := rows.Columns()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	results := make([]map[string]interface{}, 0)
-	for rows.Next() {
-		values := make([]interface{}, len(cols))
-		valuePtrs := make([]interface{}, len(cols))
-		for i := range values {
-			valuePtrs[i] = &values[i]
-		}
-
-		if err := rows.Scan(valuePtrs...); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		row := make(map[string]interface{})
-		for i, colName := range cols {
-			val := values[i]
-			// Handle byte slices returned by database drivers for textual values.
-			if b, ok := val.([]byte); ok {
-				row[colName] = string(b)
-			} else {
-				row[colName] = val
-			}
-		}
-		results = append(results, row)
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(results)
 }
 
 // handleAdminGetCharacterInventory returns the CQ inventory of a specific character.
