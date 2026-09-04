@@ -8,6 +8,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"flag"
 	"log"
@@ -54,7 +55,7 @@ func main() {
 		log.Fatalf("Failed to open SQLite database: %v", err)
 	}
 	defer sqlite.Close()
-	importContext, err := negotiateExtractorSource(sqlite, *releaseFlag)
+	importContext, err := negotiateExtractorSource(context.Background(), sqlite, *releaseFlag)
 	if err != nil {
 		log.Fatalf("Extractor contract rejected: %v", err)
 	}

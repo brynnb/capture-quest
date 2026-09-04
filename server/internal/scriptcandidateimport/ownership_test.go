@@ -8,8 +8,6 @@ import (
 	"testing"
 
 	"capturequest/internal/scriptedevents"
-
-	_ "modernc.org/sqlite"
 )
 
 func TestRunPreservesCaptureQuestOverride(t *testing.T) {

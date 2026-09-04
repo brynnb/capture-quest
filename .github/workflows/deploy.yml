@@ -96,6 +96,7 @@ jobs:
                 scripts/sync_extractor_audio_manifest.mjs \
                 server/cmd/import-script-candidates \
                 server/internal/scriptcandidateimport \
+                server/internal/scriptedactions \
                 public/phaser/sprites \
                 2>/dev/null
             } | sha256sum | awk '{print $1}'
@@ -352,9 +353,14 @@ jobs:
         run: |
           cd server
           go test -p=1 -count=1 -run 'Warp|LastMap|WorldTile|TileEditor|PhaserTilesRequest' ./cmd/import-phaser ./internal/world
+          go test -p=1 -count=1 ./internal/extractorcontract
           go test -p=1 -count=1 ./internal/config
           go test -p=1 -count=1 ./internal/overworldoverview
           go test -p=1 -count=1 -run 'TileArt|OverworldOverview' ./internal/server
+          go run ./cmd/import-script-candidates --check \
+            --sqlite ../public/phaser/pokemon.db \
+            --output scripted_events/scripts \
+            --release "${CAPTUREQUEST_POKEMON_RELEASE:-red}"
 
       - name: Build Backend
         if: steps.deployment.outputs.deploy_backend == 'true'

@@ -48,6 +48,22 @@
 - Never use a reset deployment merely to repair static data. A reset drops
   player/runtime state and requires explicit user intent.
 
+## Generated script invariants
+
+- Both SQLite consumers must negotiate the shared schema/release contract in
+  `server/internal/extractorcontract` before consuming rows. Do not reintroduce
+  command-local copies of that validation.
+- Candidate JSON is versioned and duplicates selected relational identity
+  columns intentionally. Reject unsupported versions and any disagreement;
+  never guess which representation is current.
+- Script compiler, runtime, and simulator action payloads share
+  `server/internal/scriptedactions`. Change that wire contract in one place and
+  force the full-data deployment lane.
+- Publish generated script families through the locked, rollback-capable output
+  plan. CI verification uses `import-script-candidates --check`; do not replace
+  it with a mutating generation command or relax unsupported-diagnostic budgets
+  without reviewing the new extractor rows.
+
 ## Production deployment invariants
 
 - The GitHub Actions deployment is the canonical path. It classifies changes

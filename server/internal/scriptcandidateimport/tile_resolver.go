@@ -8,8 +8,6 @@ import (
 
 	"capturequest/internal/phaserdata"
 	"capturequest/internal/scriptedevents"
-
-	_ "modernc.org/sqlite"
 )
 
 type sourceMapMeta struct {

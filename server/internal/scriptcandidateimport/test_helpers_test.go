@@ -7,8 +7,6 @@ import (
 	"testing"
 
 	"capturequest/internal/scriptedevents"
-
-	_ "modernc.org/sqlite"
 )
 
 func createSQLite(t *testing.T, withCandidates bool, candidates []scriptCandidate) string {
@@ -23,6 +21,7 @@ func createSQLite(t *testing.T, withCandidates bool, candidates []scriptCandidat
 		if _, err := db.Exec(`CREATE TABLE placeholder (id INTEGER PRIMARY KEY)`); err != nil {
 			t.Fatal(err)
 		}
+		installExtractorContractFixture(t, db)
 		return path
 	}
 	if _, err := db.Exec(`
@@ -56,6 +55,7 @@ func createSQLite(t *testing.T, withCandidates bool, candidates []scriptCandidat
 			t.Fatal(err)
 		}
 	}
+	installExtractorContractFixture(t, db)
 	return path
 }
 
@@ -147,6 +147,7 @@ func createTileOverrideSQLite(t *testing.T) string {
 	); err != nil {
 		t.Fatal(err)
 	}
+	installExtractorContractFixture(t, db)
 	return path
 }
 
@@ -212,6 +213,7 @@ func createConditionalDialogueSQLite(t *testing.T) string {
 	); err != nil {
 		t.Fatal(err)
 	}
+	installExtractorContractFixture(t, db)
 	return path
 }
 
@@ -277,7 +279,91 @@ func createObjectVisibilitySQLite(t *testing.T) string {
 	); err != nil {
 		t.Fatal(err)
 	}
+	installExtractorContractFixture(t, db)
 	return path
+}
+
+func installExtractorContractFixture(t *testing.T, db *sql.DB) {
+	t.Helper()
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS schema_metadata (
+			schema_name TEXT NOT NULL,
+			schema_version INTEGER NOT NULL,
+			minimum_reader_version INTEGER NOT NULL,
+			applied_epoch INTEGER NOT NULL
+		);
+		CREATE TABLE IF NOT EXISTS extraction_runs (
+			run_id TEXT PRIMARY KEY,
+			schema_name TEXT NOT NULL,
+			schema_version INTEGER NOT NULL,
+			extractor_revision TEXT NOT NULL,
+			source_revision TEXT NOT NULL,
+			source_date_epoch INTEGER NOT NULL,
+			source_root TEXT NOT NULL,
+			source_tree_sha256 TEXT NOT NULL
+		);
+		CREATE TABLE IF NOT EXISTS game_releases (
+			release_code TEXT PRIMARY KEY,
+			title TEXT NOT NULL,
+			variant TEXT NOT NULL,
+			platform TEXT NOT NULL,
+			region TEXT NOT NULL,
+			language TEXT NOT NULL,
+			build_define TEXT NOT NULL
+		);
+		CREATE TABLE IF NOT EXISTS extraction_run_releases (
+			run_id TEXT NOT NULL,
+			release_code TEXT NOT NULL
+		);
+		CREATE TABLE IF NOT EXISTS moves (id INTEGER PRIMARY KEY, constant_name TEXT NOT NULL);
+		CREATE TABLE IF NOT EXISTS pokemon (
+			id INTEGER PRIMARY KEY,
+			default_move_1_id INTEGER, default_move_1_name TEXT NOT NULL DEFAULT 'NO_MOVE',
+			default_move_2_id INTEGER, default_move_2_name TEXT NOT NULL DEFAULT 'NO_MOVE',
+			default_move_3_id INTEGER, default_move_3_name TEXT NOT NULL DEFAULT 'NO_MOVE',
+			default_move_4_id INTEGER, default_move_4_name TEXT NOT NULL DEFAULT 'NO_MOVE'
+		);
+		CREATE TABLE IF NOT EXISTS tilesets (id INTEGER PRIMARY KEY, grass_tile_id INTEGER);
+		CREATE TABLE IF NOT EXISTS tiles (
+			id INTEGER PRIMARY KEY,
+			raw_foot_tile_id INTEGER,
+			raw_encounter_tile_id INTEGER
+		);
+	`); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, table := range []string{
+		"audio_assets", "dialogue_text", "encounter_slots", "event_flags",
+		"hidden_coins", "hidden_items", "hidden_objects", "items", "map_music",
+		"map_scripts", "npc_movement_data", "objects", "pokemon_default_moves",
+		"pokemon_learnset", "pokemon_tmhm", "text_pointers", "trainer_classes",
+		"trainer_headers", "trainer_parties", "trainer_party_pokemon", "warps",
+		"warp_events", "wild_encounters",
+	} {
+		if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS ` + table + ` (id INTEGER PRIMARY KEY)`); err != nil {
+			t.Fatalf("create extractor contract table %s: %v", table, err)
+		}
+	}
+	// Some focused fixtures own these tables with richer schemas.
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS maps (
+		id INTEGER PRIMARY KEY, name TEXT NOT NULL, tileset_id INTEGER, is_overworld INTEGER NOT NULL DEFAULT 0
+	)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS tile_images (id INTEGER PRIMARY KEY)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO schema_metadata VALUES ('pokemon-gameboy-extractor', 2, 2, 1);
+		INSERT INTO extraction_runs VALUES ('test-run', 'pokemon-gameboy-extractor', 2, 'extractor-rev', 'source-rev', 1, '/source', 'sha256');
+		INSERT INTO game_releases VALUES ('red', 'Pokemon Red', 'red', 'gameboy', 'US', 'en', '_RED');
+		INSERT INTO game_releases VALUES ('blue', 'Pokemon Blue', 'blue', 'gameboy', 'US', 'en', '_BLUE');
+		INSERT INTO extraction_run_releases VALUES ('test-run', 'red');
+		INSERT INTO extraction_run_releases VALUES ('test-run', 'blue');
+	`); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func containsImportedEventTileRule(rules []scriptedevents.EventTileOverrideRule, want scriptedevents.EventTileOverrideRule) bool {

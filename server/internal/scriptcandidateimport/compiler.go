@@ -1,14 +1,14 @@
 package scriptcandidateimport
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
 
+	"capturequest/internal/scriptedactions"
 	"capturequest/internal/scriptedevents"
-
-	_ "modernc.org/sqlite"
 )
 
 func mapCandidate(candidate scriptCandidate) (scriptedevents.EventFile, error) {
@@ -640,5 +640,15 @@ func rawAction(value map[string]any) json.RawMessage {
 	if err != nil {
 		panic(err)
 	}
-	return json.RawMessage(raw)
+	var action scriptedactions.Action
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&action); err != nil {
+		panic(fmt.Sprintf("candidate compiler emitted an invalid scripted action: %v", err))
+	}
+	raw, err = json.Marshal(action)
+	if err != nil {
+		panic(err)
+	}
+	return raw
 }

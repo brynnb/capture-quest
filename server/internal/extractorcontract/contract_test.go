@@ -1,6 +1,7 @@
-package main
+package extractorcontract
 
 import (
+	"context"
 	"database/sql"
 	"strings"
 	"testing"
@@ -62,7 +63,7 @@ func extractorContractFixture(t *testing.T) *sql.DB {
 }
 
 func TestNegotiateExtractorSourceAcceptsV2AndMoveConstants(t *testing.T) {
-	context, err := negotiateExtractorSource(extractorContractFixture(t), "BLUE")
+	context, err := Negotiate(context.Background(), extractorContractFixture(t), "BLUE")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +77,7 @@ func TestNegotiateExtractorSourceRejectsBeforeImport(t *testing.T) {
 	if _, err := db.Exec(`UPDATE schema_metadata SET schema_version = 3`); err != nil {
 		t.Fatal(err)
 	}
-	_, err := negotiateExtractorSource(db, "red")
+	_, err := Negotiate(context.Background(), db, "red")
 	if err == nil || !strings.Contains(err.Error(), "unsupported extractor schema version 3") {
 		t.Fatalf("error = %v", err)
 	}
@@ -87,7 +88,7 @@ func TestNegotiateExtractorSourceRejectsMismatchedDefaultConstant(t *testing.T) 
 	if _, err := db.Exec(`UPDATE pokemon SET default_move_1_name = 'SAND-ATTACK'`); err != nil {
 		t.Fatal(err)
 	}
-	_, err := negotiateExtractorSource(db, "red")
+	_, err := Negotiate(context.Background(), db, "red")
 	if err == nil || !strings.Contains(err.Error(), `moves.constant_name="SAND_ATTACK"`) {
 		t.Fatalf("error = %v", err)
 	}
@@ -98,7 +99,7 @@ func TestNegotiateExtractorSourceRequiresCompleteTables(t *testing.T) {
 	if _, err := db.Exec(`DROP TABLE warps`); err != nil {
 		t.Fatal(err)
 	}
-	_, err := negotiateExtractorSource(db, "red")
+	_, err := Negotiate(context.Background(), db, "red")
 	if err == nil || !strings.Contains(err.Error(), "missing required tables: warps") {
 		t.Fatalf("error = %v", err)
 	}
@@ -112,7 +113,7 @@ func TestNegotiateExtractorSourceRequiresGrassTileMetadata(t *testing.T) {
 	if _, err := db.Exec(`CREATE TABLE tilesets (id INTEGER)`); err != nil {
 		t.Fatal(err)
 	}
-	_, err := negotiateExtractorSource(db, "red")
+	_, err := Negotiate(context.Background(), db, "red")
 	if err == nil || !strings.Contains(err.Error(), "tilesets.grass_tile_id") {
 		t.Fatalf("error = %v", err)
 	}
@@ -126,7 +127,7 @@ func TestNegotiateExtractorSourceRequiresPlacedTileMetadata(t *testing.T) {
 	if _, err := db.Exec(`CREATE TABLE tiles (id INTEGER)`); err != nil {
 		t.Fatal(err)
 	}
-	_, err := negotiateExtractorSource(db, "red")
+	_, err := Negotiate(context.Background(), db, "red")
 	if err == nil || !strings.Contains(err.Error(), "tiles.raw_encounter_tile_id") {
 		t.Fatalf("error = %v", err)
 	}

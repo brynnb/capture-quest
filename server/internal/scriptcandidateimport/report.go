@@ -6,10 +6,36 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
-
-	_ "modernc.org/sqlite"
 )
+
+// reviewedUnsupportedDiagnosticBudget is an explicit regression budget, not a
+// success target. Reductions are welcome; new reasons or increased counts must
+// be reviewed alongside the extractor change that produced them.
+var reviewedUnsupportedDiagnosticBudget = map[string]int{
+	"text_asm_multi_text_branch": 17,
+	"text_asm_no_text_refs":      40,
+}
+
+func validateUnsupportedDiagnosticBudget(diagnostics []extractorDiagnostic) error {
+	counts := make(map[string]int)
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Status == "unsupported" {
+			counts[diagnostic.Reason]++
+		}
+	}
+	for reason, count := range counts {
+		budget, reviewed := reviewedUnsupportedDiagnosticBudget[reason]
+		if !reviewed {
+			return fmt.Errorf("unreviewed unsupported extractor diagnostic reason %q (%d rows)", reason, count)
+		}
+		if count > budget {
+			return fmt.Errorf("unsupported extractor diagnostic reason %q increased to %d rows (reviewed budget %d)", reason, count, budget)
+		}
+	}
+	return nil
+}
 
 func loadExtractorDiagnostics(ctx context.Context, db *sql.DB) ([]extractorDiagnostic, error) {
 	exists, err := sqliteTableExists(ctx, db, "script_event_candidate_diagnostics")
@@ -68,13 +94,35 @@ func writeImportReport(plan *outputPlan, opts Options, stats Stats, decisions []
 	if opts.DiagnosticsPath == "" {
 		return nil
 	}
+	stableStats := stats
+	stableStats.Written = 0
+	stableStats.Unchanged = 0
+	stableStats.TileOverrideWritten = 0
+	stableStats.TileOverrideUnchanged = 0
+	stableStats.ObjectVisibilityWritten = 0
+	stableStats.ObjectVisibilityUnchanged = 0
+	stableStats.ConditionalDialogueWritten = 0
+	stableStats.ConditionalDialogueUnchanged = 0
+	stableDecisions := make([]importDecision, len(decisions))
+	copy(stableDecisions, decisions)
+	reportRoot, rootErr := filepath.Abs(filepath.Dir(opts.OutputDir))
+	for index := range stableDecisions {
+		if stableDecisions[index].Status == "unchanged" {
+			stableDecisions[index].Status = "generated"
+		}
+		if stableDecisions[index].Path != "" && rootErr == nil {
+			if absolutePath, err := filepath.Abs(stableDecisions[index].Path); err == nil {
+				if relativePath, err := filepath.Rel(reportRoot, absolutePath); err == nil {
+					stableDecisions[index].Path = filepath.ToSlash(relativePath)
+				}
+			}
+		}
+	}
 	report := importReport{
-		SQLitePath:           opts.SQLitePath,
-		OutputDir:            opts.OutputDir,
 		DryRun:               opts.DryRun,
-		Stats:                stats,
-		Summary:              buildImportReportSummary(decisions, extractorDiagnostics),
-		Decisions:            decisions,
+		Stats:                stableStats,
+		Summary:              buildImportReportSummary(stableDecisions, extractorDiagnostics),
+		Decisions:            stableDecisions,
 		ExtractorDiagnostics: extractorDiagnostics,
 	}
 	raw, err := json.MarshalIndent(report, "", "  ")

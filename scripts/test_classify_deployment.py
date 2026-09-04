@@ -29,6 +29,16 @@ class DeploymentClassifierTest(unittest.TestCase):
         self.assertEqual(result["mode"], "full")
         self.assertEqual(result["full_data"], "true")
 
+    def test_extractor_contract_change_forces_full_lane(self) -> None:
+        result = classify_paths(["server/internal/extractorcontract/contract.go"])
+        self.assertEqual(result["mode"], "full")
+        self.assertEqual(result["full_data"], "true")
+
+    def test_scripted_action_contract_change_forces_full_lane(self) -> None:
+        result = classify_paths(["server/internal/scriptedactions/action.go"])
+        self.assertEqual(result["mode"], "full")
+        self.assertEqual(result["full_data"], "true")
+
     def test_docs_only_change_does_not_deploy(self) -> None:
         self.assertEqual(classify_paths(["docs/DEPLOYMENT.md", "AGENTS.md"])["mode"], "none")
 

@@ -5,12 +5,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log"
 	"path/filepath"
 
 	"capturequest/internal/scriptedevents"
-
-	_ "modernc.org/sqlite"
 )
 
 func importTileOverrideCandidates(ctx context.Context, db *sql.DB, opts Options, stats *Stats, plan *outputPlan) ([]importDecision, error) {
@@ -76,7 +73,6 @@ func importTileOverrideCandidates(ctx context.Context, db *sql.DB, opts Options,
 				Path:        path,
 				Details: rawDetails(map[string]any{
 					"manualTileKey":      key,
-					"manualPath":         path,
 					"generatedRules":     rules,
 					"sourceReplacements": candidate.Replacements,
 				}),
@@ -90,7 +86,6 @@ func importTileOverrideCandidates(ctx context.Context, db *sql.DB, opts Options,
 	sortEventTileRulesForImport(generatedRules)
 	stats.TileOverrideRules = len(generatedRules)
 	if len(generatedRules) == 0 && stats.TileOverrideUnsupported == len(candidates) {
-		log.Printf("[ScriptCandidates] Preserving existing generated event tile overrides because all %d candidates failed to resolve", len(candidates))
 		return decisions, nil
 	}
 	changed, err := writeGeneratedEventTileOverrideFile(plan, generatedEventTileOverridesPath(opts.OutputDir), generatedRules)

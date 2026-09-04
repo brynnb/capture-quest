@@ -9,8 +9,6 @@ import (
 	"testing"
 
 	"capturequest/internal/scriptedevents"
-
-	_ "modernc.org/sqlite"
 )
 
 func TestRunWritesGeneratedEventTileOverrides(t *testing.T) {
@@ -178,7 +176,6 @@ func TestRunSkipsGeneratedEventTileOverrideOwnedByManualFile(t *testing.T) {
 	}
 	var details struct {
 		ManualTileKey      string                                 `json:"manualTileKey"`
-		ManualPath         string                                 `json:"manualPath"`
 		GeneratedRules     []scriptedevents.EventTileOverrideRule `json:"generatedRules"`
 		SourceReplacements []tileOverrideReplacement              `json:"sourceReplacements"`
 	}
@@ -188,8 +185,8 @@ func TestRunSkipsGeneratedEventTileOverrideOwnedByManualFile(t *testing.T) {
 	if details.ManualTileKey != "7|TEST_MAP|4|6|EVENT_OPEN_TEST_GATE|" {
 		t.Fatalf("manual tile key = %q", details.ManualTileKey)
 	}
-	if details.ManualPath != filepath.Join(root, "event_tile_overrides.json") {
-		t.Fatalf("manual path = %q", details.ManualPath)
+	if report.Decisions[0].Path != "event_tile_overrides.json" {
+		t.Fatalf("decision path = %q", report.Decisions[0].Path)
 	}
 	if len(details.GeneratedRules) != 4 {
 		t.Fatalf("generated rules = %d, want 4", len(details.GeneratedRules))

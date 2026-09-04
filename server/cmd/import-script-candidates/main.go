@@ -6,6 +6,7 @@ import (
 	"context"
 	"flag"
 	"log"
+	"os"
 	"os/signal"
 	"syscall"
 
@@ -27,14 +28,19 @@ func main() {
 }
 
 func parseFlags() scriptcandidateimport.Options {
-	defaultSQLite := scriptcandidateimport.DefaultSQLitePath()
-	defaultOutput := scriptcandidateimport.DefaultOutputDir()
-	defaultDiagnostics := scriptcandidateimport.DefaultDiagnosticsPath(defaultOutput)
+	defaultSQLite := defaultSQLitePath()
+	defaultOutput := defaultOutputDir()
+	defaultDiagnostics := defaultDiagnosticsPath(defaultOutput)
 	sqliteFlag := flag.String("sqlite", defaultSQLite, "path to extracted Pokemon SQLite database")
 	outputFlag := flag.String("output", defaultOutput, "CaptureQuest scripted event scripts directory")
 	diagnosticsFlag := flag.String("diagnostics", defaultDiagnostics, "write importer/extractor diagnostics JSON report")
+	releaseFlag := flag.String("release", defaultRelease(), "Pokemon release to import (red or blue)")
 	dryRunFlag := flag.Bool("dry-run", false, "report generated files without writing")
+	checkFlag := flag.Bool("check", false, "exit nonzero without writing when generated outputs are stale")
 	flag.Parse()
+	if *dryRunFlag && *checkFlag {
+		log.Fatal("-dry-run and -check cannot be used together")
+	}
 
 	if flag.NArg() > 1 {
 		log.Fatalf("Usage: go run ./cmd/import-script-candidates [-sqlite path] [-output dir] [path]")
@@ -51,6 +57,18 @@ func parseFlags() scriptcandidateimport.Options {
 		SQLitePath:      sqlitePath,
 		OutputDir:       *outputFlag,
 		DiagnosticsPath: *diagnosticsFlag,
+		Release:         *releaseFlag,
 		DryRun:          *dryRunFlag,
+		Check:           *checkFlag,
+		Report: func(event scriptcandidateimport.ReportEvent) {
+			log.Printf("Script candidate import: %s %s", event.Kind, event.Path)
+		},
 	}
+}
+
+func defaultRelease() string {
+	if release := os.Getenv("CAPTUREQUEST_POKEMON_RELEASE"); release != "" {
+		return release
+	}
+	return "red"
 }

@@ -7,8 +7,6 @@ import (
 	"testing"
 
 	"capturequest/internal/scriptedevents"
-
-	_ "modernc.org/sqlite"
 )
 
 func TestMapCandidateSupportsMultiFlagConditions(t *testing.T) {

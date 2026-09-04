@@ -5,10 +5,16 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log"
-
-	_ "modernc.org/sqlite"
 )
+
+const supportedCandidateSchemaVersion = 1
+
+func requireCandidateVersion(table string, id int64, version int) error {
+	if version != supportedCandidateSchemaVersion {
+		return fmt.Errorf("%s row %d uses unsupported candidate schema version %d; expected %d", table, id, version, supportedCandidateSchemaVersion)
+	}
+	return nil
+}
 
 func loadCandidates(ctx context.Context, db *sql.DB) ([]scriptCandidate, error) {
 	exists, err := sqliteTableExists(ctx, db, "script_event_candidates")
@@ -16,12 +22,11 @@ func loadCandidates(ctx context.Context, db *sql.DB) ([]scriptCandidate, error) 
 		return nil, fmt.Errorf("check script_event_candidates table: %w", err)
 	}
 	if !exists {
-		log.Printf("[ScriptCandidates] SQLite has no script_event_candidates table; skipping")
 		return nil, nil
 	}
 
 	rows, err := db.QueryContext(ctx, `
-		SELECT candidate_json
+		SELECT id, map_name, script_label, trigger_type, trigger_label, confidence, candidate_json
 		FROM script_event_candidates
 		ORDER BY map_name, script_label, id`)
 	if err != nil {
@@ -31,13 +36,20 @@ func loadCandidates(ctx context.Context, db *sql.DB) ([]scriptCandidate, error) 
 
 	candidates := []scriptCandidate{}
 	for rows.Next() {
-		var raw string
-		if err := rows.Scan(&raw); err != nil {
+		var id int64
+		var mapName, scriptLabel, triggerType, triggerLabel, confidence, raw string
+		if err := rows.Scan(&id, &mapName, &scriptLabel, &triggerType, &triggerLabel, &confidence, &raw); err != nil {
 			return nil, err
 		}
 		var candidate scriptCandidate
 		if err := json.Unmarshal([]byte(raw), &candidate); err != nil {
-			return nil, fmt.Errorf("decode candidate JSON: %w", err)
+			return nil, fmt.Errorf("decode script_event_candidates row %d JSON: %w", id, err)
+		}
+		if err := requireCandidateVersion("script_event_candidates", id, candidate.Version); err != nil {
+			return nil, err
+		}
+		if candidate.MapName != mapName || candidate.ScriptLabel != scriptLabel || candidate.Trigger.Type != triggerType || candidate.Trigger.Label != triggerLabel || candidate.Confidence != confidence {
+			return nil, fmt.Errorf("script_event_candidates row %d JSON disagrees with relational columns", id)
 		}
 		candidates = append(candidates, candidate)
 	}
@@ -53,12 +65,11 @@ func loadTileOverrideCandidates(ctx context.Context, db *sql.DB) ([]tileOverride
 		return nil, false, fmt.Errorf("check script_event_tile_overrides table: %w", err)
 	}
 	if !exists {
-		log.Printf("[ScriptCandidates] SQLite has no script_event_tile_overrides table; skipping generated event tiles")
 		return nil, false, nil
 	}
 
 	rows, err := db.QueryContext(ctx, `
-		SELECT candidate_json
+		SELECT id, map_name, script_label, candidate_json
 		FROM script_event_tile_overrides
 		ORDER BY map_name, script_label, id`)
 	if err != nil {
@@ -68,13 +79,20 @@ func loadTileOverrideCandidates(ctx context.Context, db *sql.DB) ([]tileOverride
 
 	candidates := []tileOverrideCandidate{}
 	for rows.Next() {
-		var raw string
-		if err := rows.Scan(&raw); err != nil {
+		var id int64
+		var mapName, scriptLabel, raw string
+		if err := rows.Scan(&id, &mapName, &scriptLabel, &raw); err != nil {
 			return nil, true, err
 		}
 		var candidate tileOverrideCandidate
 		if err := json.Unmarshal([]byte(raw), &candidate); err != nil {
-			return nil, true, fmt.Errorf("decode tile override candidate JSON: %w", err)
+			return nil, true, fmt.Errorf("decode script_event_tile_overrides row %d JSON: %w", id, err)
+		}
+		if err := requireCandidateVersion("script_event_tile_overrides", id, candidate.Version); err != nil {
+			return nil, true, err
+		}
+		if candidate.MapName != mapName || candidate.ScriptLabel != scriptLabel {
+			return nil, true, fmt.Errorf("script_event_tile_overrides row %d JSON disagrees with relational columns", id)
 		}
 		candidates = append(candidates, candidate)
 	}

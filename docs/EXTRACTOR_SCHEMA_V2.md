@@ -22,7 +22,9 @@ Select a release with `CAPTUREQUEST_POKEMON_RELEASE=red` or `blue`. An explicit
 `POKEMON_DB_SOURCE` is honored by validation, asset synchronization, and the
 Postgres import.
 
-The Go importer repeats schema negotiation before opening Postgres. It rejects
+Both Go SQLite consumers repeat schema negotiation through
+`server/internal/extractorcontract`; the Postgres importer does so before
+opening Postgres. They reject
 unknown schema versions/readers, missing release links/tables, foreign-key
 errors, and inconsistent Pokémon default moves before any schema creation or
 truncate. It persists the selected release and extraction run in
@@ -51,6 +53,7 @@ Useful checks:
 
 ```bash
 cd server
-go test ./cmd/import-phaser -run 'TestNegotiateExtractorSource|TestValidatePokemonDefaultMoves'
+go test ./internal/extractorcontract ./internal/scriptcandidateimport
 go test ./internal/world -run TestLastMapWarp
+go run ./cmd/import-script-candidates --check --sqlite ../public/phaser/pokemon.db --output scripted_events/scripts --release red
 ```

@@ -6,8 +6,6 @@ import (
 	"fmt"
 
 	"capturequest/internal/scriptedevents"
-
-	_ "modernc.org/sqlite"
 )
 
 func canShareTriggerWithExistingExtractorBranch(event scriptedevents.EventFile, current existingScript) bool {

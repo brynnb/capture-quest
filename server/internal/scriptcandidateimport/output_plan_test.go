@@ -5,8 +5,41 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestOutputPlanRollsBackEveryPublishedFileWhenRenameFails(t *testing.T) {
+	dir := t.TempDir()
+	first := filepath.Join(dir, "a.json")
+	second := filepath.Join(dir, "b.json")
+	if err := os.WriteFile(first, []byte("old-a\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(second, []byte("old-b\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	plan := newOutputPlan()
+	if _, err := plan.Stage(first, []byte("new-a\n")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := plan.Stage(second, []byte("new-b\n")); err != nil {
+		t.Fatal(err)
+	}
+	renameCalls := 0
+	plan.rename = func(oldPath, newPath string) error {
+		renameCalls++
+		if renameCalls == 2 {
+			return os.ErrPermission
+		}
+		return os.Rename(oldPath, newPath)
+	}
+	if err := plan.Apply(false); err == nil || !strings.Contains(err.Error(), "publish") {
+		t.Fatalf("Apply error = %v", err)
+	}
+	assertFileContent(t, first, "old-a\n")
+	assertFileContent(t, second, "old-b\n")
+}
 
 func TestOutputPlanPublishesOnlyWhenApplied(t *testing.T) {
 	dir := t.TempDir()

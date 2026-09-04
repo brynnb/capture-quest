@@ -256,7 +256,8 @@ fi
 echo "Importing extractor script candidates..."
 (cd "${REPO_ROOT}/server" && go run ./cmd/import-script-candidates \
   --sqlite "${PHASER_DB_DEST}" \
-  --output "${REPO_ROOT}/server/scripted_events/scripts")
+  --output "${REPO_ROOT}/server/scripted_events/scripts" \
+  --release "${CAPTUREQUEST_RELEASE}")
 
 if [[ "${ASSETS_ONLY}" -eq 1 ]]; then
   echo "CaptureQuest asset bootstrap complete."

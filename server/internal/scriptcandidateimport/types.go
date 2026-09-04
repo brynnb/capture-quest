@@ -2,11 +2,12 @@ package scriptcandidateimport
 
 import (
 	"encoding/json"
+	"errors"
 
 	"capturequest/internal/scriptedevents"
-
-	_ "modernc.org/sqlite"
 )
+
+var ErrChangesRequired = errors.New("script candidate outputs are not current")
 
 const (
 	extractorSource                      = "extractor"
@@ -20,7 +21,15 @@ type Options struct {
 	SQLitePath      string
 	OutputDir       string
 	DiagnosticsPath string
+	Release         string
 	DryRun          bool
+	Check           bool
+	Report          func(ReportEvent)
+}
+
+type ReportEvent struct {
+	Kind string
+	Path string
 }
 
 type Stats struct {
@@ -227,8 +236,6 @@ type extractorDiagnostic struct {
 }
 
 type importReport struct {
-	SQLitePath           string                `json:"sqlitePath"`
-	OutputDir            string                `json:"outputDir"`
 	DryRun               bool                  `json:"dryRun"`
 	Stats                Stats                 `json:"stats"`
 	Summary              importReportSummary   `json:"summary"`

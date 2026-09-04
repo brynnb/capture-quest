@@ -5,10 +5,11 @@ import (
 	"fmt"
 
 	"capturequest/internal/db"
+	"capturequest/internal/scriptedactions"
 	"capturequest/internal/world"
 )
 
-type Action = world.CutsceneAction
+type Action = scriptedactions.Action
 type ActionEffect = world.CutsceneActionEffect
 
 func DecodeActions(cs *world.CutsceneScript) ([]Action, error) {

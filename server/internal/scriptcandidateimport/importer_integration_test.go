@@ -2,15 +2,102 @@ package scriptcandidateimport
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"capturequest/internal/scriptedevents"
-
-	_ "modernc.org/sqlite"
 )
+
+func TestRunCheckModeReportsStaleOutputsWithoutWriting(t *testing.T) {
+	candidate := safariCandidate("CheckCandidate", "", "")
+	dbPath := createSQLite(t, true, []scriptCandidate{candidate})
+	outputDir := t.TempDir()
+	diagnosticsPath := filepath.Join(filepath.Dir(outputDir), "diagnostics.json")
+	opts := Options{SQLitePath: dbPath, OutputDir: outputDir, DiagnosticsPath: diagnosticsPath}
+	if _, err := Run(context.Background(), opts); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Run(context.Background(), Options{SQLitePath: dbPath, OutputDir: outputDir, DiagnosticsPath: diagnosticsPath, Check: true}); err != nil {
+		t.Fatalf("current output failed check: %v", err)
+	}
+	path := filepath.Join(outputDir, "check_candidate.json")
+	current, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := append(append([]byte(nil), current...), '\n')
+	if err := os.WriteFile(path, stale, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Run(context.Background(), Options{SQLitePath: dbPath, OutputDir: outputDir, DiagnosticsPath: diagnosticsPath, Check: true}); !errors.Is(err, ErrChangesRequired) {
+		t.Fatalf("stale output check error = %v, want ErrChangesRequired", err)
+	}
+	assertFileContent(t, path, string(stale))
+}
+
+func TestRunRejectsUnsupportedCandidateVersionBeforeWriting(t *testing.T) {
+	dbPath := createSQLite(t, true, []scriptCandidate{safariCandidate("FutureCandidate", "", "")})
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE script_event_candidates SET candidate_json = json_set(candidate_json, '$.version', 99)`); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	outputDir := t.TempDir()
+	_, err = Run(context.Background(), Options{SQLitePath: dbPath, OutputDir: outputDir})
+	if err == nil || !strings.Contains(err.Error(), "unsupported candidate schema version 99") {
+		t.Fatalf("Run error = %v", err)
+	}
+	if entries, readErr := os.ReadDir(outputDir); readErr != nil || len(entries) != 0 {
+		t.Fatalf("output entries = %v, err = %v; want empty", entries, readErr)
+	}
+}
+
+func TestRunRejectsCandidateJSONRelationalMismatchBeforeWriting(t *testing.T) {
+	dbPath := createSQLite(t, true, []scriptCandidate{safariCandidate("MismatchCandidate", "", "")})
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE script_event_candidates SET map_name = 'WRONG_MAP'`); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	outputDir := t.TempDir()
+	_, err = Run(context.Background(), Options{SQLitePath: dbPath, OutputDir: outputDir})
+	if err == nil || !strings.Contains(err.Error(), "JSON disagrees with relational columns") {
+		t.Fatalf("Run error = %v", err)
+	}
+	if entries, readErr := os.ReadDir(outputDir); readErr != nil || len(entries) != 0 {
+		t.Fatalf("output entries = %v, err = %v; want empty", entries, readErr)
+	}
+}
+
+func TestUnsupportedDiagnosticBudgetRejectsNewReasonAndRegression(t *testing.T) {
+	if err := validateUnsupportedDiagnosticBudget([]extractorDiagnostic{{Status: "unsupported", Reason: "new_unreviewed_reason"}}); err == nil || !strings.Contains(err.Error(), "unreviewed") {
+		t.Fatalf("new reason error = %v", err)
+	}
+	diagnostics := make([]extractorDiagnostic, reviewedUnsupportedDiagnosticBudget["text_asm_multi_text_branch"]+1)
+	for index := range diagnostics {
+		diagnostics[index] = extractorDiagnostic{Status: "unsupported", Reason: "text_asm_multi_text_branch"}
+	}
+	if err := validateUnsupportedDiagnosticBudget(diagnostics); err == nil || !strings.Contains(err.Error(), "increased") {
+		t.Fatalf("increased count error = %v", err)
+	}
+}
 
 func TestRunNoopsWhenCandidateTableMissing(t *testing.T) {
 	dbPath := createSQLite(t, false, nil)
@@ -88,7 +175,7 @@ func TestRunWritesDiagnosticsReport(t *testing.T) {
 		MapName:     "BikeShop",
 		ScriptLabel: "BikeShopClerkText",
 		Status:      "unsupported",
-		Reason:      "item_reward,event_flags",
+		Reason:      "text_asm_multi_text_branch",
 		Details:     json.RawMessage(`{"features":{"hasGiveItem":true}}`),
 	})
 	insertExtractorDiagnostic(t, dbPath, extractorDiagnostic{
@@ -126,11 +213,11 @@ func TestRunWritesDiagnosticsReport(t *testing.T) {
 	if report.Summary.ExtractorByStatus["unsupported"] != 1 || report.Summary.ExtractorByStatus["ambiguous"] != 1 {
 		t.Fatalf("extractor status summary = %+v", report.Summary.ExtractorByStatus)
 	}
-	if report.Summary.ExtractorByReason["item_reward,event_flags"] != 1 {
-		t.Fatalf("extractor reason summary = %+v, want item_reward,event_flags", report.Summary.ExtractorByReason)
+	if report.Summary.ExtractorByReason["text_asm_multi_text_branch"] != 1 {
+		t.Fatalf("extractor reason summary = %+v, want text_asm_multi_text_branch", report.Summary.ExtractorByReason)
 	}
-	if report.Summary.UnsupportedByReason["item_reward,event_flags"] != 1 {
-		t.Fatalf("unsupported reason summary = %+v, want item_reward,event_flags", report.Summary.UnsupportedByReason)
+	if report.Summary.UnsupportedByReason["text_asm_multi_text_branch"] != 1 {
+		t.Fatalf("unsupported reason summary = %+v, want text_asm_multi_text_branch", report.Summary.UnsupportedByReason)
 	}
 	if len(report.Decisions) != 1 || report.Decisions[0].Status != "generated" {
 		t.Fatalf("decisions = %+v, want one generated decision", report.Decisions)

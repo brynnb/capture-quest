@@ -4,8 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"path/filepath"
+
+	"capturequest/internal/extractorcontract"
 
 	_ "modernc.org/sqlite"
 )
@@ -17,6 +18,11 @@ func Run(ctx context.Context, opts Options) (Stats, error) {
 	if opts.OutputDir == "" {
 		return Stats{}, fmt.Errorf("missing output directory")
 	}
+	lock, err := acquireImportLock(ctx, opts.OutputDir)
+	if err != nil {
+		return Stats{}, err
+	}
+	defer lock.Close()
 
 	db, err := sql.Open("sqlite", opts.SQLitePath)
 	if err != nil {
@@ -26,10 +32,20 @@ func Run(ctx context.Context, opts Options) (Stats, error) {
 	if err := db.PingContext(ctx); err != nil {
 		return Stats{}, fmt.Errorf("connect to SQLite: %w", err)
 	}
-	plan := newOutputPlan()
+	release := opts.Release
+	if release == "" {
+		release = "red"
+	}
+	if _, err := extractorcontract.Negotiate(ctx, db, release); err != nil {
+		return Stats{}, fmt.Errorf("negotiate extractor source: %w", err)
+	}
+	plan := newOutputPlan(opts.Report)
 
 	extractorDiagnostics, err := loadExtractorDiagnostics(ctx, db)
 	if err != nil {
+		return Stats{}, err
+	}
+	if err := validateUnsupportedDiagnosticBudget(extractorDiagnostics); err != nil {
 		return Stats{}, err
 	}
 	stats := statsFromExtractorDiagnostics(extractorDiagnostics)
@@ -61,7 +77,6 @@ func Run(ctx context.Context, opts Options) (Stats, error) {
 				Status:      "unsupported",
 				Reason:      err.Error(),
 			})
-			log.Printf("[ScriptCandidates] Skipping %s: %v", candidate.ScriptLabel, err)
 			continue
 		}
 
@@ -75,7 +90,6 @@ func Run(ctx context.Context, opts Options) (Stats, error) {
 				Reason:      "capturequest source owns this scriptLabel",
 				Path:        existingByLabel.Path,
 			})
-			log.Printf("[ScriptCandidates] Preserving CaptureQuest override for %s at %s", event.ScriptLabel, existingByLabel.Path)
 			continue
 		}
 
@@ -113,7 +127,6 @@ func Run(ctx context.Context, opts Options) (Stats, error) {
 				Reason:      reason,
 				Path:        current.Path,
 			})
-			log.Printf("[ScriptCandidates] Preserving existing trigger owner for %s at %s", event.ScriptLabel, current.Path)
 			continue
 		}
 
@@ -147,7 +160,6 @@ func Run(ctx context.Context, opts Options) (Stats, error) {
 				Reason:      fmt.Sprintf("existing file owns map flag %s", flag),
 				Path:        current.Path,
 			})
-			log.Printf("[ScriptCandidates] Preserving existing map flag owner for %s (%s) at %s", event.ScriptLabel, flag, current.Path)
 			continue
 		}
 
@@ -199,8 +211,14 @@ func Run(ctx context.Context, opts Options) (Stats, error) {
 	if err := writeImportReport(plan, opts, stats, decisions, extractorDiagnostics); err != nil {
 		return stats, err
 	}
-	if err := plan.Apply(opts.DryRun); err != nil {
+	if err := ctx.Err(); err != nil {
+		return stats, fmt.Errorf("script candidate import cancelled before publication: %w", err)
+	}
+	if err := plan.Apply(opts.DryRun || opts.Check); err != nil {
 		return stats, err
+	}
+	if opts.Check && plan.HasChanges() {
+		return stats, ErrChangesRequired
 	}
 	return stats, nil
 }

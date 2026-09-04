@@ -56,6 +56,31 @@ pokered source data
 runtime data, classifies warp activation metadata, and syncs scripted-event JSON
 into the database.
 
+`server/cmd/import-script-candidates` compiles the extractor's versioned,
+relational script candidates into CaptureQuest event JSON. Both SQLite
+consumers use `server/internal/extractorcontract` for the same schema-v2,
+release, integrity, and provenance negotiation. The script compiler additionally
+rejects candidate JSON whose version is unsupported or whose duplicated
+relational identity columns disagree. Runtime execution, offline simulation,
+and candidate compilation share the action wire contract in
+`server/internal/scriptedactions`.
+
+Candidate publication is serialized per output root and prepared as one
+rollback-capable multi-file operation. To verify generated files in CI without
+changing them, run:
+
+```bash
+cd server
+go run ./cmd/import-script-candidates --check \
+  --sqlite ../public/phaser/pokemon.db \
+  --output scripted_events/scripts \
+  --release red
+```
+
+The check fails on stale output, stale extractor schemas, and any new or
+increased unsupported-diagnostic category. The reviewed unsupported counts are
+regression ceilings, not accepted long-term targets.
+
 Grass encounter eligibility uses the original tileset header's grass ID and the
 bottom-right native 8×8 sample exported for each placed 16×16 square. It never
 uses deduplicated browser `tile_image_id` values, which can be renumbered by a
