@@ -273,7 +273,10 @@ layers:
 pgrep -af '[i]mport-phaser'
 
 set -a
-. /etc/capturequest/cq-server.env
+# The deploy account intentionally cannot read the production environment
+# directly. Read it through its non-interactive sudo permission without
+# printing the secrets into the shell or workflow log.
+. <(sudo -n cat /etc/capturequest/cq-server.env)
 set +a
 psql "$DATABASE_URL" -c \
   "SELECT pid, state, wait_event_type, wait_event, query_start, left(query, 160)

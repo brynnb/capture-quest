@@ -428,7 +428,7 @@ jobs:
           fi
 
           if [ "$DEPLOY_BACKEND" = "true" ]; then
-            ssh $SSH_OPTS "$HOST" "set -euo pipefail; set -a; . /etc/capturequest/cq-server.env; set +a; : \${ADMIN_KEY:?ADMIN_KEY missing}; test \${#ADMIN_KEY} -ge 32"
+            ssh $SSH_OPTS "$HOST" "set -euo pipefail; set -a; . <(sudo -n cat /etc/capturequest/cq-server.env); set +a; : \${ADMIN_KEY:?ADMIN_KEY missing}; test \${#ADMIN_KEY} -ge 32"
             gzip -c server/server | ssh $SSH_OPTS "$HOST" "set -euo pipefail; gunzip > '$APP_DIR/server/$BACKEND_STAGE'; chmod +x '$APP_DIR/server/$BACKEND_STAGE'"
             ssh $SSH_OPTS "$HOST" "sudo systemctl stop cq-server"
             SERVER_STOPPED=true
@@ -507,7 +507,7 @@ jobs:
 
           # Fail before stopping production if its backend-only key cannot meet
           # the server's startup requirement.
-          ssh $SSH_OPTS $HOST "set -euo pipefail; set -a; . /etc/capturequest/cq-server.env; set +a; : \${ADMIN_KEY:?ADMIN_KEY missing}; test \${#ADMIN_KEY} -ge 32"
+          ssh $SSH_OPTS $HOST "set -euo pipefail; set -a; . <(sudo -n cat /etc/capturequest/cq-server.env); set +a; : \${ADMIN_KEY:?ADMIN_KEY missing}; test \${#ADMIN_KEY} -ge 32"
 
           # Upload a complete frontend release without exposing it. The live
           # dist directory continues serving the old bundle and matching API
@@ -534,13 +534,13 @@ jobs:
 
           # Keep a rollback point immediately before schema/import mutations.
           backup_name="capturequest-predeploy-$(date -u +%Y%m%dT%H%M%SZ).sql.gz"
-          ssh $SSH_OPTS $HOST "set -euo pipefail; set -a; . /etc/capturequest/cq-server.env; set +a; : \${DATABASE_URL:?DATABASE_URL missing}; : \${LOCAL:?LOCAL missing}; test \"\$LOCAL\" = false; mkdir -p $APP_DIR/backups; pg_dump --no-owner --no-privileges \"\$DATABASE_URL\" | gzip -9 > $APP_DIR/backups/$backup_name; test -s $APP_DIR/backups/$backup_name"
+          ssh $SSH_OPTS $HOST "set -euo pipefail; set -a; . <(sudo -n cat /etc/capturequest/cq-server.env); set +a; : \${DATABASE_URL:?DATABASE_URL missing}; : \${LOCAL:?LOCAL missing}; test \"\$LOCAL\" = false; mkdir -p $APP_DIR/backups; pg_dump --no-owner --no-privileges \"\$DATABASE_URL\" | gzip -9 > $APP_DIR/backups/$backup_name; test -s $APP_DIR/backups/$backup_name"
 
           # Apply tracked runtime schema and refresh deterministic imported data.
           # Once this begins, a lost SSH transport makes the remote outcome
           # ambiguous; the EXIT trap deliberately leaves the API stopped.
           IMPORT_STARTED=true
-          ssh $SSH_OPTS $HOST "set -euo pipefail; cd $APP_DIR; set -a; . /etc/capturequest/cq-server.env; set +a; : \${DATABASE_URL:?DATABASE_URL missing}; release=\"$CAPTUREQUEST_POKEMON_RELEASE\"; cd server; ./import-phaser --release \"\$release\" --preflight-only ../public/phaser/pokemon.db; cd ..; if [ \"$RESET_DATABASE\" = \"true\" ]; then psql \"\$DATABASE_URL\" -v ON_ERROR_STOP=1 -c 'DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;'; fi; psql \"\$DATABASE_URL\" -v ON_ERROR_STOP=1 -f server/schema/postgres_runtime_schema.sql; cd server; DATABASE_URL=\"\$DATABASE_URL\" ./import-phaser --release \"\$release\" ../public/phaser/pokemon.db"
+          ssh $SSH_OPTS $HOST "set -euo pipefail; cd $APP_DIR; set -a; . <(sudo -n cat /etc/capturequest/cq-server.env); set +a; : \${DATABASE_URL:?DATABASE_URL missing}; release=\"$CAPTUREQUEST_POKEMON_RELEASE\"; cd server; ./import-phaser --release \"\$release\" --preflight-only ../public/phaser/pokemon.db; cd ..; if [ \"$RESET_DATABASE\" = \"true\" ]; then psql \"\$DATABASE_URL\" -v ON_ERROR_STOP=1 -c 'DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;'; fi; psql \"\$DATABASE_URL\" -v ON_ERROR_STOP=1 -f server/schema/postgres_runtime_schema.sql; cd server; DATABASE_URL=\"\$DATABASE_URL\" ./import-phaser --release \"\$release\" ../public/phaser/pokemon.db"
 
           IMPORT_COMPLETED=true
 
@@ -558,7 +558,7 @@ jobs:
           CQ_SERVER_STOPPED=false
 
           # Verify the imported tile catalog and public artifact after restart.
-          ssh $SSH_OPTS $HOST "set -euo pipefail; set -a; . /etc/capturequest/cq-server.env; set +a; : \${DATABASE_URL:?DATABASE_URL missing}; psql \"\$DATABASE_URL\" -v ON_ERROR_STOP=1 -Atc \"SELECT COUNT(*) FROM phaser_tiles WHERE has_tile_edit = 0 AND original_tile_image_id IS NOT NULL AND tile_image_id <> original_tile_image_id\" | grep -qx 0"
+          ssh $SSH_OPTS $HOST "set -euo pipefail; set -a; . <(sudo -n cat /etc/capturequest/cq-server.env); set +a; : \${DATABASE_URL:?DATABASE_URL missing}; psql \"\$DATABASE_URL\" -v ON_ERROR_STOP=1 -Atc \"SELECT COUNT(*) FROM phaser_tiles WHERE has_tile_edit = 0 AND original_tile_image_id IS NOT NULL AND tile_image_id <> original_tile_image_id\" | grep -qx 0"
           expected_contract_sha="$(sha256sum public/phaser/runtime_asset_contract.json | awk '{print $1}')"
           deployed_contract_sha="$(curl --fail --silent --show-error https://capturequest.net/phaser/runtime_asset_contract.json | sha256sum | awk '{print $1}')"
           test "$deployed_contract_sha" = "$expected_contract_sha"
@@ -578,7 +578,7 @@ jobs:
 
           # Probe a populated remote chunk, not a possibly transparent gap, so
           # success proves the server decoded the deployed tile-image catalog.
-          overview_chunk="$(ssh $SSH_OPTS $HOST "set -euo pipefail; set -a; . /etc/capturequest/cq-server.env; set +a; : \${DATABASE_URL:?DATABASE_URL missing}; psql \"\$DATABASE_URL\" -v ON_ERROR_STOP=1 -At -F, -c \"SELECT floor(x / 64.0)::int, floor(y / 64.0)::int FROM phaser_tiles WHERE map_id IS NULL AND is_tile_erased = 0 ORDER BY id LIMIT 1\"")"
+          overview_chunk="$(ssh $SSH_OPTS $HOST "set -euo pipefail; set -a; . <(sudo -n cat /etc/capturequest/cq-server.env); set +a; : \${DATABASE_URL:?DATABASE_URL missing}; psql \"\$DATABASE_URL\" -v ON_ERROR_STOP=1 -At -F, -c \"SELECT floor(x / 64.0)::int, floor(y / 64.0)::int FROM phaser_tiles WHERE map_id IS NULL AND is_tile_erased = 0 ORDER BY id LIMIT 1\"")"
           IFS=, read -r overview_chunk_x overview_chunk_y <<<"$overview_chunk"
           test -n "$overview_chunk_x"
           test -n "$overview_chunk_y"
