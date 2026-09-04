@@ -28,6 +28,12 @@ errors, and inconsistent Pokémon default moves before any schema creation or
 truncate. It persists the selected release and extraction run in
 `phaser_import_metadata`.
 
+Encounter terrain crosses the boundary through native source metadata:
+`tilesets.grass_tile_id` and each placed square's
+`tiles.raw_encounter_tile_id`. The importer derives runtime encounter areas from
+those values and `source_map_id`; generated `tile_image_id` values and rectangular
+map bounds are deliberately not gameplay semantics.
+
 `import-phaser --preflight-only` performs that negotiation without reading
 Postgres configuration or opening Postgres. Both the standalone database
 bootstrap and deployment invoke it before database creation or reset.

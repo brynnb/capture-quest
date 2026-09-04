@@ -83,6 +83,11 @@ button {
   background-color: #1a1a1a;
   cursor: pointer;
   transition: border-color 0.25s;
+  /* Buttons are controls, not selectable document text. This also prevents
+     iOS/WebKit's long-press text selection and callout while holding one. */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 button:hover {

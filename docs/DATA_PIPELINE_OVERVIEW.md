@@ -56,6 +56,11 @@ pokered source data
 runtime data, classifies warp activation metadata, and syncs scripted-event JSON
 into the database.
 
+Grass encounter eligibility uses the original tileset header's grass ID and the
+bottom-right native 8×8 sample exported for each placed 16×16 square. It never
+uses deduplicated browser `tile_image_id` values, which can be renumbered by a
+catalog rebuild.
+
 The `phaser_tiles` refresh is a transactional, indexed, set-based merge. Imported
 source values update the `original_*` snapshot; explicit manual tile mutations
 remain current when `has_tile_edit = 1`. One-time cleanup is tracked separately

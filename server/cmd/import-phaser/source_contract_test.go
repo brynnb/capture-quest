@@ -31,6 +31,10 @@ func extractorContractFixture(t *testing.T) *sql.DB {
 			definition = `(id INTEGER, default_move_1_id INTEGER, default_move_1_name TEXT, default_move_2_id INTEGER, default_move_2_name TEXT, default_move_3_id INTEGER, default_move_3_name TEXT, default_move_4_id INTEGER, default_move_4_name TEXT)`
 		case "moves":
 			definition = `(id INTEGER, constant_name TEXT)`
+		case "tilesets":
+			definition = `(id INTEGER, grass_tile_id INTEGER)`
+		case "tiles":
+			definition = `(id INTEGER, raw_foot_tile_id INTEGER, raw_encounter_tile_id INTEGER)`
 		default:
 			definition = `(id INTEGER)`
 		}
@@ -96,6 +100,34 @@ func TestNegotiateExtractorSourceRequiresCompleteTables(t *testing.T) {
 	}
 	_, err := negotiateExtractorSource(db, "red")
 	if err == nil || !strings.Contains(err.Error(), "missing required tables: warps") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestNegotiateExtractorSourceRequiresGrassTileMetadata(t *testing.T) {
+	db := extractorContractFixture(t)
+	if _, err := db.Exec(`ALTER TABLE tilesets RENAME TO tilesets_with_grass`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TABLE tilesets (id INTEGER)`); err != nil {
+		t.Fatal(err)
+	}
+	_, err := negotiateExtractorSource(db, "red")
+	if err == nil || !strings.Contains(err.Error(), "tilesets.grass_tile_id") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestNegotiateExtractorSourceRequiresPlacedTileMetadata(t *testing.T) {
+	db := extractorContractFixture(t)
+	if _, err := db.Exec(`ALTER TABLE tiles RENAME TO tiles_with_native_metadata`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TABLE tiles (id INTEGER)`); err != nil {
+		t.Fatal(err)
+	}
+	_, err := negotiateExtractorSource(db, "red")
+	if err == nil || !strings.Contains(err.Error(), "tiles.raw_encounter_tile_id") {
 		t.Fatalf("error = %v", err)
 	}
 }

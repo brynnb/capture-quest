@@ -24,8 +24,13 @@ var requiredExtractorTables = []string{
 	"map_scripts", "maps", "moves", "npc_movement_data", "objects",
 	"pokemon", "pokemon_default_moves", "pokemon_learnset", "pokemon_tmhm",
 	"schema_metadata", "text_pointers", "tile_images", "tiles", "trainer_classes",
-	"trainer_headers", "trainer_parties", "trainer_party_pokemon", "warps",
+	"trainer_headers", "trainer_parties", "trainer_party_pokemon", "tilesets", "warps",
 	"warp_events", "wild_encounters",
+}
+
+var requiredExtractorColumns = map[string][]string{
+	"tilesets": {"grass_tile_id"},
+	"tiles":    {"raw_foot_tile_id", "raw_encounter_tile_id"},
 }
 
 // extractorImportContext is the immutable source contract that is negotiated
@@ -72,6 +77,9 @@ func negotiateExtractorSource(sqlite *sql.DB, requestedRelease string) (extracto
 		return extractorImportContext{}, fmt.Errorf("extractor SQLite quick_check failed: %s", quickCheck)
 	}
 	if err := requireExtractorTables(sqlite); err != nil {
+		return extractorImportContext{}, err
+	}
+	if err := requireExtractorColumns(sqlite); err != nil {
 		return extractorImportContext{}, err
 	}
 
@@ -230,6 +238,41 @@ func negotiateExtractorSource(sqlite *sql.DB, requestedRelease string) (extracto
 	}
 
 	return context, nil
+}
+
+func requireExtractorColumns(sqlite *sql.DB) error {
+	missing := make([]string, 0)
+	for table, requiredColumns := range requiredExtractorColumns {
+		rows, err := sqlite.Query(`SELECT name FROM pragma_table_info(?)`, table)
+		if err != nil {
+			return fmt.Errorf("inspect extractor table %s: %w", table, err)
+		}
+		present := make(map[string]struct{})
+		for rows.Next() {
+			var column string
+			if err := rows.Scan(&column); err != nil {
+				rows.Close()
+				return fmt.Errorf("scan extractor table %s columns: %w", table, err)
+			}
+			present[column] = struct{}{}
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return fmt.Errorf("read extractor table %s columns: %w", table, err)
+		}
+		if err := rows.Close(); err != nil {
+			return fmt.Errorf("close extractor table %s columns: %w", table, err)
+		}
+		for _, column := range requiredColumns {
+			if _, ok := present[column]; !ok {
+				missing = append(missing, table+"."+column)
+			}
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("extractor database is missing required columns: %s", strings.Join(missing, ", "))
+	}
+	return nil
 }
 
 func requireExtractorTables(sqlite *sql.DB) error {

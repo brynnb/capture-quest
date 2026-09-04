@@ -404,6 +404,7 @@ CREATE TABLE IF NOT EXISTS phaser_tiles (
     source_map_id integer DEFAULT NULL,
     collision_type integer DEFAULT 0,
     raw_foot_tile_id integer DEFAULT NULL,
+    raw_encounter_tile_id integer DEFAULT NULL,
     talk_over_tile boolean NOT NULL DEFAULT false,
     encounter_area_id integer DEFAULT NULL,
     is_native_game_data boolean NOT NULL DEFAULT false,
@@ -417,6 +418,7 @@ CREATE TABLE IF NOT EXISTS phaser_tiles (
     original_tile_image_id integer DEFAULT NULL,
     original_collision_type integer DEFAULT NULL,
     original_raw_foot_tile_id integer DEFAULT NULL,
+    original_raw_encounter_tile_id integer DEFAULT NULL,
     original_talk_over_tile boolean DEFAULT NULL,
     original_encounter_area_id integer DEFAULT NULL,
     original_local_x integer DEFAULT NULL,
@@ -447,6 +449,10 @@ ALTER TABLE phaser_tiles
     ADD COLUMN IF NOT EXISTS original_collision_type integer;
 ALTER TABLE phaser_tiles
     ADD COLUMN IF NOT EXISTS original_raw_foot_tile_id integer;
+ALTER TABLE phaser_tiles
+    ADD COLUMN IF NOT EXISTS raw_encounter_tile_id integer;
+ALTER TABLE phaser_tiles
+    ADD COLUMN IF NOT EXISTS original_raw_encounter_tile_id integer;
 ALTER TABLE phaser_tiles
     ADD COLUMN IF NOT EXISTS original_talk_over_tile boolean;
 ALTER TABLE phaser_tiles

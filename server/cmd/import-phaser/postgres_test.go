@@ -364,6 +364,7 @@ func TestMergeImportedTilesPreservesEditedCurrentState(t *testing.T) {
 			source_map_id INTEGER,
 			collision_type INTEGER DEFAULT 0,
 			raw_foot_tile_id INTEGER,
+			raw_encounter_tile_id INTEGER,
 			talk_over_tile BOOLEAN NOT NULL DEFAULT false,
 			encounter_area_id INTEGER,
 			is_native_game_data BOOLEAN NOT NULL DEFAULT false,
@@ -375,6 +376,7 @@ func TestMergeImportedTilesPreservesEditedCurrentState(t *testing.T) {
 			original_tile_image_id INTEGER,
 			original_collision_type INTEGER,
 			original_raw_foot_tile_id INTEGER,
+			original_raw_encounter_tile_id INTEGER,
 			original_talk_over_tile BOOLEAN,
 			original_encounter_area_id INTEGER,
 			original_local_x INTEGER,
@@ -414,6 +416,7 @@ func TestMergeImportedTilesPreservesEditedCurrentState(t *testing.T) {
 			source_map_id INTEGER,
 			collision_type INTEGER DEFAULT 0,
 			raw_foot_tile_id INTEGER,
+			raw_encounter_tile_id INTEGER,
 			talk_over_tile BOOLEAN NOT NULL DEFAULT false
 		)`,
 	); err != nil {
@@ -421,10 +424,11 @@ func TestMergeImportedTilesPreservesEditedCurrentState(t *testing.T) {
 	}
 	if _, err := tx.Exec(`
 		INSERT INTO phaser_tiles_import_stage
-			(x, y, tile_image_id, local_x, local_y, map_id, source_map_id, collision_type, raw_foot_tile_id, talk_over_tile)
+			(x, y, tile_image_id, local_x, local_y, map_id, source_map_id, collision_type,
+			 raw_foot_tile_id, raw_encounter_tile_id, talk_over_tile)
 		VALUES
-			(1, 1, 2, 1, 1, NULL, 17, 1, NULL, false),
-			(2, 2, 3, 2, 2, NULL, 17, 1, NULL, false)`,
+			(1, 1, 2, 1, 1, NULL, 17, 1, 44, 82, false),
+			(2, 2, 3, 2, 2, NULL, 17, 1, 44, 82, false)`,
 	); err != nil {
 		t.Fatalf("seed stage: %v", err)
 	}

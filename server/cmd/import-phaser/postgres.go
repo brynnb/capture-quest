@@ -382,6 +382,8 @@ func ensurePhaserTileMutationColumnsPostgres(pg *sql.DB) error {
 		`ALTER TABLE phaser_tiles ADD COLUMN IF NOT EXISTS original_tile_image_id integer DEFAULT NULL`,
 		`ALTER TABLE phaser_tiles ADD COLUMN IF NOT EXISTS original_collision_type integer DEFAULT NULL`,
 		`ALTER TABLE phaser_tiles ADD COLUMN IF NOT EXISTS original_raw_foot_tile_id integer DEFAULT NULL`,
+		`ALTER TABLE phaser_tiles ADD COLUMN IF NOT EXISTS raw_encounter_tile_id integer DEFAULT NULL`,
+		`ALTER TABLE phaser_tiles ADD COLUMN IF NOT EXISTS original_raw_encounter_tile_id integer DEFAULT NULL`,
 		`ALTER TABLE phaser_tiles ADD COLUMN IF NOT EXISTS original_talk_over_tile boolean DEFAULT NULL`,
 		`ALTER TABLE phaser_tiles ADD COLUMN IF NOT EXISTS original_encounter_area_id integer DEFAULT NULL`,
 		`ALTER TABLE phaser_tiles ADD COLUMN IF NOT EXISTS original_local_x integer DEFAULT NULL`,
@@ -751,7 +753,7 @@ func nullInt64ToParam(value sql.NullInt64) any {
 	return value.Int64
 }
 
-func importTilesPostgres(sqlite, pg *sql.DB, tileImageMetadata map[int64]tileImageRuntimeMetadata) error {
+func importTilesPostgres(sqlite, pg *sql.DB, _ map[int64]tileImageRuntimeMetadata) error {
 	log.Println("Importing tiles -> phaser_tiles...")
 	tx, err := pg.Begin()
 	if err != nil {
@@ -773,6 +775,7 @@ func importTilesPostgres(sqlite, pg *sql.DB, tileImageMetadata map[int64]tileIma
 			source_map_id integer DEFAULT NULL,
 			collision_type integer DEFAULT 0,
 			raw_foot_tile_id integer DEFAULT NULL,
+			raw_encounter_tile_id integer DEFAULT NULL,
 			talk_over_tile boolean NOT NULL DEFAULT false
 		) ON COMMIT DROP`); err != nil {
 		return fmt.Errorf("create phaser_tiles import stage: %w", err)
@@ -804,16 +807,10 @@ func importTilesPostgres(sqlite, pg *sql.DB, tileImageMetadata map[int64]tileIma
 	if err != nil {
 		return err
 	}
-	mapBlocks, err := loadSQLiteMapBlockMetadata(sqlite)
-	if err != nil {
-		return err
-	}
-	blocksets, err := loadSQLiteBlocksets(sqlite)
-	if err != nil {
-		return err
-	}
-
-	sourceRows, err := sqlite.Query(`SELECT id, x, y, tile_image_id, local_x, local_y, map_id, collision_type FROM tiles`)
+	sourceRows, err := sqlite.Query(`
+		SELECT id, x, y, tile_image_id, local_x, local_y, map_id, collision_type,
+		       raw_foot_tile_id, raw_encounter_tile_id
+		FROM tiles`)
 	if err != nil {
 		return fmt.Errorf("query tiles: %w", err)
 	}
@@ -821,8 +818,9 @@ func importTilesPostgres(sqlite, pg *sql.DB, tileImageMetadata map[int64]tileIma
 
 	stmt, err := tx.Prepare(`
 		INSERT INTO phaser_tiles_import_stage
-			(x, y, tile_image_id, local_x, local_y, map_id, source_map_id, collision_type, raw_foot_tile_id, talk_over_tile)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`)
+			(x, y, tile_image_id, local_x, local_y, map_id, source_map_id, collision_type,
+			 raw_foot_tile_id, raw_encounter_tile_id, talk_over_tile)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`)
 	if err != nil {
 		return fmt.Errorf("prepare phaser_tiles stage insert: %w", err)
 	}
@@ -830,27 +828,22 @@ func importTilesPostgres(sqlite, pg *sql.DB, tileImageMetadata map[int64]tileIma
 
 	count := 0
 	for sourceRows.Next() {
-		var id, x, y, tileImageID, mapID int64
+		var id, x, y, tileImageID, mapID, rawFootTileID, rawEncounterTileID int64
 		var localX, localY, collisionType sql.NullInt64
-		if err := sourceRows.Scan(&id, &x, &y, &tileImageID, &localX, &localY, &mapID, &collisionType); err != nil {
+		if err := sourceRows.Scan(
+			&id, &x, &y, &tileImageID, &localX, &localY, &mapID, &collisionType,
+			&rawFootTileID, &rawEncounterTileID,
+		); err != nil {
 			return fmt.Errorf("scan tile row: %w", err)
 		}
 		var mapIDParam any = mapID
 		if overworldMaps[mapID] {
 			mapIDParam = nil
 		}
-		metadata := tileImageMetadata[tileImageID]
-		rawFootTileID := metadata.RawFootTileID
-		talkOverRawFootTileID := rawFootTileID
-		if raw, ok := rawFootTileIDForPlacedTile(
-			mapBlocks[mapID],
-			blocksets,
-			tileCoordinateForMetadata(x, localX),
-			tileCoordinateForMetadata(y, localY),
-		); ok {
-			talkOverRawFootTileID = sql.NullInt64{Int64: int64(raw), Valid: true}
-		}
-		talkOverTile := isTalkOverTile(mapTilesetIDs[mapID], talkOverRawFootTileID)
+		talkOverTile := isTalkOverTile(
+			mapTilesetIDs[mapID],
+			sql.NullInt64{Int64: rawFootTileID, Valid: true},
+		)
 		if _, err := stmt.Exec(
 			x,
 			y,
@@ -860,7 +853,8 @@ func importTilesPostgres(sqlite, pg *sql.DB, tileImageMetadata map[int64]tileIma
 			mapIDParam,
 			mapID,
 			nullToPtr(collisionType),
-			nullInt64ToParam(rawFootTileID),
+			rawFootTileID,
+			rawEncounterTileID,
 			talkOverTile,
 		); err != nil {
 			return fmt.Errorf("stage tile %d: %w", id, err)
@@ -957,6 +951,7 @@ func mergeImportedTilesPostgres(tx *sql.Tx) error {
 			original_tile_image_id = s.tile_image_id,
 			original_collision_type = s.collision_type,
 			original_raw_foot_tile_id = s.raw_foot_tile_id,
+			original_raw_encounter_tile_id = s.raw_encounter_tile_id,
 			original_talk_over_tile = s.talk_over_tile,
 			original_encounter_area_id = NULL,
 			original_local_x = s.local_x,
@@ -965,6 +960,7 @@ func mergeImportedTilesPostgres(tx *sql.Tx) error {
 			tile_image_id = CASE WHEN t.has_tile_edit = 1 THEN t.tile_image_id ELSE s.tile_image_id END,
 			collision_type = CASE WHEN t.has_tile_edit = 1 THEN t.collision_type ELSE s.collision_type END,
 			raw_foot_tile_id = CASE WHEN t.has_tile_edit = 1 THEN t.raw_foot_tile_id ELSE s.raw_foot_tile_id END,
+			raw_encounter_tile_id = CASE WHEN t.has_tile_edit = 1 THEN t.raw_encounter_tile_id ELSE s.raw_encounter_tile_id END,
 			talk_over_tile = CASE WHEN t.has_tile_edit = 1 THEN t.talk_over_tile ELSE s.talk_over_tile END,
 			encounter_area_id = CASE WHEN t.has_tile_edit = 1 THEN t.encounter_area_id ELSE NULL END,
 			local_x = CASE WHEN t.has_tile_edit = 1 THEN t.local_x ELSE s.local_x END,
@@ -989,10 +985,11 @@ func mergeImportedTilesPostgres(tx *sql.Tx) error {
 	result, err = tx.Exec(`
 		INSERT INTO phaser_tiles (
 			x, y, tile_image_id, local_x, local_y, map_id, source_map_id,
-			collision_type, raw_foot_tile_id, talk_over_tile, encounter_area_id,
+			collision_type, raw_foot_tile_id, raw_encounter_tile_id, talk_over_tile, encounter_area_id,
 			is_native_game_data, coordinate_origin, content_origin,
 			is_original_tile_location, has_tile_edit, is_tile_erased,
 			original_tile_image_id, original_collision_type, original_raw_foot_tile_id,
+			original_raw_encounter_tile_id,
 			original_talk_over_tile, original_encounter_area_id, original_local_x,
 			original_local_y, original_source_map_id,
 			is_user_placed, placed_by_char_id, placed_at,
@@ -1000,10 +997,10 @@ func mergeImportedTilesPostgres(tx *sql.Tx) error {
 		)
 		SELECT
 			x, y, tile_image_id, local_x, local_y, map_id, source_map_id,
-			collision_type, raw_foot_tile_id, talk_over_tile, NULL,
+			collision_type, raw_foot_tile_id, raw_encounter_tile_id, talk_over_tile, NULL,
 			TRUE, 'native', 'native',
 			1, 0, 0,
-			tile_image_id, collision_type, raw_foot_tile_id,
+			tile_image_id, collision_type, raw_foot_tile_id, raw_encounter_tile_id,
 			talk_over_tile, NULL, local_x, local_y, source_map_id,
 			0, NULL, NULL,
 			NULL, NULL, NULL
@@ -1183,23 +1180,20 @@ func loadSQLiteMapTilesetIDs(sqlite *sql.DB) (map[int64]int64, error) {
 	return result, nil
 }
 
-type overworldEncounterMap struct {
-	Name      string
-	Width     int
-	Height    int
-	AreaID    int
-	Offset    coordinateOffset
-	HasOffset bool
-}
-
 func deriveEncounterAreasPostgres(sqlite, pg *sql.DB, release string) error {
 	log.Println("Deriving grass encounter areas from wild encounter tables...")
-	offsets := loadOverworldMapOffsets(sqlite)
+	grassTileIDs, err := loadTilesetGrassTileIDs(sqlite)
+	if err != nil {
+		return err
+	}
 	tx, err := pg.Begin()
 	if err != nil {
 		return fmt.Errorf("begin encounter area derivation: %w", err)
 	}
 	defer tx.Rollback()
+	if err := stageTilesetGrassTileIDsPostgres(tx, grassTileIDs); err != nil {
+		return err
+	}
 
 	if _, err := tx.Exec(`UPDATE phaser_tiles SET original_encounter_area_id = NULL WHERE is_original_tile_location = 1`); err != nil {
 		return fmt.Errorf("clear original tile encounter area ids: %w", err)
@@ -1273,12 +1267,11 @@ func deriveEncounterAreasPostgres(sqlite, pg *sql.DB, release string) error {
 	if err != nil {
 		return err
 	}
-	overworldMaps, err := loadOverworldEncounterMapsPostgres(tx, offsets)
+	taggedOverworld, err := tagOverworldEncounterTilesPostgres(tx)
 	if err != nil {
 		return err
 	}
-	taggedOverworld, err := tagOverworldEncounterTilesPostgres(tx, overworldMaps)
-	if err != nil {
+	if err := validateEncounterAreaCoveragePostgres(tx); err != nil {
 		return err
 	}
 
@@ -1290,6 +1283,50 @@ func deriveEncounterAreasPostgres(sqlite, pg *sql.DB, release string) error {
 	return nil
 }
 
+func loadTilesetGrassTileIDs(sqlite *sql.DB) (map[int]int, error) {
+	rows, err := sqlite.Query(`SELECT id, grass_tile_id FROM tilesets WHERE grass_tile_id IS NOT NULL`)
+	if err != nil {
+		return nil, fmt.Errorf("load tileset grass tile metadata: %w", err)
+	}
+	defer rows.Close()
+	result := make(map[int]int)
+	for rows.Next() {
+		var tilesetID, grassTileID int
+		if err := rows.Scan(&tilesetID, &grassTileID); err != nil {
+			return nil, fmt.Errorf("scan tileset grass tile metadata: %w", err)
+		}
+		result[tilesetID] = grassTileID
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read tileset grass tile metadata: %w", err)
+	}
+	if len(result) == 0 {
+		return nil, fmt.Errorf("extractor published no tileset grass tile metadata")
+	}
+	return result, nil
+}
+
+func stageTilesetGrassTileIDsPostgres(tx *sql.Tx, grassTileIDs map[int]int) error {
+	if _, err := tx.Exec(`
+		CREATE TEMP TABLE phaser_tileset_grass_tiles (
+			tileset_id integer PRIMARY KEY,
+			grass_tile_id integer NOT NULL
+		) ON COMMIT DROP`); err != nil {
+		return fmt.Errorf("create tileset grass tile stage: %w", err)
+	}
+	stmt, err := tx.Prepare(`INSERT INTO phaser_tileset_grass_tiles (tileset_id, grass_tile_id) VALUES ($1, $2)`)
+	if err != nil {
+		return fmt.Errorf("prepare tileset grass tile stage: %w", err)
+	}
+	defer stmt.Close()
+	for tilesetID, grassTileID := range grassTileIDs {
+		if _, err := stmt.Exec(tilesetID, grassTileID); err != nil {
+			return fmt.Errorf("stage grass tile for tileset %d: %w", tilesetID, err)
+		}
+	}
+	return nil
+}
+
 func tagNonOverworldEncounterTilesPostgres(tx *sql.Tx) (int64, error) {
 	result, err := tx.Exec(`
 		UPDATE phaser_tiles AS t
@@ -1298,13 +1335,15 @@ func tagNonOverworldEncounterTilesPostgres(tx *sql.Tx) (int64, error) {
 		FROM phaser_maps AS pm
 		JOIN phaser_encounter_areas AS ea
 		  ON ea.name = pm.name || '_GRASS'
+		LEFT JOIN phaser_tileset_grass_tiles AS grass
+		  ON grass.tileset_id = pm.tileset_id
 		WHERE t.map_id = pm.id
 		  AND t.is_original_tile_location = 1
 		  AND ea.encounter_type = 'grass'
 		  AND COALESCE(t.original_collision_type, t.collision_type) = 1
 		  AND (
-		      COALESCE(t.original_tile_image_id, t.tile_image_id) IN (25, 142, 144, 149, 825)
-		      OR (pm.id >= 37 AND COALESCE(pm.tileset_id, -1) <> 3)
+		      COALESCE(t.original_raw_encounter_tile_id, t.raw_encounter_tile_id) = grass.grass_tile_id
+		      OR (pm.is_overworld = 0 AND COALESCE(pm.tileset_id, -1) <> 3)
 		  )`)
 	if err != nil {
 		return 0, fmt.Errorf("tag non-overworld encounter tiles: %w", err)
@@ -1313,70 +1352,59 @@ func tagNonOverworldEncounterTilesPostgres(tx *sql.Tx) (int64, error) {
 	return affected, nil
 }
 
-func loadOverworldEncounterMapsPostgres(tx *sql.Tx, offsets map[string]coordinateOffset) ([]overworldEncounterMap, error) {
+func validateEncounterAreaCoveragePostgres(tx *sql.Tx) error {
 	rows, err := tx.Query(`
-		SELECT pm.name, pm.width, pm.height, ea.id
-		FROM phaser_maps AS pm
-		JOIN phaser_encounter_areas AS ea ON ea.name = pm.name || '_GRASS'
-		WHERE pm.is_overworld = 1
-		  AND ea.encounter_type = 'grass'
-		ORDER BY pm.id`)
+		SELECT ea.name
+		FROM phaser_encounter_areas AS ea
+		LEFT JOIN phaser_tiles AS tile
+		  ON tile.original_encounter_area_id = ea.id
+		WHERE ea.encounter_type = 'grass'
+		GROUP BY ea.id, ea.name
+		HAVING COUNT(tile.id) = 0
+		ORDER BY ea.name`)
 	if err != nil {
-		return nil, fmt.Errorf("load overworld encounter maps: %w", err)
+		return fmt.Errorf("validate encounter area tile coverage: %w", err)
 	}
 	defer rows.Close()
-
-	var maps []overworldEncounterMap
+	missing := make([]string, 0)
 	for rows.Next() {
-		var m overworldEncounterMap
-		if err := rows.Scan(&m.Name, &m.Width, &m.Height, &m.AreaID); err != nil {
-			return nil, fmt.Errorf("scan overworld encounter map: %w", err)
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return fmt.Errorf("scan encounter area tile coverage: %w", err)
 		}
-		m.Offset, m.HasOffset = offsets[normalizeMapName(m.Name)]
-		if !m.HasOffset {
-			log.Printf("  ! No overworld offset found for encounter map %s", m.Name)
-		}
-		maps = append(maps, m)
+		missing = append(missing, name)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("read overworld encounter maps: %w", err)
+		return fmt.Errorf("read encounter area tile coverage: %w", err)
 	}
-	return maps, nil
+	if len(missing) > 0 {
+		return fmt.Errorf("grass encounter areas have no eligible runtime tiles: %s", strings.Join(missing, ", "))
+	}
+	return nil
 }
 
-func tagOverworldEncounterTilesPostgres(tx *sql.Tx, maps []overworldEncounterMap) (int64, error) {
-	stmt, err := tx.Prepare(`
-		UPDATE phaser_tiles
-		SET original_encounter_area_id = $1,
-			encounter_area_id = CASE WHEN has_tile_edit = 0 THEN $1 ELSE encounter_area_id END
-		WHERE map_id IS NULL
-		  AND is_original_tile_location = 1
-		  AND x >= $2 AND x < $3
-		  AND y >= $4 AND y < $5
-		  AND COALESCE(original_collision_type, collision_type) = 1
-		  AND COALESCE(original_tile_image_id, tile_image_id) IN (25, 142, 144, 149, 825)`)
+func tagOverworldEncounterTilesPostgres(tx *sql.Tx) (int64, error) {
+	result, err := tx.Exec(`
+		UPDATE phaser_tiles AS t
+		SET original_encounter_area_id = ea.id,
+			encounter_area_id = CASE WHEN t.has_tile_edit = 0 THEN ea.id ELSE t.encounter_area_id END
+		FROM phaser_maps AS pm
+		JOIN phaser_encounter_areas AS ea
+		  ON ea.name = pm.name || '_GRASS'
+		JOIN phaser_tileset_grass_tiles AS grass
+		  ON grass.tileset_id = pm.tileset_id
+		WHERE t.map_id IS NULL
+		  AND t.source_map_id = pm.id
+		  AND pm.is_overworld = 1
+		  AND t.is_original_tile_location = 1
+		  AND ea.encounter_type = 'grass'
+		  AND COALESCE(t.original_collision_type, t.collision_type) = 1
+		  AND COALESCE(t.original_raw_encounter_tile_id, t.raw_encounter_tile_id) = grass.grass_tile_id`)
 	if err != nil {
-		return 0, fmt.Errorf("prepare overworld encounter tile tagging: %w", err)
+		return 0, fmt.Errorf("tag overworld encounter tiles: %w", err)
 	}
-	defer stmt.Close()
-
-	var total int64
-	for _, m := range maps {
-		if !m.HasOffset {
-			continue
-		}
-		result, err := stmt.Exec(
-			m.AreaID,
-			m.Offset.X, m.Offset.X+m.Width,
-			m.Offset.Y, m.Offset.Y+m.Height,
-		)
-		if err != nil {
-			return total, fmt.Errorf("tag overworld encounter tiles for %s: %w", m.Name, err)
-		}
-		affected, _ := result.RowsAffected()
-		total += affected
-	}
-	return total, nil
+	affected, _ := result.RowsAffected()
+	return affected, nil
 }
 
 type importedMapInfo struct {
