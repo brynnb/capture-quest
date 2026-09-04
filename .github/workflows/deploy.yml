@@ -95,6 +95,7 @@ jobs:
                 scripts/sync_extractor_assets.py \
                 scripts/sync_extractor_audio_manifest.mjs \
                 server/cmd/import-script-candidates \
+                server/internal/scriptcandidateimport \
                 public/phaser/sprites \
                 2>/dev/null
             } | sha256sum | awk '{print $1}'

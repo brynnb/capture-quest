@@ -24,6 +24,11 @@ class DeploymentClassifierTest(unittest.TestCase):
         self.assertEqual(result["deploy_frontend"], "true")
         self.assertEqual(result["deploy_backend"], "true")
 
+    def test_script_candidate_internal_package_forces_full_lane(self) -> None:
+        result = classify_paths(["server/internal/scriptcandidateimport/compiler.go"])
+        self.assertEqual(result["mode"], "full")
+        self.assertEqual(result["full_data"], "true")
+
     def test_docs_only_change_does_not_deploy(self) -> None:
         self.assertEqual(classify_paths(["docs/DEPLOYMENT.md", "AGENTS.md"])["mode"], "none")
 

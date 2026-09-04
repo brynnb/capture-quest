@@ -17,6 +17,7 @@ FULL_DATA_PREFIXES = (
     "scripts/sync_extractor_audio_manifest.mjs",
     "server/cmd/import-phaser/",
     "server/cmd/import-script-candidates/",
+    "server/internal/scriptcandidateimport/",
     "server/schema/",
     "server/scripts/",
     "server/scripted_events/",
