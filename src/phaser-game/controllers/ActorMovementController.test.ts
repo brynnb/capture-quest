@@ -139,4 +139,35 @@ describe("ActorMovementController", () => {
       direction: "RIGHT",
     });
   });
+
+  test("completion reports the direction derived from the completed tile step", () => {
+    const durations: number[] = [];
+    const tweens: TweenConfig[] = [];
+    const controller = new ActorMovementController(fakeScene(durations, tweens));
+    const completed = vi.fn();
+    controller.registerActor(actor({ actionDirection: "DOWN" }), fakeSprite());
+    controller.setOnStepComplete(completed);
+
+    controller.handlePositionUpdate(1, 1, 0, "DOWN");
+    tweens[0].onComplete?.();
+
+    expect(completed).toHaveBeenCalledWith(1, 1, 0, "RIGHT");
+  });
+
+  test("reapplies the latest tracked facing after an async texture swap", () => {
+    const durations: number[] = [];
+    const tweens: TweenConfig[] = [];
+    const controller = new ActorMovementController(fakeScene(durations, tweens));
+    const sprite = fakeSprite();
+    controller.registerActor(actor({ actionDirection: "UP" }), sprite);
+
+    controller.handlePositionUpdate(1, 1, 0, "UP");
+    tweens[0].onComplete?.();
+    vi.mocked(sprite.setFrame).mockClear();
+    vi.mocked(sprite.setFlipX).mockClear();
+
+    expect(controller.refreshActorFacingFrame(1)).toBe(true);
+    expect(sprite.setFrame).toHaveBeenLastCalledWith(2);
+    expect(sprite.setFlipX).toHaveBeenLastCalledWith(true);
+  });
 });

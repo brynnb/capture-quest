@@ -68,7 +68,7 @@ export class ActorMovementController {
   private pathCompletions: Map<number, PathCompletion[]> = new Map();
   private idleWaiters: Map<number, Array<() => void>> = new Map();
   private onStepComplete:
-    | ((actorId: number, x: number, y: number) => void)
+    | ((actorId: number, x: number, y: number, direction: string) => void)
     | null = null;
 
   // Maximum queue depth before we start speeding up
@@ -222,6 +222,19 @@ export class ActorMovementController {
       y: state.currentY,
       direction: state.currentDirection,
     };
+  }
+
+  /**
+   * Reapply the tracked facing after an asynchronously loaded texture replaces
+   * the fallback sprite. The actor snapshot that started the load may already
+   * be stale by the time the image is decoded.
+   */
+  refreshActorFacingFrame(actorId: number): boolean {
+    const state = this.actorStates.get(actorId);
+    if (!state) return false;
+
+    this.updateSpriteFrame(state.sprite, "STAY", state.currentDirection);
+    return true;
   }
 
   animateActorLocalPath(
@@ -441,7 +454,7 @@ export class ActorMovementController {
         // while a genuinely finished path immediately settles on the correct
         // directional standing frame.
         if (this.onStepComplete) {
-          this.onStepComplete(actorId, targetX, targetY);
+          this.onStepComplete(actorId, targetX, targetY, moveDirection);
         }
         this.processQueue(actorId);
         this.resolvePathCompletions(actorId);
@@ -518,7 +531,7 @@ export class ActorMovementController {
    * Set callback for when an actor completes a step
    */
   setOnStepComplete(
-    callback: (actorId: number, x: number, y: number) => void,
+    callback: (actorId: number, x: number, y: number, direction: string) => void,
   ): void {
     this.onStepComplete = callback;
   }
@@ -628,7 +641,7 @@ export class ActorMovementController {
 
     // Notify completion
     if (this.onStepComplete) {
-      this.onStepComplete(actorId, x, y);
+      this.onStepComplete(actorId, x, y, state.currentDirection);
     }
     this.resolvePathCompletions(actorId);
     this.resolveIdleWaiters(actorId);

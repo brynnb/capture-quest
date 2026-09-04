@@ -819,17 +819,23 @@ export class MapRenderer {
         return;
       }
 
+      // Use the latest actor data rather than the snapshot that initiated this
+      // async load. A player can finish a step before the sprite image decodes.
+      const latestActor =
+        ((actorSprite as ActorSprite).actorData as PhaserActor | undefined) ??
+        actor;
+
       // Determine frame and flip state
       let frame = 0;
       let flipX = false;
 
-      if (actor.frame != null && actor.flipX != null) {
-        frame = actor.frame;
-        flipX = actor.flipX;
+      if (latestActor.frame != null && latestActor.flipX != null) {
+        frame = latestActor.frame;
+        flipX = latestActor.flipX;
       } else {
         const frameInfo = this.actorManager.getFrameForDirection(
-          actor.actionType || "STAY",
-          actor.actionDirection || "DOWN",
+          latestActor.actionType || "STAY",
+          latestActor.actionDirection || "DOWN",
         );
         frame = frameInfo.frame;
         flipX = frameInfo.flipX;
@@ -845,6 +851,11 @@ export class MapRenderer {
       }
       actorSprite.setFlipX(flipX);
       actorSprite.setOrigin(0.5, 0.5);
+
+      // Registered moving actors own their visual direction. Reapply that
+      // state after swapping away from the fallback texture so a stale spawn
+      // snapshot cannot overwrite the direction reached while loading.
+      this.movementController.refreshActorFacingFrame(actor.id);
     } catch (error) {
       console.error(`Error loading actor sprite for ${actor.name}:`, error);
     }

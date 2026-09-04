@@ -68,6 +68,8 @@ export interface CaptureQuestTestState {
     x: number | null;
     y: number | null;
     direction: string | null;
+    spriteFrame: number | null;
+    spriteFlipX: boolean | null;
     isSurfing: boolean;
     isCycling: boolean;
     isMoving: boolean;
@@ -380,6 +382,8 @@ function baseState(): CaptureQuestTestState {
       x: profile?.x ?? null,
       y: profile?.y ?? null,
       direction: null,
+      spriteFrame: null,
+      spriteFlipX: null,
       isSurfing: false,
       isCycling: audio.isBicycleActive,
       isMoving: false,

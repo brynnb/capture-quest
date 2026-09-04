@@ -1472,8 +1472,18 @@ export class PlayerMovementController {
   /**
    * Callback fired by ActorMovementController when a step completes
    */
-  onStepComplete(actorId: number, x: number, y: number): void {
+  onStepComplete(
+    actorId: number,
+    x: number,
+    y: number,
+    completedDirection: string,
+  ): void {
     if (this.playerId === actorId) {
+      // ActorMovementController derives this from the actual completed tile
+      // delta. Use it as the authoritative facing direction before reporting
+      // the position; this controller's cache can still contain the spawn
+      // default during scripted/server-driven movement.
+      this.currentDirection = completedDirection;
       this.currentTileX = x;
       this.currentTileY = y;
       this.updateSurfingStateForTile(x, y);

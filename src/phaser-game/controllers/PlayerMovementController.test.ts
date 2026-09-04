@@ -94,3 +94,26 @@ describe("PlayerMovementController ledges", () => {
     ]);
   });
 });
+
+describe("PlayerMovementController completed facing", () => {
+  test("uses the completed visual step direction instead of a stale spawn direction", () => {
+    const movementController = { handleDirectionUpdate: vi.fn() };
+    const mapRenderer = {
+      getMovementController: () => movementController,
+    };
+    const scene = { events: { emit: vi.fn() } } as unknown as Scene;
+    const controller = new PlayerMovementController(scene);
+    controller.setPlayer(
+      1,
+      0,
+      0,
+      UNIFIED_OVERWORLD_MAP_ID,
+      mapRenderer as unknown as MapRenderer,
+    );
+
+    expect(controller.getCurrentDirection()).toBe("DOWN");
+    controller.onStepComplete(1, 1, 0, "RIGHT");
+
+    expect(controller.getCurrentDirection()).toBe("RIGHT");
+  });
+});

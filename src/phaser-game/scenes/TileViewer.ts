@@ -210,6 +210,16 @@ export class TileViewer extends Scene {
         const playerSpriteName = this.playerActor?.id
           ? this.mapRenderer?.getActorSpriteName(this.playerActor.id)
           : this.playerActor?.spriteName;
+        const playerSprite = this.playerActor?.id
+          ? this.mapRenderer?.getActorSprite(this.playerActor.id)
+          : undefined;
+        const spriteFrameName = playerSprite?.frame?.name;
+        const spriteFrame =
+          typeof spriteFrameName === "number"
+            ? spriteFrameName
+            : typeof spriteFrameName === "string" && spriteFrameName !== ""
+              ? Number.parseInt(spriteFrameName, 10)
+              : null;
         const mapId =
           this.mapInfo?.id ??
           this.game.registry.get("currentMapId") ??
@@ -229,6 +239,11 @@ export class TileViewer extends Scene {
             x: position?.x ?? this.playerActor?.x ?? null,
             y: position?.y ?? this.playerActor?.y ?? null,
             direction: playerDirection,
+            spriteFrame:
+              spriteFrame !== null && Number.isFinite(spriteFrame)
+                ? spriteFrame
+                : null,
+            spriteFlipX: playerSprite?.flipX ?? null,
             isSurfing: this.playerMovementController?.getIsSurfing() ?? false,
             isCycling: playerSpriteName?.includes("BIKE") ?? false,
             isMoving: this.playerMovementController?.getIsMoving() ?? false,
@@ -502,8 +517,8 @@ export class TileViewer extends Scene {
 
     // Connect movement controller callbacks
     const movementController = this.mapRenderer.getMovementController();
-    movementController.setOnStepComplete((actorId, x, y) => {
-      this.playerMovementController.onStepComplete(actorId, x, y);
+    movementController.setOnStepComplete((actorId, x, y, direction) => {
+      this.playerMovementController.onStepComplete(actorId, x, y, direction);
     });
 
     // Subscribe to game status changes (for camera follow toggle)
