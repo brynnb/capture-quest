@@ -117,7 +117,7 @@ func HandleItemPickup(ses *session.Session, payload []byte, wh *WorldHandler) bo
 	}
 
 	// Look up the CQ item template
-	item, err := cqitems.GetItemByID(int32(*itemID))
+	item, err := cqitems.NewStore(db.GlobalWorldDB.DB).GetItemByID(int32(*itemID))
 	if err != nil {
 		log.Printf("[ItemPickup] Item template %d not found: %v", *itemID, err)
 		ses.SendStreamJSON(map[string]interface{}{
@@ -128,7 +128,7 @@ func HandleItemPickup(ses *session.Session, payload []byte, wh *WorldHandler) bo
 	}
 
 	// Add item to player's CQ inventory (quantity 1)
-	instanceID, err := cqitems.AddItemToInventory(charID, int32(*itemID), 1)
+	instanceID, err := cqitems.NewStore(db.GlobalWorldDB.DB).AddItemToInventory(charID, int32(*itemID), 1)
 	if err != nil {
 		log.Printf("[ItemPickup] Failed to add item to inventory: %v", err)
 		ses.SendStreamJSON(map[string]interface{}{
@@ -160,9 +160,9 @@ func HandleItemPickup(ses *session.Session, payload []byte, wh *WorldHandler) bo
 	}, opcodes.ItemPickupResponse)
 
 	// Refresh the player's CQ inventory
-	inv, invErr := cqitems.GetCharacterInventory(charID)
+	inv, invErr := cqitems.NewStore(db.GlobalWorldDB.DB).GetCharacterInventory(charID)
 	if invErr == nil {
-		money, _ := cqitems.GetCharacterMoney(charID)
+		money, _ := cqitems.NewStore(db.GlobalWorldDB.DB).GetCharacterMoney(charID)
 		ses.SendStreamJSON(map[string]interface{}{
 			"success": true,
 			"items":   inv,

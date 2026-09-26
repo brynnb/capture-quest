@@ -19,7 +19,7 @@ type battleItemUsePayload struct {
 
 func findBattleInventoryItem(charID int32, req battleItemUsePayload) (*cqitems.CQInventoryItem, error) {
 	if req.InstanceID > 0 {
-		invItem, err := cqitems.FindInventoryItemByInstanceID(charID, req.InstanceID)
+		invItem, err := cqitems.NewStore(db.GlobalWorldDB.DB).FindInventoryItemByInstanceID(charID, req.InstanceID)
 		if err != nil {
 			return nil, err
 		}
@@ -31,7 +31,7 @@ func findBattleInventoryItem(charID int32, req battleItemUsePayload) (*cqitems.C
 	if req.ItemID <= 0 {
 		return nil, fmt.Errorf("no item selected")
 	}
-	return cqitems.FindInventoryItemByItemID(charID, req.ItemID)
+	return cqitems.NewStore(db.GlobalWorldDB.DB).FindInventoryItemByItemID(charID, req.ItemID)
 }
 
 func useBattleInventoryItem(ses *session.Session, wh *WorldHandler, charID int64, battle *pokebattle.BattleState, invItem *cqitems.CQInventoryItem, req battleItemUsePayload, responseOpcode opcodes.OpCode) bool {
@@ -77,7 +77,7 @@ func useMedicineInBattle(ses *session.Session, charID int64, battle *pokebattle.
 		return
 	}
 
-	cqitems.DecrementItemQuantity(int32(charID), invItem.Instance.ID)
+	cqitems.NewStore(db.GlobalWorldDB.DB).DecrementItemQuantity(int32(charID), invItem.Instance.ID)
 	events := []pokebattle.BattleEvent{itemEffectEvent(msg, targetPoke)}
 	if !battle.IsOver() {
 		events = append(events, battle.ExecuteEnemyTurn()...)
@@ -93,7 +93,7 @@ func useBoostItemInBattle(ses *session.Session, charID int64, battle *pokebattle
 		return
 	}
 
-	cqitems.DecrementItemQuantity(int32(charID), invItem.Instance.ID)
+	cqitems.NewStore(db.GlobalWorldDB.DB).DecrementItemQuantity(int32(charID), invItem.Instance.ID)
 	events := []pokebattle.BattleEvent{{Type: pokebattle.EventMessage, Message: msg}}
 	if !battle.IsOver() {
 		events = append(events, battle.ExecuteEnemyTurn()...)
@@ -121,7 +121,7 @@ func usePokeDollInBattle(ses *session.Session, wh *WorldHandler, charID int64, b
 		return
 	}
 
-	cqitems.DecrementItemQuantity(int32(charID), invItem.Instance.ID)
+	cqitems.NewStore(db.GlobalWorldDB.DB).DecrementItemQuantity(int32(charID), invItem.Instance.ID)
 	battle.Phase = pokebattle.PhaseBattleEnd
 	events := []pokebattle.BattleEvent{{Type: pokebattle.EventRunSuccess, Message: "Got away safely!"}}
 	sendBattleItemSuccess(ses, charID, battle, events, responseOpcode)

@@ -193,7 +193,7 @@ const PokeMartShop: React.FC = () => {
   const handleBuy = () => {
     if (!selectedItem || !canAfford || !shopMerchantId || buying) return;
     setBuying(true);
-    PhaserNet.sendCQMerchantBuy(shopMerchantId, selectedItem.itemId, quantity);
+    PhaserNet.sendCQMerchantBuy(selectedItem.merchantId, selectedItem.itemId, quantity);
     setTimeout(() => setBuying(false), 300);
     setQuantity(1);
   };

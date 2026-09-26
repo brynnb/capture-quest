@@ -1,61 +1,13 @@
 import { create } from "zustand";
 
-export interface CQItemTemplate {
-  id: number;
-  name: string;
-  shortName: string;
-  price: number;
-  vendingPrice?: number;
-  itemType: number;
-  isUsable: boolean;
-  usesPartyMenu: boolean;
-  isKeyItem: boolean;
-  isGuardDrink: boolean;
-  moveId?: number;
-  stackable: boolean;
-  stackSize: number;
-  bonusHp: number;
-  bonusAttack: number;
-  bonusDefense: number;
-  bonusSpeed: number;
-  bonusSpecial: number;
-  bonusAccuracy: number;
-  bonusEvasion: number;
-  bonusCatchRate: number;
-  bonusExp: number;
-  bonusEncounterRate: number;
-  bonusCrit: number;
-  bonusFlee: number;
-  healAmount: number;
-  statusCure?: string;
-  ppRestore: number;
-  revivePercent: number;
-  ballModifier: number;
-  loreText?: string;
-  icon: number;
-}
+import type {
+  CQItem as CQItemTemplate,
+  CQItemInstance,
+  CQInventoryItem,
+  CQMerchantItem,
+} from "@/net/generated/cqitems";
 
-export interface CQItemInstance {
-  id: number;
-  itemId: number;
-  charges: number;
-  quantity: number;
-  ownerId?: number;
-  ownerType: number;
-}
-
-export interface CQInventoryItem {
-  instance: CQItemInstance;
-  item: CQItemTemplate;
-}
-
-export interface CQMerchantItem {
-  itemId: number;
-  displayOrder: number;
-  priceOverride?: number;
-  quantity: number;
-  item: CQItemTemplate;
-}
+export type { CQItemTemplate, CQItemInstance, CQInventoryItem, CQMerchantItem };
 
 // Item type constants
 export const ITEM_TYPE_MISC = 0;

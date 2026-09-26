@@ -1,9 +1,10 @@
 # Tygo configuration to generate TypeScript interfaces from Go structs
-# Usage: tygo generate
+# Usage: npm run tygo (from the repository root)
 
 packages:
   - path: capturequest/internal/world
     type_mappings:
+      scriptedactions.Action: 'import("./scriptedactions").Action'
       int32: number
       int16: number
       int8: number
@@ -43,3 +44,11 @@ packages:
       float32: number
       float64: number
     output_path: ../src/net/generated/models.ts
+
+  - path: capturequest/internal/scriptedactions
+    include_files: [action.go]
+    output_path: ../src/net/generated/scriptedactions.ts
+
+  - path: capturequest/internal/db/cqitems
+    include_files: [types.go]
+    output_path: ../src/net/generated/cqitems.ts

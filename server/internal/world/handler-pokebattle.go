@@ -494,7 +494,7 @@ func HandlePokeBattleAction(ses *session.Session, payload []byte, wh *WorldHandl
 		item := invItem.Item
 		if item.BallModifier > 0 {
 			// Poké Ball — use catch logic
-			cqitems.DecrementItemQuantity(int32(charID), invItem.Instance.ID)
+			cqitems.NewStore(db.GlobalWorldDB.DB).DecrementItemQuantity(int32(charID), invItem.Instance.ID)
 			action = pokebattle.TurnAction{
 				Action:       pokebattle.ActionItem,
 				BallModifier: item.BallModifier,

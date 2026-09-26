@@ -1100,7 +1100,7 @@ func applyDebugScenarioFixture(charID int64, f debugFixture, wh *WorldHandler) (
 		if quantity <= 0 {
 			quantity = 1
 		}
-		if _, err := cqitems.AddItemToInventory(int32(charID), int32(itemID), uint16(quantity)); err != nil {
+		if _, err := cqitems.NewStore(db.GlobalWorldDB.DB).AddItemToInventory(int32(charID), int32(itemID), uint16(quantity)); err != nil {
 			return 0, 0, 0, fmt.Errorf("seed item %d x%d: %w", itemID, quantity, err)
 		}
 	}

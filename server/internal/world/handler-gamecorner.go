@@ -504,8 +504,8 @@ func HandleGameCornerPrizeBuy(ses *session.Session, payload []byte, wh *WorldHan
 		"pcSlot":       result.PCSlot,
 	}, opcodes.GameCornerPrizeBuyResponse)
 
-	if inv, err := cqitems.GetCharacterInventory(int32(charID)); err == nil {
-		money, _ := cqitems.GetCharacterMoney(int32(charID))
+	if inv, err := cqitems.NewStore(db.GlobalWorldDB.DB).GetCharacterInventory(int32(charID)); err == nil {
+		money, _ := cqitems.NewStore(db.GlobalWorldDB.DB).GetCharacterMoney(int32(charID))
 		ses.SendStreamJSON(map[string]interface{}{
 			"success": true,
 			"items":   inv,

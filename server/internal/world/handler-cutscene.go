@@ -581,7 +581,7 @@ func applyGiveItemAction(ses *session.Session, action CutsceneAction, charID int
 	if quantity <= 0 {
 		quantity = 1
 	}
-	_, err = cqitems.AddItemToInventory(int32(charID), int32(itemID), uint16(quantity))
+	_, err = cqitems.NewStore(db.GlobalWorldDB.DB).AddItemToInventory(int32(charID), int32(itemID), uint16(quantity))
 	if err != nil {
 		return "", "", fmt.Errorf("give item %s x%d: %w", name, quantity, err)
 	}
@@ -635,11 +635,11 @@ func applyTakeItemAction(ses *session.Session, action CutsceneAction, charID int
 		quantity = 1
 	}
 	for i := 0; i < quantity; i++ {
-		found, err := cqitems.FindInventoryItemByItemID(int32(charID), int32(itemID))
+		found, err := cqitems.NewStore(db.GlobalWorldDB.DB).FindInventoryItemByItemID(int32(charID), int32(itemID))
 		if err != nil {
 			return "", fmt.Errorf("take item %s: %w", name, err)
 		}
-		if _, err := cqitems.DecrementItemQuantity(int32(charID), found.Instance.ID); err != nil {
+		if _, err := cqitems.NewStore(db.GlobalWorldDB.DB).DecrementItemQuantity(int32(charID), found.Instance.ID); err != nil {
 			return "", err
 		}
 	}

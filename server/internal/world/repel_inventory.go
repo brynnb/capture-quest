@@ -1,6 +1,7 @@
 package world
 
 import (
+	"capturequest/internal/db"
 	"database/sql"
 	"fmt"
 
@@ -25,7 +26,7 @@ func UseRepelInventoryItem(wh *WorldHandler, charID int32, itemID int32, found *
 		return RepelUseResult{}, fmt.Errorf("A repel is already active!")
 	}
 	if found == nil {
-		invItem, err := cqitems.FindInventoryItemByItemID(charID, itemID)
+		invItem, err := cqitems.NewStore(db.GlobalWorldDB.DB).FindInventoryItemByItemID(charID, itemID)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				return RepelUseResult{}, fmt.Errorf("You don't have that item.")
@@ -37,7 +38,7 @@ func UseRepelInventoryItem(wh *WorldHandler, charID int32, itemID int32, found *
 	if found.Item.ID != itemID {
 		return RepelUseResult{}, fmt.Errorf("inventory item mismatch: got %d, want %d", found.Item.ID, itemID)
 	}
-	newQty, err := cqitems.DecrementItemQuantity(charID, found.Instance.ID)
+	newQty, err := cqitems.NewStore(db.GlobalWorldDB.DB).DecrementItemQuantity(charID, found.Instance.ID)
 	if err != nil {
 		return RepelUseResult{}, fmt.Errorf("consume repel item: %w", err)
 	}

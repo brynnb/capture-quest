@@ -452,7 +452,7 @@ func handleCQEscapeRopeUse(ses *session.Session, wh *WorldHandler, found *cqitem
 		sendCQItemUseError(ses, err.Error())
 		return
 	}
-	newQty, _ := cqitems.DecrementItemQuantity(charID, found.Instance.ID)
+	newQty, _ := cqitems.NewStore(db.GlobalWorldDB.DB).DecrementItemQuantity(charID, found.Instance.ID)
 	teleportPlayerTo(ses, wh, destMapID, destX, destY)
 	sendCQItemUseSuccess(ses, found, "You escaped from the dungeon.", newQty)
 }

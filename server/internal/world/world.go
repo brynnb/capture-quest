@@ -8,6 +8,7 @@ import (
 
 	"capturequest/internal/db"
 	db_character "capturequest/internal/db/character"
+	"capturequest/internal/economy"
 	"capturequest/internal/session"
 )
 
@@ -15,6 +16,7 @@ const playtimeFlushInterval = time.Minute
 
 // WorldHandler manages global game message routing.
 type WorldHandler struct {
+	Economy          *economy.Service `json:"-"`
 	sessionManager   *session.SessionManager
 	globalRegistry   *HandlerRegistry
 	ActorManager     *PhaserActorManager       `json:"actorManager,omitempty"`
@@ -40,6 +42,7 @@ func NewWorldHandler(sessionManager *session.SessionManager) *WorldHandler {
 	registry := NewWorldOpCodeRegistry()
 	wh := &WorldHandler{
 		sessionManager: sessionManager,
+		Economy:        economy.New(db.GlobalWorldDB.DB),
 		globalRegistry: registry,
 		ActorManager:   nil, // Will be set below
 		PlayerMovement: nil, // Will be set below

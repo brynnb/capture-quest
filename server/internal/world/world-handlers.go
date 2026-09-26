@@ -1,6 +1,7 @@
 package world
 
 import (
+	"capturequest/internal/db"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -308,12 +309,12 @@ func buildAndSendCharacterState(ses *session.Session) {
 }
 
 func sendCQInventorySnapshot(ses *session.Session, charID int32) {
-	items, err := cqitems.GetCharacterInventory(charID)
+	items, err := cqitems.NewStore(db.GlobalWorldDB.DB).GetCharacterInventory(charID)
 	if err != nil {
 		log.Printf("[CQItems] Failed to load inventory snapshot for char %d: %v", charID, err)
 		return
 	}
-	money, _ := cqitems.GetCharacterMoney(charID)
+	money, _ := cqitems.NewStore(db.GlobalWorldDB.DB).GetCharacterMoney(charID)
 	log.Printf("[CQItems] Sending inventory snapshot for char %d: %d items", charID, len(items))
 	ses.SendStreamJSON(map[string]interface{}{
 		"success": true,

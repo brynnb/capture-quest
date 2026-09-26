@@ -67,3 +67,42 @@ small verified changes. No production deployment or push is part of this goal.
 - Remaining: serialized character execution and cleanup, atomic gameplay
   operations, dependency/wire migration, lifecycle/readiness, and broader real
   gameplay/PostgreSQL/browser verification. The goal is not complete.
+- Economy checkpoint: purchases validate the exact merchant/map/offer, honor
+  price overrides and stock, and commit payment and inventory placement together.
+  Selling credits the entire removed stack and rolls back deletion on payment
+  failure. Inventory mutations share bounded transactions and character locking,
+  enforce ownership, preserve all grant quantities across stacks, and propagate
+  failures. Inventory queries now use an explicit database/transaction Store;
+  the global unsynchronized item cache is removed. World composition still has
+  global database dependencies to migrate in later checkpoints.
+- Department-store offers carry their source merchant ID; purchases send that ID
+  and publish a fresh inventory snapshot after commit. An old client selecting
+  a sibling clerk's offer may receive a rejection and must reload; the server
+  does not guess another merchant or price. Inventory TypeScript is generated
+  from the Go types. Tygo is pinned, and the existing shared scripted-action alias
+  is explicitly mapped so regeneration no longer degrades it to `any`.
+- PostgreSQL verification covers full rollback after a grant failure, competing
+  purchases, stock exhaustion, foreign ownership, concurrent grants/consumption,
+  stack overflow, whole-stack sale, repeated sale, nested rollback, and lock-wait
+  cancellation. Dispatcher tests verify failed commits do not publish success.
+  All Go packages, frontend typechecking, runtime asset validation, and the
+  production frontend build passed at this checkpoint. The PostgreSQL runner
+  was also exercised end to end, including cleanup of its private cluster.
+- Next: atomic party persistence with stable Pokémon row IDs, then combine item
+  consumption/rewards and their gameplay effects under the same transaction.
+  Command deduplication, reconnect gameplay, shutdown, and rendered verification
+  are still required; these inventory tests do not establish those properties.
+
+## Reproducible PostgreSQL tests
+
+With `initdb`, `pg_ctl`, and Go available, run:
+
+```bash
+bash scripts/testing/run-go-postgres.sh
+```
+
+The runner creates its own cluster under `/var/tmp`, listens only on its private
+Unix socket, runs race-enabled Go tests, and stops only that cluster. Each test
+uses an isolated schema built from the canonical runtime schema. No application
+configuration or production database is read. A CI PostgreSQL service can instead
+set `CAPTUREQUEST_TEST_DATABASE_URL` explicitly; tests skip without that variable.

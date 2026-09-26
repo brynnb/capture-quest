@@ -217,7 +217,7 @@ func tryBuyGameCornerPrize(charID int64, prize GameCornerPrize) GameCornerPrizeP
 		if prize.ItemID == nil {
 			return gameCornerPrizeFailure(charID, "Prize unavailable.", &prize)
 		}
-		if _, err := cqitems.AddItemToInventory(int32(charID), int32(*prize.ItemID), 1); err != nil {
+		if _, err := cqitems.NewStore(db.GlobalWorldDB.DB).AddItemToInventory(int32(charID), int32(*prize.ItemID), 1); err != nil {
 			return gameCornerPrizeFailure(charID, "Could not add prize.", &prize)
 		}
 	default:

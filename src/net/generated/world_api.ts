@@ -348,62 +348,7 @@ export interface GameCornerSlotPlayResult {
 export interface CutsceneEndRequest {
   scriptLabel: string; // The cutscene that was completed
 }
-export interface CutsceneAction {
-  type: string;
-  speaker?: string;
-  lines?: string[];
-  actor?: string;
-  sprite?: string;
-  movements?: string[];
-  pokemonId?: number /* int */;
-  speciesId?: number /* int */;
-  pokemonName?: string;
-  pokemonConstant?: string;
-  sfxConstant?: string;
-  musicConstant?: string;
-  musicPath?: string;
-  loop?: boolean;
-  volume?: number /* float64 */;
-  level?: number /* int */;
-  flag?: string;
-  message?: string;
-  money?: number /* int */;
-  coins?: number /* int */;
-  itemId?: number /* int */;
-  itemName?: string;
-  quantity?: number /* int */;
-  mapId?: number /* int */;
-  x?: number /* int */;
-  y?: number /* int */;
-  direction?: string;
-  objectId?: number /* int */;
-  objectKey?: string;
-  objectMapName?: string;
-  triggerLabel?: string;
-  textConstant?: string;
-  prompt?: string;
-  yesLines?: string[];
-  noLines?: string[];
-  continueOnNo?: boolean;
-  stopOnYes?: boolean;
-  actorId?: number /* int */;
-  trainerClass?: string;
-  partyIndex?: number /* int */;
-  partyByFlag?: { [key: string]: number /* int */};
-  trainerName?: string;
-  trainerObjectId?: number /* int */;
-  winFlag?: string;
-  loseFlag?: string;
-  lossMessage?: string;
-  noBlackoutOnLoss?: boolean;
-  postWinActions?: CutsceneAction[];
-  postLoseActions?: CutsceneAction[];
-  allowedActions?: string[];
-  guaranteedCatch?: boolean;
-  prizeWindow?: number /* int */;
-  actions?: CutsceneAction[];
-  ms?: number /* int */;
-}
+export type CutsceneAction = import("./scriptedactions").Action;
 export interface CutsceneActionEffect {
   type: string;
   detail: string;

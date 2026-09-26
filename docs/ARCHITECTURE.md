@@ -56,6 +56,10 @@ git diff --check
 For scripted event changes, prefer the script-test CLI and golden expectations
 under `server/script_tests/` instead of relying only on browser inspection.
 
+For durable gameplay changes, run `bash scripts/testing/run-go-postgres.sh` from
+the repository root. It uses a disposable PostgreSQL cluster and tests rollback,
+concurrency, ownership, and cancellation against the runtime database engine.
+
 ---
 
 ## 1. Data Ownership & Streams
@@ -105,6 +109,15 @@ We follow a **"Model-First"** architecture. Data is categorized into distinct st
 
 - **Source of Truth**: `cq_character_inventory`, `cq_item_instances`, and `cq_items` tables.
 - **Strategy**: Managed as a high-volume independent stream. The client may derive display-only sorting, grouping, and filtering, while the server validates inventory changes.
+- **Mutations**: `internal/economy` coordinates shop operations; the transaction-aware
+  `internal/db/cqitems.Store` handles inventory storage. The shared transaction
+  boundary commits payment and grants together. Join the supplied transaction;
+  never query a global database from inside a transaction. Lock the character
+  before reading mutable balances/quantities and publish success only after commit.
+- **Offers**: Each shop offer includes its merchant ID. A department store can show
+  several clerks' offers, but a purchase must identify the selected offer's owner.
+- **Wire types**: Generate inventory types from `internal/db/cqitems/types.go`;
+  do not duplicate those interfaces in client stores.
 
 ### D. Pokémon Party, PC, and Battle State
 

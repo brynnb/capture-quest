@@ -8,7 +8,6 @@ import (
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
-	db_character "capturequest/internal/db/character"
 	"capturequest/internal/db/cqitems"
 	"capturequest/internal/pokebattle"
 	"capturequest/internal/session"
@@ -20,7 +19,7 @@ func HandleCQInventoryRequest(ses *session.Session, payload []byte, wh *WorldHan
 		return false
 	}
 	charID := int32(ses.Client.CharData().ID)
-	items, err := cqitems.GetCharacterInventory(charID)
+	items, err := cqitems.NewStore(db.GlobalWorldDB.DB).GetCharacterInventory(charID)
 	if err != nil {
 		log.Printf("[CQItems] Failed to get inventory for char %d: %v", charID, err)
 		ses.SendStreamJSON(map[string]interface{}{
@@ -30,7 +29,7 @@ func HandleCQInventoryRequest(ses *session.Session, payload []byte, wh *WorldHan
 		return false
 	}
 
-	money, _ := cqitems.GetCharacterMoney(charID)
+	money, _ := cqitems.NewStore(db.GlobalWorldDB.DB).GetCharacterMoney(charID)
 
 	log.Printf("[CQItems] Sending inventory response for char %d: %d items", charID, len(items))
 	ses.SendStreamJSON(map[string]interface{}{
@@ -60,10 +59,10 @@ func HandleCQMerchantOpenRequest(ses *session.Session, payload []byte, wh *World
 	var err error
 
 	if req.MerchantID > 0 {
-		merchant, err = cqitems.GetMerchantByID(req.MerchantID)
+		merchant, err = cqitems.NewStore(db.GlobalWorldDB.DB).GetMerchantByID(req.MerchantID)
 	} else if req.MapID > 0 {
 		// Look up merchant(s) by map ID — use the first one found
-		merchants, merr := cqitems.GetMerchantsByMapID(req.MapID)
+		merchants, merr := cqitems.NewStore(db.GlobalWorldDB.DB).GetMerchantsByMapID(req.MapID)
 		if merr != nil || len(merchants) == 0 {
 			log.Printf("[CQItems] No merchant on map %d: %v", req.MapID, merr)
 			ses.SendStreamJSON(map[string]interface{}{
@@ -90,16 +89,16 @@ func HandleCQMerchantOpenRequest(ses *session.Session, payload []byte, wh *World
 	// Collect items from all merchants on this map (for dept stores with multiple clerks)
 	var allItems []cqitems.CQMerchantItem
 	if req.MapID > 0 {
-		merchants, _ := cqitems.GetMerchantsByMapID(req.MapID)
+		merchants, _ := cqitems.NewStore(db.GlobalWorldDB.DB).GetMerchantsByMapID(req.MapID)
 		for _, m := range merchants {
-			items, _ := cqitems.GetMerchantItems(m.ID)
+			items, _ := cqitems.NewStore(db.GlobalWorldDB.DB).GetMerchantItems(m.ID)
 			allItems = append(allItems, items...)
 		}
 	} else {
-		allItems, _ = cqitems.GetMerchantItems(merchant.ID)
+		allItems, _ = cqitems.NewStore(db.GlobalWorldDB.DB).GetMerchantItems(merchant.ID)
 	}
 
-	money, _ := cqitems.GetCharacterMoney(int32(ses.Client.CharData().ID))
+	money, _ := cqitems.NewStore(db.GlobalWorldDB.DB).GetCharacterMoney(int32(ses.Client.CharData().ID))
 
 	ses.SendStreamJSON(map[string]interface{}{
 		"success":    true,
@@ -126,73 +125,20 @@ func HandleCQMerchantBuyRequest(ses *session.Session, payload []byte, wh *WorldH
 		return false
 	}
 
-	if req.Quantity == 0 {
-		req.Quantity = 1
-	}
-
 	charID := int32(ses.Client.CharData().ID)
-
-	// Get item template
-	item, err := cqitems.GetItemByID(req.ItemID)
+	purchase, err := wh.Economy.Buy(context.Background(), charID, int32(ses.MapID), req.MerchantID, req.ItemID, req.Quantity)
 	if err != nil {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "Item not found",
-		}, opcodes.CQMerchantBuyResponse)
+		log.Printf("[CQItems] Purchase failed for character %d: %v", charID, err)
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not buy this item. Check the shop, quantity, and balance."}, opcodes.CQMerchantBuyResponse)
 		return false
 	}
-
-	// Calculate cost
-	totalCost := int64(item.Price) * int64(req.Quantity)
-
-	// Check money
-	money, err := cqitems.GetCharacterMoney(charID)
-	if err != nil || money < totalCost {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "Not enough money",
-		}, opcodes.CQMerchantBuyResponse)
-		return false
-	}
-
-	// Deduct Pokédollars.
-	remaining := money - totalCost
-
-	ctx := context.Background()
-	err = db_character.SetPokedollars(ctx, charID, remaining)
-	if err != nil {
-		log.Printf("[CQItems] Failed to deduct currency: %v", err)
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "Payment failed",
-		}, opcodes.CQMerchantBuyResponse)
-		return false
-	}
-
-	// Add item to inventory
-	instanceID, err := cqitems.AddItemToInventory(charID, req.ItemID, req.Quantity)
-	if err != nil {
-		log.Printf("[CQItems] Failed to add item to inventory: %v", err)
-		// Refund money
-		db_character.SetPokedollars(ctx, charID, money)
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "Could not add item",
-		}, opcodes.CQMerchantBuyResponse)
-		return false
-	}
-
-	log.Printf("[CQItems] Char %d bought %dx %s for %d¥",
-		charID, req.Quantity, item.Name, totalCost)
-
 	ses.SendStreamJSON(map[string]interface{}{
-		"success":    true,
-		"itemId":     req.ItemID,
-		"quantity":   req.Quantity,
-		"instanceId": instanceID,
-		"money":      remaining,
-		"item":       item,
+		"success": true, "itemId": purchase.ItemID, "quantity": purchase.Quantity,
+		"instanceId": purchase.InstanceID, "money": purchase.Money, "item": purchase.Item,
 	}, opcodes.CQMerchantBuyResponse)
+	// A grant can fill several stacks. Publish the committed inventory rather
+	// than asking the client to guess how the purchased quantity was split.
+	sendCQInventorySnapshot(ses, charID)
 	return false
 }
 
@@ -222,7 +168,7 @@ func HandleCQItemUse(ses *session.Session, payload []byte, wh *WorldHandler) boo
 	myDB := db.GlobalWorldDB.DB
 
 	// Load the item instance from inventory
-	inv, err := cqitems.GetCharacterInventory(charID)
+	inv, err := cqitems.NewStore(db.GlobalWorldDB.DB).GetCharacterInventory(charID)
 	if err != nil {
 		ses.SendStreamJSON(map[string]interface{}{
 			"success": false,
@@ -368,7 +314,7 @@ func HandleCQItemUse(ses *session.Session, payload []byte, wh *WorldHandler) boo
 
 		// Consume item: TMs are consumed, HMs are not
 		if item.ItemType == cqItemTypeTM {
-			cqitems.DecrementItemQuantity(charID, req.InstanceID)
+			cqitems.NewStore(db.GlobalWorldDB.DB).DecrementItemQuantity(charID, req.InstanceID)
 		}
 
 		// Save party
@@ -480,7 +426,7 @@ func HandleCQItemUse(ses *session.Session, payload []byte, wh *WorldHandler) boo
 	}
 
 	// Consume the item
-	newQty, _ := cqitems.DecrementItemQuantity(charID, req.InstanceID)
+	newQty, _ := cqitems.NewStore(db.GlobalWorldDB.DB).DecrementItemQuantity(charID, req.InstanceID)
 
 	// Save party
 	pokebattle.SaveParty(myDB, int64(charID), party)
@@ -539,75 +485,16 @@ func HandleCQMerchantSellRequest(ses *session.Session, payload []byte, wh *World
 	}
 
 	charID := int32(ses.Client.CharData().ID)
-
-	// Look up the item
-	inv, err := cqitems.GetCharacterInventory(charID)
+	sale, err := wh.Economy.Sell(context.Background(), charID, req.InstanceID)
 	if err != nil {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "Failed to load inventory",
-		}, opcodes.CQMerchantSellResponse)
+		log.Printf("[CQItems] Sale failed for character %d: %v", charID, err)
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not sell this item."}, opcodes.CQMerchantSellResponse)
 		return false
 	}
-
-	var found *cqitems.CQInventoryItem
-	for i := range inv {
-		if inv[i].Instance.ID == req.InstanceID {
-			found = &inv[i]
-			break
-		}
-	}
-
-	if found == nil {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "Item not found in inventory",
-		}, opcodes.CQMerchantSellResponse)
-		return false
-	}
-
-	// Can't sell key items
-	if found.Item.IsKeyItem {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "Cannot sell key items",
-		}, opcodes.CQMerchantSellResponse)
-		return false
-	}
-
-	// Sell price = price / 2
-	sellPrice := int64(found.Item.Price) / 2
-	if sellPrice <= 0 {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "This item has no value",
-		}, opcodes.CQMerchantSellResponse)
-		return false
-	}
-
-	// Remove item
-	err = cqitems.RemoveItemFromInventory(charID, req.InstanceID)
-	if err != nil {
-		log.Printf("[CQItems] Failed to remove item: %v", err)
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "Failed to remove item",
-		}, opcodes.CQMerchantSellResponse)
-		return false
-	}
-
-	// Add money
-	money, _ := cqitems.GetCharacterMoney(charID)
-	newTotal := money + sellPrice
-	db_character.SetPokedollars(context.Background(), charID, newTotal)
-
-	log.Printf("[CQItems] Char %d sold %s for %d¥", charID, found.Item.Name, sellPrice)
-
 	ses.SendStreamJSON(map[string]interface{}{
-		"success":   true,
-		"itemName":  found.Item.Name,
-		"sellPrice": sellPrice,
-		"money":     newTotal,
+		"success": true, "instanceId": sale.InstanceID, "itemName": sale.ItemName,
+		"sellPrice": sale.SellPrice, "money": sale.Money,
 	}, opcodes.CQMerchantSellResponse)
+	sendCQInventorySnapshot(ses, charID)
 	return false
 }

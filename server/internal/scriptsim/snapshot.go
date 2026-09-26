@@ -285,7 +285,7 @@ func loadPCSummary(charID int64) ([]PCPokemonSummary, error) {
 }
 
 func loadInventorySummary(charID int64) ([]ItemSummary, error) {
-	items, err := cqitems.GetCharacterInventory(int32(charID))
+	items, err := cqitems.NewStore(db.GlobalWorldDB.DB).GetCharacterInventory(int32(charID))
 	if err != nil {
 		return nil, err
 	}
