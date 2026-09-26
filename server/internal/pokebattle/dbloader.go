@@ -240,11 +240,11 @@ func GetMovesLearnedInRange(db DBTX, pokemonID, oldLevel, newLevel int) ([]Learn
 	for rows.Next() {
 		var m LearnedMove
 		if err := rows.Scan(&m.MoveID, &m.MoveName); err != nil {
-			continue
+			return nil, fmt.Errorf("scan level-up move for species %d: %w", pokemonID, err)
 		}
 		moves = append(moves, m)
 	}
-	return moves, nil
+	return moves, rows.Err()
 }
 
 // LearnedMove represents a move learned from the learnset.

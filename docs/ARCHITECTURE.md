@@ -118,6 +118,13 @@ We follow a **"Model-First"** architecture. Data is categorized into distinct st
   several clerks' offers, but a purchase must identify the selected offer's owner.
 - **Wire types**: Generate inventory types from `internal/db/cqitems/types.go`;
   do not duplicate those interfaces in client stores.
+- **Party item use**: `internal/itemuse.Service` owns outside-battle party item
+  operations. It locks the character before loading inventory and party, applies
+  the existing shared effect rules, and commits consumption, Pokémon changes,
+  and evolution Pokédex registration together. Its returned snapshot is safe to
+  publish only after success. A TM/HM move-selection prompt writes no gameplay
+  state, and the later selection revalidates the current item and moves. Field
+  movement effects and battle item execution remain separate migration work.
 
 ### D. Pokémon Party, PC, and Battle State
 

@@ -1133,10 +1133,6 @@ export interface TrainerBattleStartRequest {
 
 
 //////////
-// source: item_effects.go
-
-
-//////////
 // source: ledges.go
 
 

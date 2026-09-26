@@ -104,8 +104,28 @@ small verified changes. No production deployment or push is part of this goal.
   simultaneous deposits, and acquisition overflow into PC storage. Evolution
   preserves identity and nickname. All Go packages passed with PostgreSQL tests
   enabled. No frontend wire payload or database schema changed in this checkpoint.
-- Next: combine item consumption/rewards and their gameplay effects under the
-  same transaction, then establish serialized runtime character ownership.
+- Party item checkpoint: outside-battle medicine, vitamins, PP Up, Rare Candy,
+  stones, TMs/HMs, and the Poké Flute now use the injected `itemuse.Service`.
+  Inventory consumption, party effects, and evolution Pokédex registration share
+  one transaction. Existing effect rules moved out of transport handlers into
+  the shared item domain; the Pokédex write has one repository implementation.
+  Failed operations publish neither success nor a changed party snapshot. TM/HM
+  prompts preserve pending context and revalidate ownership and moves on choice.
+  The outside-battle handler rejects use during an already active battle.
+- PostgreSQL tests cover competing uses with no lost healing, exhausted-instance
+  retries, effect failure and retry, evolution rollback including the Pokédex,
+  reusable HMs, changed moves after a prompt, and party-wide flute use. Real
+  dispatcher checks cover failure/success messages and the active-battle guard.
+  The default disposable PostgreSQL runner passed with the race detector; all
+  Go packages, type generation, and frontend typechecking passed as well.
+- A broad race run exposed an existing asynchronous chat writer reading the
+  global database and mutable session after its caller returned. Both player
+  and Discord chat persistence now use the world's injected database and captured
+  values, with a five-second query deadline. Shutdown still needs to drain this
+  work as part of the lifecycle milestone. The affected race tests now pass.
+- Next: make battle item turns, rewards/flags, and remaining field effects atomic,
+  then establish serialized runtime character ownership. Checkpoints so far are
+  local commits only. Nothing has been pushed or deployed.
   Command deduplication, reconnect gameplay, shutdown, and rendered verification
   are still required; these inventory tests do not establish those properties.
 

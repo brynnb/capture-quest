@@ -6,6 +6,7 @@ import (
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
 	"capturequest/internal/db/cqitems"
+	"capturequest/internal/itemuse"
 	"capturequest/internal/pokebattle"
 	"capturequest/internal/session"
 )
@@ -42,16 +43,16 @@ func useBattleInventoryItem(ses *session.Session, wh *WorldHandler, charID int64
 	}
 
 	switch {
-	case itemShortName(item) == "POKE_DOLL" || item.BonusFlee > 0:
+	case itemuse.ShortName(item) == "POKE_DOLL" || item.BonusFlee > 0:
 		usePokeDollInBattle(ses, wh, charID, battle, invItem, responseOpcode)
 		return false
-	case itemShortName(item) == "POKE_FLUTE":
+	case itemuse.ShortName(item) == "POKE_FLUTE":
 		usePokeFluteInBattle(ses, charID, battle, invItem, responseOpcode)
 		return false
-	case isMedicineItem(item):
+	case itemuse.IsMedicine(item):
 		useMedicineInBattle(ses, charID, battle, invItem, req, responseOpcode)
 		return false
-	case battleItemHasEffect(item):
+	case itemuse.HasBattleEffect(item):
 		useBoostItemInBattle(ses, charID, battle, invItem, responseOpcode)
 		return false
 	default:
@@ -71,7 +72,7 @@ func useMedicineInBattle(ses *session.Session, charID int64, battle *pokebattle.
 	}
 
 	targetPoke := battle.PlayerParty[targetIdx]
-	msg, applyErr := pokebattle.ApplyItemEffect(targetPoke, medicineEffectFromItem(invItem.Item), req.MoveSlot)
+	msg, applyErr := pokebattle.ApplyItemEffect(targetPoke, itemuse.MedicineEffect(invItem.Item), req.MoveSlot)
 	if applyErr != nil {
 		sendBattleNoTurnMessage(ses, battle, applyErr.Error(), responseOpcode)
 		return
@@ -87,7 +88,7 @@ func useMedicineInBattle(ses *session.Session, charID int64, battle *pokebattle.
 
 func useBoostItemInBattle(ses *session.Session, charID int64, battle *pokebattle.BattleState, invItem *cqitems.CQInventoryItem, responseOpcode opcodes.OpCode) {
 	player := battle.GetPlayerPokemon()
-	msg, applyErr := applyBattleBoostItem(invItem.Item, player)
+	msg, applyErr := itemuse.ApplyBattleBoost(invItem.Item, player)
 	if applyErr != nil {
 		sendBattleNoTurnMessage(ses, battle, applyErr.Error(), responseOpcode)
 		return
@@ -102,7 +103,7 @@ func useBoostItemInBattle(ses *session.Session, charID int64, battle *pokebattle
 }
 
 func usePokeFluteInBattle(ses *session.Session, charID int64, battle *pokebattle.BattleState, invItem *cqitems.CQInventoryItem, responseOpcode opcodes.OpCode) {
-	msg, applyErr := applyPokeFluteBattle(battle)
+	msg, applyErr := itemuse.ApplyBattleFlute(battle)
 	if applyErr != nil {
 		sendBattleNoTurnMessage(ses, battle, applyErr.Error(), responseOpcode)
 		return

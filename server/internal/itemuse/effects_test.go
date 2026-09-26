@@ -1,4 +1,4 @@
-package world
+package itemuse
 
 import (
 	"testing"
@@ -53,5 +53,45 @@ func TestIsEvolutionStoneUsesTypeOrName(t *testing.T) {
 	}
 	if isEvolutionStone(cqitems.CQItem{ItemType: cqItemTypeMisc, ShortName: "RARE_CANDY"}) {
 		t.Fatal("did not expect non-stone item to count as evolution stone")
+	}
+}
+
+func TestItemUsableOnPartyOutsideBattleRejectsBattleOnlyAndNonUsableItems(t *testing.T) {
+	tests := []struct {
+		name string
+		item cqitems.CQItem
+		want bool
+	}{
+		{
+			name: "potion",
+			item: cqitems.CQItem{
+				ShortName:  "POTION",
+				HealAmount: 20,
+			},
+			want: true,
+		},
+		{
+			name: "x attack battle only",
+			item: cqitems.CQItem{
+				ShortName:   "X_ATTACK",
+				BonusAttack: 1,
+			},
+			want: false,
+		},
+		{
+			name: "nugget non usable",
+			item: cqitems.CQItem{
+				ShortName: "NUGGET",
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := itemUsableOnPartyOutsideBattle(tt.item); got != tt.want {
+				t.Fatalf("itemUsableOnPartyOutsideBattle(%s) = %v, want %v", tt.item.ShortName, got, tt.want)
+			}
+		})
 	}
 }

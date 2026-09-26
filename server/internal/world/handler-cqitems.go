@@ -3,13 +3,14 @@ package world
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
 	"capturequest/internal/db/cqitems"
-	"capturequest/internal/pokebattle"
+	"capturequest/internal/itemuse"
 	"capturequest/internal/session"
 )
 
@@ -165,310 +166,36 @@ func HandleCQItemUse(ses *session.Session, payload []byte, wh *WorldHandler) boo
 	}
 
 	charID := int32(ses.Client.CharData().ID)
-	myDB := db.GlobalWorldDB.DB
-
-	// Load the item instance from inventory
-	inv, err := cqitems.NewStore(db.GlobalWorldDB.DB).GetCharacterInventory(charID)
+	if battle := getBattle(int64(charID)); battle != nil && !battle.IsOver() {
+		sendCQItemUseError(ses, "Use the battle item menu during a battle")
+		return false
+	}
+	found, err := cqitems.NewStore(db.GlobalWorldDB.DB).FindInventoryItemByInstanceID(charID, req.InstanceID)
 	if err != nil {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "Failed to load inventory",
-		}, opcodes.CQItemUseResponse)
+		sendCQItemUseError(ses, "Item not found in inventory")
 		return false
 	}
-
-	var found *cqitems.CQInventoryItem
-	for i := range inv {
-		if inv[i].Instance.ID == req.InstanceID {
-			found = &inv[i]
-			break
-		}
-	}
-	if found == nil {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "Item not found in inventory",
-		}, opcodes.CQItemUseResponse)
-		return false
-	}
-
-	item := found.Item
 	if tryHandleFieldItemUse(ses, wh, found, charID, req) {
 		return false
 	}
-
-	if !item.IsUsable {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "That item can't be used like that.",
-		}, opcodes.CQItemUseResponse)
-		return false
-	}
-
-	if !itemUsableOnPartyOutsideBattle(item) {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "That item can't be used outside of battle",
-		}, opcodes.CQItemUseResponse)
-		return false
-	}
-
-	// Load party
-	party, err := pokebattle.LoadParty(myDB, int64(charID))
-	if err != nil || len(party) == 0 {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "Failed to load party",
-		}, opcodes.CQItemUseResponse)
-		return false
-	}
-
-	if req.PartySlot < 0 || req.PartySlot >= len(party) || party[req.PartySlot] == nil {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "Invalid Pokémon",
-		}, opcodes.CQItemUseResponse)
-		return false
-	}
-
-	targetPoke := party[req.PartySlot]
-	var msg string
-
-	if isTMHM(item) {
-		if item.MoveID == nil {
-			ses.SendStreamJSON(map[string]interface{}{
-				"success": false,
-				"error":   "Invalid TM/HM (no move associated)",
-			}, opcodes.CQItemUseResponse)
-			return false
-		}
-		moveID := int(*item.MoveID)
-		moveName := cqMoveNameForID(myDB, moveID, item.Name)
-
-		// Check compatibility
-		if !pokebattle.CanLearnTMHM(myDB, targetPoke.ID, moveID) {
-			ses.SendStreamJSON(map[string]interface{}{
-				"success": false,
-				"error":   fmt.Sprintf("%s can't learn that move", targetPoke.Name),
-			}, opcodes.CQItemUseResponse)
-			return false
-		}
-
-		// Check if already knows the move
-		for _, m := range targetPoke.Moves {
-			if m.ID == moveID {
-				ses.SendStreamJSON(map[string]interface{}{
-					"success": false,
-					"error":   fmt.Sprintf("%s already knows %s", targetPoke.Name, m.Name),
-				}, opcodes.CQItemUseResponse)
-				return false
-			}
-		}
-
-		// Try to learn (auto-fills empty slot)
-		result := pokebattle.TryLearnMove(myDB, targetPoke, moveID)
-		if result >= 0 {
-			// Learned into empty slot
-			moveName := targetPoke.Moves[result].Name
-			msg = fmt.Sprintf("%s learned %s!", targetPoke.Name, moveName)
-		} else if result == -1 {
-			// All 4 slots full — need player to pick a move to forget
-			if req.MoveSlot < 0 {
-				// Client needs to show move selection modal
-				ses.SendStreamJSON(tmhmNeedsMoveSlotResponse(req, targetPoke.Name, item.Name, moveName, moveID), opcodes.CQItemUseResponse)
-				return false
-			}
-			// Player chose a move to forget — check it's not an HM move
-			if req.MoveSlot < 0 || req.MoveSlot >= 4 {
-				ses.SendStreamJSON(map[string]interface{}{
-					"success": false,
-					"error":   "Invalid move slot",
-				}, opcodes.CQItemUseResponse)
-				return false
-			}
-			forgottenMove := targetPoke.Moves[req.MoveSlot]
-			if pokebattle.IsHMMove(myDB, forgottenMove.ID) {
-				ses.SendStreamJSON(map[string]interface{}{
-					"success": false,
-					"error":   fmt.Sprintf("HM moves can't be forgotten! (%s)", forgottenMove.Name),
-				}, opcodes.CQItemUseResponse)
-				return false
-			}
-			if err := pokebattle.ForgetAndLearnMove(myDB, targetPoke, req.MoveSlot, moveID); err != nil {
-				ses.SendStreamJSON(map[string]interface{}{
-					"success": false,
-					"error":   fmt.Sprintf("Failed to learn move: %v", err),
-				}, opcodes.CQItemUseResponse)
-				return false
-			}
-			newMoveName := targetPoke.Moves[req.MoveSlot].Name
-			msg = fmt.Sprintf("1, 2, and… Poof!\n%s forgot %s.\nAnd…\n%s learned %s!", targetPoke.Name, forgottenMove.Name, targetPoke.Name, newMoveName)
+	result, err := wh.Items.UsePartyItem(context.Background(), charID, req.InstanceID, req.PartySlot, req.MoveSlot)
+	if err != nil {
+		message := "Could not use this item. Please try again."
+		var rejection *itemuse.Rejection
+		if errors.As(err, &rejection) {
+			message = rejection.Message
 		} else {
-			// -2 = already knows (shouldn't reach here due to check above)
-			ses.SendStreamJSON(map[string]interface{}{
-				"success": false,
-				"error":   fmt.Sprintf("%s already knows that move", targetPoke.Name),
-			}, opcodes.CQItemUseResponse)
-			return false
+			log.Printf("[CQItems] Item use failed for character %d instance %d: %v", charID, req.InstanceID, err)
 		}
-
-		// Consume item: TMs are consumed, HMs are not
-		if item.ItemType == cqItemTypeTM {
-			cqitems.NewStore(db.GlobalWorldDB.DB).DecrementItemQuantity(charID, req.InstanceID)
-		}
-
-		// Save party
-		pokebattle.SaveParty(myDB, int64(charID), party)
-
-		log.Printf("[CQItems] Char %d used %s on %s: %s", charID, item.Name, targetPoke.Name, msg)
-
-		ses.SendStreamJSON(map[string]interface{}{
-			"success":    true,
-			"message":    msg,
-			"instanceId": req.InstanceID,
-			"partySlot":  req.PartySlot,
-		}, opcodes.CQItemUseResponse)
-
-		sendPartyUpdate(ses)
+		sendCQItemUseError(ses, message)
 		return false
 	}
-
-	if isRareCandy(item) {
-		// Rare Candy: level up by 1
-		if targetPoke.IsFainted() {
-			ses.SendStreamJSON(map[string]interface{}{
-				"success": false,
-				"error":   fmt.Sprintf("%s has fainted", targetPoke.Name),
-			}, opcodes.CQItemUseResponse)
-			return false
-		}
-		if targetPoke.Level >= 100 {
-			ses.SendStreamJSON(map[string]interface{}{
-				"success": false,
-				"error":   fmt.Sprintf("%s is already at max level", targetPoke.Name),
-			}, opcodes.CQItemUseResponse)
-			return false
-		}
-		oldMaxHP := targetPoke.MaxHP
-		targetPoke.Level++
-		targetPoke.Exp = pokebattle.ExpForLevel(targetPoke.GrowthRt, targetPoke.Level)
-		targetPoke.RecalculateStats()
-		targetPoke.CurHP += targetPoke.MaxHP - oldMaxHP
-		msg = fmt.Sprintf("%s grew to level %d!", targetPoke.Name, targetPoke.Level)
-
-		// Check evolution
-		evolvedID, evolvedName := pokebattle.CheckEvolution(myDB, targetPoke)
-		if evolvedID > 0 {
-			oldName := targetPoke.Name
-			if err := pokebattle.EvolvePokemon(myDB, targetPoke, evolvedID); err != nil {
-				log.Printf("[CQItems] Failed to evolve %s: %v", oldName, err)
-			} else {
-				MarkPokemonCaught(int64(charID), evolvedID)
-				msg += fmt.Sprintf("\nWhat? %s is evolving!\n%s evolved into %s!", oldName, oldName, evolvedName)
-			}
-		}
-
-		// Check for new moves
-		newMoves, _ := pokebattle.GetMovesLearnedInRange(myDB, targetPoke.ID, targetPoke.Level-1, targetPoke.Level)
-		for _, lm := range newMoves {
-			result := pokebattle.TryLearnMove(myDB, targetPoke, lm.MoveID)
-			if result >= 0 {
-				msg += fmt.Sprintf("\n%s learned %s!", targetPoke.Name, lm.MoveName)
-			}
-			// If all slots full, skip (no prompt outside battle for now)
-		}
-	} else if isEvolutionStone(item) {
-		originalSpeciesID := targetPoke.ID
-		var applyErr error
-		msg, applyErr = applyStoneEvolution(myDB, item, targetPoke)
-		if applyErr != nil {
-			ses.SendStreamJSON(map[string]interface{}{
-				"success": false,
-				"error":   applyErr.Error(),
-			}, opcodes.CQItemUseResponse)
-			return false
-		}
-		if targetPoke.ID != originalSpeciesID {
-			MarkPokemonCaught(int64(charID), targetPoke.ID)
-		}
-	} else if _, _, ok := vitaminTarget(item); ok {
-		var applyErr error
-		msg, applyErr = applyVitamin(item, targetPoke)
-		if applyErr != nil {
-			ses.SendStreamJSON(map[string]interface{}{
-				"success": false,
-				"error":   applyErr.Error(),
-			}, opcodes.CQItemUseResponse)
-			return false
-		}
-	} else if isPPUp(item) {
-		var applyErr error
-		msg, applyErr = applyPPUp(targetPoke, req.MoveSlot)
-		if applyErr != nil {
-			ses.SendStreamJSON(map[string]interface{}{
-				"success": false,
-				"error":   applyErr.Error(),
-			}, opcodes.CQItemUseResponse)
-			return false
-		}
-	} else {
-		// Medicine item
-		eff := medicineEffectFromItem(item)
-		var applyErr error
-		msg, applyErr = pokebattle.ApplyItemEffect(targetPoke, eff, req.MoveSlot)
-		if applyErr != nil {
-			ses.SendStreamJSON(map[string]interface{}{
-				"success": false,
-				"error":   applyErr.Error(),
-			}, opcodes.CQItemUseResponse)
-			return false
-		}
+	ses.SendStreamJSON(result, opcodes.CQItemUseResponse)
+	if !result.NeedsMoveSlot {
+		sendPokemonPartySnapshot(ses, result.Party)
+		sendCQInventorySnapshot(ses, charID)
 	}
-
-	// Consume the item
-	newQty, _ := cqitems.NewStore(db.GlobalWorldDB.DB).DecrementItemQuantity(charID, req.InstanceID)
-
-	// Save party
-	pokebattle.SaveParty(myDB, int64(charID), party)
-
-	log.Printf("[CQItems] Char %d used %s on %s: %s", charID, item.Name, targetPoke.Name, msg)
-
-	ses.SendStreamJSON(map[string]interface{}{
-		"success":    true,
-		"message":    msg,
-		"instanceId": req.InstanceID,
-		"newQty":     newQty,
-		"partySlot":  req.PartySlot,
-	}, opcodes.CQItemUseResponse)
-
-	// Push updated party to client
-	sendPartyUpdate(ses)
 	return false
-}
-
-func tmhmNeedsMoveSlotResponse(req cqItemUseRequest, pokemonName, itemName, moveName string, moveID int) map[string]interface{} {
-	if moveName == "" {
-		moveName = itemName
-	}
-	return map[string]interface{}{
-		"success":       true,
-		"needsMoveSlot": true,
-		"instanceId":    req.InstanceID,
-		"partySlot":     req.PartySlot,
-		"moveId":        moveID,
-		"moveName":      moveName,
-		"message":       fmt.Sprintf("%s wants to learn %s, but already knows 4 moves. Choose a move to forget.", pokemonName, moveName),
-	}
-}
-
-func cqMoveNameForID(db pokebattle.DBTX, moveID int, fallback string) string {
-	var moveName string
-	if err := db.QueryRow(`
-		SELECT COALESCE(NULLIF(short_name, ''), NULLIF(name, ''), $1)
-		FROM phaser_moves WHERE id = $2`, fallback, moveID).Scan(&moveName); err != nil || moveName == "" {
-		return fallback
-	}
-	return moveName
 }
 
 // HandleCQMerchantSellRequest handles selling an item to a merchant

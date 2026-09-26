@@ -1,6 +1,7 @@
 package world
 
 import (
+	"capturequest/internal/db/pokedex"
 	"database/sql"
 	"fmt"
 
@@ -206,7 +207,7 @@ func tryBuyGameCornerPrize(charID int64, prize GameCornerPrize) GameCornerPrizeP
 		if err != nil {
 			return gameCornerPrizeFailure(charID, "Failed to create Pokemon.", &prize)
 		}
-		if err := markPokemonCaught(db.GlobalWorldDB.DB, charID, *prize.PokemonID); err != nil {
+		if err := pokedex.MarkCaught(db.GlobalWorldDB.DB, charID, *prize.PokemonID); err != nil {
 			return gameCornerPrizeFailure(charID, "Failed to register Pokemon.", &prize)
 		}
 		result.PrizeLevel = level

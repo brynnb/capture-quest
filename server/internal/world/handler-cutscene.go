@@ -11,6 +11,7 @@ import (
 	"capturequest/internal/db"
 	db_character "capturequest/internal/db/character"
 	"capturequest/internal/db/cqitems"
+	"capturequest/internal/db/pokedex"
 	"capturequest/internal/pokebattle"
 	"capturequest/internal/scriptedactions"
 	"capturequest/internal/session"
@@ -1198,7 +1199,7 @@ func applyGivePokemonAction(ses *session.Session, action CutsceneAction, charID 
 	if err != nil {
 		return "", fmt.Errorf("give pokemon %d L%d: %w", speciesID, level, err)
 	}
-	if err := markPokemonCaught(tx, charID, speciesID); err != nil {
+	if err := pokedex.MarkCaught(tx, charID, speciesID); err != nil {
 		return "", fmt.Errorf("register pokemon %d in pokedex: %w", speciesID, err)
 	}
 	if err := tx.Commit(); err != nil {

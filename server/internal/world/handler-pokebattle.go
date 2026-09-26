@@ -1007,6 +1007,11 @@ func sendPartyUpdate(ses *session.Session) {
 		log.Printf("[Party] Failed to load party for update (char %d): %v", charID, err)
 		return
 	}
+	sendPokemonPartySnapshot(ses, party)
+}
+
+// Publish the committed domain snapshot without another mutable database read.
+func sendPokemonPartySnapshot(ses *session.Session, party []*pokebattle.Pokemon) {
 	partyDTOs := make([]PokemonDTO, 0, len(party))
 	for _, p := range party {
 		partyDTOs = append(partyDTOs, pokemonToDTO(p))

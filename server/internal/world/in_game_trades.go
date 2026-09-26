@@ -8,6 +8,7 @@ import (
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
+	"capturequest/internal/db/pokedex"
 	"capturequest/internal/pokebattle"
 	"capturequest/internal/session"
 )
@@ -255,7 +256,7 @@ func performInGameTrade(myDB *sql.DB, charID int64, trade inGameTradeDefinition)
 		return inGameTradeOutcome{}, fmt.Errorf("set offered pokemon nickname: %w", err)
 	}
 
-	if err := markPokemonCaught(tx, charID, trade.OfferedPokemonID); err != nil {
+	if err := pokedex.MarkCaught(tx, charID, trade.OfferedPokemonID); err != nil {
 		return inGameTradeOutcome{}, fmt.Errorf("mark offered pokemon caught: %w", err)
 	}
 
