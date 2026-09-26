@@ -48,6 +48,9 @@ func TryDepositDayCarePokemon(charID int64, partySlot int) DayCareDepositResult 
 		return dayCareDepositFailure(charID, "Could not leave a Pokémon.")
 	}
 	defer tx.Rollback()
+	if err := db.LockCharacter(tx, charID); err != nil {
+		return dayCareDepositFailure(charID, "Could not leave a Pokémon.")
+	}
 
 	if active, err := dayCareActive(tx, charID); err != nil {
 		return dayCareDepositFailure(charID, "Could not leave a Pokémon.")
@@ -87,7 +90,9 @@ func TryDepositDayCarePokemon(charID int64, partySlot int) DayCareDepositResult 
 		pokebattle.BoxDayCare, dayCareSlot, rowID, charID); err != nil {
 		return dayCareDepositFailure(charID, "Could not leave that Pokémon.")
 	}
-	pokebattle.CompactPartySlots(tx, charID)
+	if err := pokebattle.CompactPartySlots(tx, charID); err != nil {
+		return dayCareDepositFailure(charID, "Could not update your party.")
+	}
 
 	if _, err := tx.Exec(`
 		INSERT INTO character_daycare (character_id, pokemon_row_id, start_level)
@@ -117,6 +122,9 @@ func AdvanceDayCareSteps(charID int64, steps int) (DayCareStatus, bool, error) {
 		return DayCareStatus{}, false, err
 	}
 	defer tx.Rollback()
+	if err := db.LockCharacter(tx, charID); err != nil {
+		return DayCareStatus{}, false, err
+	}
 
 	rowID, _, pokemon, err := loadDayCarePokemon(tx, charID, false)
 	if err == sql.ErrNoRows {
@@ -152,6 +160,9 @@ func TryWithdrawDayCarePokemon(charID int64) DayCareWithdrawResult {
 		return dayCareWithdrawFailure(charID, "Could not get your Pokémon.")
 	}
 	defer tx.Rollback()
+	if err := db.LockCharacter(tx, charID); err != nil {
+		return dayCareWithdrawFailure(charID, "Could not get your Pokémon.")
+	}
 
 	rowID, startLevel, pokemon, err := loadDayCarePokemon(tx, charID, true)
 	if err == sql.ErrNoRows {

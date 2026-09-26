@@ -124,6 +124,20 @@ We follow a **"Model-First"** architecture. Data is categorized into distinct st
 - **Source of Truth**: `character_pokemon`, `character_pc_state`, and battle state tables.
 - **Content**: Pokémon level, EXP, HP, IV/EV values, moves, PP, status, party slots, PC boxes, active battles, and capture state.
 - **Rule**: Gameplay stat progression belongs to Pokémon, not the trainer avatar.
+- **Persistence**: `pokebattle.Pokemon.RowID` is the stable owned Pokémon identity;
+  `ID` remains the species ID. Party saves update rows in one bounded transaction,
+  preserve nicknames and other storage metadata, and reject foreign, duplicated,
+  or omitted existing identities. Releasing or transferring a Pokémon must use
+  the explicit storage operation. A missing species/move or malformed row fails
+  the load; it must never silently shrink a party that could then be saved.
+- **Composition**: Use `SavePartyInTransaction` when the party change accompanies
+  inventory consumption, rewards, or another durable effect. It returns a copied
+  pending snapshot; publish it only after the outer commit. `SaveParty` owns its
+  transaction and publishes new row IDs after commit. Storage moves, acquisitions,
+  Day Care, and trades take the same character lock before mutable reads.
+- **Limits**: This transaction boundary does not by itself serialize live battle
+  objects or prevent stale stat snapshots. Runtime character ownership and
+  combining all item/reward effects are still tracked in the foundations goal.
 
 ### E. Session/Ephemeral Data
 

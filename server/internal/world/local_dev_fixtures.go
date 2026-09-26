@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -90,7 +91,18 @@ func ensureLocalDevPokemonParty(myDB *sql.DB, charID int64) error {
 		party = append(party, p)
 	}
 
-	if err := pokebattle.SaveParty(myDB, charID, party); err != nil {
+	// This local-only fixture deliberately replaces the party. Ordinary saves
+	// reject missing identities so gameplay can never silently discard a row.
+	if err := db.Transaction(context.Background(), myDB, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, charID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`DELETE FROM character_pokemon WHERE character_id=$1 AND box=$2`, charID, pokebattle.BoxParty); err != nil {
+			return err
+		}
+		_, err := pokebattle.SavePartyInTransaction(tx, charID, party)
+		return err
+	}); err != nil {
 		return fmt.Errorf("save local dev party: %w", err)
 	}
 	return nil

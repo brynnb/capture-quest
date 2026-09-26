@@ -30,6 +30,6 @@ export CAPTUREQUEST_TEST_DATABASE_URL="host=$test_pg_dir port=5432 dbname=postgr
 export GOMAXPROCS="${GOMAXPROCS:-4}"
 cd "$repo_dir/server"
 if [[ "$#" == 0 ]]; then
-  set -- ./internal/db/... ./internal/economy ./internal/world
+  set -- ./internal/db/... ./internal/economy ./internal/pokebattle ./internal/world
 fi
 go test -race -p=4 "$@"

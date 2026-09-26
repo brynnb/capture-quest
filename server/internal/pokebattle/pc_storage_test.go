@@ -83,6 +83,8 @@ func openPCTestDB(t *testing.T) *sql.DB {
 	t.Cleanup(func() { db.Close() })
 
 	if _, err := db.Exec(`
+		CREATE TABLE character_data(id INTEGER PRIMARY KEY);
+		INSERT INTO character_data VALUES(42);
 		CREATE TABLE phaser_pokemon (
 			id INTEGER PRIMARY KEY,
 			name TEXT NOT NULL,

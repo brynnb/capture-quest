@@ -88,8 +88,24 @@ small verified changes. No production deployment or push is part of this goal.
   All Go packages, frontend typechecking, runtime asset validation, and the
   production frontend build passed at this checkpoint. The PostgreSQL runner
   was also exercised end to end, including cleanup of its private cluster.
-- Next: atomic party persistence with stable Pokémon row IDs, then combine item
-  consumption/rewards and their gameplay effects under the same transaction.
+- Party persistence checkpoint: loaded Pokémon carry stable row IDs and explicit
+  nicknames. Saves update rows atomically, reorder under the existing immediate
+  uniqueness constraints, and reject stale membership, missing members, foreign
+  rows, duplicates, and nil entries. New IDs become visible only after commit;
+  transaction composition returns copied pending state. Missing species/moves
+  and scan failures abort the load rather than silently dropping party data.
+- PC transfers, acquisitions, starter creation, Day Care, and trades share the
+  character lock. PC transfers roll back failed compaction, preserve the last
+  party member, and reject attempts to release or withdraw non-PC storage.
+  Party saving and storage operations have separate cohesive source files.
+  The deliberate local fixture reset remains explicit and transactional.
+- PostgreSQL race checks prove stable identity/nicknames, reorder, all-row and
+  outer-transaction rollback, uncommitted ID isolation, malformed-load rejection,
+  simultaneous deposits, and acquisition overflow into PC storage. Evolution
+  preserves identity and nickname. All Go packages passed with PostgreSQL tests
+  enabled. No frontend wire payload or database schema changed in this checkpoint.
+- Next: combine item consumption/rewards and their gameplay effects under the
+  same transaction, then establish serialized runtime character ownership.
   Command deduplication, reconnect gameplay, shutdown, and rendered verification
   are still required; these inventory tests do not establish those properties.
 

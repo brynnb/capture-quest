@@ -264,6 +264,7 @@ func setupInGameTradeTestDB(t *testing.T, charID int64, includeSlowbro bool) *sq
 		t.Fatal(err)
 	}
 	if _, err := raw.Exec(`
+		CREATE TABLE character_data(id INTEGER PRIMARY KEY);
 		CREATE TABLE phaser_in_game_trades (
 			trade_key TEXT PRIMARY KEY,
 			text_constant TEXT NOT NULL UNIQUE,
@@ -417,5 +418,8 @@ func setupInGameTradeTestDB(t *testing.T, charID int64, includeSlowbro bool) *sq
 		db.GlobalWorldDB = previous
 		raw.Close()
 	})
+	if _, err := raw.Exec(`INSERT INTO character_data(id) VALUES($1)`, charID); err != nil {
+		t.Fatal(err)
+	}
 	return raw
 }

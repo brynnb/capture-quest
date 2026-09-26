@@ -188,6 +188,9 @@ func performInGameTrade(myDB *sql.DB, charID int64, trade inGameTradeDefinition)
 		return inGameTradeOutcome{}, fmt.Errorf("begin trade transaction: %w", err)
 	}
 	defer tx.Rollback()
+	if err := db.LockCharacter(tx, charID); err != nil {
+		return inGameTradeOutcome{}, fmt.Errorf("lock trading character: %w", err)
+	}
 
 	completed, err := characterCompletedInGameTrade(tx, charID, trade.TradeKey)
 	if err != nil {
@@ -217,7 +220,9 @@ func performInGameTrade(myDB *sql.DB, charID int64, trade inGameTradeDefinition)
 		WHERE id = $1 AND character_id = $2`, selectedRowID, charID); err != nil {
 		return inGameTradeOutcome{}, fmt.Errorf("remove traded pokemon: %w", err)
 	}
-	pokebattle.CompactPartySlots(tx, charID)
+	if err := pokebattle.CompactPartySlots(tx, charID); err != nil {
+		return inGameTradeOutcome{}, fmt.Errorf("compact party: %w", err)
+	}
 
 	var newPartySlot int
 	if err := tx.QueryRow(`

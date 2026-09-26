@@ -43,6 +43,9 @@ func EvolvePokemon(db DBTX, p *Pokemon, evolvedID int) error {
 	// Update species data
 	p.ID = evolved.ID
 	p.Name = evolved.Name
+	if p.Nickname != "" {
+		p.Name = p.Nickname
+	}
 	p.Type1 = evolved.Type1
 	p.Type2 = evolved.Type2
 	p.BaseStats = evolved.BaseStats

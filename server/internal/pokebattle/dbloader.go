@@ -4,14 +4,12 @@ import (
 	"database/sql"
 	"fmt"
 	"math/rand"
+
+	"capturequest/internal/db"
 )
 
-// DBTX is the minimal query interface used by SQL DBs and transactions.
-type DBTX interface {
-	Query(query string, args ...interface{}) (*sql.Rows, error)
-	QueryRow(query string, args ...interface{}) *sql.Row
-	Exec(query string, args ...interface{}) (sql.Result, error)
-}
+// DBTX shares the runtime repository query contract.
+type DBTX = db.DBTX
 
 // HighCritMoves is the set of moves with high critical hit ratios in Gen 1.
 var HighCritMoves = map[string]bool{

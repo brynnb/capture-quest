@@ -15,6 +15,17 @@ type DBTX interface {
 	Exec(string, ...any) (sql.Result, error)
 }
 
+// RequireTransaction guards operations whose caller owns the atomic boundary.
+// A plain database would let partially completed writes escape on failure.
+func RequireTransaction(database DBTX) error {
+	switch database.(type) {
+	case transactionQueries, *sql.Tx:
+		return nil
+	default:
+		return fmt.Errorf("operation requires a transaction, got %T", database)
+	}
+}
+
 // Transaction joins a supplied transaction, or owns a bounded transaction on a
 // database. Callers joining an existing transaction must propagate errors and
 // must not publish success or mutate caches until their outer commit succeeds.
