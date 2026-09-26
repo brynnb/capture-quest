@@ -85,7 +85,7 @@ func HandleHeartbeat(ses *session.Session, payload []byte, wh *WorldHandler) boo
 	_ = json.Unmarshal(payload, &req)
 
 	// Record heartbeat time for disconnect detection
-	ses.LastHeartbeat = time.Now()
+	ses.RecordHeartbeat(time.Now())
 
 	ses.SendStreamJSON(map[string]interface{}{"status": "ok", "timestamp": req.Timestamp}, opcodes.Heartbeat)
 	return false

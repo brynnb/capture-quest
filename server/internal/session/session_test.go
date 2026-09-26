@@ -3,6 +3,8 @@ package session
 import (
 	"errors"
 	"fmt"
+	"net"
+	"sync"
 	"testing"
 	"time"
 )
@@ -31,6 +33,56 @@ func TestForEachSessionCallbackCanRemoveSession(t *testing.T) {
 	}
 	if _, ok := manager.GetSession(1); ok {
 		t.Fatal("session was not removed")
+	}
+}
+
+func TestSessionCloseUnblocksWriterAndRejectsReplacementStream(t *testing.T) {
+	serverConn, peer := net.Pipe()
+	defer peer.Close()
+	ses := NewSessionManager().CreateNextSession(testMessenger{}, "test", serverConn)
+	if ses.LastHeartbeat().IsZero() {
+		t.Fatal("new session has no idle-expiry timestamp")
+	}
+	if ses.AttachControlStream(peer) {
+		t.Fatal("replaced existing stream")
+	}
+	done := make(chan error, 1)
+	go func() { done <- ses.WriteControlStream([]byte("blocked write")) }()
+	ses.Close()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("write succeeded without reader")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("closing session did not unblock writer")
+	}
+	if ses.AttachControlStream(peer) {
+		t.Fatal("attached stream to closed session")
+	}
+}
+
+func TestSessionIDsAreUniqueAcrossConcurrentConnections(t *testing.T) {
+	manager := NewSessionManager()
+	ids := make(chan int, 100)
+	var workers sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for j := 0; j < 25; j++ {
+				ids <- manager.CreateNextSession(testMessenger{}, "test", nil).SessionID
+			}
+		}()
+	}
+	workers.Wait()
+	close(ids)
+	seen := make(map[int]bool)
+	for id := range ids {
+		if id <= 0 || seen[id] {
+			t.Fatalf("invalid or duplicate ID %d", id)
+		}
+		seen[id] = true
 	}
 }
 

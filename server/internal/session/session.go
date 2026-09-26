@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	entity "capturequest/internal/zone/interface"
@@ -28,13 +29,13 @@ type Session struct {
 	CharacterName string
 	Client        entity.Client
 	Messenger     ClientMessenger // For sending replies
-	ControlStream io.ReadWriteCloser
-	LastHeartbeat time.Time
 	// Private
 
-	sendMu   sync.Mutex
-	closed   bool
-	closedMu sync.RWMutex
+	sendMu        sync.Mutex
+	closed        bool
+	closedMu      sync.RWMutex
+	controlStream io.ReadWriteCloser // protected by closedMu; attached once
+	lastHeartbeat atomic.Int64
 
 	playtimeMu        sync.Mutex
 	playtimeStartedAt time.Time
@@ -104,6 +105,7 @@ func elapsedWholeSeconds(start, now time.Time) uint32 {
 type SessionManager struct {
 	sessions map[int]*Session // sessionID -> Session
 	mu       sync.RWMutex
+	nextID   int
 }
 
 // globalSessionManager holds the singleton SessionManager.
@@ -136,47 +138,107 @@ func NewSessionManager() *SessionManager {
 	}
 }
 
-func (sm *SessionManager) GetValidSession(sessionID int, ip string) (*Session, error) {
-	sm.mu.RLock()
-	defer sm.mu.RUnlock()
-
-	session, ok := sm.sessions[sessionID]
-	if !ok {
-		return nil, fmt.Errorf("session not found")
-	}
-	if session.IP != ip {
-		return nil, fmt.Errorf("IP mismatch")
-	}
-	return session, nil
+// CreateNextSession uses one ID sequence across all transports. Session IDs
+// identify connections only; reconnecting always requires fresh authentication.
+func (sm *SessionManager) CreateNextSession(messenger ClientMessenger, ip string, stream io.ReadWriteCloser) *Session {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.nextID++
+	return sm.createSession(messenger, sm.nextID, ip, stream)
 }
 
 // CreateSession initializes a new session with the given sessionID and accountID.
 func (sm *SessionManager) CreateSession(messenger ClientMessenger, sessionID int, ip string, stream io.ReadWriteCloser) *Session {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
+	if sessionID > sm.nextID {
+		sm.nextID = sessionID
+	}
+	return sm.createSession(messenger, sessionID, ip, stream)
+}
 
+func (sm *SessionManager) createSession(messenger ClientMessenger, sessionID int, ip string, stream io.ReadWriteCloser) *Session {
 	session := &Session{
 		SessionID:     sessionID,
 		Authenticated: false,
 		MapID:         -1,
 		PreviousMapID: -1,
 		InstanceID:    0,
-		ControlStream: stream,
+		controlStream: stream,
 		IP:            ip,
 		Messenger:     messenger,
 	}
+	session.RecordHeartbeat(time.Now())
 	sm.sessions[sessionID] = session
 	return session
 }
 
 func (s *Session) Close() {
 	s.closedMu.Lock()
+	if s.closed {
+		s.closedMu.Unlock()
+		return
+	}
 	s.closed = true
+	stream := s.controlStream
 	s.closedMu.Unlock()
 
-	if closer, ok := s.Messenger.(io.Closer); ok {
-		_ = closer.Close()
+	// Messengers can serve several sessions, so close only this connection.
+	if closer, ok := s.Messenger.(interface{ CloseSession(int) error }); ok {
+		_ = closer.CloseSession(s.SessionID)
 	}
+	if stream != nil {
+		_ = stream.Close()
+	}
+}
+
+func (s *Session) IsClosed() bool {
+	s.closedMu.RLock()
+	defer s.closedMu.RUnlock()
+	return s.closed
+}
+
+func (s *Session) AttachControlStream(stream io.ReadWriteCloser) bool {
+	s.closedMu.Lock()
+	defer s.closedMu.Unlock()
+	if s.closed || s.controlStream != nil {
+		return false
+	}
+	s.controlStream = stream
+	return true
+}
+
+func (s *Session) WriteControlStream(data []byte) error {
+	s.sendMu.Lock()
+	defer s.sendMu.Unlock()
+	s.closedMu.RLock()
+	stream, closed := s.controlStream, s.closed
+	s.closedMu.RUnlock()
+	if closed || stream == nil {
+		return fmt.Errorf("session %d has no open control stream", s.SessionID)
+	}
+	if deadlineStream, ok := stream.(interface{ SetWriteDeadline(time.Time) error }); ok {
+		if err := deadlineStream.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
+			return err
+		}
+	}
+	n, err := stream.Write(data)
+	if err == nil && n != len(data) {
+		return io.ErrShortWrite
+	}
+	return err
+}
+
+func (s *Session) RecordHeartbeat(now time.Time) {
+	s.lastHeartbeat.Store(now.UnixNano())
+}
+
+func (s *Session) LastHeartbeat() time.Time {
+	n := s.lastHeartbeat.Load()
+	if n == 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, n)
 }
 
 // GetSession retrieves a session by sessionID.

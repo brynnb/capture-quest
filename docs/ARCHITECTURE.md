@@ -60,6 +60,23 @@ under `server/script_tests/` instead of relying only on browser inspection.
 
 ## 1. Data Ownership & Streams
 
+Runtime foundation work and its verification milestones are tracked in
+[`SERVER_FOUNDATIONS.md`](SERVER_FOUNDATIONS.md).
+
+### Connection boundary
+
+Every connection receives a new session ID and authenticates before account or
+gameplay commands. IDs and IP addresses are not reconnect credentials. Saved
+battle state is restored after authentication and character selection.
+
+Both transports use the shared inbound frame contract in `internal/api`:
+256 KiB maximum command size, JSON object payloads, and centralized session
+prerequisites in the world dispatcher. Gameplay defaults to requiring a selected
+character; domain handlers still validate battle rules, ownership, and GM access.
+WebTransport accepts one reliable control stream. Heartbeats can use datagrams;
+session expiry bounds idle connections and fixed deadlines bound partial frames
+and writes. Removing a session closes only that session's transport.
+
 We follow a **"Model-First"** architecture. Data is categorized into distinct streams to avoid massive "god-object" updates and to minimize bandwidth.
 
 ### Durable State Ownership

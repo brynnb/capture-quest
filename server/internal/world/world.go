@@ -165,9 +165,9 @@ func (wh *WorldHandler) StartSessionTimeoutChecker() {
 			var timedOutSessions []int
 
 			wh.sessionManager.ForEachSession(func(ses *session.Session) {
-				// Only check sessions that have received at least one heartbeat
-				if !ses.LastHeartbeat.IsZero() && now.Sub(ses.LastHeartbeat) > 15*time.Second {
-					log.Printf("[WORLD] Session %d timed out (last heartbeat: %v)", ses.SessionID, ses.LastHeartbeat)
+				lastHeartbeat := ses.LastHeartbeat()
+				if !lastHeartbeat.IsZero() && now.Sub(lastHeartbeat) > 15*time.Second {
+					log.Printf("[WORLD] Session %d timed out (last heartbeat: %v)", ses.SessionID, lastHeartbeat)
 					timedOutSessions = append(timedOutSessions, ses.SessionID)
 				}
 			})

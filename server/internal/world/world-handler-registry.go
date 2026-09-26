@@ -1,9 +1,12 @@
 package world
 
 import (
+	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"log"
 
+	"capturequest/internal/api"
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/logutil"
 	"capturequest/internal/session"
@@ -152,26 +155,56 @@ func (r *HandlerRegistry) ShouldHandleGlobally(data []byte) bool {
 }
 
 func (r *HandlerRegistry) HandleWorldPacket(ses *session.Session, data []byte) bool {
-	if len(data) < 2 {
-		log.Printf("invalid datagram length %d from session %d", len(data), ses.SessionID)
+	if ses == nil || ses.IsClosed() || len(data) < 2 || len(data) > api.MaxClientPacketSize {
 		return false
 	}
 	op := binary.LittleEndian.Uint16(data[:2])
-	payload := data[2:]
+	payload := bytes.TrimSpace(data[2:])
+	// Every client command currently has a JSON object payload. In particular,
+	// JSON null must not decode as a successful, zero-valued gameplay command.
+	if len(payload) == 0 || payload[0] != '{' || !json.Valid(payload) {
+		return false
+	}
+	if !sessionAllowsOpcode(ses, opcodes.OpCode(op)) {
+		logutil.Debugf("[HandlerRegistry] Rejected opcode %d in current session state", op)
+		return false
+	}
 
 	if logutil.DebugEnabled() && opcodes.OpCode(op) != opcodes.Heartbeat {
 		logutil.Debugf("[HandlerRegistry] Received opcode %d from session %d (payload length: %d)", op, ses.SessionID, len(payload))
 	}
 
 	forwardToZone := false
-	if (!ses.Authenticated && op != uint16(opcodes.JWTLogin)) || len(payload) == 0 {
-		log.Printf("unauthenticated opcode %d from session %d", op, ses.SessionID)
-	} else if h, ok := r.handlers[(opcodes.OpCode)(op)]; ok {
+	if h, ok := r.handlers[(opcodes.OpCode)(op)]; ok {
 		forwardToZone = h(ses, payload, r.WH)
 	} else {
 		log.Printf("no handler for opcode %d from session %d", op, ses.SessionID)
 	}
 	return forwardToZone
+}
+
+// New gameplay opcodes require a selected character by default. Only explicit
+// connection/account operations may run before selection. Battle-specific
+// rules and GM authorization remain in their authoritative gameplay handlers.
+func sessionAllowsOpcode(ses *session.Session, op opcodes.OpCode) bool {
+	if op == opcodes.Heartbeat {
+		return true // The login screen also keeps its connection alive.
+	}
+	if op == opcodes.JWTLogin {
+		// Account changes at character select include guest-account registration.
+		return !ses.HasValidClient()
+	}
+	if !ses.Authenticated {
+		return false
+	}
+	switch op {
+	case opcodes.CharacterCreate, opcodes.DeleteCharacter, opcodes.EnterWorld:
+		return !ses.HasValidClient()
+	case opcodes.StaticDataRequest, opcodes.CharCreateDataRequest, opcodes.ValidateNameRequest:
+		return true
+	default:
+		return ses.HasValidClient()
+	}
 }
 
 func NewZoneOpCodeRegistry(zoneID int) *HandlerRegistry {

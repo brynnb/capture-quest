@@ -1,11 +1,11 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
 	b64 "encoding/base64"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"capturequest/internal/api/opcodes"
+	"capturequest/internal/api"
 	"capturequest/internal/cache"
 	"capturequest/internal/cert"
 	"capturequest/internal/config"
@@ -34,10 +34,17 @@ import (
 	"github.com/quic-go/webtransport-go"
 )
 
-// Server hosts a WebTransport-based world server with both datagrams and a single control stream per session.
+// worldRuntime is the transport-facing boundary of the gameplay runtime.
+type worldRuntime interface {
+	HandlePacket(*session.Session, []byte)
+	RemoveSession(int)
+	Shutdown()
+}
+
+// Server hosts HTTP, WebSocket and WebTransport connections.
 type Server struct {
 	wtServer       *webtransport.Server
-	worldHandler   *world.WorldHandler
+	worldHandler   worldRuntime
 	sessionManager *session.SessionManager
 	sessions       map[int]*webtransport.Session
 	sessionsMu     sync.Mutex // Protects sessions map
@@ -172,107 +179,101 @@ func envPort(name string, fallback int) int {
 
 // makeCaptureQuestHandler upgrades HTTP to WebTransport and manages session lifecycles.
 func (s *Server) makeCaptureQuestHandler() http.HandlerFunc {
-	var nextID int
 	return func(rw http.ResponseWriter, r *http.Request) {
-		logutil.Debugf("Received /cq WebTransport request from %s", r.RemoteAddr)
-		logutil.Debugf("Request method: %s, URL: %s", r.Method, r.URL.String())
+		// The shipped browser reconnects by authenticating a fresh connection.
+		// Never attach an existing authenticated session using its ID or IP.
+		if r.URL.Query().Get("sid") != "" && r.URL.Query().Get("sid") != "0" {
+			http.Error(rw, "Reconnect requires authentication on a new connection", http.StatusBadRequest)
+			return
+		}
 		sess, err := s.wtServer.Upgrade(rw, r)
 		if err != nil {
-			log.Printf("Upgrade error: %v", err)
+			log.Printf("WebTransport upgrade error: %v", err)
 			return
 		}
-
 		clientIP, _, _ := net.SplitHostPort(r.RemoteAddr)
-		params := r.URL.Query()
-
-		// Try reconnect
-		var sessObj *session.Session
-		if sidStr := params.Get("sid"); sidStr != "0" {
-			if sid, e := strconv.Atoi(sidStr); e == nil {
-				if existing, e2 := s.sessionManager.GetValidSession(sid, clientIP); e2 == nil {
-					log.Printf("Reconnecting session %d from %s", sid, clientIP)
-					sessObj = existing
-					existing.Messenger = s
-					existing.SendJSON(map[string]interface{}{}, opcodes.Reconnect)
-				}
-			}
-		}
-
-		// New session
-		if sessObj == nil {
-			nextID++
-			sid := nextID
-			s.sessionsMu.Lock()
-			s.sessions[sid] = sess
-			s.sessionsMu.Unlock()
-
-			log.Printf("Accepted new session %d", sid)
-			sessObj = s.sessionManager.CreateSession(s, sid, clientIP, nil)
-		}
-
-		go s.acceptClientControlStreams(sessObj, sess, sessObj.SessionID, clientIP)
-
-		// Start datagram reader
-		go s.handleDatagrams(sessObj, sess)
+		sessObj := s.sessionManager.CreateNextSession(s, clientIP, nil)
+		s.sessionsMu.Lock()
+		s.sessions[sessObj.SessionID] = sess
+		s.sessionsMu.Unlock()
+		go s.acceptClientControlStream(sessObj, sess)
 	}
 }
 
-func (s *Server) acceptClientControlStreams(sessObj *session.Session, sess *webtransport.Session, sid int, clientIP string) {
-	for {
-		ctrl, err := sess.AcceptStream(context.Background())
+const clientFrameTimeout = 15 * time.Second
+const controlStreamTimeout = 10 * time.Second
+
+func (s *Server) acceptClientControlStream(sessObj *session.Session, sess *webtransport.Session) {
+	defer s.handleSessionClose(sessObj.SessionID)
+	ctx, cancel := context.WithTimeout(sess.Context(), controlStreamTimeout)
+	ctrl, err := sess.AcceptStream(ctx)
+	cancel()
+	if err != nil {
+		logutil.Debugf("control stream accept failed (sess %d): %v", sessObj.SessionID, err)
+		return
+	}
+	if !sessObj.AttachControlStream(ctrl) {
+		ctrl.CancelRead(0)
+		ctrl.CancelWrite(0)
+		return
+	}
+	// Exactly one control stream owns reliable commands and responses. Extra
+	// streams must never replace it or execute concurrent commands.
+	go func() {
+		extra, err := sess.AcceptStream(sess.Context())
 		if err != nil {
-			logutil.Debugf("client-opened control stream accept closed (sess %d): %v", sid, err)
 			return
 		}
-		log.Printf("Accepted client-opened control stream for session %d", sid)
-		sessObj.ControlStream = ctrl
-		go s.handleControlStream(sessObj, ctrl, sid, clientIP)
-	}
+		extra.CancelRead(0)
+		extra.CancelWrite(0)
+		s.handleSessionClose(sessObj.SessionID)
+	}()
+	go s.handleDatagrams(sessObj, sess)
+	s.handleControlStream(sessObj, ctrl)
 }
 
-// handleDatagrams reads incoming datagrams forever.
 func (s *Server) handleDatagrams(sessObj *session.Session, sess *webtransport.Session) {
-	ctx := context.Background()
+	defer s.handleSessionClose(sessObj.SessionID)
 	for {
-		data, err := sess.ReceiveDatagram(ctx)
+		data, err := sess.ReceiveDatagram(sess.Context())
 		if err != nil {
-			logutil.Debugf("datagram recv closed (sess %d): %v", sessObj.SessionID, err)
-			s.handleSessionClose(sessObj.SessionID)
+			return
+		}
+		if len(data) < 2 || len(data) > api.MaxClientPacketSize {
 			return
 		}
 		s.worldHandler.HandlePacket(sessObj, data)
 	}
 }
 
-// handleControlStream parses length-prefixed frames on the single bidi stream.
-func (s *Server) handleControlStream(
-	sessObj *session.Session,
-	ctrl io.ReadWriteCloser,
-	sid int,
-	_ string,
-) {
-	defer ctrl.Close()
+// handleControlStream shares framing and deadlines across both transports.
+func (s *Server) handleControlStream(sessObj *session.Session, ctrl io.ReadWriteCloser) {
+	defer s.handleSessionClose(sessObj.SessionID)
 	for {
-		// read length prefix
-		var lenBuf [4]byte
-		if _, err := io.ReadFull(ctrl, lenBuf[:]); err != nil {
-			logutil.Debugf("ctrl read len error (sess %d): %v", sid, err)
-			s.handleSessionClose(sid)
+		deadlineStream, hasDeadline := ctrl.(interface{ SetReadDeadline(time.Time) error })
+		if hasDeadline {
+			if err := deadlineStream.SetReadDeadline(time.Time{}); err != nil {
+				return
+			}
+		}
+		// Heartbeats may arrive over datagrams while the reliable stream is idle.
+		// Session expiry owns idle time; a fixed frame deadline starts only once
+		// the first byte arrives, so trickling a partial command cannot extend it.
+		var first [1]byte
+		if _, err := io.ReadFull(ctrl, first[:]); err != nil {
 			return
 		}
-		n := binary.LittleEndian.Uint32(lenBuf[:])
-
-		// read payload
-		payload := make([]byte, n)
-		if _, err := io.ReadFull(ctrl, payload); err != nil {
-			logutil.Debugf("ctrl read payload error (sess %d): %v", sid, err)
-			s.handleSessionClose(sid)
+		if hasDeadline {
+			if err := deadlineStream.SetReadDeadline(time.Now().Add(clientFrameTimeout)); err != nil {
+				return
+			}
+		}
+		payload, err := api.ReadClientFrame(io.MultiReader(bytes.NewReader(first[:]), ctrl))
+		if err != nil {
+			logutil.Debugf("control frame ended (sess %d): %v", sessObj.SessionID, err)
 			return
 		}
-
-		// Handle JSON control stream messages
 		s.worldHandler.HandlePacket(sessObj, payload)
-		logutil.Debugf("sess %d control (JSON) -> %d bytes", sid, len(payload))
 	}
 }
 
@@ -282,8 +283,7 @@ func (s *Server) SendStream(sessionID int, data []byte) error {
 	if !ok {
 		return fmt.Errorf("session %d not found", sessionID)
 	}
-	_, err := sessObj.ControlStream.Write(data)
-	return err
+	return sessObj.WriteControlStream(data)
 }
 
 // SendDatagram fires a datagram packet to a client.
@@ -301,14 +301,21 @@ func (s *Server) SendDatagram(sessionID int, data []byte) error {
 	return nil
 }
 
-// handleSessionClose schedules removal after gracePeriod.
-func (s *Server) handleSessionClose(sessionID int) {
-	// Remove the WebTransport session from our map to prevent memory leak
+// CloseSession closes only the transport owned by this session. Called by
+// Session.Close after the session manager releases its membership lock.
+func (s *Server) CloseSession(sessionID int) error {
 	s.sessionsMu.Lock()
+	transport := s.sessions[sessionID]
 	delete(s.sessions, sessionID)
 	s.sessionsMu.Unlock()
+	if transport != nil {
+		return transport.CloseWithError(0, "session closed")
+	}
+	return nil
+}
+
+func (s *Server) handleSessionClose(sessionID int) {
 	s.worldHandler.RemoveSession(sessionID)
-	logutil.Debugf("Cleaned up session %d", sessionID)
 }
 
 // StopServer tears down all listeners and connections.

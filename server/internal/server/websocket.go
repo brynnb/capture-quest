@@ -6,11 +6,10 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"strconv"
 	"sync"
+	"time"
 
-	"capturequest/internal/api/opcodes"
-	"capturequest/internal/session"
+	"capturequest/internal/api"
 
 	"github.com/gorilla/websocket"
 )
@@ -52,11 +51,18 @@ func (w *WSConn) Read(p []byte) (int, error) {
 func (w *WSConn) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if err := w.conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		return 0, err
+	}
 	err := w.conn.WriteMessage(websocket.BinaryMessage, p)
 	if err != nil {
 		return 0, err
 	}
 	return len(p), nil
+}
+
+func (w *WSConn) SetReadDeadline(deadline time.Time) error {
+	return w.conn.SetReadDeadline(deadline)
 }
 
 // Close implements io.Closer.
@@ -82,10 +88,15 @@ func (m *wsMessenger) add(id int, conn *WSConn) {
 	m.sessionsMu.Unlock()
 }
 
-func (m *wsMessenger) remove(id int) {
+func (m *wsMessenger) CloseSession(id int) error {
 	m.sessionsMu.Lock()
+	conn := m.sessions[id]
 	delete(m.sessions, id)
 	m.sessionsMu.Unlock()
+	if conn != nil {
+		return conn.Close()
+	}
+	return nil
 }
 
 // SendDatagram sends a datagram-style message over WebSocket.
@@ -118,68 +129,32 @@ func (m *wsMessenger) SendStream(sessionID int, data []byte) error {
 // and creates sessions compatible with the existing world handler.
 func (s *Server) makeWSHandler() http.HandlerFunc {
 	messenger := newWSMessenger()
-	var nextID int
-	var nextIDMu sync.Mutex
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		wsConn, err := wsUpgrader.Upgrade(w, r, nil)
-		if err != nil {
-			log.Printf("[WS] Upgrade error: %v", err)
+		if r.URL.Query().Get("sid") != "" && r.URL.Query().Get("sid") != "0" {
+			http.Error(w, "Reconnect requires authentication on a new connection", http.StatusBadRequest)
 			return
 		}
-
+		wsConn, err := wsUpgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		// Limit the outer WebSocket message as well as the inner frame, before
+		// ReadMessage allocates the complete message. The browser sends one
+		// framed command per message; fragmented messages remain supported.
+		wsConn.SetReadLimit(api.MaxClientPacketSize + 4)
 		clientIP, _, _ := net.SplitHostPort(r.RemoteAddr)
-		params := r.URL.Query()
-
 		wsc := &WSConn{conn: wsConn}
-
-		// Try reconnect
-		var sessObj *session.Session
-		if sidStr := params.Get("sid"); sidStr != "" && sidStr != "0" {
-			if sid, e := strconv.Atoi(sidStr); e == nil {
-				if existing, e2 := s.sessionManager.GetValidSession(sid, clientIP); e2 == nil {
-					log.Printf("[WS] Reconnecting session %d from %s", sid, clientIP)
-					sessObj = existing
-					existing.Messenger = messenger
-					existing.ControlStream = wsc
-					messenger.add(sid, wsc)
-					existing.SendJSON(map[string]interface{}{}, opcodes.Reconnect)
-				}
-			}
+		sessObj := s.sessionManager.CreateNextSession(messenger, clientIP, wsc)
+		messenger.add(sessObj.SessionID, wsc)
+		log.Printf("[WS] New session %d", sessObj.SessionID)
+		initialFrame := make([]byte, 6)
+		binary.LittleEndian.PutUint32(initialFrame[0:4], 2)
+		if _, err := wsc.Write(initialFrame); err != nil {
+			s.handleSessionClose(sessObj.SessionID)
+			return
 		}
-
-		// New session
-		if sessObj == nil {
-			nextIDMu.Lock()
-			nextID++
-			sid := nextID + 100000 // Offset to avoid collision with WebTransport session IDs
-			nextIDMu.Unlock()
-
-			messenger.add(sid, wsc)
-			sessObj = s.sessionManager.CreateSession(messenger, sid, clientIP, wsc)
-			log.Printf("[WS] New session %d from %s", sid, clientIP)
-
-			// Send initial noop frame (same as WebTransport)
-			initialFrame := make([]byte, 6)
-			binary.LittleEndian.PutUint32(initialFrame[0:4], 2)
-			binary.LittleEndian.PutUint16(initialFrame[4:6], 0)
-			if _, err := wsc.Write(initialFrame); err != nil {
-				log.Printf("[WS] Failed to send initial frame: %v", err)
-			}
-		}
-
-		sid := sessObj.SessionID
-
-		// Read loop — reuse handleControlStream logic
-		// The WSConn.Read() method returns data from WebSocket binary messages,
-		// so the existing length-prefixed frame parser works unchanged.
-		go func() {
-			defer func() {
-				messenger.remove(sid)
-				s.handleSessionClose(sid)
-			}()
-			s.handleControlStream(sessObj, wsc, sid, clientIP)
-		}()
+		go s.handleControlStream(sessObj, wsc)
 	}
 }
 
