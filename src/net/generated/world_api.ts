@@ -15,7 +15,7 @@ export interface ActorRegistry {
 }
 
 //////////
-// source: battle_item_use.go
+// source: battle_turn.go
 
 
 //////////

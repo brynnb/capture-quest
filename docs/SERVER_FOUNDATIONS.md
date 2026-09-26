@@ -129,6 +129,35 @@ small verified changes. No production deployment or push is part of this goal.
   Command deduplication, reconnect gameplay, shutdown, and rendered verification
   are still required; these inventory tests do not establish those properties.
 
+- Battle persistence checkpoint: every start is durable before publication, and
+  actions, item turns, forced switches, and move choices work on private copies.
+  A stored battle ID/revision rejects a competing stale copy before its effects
+  run. Party changes, consumption, capture/PC placement, Pokédex, experience,
+  trainer prizes/defeat records, battle flags, and blackout charges share the
+  battle commit. Medicine turns now go through normal victory/loss settlement.
+  Shared response construction replaces the separate nontransactional item path.
+- Resume preserves player status counters and stages by stable row identity,
+  enemy metadata, faint-switch phase, and pending move choices. It retains the
+  saved record; disconnect no longer rewrites it. Unknown versions and mismatched
+  parties fail without deletion. Version-zero records upgrade on a successful
+  commit. Client close rejects unfinished battles and pending choices.
+- Real PostgreSQL checks cover late battle-save failure after party/wallet writes,
+  concurrent stale revisions, cancellation, legacy upgrade, preserved volatile
+  state and metadata, rejected party mismatch, item rollback/retry/exhausted-instance
+  reuse, medicine-triggered victory, capture, move learning, and blackout rollback.
+  World tests use the real dispatcher and inspect emitted messages and durable
+  state. The full Go suite passed with the race detector and disposable
+  PostgreSQL enabled, followed by type generation and frontend typechecking.
+  These are not rendered or live-production checks.
+- Next: migrate the shared cutscene interpreter's durable rewards/flags/object
+  visibility into transactions with effects published after commit. The inspected
+  post-battle corpus uses hide/show object, set/reset flag, heal party, give item,
+  and presentation actions; extend shared primitives rather than add a second
+  battle-only interpreter. General event-flag writes still update cache too early.
+  End-of-battle notification recovery, sequential command deduplication, character
+  ownership/connection replacement, field effects, wire migration, lifecycle,
+  and rendered/live-transport gameplay verification remain required.
+
 ## Reproducible PostgreSQL tests
 
 With `initdb`, `pg_ctl`, and Go available, run:

@@ -124,7 +124,8 @@ We follow a **"Model-First"** architecture. Data is categorized into distinct st
   and evolution Pokédex registration together. Its returned snapshot is safe to
   publish only after success. A TM/HM move-selection prompt writes no gameplay
   state, and the later selection revalidates the current item and moves. Field
-  movement effects and battle item execution remain separate migration work.
+  movement effects remain separate migration work. Battle item turns use the
+  commit boundary described below.
 
 ### D. Pokémon Party, PC, and Battle State
 
@@ -142,9 +143,26 @@ We follow a **"Model-First"** architecture. Data is categorized into distinct st
   pending snapshot; publish it only after the outer commit. `SaveParty` owns its
   transaction and publishes new row IDs after commit. Storage moves, acquisitions,
   Day Care, and trades take the same character lock before mutable reads.
-- **Limits**: This transaction boundary does not by itself serialize live battle
-  objects or prevent stale stat snapshots. Runtime character ownership and
-  combining all item/reward effects are still tracked in the foundations goal.
+- **Battle commits**: `pokebattle.StartBattle`, `CommitBattle`, `ResumeBattle`, and
+  `CloseBattle` own bounded transactions and the character lock. Starts reload the
+  party under that lock. Turns operate on a private clone and compare the saved
+  battle ID/revision before applying effects. Party changes, battle item consumption,
+  captures, experience, trainer prizes/defeat records, battle flags, and blackout
+  charges commit with the resumable battle. Publish only the returned snapshot.
+  Forced switches and pending move choices use this same boundary.
+- **Reconnect**: Every published turn is already durable. Disconnect evicts memory
+  without rewriting an old snapshot. Resume retains the durable record and joins
+  player battle-local state to owned Pokémon by row ID. Version 2 preserves status
+  counters, stat stages, pending choices, enemy sound/evolution metadata, and party
+  membership. Explicit legacy version-zero saves remain readable and upgrade on
+  the next commit. Unknown versions or mismatched membership fail visibly and
+  retain the record. Client close cannot discard an active battle or pending choice.
+- **Limits**: Database revision checks prevent applying two competing copies of
+  the same revision; they do not deduplicate sequential client commands or serialize
+  transport publication. Post-battle cutscene actions still use their separate
+  interpreter transactions. Runtime ownership, all script/reward effects, and
+  recovery of an end notification lost during disconnect remain in the foundations
+  goal. Do not claim full battle/reconnect correctness from persistence tests alone.
 
 ### E. Session/Ephemeral Data
 
@@ -304,7 +322,9 @@ func LoadPokemonFromDB(pokemonID int) (*Pokemon, error) {
 }
 ```
 
-The `DBTX` interface (defined in `server/internal/pokebattle/dbloader.go`) is satisfied by both `*sql.DB` and any test mock:
+The shared `DBTX` interface is defined in `server/internal/db/transaction.go`
+(and aliased by `pokebattle`). It is satisfied by `*sql.DB`, `*sql.Tx`, and matching
+test doubles:
 
 ```go
 type DBTX interface {

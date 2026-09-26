@@ -104,11 +104,6 @@ func SavePartyInTransaction(tx db.DBTX, characterID int64, party []*Pokemon) ([]
 	return saved, nil
 }
 
-// SavePokemonAfterBattle persists HP, PP, XP, level, EVs, moves, and status.
-func SavePokemonAfterBattle(database *sql.DB, characterID int64, party []*Pokemon) error {
-	return SaveParty(database, characterID, party)
-}
-
 func originalTrainerIDForSave(characterID int64, p *Pokemon) int64 {
 	if p != nil && p.OriginalTrainerID > 0 {
 		return p.OriginalTrainerID

@@ -151,3 +151,18 @@ func (m *EventFlagManager) SetFlagBatch(charID int64, flagNames []string) error 
 	}
 	return nil
 }
+
+// publishCommittedFlags updates only the cache, after its owning transaction
+// succeeded. It must never be used as a substitute for durable flag writes.
+func (m *EventFlagManager) publishCommittedFlags(charID int64, names []string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.flags[charID] == nil {
+		m.flags[charID] = make(map[string]bool)
+	}
+	for _, name := range names {
+		if name != "" {
+			m.flags[charID][name] = true
+		}
+	}
+}

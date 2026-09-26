@@ -142,7 +142,12 @@ func HandlePokeFishing(ses *session.Session, payload []byte, wh *WorldHandler) b
 	// Create battle
 	battle := pokebattle.NewWildBattle(playerParty, wildPokemon)
 	configureBattleObedience(battle, charID, wh.EventFlags)
-	setBattle(charID, battle)
+	battle, err = startBattle(wh.database, charID, battle)
+	if err != nil {
+		log.Printf("[PokeBattle] Start failed for character %d: %v", charID, err)
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not start battle. Please reconnect."}, opcodes.PokeFishingResponse)
+		return false
+	}
 
 	log.Printf("[Fishing] %s hooked L%d %s with %s on map %d",
 		charData.Name, level, wildPokemon.Name, rodType, mapID)

@@ -584,9 +584,6 @@ func HandleTrainerEncounterReady(ses *session.Session, payload []byte, wh *World
 
 	prizeMoney := trainerPrizeMoney(t.TrainerClass, trainerParty)
 
-	// Gen I registers a trainer's Pokémon only when it is actually sent out.
-	MarkPokemonSeen(charID, trainerParty[0].ID)
-
 	// Create trainer battle
 	battle := pokebattle.NewTrainerBattle(playerParty, trainerParty)
 	configureBattleObedience(battle, charID, wh.EventFlags)
@@ -598,7 +595,12 @@ func HandleTrainerEncounterReady(ses *session.Session, payload []byte, wh *World
 		WinFlag:         t.EventFlag,
 	}
 	applyPokemonTower7FPostWinMetadata(battle.Trainer, t, enc.PlayerX, enc.PlayerY)
-	setBattle(charID, battle)
+	battle, err = startBattle(wh.database, charID, battle)
+	if err != nil {
+		log.Printf("[PokeBattle] Start failed for character %d: %v", charID, err)
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not start battle. Please reconnect."}, opcodes.PokeBattleStartResponse)
+		return false
+	}
 
 	log.Printf("[TrainerEncounter] %s started trainer battle vs %s (class=%s, party=%d, %d pokemon)",
 		ses.Client.CharData().Name, t.Name, t.TrainerClass, t.PartyIndex, len(trainerParty))

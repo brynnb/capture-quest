@@ -327,7 +327,12 @@ func (m *WildEncounterManager) startWildBattle(charID int64, area *encounterArea
 	// Create battle
 	battle := pokebattle.NewWildBattle(playerParty, wildPokemon)
 	configureBattleObedience(battle, charID, m.wh.EventFlags)
-	setBattle(charID, battle)
+	battle, err = startBattle(m.wh.database, charID, battle)
+	if err != nil {
+		log.Printf("[PokeBattle] Start failed for character %d: %v", charID, err)
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not start battle. Please reconnect."}, opcodes.PokeBattleStartResponse)
+		return
+	}
 
 	log.Printf("[WildEncounter] %s started wild battle: L%d %s vs L%d %s",
 		ses.Client.CharData().Name, playerParty[0].Level, playerParty[0].Name,
@@ -369,7 +374,12 @@ func (m *WildEncounterManager) startWildBattleWithPokemon(charID int64, pokemonI
 
 	battle := pokebattle.NewWildBattle(playerParty, wildPokemon)
 	configureBattleObedience(battle, charID, m.wh.EventFlags)
-	setBattle(charID, battle)
+	battle, err = startBattle(m.wh.database, charID, battle)
+	if err != nil {
+		log.Printf("[PokeBattle] Start failed for character %d: %v", charID, err)
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not start battle. Please reconnect."}, opcodes.PokeBattleStartResponse)
+		return
+	}
 
 	log.Printf("[WildEncounter] %s started wild battle: L%d %s vs L%d %s",
 		ses.Client.CharData().Name, playerParty[0].Level, playerParty[0].Name,

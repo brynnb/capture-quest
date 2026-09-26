@@ -36,6 +36,9 @@ func Transaction(ctx context.Context, database DBTX, operation func(DBTX) error)
 	case *sql.Tx:
 		return operation(transactionQueries{database, ctx})
 	case *sql.DB:
+		if database == nil {
+			return fmt.Errorf("transaction database is required")
+		}
 		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
 		tx, err := database.BeginTx(ctx, nil)

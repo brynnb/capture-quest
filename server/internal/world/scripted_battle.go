@@ -96,8 +96,6 @@ func StartScriptedTrainerBattle(charID int64, spec ScriptedTrainerBattleSpec) (*
 	}
 	trainerName = trainerNameForCharacter(charID, spec.TrainerClass, trainerName)
 
-	MarkPokemonSeen(charID, trainerParty[0].ID)
-
 	battle := pokebattle.NewTrainerBattle(playerParty, trainerParty)
 	configureBattleObedience(battle, charID, nil)
 	battle.Trainer = &pokebattle.TrainerMeta{
@@ -114,7 +112,10 @@ func StartScriptedTrainerBattle(charID int64, spec ScriptedTrainerBattleSpec) (*
 		PostLoseMapName:  spec.PostLoseMapName,
 		PostLoseActions:  spec.PostLoseActions,
 	}
-	setBattle(charID, battle)
+	battle, err = startBattle(myDB, charID, battle)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	events := []pokebattle.BattleEvent{
 		{Type: pokebattle.EventMessage, Message: trainerName + " wants to fight!"},
@@ -150,8 +151,6 @@ func StartScriptedWildBattle(charID int64, spec ScriptedWildBattleSpec) (*pokeba
 		return nil, nil, fmt.Errorf("player party has no battle-ready pokemon")
 	}
 
-	MarkPokemonSeen(charID, spec.PokemonID)
-
 	battle := pokebattle.NewWildBattle(playerParty, wildPokemon)
 	configureBattleObedience(battle, charID, nil)
 	battle.WildWinFlag = spec.WinFlag
@@ -159,7 +158,10 @@ func StartScriptedWildBattle(charID int64, spec ScriptedWildBattleSpec) (*pokeba
 	battle.WildPostWinActions = spec.PostWinActions
 	battle.AllowedActions = spec.AllowedActions
 	battle.GuaranteedCatch = spec.GuaranteedCatch
-	setBattle(charID, battle)
+	battle, err = startBattle(myDB, charID, battle)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	events := []pokebattle.BattleEvent{
 		{Type: pokebattle.EventMessage, Message: "Wild " + wildPokemon.Name + " appeared!"},

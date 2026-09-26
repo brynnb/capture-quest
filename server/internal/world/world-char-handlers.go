@@ -55,16 +55,26 @@ func HandleEnterWorld(ses *session.Session, payload []byte, wh *WorldHandler) bo
 	// Check for a saved battle from a previous session and restore it
 	if ses.HasValidClient() {
 		charID := int64(ses.Client.CharData().ID)
-		if battle := restoreBattleOnLogin(charID); battle != nil {
+		battle, err := restoreBattleOnLogin(wh.database, charID)
+		if err != nil {
+			log.Printf("[PokeBattle] Restore failed for character %d: %v", charID, err)
+			ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not restore your battle. Please reconnect."}, opcodes.PokeBattleStartResponse)
+			ses.Close()
+			return false
+		}
+		if battle != nil {
 			// If the battle is already over and there's no pending move learn,
 			// the results (XP, party) were already saved — just clean up silently.
 			if battle.IsOver() && battle.PendingMoveLearn == nil {
 				log.Printf("[PokeBattle] Restored battle for char %d is already over with no pending action — cleaning up", charID)
-				removeBattle(charID)
+				if err := pokebattle.CloseBattle(context.Background(), wh.database, charID, battle); err != nil {
+					log.Printf("[PokeBattle] Close restored battle for character %d: %v", charID, err)
+				} else {
+					forgetBattle(charID, battle)
+				}
 			} else {
-				// For mid-battle restores, present as action_select so the client
-				// shows the normal battle UI. For pending move learn, send as
-				// move_learn_prompt so the client shows the move learn dialog.
+				// Preserve the committed phase, including a required faint switch.
+				// Pending move choices use the existing move-learn presentation.
 				resp := buildBattleStateResponse(battle)
 				if battle.IsOver() && battle.PendingMoveLearn != nil {
 					resp["phase"] = "move_learn_prompt"
@@ -74,8 +84,6 @@ func HandleEnterWorld(ses *session.Session, payload []byte, wh *WorldHandler) bo
 						NewMoveID:   battle.PendingMoveLearn.MoveID,
 						NewMoveName: battle.PendingMoveLearn.MoveName,
 					}}
-				} else {
-					resp["phase"] = "action_select"
 				}
 				if battle.Trainer != nil {
 					resp["trainerClass"] = battle.Trainer.ClassName

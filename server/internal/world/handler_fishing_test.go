@@ -154,6 +154,7 @@ func TestFishingOldRodFacingWaterStartsBattle(t *testing.T) {
 		}},
 	}
 	wh := &WorldHandler{
+		database: testDB,
 		ActorManager: &PhaserActorManager{
 			collisionMap: map[int]map[string]int{
 				1: {
@@ -226,7 +227,11 @@ func openFishingTestDB(t *testing.T) *sql.DB {
 	t.Cleanup(func() { testDB.Close() })
 
 	if _, err := testDB.Exec(`
-		CREATE TABLE phaser_pokemon (
+		CREATE TABLE character_data(id INTEGER PRIMARY KEY);
+        INSERT INTO character_data VALUES(42);
+        CREATE TABLE character_battle_state(character_id INTEGER PRIMARY KEY,battle_json TEXT NOT NULL,updated_at TEXT DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE character_pokedex(character_id INTEGER NOT NULL,pokemon_id INTEGER NOT NULL,seen BOOLEAN DEFAULT FALSE,caught BOOLEAN DEFAULT FALSE,first_seen_at TEXT,first_caught_at TEXT,PRIMARY KEY(character_id,pokemon_id));
+        CREATE TABLE phaser_pokemon (
 			id INTEGER PRIMARY KEY,
 			name TEXT NOT NULL,
 			type_1 TEXT NOT NULL,

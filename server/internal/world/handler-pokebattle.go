@@ -5,124 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"sync"
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
 	db_character "capturequest/internal/db/character"
-	"capturequest/internal/db/cqitems"
 	"capturequest/internal/pokebattle"
 	"capturequest/internal/session"
 )
-
-// --- Per-session battle state ---
-
-var (
-	activeBattles   = make(map[int64]*pokebattle.BattleState) // charID → battle
-	activeBattlesMu sync.RWMutex
-)
-
-func getBattle(charID int64) *pokebattle.BattleState {
-	activeBattlesMu.RLock()
-	defer activeBattlesMu.RUnlock()
-	return activeBattles[charID]
-}
-
-func setBattle(charID int64, b *pokebattle.BattleState) {
-	activeBattlesMu.Lock()
-	defer activeBattlesMu.Unlock()
-	activeBattles[charID] = b
-}
-
-func removeBattle(charID int64) {
-	activeBattlesMu.Lock()
-	defer activeBattlesMu.Unlock()
-	delete(activeBattles, charID)
-	// Also delete any persisted battle from DB
-	myDB := db.GlobalWorldDB.DB
-	if err := pokebattle.DeleteBattleState(myDB, charID); err != nil {
-		log.Printf("[PokeBattle] Failed to delete saved battle for char %d: %v", charID, err)
-	}
-}
-
-// saveBattleOnDisconnect persists the in-memory battle to DB (if any) and removes it from memory.
-// Called when a player disconnects so the battle can be restored on reconnect.
-func saveBattleOnDisconnect(charID int64) {
-	activeBattlesMu.Lock()
-	battle, exists := activeBattles[charID]
-	if exists {
-		delete(activeBattles, charID)
-	}
-	activeBattlesMu.Unlock()
-
-	if !exists || battle == nil {
-		log.Printf("[PokeBattle] saveBattleOnDisconnect: no active battle for char %d (exists=%v, nil=%v)", charID, exists, battle == nil)
-		return
-	}
-
-	log.Printf("[PokeBattle] saveBattleOnDisconnect: saving battle for char %d (phase=%d, pendingMove=%v)", charID, battle.Phase, battle.PendingMoveLearn != nil)
-
-	myDB := db.GlobalWorldDB.DB
-
-	// Save the player's party state first (HP/PP/status may have changed mid-battle)
-	if err := pokebattle.SavePokemonAfterBattle(myDB, charID, battle.PlayerParty); err != nil {
-		log.Printf("[PokeBattle] Failed to save party on disconnect for char %d: %v", charID, err)
-	}
-
-	// Persist the battle state
-	if err := pokebattle.SaveBattleState(myDB, charID, battle); err != nil {
-		log.Printf("[PokeBattle] Failed to save battle on disconnect for char %d: %v", charID, err)
-	} else {
-		log.Printf("[PokeBattle] Saved battle state for char %d on disconnect", charID)
-	}
-}
-
-// restoreBattleOnLogin checks for a saved battle in the DB and restores it.
-// The player party is reloaded from character_pokemon (the source of truth),
-// NOT from the battle JSON, to avoid sync issues.
-// Returns the battle state if one was restored, nil otherwise.
-func restoreBattleOnLogin(charID int64) *pokebattle.BattleState {
-	myDB := db.GlobalWorldDB.DB
-	battle, err := pokebattle.LoadBattleState(myDB, charID)
-	if err != nil {
-		log.Printf("[PokeBattle] Failed to load saved battle for char %d: %v", charID, err)
-		return nil
-	}
-	if battle == nil {
-		return nil
-	}
-
-	// Reload the player party from character_pokemon (source of truth).
-	// saveBattleOnDisconnect already saved the mid-battle HP/PP/status there.
-	playerParty, err := pokebattle.LoadParty(myDB, charID)
-	if err != nil || len(playerParty) == 0 {
-		log.Printf("[PokeBattle] Failed to reload player party for restored battle (char %d): %v", charID, err)
-		// Can't restore without a party — clean up
-		pokebattle.DeleteBattleState(myDB, charID)
-		return nil
-	}
-	battle.PlayerParty = playerParty
-	configureBattleObedience(battle, charID, nil)
-
-	// Clamp PlayerActive to a battle-ready slot. The party is reloaded from the
-	// database, so a saved active slot may now point at a fainted Pokémon.
-	if battle.PlayerActive < 0 || battle.PlayerActive >= len(playerParty) || playerParty[battle.PlayerActive] == nil || playerParty[battle.PlayerActive].IsFainted() {
-		battle.PlayerActive = pokebattle.FirstAlivePartyIndex(playerParty)
-	}
-
-	// Restore into the in-memory map
-	setBattle(charID, battle)
-
-	// Delete from DB now that it's in memory
-	if err := pokebattle.DeleteBattleState(myDB, charID); err != nil {
-		log.Printf("[PokeBattle] Failed to delete restored battle for char %d: %v", charID, err)
-	}
-
-	log.Printf("[PokeBattle] Restored battle state for char %d from DB (type=%d, phase=%d, enemy=%s L%d)",
-		charID, battle.BattleType, battle.Phase,
-		battle.EnemyParty[battle.EnemyActive].Name, battle.EnemyParty[battle.EnemyActive].Level)
-	return battle
-}
 
 // --- Request/Response types ---
 
@@ -419,10 +308,12 @@ func HandlePokeBattleStart(ses *session.Session, payload []byte, wh *WorldHandle
 	// Create battle
 	battle := pokebattle.NewWildBattle(playerParty, wildPokemon)
 	configureBattleObedience(battle, charID, wh.EventFlags)
-	setBattle(charID, battle)
-
-	// Mark wild Pokémon as seen in Pokédex (Phase 10.2)
-	MarkPokemonSeen(charID, pokemonID)
+	battle, err = startBattle(wh.database, charID, battle)
+	if err != nil {
+		log.Printf("[PokeBattle] Start failed for character %d: %v", charID, err)
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not start battle. Please reconnect."}, opcodes.PokeBattleStartResponse)
+		return false
+	}
 
 	log.Printf("[PokeBattle] %s started wild battle: L%d %s vs L%d %s",
 		ses.Client.CharData().Name, playerParty[0].Level, playerParty[0].Name,
@@ -437,388 +328,28 @@ func HandlePokeBattleStart(ses *session.Session, payload []byte, wh *WorldHandle
 func HandlePokeBattleAction(ses *session.Session, payload []byte, wh *WorldHandler) bool {
 	var req PokeBattleActionRequest
 	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("[PokeBattle] Invalid action request: %v", err)
 		return false
 	}
-
 	charID := int64(ses.Client.CharData().ID)
-	battle := getBattle(charID)
-	if battle == nil || battle.IsOver() {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "not in battle",
-		}, opcodes.PokeBattleActionResponse)
+	current := getBattle(charID)
+	if current == nil || current.IsOver() {
+		sendBattleItemError(ses, opcodes.PokeBattleActionResponse, "Not in battle")
 		return false
 	}
-
-	var action pokebattle.TurnAction
-	switch req.Action {
-	case "fight":
-		if !battle.IsActionAllowed(pokebattle.ActionFight) {
-			sendBattleNoTurnMessage(ses, battle, "Use an item.", opcodes.PokeBattleActionResponse)
-			return false
-		}
-		action = pokebattle.TurnAction{Action: pokebattle.ActionFight, MoveSlot: req.MoveSlot}
-	case "run":
-		if !battle.IsActionAllowed(pokebattle.ActionRun) {
-			sendBattleNoTurnMessage(ses, battle, "Use an item.", opcodes.PokeBattleActionResponse)
-			return false
-		}
-		action = pokebattle.TurnAction{Action: pokebattle.ActionRun}
-	case "switch":
-		if !battle.IsActionAllowed(pokebattle.ActionSwitch) {
-			sendBattleNoTurnMessage(ses, battle, "Use an item.", opcodes.PokeBattleActionResponse)
-			return false
-		}
-		if err := validateBattleSwitch(battle, req.MoveSlot); err != nil {
-			sendBattleNoTurnMessage(ses, battle, err.Error(), opcodes.PokeBattleActionResponse)
-			return false
-		}
-		action = pokebattle.TurnAction{Action: pokebattle.ActionSwitch, MoveSlot: req.MoveSlot}
-	case "item":
-		if !battle.IsActionAllowed(pokebattle.ActionItem) {
-			sendBattleNoTurnMessage(ses, battle, "Use an item.", opcodes.PokeBattleActionResponse)
-			return false
-		}
-		invItem, err := findBattleInventoryItem(int32(charID), battleItemUsePayload{
-			ItemID:     req.ItemID,
-			InstanceID: req.InstanceID,
-			TargetSlot: req.TargetSlot,
-			MoveSlot:   req.MoveSlot,
-		})
-		if err != nil || invItem == nil {
-			sendBattleNoTurnMessage(ses, battle, "You don't have that item", opcodes.PokeBattleActionResponse)
-			return false
-		}
-
-		item := invItem.Item
-		if item.BallModifier > 0 {
-			// Poké Ball — use catch logic
-			cqitems.NewStore(db.GlobalWorldDB.DB).DecrementItemQuantity(int32(charID), invItem.Instance.ID)
-			action = pokebattle.TurnAction{
-				Action:       pokebattle.ActionItem,
-				BallModifier: item.BallModifier,
-				ItemID:       item.ID,
-			}
-		} else {
-			if battle.GuaranteedCatch {
-				sendBattleNoTurnMessage(ses, battle, "Use a POKé BALL.", opcodes.PokeBattleActionResponse)
-				return false
-			}
-			return useBattleInventoryItem(ses, wh, charID, battle, invItem, battleItemUsePayload{
-				ItemID:     item.ID,
-				InstanceID: invItem.Instance.ID,
-				TargetSlot: req.TargetSlot,
-				MoveSlot:   req.MoveSlot,
-			}, opcodes.PokeBattleActionResponse)
-		}
-	default:
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "invalid action: " + req.Action,
-		}, opcodes.PokeBattleActionResponse)
+	var result battleTurnResult
+	committed, err := pokebattle.CommitBattle(context.Background(), wh.database, charID, current, func(tx db.DBTX, next *pokebattle.BattleState) (err error) {
+		result, err = applyBattleTurn(tx, charID, next, req)
+		return err
+	})
+	if err != nil {
+		sendBattleCommitError(ses, charID, current, err, opcodes.PokeBattleActionResponse)
 		return false
 	}
-
-	previousEnemyIndex := battle.EnemyActive
-	events := battle.SubmitAction(action)
-	if battle.Trainer != nil && battle.EnemyActive != previousEnemyIndex {
-		if enemy := battle.GetEnemyPokemon(); enemy != nil {
-			MarkPokemonSeen(charID, enemy.ID)
-		}
+	setBattle(charID, committed)
+	publishBattleTurn(ses, wh, charID, committed, result, opcodes.PokeBattleActionResponse)
+	if req.Action == "item" || committed.IsOver() {
+		sendCQInventorySnapshot(ses, int32(charID))
 	}
-
-	// Award experience if the player won
-	if battle.IsOver() && battle.PlayerWon() {
-		isTrainer := battle.Trainer != nil
-		playerPoke := battle.GetPlayerPokemon()
-
-		// Sum XP from all defeated enemy Pokémon
-		totalPokeExp := 0
-		for _, enemy := range battle.EnemyParty {
-			exp := pokebattle.CalculateBattleExp(enemy.BaseExp, enemy.Level, isTrainer)
-			totalPokeExp += exp
-		}
-
-		// Award EVs from all defeated enemy Pokémon (Gen 1: gain base stats of defeated)
-		if playerPoke != nil {
-			for _, enemy := range battle.EnemyParty {
-				pokebattle.AddEVsFromDefeated(playerPoke, enemy)
-			}
-		}
-
-		// Award Pokémon XP
-		if totalPokeExp > 0 && playerPoke != nil {
-			oldLevel := playerPoke.Level
-			playerPoke.Exp += totalPokeExp
-			newLevel := pokebattle.LevelForExp(playerPoke.GrowthRt, playerPoke.Exp)
-			if newLevel > 100 {
-				newLevel = 100
-			}
-
-			expMsg := fmt.Sprintf("%s gained %d Exp. Points!", playerPoke.Name, totalPokeExp)
-			events = append(events, pokebattle.BattleEvent{
-				Type:      pokebattle.EventExpGained,
-				Message:   expMsg,
-				ExpGained: totalPokeExp,
-			})
-
-			if newLevel > oldLevel {
-				oldMaxHP := playerPoke.MaxHP
-				playerPoke.Level = newLevel
-				playerPoke.RecalculateStats()
-				// In Gen 1, current HP increases by the same amount as max HP on level-up
-				playerPoke.CurHP += playerPoke.MaxHP - oldMaxHP
-				events = append(events, pokebattle.BattleEvent{
-					Type:    pokebattle.EventMessage,
-					Message: fmt.Sprintf("%s grew to level %d!", playerPoke.Name, newLevel),
-				})
-
-				myDB := db.GlobalWorldDB.DB
-
-				// Check for evolution at the new level
-				evolvedID, evolvedName := pokebattle.CheckEvolution(myDB, playerPoke)
-				if evolvedID > 0 {
-					oldName := playerPoke.Name
-					if err := pokebattle.EvolvePokemon(myDB, playerPoke, evolvedID); err != nil {
-						log.Printf("[PokeBattle] Failed to evolve %s: %v", oldName, err)
-					} else {
-						MarkPokemonCaught(charID, evolvedID)
-						events = append(events, pokebattle.BattleEvent{
-							Type:             pokebattle.EventEvolution,
-							Message:          fmt.Sprintf("What? %s is evolving!\n%s evolved into %s!", oldName, oldName, evolvedName),
-							EvolvedSpeciesID: evolvedID,
-							EvolvedName:      evolvedName,
-						})
-					}
-				}
-
-				// Check for new moves learned in the level range
-				// Use the (possibly evolved) species ID for the learnset lookup
-				newMoves, err := pokebattle.GetMovesLearnedInRange(myDB, playerPoke.ID, oldLevel, newLevel)
-				if err != nil {
-					log.Printf("[PokeBattle] Failed to check learnset for %s: %v", playerPoke.Name, err)
-				}
-				for _, lm := range newMoves {
-					result := pokebattle.TryLearnMove(myDB, playerPoke, lm.MoveID)
-					if result == -2 {
-						// Already knows this move, skip
-						continue
-					} else if result >= 0 {
-						// Auto-learned into empty slot
-						events = append(events, pokebattle.BattleEvent{
-							Type:        pokebattle.EventMoveLearned,
-							Message:     fmt.Sprintf("%s learned %s!", playerPoke.Name, lm.MoveName),
-							NewMoveID:   lm.MoveID,
-							NewMoveName: lm.MoveName,
-							LearnedSlot: result,
-						})
-					} else {
-						// All 4 slots full — need player to choose
-						// Store pending move on the battle so the client can prompt
-						battle.PendingMoveLearn = &pokebattle.PendingMove{
-							PokemonIndex: battle.PlayerActive,
-							MoveID:       lm.MoveID,
-							MoveName:     lm.MoveName,
-						}
-						events = append(events, pokebattle.BattleEvent{
-							Type:        pokebattle.EventMoveLearnPrompt,
-							Message:     fmt.Sprintf("%s wants to learn %s, but already knows 4 moves!", playerPoke.Name, lm.MoveName),
-							NewMoveID:   lm.MoveID,
-							NewMoveName: lm.MoveName,
-						})
-						break // Only one pending move at a time
-					}
-				}
-			}
-		}
-
-		// --- Post-move-learn events: trainer dialogue and prize money ---
-		// These are collected separately. If there's a pending move learn prompt,
-		// they get stored on the battle and sent after the prompt is resolved.
-		var postEvents []pokebattle.BattleEvent
-
-		// Trainer-specific end messages: parting words, prize money
-		if battle.Trainer != nil {
-			if battle.Trainer.TrainerObjectID > 0 {
-				wh.TrainerEncounter.MarkTrainerDefeated(charID, battle.Trainer.TrainerObjectID)
-			}
-			if battle.Trainer.WinFlag != "" && wh.EventFlags != nil {
-				if err := wh.EventFlags.SetFlag(charID, battle.Trainer.WinFlag); err != nil {
-					log.Printf("[PokeBattle] Failed to set trainer win flag %s for char %d: %v", battle.Trainer.WinFlag, charID, err)
-				}
-			}
-			if err := applyScriptedTrainerPostWinActions(ses, battle.Trainer, charID, wh); err != nil {
-				log.Printf("[PokeBattle] Failed to apply trainer post-win actions for char %d: %v", charID, err)
-			}
-			postEvents = append(postEvents, pokebattle.BattleEvent{
-				Type:    pokebattle.EventMessage,
-				Message: getTrainerDefeatText(battle.Trainer.ClassName),
-			})
-			if battle.Trainer.PrizeMoney > 0 {
-				postEvents = append(postEvents, pokebattle.BattleEvent{
-					Type:    pokebattle.EventMessage,
-					Message: fmt.Sprintf("You got ¥%d for winning!", battle.Trainer.PrizeMoney),
-				})
-				charData := ses.Client.CharData()
-				ctx := context.Background()
-				prize := battle.Trainer.PrizeMoney
-				if err := db_character.AddPokedollars(ctx, int32(charData.ID), prize); err != nil {
-					log.Printf("[PokeBattle] Failed to add prize money %d for char %d: %v", prize, charData.ID, err)
-				} else {
-					wallet, _ := db_character.GetCharacterWallet(ctx, uint32(charData.ID))
-					ses.SendStreamJSON(StructToMap(wallet), opcodes.CharacterWallet)
-					log.Printf("[PokeBattle] %s earned ¥%d prize money from trainer battle", charData.Name, prize)
-				}
-			}
-		}
-
-		// If there's a pending move learn, store post-events for later.
-		// Otherwise, append them to the main event list now.
-		if battle.PendingMoveLearn != nil && len(postEvents) > 0 {
-			battle.PostMoveLearnEvents = postEvents
-		} else {
-			events = append(events, postEvents...)
-		}
-	}
-
-	// If the player caught a wild Pokémon, add it to their party or PC
-	sentToPC := false
-	pcBox := -1
-	if battle.IsOver() && battle.PlayerCaught {
-		caughtPoke := battle.GetEnemyPokemon()
-		caughtPoke.IsWild = false
-		// Mark as caught in Pokédex (Phase 10.2)
-		MarkPokemonCaught(charID, caughtPoke.ID)
-		if len(battle.PlayerParty) < 6 {
-			battle.PlayerParty = append(battle.PlayerParty, caughtPoke)
-			log.Printf("[PokeBattle] Char %d caught %s (L%d) — added to party slot %d",
-				charID, caughtPoke.Name, caughtPoke.Level, len(battle.PlayerParty)-1)
-		} else {
-			// Party full — save to Bill's PC
-			myDB := db.GlobalWorldDB.DB
-			box, slot, pcErr := pokebattle.SavePokemonToPC(myDB, charID, caughtPoke)
-			if pcErr != nil {
-				log.Printf("[PokeBattle] Failed to save %s to PC for char %d: %v", caughtPoke.Name, charID, pcErr)
-			} else {
-				sentToPC = true
-				pcBox = box
-				log.Printf("[PokeBattle] Char %d party full, sent L%d %s to PC box %d slot %d",
-					charID, caughtPoke.Level, caughtPoke.Name, box, slot)
-			}
-		}
-	}
-
-	if battle.IsOver() && battle.BattleType == pokebattle.BattleWild && (battle.PlayerWon() || battle.PlayerCaught) {
-		if battle.WildWinFlag != "" && wh.EventFlags != nil {
-			if err := wh.EventFlags.SetFlag(charID, battle.WildWinFlag); err != nil {
-				log.Printf("[PokeBattle] Failed to set wild win flag %s for char %d: %v", battle.WildWinFlag, charID, err)
-			}
-		}
-		if err := applyScriptedWildPostWinActions(ses, battle, charID, wh); err != nil {
-			log.Printf("[PokeBattle] Failed to apply wild post-win actions for char %d: %v", charID, err)
-		}
-	}
-
-	fled := battleEndedByRunSuccess(events)
-	lost := battle.IsOver() && !battle.PlayerWon() && !battle.PlayerCaught && !fled
-	noBlackoutOnLoss := false
-	lossMessage := ""
-	if lost && battle.Trainer != nil {
-		noBlackoutOnLoss = battle.Trainer.NoBlackoutOnLoss
-		lossMessage = battle.Trainer.LossMessage
-		if battle.Trainer.LoseFlag != "" && wh.EventFlags != nil {
-			if err := wh.EventFlags.SetFlag(charID, battle.Trainer.LoseFlag); err != nil {
-				log.Printf("[PokeBattle] Failed to set trainer lose flag %s for char %d: %v", battle.Trainer.LoseFlag, charID, err)
-			}
-		}
-		if err := applyScriptedTrainerPostLoseActions(ses, battle.Trainer, charID, wh); err != nil {
-			log.Printf("[PokeBattle] Failed to apply trainer post-lose actions for char %d: %v", charID, err)
-		}
-		if lossMessage != "" {
-			for i := range events {
-				if events[i].Type == pokebattle.EventBattleLose {
-					events[i].Message = lossMessage
-				}
-			}
-		}
-	}
-
-	// Persist player's Pokémon party to DB after every battle end
-	// (win, lose, or flee — HP/PP/status all need saving)
-	if battle.IsOver() {
-		scriptedHeal := battleHasScriptedPartyHeal(battle, battle.PlayerWon() || battle.PlayerCaught)
-		// On loss, heal all party Pokémon to full before saving. Most losses then
-		// blackout-warp; scripted tutorial losses can remain in place.
-		if lost || scriptedHeal {
-			HealPokemonParty(battle.PlayerParty)
-			if lost {
-				log.Printf("[PokeBattle] Loss: healed all party Pokémon for char %d (blackout=%t)", charID, !noBlackoutOnLoss)
-			} else {
-				log.Printf("[PokeBattle] Scripted post-battle heal: healed all party Pokémon for char %d", charID)
-			}
-		}
-
-		myDB := db.GlobalWorldDB.DB
-		if err := pokebattle.SavePokemonAfterBattle(myDB, charID, battle.PlayerParty); err != nil {
-			log.Printf("[PokeBattle] Failed to persist party for char %d: %v", charID, err)
-		}
-	}
-
-	// Build response with updated state
-	player := battle.GetPlayerPokemon()
-	enemy := battle.GetEnemyPokemon()
-
-	resp := map[string]interface{}{
-		"success":       true,
-		"phase":         phaseToString(battle.Phase),
-		"turnNumber":    battle.TurnNumber,
-		"events":        events,
-		"playerPokemon": pokemonToDTO(player),
-		"enemyPokemon":  pokemonToDTO(enemy),
-	}
-	attachBattlePartyMetadata(resp, battle)
-
-	ses.SendStreamJSON(resp, opcodes.PokeBattleActionResponse)
-
-	// If battle ended, clean up and send end notification
-	if battle.IsOver() {
-		// Clear spottedBy so trainer can re-trigger if re-battles are enabled
-		if battle.Trainer != nil && battle.Trainer.TrainerObjectID > 0 {
-			wh.TrainerEncounter.ClearSpottedByTrainer(charID, battle.Trainer.TrainerObjectID)
-		}
-		var endResp map[string]interface{}
-		if battle.PlayerWon() || battle.PlayerCaught {
-			endResp = map[string]interface{}{"playerWon": true}
-			if sentToPC {
-				endResp["sentToPC"] = true
-				endResp["pcBox"] = pcBox + 1 // 1-indexed for display
-			}
-		} else if fled {
-			endResp = map[string]interface{}{"playerWon": false}
-		} else if lost && noBlackoutOnLoss {
-			endResp = map[string]interface{}{
-				"playerWon":   false,
-				"blackout":    false,
-				"lossMessage": lossMessage,
-			}
-		} else {
-			endResp = buildBlackoutEndResponse(charID)
-			if lossMessage != "" {
-				endResp["lossMessage"] = lossMessage
-			}
-		}
-		ses.SendStreamJSON(endResp, opcodes.PokeBattleEndNotify)
-
-		// Send updated party data so client UI reflects post-battle state
-		sendPartyUpdate(ses)
-
-		// Don't remove the battle here — the client will send PokeBattleCloseRequest
-		// after the player dismisses the battle end screen. This ensures the battle
-		// stays in memory if the player disconnects during event animation or move learn.
-		log.Printf("[PokeBattle] Battle over for char %d — waiting for client close (pendingMove=%v)", charID, battle.PendingMoveLearn != nil)
-	}
-
 	return false
 }
 
@@ -847,92 +378,42 @@ func HandleCQBattleItemUse(ses *session.Session, payload []byte, wh *WorldHandle
 func HandlePokeBattleSwitch(ses *session.Session, payload []byte, wh *WorldHandler) bool {
 	var req PokeBattleSwitchRequest
 	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("[PokeBattle] Invalid switch request: %v", err)
 		return false
 	}
-
 	charID := int64(ses.Client.CharData().ID)
-	battle := getBattle(charID)
-	if battle == nil {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "not in battle",
-		}, opcodes.PokeBattleSwitchResponse)
+	current := getBattle(charID)
+	if current == nil {
+		sendBattleItemError(ses, opcodes.PokeBattleSwitchResponse, "Not in battle")
 		return false
 	}
-
-	if !battle.IsActionAllowed(pokebattle.ActionSwitch) {
-		sendBattleNoTurnMessage(ses, battle, "Use an item.", opcodes.PokeBattleSwitchResponse)
-		return false
-	}
-
-	if battle.Phase != pokebattle.PhaseFaintSwitch {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "not in faint switch phase",
-		}, opcodes.PokeBattleSwitchResponse)
-		return false
-	}
-
-	// Handle run attempt during faint switch (wild battles only)
-	if req.Action == "run" {
-		if battle.BattleType == pokebattle.BattleTrainer {
-			ses.SendStreamJSON(map[string]interface{}{
-				"success": false,
-				"error":   "Can't run from a trainer battle!",
-			}, opcodes.PokeBattleSwitchResponse)
-			return false
+	var result battleTurnResult
+	committed, err := pokebattle.CommitBattle(context.Background(), wh.database, charID, current, func(tx db.DBTX, next *pokebattle.BattleState) (err error) {
+		if next.Phase != pokebattle.PhaseFaintSwitch {
+			return battleRuleError("Not in faint switch phase")
 		}
-
-		// Attempt to flee using the same run formula
-		events := battle.RunFromFaintSwitch()
-
-		player := battle.GetPlayerPokemon()
-		enemy := battle.GetEnemyPokemon()
-
-		resp := map[string]interface{}{
-			"success":       true,
-			"phase":         phaseToString(battle.Phase),
-			"turnNumber":    battle.TurnNumber,
-			"events":        events,
-			"playerPokemon": pokemonToDTO(player),
-			"enemyPokemon":  pokemonToDTO(enemy),
+		if !next.IsActionAllowed(pokebattle.ActionSwitch) {
+			return battleRuleError("Use an item.")
 		}
-		attachBattlePartyMetadata(resp, battle)
-
-		ses.SendStreamJSON(resp, opcodes.PokeBattleSwitchResponse)
-
-		// If the run succeeded, end the battle
-		if battle.IsOver() {
-			myDB := db.GlobalWorldDB.DB
-			if err := pokebattle.SavePokemonAfterBattle(myDB, charID, battle.PlayerParty); err != nil {
-				log.Printf("[PokeBattle] Failed to persist party for char %d: %v", charID, err)
+		if req.Action == "run" {
+			if next.BattleType == pokebattle.BattleTrainer {
+				return battleRuleError("Can't run from a trainer battle!")
 			}
-			ses.SendStreamJSON(map[string]interface{}{"playerWon": false}, opcodes.PokeBattleEndNotify)
-			sendPartyUpdate(ses)
-			removeBattle(charID)
+			result.Events = next.RunFromFaintSwitch()
+		} else {
+			if err := validateBattleSwitch(next, req.PartyIndex); err != nil {
+				return battleRuleError(err.Error())
+			}
+			result.Events = next.ForceSwitchIn(req.PartyIndex)
 		}
-
+		result, err = settleBattleTurn(tx, charID, next, result)
+		return err
+	})
+	if err != nil {
+		sendBattleCommitError(ses, charID, current, err, opcodes.PokeBattleSwitchResponse)
 		return false
 	}
-
-	// Default: switch in a new Pokémon
-	events := battle.ForceSwitchIn(req.PartyIndex)
-
-	player := battle.GetPlayerPokemon()
-	enemy := battle.GetEnemyPokemon()
-
-	resp := map[string]interface{}{
-		"success":       true,
-		"phase":         phaseToString(battle.Phase),
-		"turnNumber":    battle.TurnNumber,
-		"events":        events,
-		"playerPokemon": pokemonToDTO(player),
-		"enemyPokemon":  pokemonToDTO(enemy),
-	}
-	attachBattlePartyMetadata(resp, battle)
-
-	ses.SendStreamJSON(resp, opcodes.PokeBattleSwitchResponse)
+	setBattle(charID, committed)
+	publishBattleTurn(ses, wh, charID, committed, result, opcodes.PokeBattleSwitchResponse)
 	return false
 }
 
@@ -1132,99 +613,56 @@ func HandlePokemonPartyRequest(ses *session.Session, payload []byte, wh *WorldHa
 // The client sends forgetSlot (0-3 to forget a move, or -1 to skip learning).
 func HandlePokeMoveLearn(ses *session.Session, payload []byte, wh *WorldHandler) bool {
 	var req struct {
-		ForgetSlot int `json:"forgetSlot"` // 0-3 to replace, -1 to skip
+		ForgetSlot int `json:"forgetSlot"`
 	}
 	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("[PokeBattle] Invalid PokeMoveLearnRequest: %v", err)
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "invalid request",
-		}, opcodes.PokeMoveLearnResponse)
+		sendBattleItemError(ses, opcodes.PokeMoveLearnResponse, "Invalid request")
 		return false
 	}
-
 	charID := int64(ses.Client.CharData().ID)
-	battle := getBattle(charID)
-	if battle == nil || battle.PendingMoveLearn == nil {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "no pending move to learn",
-		}, opcodes.PokeMoveLearnResponse)
+	current := getBattle(charID)
+	if current == nil || current.PendingMoveLearn == nil {
+		sendBattleItemError(ses, opcodes.PokeMoveLearnResponse, "No pending move to learn")
 		return false
 	}
-
-	pending := battle.PendingMoveLearn
-	poke := battle.PlayerParty[pending.PokemonIndex]
-	myDB := db.GlobalWorldDB.DB
-
-	if req.ForgetSlot == -1 {
-		// Player chose not to learn the move
-		battle.PendingMoveLearn = nil
-		resp := map[string]interface{}{
-			"success": true,
-			"skipped": true,
-			"message": fmt.Sprintf("%s did not learn %s.", poke.Name, pending.MoveName),
+	var response map[string]interface{}
+	committed, err := pokebattle.CommitBattle(context.Background(), wh.database, charID, current, func(tx db.DBTX, next *pokebattle.BattleState) error {
+		pending := next.PendingMoveLearn
+		if req.ForgetSlot < -1 || req.ForgetSlot >= 4 {
+			return battleRuleError("Invalid slot index")
 		}
-		if len(battle.PostMoveLearnEvents) > 0 {
-			resp["postEvents"] = battle.PostMoveLearnEvents
-			battle.PostMoveLearnEvents = nil
+		if pending.PokemonIndex < 0 || pending.PokemonIndex >= len(next.PlayerParty) {
+			return fmt.Errorf("invalid pending move pokemon index")
 		}
-		ses.SendStreamJSON(resp, opcodes.PokeMoveLearnResponse)
-
-		// Persist party (moves may have changed from earlier auto-learns)
-		if err := pokebattle.SavePokemonAfterBattle(myDB, charID, battle.PlayerParty); err != nil {
-			log.Printf("[PokeBattle] Failed to persist party after move skip for char %d: %v", charID, err)
+		pokemon := next.PlayerParty[pending.PokemonIndex]
+		response = map[string]interface{}{"success": true, "skipped": req.ForgetSlot == -1}
+		if req.ForgetSlot == -1 {
+			response["message"] = fmt.Sprintf("%s did not learn %s.", pokemon.Name, pending.MoveName)
+		} else {
+			forgotten := pokemon.Moves[req.ForgetSlot].Name
+			if err := pokebattle.ForgetAndLearnMove(tx, pokemon, req.ForgetSlot, pending.MoveID); err != nil {
+				return err
+			}
+			response["message"] = fmt.Sprintf("1, 2, and… Poof!\n%s forgot %s.\nAnd…\n%s learned %s!", pokemon.Name, forgotten, pokemon.Name, pending.MoveName)
+			response["updatedPokemon"] = pokemonToDTO(pokemon)
+			response["forgetSlot"] = req.ForgetSlot
+			response["newMoveId"] = pending.MoveID
+			response["newMoveName"] = pending.MoveName
 		}
-		sendPartyUpdate(ses)
-		// Don't removeBattle here — client sends PokeBattleCloseRequest
+		if len(next.PostMoveLearnEvents) > 0 {
+			response["postEvents"] = next.PostMoveLearnEvents
+		}
+		next.PendingMoveLearn = nil
+		next.PostMoveLearnEvents = nil
+		return nil
+	})
+	if err != nil {
+		sendBattleCommitError(ses, charID, nil, err, opcodes.PokeMoveLearnResponse)
 		return false
 	}
-
-	if req.ForgetSlot < 0 || req.ForgetSlot >= 4 {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "invalid slot index",
-		}, opcodes.PokeMoveLearnResponse)
-		return false
-	}
-
-	forgottenMove := poke.Moves[req.ForgetSlot].Name
-	if err := pokebattle.ForgetAndLearnMove(myDB, poke, req.ForgetSlot, pending.MoveID); err != nil {
-		log.Printf("[PokeBattle] Failed to learn move %d for %s: %v", pending.MoveID, poke.Name, err)
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "failed to learn move",
-		}, opcodes.PokeMoveLearnResponse)
-		return false
-	}
-
-	battle.PendingMoveLearn = nil
-
-	// Build updated pokemon DTO
-	pokeDTO := pokemonToDTO(poke)
-
-	resp := map[string]interface{}{
-		"success":        true,
-		"skipped":        false,
-		"message":        fmt.Sprintf("1, 2, and… Poof!\n%s forgot %s.\nAnd…\n%s learned %s!", poke.Name, forgottenMove, poke.Name, pending.MoveName),
-		"updatedPokemon": pokeDTO,
-		"forgetSlot":     req.ForgetSlot,
-		"newMoveId":      pending.MoveID,
-		"newMoveName":    pending.MoveName,
-	}
-	if len(battle.PostMoveLearnEvents) > 0 {
-		resp["postEvents"] = battle.PostMoveLearnEvents
-		battle.PostMoveLearnEvents = nil
-	}
-	ses.SendStreamJSON(resp, opcodes.PokeMoveLearnResponse)
-
-	// Persist party
-	if err := pokebattle.SavePokemonAfterBattle(myDB, charID, battle.PlayerParty); err != nil {
-		log.Printf("[PokeBattle] Failed to persist party after move learn for char %d: %v", charID, err)
-	}
-	sendPartyUpdate(ses)
-	// Don't removeBattle here — client sends PokeBattleCloseRequest
-
+	setBattle(charID, committed)
+	ses.SendStreamJSON(response, opcodes.PokeMoveLearnResponse)
+	sendPokemonPartySnapshot(ses, committed.PlayerParty)
 	return false
 }
 
@@ -1238,7 +676,14 @@ func HandlePokeBattleClose(ses *session.Session, _ []byte, wh *WorldHandler) boo
 	log.Printf("[PokeBattle] Client closed battle for char %d", charID)
 	battle := getBattle(charID)
 	shouldSendPostBattleScript := battleShouldSendPostBattleMapScript(battle)
-	removeBattle(charID)
+	if battle == nil {
+		return false
+	}
+	if err := pokebattle.CloseBattle(context.Background(), wh.database, charID, battle); err != nil {
+		log.Printf("[PokeBattle] Close failed for character %d: %v", charID, err)
+		return false
+	}
+	forgetBattle(charID, battle)
 	if shouldSendPostBattleScript {
 		sendEligibleMapScriptAfterBattleClose(ses, charID, wh)
 	}

@@ -142,6 +142,12 @@ type PendingMove struct {
 
 // BattleState holds the full state of a Pokémon battle.
 type BattleState struct {
+	// Durable identity and revision guard against stale turn/disconnect writes.
+	BattleID         string
+	Revision         int64
+	persistedVersion int
+	playerVolatile   []playerVolatileState
+
 	Phase      BattlePhase
 	BattleType BattleType
 	TurnNumber int
