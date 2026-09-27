@@ -324,6 +324,26 @@ retirement. Full session/world/server suites passed. HTTP handlers/listener drai
 startup admission/readiness and a server-wide shutdown deadline remain unfinished;
 the database-close boundary is not yet proven safe for non-session HTTP work.
 
+HTTP lifecycle checkpoint: the server owns an explicit http.Server, bound listener
+and serve-completion channel for both HTTP and HTTPS. Startup binds synchronously
+and returns TLS/configuration/bind errors to main, which performs cleanup before
+exiting. Repeated start and start after stop are rejected. Constructor failures
+stop world workers already created. HTTP header and idle timeouts are explicit.
+
+Stop seals session admission, joins ordinary HTTP handlers and the HTTP serve
+loop, stops external chat/QUIC, drains world sessions and finally closes the
+specific database captured at construction. It no longer closes whichever global
+database happens to be installed at shutdown. Shutdown is idempotent. A real local
+HTTP request held during shutdown verifies that its query and world cleanup both
+finish before database close, using an in-memory SQLite connection solely to
+observe connection lifetime. Server/session race tests passed; this does not
+substitute for PostgreSQL transaction or production verification.
+
+A server-wide shutdown deadline, cancellation propagation, runtime serve-error
+reporting and explicit readiness remain unfinished. HTTP shutdown currently waits
+for handlers, and world cleanup waits for commands; a handler without a bounded
+operation can still delay shutdown indefinitely.
+
 ## Reproducible PostgreSQL tests
 
 With `initdb`, `pg_ctl`, and Go available, run:

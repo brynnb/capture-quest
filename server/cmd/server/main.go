@@ -53,7 +53,10 @@ func main() {
 	// 	log.Fatalf("Failed to create navigation %v", err)
 	// }
 
-	go srv.StartServer()
+	if err := srv.StartServer(); err != nil {
+		srv.StopServer()
+		log.Fatalf("failed to start server: %v", err)
+	}
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)

@@ -5,8 +5,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
+	"database/sql"
 	b64 "encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -43,15 +45,21 @@ type worldRuntime interface {
 
 // Server hosts HTTP, WebSocket and WebTransport connections.
 type Server struct {
-	wtServer       *webtransport.Server
-	worldHandler   worldRuntime
-	sessionManager *session.SessionManager
-	sessions       map[int]*webtransport.Session
-	sessionsMu     sync.Mutex // Protects sessions map
-	udpConn        *net.UDPConn
-	gracePeriod    time.Duration
-	debugMode      bool
-	discordChat    *discordchat.Bridge
+	lifecycleMu       sync.Mutex
+	stopOnce          sync.Once
+	started, stopping bool
+	httpServer        *http.Server
+	httpDone          chan struct{}
+	database          *sql.DB
+	wtServer          *webtransport.Server
+	worldHandler      worldRuntime
+	sessionManager    *session.SessionManager
+	sessions          map[int]*webtransport.Session
+	sessionsMu        sync.Mutex // Protects sessions map
+	udpConn           *net.UDPConn
+	gracePeriod       time.Duration
+	debugMode         bool
+	discordChat       *discordchat.Bridge
 }
 
 // NewServer constructs a new Server.
@@ -59,12 +67,19 @@ func NewServer(dsn string, gracePeriod time.Duration, debugMode bool) (*Server, 
 	sessionManager := session.NewSessionManager()
 	session.InitSessionManager(sessionManager)
 	worldHandler := world.NewWorldHandler(sessionManager)
+	constructed := false
+	defer func() {
+		if !constructed {
+			worldHandler.Shutdown()
+		}
+	}()
 
 	if err := cache.Init(); err != nil {
 		return nil, fmt.Errorf("failed to initialize cache: %w", err)
 	}
 
 	srv := &Server{
+		database:       db.GlobalWorldDB.DB,
 		worldHandler:   worldHandler,
 		sessionManager: sessionManager,
 		sessions:       make(map[int]*webtransport.Session),
@@ -81,11 +96,18 @@ func NewServer(dsn string, gracePeriod time.Duration, debugMode bool) (*Server, 
 			discordBridge.Enqueue(discordchat.Message{SenderName: message.SenderName, Text: message.Text})
 		})
 	}
+	constructed = true
 	return srv, nil
 }
 
 // StartServer configures TLS, QUIC, HTTP, and begins serving WebTransport.
-func (s *Server) StartServer() {
+func (s *Server) StartServer() error {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	if s.stopping || s.started {
+		return fmt.Errorf("server cannot start twice or after shutdown")
+	}
+	s.started = true
 	InitLogging()
 	if s.discordChat != nil {
 		s.discordChat.Start()
@@ -94,8 +116,7 @@ func (s *Server) StartServer() {
 	// TLS
 	tlsConf, certManager, err := cert.LoadTLSConfig()
 	if err != nil {
-		log.Printf("failed to load TLS config: %v", err)
-		return
+		return fmt.Errorf("load TLS config: %w", err)
 	}
 
 	// Bind UDP for WebTransport. Local dev can override WT_PORT when the
@@ -103,8 +124,7 @@ func (s *Server) StartServer() {
 	wtPort := envPort("WT_PORT", 4433)
 	udpConn, port, err := listenUDP(wtPort)
 	if err != nil {
-		log.Printf("UDP listen error on port %d: %v", wtPort, err)
-		return
+		return fmt.Errorf("listen UDP port %d: %w", wtPort, err)
 	}
 	s.udpConn = udpConn
 	log.Printf("WebTransport bound to UDP port: %d", port)
@@ -153,8 +173,13 @@ func (s *Server) StartServer() {
 	}
 
 	// HTTP handler for OAuth, etc.
-	cfg, _ := config.Get()
-	go s.startHTTPServer(tlsConf, certManager, cfg.HTTPPort, port)
+	cfg, err := config.Get()
+	if err != nil {
+		return err
+	}
+	if err := s.startHTTPServer(tlsConf, certManager, cfg.HTTPPort, port); err != nil {
+		return err
+	}
 
 	// Serve WebTransport on the pre-bound UDP socket
 	go func() {
@@ -163,6 +188,7 @@ func (s *Server) StartServer() {
 			log.Printf("WebTransport server failed: %v", err)
 		}
 	}()
+	return nil
 }
 
 func envPort(name string, fallback int) int {
@@ -328,19 +354,50 @@ func (s *Server) handleSessionClose(sessionID int) {
 
 // StopServer tears down all listeners and connections.
 func (s *Server) StopServer() {
-	if s.discordChat != nil {
-		s.discordChat.Close()
-	}
-	if s.wtServer != nil {
-		s.wtServer.Close()
-	}
-	if s.udpConn != nil {
-		s.udpConn.Close()
-	}
-	s.worldHandler.Shutdown()
-	if db.GlobalWorldDB != nil {
-		db.GlobalWorldDB.DB.Close()
-	}
+	s.stopOnce.Do(func() {
+		s.lifecycleMu.Lock()
+		s.stopping = true
+		s.lifecycleMu.Unlock()
+		if s.sessionManager != nil {
+			s.sessionManager.Seal()
+		}
+		// Shutdown joins ordinary HTTP handlers. Hijacked WebSockets are owned by
+		// the session manager and are drained by world shutdown below.
+		if s.httpServer != nil {
+			if err := s.httpServer.Shutdown(context.Background()); err != nil {
+				log.Printf("HTTP shutdown: %v", err)
+			}
+			<-s.httpDone
+		}
+		if s.discordChat != nil {
+			s.discordChat.Close()
+		}
+		if s.wtServer != nil {
+			_ = s.wtServer.Close()
+		}
+		if s.udpConn != nil {
+			_ = s.udpConn.Close()
+		}
+		if s.worldHandler != nil {
+			s.worldHandler.Shutdown()
+		}
+		if s.database != nil {
+			_ = s.database.Close()
+		}
+	})
+}
+
+// serveHTTP owns the listener and serve completion for the server lifecycle.
+// Startup calls it while holding lifecycleMu, after binding succeeds.
+func (s *Server) serveHTTP(listener net.Listener, handler http.Handler) {
+	s.httpServer = &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
+	s.httpDone = make(chan struct{})
+	go func() {
+		defer close(s.httpDone)
+		if err := s.httpServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("HTTP serve failed: %v", err)
+		}
+	}()
 }
 
 // listenUDP binds to the given port.
@@ -360,7 +417,7 @@ func listenUDP(port int) (*net.UDPConn, int, error) {
 }
 
 // startHTTPServer serves HTTPS for other endpoints.
-func (s *Server) startHTTPServer(tlsConf *tls.Config, certManager *cert.RotatingCertManager, port int, wtPort int) {
+func (s *Server) startHTTPServer(tlsConf *tls.Config, certManager *cert.RotatingCertManager, port int, wtPort int) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/register", registerHandler)
 
@@ -434,19 +491,23 @@ func (s *Server) startHTTPServer(tlsConf *tls.Config, certManager *cert.Rotating
 	// that handles TLS for us, so we listen on plain HTTP.
 	if port > 0 {
 		log.Printf("Starting plain HTTP server on TCP port %d (TLS terminated by proxy)", port)
-		go http.ListenAndServe(fmt.Sprintf("127.0.0.1:%d", port), mux)
-		return
+		listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		if err != nil {
+			return fmt.Errorf("listen HTTP: %w", err)
+		}
+		s.serveHTTP(listener, mux)
+		return nil
 	}
 
 	// Local mode: listen on 443 with TLS
 	listener, err := net.Listen("tcp", ":443")
 	if err != nil {
-		log.Printf("HTTPS listen error on 443: %v", err)
-		return
+		return fmt.Errorf("listen HTTPS: %w", err)
 	}
 	tlsListener := tls.NewListener(listener, tlsConf)
 	log.Printf("Starting HTTPS server on TCP port 443 (Local TLS)")
-	go http.Serve(tlsListener, mux)
+	s.serveHTTP(tlsListener, mux)
+	return nil
 }
 
 func (s *Server) registerAdminRoutes(mux *http.ServeMux) {
