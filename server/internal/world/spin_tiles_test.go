@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"database/sql"
 	"testing"
 
@@ -10,7 +11,7 @@ import (
 func TestSpinTileManagerLoadAndCheckTile(t *testing.T) {
 	db := openSpinTileManagerTestDB(t)
 	manager := NewSpinTileManager(db)
-	if err := manager.Load(); err != nil {
+	if err := manager.Load(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 

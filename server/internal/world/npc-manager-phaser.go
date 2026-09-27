@@ -5,6 +5,7 @@ import (
 	"capturequest/internal/db"
 	"capturequest/internal/session"
 	"container/heap"
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -64,12 +65,15 @@ func NewPhaserActorManager(wh *WorldHandler) *PhaserActorManager {
 }
 
 // Start begins the actor simulation
-func (m *PhaserActorManager) Load() error {
+func (m *PhaserActorManager) Load(ctx context.Context) error {
 	staged := NewPhaserActorManager(m.wh)
-	if err := staged.loadOverworldMapIds(); err != nil {
+	if err := staged.loadOverworldMapIds(ctx); err != nil {
 		return err
 	}
-	if err := staged.loadWalkingActors(); err != nil {
+	if err := staged.loadWalkingActors(ctx); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	m.mu.Lock()
@@ -239,11 +243,11 @@ func (m *PhaserActorManager) applyRuntimeActorState(actor *PhaserActor) {
 	}
 }
 
-func (m *PhaserActorManager) loadOverworldMapIds() error {
+func (m *PhaserActorManager) loadOverworldMapIds(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	rows, err := db.GlobalWorldDB.DB.Query("SELECT id FROM phaser_maps WHERE is_overworld = 1")
+	rows, err := db.GlobalWorldDB.DB.QueryContext(ctx, "SELECT id FROM phaser_maps WHERE is_overworld = 1")
 	if err != nil {
 		return fmt.Errorf("[PhaserActorManager] Error loading overworld map IDs: %w", err)
 	}
@@ -262,11 +266,11 @@ func (m *PhaserActorManager) loadOverworldMapIds() error {
 	return nil
 }
 
-func (m *PhaserActorManager) loadWalkingActors() error {
+func (m *PhaserActorManager) loadWalkingActors(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	rows, err := db.GlobalWorldDB.DB.Query(`
+	rows, err := db.GlobalWorldDB.DB.QueryContext(ctx, `
 		SELECT po.id, po.map_id,
 			COALESCE(po.x, po.local_x) as x,
 			COALESCE(po.y, po.local_y) as y,
@@ -325,7 +329,7 @@ func (m *PhaserActorManager) loadWalkingActors() error {
 	// Exhaust the actor cursor before issuing collision queries, including when
 	// the database pool permits only one active connection.
 	for mapID := range loadedMaps {
-		if err := m.ensureWalkableMapLoadedLocked(mapID); err != nil {
+		if err := m.ensureWalkableMapLoadedLocked(ctx, mapID); err != nil {
 			return fmt.Errorf("actor map %d collision: %w", mapID, err)
 		}
 	}
@@ -335,7 +339,7 @@ func (m *PhaserActorManager) loadWalkingActors() error {
 	return nil
 }
 
-func (m *PhaserActorManager) ensureWalkableMapLoadedLocked(mapID int) error {
+func (m *PhaserActorManager) ensureWalkableMapLoadedLocked(ctx context.Context, mapID int) error {
 	if m.collisionMap == nil {
 		m.collisionMap = make(map[int]map[string]int)
 	}
@@ -356,7 +360,7 @@ func (m *PhaserActorManager) ensureWalkableMapLoadedLocked(mapID int) error {
 	// since they're stitched together with global coordinates
 	if m.overworldMapIds[mapID] || mapID == 0 || mapID == UnifiedOverworldMapID {
 		// Overworld tiles use global coordinates and have map_id IS NULL.
-		rows, err = db.GlobalWorldDB.DB.Query(`
+		rows, err = db.GlobalWorldDB.DB.QueryContext(ctx, `
 				SELECT x, y, collision_type, raw_foot_tile_id
 				FROM phaser_tiles
 				WHERE map_id IS NULL
@@ -366,7 +370,7 @@ func (m *PhaserActorManager) ensureWalkableMapLoadedLocked(mapID int) error {
 		}
 	} else {
 		// For interior maps, just load that specific map
-		rows, err = db.GlobalWorldDB.DB.Query(`
+		rows, err = db.GlobalWorldDB.DB.QueryContext(ctx, `
 				SELECT x, y, collision_type, raw_foot_tile_id
 				FROM phaser_tiles
 				WHERE map_id = $1
@@ -392,14 +396,19 @@ func (m *PhaserActorManager) ensureWalkableMapLoadedLocked(mapID int) error {
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("read collision map %d: %w", mapID, err)
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	m.collisionMap[mapID], m.rawFootTileMap[mapID] = collisions, feet
 	return nil
 }
 
 func (m *PhaserActorManager) ensureWalkableMapLoaded(mapID int) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.ensureWalkableMapLoadedLocked(mapID)
+	return m.ensureWalkableMapLoadedLocked(ctx, mapID)
 }
 
 // InvalidateCollisionMap removes the cached collision map for a given mapID,

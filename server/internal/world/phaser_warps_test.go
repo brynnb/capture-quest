@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"database/sql"
 	"testing"
 
@@ -89,7 +90,7 @@ func TestPhaserWarpManagerLoadSkipsInactiveAndElevatorRows(t *testing.T) {
 	}
 
 	manager := newPhaserWarpManager(db)
-	manager.load()
+	manager.load(context.Background())
 
 	if got := manager.warpAt(181, 10, 17); got == nil || got.ID != 1 {
 		t.Fatalf("loaded playable warp = %#v, want id 1", got)

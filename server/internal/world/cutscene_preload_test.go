@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -13,7 +14,7 @@ func TestCutscenePreloadRejectsMalformedConditionsAndWeakerSchema(t *testing.T) 
 	testdb.Exec(t, database, `INSERT INTO phaser_maps(id,name,width,height) VALUES(40,'original',10,10);
  INSERT INTO phaser_cutscene_scripts(script_label,map_name,requires_flags,actions) VALUES('Reward','original','["FLAG"]','[{"type":"give_money","money":1}]');`)
 	m := NewCutsceneManager(database)
-	if err := m.Load(); err != nil {
+	if err := m.Load(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	previous := m.GetByLabel("Reward")
@@ -34,7 +35,7 @@ func TestCutscenePreloadRejectsMalformedConditionsAndWeakerSchema(t *testing.T) 
 		t.Run(tc.field+tc.raw, func(t *testing.T) {
 			testdb.Exec(t, database, `UPDATE phaser_cutscene_scripts SET requires_flags='["FLAG"]',requires_flags_absent=NULL,sets_flags=NULL,actions='[]'`)
 			testdb.Exec(t, database, `UPDATE phaser_cutscene_scripts SET `+tc.field+`=$1`, tc.raw)
-			if err := m.Load(); err == nil || !strings.Contains(err.Error(), "Reward") {
+			if err := m.Load(context.Background()); err == nil || !strings.Contains(err.Error(), "Reward") {
 				t.Fatalf("missing malformed script error: %v", err)
 			}
 			if m.GetByLabel("Reward") != previous || m.MapNameForID(40) != "original" {
@@ -42,11 +43,11 @@ func TestCutscenePreloadRejectsMalformedConditionsAndWeakerSchema(t *testing.T) 
 			}
 		})
 	}
-	if wh, err := NewWorldHandler(session.NewSessionManager()); wh != nil || err == nil || !strings.Contains(err.Error(), "preload cutscenes") {
+	if wh, err := NewWorldHandler(context.Background(), session.NewSessionManager()); wh != nil || err == nil || !strings.Contains(err.Error(), "preload cutscenes") {
 		t.Fatalf("malformed cutscene admitted world: %v", err)
 	}
 	testdb.Exec(t, database, `UPDATE phaser_cutscene_scripts SET actions='[]'; ALTER TABLE phaser_cutscene_scripts DROP COLUMN requires_flags`)
-	if err := m.Load(); err == nil {
+	if err := m.Load(context.Background()); err == nil {
 		t.Fatal("missing prerequisite column accepted through weaker query")
 	}
 	if m.GetByLabel("Reward") != previous {

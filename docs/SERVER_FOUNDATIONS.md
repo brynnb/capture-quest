@@ -430,6 +430,23 @@ selected a weaker query. All packages compiled. No new schema or generated data
 was introduced. Preload query deadlines, shutdown cancellation and the remaining
 wire/domain migration still keep the full goal incomplete.
 
+Preload cancellation checkpoint: all required world loaders accept a caller
+context and use QueryContext throughout their database reads. World construction
+caps its preload phase at one minute, matching the documented startup retry
+window, and checks cancellation before starting timers. Startup receives the
+process signal context; termination during world preload cancels its queries.
+Lazy collision queries use a five-second deadline. Script/warp loader dependencies
+are explicit *sql.DB handles rather than the older query interface without contexts.
+Offline simulator calls explicitly supply their own context.
+
+World/simulator/server PostgreSQL race suites passed. Tests cancel every required
+loader, reject cancelled world construction, and hold a PostgreSQL table lock to
+verify deadline interruption followed by a successful retry. Cache publication
+also checks cancellation. All Go packages compile. Earlier schema/bootstrap work
+before world construction and server-wide shutdown cancellation still require
+coverage; this checkpoint does not claim that every startup/shutdown operation
+is bounded. Lazy collision mutex acquisition is also separate from query timeout.
+
 ## Reproducible PostgreSQL tests
 
 With `initdb`, `pg_ctl`, and Go available, run:

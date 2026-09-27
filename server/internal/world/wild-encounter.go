@@ -5,6 +5,7 @@ import (
 	"capturequest/internal/db"
 	"capturequest/internal/pokebattle"
 	"capturequest/internal/session"
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -76,7 +77,7 @@ func NewWildEncounterManager(wh *WorldHandler) *WildEncounterManager {
 }
 
 // Load preloads all encounter areas and their slots before world timers start.
-func (m *WildEncounterManager) Load() error {
+func (m *WildEncounterManager) Load(ctx context.Context) error {
 	if m.wh == nil || m.wh.database == nil {
 		return fmt.Errorf("wild encounter preload requires a database")
 	}
@@ -84,7 +85,7 @@ func (m *WildEncounterManager) Load() error {
 
 	areas := make(map[int]*encounterAreaData)
 	// Load encounter areas
-	rows, err := myDB.Query(`SELECT id, name, encounter_rate FROM phaser_encounter_areas`)
+	rows, err := myDB.QueryContext(ctx, `SELECT id, name, encounter_rate FROM phaser_encounter_areas`)
 	if err != nil {
 		return fmt.Errorf("[WildEncounter] Failed to load encounter areas: %w", err)
 	}
@@ -102,7 +103,7 @@ func (m *WildEncounterManager) Load() error {
 		return fmt.Errorf("read encounter areas: %w", err)
 	}
 	// Load slots for all areas
-	slotRows, err := myDB.Query(`
+	slotRows, err := myDB.QueryContext(ctx, `
 		SELECT encounter_area_id, pokemon_id, level, probability
 		FROM phaser_encounter_area_slots
 		ORDER BY encounter_area_id, slot_index`)
@@ -128,8 +129,11 @@ func (m *WildEncounterManager) Load() error {
 	if err := slotRows.Err(); err != nil {
 		return fmt.Errorf("read encounter slots: %w", err)
 	}
-	tiles, err := m.loadTileCache(areas)
+	tiles, err := m.loadTileCache(ctx, areas)
 	if err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	m.tileCacheMu.Lock()
@@ -142,10 +146,10 @@ func (m *WildEncounterManager) Load() error {
 }
 
 // loadTileCache stages tile references without modifying the published cache.
-func (m *WildEncounterManager) loadTileCache(areas map[int]*encounterAreaData) (map[[3]int]int, error) {
+func (m *WildEncounterManager) loadTileCache(ctx context.Context, areas map[int]*encounterAreaData) (map[[3]int]int, error) {
 	myDB := m.wh.database
 
-	rows, err := myDB.Query(`
+	rows, err := myDB.QueryContext(ctx, `
 		SELECT map_id, x, y, encounter_area_id
 		FROM phaser_tiles
 		WHERE encounter_area_id IS NOT NULL

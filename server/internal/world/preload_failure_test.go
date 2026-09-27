@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"database/sql"
 	"strings"
 	"testing"
@@ -16,7 +17,7 @@ func TestScriptAndWarpLoadersReturnQueryFailures(t *testing.T) {
 	}
 	database.Close()
 	wh := &WorldHandler{database: database}
-	loaders := map[string]func() error{
+	loaders := map[string]func(context.Context) error{
 		"coordinates":     NewCoordinateTriggerManager(database).Load,
 		"map scripts":     NewMapScriptManager(database).Load,
 		"spin tiles":      NewSpinTileManager(database).Load,
@@ -27,7 +28,7 @@ func TestScriptAndWarpLoadersReturnQueryFailures(t *testing.T) {
 	}
 	for name, load := range loaders {
 		t.Run(name, func(t *testing.T) {
-			if err := load(); err == nil {
+			if err := load(context.Background()); err == nil {
 				t.Fatal("loader swallowed database failure")
 			}
 		})
@@ -37,14 +38,14 @@ func TestScriptAndWarpLoadersReturnQueryFailures(t *testing.T) {
 func TestMalformedSpinLoadKeepsPreviousCompleteCache(t *testing.T) {
 	database := openSpinTileManagerTestDB(t)
 	m := NewSpinTileManager(database)
-	if err := m.Load(); err != nil {
+	if err := m.Load(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	previous := m.CheckTile("ROCKET_HIDEOUT_B2F", 4, 15)
 	if _, err := database.Exec(`INSERT INTO phaser_spin_tiles(map_name,x,y,movements) VALUES('VIRIDIAN_GYM',19,11,'not-json')`); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.Load(); err == nil || !strings.Contains(err.Error(), "VIRIDIAN_GYM (19,11)") {
+	if err := m.Load(context.Background()); err == nil || !strings.Contains(err.Error(), "VIRIDIAN_GYM (19,11)") {
 		t.Fatalf("missing malformed record identity: %v", err)
 	}
 	if m.CheckTile("ROCKET_HIDEOUT_B2F", 4, 15) != previous {
@@ -58,7 +59,7 @@ func TestMalformedSpinLoadKeepsPreviousCompleteCache(t *testing.T) {
 func TestWorldConstructionRejectsRequiredPreloadFailure(t *testing.T) {
 	database, _, _, _ := battleTestWorld(t)
 	testdb.Exec(t, database, `ALTER TABLE phaser_coordinate_triggers RENAME TO unavailable_coordinate_triggers`)
-	wh, err := NewWorldHandler(session.NewSessionManager())
+	wh, err := NewWorldHandler(context.Background(), session.NewSessionManager())
 	if wh != nil || err == nil || !strings.Contains(err.Error(), "preload CoordTriggers") {
 		t.Fatalf("construction result=(%v,%v)", wh, err)
 	}

@@ -1,6 +1,7 @@
 package scriptsim
 
 import (
+	"context"
 	"fmt"
 
 	"capturequest/internal/db"
@@ -52,7 +53,7 @@ func runCoordNoScript(
 	efm *world.EventFlagManager,
 ) (*Result, error) {
 	triggers := world.NewCoordinateTriggerManager(db.GlobalWorldDB.DB)
-	if err := triggers.Load(); err != nil {
+	if err := triggers.Load(context.Background()); err != nil {
 		return nil, fmt.Errorf("load coordinate triggers: %w", err)
 	}
 	x, y := scenario.Trigger.X, scenario.Trigger.Y

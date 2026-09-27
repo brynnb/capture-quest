@@ -69,10 +69,10 @@ type Server struct {
 }
 
 // NewServer constructs a new Server.
-func NewServer(dsn string, gracePeriod time.Duration, debugMode bool) (*Server, error) {
+func NewServer(ctx context.Context, dsn string, gracePeriod time.Duration, debugMode bool) (*Server, error) {
 	sessionManager := session.NewSessionManager()
 	session.InitSessionManager(sessionManager)
-	worldHandler, err := world.NewWorldHandler(sessionManager)
+	worldHandler, err := world.NewWorldHandler(ctx, sessionManager)
 	if err != nil {
 		return nil, fmt.Errorf("initialize world: %w", err)
 	}

@@ -1,6 +1,7 @@
 package scriptsim
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -140,7 +141,7 @@ func Run(scenario *Scenario) (*Result, error) {
 		return nil, err
 	}
 	cutscenes := world.NewCutsceneManager(db.GlobalWorldDB.DB)
-	if err := cutscenes.Load(); err != nil {
+	if err := cutscenes.Load(context.Background()); err != nil {
 		return nil, fmt.Errorf("load cutscenes: %w", err)
 	}
 
@@ -1640,7 +1641,7 @@ func resolveScript(s *Scenario, applied *AppliedFixture, cutscenes *world.Cutsce
 		return cs, nil
 	case "coord":
 		triggers := world.NewCoordinateTriggerManager(db.GlobalWorldDB.DB)
-		if err := triggers.Load(); err != nil {
+		if err := triggers.Load(context.Background()); err != nil {
 			return nil, fmt.Errorf("load coordinate triggers: %w", err)
 		}
 		x, y := s.Trigger.X, s.Trigger.Y

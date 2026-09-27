@@ -48,7 +48,9 @@ type WorldHandler struct {
 }
 
 // NewWorldHandler creates a new WorldHandler.
-func NewWorldHandler(sessionManager *session.SessionManager) (*WorldHandler, error) {
+func NewWorldHandler(ctx context.Context, sessionManager *session.SessionManager) (*WorldHandler, error) {
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
 	registry := NewWorldOpCodeRegistry()
 	wh := &WorldHandler{
 		sessionManager: sessionManager,
@@ -63,46 +65,49 @@ func NewWorldHandler(sessionManager *session.SessionManager) (*WorldHandler, err
 	}
 	registry.WH = wh
 	wh.ActorManager = NewPhaserActorManager(wh)
-	if err := wh.ActorManager.Load(); err != nil {
+	if err := wh.ActorManager.Load(ctx); err != nil {
 		return nil, fmt.Errorf("preload actors: %w", err)
 	}
 	wh.PlayerMovement = NewPlayerMovementManager(wh, wh.ActorManager)
 	wh.TrainerEncounter = NewTrainerEncounterManager(wh)
-	if err := wh.TrainerEncounter.Load(); err != nil {
+	if err := wh.TrainerEncounter.Load(ctx); err != nil {
 		return nil, fmt.Errorf("preload TrainerEncounter: %w", err)
 	}
 	wh.WildEncounter = NewWildEncounterManager(wh)
-	if err := wh.WildEncounter.Load(); err != nil {
+	if err := wh.WildEncounter.Load(ctx); err != nil {
 		return nil, fmt.Errorf("preload WildEncounter: %w", err)
 	}
 	wh.EventFlags = NewEventFlagManager(db.GlobalWorldDB.DB)
 	wh.CoordTriggers = NewCoordinateTriggerManager(db.GlobalWorldDB.DB)
-	if err := wh.CoordTriggers.Load(); err != nil {
+	if err := wh.CoordTriggers.Load(ctx); err != nil {
 		return nil, fmt.Errorf("preload CoordTriggers: %w", err)
 	}
 	wh.MapScripts = NewMapScriptManager(db.GlobalWorldDB.DB)
-	if err := wh.MapScripts.Load(); err != nil {
+	if err := wh.MapScripts.Load(ctx); err != nil {
 		return nil, fmt.Errorf("preload MapScripts: %w", err)
 	}
 	wh.Cutscenes = NewCutsceneManager(db.GlobalWorldDB.DB)
-	if err := wh.Cutscenes.Load(); err != nil {
+	if err := wh.Cutscenes.Load(ctx); err != nil {
 		return nil, fmt.Errorf("preload cutscenes: %w", err)
 	}
 	wh.SpinTiles = NewSpinTileManager(db.GlobalWorldDB.DB)
-	if err := wh.SpinTiles.Load(); err != nil {
+	if err := wh.SpinTiles.Load(ctx); err != nil {
 		return nil, fmt.Errorf("preload SpinTiles: %w", err)
 	}
 	wh.WarpTiles = NewWarpTileManager(db.GlobalWorldDB.DB)
-	if err := wh.WarpTiles.Load(); err != nil {
+	if err := wh.WarpTiles.Load(ctx); err != nil {
 		return nil, fmt.Errorf("preload WarpTiles: %w", err)
 	}
 	wh.phaserWarps = newPhaserWarpManager(db.GlobalWorldDB.DB)
 	wh.phaserWarps.setActorManager(wh.ActorManager)
-	if err := wh.phaserWarps.load(); err != nil {
+	if err := wh.phaserWarps.load(ctx); err != nil {
 		return nil, fmt.Errorf("preload phaserWarps: %w", err)
 	}
 	wh.Safari = NewSafariZoneManager()
 	LoadDisallowedWords()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	wh.ActorManager.Start()
 	wh.PlayerMovement.Start()
 	wh.StartSessionTimeoutChecker()

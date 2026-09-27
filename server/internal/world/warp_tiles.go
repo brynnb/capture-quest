@@ -1,11 +1,12 @@
 package world
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"sync"
 
-	"capturequest/internal/pokebattle"
+	"context"
 )
 
 // WarpTile represents a teleporter pad that auto-triggers when stepped on.
@@ -22,14 +23,14 @@ type WarpTile struct {
 // WarpTileManager loads warp pad tiles from the database and provides
 // fast lookups by map ID + tile position.
 type WarpTileManager struct {
-	db pokebattle.DBTX
+	db *sql.DB
 	mu sync.RWMutex
 	// byMap indexes warp tiles: mapID -> "x,y" -> WarpTile
 	byMap map[int]map[string]*WarpTile
 }
 
 // NewWarpTileManager creates a new WarpTileManager.
-func NewWarpTileManager(db pokebattle.DBTX) *WarpTileManager {
+func NewWarpTileManager(db *sql.DB) *WarpTileManager {
 	return &WarpTileManager{
 		db:    db,
 		byMap: make(map[int]map[string]*WarpTile),
@@ -37,8 +38,8 @@ func NewWarpTileManager(db pokebattle.DBTX) *WarpTileManager {
 }
 
 // Load reads all warp tiles from the database into memory.
-func (m *WarpTileManager) Load() error {
-	rows, err := m.db.Query(
+func (m *WarpTileManager) Load(ctx context.Context) error {
+	rows, err := m.db.QueryContext(ctx,
 		`SELECT source_map_id, x, y, destination_map_id, destination_x, destination_y FROM phaser_warp_tiles`)
 	if err != nil {
 		return fmt.Errorf("[WarpTiles] Failed to load: %w", err)
@@ -62,6 +63,9 @@ func (m *WarpTileManager) Load() error {
 
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("read warp_tiles rows: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	m.mu.Lock()
 	m.byMap = byMap

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"capturequest/internal/pokebattle"
+	"context"
 )
 
 type phaserMapWarp struct {
@@ -23,14 +23,14 @@ type phaserMapWarp struct {
 }
 
 type phaserWarpManager struct {
-	db           pokebattle.DBTX
+	db           *sql.DB
 	actorManager *PhaserActorManager
 	mu           sync.RWMutex
 	byID         map[int]*phaserMapWarp
 	byMap        map[int]map[string][]*phaserMapWarp
 }
 
-func newPhaserWarpManager(db pokebattle.DBTX) *phaserWarpManager {
+func newPhaserWarpManager(db *sql.DB) *phaserWarpManager {
 	return &phaserWarpManager{
 		db:    db,
 		byID:  make(map[int]*phaserMapWarp),
@@ -42,8 +42,8 @@ func (m *phaserWarpManager) setActorManager(am *PhaserActorManager) {
 	m.actorManager = am
 }
 
-func (m *phaserWarpManager) load() error {
-	rows, err := m.db.Query(`
+func (m *phaserWarpManager) load(ctx context.Context) error {
+	rows, err := m.db.QueryContext(ctx, `
 		SELECT id, source_map_id, x, y, destination_map_id, destination_x, destination_y, warp_type, warp_direction
 		FROM phaser_warps
 		WHERE destination_map_id IS NOT NULL
@@ -92,6 +92,9 @@ func (m *phaserWarpManager) load() error {
 		return fmt.Errorf("[PhaserWarps] Error reading rows: %w", err)
 	}
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	m.mu.Lock()
 	m.byID = byID
 	m.byMap = byMap

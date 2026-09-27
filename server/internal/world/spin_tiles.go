@@ -1,13 +1,14 @@
 package world
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
 	"sync"
 
-	"capturequest/internal/pokebattle"
+	"context"
 )
 
 // SpinMovement represents one segment of a spin tile's forced movement.
@@ -27,14 +28,14 @@ type SpinTile struct {
 // SpinTileManager loads spin/arrow tiles from the database and provides
 // fast lookups by map name + tile position.
 type SpinTileManager struct {
-	db pokebattle.DBTX
+	db *sql.DB
 	mu sync.RWMutex
 	// byMap indexes spin tiles: mapName -> "x,y" -> SpinTile
 	byMap map[string]map[string]*SpinTile
 }
 
 // NewSpinTileManager creates a new SpinTileManager.
-func NewSpinTileManager(db pokebattle.DBTX) *SpinTileManager {
+func NewSpinTileManager(db *sql.DB) *SpinTileManager {
 	return &SpinTileManager{
 		db:    db,
 		byMap: make(map[string]map[string]*SpinTile),
@@ -42,8 +43,8 @@ func NewSpinTileManager(db pokebattle.DBTX) *SpinTileManager {
 }
 
 // Load reads all spin tiles from the database into memory.
-func (m *SpinTileManager) Load() error {
-	rows, err := m.db.Query(
+func (m *SpinTileManager) Load(ctx context.Context) error {
+	rows, err := m.db.QueryContext(ctx,
 		`SELECT map_name, x, y, movements FROM phaser_spin_tiles`)
 	if err != nil {
 		return fmt.Errorf("[SpinTiles] Failed to load: %w", err)
@@ -72,6 +73,9 @@ func (m *SpinTileManager) Load() error {
 
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("read spin_tiles rows: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	m.mu.Lock()
 	m.byMap = byMap

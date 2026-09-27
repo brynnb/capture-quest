@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"database/sql"
 	"testing"
 
@@ -71,7 +72,7 @@ func TestLoadWalkingActorsPreservesOriginalObjectID(t *testing.T) {
 	mgr := NewPhaserActorManager(wh)
 	wh.ActorManager = mgr
 
-	if err := mgr.Load(); err != nil {
+	if err := mgr.Load(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 

@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"database/sql"
 	"testing"
 
@@ -154,7 +155,7 @@ func TestTrainerEncounterLoadMatchesHeaderByNormalizedMapName(t *testing.T) {
 		ActorManager:  &PhaserActorManager{overworldMapIds: map[int]bool{}},
 	}
 	mgr := NewTrainerEncounterManager(wh)
-	if err := mgr.Load(); err != nil {
+	if err := mgr.Load(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 

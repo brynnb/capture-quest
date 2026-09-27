@@ -96,7 +96,7 @@ func NewTrainerEncounterManager(wh *WorldHandler) *TrainerEncounterManager {
 // Load queries the DB for all trainer NPCs that have a sight range and preloads them.
 // Must be called after ActorManager.Load() so ActorRegistry is populated.
 // This is startup-only; publish the complete immutable index before timers start.
-func (m *TrainerEncounterManager) Load() error {
+func (m *TrainerEncounterManager) Load(ctx context.Context) error {
 	if m.wh == nil || m.wh.database == nil {
 		return fmt.Errorf("trainer preload requires a database")
 	}
@@ -104,7 +104,7 @@ func (m *TrainerEncounterManager) Load() error {
 	trainers := make([]trainerSightData, 0)
 	byMap := make(map[int][]*trainerSightData)
 
-	rows, err := myDB.Query(`
+	rows, err := myDB.QueryContext(ctx, `
 		SELECT
 			po.id,
 			po.map_id,
@@ -214,6 +214,9 @@ func (m *TrainerEncounterManager) Load() error {
 		}
 	}
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	m.trainers, m.byMap = trainers, byMap
 	log.Printf("[TrainerEncounter] Loaded %d trainers with sight range across %d maps", len(trainers), len(byMap))
 	return nil

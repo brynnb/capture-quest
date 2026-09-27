@@ -1,11 +1,12 @@
 package world
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"sync"
 
-	"capturequest/internal/pokebattle"
+	"context"
 )
 
 // MapScript represents a single script entry for a map at a given script index.
@@ -22,7 +23,7 @@ type MapScript struct {
 // per-map script lookup. In the MMO model, the "current script index"
 // is per-player (derived from event flags), not global.
 type MapScriptManager struct {
-	db pokebattle.DBTX
+	db *sql.DB
 	mu sync.RWMutex
 	// scripts indexed by mapID -> scriptIndex -> MapScript
 	byMap map[int]map[int]*MapScript
@@ -31,7 +32,7 @@ type MapScriptManager struct {
 }
 
 // NewMapScriptManager creates a new MapScriptManager.
-func NewMapScriptManager(db pokebattle.DBTX) *MapScriptManager {
+func NewMapScriptManager(db *sql.DB) *MapScriptManager {
 	return &MapScriptManager{
 		db:      db,
 		byMap:   make(map[int]map[int]*MapScript),
@@ -40,8 +41,8 @@ func NewMapScriptManager(db pokebattle.DBTX) *MapScriptManager {
 }
 
 // Load reads all map scripts from the database into memory.
-func (m *MapScriptManager) Load() error {
-	rows, err := m.db.Query(
+func (m *MapScriptManager) Load(ctx context.Context) error {
+	rows, err := m.db.QueryContext(ctx,
 		`SELECT id, map_id, script_index, script_label, script_constant, raw_asm
 		 FROM phaser_map_scripts WHERE map_id IS NOT NULL
 		 ORDER BY map_id, script_index`)
@@ -68,6 +69,9 @@ func (m *MapScriptManager) Load() error {
 
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("read map_scripts rows: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	m.mu.Lock()
 	m.byMap = byMap

@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"strings"
 	"sync"
 	"testing"
@@ -17,7 +18,7 @@ func TestActorPreloadFailurePreservesActorsAndCollisionRetry(t *testing.T) {
  INSERT INTO phaser_objects(id,map_id,x,y,object_type,sprite_name) VALUES(101,40,2,3,'npc','SPRITE_TEST');
  INSERT INTO phaser_tiles(map_id,x,y,tile_image_id,collision_type,raw_foot_tile_id) VALUES(40,2,3,1,1,7);`)
 	database.SetMaxOpenConns(1)
-	if err := m.Load(); err != nil {
+	if err := m.Load(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	actorID := wh.ActorRegistry.GetPhaserID(ActorTypeNPC, 101)
@@ -26,7 +27,7 @@ func TestActorPreloadFailurePreservesActorsAndCollisionRetry(t *testing.T) {
 		t.Fatal("actor family not loaded")
 	}
 	testdb.Exec(t, database, `ALTER TABLE phaser_tiles RENAME TO unavailable_tiles`)
-	if err := m.Load(); err == nil || !strings.Contains(err.Error(), "map 40 collision") {
+	if err := m.Load(context.Background()); err == nil || !strings.Contains(err.Error(), "map 40 collision") {
 		t.Fatalf("collision failure not propagated: %v", err)
 	}
 	if m.walkingActors[actorID] != previous || m.collisionMap[40]["2,3"] != 1 {

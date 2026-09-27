@@ -1,6 +1,7 @@
 package world
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -8,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"capturequest/internal/pokebattle"
+	"context"
 )
 
 // CutsceneScript represents a cutscene loaded from the database.
@@ -80,7 +81,7 @@ func validateCutsceneActionTypes(actions []CutsceneAction, path string) error {
 // lookups by map + trigger type. Cutscene eligibility is checked per-player
 // using their event flags.
 type CutsceneManager struct {
-	db pokebattle.DBTX
+	db *sql.DB
 	mu sync.RWMutex
 	// byMap indexes cutscenes by map_name -> list of scripts
 	byMap map[string][]*CutsceneScript
@@ -93,7 +94,7 @@ type CutsceneManager struct {
 }
 
 // NewCutsceneManager creates a new CutsceneManager.
-func NewCutsceneManager(db pokebattle.DBTX) *CutsceneManager {
+func NewCutsceneManager(db *sql.DB) *CutsceneManager {
 	return &CutsceneManager{
 		db:             db,
 		byMap:          make(map[string][]*CutsceneScript),
@@ -104,11 +105,11 @@ func NewCutsceneManager(db pokebattle.DBTX) *CutsceneManager {
 }
 
 // Load reads all cutscene scripts from the database into memory.
-func (m *CutsceneManager) Load() error {
+func (m *CutsceneManager) Load(ctx context.Context) error {
 	if m.db == nil {
 		return fmt.Errorf("cutscene preload requires a database")
 	}
-	mapRows, err := m.db.Query(`SELECT id, name FROM phaser_maps`)
+	mapRows, err := m.db.QueryContext(ctx, `SELECT id, name FROM phaser_maps`)
 	if err != nil {
 		return fmt.Errorf("load cutscene map names: %w", err)
 	}
@@ -127,7 +128,7 @@ func (m *CutsceneManager) Load() error {
 	}
 	// Runtime requires the current canonical schema. Never retry a weaker
 	// query that drops prerequisite fields after a database error.
-	rows, err := m.db.Query(`
+	rows, err := m.db.QueryContext(ctx, `
 		SELECT id, script_label, map_name, trigger_type, trigger_label,
 			requires_flag, requires_flag_absent, requires_flags, requires_flags_absent, requires_item_id, requires_item_absent_id, requires_pokedex_caught,
 			requires_money, requires_money_below, requires_coins, requires_coins_below, requires_player_facing, sets_flags, actions,
@@ -206,6 +207,9 @@ func (m *CutsceneManager) Load() error {
 
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("read cutscene rows: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	m.mu.Lock()
 	m.mapIDToName = idToName

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"os/signal"
@@ -17,6 +18,8 @@ import (
 var BuildTime = "unknown"
 
 func main() {
+	processCtx, stopSignals := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stopSignals()
 	log.Printf("=== CaptureQuest Server Starting ===")
 	log.Printf("Binary built at: %s", BuildTime)
 
@@ -42,9 +45,18 @@ func main() {
 		log.Fatalf("failed to sync scripted events: %v", err)
 	}
 
-	srv, err := server.NewServer(target.DSN, time.Duration(serverConfig.GracePeriod), serverConfig.Local)
+	srv, err := server.NewServer(processCtx, target.DSN, time.Duration(serverConfig.GracePeriod), serverConfig.Local)
 	if err != nil {
+		if processCtx.Err() != nil {
+			_ = db.GlobalWorldDB.DB.Close()
+			log.Println("Startup cancelled")
+			return
+		}
 		log.Fatalf("failed to create server: %v", err)
+	}
+	if processCtx.Err() != nil {
+		srv.StopServer()
+		return
 	}
 
 	// _, err = nav.GetNavigation()
@@ -58,11 +70,9 @@ func main() {
 		log.Fatalf("failed to start server: %v", err)
 	}
 
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	var serveErr error
 	select {
-	case <-sigChan:
+	case <-processCtx.Done():
 		log.Println("Received shutdown signal, shutting down...")
 	case serveErr = <-srv.Errors():
 		log.Printf("Listener failed, shutting down: %v", serveErr)
