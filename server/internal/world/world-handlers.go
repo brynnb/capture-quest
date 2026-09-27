@@ -211,15 +211,38 @@ func sendCharInfo(ses *session.Session, accountId int64) {
 	ses.SendStreamJSON(charInfo, opcodes.SendCharInfo)
 }
 
-func sendCharacterStateFromDB(ses *session.Session, wh *WorldHandler, characterName string) {
+func sendCharacterStateFromDB(ses *session.Session, wh *WorldHandler, characterName string) (err error) {
 	if ses.HasValidClient() {
-		wh.cleanupCharacterSession(ses)
+		return fmt.Errorf("session already has a character")
 	}
 	charData, err := db_character.GetCharacterByName(characterName)
 	if err != nil {
-		log.Printf("sendCharacterState: failed to get character %q: %v", characterName, err)
-		return
+		return err
 	}
+	if int64(charData.AccountID) != ses.AccountID {
+		return fmt.Errorf("character does not belong to authenticated account")
+	}
+	charID := int64(charData.ID)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err = wh.characterOwners.acquire(ctx, charID, ses, wh.cleanupCharacterSession); err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			wh.characterOwners.release(charID, ses)
+		}
+	}()
+	// The previous owner may have flushed position/playtime during the handoff.
+	// Loading before that barrier would resurrect stale character state.
+	charData, err = db_character.GetCharacterByName(characterName)
+	if err != nil {
+		return err
+	}
+	if int64(charData.ID) != charID || int64(charData.AccountID) != ses.AccountID {
+		return fmt.Errorf("character changed during connection handoff")
+	}
+	ses.CharacterName = characterName
 
 	if isInvalidZeroPlayerPosition(int(charData.X), int(charData.Y)) {
 		log.Printf("[WORLD] Recovering invalid saved position for character %s (%d) to map %d (%d,%d)",
@@ -265,12 +288,13 @@ func sendCharacterStateFromDB(ses *session.Session, wh *WorldHandler, characterN
 		sendUpdatedCharacterState(ses)
 	})
 	if err != nil {
-		log.Printf("sendCharacterState: failed to create client for character %q: %v", characterName, err)
-		return
+		return err
 	}
 	ses.StartPlaytime(playStartedAt, charData.TimePlayed, int32(charData.ID))
 
+	ses.SendStreamJSON(SimpleSuccessResponse{Value: 1}, opcodes.PostEnterWorld)
 	buildAndSendCharacterState(ses)
+	return nil
 }
 
 func sendUpdatedCharacterState(ses *session.Session) {

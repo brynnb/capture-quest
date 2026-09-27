@@ -34,15 +34,11 @@ func HandleEnterWorld(ses *session.Session, payload []byte, wh *WorldHandler) bo
 		log.Printf("[WORLD] Session %d: Tried to log in unsuccessfully from account %d with character %q: %v", ses.SessionID, ses.AccountID, name, err)
 		return false
 	}
-	ses.CharacterName = name
-	log.Printf("[WORLD] Session %d: Character name set to %q", ses.SessionID, ses.CharacterName)
-
-	// Send PostEnterWorld success
-	ses.SendStreamJSON(SimpleSuccessResponse{Value: 1}, opcodes.PostEnterWorld)
-
-	// For CaptureQuest, send character state immediately.
-	// This is the initial load, so we create a fresh client from the database
-	sendCharacterStateFromDB(ses, wh, name)
+	if err := sendCharacterStateFromDB(ses, wh, name); err != nil {
+		log.Printf("[WORLD] Session %d: character entry failed: %v", ses.SessionID, err)
+		ses.SendStreamJSON(SimpleSuccessResponse{Value: 0}, opcodes.PostEnterWorld)
+		return false
+	}
 
 	// Load event flags for this character
 	if ses.HasValidClient() {

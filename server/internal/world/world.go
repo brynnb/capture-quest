@@ -23,6 +23,7 @@ type WorldHandler struct {
 	Economy          *economy.Service `json:"-"`
 	sessionManager   *session.SessionManager
 	globalRegistry   *HandlerRegistry
+	characterOwners  characterOwners
 	ActorManager     *PhaserActorManager       `json:"actorManager,omitempty"`
 	PlayerMovement   *PlayerMovementManager    `json:"playerMovement,omitempty"`
 	ActorRegistry    *ActorRegistry            `json:"actorRegistry,omitempty"`
@@ -107,6 +108,19 @@ func (wh *WorldHandler) cleanupCharacterSession(ses *session.Session) {
 	}
 	char := ses.Client.CharData()
 	charID := int(char.ID)
+	// A delayed disconnect may retire its local client, but must never evict
+	// state belonging to a replacement connection.
+	defer func() {
+		ses.StopPlaytime()
+		ses.Client.Shutdown()
+		ses.Client = nil
+		ses.CharacterName = ""
+		ses.MapID = -1
+		wh.characterOwners.release(int64(charID), ses)
+	}()
+	if !wh.characterOwners.owns(int64(charID), ses) {
+		return
+	}
 	log.Printf("[WORLD] Flushing position for character %d (%s) from session %d", charID, char.Name, ses.SessionID)
 	wh.PlayerMovement.FlushPlayerPosition(charID)
 	wh.PlayerMovement.UnregisterPlayer(charID)
@@ -115,18 +129,11 @@ func (wh *WorldHandler) cleanupCharacterSession(ses *session.Session) {
 	wh.EventFlags.UnloadFlags(int64(charID))
 	saveBattleOnDisconnect(int64(charID))
 	wh.persistSessionPlaytime(ses, time.Now())
-	ses.StopPlaytime()
-
-	// Stop the client's regen goroutine to prevent leaks.
-	ses.Client.Shutdown()
 
 	// Notify other Phaser clients to remove this actor.
 	phaserID := wh.ActorRegistry.GetPhaserID(ActorTypePlayer, charID)
 	log.Printf("[WORLD] Despawning Phaser actor %d for character %s", phaserID, char.Name)
 	wh.ActorManager.broadcastActorDespawn(phaserID, ses.MapID)
-	ses.Client = nil
-	ses.CharacterName = ""
-	ses.MapID = -1
 }
 
 func (wh *WorldHandler) persistSessionPlaytime(ses *session.Session, now time.Time) {

@@ -81,6 +81,14 @@ WebTransport accepts one reliable control stream. Heartbeats can use datagrams;
 session expiry bounds idle connections and fixed deadlines bound partial frames
 and writes. Removing a session closes only that session's transport.
 
+The dispatcher serializes commands per session, with at most 32 running/waiting
+callbacks and a five-second admission deadline. Character entry additionally
+claims the world's character-owner registry. Replacement closes and drains the
+old session, completes its cleanup, then reloads the character. Cleanup evicts
+shared state only for the matching owner; stale disconnects cannot remove a new
+owner. Concurrent handoffs fail entry and can be retried. World timer writers and
+broadcast readers still require coordination with this ownership boundary.
+
 We follow a **"Model-First"** architecture. Data is categorized into distinct streams to avoid massive "god-object" updates and to minimize bandwidth.
 
 ### Durable State Ownership

@@ -55,9 +55,23 @@ func (s *Session) ExecuteCommand(ctx context.Context, command func()) error {
 // first: queued callbacks then fail their closed check without touching state.
 // This is a lifecycle barrier, not a command; it must run outside a callback.
 func (s *Session) DrainCommands(cleanup func()) {
+	_ = s.DrainCommandsContext(context.Background(), cleanup)
+}
+
+// DrainCommandsContext bounds admission to the lifecycle barrier. A timeout
+// leaves cleanup to the normal disconnect path; it never runs beside a command.
+func (s *Session) DrainCommandsContext(ctx context.Context, cleanup func()) error {
 	g := &s.commands
 	g.init()
-	<-g.token
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-g.token:
+	}
 	defer func() { g.token <- struct{}{} }()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	cleanup()
+	return nil
 }

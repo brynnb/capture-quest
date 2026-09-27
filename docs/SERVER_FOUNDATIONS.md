@@ -234,6 +234,30 @@ small verified changes. No production deployment or push is part of this goal.
   or bounded shutdown of every running handler. Those are the next required
   ownership/lifecycle changes; the goal remains active.
 
+Character connection ownership now has a single registry per world. Authenticated
+entry reserves the character, closes the old connection, waits for its running
+command and cleanup, and reloads database state before initializing the new client.
+Only the current owner can flush/evict shared character state. A delayed old
+disconnect retires only its local client. Concurrent handoffs fail entry rather
+than creating a queue of competing logins; the client can retry. Waiting for the
+old command is bounded to five seconds, but the cleanup callback and legacy
+database reads still need the broader operation/lifecycle deadline work.
+
+Entry checks account ownership before handoff and again on the reloaded record.
+`PostEnterWorld` success now follows client initialization; failed entry returns
+`value: 0`. The ownership map removes inactive records and preserves the closed
+old owner when handoff admission times out, allowing normal disconnect cleanup.
+This boundary does not yet serialize world timers or protect every session field
+read by broadcasts. Those remain required work, as do startup/shutdown and the
+wire-contract migration.
+
+Validation: race-enabled session, world and server suites passed against disposable
+PostgreSQL. The real dispatcher entry test holds an old command open, commits its
+position change, and verifies the replacement reloads that value after cleanup.
+Focused tests cover competing handoffs, cancellation, late cleanup and registry
+retirement. These are headless boundary checks; live movement timers, browser
+reconnect presentation and production behavior have not been verified here.
+
 ## Reproducible PostgreSQL tests
 
 With `initdb`, `pg_ctl`, and Go available, run:
