@@ -258,6 +258,23 @@ Focused tests cover competing handoffs, cancellation, late cleanup and registry
 retirement. These are headless boundary checks; live movement timers, browser
 reconnect presentation and production behavior have not been verified here.
 
+Movement ownership checkpoint: the timer snapshots candidate registrations under
+the movement lock, releases that lock, then tries each session's command gate.
+Busy sessions wait until a later tick without queued timer goroutines. The gate
+remains held across path advancement, persistence, broadcasts, encounters,
+daycare/Safari steps, scripted triggers and warps. Ownership and registration
+identity checks reject stale timer candidates. Forced warp mutations also take
+the movement lock used by readers. The step logic was mechanically extracted
+into advancement and effect helpers without changing its gameplay ordering.
+The final race-enabled session/world suites passed against disposable PostgreSQL,
+including busy-owner deferral, eventual position publication, stale registration
+rejection, and refusing ticks after ownership release.
+
+This does not yet remove raw session reads from cross-player broadcasts, bound
+the duration of every executing callback, or drain background tasks at shutdown.
+Those remain required work. Movement tests are headless; no rendered movement
+claim or deployment is implied.
+
 ## Reproducible PostgreSQL tests
 
 With `initdb`, `pg_ctl`, and Go available, run:

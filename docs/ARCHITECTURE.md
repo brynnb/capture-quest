@@ -86,8 +86,11 @@ callbacks and a five-second admission deadline. Character entry additionally
 claims the world's character-owner registry. Replacement closes and drains the
 old session, completes its cleanup, then reloads the character. Cleanup evicts
 shared state only for the matching owner; stale disconnects cannot remove a new
-owner. Concurrent handoffs fail entry and can be retried. World timer writers and
-broadcast readers still require coordination with this ownership boundary.
+owner. Concurrent handoffs fail entry and can be retried. The movement timer
+enters this same gate for each player's path advancement, publication and step
+effects. It skips busy owners until the next tick and rejects replaced movement
+registrations. Other timer writers and broadcast readers still require auditing
+and coordination with this ownership boundary.
 
 We follow a **"Model-First"** architecture. Data is categorized into distinct streams to avoid massive "god-object" updates and to minimize bandwidth.
 

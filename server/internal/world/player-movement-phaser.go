@@ -423,246 +423,287 @@ func (m *PlayerMovementManager) GetDirection(charID int) (string, bool) {
 
 // processTick handles one tick of movement for all players
 func (m *PlayerMovementManager) processTick() {
-	m.mu.Lock()
-	now := time.Now()
-	updates := make([]playerMovementStep, 0)
-
-	for _, state := range m.players {
-		if len(state.Path) == 0 {
+	if m.wh == nil || m.wh.sessionManager == nil {
+		return
+	}
+	type candidate struct {
+		characterID, sessionID int
+		state                  *PlayerMovementState
+	}
+	m.mu.RLock()
+	candidates := make([]candidate, 0, len(m.players))
+	for id, state := range m.players {
+		if len(state.Path) != 0 {
+			candidates = append(candidates, candidate{id, state.SessionID, state})
+		}
+	}
+	m.mu.RUnlock()
+	for _, c := range candidates {
+		ses, ok := m.wh.sessionManager.GetSession(c.sessionID)
+		if !ok {
 			continue
 		}
-
-		// Check if enough time has passed for next move
-		if now.Sub(state.LastMoveTime) < state.MoveSpeed {
-			continue
-		}
-
-		// Pop next tile from path
-		nextTile := state.Path[0]
-		var efm *EventFlagManager
-		if m.wh != nil {
-			efm = m.wh.EventFlags
-		}
-		if m.actorManager != nil && m.actorManager.IsNPCBlockingTileForCharacter(
-			int64(state.CharacterID),
-			state.MapID,
-			nextTile.X,
-			nextTile.Y,
-			efm,
-		) {
-			log.Printf("[PlayerMovement] Stopping player %d before occupied NPC tile (%d,%d) on map %d",
-				state.CharacterID, nextTile.X, nextTile.Y, state.MapID)
-			state.Path = nil
-			updates = append(updates, playerMovementStep{state: state})
-			continue
-		}
-		state.Path = state.Path[1:]
-
-		// Calculate direction
-		if nextTile.X > state.CurrentX {
-			state.Direction = "RIGHT"
-		} else if nextTile.X < state.CurrentX {
-			state.Direction = "LEFT"
-		} else if nextTile.Y > state.CurrentY {
-			state.Direction = "DOWN"
-		} else if nextTile.Y < state.CurrentY {
-			state.Direction = "UP"
-		}
-
-		// Update position
-		state.CurrentX = nextTile.X
-		state.CurrentY = nextTile.Y
-		state.LastMoveTime = now
-		m.applyBicycleMapRules(state)
-		if state.IsSurfing && m.actorManager != nil {
-			if collisionType, exists := m.actorManager.CollisionTypeAt(state.MapID, state.CurrentX, state.CurrentY); exists && collisionType != collisionWater {
-				state.IsSurfing = false
+		// Never wait for a session gate while holding the movement lock. Packet
+		// handlers and disconnect cleanup take those locks in the reverse order.
+		_ = ses.TryExecuteCommand(func() {
+			if !ses.HasValidClient() || !m.wh.characterOwners.owns(int64(c.characterID), ses) {
+				return
 			}
-		}
-
-		// Decide if we should save to DB this tick
-		// 1. We just finished the path
-		// 2. OR it's been more than 5 seconds since last save
-		isFinished := len(state.Path) == 0
-		updates = append(updates, playerMovementStep{
-			state:             state,
-			isPathDestination: isFinished,
-			movementSeq:       nextTile.ClientSeq,
+			m.processCharacterTick(c.characterID, c.state)
 		})
-		shouldSave := isFinished || now.Sub(state.LastSaveTime) >= 5*time.Second
-
-		if shouldSave {
-			m.savePosition(state)
-			state.LastSaveTime = now
-		}
 	}
+}
+
+// Called only within the owning session's command gate. The pointer check rejects
+// a movement registration replaced after the timer collected its candidates.
+func (m *PlayerMovementManager) processCharacterTick(characterID int, expected *PlayerMovementState) {
+	m.mu.Lock()
+	state := m.players[characterID]
+	if state == nil || state != expected {
+		m.mu.Unlock()
+		return
+	}
+	update, moved := m.advanceCharacterTickLocked(state, time.Now())
 	m.mu.Unlock()
+	if !moved {
+		return
+	}
+	m.broadcastPosition(update.state, update.movementSeq)
+	m.applyMovementStepEffects(update)
+}
 
-	// Broadcast position updates to clients (Every tick for smooth animation)
-	for _, update := range updates {
-		m.broadcastPosition(update.state, update.movementSeq)
+// advanceCharacterTickLocked requires the movement lock and the session gate.
+func (m *PlayerMovementManager) advanceCharacterTickLocked(state *PlayerMovementState, now time.Time) (playerMovementStep, bool) {
+	if len(state.Path) == 0 {
+		return playerMovementStep{}, false
 	}
 
-	// Check trainer sight ranges for each player that moved
-	for _, update := range updates {
-		state := update.state
-		ses, ok := m.wh.sessionManager.GetSession(state.SessionID)
-		if !ok || !ses.HasValidClient() {
-			continue
-		}
-		charID := int64(state.CharacterID)
-		if m.wh.TrainerEncounter.CheckPlayerPosition(charID, state.CurrentX, state.CurrentY, state.MapID, ses) {
-			// Trainer spotted the player. The server keeps the player in place
-			// while the client locally animates the trainer approach.
-			continue
-		}
+	// Check if enough time has passed for next move
+	if now.Sub(state.LastMoveTime) < state.MoveSpeed {
+		return playerMovementStep{}, false
+	}
 
-		TickDayCareStep(charID)
+	// Pop next tile from path
+	nextTile := state.Path[0]
+	var efm *EventFlagManager
+	if m.wh != nil {
+		efm = m.wh.EventFlags
+	}
+	if m.actorManager != nil && m.actorManager.IsNPCBlockingTileForCharacter(
+		int64(state.CharacterID),
+		state.MapID,
+		nextTile.X,
+		nextTile.Y,
+		efm,
+	) {
+		log.Printf("[PlayerMovement] Stopping player %d before occupied NPC tile (%d,%d) on map %d",
+			state.CharacterID, nextTile.X, nextTile.Y, state.MapID)
+		state.Path = nil
+		return playerMovementStep{state: state}, true
+	}
+	state.Path = state.Path[1:]
 
-		// Safari Zone step check (Phase 11.3) — must come before normal wild encounters
-		if m.wh.Safari != nil && IsInSafariZone(state.MapID) {
-			if CheckSafariStep(charID, state.CurrentX, state.CurrentY, state.MapID, ses, m.wh) {
-				// Safari encounter triggered or steps expired — stop movement
+	// Calculate direction
+	if nextTile.X > state.CurrentX {
+		state.Direction = "RIGHT"
+	} else if nextTile.X < state.CurrentX {
+		state.Direction = "LEFT"
+	} else if nextTile.Y > state.CurrentY {
+		state.Direction = "DOWN"
+	} else if nextTile.Y < state.CurrentY {
+		state.Direction = "UP"
+	}
+
+	// Update position
+	state.CurrentX = nextTile.X
+	state.CurrentY = nextTile.Y
+	state.LastMoveTime = now
+	m.applyBicycleMapRules(state)
+	if state.IsSurfing && m.actorManager != nil {
+		if collisionType, exists := m.actorManager.CollisionTypeAt(state.MapID, state.CurrentX, state.CurrentY); exists && collisionType != collisionWater {
+			state.IsSurfing = false
+		}
+	}
+
+	// Decide if we should save to DB this tick
+	// 1. We just finished the path
+	// 2. OR it's been more than 5 seconds since last save
+	isFinished := len(state.Path) == 0
+	update := playerMovementStep{
+		state:             state,
+		isPathDestination: isFinished,
+		movementSeq:       nextTile.ClientSeq,
+	}
+	shouldSave := isFinished || now.Sub(state.LastSaveTime) >= 5*time.Second
+
+	if shouldSave {
+		m.savePosition(state)
+		state.LastSaveTime = now
+	}
+	return update, true
+}
+
+// The session gate remains held throughout encounter, script and warp effects.
+func (m *PlayerMovementManager) applyMovementStepEffects(update playerMovementStep) {
+	state := update.state
+	ses, ok := m.wh.sessionManager.GetSession(state.SessionID)
+	if !ok || !ses.HasValidClient() {
+		return
+	}
+	charID := int64(state.CharacterID)
+	if m.wh.TrainerEncounter.CheckPlayerPosition(charID, state.CurrentX, state.CurrentY, state.MapID, ses) {
+		// Trainer spotted the player. The server keeps the player in place
+		// while the client locally animates the trainer approach.
+		return
+	}
+
+	TickDayCareStep(charID)
+
+	// Safari Zone step check (Phase 11.3) — must come before normal wild encounters
+	if m.wh.Safari != nil && IsInSafariZone(state.MapID) {
+		if CheckSafariStep(charID, state.CurrentX, state.CurrentY, state.MapID, ses, m.wh) {
+			// Safari encounter triggered or steps expired — stop movement
+			m.mu.Lock()
+			if ps, ok := m.players[state.CharacterID]; ok {
+				ps.Path = nil
+			}
+			m.mu.Unlock()
+			return
+		}
+		// In safari zone, skip normal wild encounters
+		return
+	}
+
+	// Coordinate-trigger cutscenes get first chance after explicit Safari/trainer
+	// movement handling. Some source scripts, like Pokemon Tower 5F's purified
+	// zone, suppress encounters before displaying their cutscene.
+	if m.tryTriggerCoordinateCutscene(state, charID, ses) {
+		return
+	}
+
+	// Check for wild encounters on each step (Phase 5.1)
+	if m.wh.WildEncounter != nil && !m.isWildEncounterSuppressed(state, charID) {
+		if m.wh.WildEncounter.CheckPlayerStep(charID, state.CurrentX, state.CurrentY, state.MapID, ses) {
+			// Wild encounter triggered — stop the player's path
+			m.mu.Lock()
+			if ps, ok := m.players[state.CharacterID]; ok {
+				ps.Path = nil // Clear remaining path
+			}
+			m.mu.Unlock()
+			return
+		}
+	}
+
+	// Check spin/arrow tiles — force the player to slide along a path
+	if m.wh.SpinTiles != nil {
+		mapName := ""
+		if m.wh.Cutscenes != nil {
+			mapName = m.wh.Cutscenes.MapNameForID(state.MapID)
+		}
+		if mapName != "" {
+			if st := m.wh.SpinTiles.CheckTile(mapName, state.CurrentX, state.CurrentY); st != nil {
+				logutil.Debugf("[PlayerMovement] Spin tile at (%d,%d) map %s, forcing movement",
+					state.CurrentX, state.CurrentY, mapName)
+
+				// Expand the compact movements into individual steps and prepend to path
+				expanded := ExpandMovements(st.Movements)
+				spinPath := make([]PathNode, 0, len(expanded))
+				x, y := state.CurrentX, state.CurrentY
+				for _, dir := range expanded {
+					switch dir {
+					case "UP":
+						y--
+					case "DOWN":
+						y++
+					case "LEFT":
+						x--
+					case "RIGHT":
+						x++
+					}
+					spinPath = append(spinPath, PathNode{X: x, Y: y})
+				}
+
+				// Replace the current path with the spin path
 				m.mu.Lock()
 				if ps, ok := m.players[state.CharacterID]; ok {
-					ps.Path = nil
+					ps.Path = spinPath
 				}
 				m.mu.Unlock()
-				continue
-			}
-			// In safari zone, skip normal wild encounters
-			continue
-		}
-
-		// Coordinate-trigger cutscenes get first chance after explicit Safari/trainer
-		// movement handling. Some source scripts, like Pokemon Tower 5F's purified
-		// zone, suppress encounters before displaying their cutscene.
-		if m.tryTriggerCoordinateCutscene(state, charID, ses) {
-			continue
-		}
-
-		// Check for wild encounters on each step (Phase 5.1)
-		if m.wh.WildEncounter != nil && !m.isWildEncounterSuppressed(state, charID) {
-			if m.wh.WildEncounter.CheckPlayerStep(charID, state.CurrentX, state.CurrentY, state.MapID, ses) {
-				// Wild encounter triggered — stop the player's path
-				m.mu.Lock()
-				if ps, ok := m.players[state.CharacterID]; ok {
-					ps.Path = nil // Clear remaining path
-				}
-				m.mu.Unlock()
-				continue
 			}
 		}
+	}
 
-		// Check spin/arrow tiles — force the player to slide along a path
-		if m.wh.SpinTiles != nil {
-			mapName := ""
-			if m.wh.Cutscenes != nil {
-				mapName = m.wh.Cutscenes.MapNameForID(state.MapID)
+	// Check Seafoam Islands currents — force the player along source movement paths.
+	if m.wh.EventFlags != nil && m.wh.Cutscenes != nil {
+		mapName := m.wh.Cutscenes.MapNameForID(state.MapID)
+		if current, ok := SeafoamCurrentAt(charID, mapName, state.CurrentX, state.CurrentY, m.wh.EventFlags); ok {
+			logutil.Debugf("[PlayerMovement] Seafoam current %s at (%d,%d), forcing movement",
+				current.Label, state.CurrentX, state.CurrentY)
+			currentPath := SeafoamCurrentPath(state.CurrentX, state.CurrentY, current.Movements)
+			m.mu.Lock()
+			if ps, ok := m.players[state.CharacterID]; ok {
+				ps.Path = currentPath
 			}
-			if mapName != "" {
-				if st := m.wh.SpinTiles.CheckTile(mapName, state.CurrentX, state.CurrentY); st != nil {
-					logutil.Debugf("[PlayerMovement] Spin tile at (%d,%d) map %s, forcing movement",
-						state.CurrentX, state.CurrentY, mapName)
-
-					// Expand the compact movements into individual steps and prepend to path
-					expanded := ExpandMovements(st.Movements)
-					spinPath := make([]PathNode, 0, len(expanded))
-					x, y := state.CurrentX, state.CurrentY
-					for _, dir := range expanded {
-						switch dir {
-						case "UP":
-							y--
-						case "DOWN":
-							y++
-						case "LEFT":
-							x--
-						case "RIGHT":
-							x++
-						}
-						spinPath = append(spinPath, PathNode{X: x, Y: y})
-					}
-
-					// Replace the current path with the spin path
-					m.mu.Lock()
-					if ps, ok := m.players[state.CharacterID]; ok {
-						ps.Path = spinPath
-					}
-					m.mu.Unlock()
-				}
-			}
+			m.mu.Unlock()
+			return
 		}
+	}
 
-		// Check Seafoam Islands currents — force the player along source movement paths.
-		if m.wh.EventFlags != nil && m.wh.Cutscenes != nil {
-			mapName := m.wh.Cutscenes.MapNameForID(state.MapID)
-			if current, ok := SeafoamCurrentAt(charID, mapName, state.CurrentX, state.CurrentY, m.wh.EventFlags); ok {
-				logutil.Debugf("[PlayerMovement] Seafoam current %s at (%d,%d), forcing movement",
-					current.Label, state.CurrentX, state.CurrentY)
-				currentPath := SeafoamCurrentPath(state.CurrentX, state.CurrentY, current.Movements)
-				m.mu.Lock()
-				if ps, ok := m.players[state.CharacterID]; ok {
-					ps.Path = currentPath
-				}
-				m.mu.Unlock()
-				continue
+	// Check warp pad tiles only when this step is the requested destination.
+	// Keyboard moves are single-step paths, so deliberate step-on warps still
+	// fire, while long click paths can cross exit tiles without hijacking.
+	if update.isPathDestination && m.wh.WarpTiles != nil {
+		if wt := m.wh.WarpTiles.CheckTile(state.MapID, state.CurrentX, state.CurrentY); wt != nil {
+			logutil.Debugf("[PlayerMovement] Warp tile at (%d,%d) map %d -> map %d (%d,%d)",
+				state.CurrentX, state.CurrentY, state.MapID,
+				wt.DestMapID, wt.DestX, wt.DestY)
+
+			ses, ok := m.wh.sessionManager.GetSession(state.SessionID)
+			if ok && m.isSafariEntryWarpBlocked(int64(state.CharacterID), state.MapID, wt.DestMapID, ses) {
+				m.StopMovement(state.CharacterID)
+				return
 			}
-		}
 
-		// Check warp pad tiles only when this step is the requested destination.
-		// Keyboard moves are single-step paths, so deliberate step-on warps still
-		// fire, while long click paths can cross exit tiles without hijacking.
-		if update.isPathDestination && m.wh.WarpTiles != nil {
-			if wt := m.wh.WarpTiles.CheckTile(state.MapID, state.CurrentX, state.CurrentY); wt != nil {
-				logutil.Debugf("[PlayerMovement] Warp tile at (%d,%d) map %d -> map %d (%d,%d)",
-					state.CurrentX, state.CurrentY, state.MapID,
-					wt.DestMapID, wt.DestX, wt.DestY)
+			endSafariSessionIfLeavingMap(int64(state.CharacterID), state.MapID, wt.DestMapID, m.wh)
 
-				ses, ok := m.wh.sessionManager.GetSession(state.SessionID)
-				if ok && m.isSafariEntryWarpBlocked(int64(state.CharacterID), state.MapID, wt.DestMapID, ses) {
-					state.Path = nil
-					continue
+			m.mu.Lock()
+			previousMapID := state.MapID
+			state.PreviousMapID = previousMapID
+
+			// Update the server-visible position for this forced warp tile.
+			state.CurrentX = wt.DestX
+			state.CurrentY = wt.DestY
+			state.MapID = wt.DestMapID
+			state.Path = nil
+			m.applyBicycleMapRules(state)
+			m.mu.Unlock()
+
+			// Send teleport notification to client
+			if ok && ses.HasValidClient() {
+				ses.PreviousMapID = previousMapID
+				ses.X = float32(wt.DestX)
+				ses.Y = float32(wt.DestY)
+				if m.wh.ActorManager.IsOverworld(wt.DestMapID) {
+					ses.MapID = UnifiedOverworldMapID
+				} else {
+					ses.MapID = wt.DestMapID
 				}
 
-				endSafariSessionIfLeavingMap(int64(state.CharacterID), state.MapID, wt.DestMapID, m.wh)
-
-				previousMapID := state.MapID
-				state.PreviousMapID = previousMapID
-
-				// Update the server-visible position for this forced warp tile.
-				state.CurrentX = wt.DestX
-				state.CurrentY = wt.DestY
-				state.MapID = wt.DestMapID
-				state.Path = nil
-				m.applyBicycleMapRules(state)
-
-				// Send teleport notification to client
-				if ok && ses.HasValidClient() {
-					ses.PreviousMapID = previousMapID
-					ses.X = float32(wt.DestX)
-					ses.Y = float32(wt.DestY)
-					if m.wh.ActorManager.IsOverworld(wt.DestMapID) {
-						ses.MapID = UnifiedOverworldMapID
-					} else {
-						ses.MapID = wt.DestMapID
-					}
-
-					if char := ses.Client.CharData(); char != nil {
-						char.X = float64(wt.DestX)
-						char.Y = float64(wt.DestY)
-						char.MapID = uint32(ses.MapID) // Use normalized ID (9999 for overworld)
-					}
-
-					broadcastPlayerVisibleMapChange(ses, m.wh, previousMapID)
-
-					ses.SendStreamJSON(map[string]interface{}{
-						"mapId": wt.DestMapID,
-						"x":     wt.DestX,
-						"y":     wt.DestY,
-					}, opcodes.WarpTileTeleportNotify)
-
-					m.savePosition(state)
+				if char := ses.Client.CharData(); char != nil {
+					char.X = float64(wt.DestX)
+					char.Y = float64(wt.DestY)
+					char.MapID = uint32(ses.MapID) // Use normalized ID (9999 for overworld)
 				}
+
+				broadcastPlayerVisibleMapChange(ses, m.wh, previousMapID)
+
+				ses.SendStreamJSON(map[string]interface{}{
+					"mapId": wt.DestMapID,
+					"x":     wt.DestX,
+					"y":     wt.DestY,
+				}, opcodes.WarpTileTeleportNotify)
+
+				m.savePosition(state)
 			}
 		}
 	}

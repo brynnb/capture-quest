@@ -9,6 +9,25 @@ import (
 	"time"
 )
 
+func TestPeriodicCommandSkipsBusyAndClosedSessions(t *testing.T) {
+	s := &Session{}
+	if err := s.ExecuteCommand(context.Background(), func() {
+		if err := s.TryExecuteCommand(func() { t.Error("busy callback executed") }); !errors.Is(err, ErrCommandBusy) {
+			t.Fatalf("busy=%v", err)
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	if err := s.TryExecuteCommand(func() { called = true }); err != nil || !called {
+		t.Fatalf("idle callback: %v", err)
+	}
+	s.Close()
+	if err := s.TryExecuteCommand(func() { t.Error("closed callback executed") }); !errors.Is(err, ErrSessionClosed) {
+		t.Fatalf("closed=%v", err)
+	}
+}
+
 func TestCommandsSerializeAndBoundPendingCallers(t *testing.T) {
 	s := &Session{}
 	entered, release := make(chan struct{}), make(chan struct{})
