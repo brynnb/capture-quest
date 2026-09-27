@@ -307,6 +307,23 @@ session removal/cleanup, background chat persistence and database-close ordering
 still require a coordinated drain. Running callbacks also retain their existing
 operation deadlines; this join does not introduce a global shutdown deadline.
 
+Session shutdown checkpoint: the manager seals admissions before the world closes
+connections, joins timers and drains every character command/cleanup. Cleanup
+registration is synchronized with removal so a disconnect that already removed
+its session from the manager cannot escape the shutdown wait. World shutdown is
+one-shot and repeated callers wait for the same drain. Both transports reject a
+failed admission and clean up a connection closed during transport registration.
+Chat persistence now runs within the owning command with its existing five-second
+query deadline, eliminating detached per-message database goroutines. This can
+add database latency to chat delivery, but makes persistence part of the command
+lifecycle rather than unbounded background work.
+
+PostgreSQL-backed race tests passed for active-character shutdown and a disconnect
+that already claimed cleanup, including final playtime persistence and ownership
+retirement. Full session/world/server suites passed. HTTP handlers/listener drain,
+startup admission/readiness and a server-wide shutdown deadline remain unfinished;
+the database-close boundary is not yet proven safe for non-session HTTP work.
+
 ## Reproducible PostgreSQL tests
 
 With `initdb`, `pg_ctl`, and Go available, run:

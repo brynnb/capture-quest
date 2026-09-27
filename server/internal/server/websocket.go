@@ -146,7 +146,15 @@ func (s *Server) makeWSHandler() http.HandlerFunc {
 		clientIP, _, _ := net.SplitHostPort(r.RemoteAddr)
 		wsc := &WSConn{conn: wsConn}
 		sessObj := s.sessionManager.CreateNextSession(messenger, clientIP, wsc)
+		if sessObj == nil {
+			_ = wsc.Close()
+			return
+		}
 		messenger.add(sessObj.SessionID, wsc)
+		if sessObj.IsClosed() {
+			_ = messenger.CloseSession(sessObj.SessionID)
+			return
+		}
 		log.Printf("[WS] New session %d", sessObj.SessionID)
 		initialFrame := make([]byte, 6)
 		binary.LittleEndian.PutUint32(initialFrame[0:4], 2)

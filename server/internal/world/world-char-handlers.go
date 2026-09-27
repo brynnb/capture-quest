@@ -262,8 +262,7 @@ func HandleSendChatMessage(ses *session.Session, payload []byte, wh *WorldHandle
 
 	log.Printf("[Chat] %s: %s", senderName, req.Text)
 
-	// Capture session values on the caller's execution path. The asynchronous
-	// writer uses only immutable values and the world's database dependency.
+	// Persist within this command so its lifecycle includes the database write.
 	wh.persistChatMessage(charID, senderName, req.Text, ses.MapID)
 
 	wh.broadcastGeneralChat(ChatMessageBroadcast{
@@ -277,17 +276,16 @@ func (wh *WorldHandler) persistChatMessage(characterID int, name, text string, m
 	if wh.database == nil {
 		return
 	}
-	database := wh.database
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if _, err := database.ExecContext(ctx,
-			"INSERT INTO chat_messages (character_id, character_name, message_type, text, map_id) VALUES ($1, $2, $3, $4, $5)",
-			characterID, name, generalChatMessageType, text, mapID,
-		); err != nil {
-			log.Printf("[Chat] failed to persist message: %v", err)
-		}
-	}()
+	// Keep persistence in the owning command so disconnect/shutdown drains it.
+	// Its query deadline bounds a slow database without detached goroutines.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := wh.database.ExecContext(ctx,
+		"INSERT INTO chat_messages (character_id, character_name, message_type, text, map_id) VALUES ($1, $2, $3, $4, $5)",
+		characterID, name, generalChatMessageType, text, mapID,
+	); err != nil {
+		log.Printf("[Chat] failed to persist message: %v", err)
+	}
 }
 
 func SendSystemMessage(ses *session.Session, text string) {

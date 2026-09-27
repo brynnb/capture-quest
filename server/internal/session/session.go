@@ -106,6 +106,7 @@ func elapsedWholeSeconds(start, now time.Time) uint32 {
 
 // SessionManager manages active sessions.
 type SessionManager struct {
+	sealed   bool
 	sessions map[int]*Session // sessionID -> Session
 	mu       sync.RWMutex
 	nextID   int
@@ -146,6 +147,9 @@ func NewSessionManager() *SessionManager {
 func (sm *SessionManager) CreateNextSession(messenger ClientMessenger, ip string, stream io.ReadWriteCloser) *Session {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
+	if sm.sealed {
+		return nil
+	}
 	sm.nextID++
 	return sm.createSession(messenger, sm.nextID, ip, stream)
 }
@@ -154,10 +158,20 @@ func (sm *SessionManager) CreateNextSession(messenger ClientMessenger, ip string
 func (sm *SessionManager) CreateSession(messenger ClientMessenger, sessionID int, ip string, stream io.ReadWriteCloser) *Session {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
+	if sm.sealed {
+		return nil
+	}
 	if sessionID > sm.nextID {
 		sm.nextID = sessionID
 	}
 	return sm.createSession(messenger, sessionID, ip, stream)
+}
+
+// Seal prevents new admissions before a shutdown snapshot is drained.
+func (sm *SessionManager) Seal() {
+	sm.mu.Lock()
+	sm.sealed = true
+	sm.mu.Unlock()
 }
 
 func (sm *SessionManager) createSession(messenger ClientMessenger, sessionID int, ip string, stream io.ReadWriteCloser) *Session {

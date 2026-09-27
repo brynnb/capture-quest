@@ -25,6 +25,9 @@ type WorldHandler struct {
 	globalRegistry   *HandlerRegistry
 	characterOwners  characterOwners
 	timeoutWorker    periodicWorker
+	shutdownOnce     sync.Once
+	cleanupMu        sync.Mutex
+	cleanupWG        sync.WaitGroup
 	ActorManager     *PhaserActorManager       `json:"actorManager,omitempty"`
 	PlayerMovement   *PlayerMovementManager    `json:"playerMovement,omitempty"`
 	ActorRegistry    *ActorRegistry            `json:"actorRegistry,omitempty"`
@@ -94,10 +97,18 @@ func (wh *WorldHandler) HandlePacket(ses *session.Session, data []byte) {
 
 // RemoveSession cleans up session data.
 func (wh *WorldHandler) RemoveSession(sessionID int) {
+	// Claims and registration are serialized so shutdown cannot miss cleanup
+	// already claimed by a transport callback before taking its own snapshot.
+	wh.cleanupMu.Lock()
 	ses, removed := wh.sessionManager.RemoveSession(sessionID)
+	if removed {
+		wh.cleanupWG.Add(1)
+	}
+	wh.cleanupMu.Unlock()
 	if !removed {
 		return
 	}
+	defer wh.cleanupWG.Done()
 	log.Printf("[WORLD] Removing session %d", sessionID)
 	ses.DrainCommands(func() { wh.cleanupCharacterSession(ses) })
 }
@@ -148,6 +159,12 @@ func (wh *WorldHandler) persistSessionPlaytime(ses *session.Session, now time.Ti
 
 // Shutdown flushes active playtime before the database connection closes.
 func (wh *WorldHandler) Shutdown() {
+	wh.shutdownOnce.Do(wh.shutdown)
+}
+
+func (wh *WorldHandler) shutdown() {
+	wh.sessionManager.Seal()
+	wh.sessionManager.ForEachSession(func(ses *session.Session) { ses.Close() })
 	wh.timeoutWorker.stop()
 	if wh.PlayerMovement != nil {
 		wh.PlayerMovement.Stop()
@@ -155,12 +172,11 @@ func (wh *WorldHandler) Shutdown() {
 	if wh.ActorManager != nil {
 		wh.ActorManager.Stop()
 	}
-	now := time.Now()
-	wh.sessionManager.ForEachSession(func(ses *session.Session) {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = ses.ExecuteCommand(ctx, func() { wh.persistSessionPlaytime(ses, now) })
-	})
+	wh.sessionManager.ForEachSession(func(ses *session.Session) { wh.RemoveSession(ses.SessionID) })
+	// The sealed manager is now empty. No later removal can register more work.
+	wh.cleanupMu.Lock()
+	wh.cleanupMu.Unlock()
+	wh.cleanupWG.Wait()
 }
 
 func (wh *WorldHandler) StartSessionTimeoutChecker() {

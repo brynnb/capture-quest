@@ -193,9 +193,17 @@ func (s *Server) makeCaptureQuestHandler() http.HandlerFunc {
 		}
 		clientIP, _, _ := net.SplitHostPort(r.RemoteAddr)
 		sessObj := s.sessionManager.CreateNextSession(s, clientIP, nil)
+		if sessObj == nil {
+			_ = sess.CloseWithError(0, "server shutting down")
+			return
+		}
 		s.sessionsMu.Lock()
 		s.sessions[sessObj.SessionID] = sess
 		s.sessionsMu.Unlock()
+		if sessObj.IsClosed() {
+			_ = s.CloseSession(sessObj.SessionID)
+			return
+		}
 		go s.acceptClientControlStream(sessObj, sess)
 	}
 }

@@ -61,6 +61,23 @@ func openTestWS(t *testing.T, url string) *websocket.Conn {
 	return conn
 }
 
+func TestWebSocketAdmissionAfterSessionSealClosesConnection(t *testing.T) {
+	srv, _, url := testWSServer(t)
+	srv.sessionManager.Seal()
+	conn, _, err := websocket.DefaultDialer.Dial(url, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, _, err := conn.ReadMessage(); err == nil {
+		t.Fatal("sealed server admitted connection")
+	} else if e, ok := err.(net.Error); ok && e.Timeout() {
+		t.Fatal("rejected connection was left open")
+	}
+	srv.sessionManager.ForEachSession(func(*session.Session) { t.Error("rejected session registered") })
+}
+
 func TestWebSocketFramesAndOversizeCleanup(t *testing.T) {
 	for _, outer := range []bool{false, true} {
 		t.Run(map[bool]string{false: "inner length", true: "outer message"}[outer], func(t *testing.T) {
