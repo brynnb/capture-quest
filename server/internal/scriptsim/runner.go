@@ -1638,7 +1638,9 @@ func resolveScript(s *Scenario, applied *AppliedFixture, cutscenes *world.Cutsce
 		return cs, nil
 	case "coord":
 		triggers := world.NewCoordinateTriggerManager(db.GlobalWorldDB.DB)
-		triggers.Load()
+		if err := triggers.Load(); err != nil {
+			return nil, fmt.Errorf("load coordinate triggers: %w", err)
+		}
 		x, y := s.Trigger.X, s.Trigger.Y
 		if x == 0 && y == 0 {
 			x, y = s.Fixture.X, s.Fixture.Y

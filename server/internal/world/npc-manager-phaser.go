@@ -64,12 +64,14 @@ func NewPhaserActorManager(wh *WorldHandler) *PhaserActorManager {
 }
 
 // Start begins the actor simulation
+func (m *PhaserActorManager) Load() {
+	m.loadOverworldMapIds()
+	m.loadWalkingActors()
+	log.Printf("[PhaserActorManager] Loaded simulation for %d actors", len(m.walkingActors))
+}
+
 func (m *PhaserActorManager) Start() {
-	m.worker.start(250*time.Millisecond, func() {
-		m.loadOverworldMapIds()
-		m.loadWalkingActors()
-		log.Printf("[PhaserActorManager] Loaded simulation for %d actors", len(m.walkingActors))
-	}, m.simulateMovement)
+	m.worker.start(250*time.Millisecond, nil, m.simulateMovement)
 }
 
 // Stop waits for the actor simulation and its current callback to finish.

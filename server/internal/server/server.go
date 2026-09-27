@@ -72,7 +72,10 @@ type Server struct {
 func NewServer(dsn string, gracePeriod time.Duration, debugMode bool) (*Server, error) {
 	sessionManager := session.NewSessionManager()
 	session.InitSessionManager(sessionManager)
-	worldHandler := world.NewWorldHandler(sessionManager)
+	worldHandler, err := world.NewWorldHandler(sessionManager)
+	if err != nil {
+		return nil, fmt.Errorf("initialize world: %w", err)
+	}
 	constructed := false
 	defer func() {
 		if !constructed {

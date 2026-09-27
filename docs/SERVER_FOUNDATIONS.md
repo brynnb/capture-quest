@@ -358,6 +358,23 @@ plain Go test invocation. No live deployment or readiness claim is made. Content
 preload methods that only log errors still need fail-closed startup propagation,
 and shutdown deadlines/cancellation remain incomplete.
 
+Required preload checkpoint: coordinate triggers, map scripts, spin tiles, warp
+tiles and ordinary map warps now return query/scan/iteration errors; malformed
+spin movement JSON returns the affected map and coordinate instead of silently
+skipping it. Their staged caches publish only after complete success, preserving
+the old cache when reload fails. World construction returns these errors to the
+server constructor. Actor data loading is separated from actor timer startup,
+and all world timers start only after the current preload sequence finishes.
+Simulator coordinate-trigger consumers also propagate load errors.
+
+World/server PostgreSQL race suites passed, including failed world construction
+when a required table is unavailable. Tests cover query error propagation and
+preservation of a previously valid cache after a malformed spin-tile row. All Go
+packages compile. Actor/collision, trainer/wild encounter and cutscene preload
+error propagation remains unfinished; readiness is not yet proof that every
+content loader succeeded. Preload query deadlines and shutdown cancellation also
+remain required work.
+
 ## Reproducible PostgreSQL tests
 
 With `initdb`, `pg_ctl`, and Go available, run:

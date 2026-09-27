@@ -42,7 +42,7 @@ func (m *phaserWarpManager) setActorManager(am *PhaserActorManager) {
 	m.actorManager = am
 }
 
-func (m *phaserWarpManager) load() {
+func (m *phaserWarpManager) load() error {
 	rows, err := m.db.Query(`
 		SELECT id, source_map_id, x, y, destination_map_id, destination_x, destination_y, warp_type, warp_direction
 		FROM phaser_warps
@@ -51,8 +51,7 @@ func (m *phaserWarpManager) load() {
 		  AND destination_y IS NOT NULL
 		  AND COALESCE(warp_type, 'door') NOT IN ('elevator', 'inactive')`)
 	if err != nil {
-		log.Printf("[PhaserWarps] Failed to load: %v", err)
-		return
+		return fmt.Errorf("[PhaserWarps] Failed to load: %w", err)
 	}
 	defer rows.Close()
 
@@ -74,8 +73,7 @@ func (m *phaserWarpManager) load() {
 			&warpType,
 			&warpDirection,
 		); err != nil {
-			log.Printf("[PhaserWarps] Error scanning row: %v", err)
-			continue
+			return fmt.Errorf("[PhaserWarps] Error scanning row: %w", err)
 		}
 		warp.WarpType = normalizeWarpType(warpType)
 		if warpDirection.Valid {
@@ -91,7 +89,7 @@ func (m *phaserWarpManager) load() {
 		count++
 	}
 	if err := rows.Err(); err != nil {
-		log.Printf("[PhaserWarps] Error reading rows: %v", err)
+		return fmt.Errorf("[PhaserWarps] Error reading rows: %w", err)
 	}
 
 	m.mu.Lock()
@@ -100,6 +98,7 @@ func (m *phaserWarpManager) load() {
 	m.mu.Unlock()
 
 	log.Printf("[PhaserWarps] Loaded %d normal map warps across %d map indexes", count, len(byMap))
+	return nil
 }
 
 func addPhaserWarpIndex(index map[int]map[string][]*phaserMapWarp, mapID int, warp *phaserMapWarp) {

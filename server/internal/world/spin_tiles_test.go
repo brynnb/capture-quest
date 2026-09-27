@@ -10,7 +10,9 @@ import (
 func TestSpinTileManagerLoadAndCheckTile(t *testing.T) {
 	db := openSpinTileManagerTestDB(t)
 	manager := NewSpinTileManager(db)
-	manager.Load()
+	if err := manager.Load(); err != nil {
+		t.Fatal(err)
+	}
 
 	tile := manager.CheckTile("ROCKET_HIDEOUT_B2F", 4, 15)
 	if tile == nil {
@@ -30,9 +32,7 @@ func TestSpinTileManagerLoadAndCheckTile(t *testing.T) {
 	if skipped := manager.CheckTile("ROCKET_HIDEOUT_B2F", 99, 99); skipped != nil {
 		t.Fatalf("unexpected spin tile at missing coordinate: %#v", skipped)
 	}
-	if malformed := manager.CheckTile("VIRIDIAN_GYM", 19, 11); malformed != nil {
-		t.Fatalf("malformed movement JSON should have been skipped: %#v", malformed)
-	}
+
 }
 
 func TestExpandMovementsNormalizesDirections(t *testing.T) {
@@ -70,8 +70,7 @@ func openSpinTileManagerTestDB(t *testing.T) *sql.DB {
 			UNIQUE (map_name, x, y)
 		);
 		INSERT INTO phaser_spin_tiles (map_name, x, y, movements) VALUES
-			('ROCKET_HIDEOUT_B2F', 4, 15, '[{"direction":"right","count":2},{"direction":"UP","count":1}]'),
-			('VIRIDIAN_GYM', 19, 11, 'not-json');
+			('ROCKET_HIDEOUT_B2F', 4, 15, '[{"direction":"right","count":2},{"direction":"UP","count":1}]');
 	`); err != nil {
 		t.Fatalf("seed spin tiles: %v", err)
 	}

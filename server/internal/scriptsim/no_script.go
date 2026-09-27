@@ -52,7 +52,9 @@ func runCoordNoScript(
 	efm *world.EventFlagManager,
 ) (*Result, error) {
 	triggers := world.NewCoordinateTriggerManager(db.GlobalWorldDB.DB)
-	triggers.Load()
+	if err := triggers.Load(); err != nil {
+		return nil, fmt.Errorf("load coordinate triggers: %w", err)
+	}
 	x, y := scenario.Trigger.X, scenario.Trigger.Y
 	if x == 0 && y == 0 {
 		x, y = scenario.Fixture.X, scenario.Fixture.Y

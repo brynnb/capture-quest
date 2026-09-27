@@ -37,12 +37,11 @@ func NewWarpTileManager(db pokebattle.DBTX) *WarpTileManager {
 }
 
 // Load reads all warp tiles from the database into memory.
-func (m *WarpTileManager) Load() {
+func (m *WarpTileManager) Load() error {
 	rows, err := m.db.Query(
 		`SELECT source_map_id, x, y, destination_map_id, destination_x, destination_y FROM phaser_warp_tiles`)
 	if err != nil {
-		log.Printf("[WarpTiles] Failed to load: %v", err)
-		return
+		return fmt.Errorf("[WarpTiles] Failed to load: %w", err)
 	}
 	defer rows.Close()
 
@@ -51,8 +50,7 @@ func (m *WarpTileManager) Load() {
 	for rows.Next() {
 		var wt WarpTile
 		if err := rows.Scan(&wt.SourceMapID, &wt.X, &wt.Y, &wt.DestMapID, &wt.DestX, &wt.DestY); err != nil {
-			log.Printf("[WarpTiles] Error scanning row: %v", err)
-			continue
+			return fmt.Errorf("[WarpTiles] Error scanning row: %w", err)
 		}
 		if byMap[wt.SourceMapID] == nil {
 			byMap[wt.SourceMapID] = make(map[string]*WarpTile)
@@ -62,11 +60,15 @@ func (m *WarpTileManager) Load() {
 		count++
 	}
 
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read warp_tiles rows: %w", err)
+	}
 	m.mu.Lock()
 	m.byMap = byMap
 	m.mu.Unlock()
 
 	log.Printf("[WarpTiles] Loaded %d warp tiles across %d maps", count, len(byMap))
+	return nil
 }
 
 // CheckTile returns the warp tile at a given map ID + tile position, or nil if none.

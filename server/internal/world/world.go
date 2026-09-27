@@ -3,6 +3,7 @@ package world
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -47,7 +48,7 @@ type WorldHandler struct {
 }
 
 // NewWorldHandler creates a new WorldHandler.
-func NewWorldHandler(sessionManager *session.SessionManager) *WorldHandler {
+func NewWorldHandler(sessionManager *session.SessionManager) (*WorldHandler, error) {
 	registry := NewWorldOpCodeRegistry()
 	wh := &WorldHandler{
 		sessionManager: sessionManager,
@@ -62,31 +63,42 @@ func NewWorldHandler(sessionManager *session.SessionManager) *WorldHandler {
 	}
 	registry.WH = wh
 	wh.ActorManager = NewPhaserActorManager(wh)
-	wh.ActorManager.Start()
+	wh.ActorManager.Load()
 	wh.PlayerMovement = NewPlayerMovementManager(wh, wh.ActorManager)
-	wh.PlayerMovement.Start()
 	wh.TrainerEncounter = NewTrainerEncounterManager(wh)
 	wh.TrainerEncounter.Load()
 	wh.WildEncounter = NewWildEncounterManager(wh)
 	wh.WildEncounter.Load()
 	wh.EventFlags = NewEventFlagManager(db.GlobalWorldDB.DB)
 	wh.CoordTriggers = NewCoordinateTriggerManager(db.GlobalWorldDB.DB)
-	wh.CoordTriggers.Load()
+	if err := wh.CoordTriggers.Load(); err != nil {
+		return nil, fmt.Errorf("preload CoordTriggers: %w", err)
+	}
 	wh.MapScripts = NewMapScriptManager(db.GlobalWorldDB.DB)
-	wh.MapScripts.Load()
+	if err := wh.MapScripts.Load(); err != nil {
+		return nil, fmt.Errorf("preload MapScripts: %w", err)
+	}
 	wh.Cutscenes = NewCutsceneManager(db.GlobalWorldDB.DB)
 	wh.Cutscenes.Load()
 	wh.SpinTiles = NewSpinTileManager(db.GlobalWorldDB.DB)
-	wh.SpinTiles.Load()
+	if err := wh.SpinTiles.Load(); err != nil {
+		return nil, fmt.Errorf("preload SpinTiles: %w", err)
+	}
 	wh.WarpTiles = NewWarpTileManager(db.GlobalWorldDB.DB)
-	wh.WarpTiles.Load()
+	if err := wh.WarpTiles.Load(); err != nil {
+		return nil, fmt.Errorf("preload WarpTiles: %w", err)
+	}
 	wh.phaserWarps = newPhaserWarpManager(db.GlobalWorldDB.DB)
 	wh.phaserWarps.setActorManager(wh.ActorManager)
-	wh.phaserWarps.load()
+	if err := wh.phaserWarps.load(); err != nil {
+		return nil, fmt.Errorf("preload phaserWarps: %w", err)
+	}
 	wh.Safari = NewSafariZoneManager()
 	LoadDisallowedWords()
+	wh.ActorManager.Start()
+	wh.PlayerMovement.Start()
 	wh.StartSessionTimeoutChecker()
-	return wh
+	return wh, nil
 }
 
 // HandlePacket processes incoming datagrams.
