@@ -158,6 +158,31 @@ small verified changes. No production deployment or push is part of this goal.
   ownership/connection replacement, field effects, wire migration, lifecycle,
   and rendered/live-transport gameplay verification remain required.
 
+- Shared script transaction checkpoint: ordinary cutscenes, dialogue choices,
+  the simulator, and post-battle actions now use the same interpreter with a
+  transaction-owned mutation context. Item grants/removal, coins, money, party
+  grants/healing, flags, object visibility, and scripted battle startup join the
+  caller's transaction. Completion flags and the final warp join script rewards.
+  Network messages, flag-cache refresh, actor visibility and movement publication
+  are deferred until commit. Post-battle script failure rolls back the turn.
+- Flag batches are atomic and toggle reads occur under the character lock;
+  storage failures cannot poison the cache. Coin grants use an atomic database
+  update. Script lookups propagate missing item/species errors instead of supplying
+  invented names. The previous post-commit battle-only script invocation is removed.
+- PostgreSQL race tests verify failed completion rolls back items, coins, healing
+  and flags without messages; concurrent guarded completion awards once; failed
+  post-battle scripts roll back victory; and scripted battle startup is rolled
+  back when a later action fails. General flag batch/toggle failures are covered.
+  The full Go suite passed with disposable PostgreSQL and the race detector;
+  generated types and frontend typechecking also passed.
+- Still required: authorization of script completion against the session's issued
+  event and all eligibility conditions; durable request deduplication beyond
+  existing absent-flag guards; recovery of committed notifications on reconnect;
+  consistent movement/Safari ownership and lifecycle; transactional pickups,
+  Game Corner prizes and remaining field effects; explicit wire/dependency
+  migration; rendered and live-transport gameplay validation. Deferred runtime
+  publication is not a durable outbox and does not establish crash recovery.
+
 ## Reproducible PostgreSQL tests
 
 With `initdb`, `pg_ctl`, and Go available, run:

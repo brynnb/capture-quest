@@ -15,6 +15,23 @@ var ErrBattleConflict = errors.New("battle changed; reload its current state")
 // StartBattle reserves the character's battle before the encounter is published.
 // Reload under the character lock so preparation cannot overwrite a newer party.
 func StartBattle(ctx context.Context, database *sql.DB, charID int64, battle *BattleState, prepare func(DBTX, *BattleState) error) (*BattleState, error) {
+	var next *BattleState
+	err := db.Transaction(ctx, database, func(tx db.DBTX) (err error) {
+		next, err = StartBattleInTransaction(tx, charID, battle, prepare)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return next, nil
+}
+
+// StartBattleInTransaction joins a caller's reward/script transaction. The
+// returned state remains private until the caller commits.
+func StartBattleInTransaction(tx DBTX, charID int64, battle *BattleState, prepare func(DBTX, *BattleState) error) (*BattleState, error) {
+	if err := db.RequireTransaction(tx); err != nil {
+		return nil, err
+	}
 	if battle == nil {
 		return nil, fmt.Errorf("battle is required")
 	}
@@ -27,7 +44,8 @@ func StartBattle(ctx context.Context, database *sql.DB, charID int64, battle *Ba
 			return nil, fmt.Errorf("battle has nil enemy")
 		}
 	}
-	err := db.Transaction(ctx, database, func(tx db.DBTX) error {
+
+	err := func() error {
 		if err := db.LockCharacter(tx, charID); err != nil {
 			return err
 		}
@@ -54,7 +72,7 @@ func StartBattle(ctx context.Context, database *sql.DB, charID int64, battle *Ba
 		next.BattleID = uuid.NewString()
 		next.Revision = 1
 		return SaveBattleState(tx, charID, next)
-	})
+	}()
 	if err != nil {
 		return nil, err
 	}

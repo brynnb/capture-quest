@@ -24,26 +24,13 @@ func sendBattleCommitError(ses *session.Session, charID int64, current *pokebatt
 }
 
 func publishBattleTurn(ses *session.Session, wh *WorldHandler, charID int64, battle *pokebattle.BattleState, result battleTurnResult, opcode opcodes.OpCode) {
-	if wh.EventFlags != nil {
-		wh.EventFlags.publishCommittedFlags(charID, result.Flags)
+	if len(result.Flags) > 0 && wh.EventFlags != nil {
+		if err := wh.EventFlags.LoadFlags(charID); err != nil {
+			log.Printf("[PokeBattle] Refresh committed flags for character %d: %v", charID, err)
+		}
 	}
-	// The cutscene interpreter still has independent transactions and world effects.
-	// Its migration is a separate remaining boundary; never run it inside the battle
-	// transaction, where nested database connections could deadlock the owner lock.
-	if battle.IsOver() {
-		var err error
-		if battle.PlayerWon() && battle.Trainer != nil {
-			err = applyScriptedTrainerPostWinActions(ses, battle.Trainer, charID, wh)
-		}
-		if battle.BattleType == pokebattle.BattleWild && (battle.PlayerWon() || battle.PlayerCaught) {
-			err = applyScriptedWildPostWinActions(ses, battle, charID, wh)
-		}
-		if result.Lost && battle.Trainer != nil {
-			err = applyScriptedTrainerPostLoseActions(ses, battle.Trainer, charID, wh)
-		}
-		if err != nil {
-			log.Printf("[PokeBattle] Post-battle script failed for character %d: %v", charID, err)
-		}
+	if result.Script != nil {
+		result.Script.publish(CutsceneActionContext{Session: ses, WorldHandler: wh, EventFlags: wh.EventFlags})
 	}
 	if result.WalletChanged {
 		ses.SendStreamJSON(map[string]interface{}{"characterId": charID, "pokedollars": result.Money}, opcodes.CharacterWallet)

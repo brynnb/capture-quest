@@ -169,6 +169,10 @@ export interface CutsceneManager {
 }
 
 //////////
+// source: cutscene_transaction.go
+
+
+//////////
 // source: cycling_road.go
 
 
@@ -355,6 +359,7 @@ export interface CutsceneActionEffect {
   changed: boolean;
 }
 export interface CutsceneActionContext {
+  database?: any /* sql.DB */;
   session?: any /* session.Session */;
   worldHandler?: WorldHandler;
   eventFlags?: EventFlagManager;

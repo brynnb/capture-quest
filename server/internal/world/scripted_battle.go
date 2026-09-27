@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -60,17 +61,30 @@ type BattlePokemonSummary struct {
 }
 
 func StartScriptedTrainerBattle(charID int64, spec ScriptedTrainerBattleSpec) (*pokebattle.BattleState, []pokebattle.BattleEvent, error) {
+	var battle *pokebattle.BattleState
+	var events []pokebattle.BattleEvent
+	err := db.Transaction(context.Background(), db.GlobalWorldDB.DB, func(tx db.DBTX) (err error) {
+		if err := db.LockCharacter(tx, charID); err != nil {
+			return err
+		}
+		battle, events, err = prepareScriptedTrainerBattle(tx, charID, spec)
+		return err
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	setBattle(charID, battle)
+	return battle, events, nil
+}
+
+func prepareScriptedTrainerBattle(myDB db.DBTX, charID int64, spec ScriptedTrainerBattleSpec) (*pokebattle.BattleState, []pokebattle.BattleEvent, error) {
 	if spec.TrainerClass == "" {
 		return nil, nil, fmt.Errorf("startTrainerBattle missing trainerClass")
 	}
 	if spec.PartyIndex <= 0 {
 		return nil, nil, fmt.Errorf("startTrainerBattle missing partyIndex")
 	}
-	if existing := getBattle(charID); existing != nil && !existing.IsOver() {
-		return nil, nil, fmt.Errorf("character %d is already in battle", charID)
-	}
 
-	myDB := db.GlobalWorldDB.DB
 	trainerParty, err := pokebattle.BuildTrainerParty(myDB, spec.TrainerClass, spec.PartyIndex)
 	if err != nil {
 		return nil, nil, err
@@ -89,15 +103,25 @@ func StartScriptedTrainerBattle(charID int64, spec ScriptedTrainerBattleSpec) (*
 		return nil, nil, fmt.Errorf("player party has no battle-ready pokemon")
 	}
 
-	prizeMoney := trainerPrizeMoney(spec.TrainerClass, trainerParty)
+	var baseMoney int
+	var displayName string
+	if err := myDB.QueryRow(`SELECT base_money,display_name FROM phaser_trainer_classes WHERE constant_name=$1`, spec.TrainerClass).Scan(&baseMoney, &displayName); err != nil {
+		return nil, nil, err
+	}
+	prizeMoney := trainerPrizeMoneyFromBase(baseMoney, trainerParty)
 	trainerName := spec.TrainerName
 	if trainerName == "" {
-		trainerName = trainerDisplayName(spec.TrainerClass)
+		trainerName = displayName
 	}
-	trainerName = trainerNameForCharacter(charID, spec.TrainerClass, trainerName)
+	trainerName, err = trainerNameForCharacterFromDB(myDB, charID, spec.TrainerClass, trainerName)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	battle := pokebattle.NewTrainerBattle(playerParty, trainerParty)
-	configureBattleObedience(battle, charID, nil)
+	if err := configureBattleObedienceFromDB(myDB, battle, charID); err != nil {
+		return nil, nil, err
+	}
 	battle.Trainer = &pokebattle.TrainerMeta{
 		ClassName:        spec.TrainerClass,
 		Name:             trainerName,
@@ -112,7 +136,9 @@ func StartScriptedTrainerBattle(charID int64, spec ScriptedTrainerBattleSpec) (*
 		PostLoseMapName:  spec.PostLoseMapName,
 		PostLoseActions:  spec.PostLoseActions,
 	}
-	battle, err = startBattle(myDB, charID, battle)
+	battle, err = pokebattle.StartBattleInTransaction(myDB, charID, battle, func(tx db.DBTX, next *pokebattle.BattleState) error {
+		return markPokemonSeen(tx, charID, next.GetEnemyPokemon().ID)
+	})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -125,17 +151,30 @@ func StartScriptedTrainerBattle(charID int64, spec ScriptedTrainerBattleSpec) (*
 }
 
 func StartScriptedWildBattle(charID int64, spec ScriptedWildBattleSpec) (*pokebattle.BattleState, []pokebattle.BattleEvent, error) {
+	var battle *pokebattle.BattleState
+	var events []pokebattle.BattleEvent
+	err := db.Transaction(context.Background(), db.GlobalWorldDB.DB, func(tx db.DBTX) (err error) {
+		if err := db.LockCharacter(tx, charID); err != nil {
+			return err
+		}
+		battle, events, err = prepareScriptedWildBattle(tx, charID, spec)
+		return err
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	setBattle(charID, battle)
+	return battle, events, nil
+}
+
+func prepareScriptedWildBattle(myDB db.DBTX, charID int64, spec ScriptedWildBattleSpec) (*pokebattle.BattleState, []pokebattle.BattleEvent, error) {
 	if spec.PokemonID <= 0 {
 		return nil, nil, fmt.Errorf("startWildBattle missing pokemonId")
 	}
 	if spec.Level <= 0 {
 		return nil, nil, fmt.Errorf("startWildBattle missing level")
 	}
-	if existing := getBattle(charID); existing != nil && !existing.IsOver() {
-		return nil, nil, fmt.Errorf("character %d is already in battle", charID)
-	}
 
-	myDB := db.GlobalWorldDB.DB
 	wildPokemon, err := pokebattle.BuildWildPokemon(myDB, spec.PokemonID, spec.Level)
 	if err != nil {
 		return nil, nil, err
@@ -152,13 +191,17 @@ func StartScriptedWildBattle(charID int64, spec ScriptedWildBattleSpec) (*pokeba
 	}
 
 	battle := pokebattle.NewWildBattle(playerParty, wildPokemon)
-	configureBattleObedience(battle, charID, nil)
+	if err := configureBattleObedienceFromDB(myDB, battle, charID); err != nil {
+		return nil, nil, err
+	}
 	battle.WildWinFlag = spec.WinFlag
 	battle.WildPostWinMapName = spec.PostWinMapName
 	battle.WildPostWinActions = spec.PostWinActions
 	battle.AllowedActions = spec.AllowedActions
 	battle.GuaranteedCatch = spec.GuaranteedCatch
-	battle, err = startBattle(myDB, charID, battle)
+	battle, err = pokebattle.StartBattleInTransaction(myDB, charID, battle, func(tx db.DBTX, next *pokebattle.BattleState) error {
+		return markPokemonSeen(tx, charID, next.GetEnemyPokemon().ID)
+	})
 	if err != nil {
 		return nil, nil, err
 	}

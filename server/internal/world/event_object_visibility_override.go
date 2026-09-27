@@ -32,13 +32,16 @@ func SetCharacterObjectVisibilityOverrideByName(charID int64, objectName string,
 }
 
 func SetCharacterObjectVisibilityOverride(charID int64, objectID int, visible bool, source string) error {
+	return setCharacterObjectVisibilityOverride(db.GlobalWorldDB.DB, charID, objectID, visible, source)
+}
+func setCharacterObjectVisibilityOverride(database db.DBTX, charID int64, objectID int, visible bool, source string) error {
 	if charID == 0 || objectID == 0 {
 		return nil
 	}
 	if strings.TrimSpace(source) == "" {
 		source = "CharacterObjectVisibilityOverride"
 	}
-	_, err := db.GlobalWorldDB.DB.Exec(`
+	_, err := database.Exec(`
 		INSERT INTO character_object_visibility_overrides
 			(character_id, object_id, visible, source)
 		VALUES ($1, $2, $3, $4)

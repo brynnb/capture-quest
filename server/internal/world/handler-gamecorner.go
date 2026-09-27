@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -206,12 +207,27 @@ func setCoins(charID int64, coins int) error {
 }
 
 func addCoins(charID int64, amount int) (int, error) {
-	current := getCoins(charID)
-	newTotal := current + amount
-	if newTotal > MaxCoins {
-		newTotal = MaxCoins
+	var total int
+	err := db.Transaction(context.Background(), db.GlobalWorldDB.DB, func(tx db.DBTX) (err error) {
+		if err := db.LockCharacter(tx, charID); err != nil {
+			return err
+		}
+		total, err = addCoinsInTransaction(tx, charID, amount)
+		return err
+	})
+	return total, err
+}
+func addCoinsInTransaction(database db.DBTX, charID int64, amount int) (int, error) {
+	if err := db.RequireTransaction(database); err != nil {
+		return 0, err
 	}
-	return newTotal, setCoins(charID, newTotal)
+	if amount <= 0 {
+		return 0, fmt.Errorf("coin grant must be positive")
+	}
+	var total int
+	err := database.QueryRow(`INSERT INTO character_coins(character_id,coins) VALUES($1,$2)
+ ON CONFLICT(character_id) DO UPDATE SET coins=CASE WHEN character_coins.coins+EXCLUDED.coins>$3 THEN $3 ELSE character_coins.coins+EXCLUDED.coins END RETURNING coins`, charID, min(amount, MaxCoins), MaxCoins).Scan(&total)
+	return total, err
 }
 
 type sqlQueryer interface {

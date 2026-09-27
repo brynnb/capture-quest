@@ -2,6 +2,7 @@ package world
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 
 	"capturequest/internal/db"
@@ -16,6 +17,7 @@ type battleRuleError string
 func (e battleRuleError) Error() string { return string(e) }
 
 type battleTurnResult struct {
+	Script           *cutsceneMutation
 	Events           []pokebattle.BattleEvent
 	SentToPC         bool
 	PCBox            int
@@ -241,12 +243,35 @@ func settleBattleTurn(tx db.DBTX, charID int64, battle *pokebattle.BattleState, 
 		if flag == "" {
 			continue
 		}
-		if _, err := tx.Exec(`INSERT INTO character_event_flags(character_id,flag_name) VALUES($1,$2) ON CONFLICT(character_id,flag_name) DO NOTHING`, charID, flag); err != nil {
+		if err := writeEventFlag(tx, charID, flag, true); err != nil {
 			return result, err
 		}
 	}
-	if result.Lost || battleHasScriptedPartyHeal(battle, battle.PlayerWon() || battle.PlayerCaught) {
+	if result.Lost {
 		HealPokemonParty(battle.PlayerParty)
+	}
+	var actions json.RawMessage
+	var mapName string
+	if trainer := battle.Trainer; trainer != nil {
+		if battle.PlayerWon() {
+			actions = trainer.PostWinActions
+			mapName = trainer.PostWinMapName
+		}
+		if result.Lost {
+			actions = trainer.PostLoseActions
+			mapName = trainer.PostLoseMapName
+		}
+	} else if battle.PlayerWon() || battle.PlayerCaught {
+		actions = battle.WildPostWinActions
+		mapName = battle.WildPostWinMapName
+	}
+	if len(actions) > 0 && string(actions) != "null" {
+		mutation := &cutsceneMutation{database: tx, characterID: charID, party: &battle.PlayerParty, boundBattle: true}
+		_, _, err := applyCutsceneActionList(CutsceneActionContext{mutation: mutation}, mapName, actions, charID)
+		if err != nil {
+			return result, fmt.Errorf("post-battle script: %w", err)
+		}
+		result.Script = mutation
 	}
 	if result.Lost && !result.NoBlackoutOnLoss {
 		blackout, err := applyBlackoutInTransaction(tx, charID)

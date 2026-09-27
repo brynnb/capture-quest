@@ -159,8 +159,8 @@ We follow a **"Model-First"** architecture. Data is categorized into distinct st
   retain the record. Client close cannot discard an active battle or pending choice.
 - **Limits**: Database revision checks prevent applying two competing copies of
   the same revision; they do not deduplicate sequential client commands or serialize
-  transport publication. Post-battle cutscene actions still use their separate
-  interpreter transactions. Runtime ownership, all script/reward effects, and
+  transport publication. Post-battle cutscene actions join the battle transaction
+  through the shared interpreter. Runtime ownership, remaining reward paths, and
   recovery of an end notification lost during disconnect remain in the foundations
   goal. Do not claim full battle/reconnect correctness from persistence tests alone.
 
@@ -457,3 +457,18 @@ The project juggles multiple naming conventions across the pipeline:
 3. If adding a new name converter or lookup, test it against the known tricky names: `MtMoonB1F`, `SSAnneB1FRooms`, `Route16Gate1F`, `SeafoamIslandsB3F`.
 
 ---
+
+### Script transaction boundary
+
+`ApplyCutsceneScript` commits script rewards, completion flags, and final position
+with the character lock. `ApplyCutsceneActionList` uses the same interpreter for
+ordinary action lists; battle settlement supplies its existing transaction and
+private party. The mutation context accumulates publication work and messages
+until commit. Nested lists share that context. Scripted battle startup joins it
+rather than opening a second database connection while the character is locked.
+
+Event flags refresh their cached snapshot after durable writes; batches and
+toggles use the character transaction. Scripted rewards no longer publish success
+before a later completion write can fail. This is not durable notification
+recovery: session ownership, issued-event authorization, all completion eligibility
+checks, and reconnect delivery remain tracked in `SERVER_FOUNDATIONS.md`.

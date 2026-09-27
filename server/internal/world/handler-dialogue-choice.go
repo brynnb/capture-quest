@@ -147,17 +147,18 @@ func HandleDialogueChoiceRequest(ses *session.Session, payload []byte, wh *World
 		"followUpDialogue":     result.FollowUpDialogue,
 		"followUpTextConstant": result.FollowUpTextConstant,
 	}
-	ses.SendStreamJSON(res, opcodes.DialogueChoiceResponse)
 
 	if len(result.Actions) > 0 && ses.HasValidClient() {
 		charID := int64(ses.Client.CharData().ID)
 		mapName := dialogueChoiceActionMapName(req, ses, result.MapName)
-		if err := applyCutsceneServerActionList(ses, mapName, result.Actions, charID, wh); err != nil {
+		if _, _, err := ApplyCutsceneActionList(CutsceneActionContext{Session: ses, WorldHandler: wh, EventFlags: wh.EventFlags}, mapName, result.Actions, charID); err != nil {
 			log.Printf("[DialogueChoice] Failed to apply choice actions for %s: %v", req.TextConstant, err)
-			SendSystemMessage(ses, "That choice could not be completed. Please try again.")
+			ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "That choice could not be completed. Please try again."}, opcodes.DialogueChoiceResponse)
+			return false
 		}
 	}
 
+	ses.SendStreamJSON(res, opcodes.DialogueChoiceResponse)
 	log.Printf("[DialogueChoice] Sent follow-up dialogue for choice=%v", req.Choice)
 	return false
 }
