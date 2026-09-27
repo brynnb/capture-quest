@@ -15,12 +15,15 @@ func TestScriptAndWarpLoadersReturnQueryFailures(t *testing.T) {
 		t.Fatal(err)
 	}
 	database.Close()
+	wh := &WorldHandler{database: database}
 	loaders := map[string]func() error{
-		"coordinates": NewCoordinateTriggerManager(database).Load,
-		"map scripts": NewMapScriptManager(database).Load,
-		"spin tiles":  NewSpinTileManager(database).Load,
-		"warp tiles":  NewWarpTileManager(database).Load,
-		"map warps":   newPhaserWarpManager(database).load,
+		"coordinates":     NewCoordinateTriggerManager(database).Load,
+		"map scripts":     NewMapScriptManager(database).Load,
+		"spin tiles":      NewSpinTileManager(database).Load,
+		"warp tiles":      NewWarpTileManager(database).Load,
+		"map warps":       newPhaserWarpManager(database).load,
+		"trainers":        NewTrainerEncounterManager(wh).Load,
+		"wild encounters": NewWildEncounterManager(wh).Load,
 	}
 	for name, load := range loaders {
 		t.Run(name, func(t *testing.T) {

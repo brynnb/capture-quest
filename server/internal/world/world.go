@@ -66,9 +66,13 @@ func NewWorldHandler(sessionManager *session.SessionManager) (*WorldHandler, err
 	wh.ActorManager.Load()
 	wh.PlayerMovement = NewPlayerMovementManager(wh, wh.ActorManager)
 	wh.TrainerEncounter = NewTrainerEncounterManager(wh)
-	wh.TrainerEncounter.Load()
+	if err := wh.TrainerEncounter.Load(); err != nil {
+		return nil, fmt.Errorf("preload TrainerEncounter: %w", err)
+	}
 	wh.WildEncounter = NewWildEncounterManager(wh)
-	wh.WildEncounter.Load()
+	if err := wh.WildEncounter.Load(); err != nil {
+		return nil, fmt.Errorf("preload WildEncounter: %w", err)
+	}
 	wh.EventFlags = NewEventFlagManager(db.GlobalWorldDB.DB)
 	wh.CoordTriggers = NewCoordinateTriggerManager(db.GlobalWorldDB.DB)
 	if err := wh.CoordTriggers.Load(); err != nil {

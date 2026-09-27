@@ -6,6 +6,7 @@ import (
 	"capturequest/internal/pokebattle"
 	"capturequest/internal/session"
 	"database/sql"
+	"fmt"
 	"log"
 	"math/rand"
 	"sync"
@@ -74,35 +75,39 @@ func NewWildEncounterManager(wh *WorldHandler) *WildEncounterManager {
 	}
 }
 
-// Load preloads all encounter areas and their slots from the DB.
-func (m *WildEncounterManager) Load() {
-	myDB := db.GlobalWorldDB.DB
+// Load preloads all encounter areas and their slots before world timers start.
+func (m *WildEncounterManager) Load() error {
+	if m.wh == nil || m.wh.database == nil {
+		return fmt.Errorf("wild encounter preload requires a database")
+	}
+	myDB := m.wh.database
 
+	areas := make(map[int]*encounterAreaData)
 	// Load encounter areas
 	rows, err := myDB.Query(`SELECT id, name, encounter_rate FROM phaser_encounter_areas`)
 	if err != nil {
-		log.Printf("[WildEncounter] Failed to load encounter areas: %v", err)
-		return
+		return fmt.Errorf("[WildEncounter] Failed to load encounter areas: %w", err)
 	}
 	defer rows.Close()
 
 	for rows.Next() {
 		var area encounterAreaData
 		if err := rows.Scan(&area.ID, &area.Name, &area.EncounterRate); err != nil {
-			log.Printf("[WildEncounter] Error scanning encounter area: %v", err)
-			continue
+			return fmt.Errorf("[WildEncounter] Error scanning encounter area: %w", err)
 		}
-		m.areas[area.ID] = &area
+		areas[area.ID] = &area
 	}
 
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read encounter areas: %w", err)
+	}
 	// Load slots for all areas
 	slotRows, err := myDB.Query(`
 		SELECT encounter_area_id, pokemon_id, level, probability
 		FROM phaser_encounter_area_slots
 		ORDER BY encounter_area_id, slot_index`)
 	if err != nil {
-		log.Printf("[WildEncounter] Failed to load encounter slots: %v", err)
-		return
+		return fmt.Errorf("[WildEncounter] Failed to load encounter slots: %w", err)
 	}
 	defer slotRows.Close()
 
@@ -110,23 +115,35 @@ func (m *WildEncounterManager) Load() {
 		var areaID int
 		var slot encounterSlot
 		if err := slotRows.Scan(&areaID, &slot.PokemonID, &slot.Level, &slot.Probability); err != nil {
-			continue
+			return fmt.Errorf("scan encounter slot: %w", err)
 		}
-		if area, ok := m.areas[areaID]; ok {
+		if area, ok := areas[areaID]; ok {
 			area.Slots = append(area.Slots, slot)
+		} else {
+			return fmt.Errorf("encounter slot references absent area %d", areaID)
 		}
 	}
 
 	// Preload the tile encounter cache for all tiles that have encounter areas
-	m.preloadTileCache()
+	if err := slotRows.Err(); err != nil {
+		return fmt.Errorf("read encounter slots: %w", err)
+	}
+	tiles, err := m.loadTileCache(areas)
+	if err != nil {
+		return err
+	}
+	m.tileCacheMu.Lock()
+	m.areas, m.tileCache, m.cacheLoaded = areas, tiles, true
+	m.tileCacheMu.Unlock()
 
 	log.Printf("[WildEncounter] Loaded %d encounter areas, tile cache has %d encounter tiles",
-		len(m.areas), len(m.tileCache))
+		len(areas), len(tiles))
+	return nil
 }
 
-// preloadTileCache loads all tiles with encounter_area_id into the global cache.
-func (m *WildEncounterManager) preloadTileCache() {
-	myDB := db.GlobalWorldDB.DB
+// loadTileCache stages tile references without modifying the published cache.
+func (m *WildEncounterManager) loadTileCache(areas map[int]*encounterAreaData) (map[[3]int]int, error) {
+	myDB := m.wh.database
 
 	rows, err := myDB.Query(`
 		SELECT map_id, x, y, encounter_area_id
@@ -134,33 +151,37 @@ func (m *WildEncounterManager) preloadTileCache() {
 		WHERE encounter_area_id IS NOT NULL
 		  AND is_tile_erased = 0`)
 	if err != nil {
-		log.Printf("[WildEncounter] Failed to preload tile cache: %v", err)
-		return
+		return nil, fmt.Errorf("[WildEncounter] Failed to preload tile cache: %w", err)
 	}
 	defer rows.Close()
 
-	m.tileCacheMu.Lock()
-	defer m.tileCacheMu.Unlock()
+	tiles := make(map[[3]int]int)
 
 	for rows.Next() {
 		var x, y, areaID int
 		var mapID sql.NullInt64
 		if err := rows.Scan(&mapID, &x, &y, &areaID); err != nil {
-			continue
+			return nil, fmt.Errorf("scan encounter tile: %w", err)
+		}
+		if _, ok := areas[areaID]; !ok {
+			return nil, fmt.Errorf("encounter tile map %v (%d,%d) references absent area %d", mapID, x, y, areaID)
 		}
 		if mapID.Valid {
 			mid := int(mapID.Int64)
-			m.tileCache[[3]int{mid, x, y}] = areaID
+			tiles[[3]int{mid, x, y}] = areaID
 			// For overworld maps, also index under the unified overworld map ID (9999)
 			if m.wh.ActorManager.IsOverworld(mid) {
-				m.tileCache[[3]int{UnifiedOverworldMapID, x, y}] = areaID
+				tiles[[3]int{UnifiedOverworldMapID, x, y}] = areaID
 			}
 		} else {
 			// Overworld tiles (map_id IS NULL) — index under unified overworld ID
-			m.tileCache[[3]int{UnifiedOverworldMapID, x, y}] = areaID
+			tiles[[3]int{UnifiedOverworldMapID, x, y}] = areaID
 		}
 	}
-	m.cacheLoaded = true
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read encounter tiles: %w", err)
+	}
+	return tiles, nil
 }
 
 // CheckPlayerStep checks if a wild encounter should trigger when a player steps on a tile.
@@ -217,6 +238,7 @@ func (m *WildEncounterManager) getEncounterAreaID(mapID, x, y int) int {
 
 	m.tileCacheMu.RLock()
 	areaID, ok := m.tileCache[key]
+	cacheLoaded := m.cacheLoaded
 	m.tileCacheMu.RUnlock()
 
 	if ok {
@@ -224,7 +246,7 @@ func (m *WildEncounterManager) getEncounterAreaID(mapID, x, y int) int {
 	}
 
 	// Cache miss (shouldn't happen after preload, but handle gracefully)
-	if m.cacheLoaded {
+	if cacheLoaded {
 		return 0 // Not in cache = no encounter area
 	}
 

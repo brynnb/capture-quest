@@ -375,6 +375,26 @@ error propagation remains unfinished; readiness is not yet proof that every
 content loader succeeded. Preload query deadlines and shutdown cancellation also
 remain required work.
 
+Encounter preload checkpoint: trainer and wild-encounter loaders use the world's
+explicit database dependency and return errors for missing dependencies, failed
+queries/scans and row-iteration failures. Trainers build their complete list and
+map index before publication. Wild areas, slots and tile references stage as one
+family; a failed later query cannot leave a new area list beside old tiles.
+Missing encounter-area references report the area ID and affected tile coordinates
+when available. The importer uses NULL for tiles without encounters; that normal
+case remains excluded from encounter-cache loading. These immutable data loads
+run before timers and do not provide a concurrent runtime hot-reload interface.
+
+Validation includes PostgreSQL cases for valid loading, orphan slots, orphan tile
+references and a failed tile query while retaining the previous complete cache.
+The existing trainer-map alias fixture now supplies the explicit database rather
+than relying on the global. Actor/collision and cutscene initialization remain the
+next startup gaps, alongside preload deadlines and bounded shutdown.
+All packages compiled. The broad world run passed the encounter checks but hit
+two battle-fixture schema-creation timeouts during high filesystem I/O pressure;
+the server race suite passed. A fresh focused PostgreSQL race run passed both
+timed-out battle tests and all affected preload checks with unchanged deadlines.
+
 ## Reproducible PostgreSQL tests
 
 With `initdb`, `pg_ctl`, and Go available, run:

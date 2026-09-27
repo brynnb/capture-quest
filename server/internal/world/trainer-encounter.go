@@ -94,9 +94,15 @@ func NewTrainerEncounterManager(wh *WorldHandler) *TrainerEncounterManager {
 }
 
 // Load queries the DB for all trainer NPCs that have a sight range and preloads them.
-// Must be called after ActorManager.Start() so ActorRegistry is populated.
-func (m *TrainerEncounterManager) Load() {
-	myDB := db.GlobalWorldDB.DB
+// Must be called after ActorManager.Load() so ActorRegistry is populated.
+// This is startup-only; publish the complete immutable index before timers start.
+func (m *TrainerEncounterManager) Load() error {
+	if m.wh == nil || m.wh.database == nil {
+		return fmt.Errorf("trainer preload requires a database")
+	}
+	myDB := m.wh.database
+	trainers := make([]trainerSightData, 0)
+	byMap := make(map[int][]*trainerSightData)
 
 	rows, err := myDB.Query(`
 		SELECT
@@ -141,8 +147,7 @@ func (m *TrainerEncounterManager) Load() {
 			AND th.sight_range > 0
 	`)
 	if err != nil {
-		log.Printf("[TrainerEncounter] Failed to load trainer objects: %v", err)
-		return
+		return fmt.Errorf("[TrainerEncounter] Failed to load trainer objects: %w", err)
 	}
 	defer rows.Close()
 
@@ -156,12 +161,11 @@ func (m *TrainerEncounterManager) Load() {
 		if err := rows.Scan(&t.ObjectID, &t.MapID, &globalX, &globalY,
 			&direction, &trainerClass, &t.PartyIndex, &name,
 			&isGymLeader, &eventFlag, &t.SightRange, &battleTextLabel, &endBattleTextLabel, &afterBattleTextLabel); err != nil {
-			log.Printf("[TrainerEncounter] Error scanning trainer: %v", err)
-			continue
+			return fmt.Errorf("[TrainerEncounter] Error scanning trainer: %w", err)
 		}
 
 		if !globalX.Valid || !globalY.Valid {
-			continue
+			return fmt.Errorf("trainer object %d has no coordinates", t.ObjectID)
 		}
 		t.X = int(globalX.Int64)
 		t.Y = int(globalY.Int64)
@@ -194,20 +198,25 @@ func (m *TrainerEncounterManager) Load() {
 		// Remap to runtime actor ID
 		t.RuntimeActorID = m.wh.ActorRegistry.GetPhaserID(ActorTypeNPC, t.ObjectID)
 
-		m.trainers = append(m.trainers, t)
+		trainers = append(trainers, t)
 	}
 
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read trainer rows: %w", err)
+	}
 	// Index by map ID
-	for i := range m.trainers {
-		t := &m.trainers[i]
-		m.byMap[t.MapID] = append(m.byMap[t.MapID], t)
+	for i := range trainers {
+		t := &trainers[i]
+		byMap[t.MapID] = append(byMap[t.MapID], t)
 		// Also index under the unified overworld map ID if this map is overworld
 		if m.wh.ActorManager.IsOverworld(t.MapID) {
-			m.byMap[UnifiedOverworldMapID] = append(m.byMap[UnifiedOverworldMapID], t)
+			byMap[UnifiedOverworldMapID] = append(byMap[UnifiedOverworldMapID], t)
 		}
 	}
 
-	log.Printf("[TrainerEncounter] Loaded %d trainers with sight range across %d maps", len(m.trainers), len(m.byMap))
+	m.trainers, m.byMap = trainers, byMap
+	log.Printf("[TrainerEncounter] Loaded %d trainers with sight range across %d maps", len(trainers), len(byMap))
+	return nil
 }
 
 // CheckPlayerPosition is called on each player movement tick.

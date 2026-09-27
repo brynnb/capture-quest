@@ -149,11 +149,14 @@ func TestTrainerEncounterLoadMatchesHeaderByNormalizedMapName(t *testing.T) {
 	setupMtMoonTrainerAliasDB(t)
 
 	wh := &WorldHandler{
+		database:      db.GlobalWorldDB.DB,
 		ActorRegistry: NewActorRegistry(),
 		ActorManager:  &PhaserActorManager{overworldMapIds: map[int]bool{}},
 	}
 	mgr := NewTrainerEncounterManager(wh)
-	mgr.Load()
+	if err := mgr.Load(); err != nil {
+		t.Fatal(err)
+	}
 
 	trainers := mgr.byMap[59]
 	if len(trainers) != 1 {
