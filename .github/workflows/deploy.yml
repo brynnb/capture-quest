@@ -449,7 +449,7 @@ jobs:
 
           server_ready=false
           for attempt in $(seq 1 12); do
-            if curl --fail --silent --show-error --max-time 5 https://capturequest.net/api/online >/dev/null; then
+            if curl --fail --silent --show-error --max-time 5 https://capturequest.net/api/ready >/dev/null; then
               server_ready=true
               break
             fi
@@ -571,7 +571,7 @@ jobs:
           test "$deployed_contract_sha" = "$expected_contract_sha"
           server_ready=false
           for attempt in $(seq 1 12); do
-            if curl --fail --silent --show-error --max-time 5 https://capturequest.net/api/online >/dev/null; then
+            if curl --fail --silent --show-error --max-time 5 https://capturequest.net/api/ready >/dev/null; then
               server_ready=true
               break
             fi

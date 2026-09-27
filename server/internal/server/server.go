@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"capturequest/internal/api"
@@ -45,6 +46,11 @@ type worldRuntime interface {
 
 // Server hosts HTTP, WebSocket and WebTransport connections.
 type Server struct {
+	ready             atomic.Bool
+	draining          atomic.Bool
+	failed            atomic.Bool
+	failureOnce       sync.Once
+	failures          chan error
 	lifecycleMu       sync.Mutex
 	stopOnce          sync.Once
 	started, stopping bool
@@ -185,9 +191,10 @@ func (s *Server) StartServer() error {
 	go func() {
 		log.Printf("Starting WebTransport server on UDP port %d (HTTP/3)", port)
 		if err := s.wtServer.Serve(udpConn); err != nil {
-			log.Printf("WebTransport server failed: %v", err)
+			s.reportServeFailure(fmt.Errorf("WebTransport serve: %w", err))
 		}
 	}()
+	s.ready.Store(true)
 	return nil
 }
 
@@ -355,6 +362,8 @@ func (s *Server) handleSessionClose(sessionID int) {
 // StopServer tears down all listeners and connections.
 func (s *Server) StopServer() {
 	s.stopOnce.Do(func() {
+		s.draining.Store(true)
+		s.ready.Store(false)
 		s.lifecycleMu.Lock()
 		s.stopping = true
 		s.lifecycleMu.Unlock()
@@ -395,7 +404,7 @@ func (s *Server) serveHTTP(listener net.Listener, handler http.Handler) {
 	go func() {
 		defer close(s.httpDone)
 		if err := s.httpServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Printf("HTTP serve failed: %v", err)
+			s.reportServeFailure(fmt.Errorf("HTTP serve: %w", err))
 		}
 	}()
 }
@@ -419,6 +428,7 @@ func listenUDP(port int) (*net.UDPConn, int, error) {
 // startHTTPServer serves HTTPS for other endpoints.
 func (s *Server) startHTTPServer(tlsConf *tls.Config, certManager *cert.RotatingCertManager, port int, wtPort int) error {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/api/ready", s.handleReadiness)
 	mux.HandleFunc("/register", registerHandler)
 
 	// WebSocket fallback for browsers without WebTransport (Safari, iOS)

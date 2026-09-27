@@ -60,8 +60,16 @@ func main() {
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	<-sigChan
-	log.Println("Received shutdown signal, shutting down...")
+	var serveErr error
+	select {
+	case <-sigChan:
+		log.Println("Received shutdown signal, shutting down...")
+	case serveErr = <-srv.Errors():
+		log.Printf("Listener failed, shutting down: %v", serveErr)
+	}
 
 	srv.StopServer()
+	if serveErr != nil {
+		os.Exit(1)
+	}
 }

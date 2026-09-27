@@ -302,6 +302,10 @@ After any failed deployment:
 
 Startup normally takes roughly eight seconds because the server synchronizes
 scripted events and preloads collisions, actors, encounters, scripts, and warps.
+The automated health check uses `/api/ready`, which requires completed listener
+startup, no reported listener failure or shutdown, and a successful bounded
+database ping. This endpoint must first be introduced through a backend or full
+deployment; a frontend-only deployment cannot add it to an older live backend.
 The automated health check retries for roughly one minute, and longer when an
 individual request reaches its timeout. A transient 502 during that window is
 expected; a persistent 502 after the retry window requires journal inspection.

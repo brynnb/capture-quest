@@ -344,6 +344,20 @@ reporting and explicit readiness remain unfinished. HTTP shutdown currently wait
 for handlers, and world cleanup waits for commands; a handler without a bounded
 operation can still delay shutdown indefinitely.
 
+Readiness checkpoint: `/api/ready` returns uncached 503 before listener startup,
+after unexpected listener failure, during shutdown or when a one-second database
+ping fails. Both deployment retry loops now use this endpoint. HTTP/WebTransport
+serve failures publish the first error to main; main drains the server and exits
+nonzero. Expected listener shutdown is not reported as a failure. This endpoint
+must be deployed with the backend before a frontend-only lane can rely on it.
+
+Race tests passed for readiness states, a real HTTP listener failure and normal
+shutdown. Importer/contract tests, workflow YAML parsing and runtime asset
+validation passed; PostgreSQL-specific importer cases were not exercised by the
+plain Go test invocation. No live deployment or readiness claim is made. Content
+preload methods that only log errors still need fail-closed startup propagation,
+and shutdown deadlines/cancellation remain incomplete.
+
 ## Reproducible PostgreSQL tests
 
 With `initdb`, `pg_ctl`, and Go available, run:
