@@ -85,6 +85,7 @@ func setupPlayerVisibilityWorld(t *testing.T, oldMapID, newMapID int) (*WorldHan
 	newMapViewer.Authenticated = true
 	newMapViewer.MapID = newMapID
 
+	sessionManager.ForEachSession(func(s *session.Session) { s.PublishPresence() })
 	wh := &WorldHandler{
 		sessionManager: sessionManager,
 		ActorRegistry:  NewActorRegistry(),

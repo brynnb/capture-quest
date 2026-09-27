@@ -125,19 +125,25 @@ func (m *PhaserActorManager) shouldSendActorToSessionMap(actor *PhaserActor, ses
 	return isOverworldActor && actor.ObjectType == "npc"
 }
 
+// Direct command callers own ses; cross-session broadcasts use Presence instead.
 func (m *PhaserActorManager) actorForSession(actor *PhaserActor, ses *session.Session) (PhaserActor, bool) {
-	if actor == nil || ses == nil || !m.shouldSendActorToSessionMap(actor, ses.MapID) {
+	if ses == nil {
 		return PhaserActor{}, false
 	}
+	return m.actorForPresence(actor, ses.PublishPresence())
+}
 
+func (m *PhaserActorManager) actorForPresence(actor *PhaserActor, p session.Presence) (PhaserActor, bool) {
+	if actor == nil || !m.shouldSendActorToSessionMap(actor, p.MapID) {
+		return PhaserActor{}, false
+	}
 	if !eventVisibilityAppliesToActor(actor) {
 		return *actor, true
 	}
-	if !ses.HasValidClient() {
+	if p.CharacterID == 0 {
 		return PhaserActor{}, false
 	}
-
-	return m.actorForCharacter(*actor, int64(ses.Client.CharData().ID))
+	return m.actorForCharacter(*actor, int64(p.CharacterID))
 }
 
 func eventVisibilityAppliesToActor(actor *PhaserActor) bool {
@@ -611,7 +617,8 @@ func (m *PhaserActorManager) calculateNextMove(actor *PhaserActor) (int, int, st
 
 func (m *PhaserActorManager) broadcastActorSpawn(actor *PhaserActor, originSessionID int) {
 	m.wh.sessionManager.ForEachSession(func(ses *session.Session) {
-		if !ses.Authenticated {
+		presence := ses.Presence()
+		if !presence.Authenticated {
 			return
 		}
 
@@ -620,7 +627,7 @@ func (m *PhaserActorManager) broadcastActorSpawn(actor *PhaserActor, originSessi
 			return
 		}
 
-		if actorForSession, ok := m.actorForSession(actor, ses); ok {
+		if actorForSession, ok := m.actorForPresence(actor, presence); ok {
 			ses.SendStreamJSON(StructToMap([]PhaserActor{actorForSession}), opcodes.PhaserActorsResponse)
 		}
 	})
@@ -628,7 +635,8 @@ func (m *PhaserActorManager) broadcastActorSpawn(actor *PhaserActor, originSessi
 
 func (m *PhaserActorManager) broadcastActorUpdate(actor *PhaserActor, originSessionID int) {
 	m.wh.sessionManager.ForEachSession(func(ses *session.Session) {
-		if !ses.Authenticated {
+		presence := ses.Presence()
+		if !presence.Authenticated {
 			return
 		}
 
@@ -637,7 +645,7 @@ func (m *PhaserActorManager) broadcastActorUpdate(actor *PhaserActor, originSess
 			return
 		}
 
-		if actorForSession, ok := m.actorForSession(actor, ses); ok {
+		if actorForSession, ok := m.actorForPresence(actor, presence); ok {
 			// Using SendStreamJSON for reliability as position updates are important
 			ses.SendStreamJSON(StructToMap(&actorForSession), opcodes.PhaserActorPositionUpdate)
 		}
@@ -1029,13 +1037,14 @@ func (m *PhaserActorManager) isPlayerBlockingTile(mapID, x, y int) bool {
 	}
 	blocked := false
 	m.wh.sessionManager.ForEachSession(func(ses *session.Session) {
-		if blocked || !ses.HasValidClient() {
+		presence := ses.Presence()
+		if blocked || presence.CharacterID == 0 {
 			return
 		}
-		if !m.actorSharesMovementMapLocked(ses.MapID, mapID) {
+		if !m.actorSharesMovementMapLocked(presence.MapID, mapID) {
 			return
 		}
-		if int(ses.X) == x && int(ses.Y) == y {
+		if int(presence.X) == x && int(presence.Y) == y {
 			blocked = true
 		}
 	})
@@ -1341,7 +1350,8 @@ func (m *PhaserActorManager) broadcastActorDespawnExcept(actorID int, mapID int,
 	m.mu.RUnlock()
 
 	m.wh.sessionManager.ForEachSession(func(ses *session.Session) {
-		if !ses.Authenticated {
+		presence := ses.Presence()
+		if !presence.Authenticated {
 			return
 		}
 		if excludedSessionID != 0 && ses.SessionID == excludedSessionID {
@@ -1349,10 +1359,10 @@ func (m *PhaserActorManager) broadcastActorDespawnExcept(actorID int, mapID int,
 		}
 
 		m.mu.RLock()
-		playerOnOverworld := ses.MapID == UnifiedOverworldMapID || m.overworldMapIds[ses.MapID]
+		playerOnOverworld := presence.MapID == UnifiedOverworldMapID || m.overworldMapIds[presence.MapID]
 		m.mu.RUnlock()
 
-		shouldSend := ses.MapID == mapID || (isOverworldMap && playerOnOverworld)
+		shouldSend := presence.MapID == mapID || (isOverworldMap && playerOnOverworld)
 
 		if shouldSend {
 			ses.SendStreamJSON(map[string]interface{}{

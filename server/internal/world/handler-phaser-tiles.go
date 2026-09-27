@@ -519,13 +519,14 @@ func broadcastTileChanges(wh *WorldHandler, tiles []TileEdit, mapID int, originS
 	isOverworld := mapID == UnifiedOverworldMapID
 
 	wh.sessionManager.ForEachSession(func(ses *session.Session) {
-		if !ses.Authenticated {
+		presence := ses.Presence()
+		if !presence.Authenticated {
 			return
 		}
 
 		// Check if the player is on the same map
-		playerOnOverworld := ses.MapID == UnifiedOverworldMapID || (wh.ActorManager != nil && wh.ActorManager.IsOverworld(ses.MapID))
-		if ses.MapID == mapID || (isOverworld && playerOnOverworld) {
+		playerOnOverworld := presence.MapID == UnifiedOverworldMapID || (wh.ActorManager != nil && wh.ActorManager.IsOverworld(presence.MapID))
+		if presence.MapID == mapID || (isOverworld && playerOnOverworld) {
 			ses.SendStreamJSON(data, opcodes.TileEditorBroadcast)
 		}
 	})

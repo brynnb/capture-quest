@@ -89,8 +89,12 @@ shared state only for the matching owner; stale disconnects cannot remove a new
 owner. Concurrent handoffs fail entry and can be retried. The movement timer
 enters this same gate for each player's path advancement, publication and step
 effects. It skips busy owners until the next tick and rejects replaced movement
-registrations. Other timer writers and broadcast readers still require auditing
-and coordination with this ownership boundary.
+registrations. Session commands and cleanup publish a value-only `Presence`
+snapshot before releasing their gate. Cross-player broadcasts, player actor lists
+and NPC player-collision checks read that snapshot rather than another session's
+mutable fields. They never acquire the recipient's command gate. Closed sessions
+immediately return empty presence. Other background writers and actor state
+publication still require auditing and coordination with this ownership boundary.
 
 We follow a **"Model-First"** architecture. Data is categorized into distinct streams to avoid massive "god-object" updates and to minimize bandwidth.
 

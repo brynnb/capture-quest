@@ -185,7 +185,7 @@ func (wh *WorldHandler) emitPublicChat(message ChatMessageBroadcast) {
 
 func (wh *WorldHandler) broadcastGeneralChat(message ChatMessageBroadcast) {
 	session.GetSessionManager().ForEachSession(func(targetSes *session.Session) {
-		if !targetSes.Authenticated {
+		if !targetSes.Presence().Authenticated {
 			return
 		}
 		targetSes.SendJSON(message, opcodes.ChatMessageBroadcast)

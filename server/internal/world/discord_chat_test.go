@@ -30,6 +30,7 @@ func TestDiscordChatUsesGlobalBroadcastAndOutboundSink(t *testing.T) {
 	session.InitSessionManager(manager)
 	observer := manager.CreateSession(messenger, 1, "127.0.0.1", nil)
 	observer.Authenticated = true
+	observer.PublishPresence()
 	wh := &WorldHandler{}
 	var bridged ChatMessageBroadcast
 	wh.SetPublicChatSink(func(message ChatMessageBroadcast) { bridged = message })

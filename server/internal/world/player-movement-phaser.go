@@ -885,6 +885,7 @@ func (m *PlayerMovementManager) playerActorForSnapshot(snapshot playerMovementSn
 	char.MapID = uint32(snapshot.MapID)
 
 	spriteName := playerSpriteName(char.Gender, snapshot.Bicycle, snapshot.Surfing)
+	name := char.Name
 
 	x := snapshot.CurrentX
 	y := snapshot.CurrentY
@@ -903,7 +904,7 @@ func (m *PlayerMovementManager) playerActorForSnapshot(snapshot playerMovementSn
 		MapID:           snapshot.MapID,
 		ObjectType:      "player",
 		SpriteName:      &spriteName,
-		Name:            &char.Name,
+		Name:            &name,
 		ActionDirection: &snapshot.Direction,
 		MovementType:    &both,
 		MoveSpeed:       int(snapshot.MoveSpeed.Milliseconds()),

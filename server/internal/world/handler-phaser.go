@@ -674,15 +674,18 @@ func HandlePhaserActorsRequest(ses *session.Session, payload []byte, wh *WorldHa
 	actors = ApplyEventObjectVisibilityToActors(charID, req.MapID, wh.EventFlags, actors)
 	actors = ApplyCharacterObjectPositions(charID, actors)
 
+	// Publish this command's map change before enumerating visible players.
+	ses.PublishPresence()
 	// Add all players on this map (or overworld if target is overworld)
 	wh.sessionManager.ForEachSession(func(otherSes *session.Session) {
-		if !otherSes.HasValidClient() {
+		presence := otherSes.Presence()
+		if presence.CharacterID == 0 {
 			return
 		}
 
 		// Include if on the same map, or if both are in overworld (Map 9999)
-		if otherSes.MapID == req.MapID || (isOverworldTarget && wh.ActorManager.IsOverworld(otherSes.MapID)) {
-			otherActor := createPlayerActor(otherSes, wh)
+		if presence.MapID == req.MapID || (isOverworldTarget && wh.ActorManager.IsOverworld(presence.MapID)) {
+			otherActor := createPlayerActorFromPresence(presence, wh)
 			if otherActor != nil {
 				actors = append(actors, *otherActor)
 			}
@@ -1035,18 +1038,18 @@ func SendPlayerSpawn(ses *session.Session, wh *WorldHandler) {
 
 // createPlayerActor creates a PhaserActor representation of the session's player
 func createPlayerActor(ses *session.Session, wh *WorldHandler) *PhaserActor {
-	if ses.Client == nil {
-		return nil
-	}
-	char := ses.Client.CharData()
-	if char == nil {
+	return createPlayerActorFromPresence(ses.PublishPresence(), wh)
+}
+
+func createPlayerActorFromPresence(p session.Presence, wh *WorldHandler) *PhaserActor {
+	if p.CharacterID == 0 {
 		return nil
 	}
 
 	// Use stored position from character data
-	spawnX := int(char.X)
-	spawnY := int(char.Y)
-	storedMapID := int(char.MapID)
+	spawnX := int(p.CharacterX)
+	spawnY := int(p.CharacterY)
+	storedMapID := int(p.CharacterMapID)
 	mapID := storedMapID
 
 	// Normalize overworld maps to 9999 for the client
@@ -1064,14 +1067,14 @@ func createPlayerActor(ses *session.Session, wh *WorldHandler) *PhaserActor {
 		}
 	}
 
-	ridingBicycle := wh.PlayerMovement != nil && wh.PlayerMovement.IsBicycleActive(int(char.ID))
-	surfing := wh.PlayerMovement != nil && wh.PlayerMovement.IsSurfing(int(char.ID))
+	ridingBicycle := wh.PlayerMovement != nil && wh.PlayerMovement.IsBicycleActive(int(p.CharacterID))
+	surfing := wh.PlayerMovement != nil && wh.PlayerMovement.IsSurfing(int(p.CharacterID))
 	if !surfing && wh.ActorManager != nil {
 		if collisionType, exists := wh.ActorManager.CollisionTypeAt(mapID, spawnX, spawnY); exists && collisionType == collisionWater {
 			surfing = true
 		}
 	}
-	spriteName := playerSpriteName(char.Gender, ridingBicycle, surfing)
+	spriteName := playerSpriteName(p.Gender, ridingBicycle, surfing)
 
 	objectType := "player"
 	stay := "STAY"
@@ -1079,18 +1082,18 @@ func createPlayerActor(ses *session.Session, wh *WorldHandler) *PhaserActor {
 	both := "BOTH"
 
 	return &PhaserActor{
-		ID:              wh.ActorRegistry.GetPhaserID(ActorTypePlayer, int(char.ID)),
-		InternalID:      int(char.ID),
+		ID:              wh.ActorRegistry.GetPhaserID(ActorTypePlayer, int(p.CharacterID)),
+		InternalID:      int(p.CharacterID),
 		X:               &spawnX,
 		Y:               &spawnY,
 		MapID:           mapID,
 		ObjectType:      objectType,
 		SpriteName:      &spriteName,
-		Name:            &char.Name,
+		Name:            &p.Name,
 		ActionType:      &stay,
 		ActionDirection: &direction,
 		MovementType:    &both,
-		MoveSpeed:       wh.PlayerMovement.GetMoveSpeed(int(char.ID)),
+		MoveSpeed:       wh.PlayerMovement.GetMoveSpeed(int(p.CharacterID)),
 	}
 }
 

@@ -124,6 +124,7 @@ func TestBroadcastActorDespawnExceptRemovesPlayerFromPreviousMapViewers(t *testi
 	newMapViewer.Authenticated = true
 	newMapViewer.MapID = 63
 
+	sessionManager.ForEachSession(func(s *session.Session) { s.PublishPresence() })
 	mgr := &PhaserActorManager{
 		wh:              &WorldHandler{sessionManager: sessionManager},
 		overworldMapIds: map[int]bool{},
@@ -172,6 +173,7 @@ func TestBroadcastPlayerVisibleMapChangeDespawnsOldMapAndUpdatesNewMap(t *testin
 	newMapViewer.MapID = 63
 
 	wh := &WorldHandler{sessionManager: sessionManager}
+	sessionManager.ForEachSession(func(s *session.Session) { s.PublishPresence() })
 	mgr := &PhaserActorManager{
 		wh:              wh,
 		overworldMapIds: map[int]bool{},

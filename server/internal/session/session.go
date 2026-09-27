@@ -17,6 +17,7 @@ type ClientMessenger interface {
 
 // Session holds the context for a client session.
 type Session struct {
+	presence        atomic.Pointer[Presence]
 	commands        commandGate
 	IssuedCutscenes IssuedEvents
 	SessionID       int
@@ -270,16 +271,6 @@ func (sm *SessionManager) RemoveSession(sessionID int) (*Session, bool) {
 	// the manager lock. Otherwise one slow client can prevent every login.
 	sess.Close()
 	return sess, true
-}
-
-// UpdateMap updates the mapID for a session.
-func (sm *SessionManager) UpdateMap(sessionID int, mapID int) {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
-	if session, ok := sm.sessions[sessionID]; ok {
-		session.MapID = mapID
-	}
 }
 
 // ForEachSession iterates over a snapshot of active sessions. Callbacks often

@@ -275,6 +275,22 @@ the duration of every executing callback, or drain background tasks at shutdown.
 Those remain required work. Movement tests are headless; no rendered movement
 claim or deployment is implied.
 
+Presence publication checkpoint: session command completion and cleanup publish an
+immutable value projection of authentication, map/position and visible character
+identity. World broadcast recipients, player enumeration and NPC player collision
+checks consume this projection without reading another session's mutable client
+or taking its command lock. Owner-side actor creation can explicitly publish an
+intermediate map transition. Closed connections expose empty presence immediately.
+The unused SessionManager.UpdateMap mutation bypass was removed. Player actor
+payload names are copied rather than pointing into mutable character data.
+
+The PostgreSQL-backed session/world/server race suites passed. Additional tests
+check coherent position/map publication and broadcasts while a recipient has an
+unpublished map change inside a running command. Existing broadcast fixtures now
+explicitly publish their setup state, matching the production command boundary.
+This does not prove all NPC actor pointers, external callbacks, or shutdown
+writers safe; those remain part of the unfinished ownership/lifecycle audit.
+
 ## Reproducible PostgreSQL tests
 
 With `initdb`, `pg_ctl`, and Go available, run:

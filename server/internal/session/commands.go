@@ -48,6 +48,7 @@ func (s *Session) ExecuteCommand(ctx context.Context, command func()) error {
 	if s.IsClosed() {
 		return ErrSessionClosed
 	}
+	defer s.PublishPresence()
 	command()
 	return nil
 }
@@ -74,6 +75,7 @@ func (s *Session) TryExecuteCommand(command func()) error {
 	if s.IsClosed() {
 		return ErrSessionClosed
 	}
+	defer s.PublishPresence()
 	command()
 	return nil
 }
@@ -99,6 +101,7 @@ func (s *Session) DrainCommandsContext(ctx context.Context, cleanup func()) erro
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	defer s.PublishPresence()
 	cleanup()
 	return nil
 }

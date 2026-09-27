@@ -422,6 +422,7 @@ func TestTileEditorBroadcastsLiveChangesAndLaterJoinLoadsPersistedMap(t *testing
 	viewer := sessionManager.CreateSession(viewerMessenger, 2, "viewer", nil)
 	viewer.Authenticated = true
 	viewer.MapID = UnifiedOverworldMapID
+	viewer.PublishPresence()
 
 	wh := &WorldHandler{sessionManager: sessionManager}
 
