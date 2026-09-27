@@ -1,8 +1,8 @@
 package world
 
 import (
-	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"sort"
 	"strings"
@@ -37,26 +37,43 @@ type CutsceneScript struct {
 	WarpToY              *int
 }
 
-func parseStringJSONList(raw []byte, scriptLabel, field string) []string {
+func parseStringJSONList(raw []byte, scriptLabel, field string) ([]string, error) {
 	if strings.TrimSpace(string(raw)) == "" || strings.TrimSpace(string(raw)) == "null" {
-		return nil
+		return nil, nil
 	}
 	var values []string
 	if err := json.Unmarshal(raw, &values); err != nil {
-		log.Printf("[CutsceneManager] Error parsing %s for %s: %v", field, scriptLabel, err)
-		return nil
+		return nil, fmt.Errorf("cutscene %s field %s: %w", scriptLabel, field, err)
 	}
 	seen := make(map[string]bool, len(values))
 	result := make([]string, 0, len(values))
-	for _, value := range values {
+	for i, value := range values {
 		value = strings.TrimSpace(value)
-		if value == "" || seen[value] {
+		if value == "" {
+			return nil, fmt.Errorf("cutscene %s field %s entry %d is empty or null", scriptLabel, field, i)
+		}
+		if seen[value] {
 			continue
 		}
 		seen[value] = true
 		result = append(result, value)
 	}
-	return result
+	return result, nil
+}
+
+func validateCutsceneActionTypes(actions []CutsceneAction, path string) error {
+	for i, action := range actions {
+		at := fmt.Sprintf("%s[%d]", path, i)
+		if strings.TrimSpace(action.Type) == "" {
+			return fmt.Errorf("%s has no action type", at)
+		}
+		for name, children := range map[string][]CutsceneAction{"actions": action.Actions, "postWinActions": action.PostWinActions, "postLoseActions": action.PostLoseActions} {
+			if err := validateCutsceneActionTypes(children, at+"."+name); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // CutsceneManager loads cutscene scripts from the database and provides
@@ -87,30 +104,38 @@ func NewCutsceneManager(db pokebattle.DBTX) *CutsceneManager {
 }
 
 // Load reads all cutscene scripts from the database into memory.
-func (m *CutsceneManager) Load() {
-	// Load map ID -> name mapping
+func (m *CutsceneManager) Load() error {
+	if m.db == nil {
+		return fmt.Errorf("cutscene preload requires a database")
+	}
 	mapRows, err := m.db.Query(`SELECT id, name FROM phaser_maps`)
 	if err != nil {
-		log.Printf("[CutsceneManager] Failed to load map names: %v", err)
-	} else {
-		defer mapRows.Close()
-		idToName := make(map[int]string)
-		for mapRows.Next() {
-			var id int
-			var name string
-			if err := mapRows.Scan(&id, &name); err == nil {
-				idToName[id] = name
-			}
-		}
-		m.mu.Lock()
-		m.mapIDToName = idToName
-		m.mu.Unlock()
+		return fmt.Errorf("load cutscene map names: %w", err)
 	}
-
-	rows, queryShape, err := m.queryCutsceneRows()
+	defer mapRows.Close()
+	idToName := make(map[int]string)
+	for mapRows.Next() {
+		var id int
+		var name string
+		if err := mapRows.Scan(&id, &name); err != nil {
+			return fmt.Errorf("scan cutscene map: %w", err)
+		}
+		idToName[id] = name
+	}
+	if err := mapRows.Err(); err != nil {
+		return fmt.Errorf("read cutscene maps: %w", err)
+	}
+	// Runtime requires the current canonical schema. Never retry a weaker
+	// query that drops prerequisite fields after a database error.
+	rows, err := m.db.Query(`
+		SELECT id, script_label, map_name, trigger_type, trigger_label,
+			requires_flag, requires_flag_absent, requires_flags, requires_flags_absent, requires_item_id, requires_item_absent_id, requires_pokedex_caught,
+			requires_money, requires_money_below, requires_coins, requires_coins_below, requires_player_facing, sets_flags, actions,
+			warp_to_map_id, warp_to_x, warp_to_y
+		FROM phaser_cutscene_scripts
+		ORDER BY id`)
 	if err != nil {
-		log.Printf("[CutsceneManager] Failed to load: %v", err)
-		return
+		return fmt.Errorf("load cutscenes: %w", err)
 	}
 	defer rows.Close()
 
@@ -126,75 +151,23 @@ func (m *CutsceneManager) Load() {
 		var setsFlagsJSON, actionsJSON []byte
 		var warpMapID, warpX, warpY *int
 
-		if queryShape.hasRequiresFlagArrays && queryShape.hasTriggerLabel && queryShape.hasRequiresItemID && queryShape.hasRequiresItemAbsentID && queryShape.hasRequiresCaught && queryShape.hasRequiresMoney && queryShape.hasRequiresCoins && queryShape.hasRequiresPlayerFacing {
-			if err := rows.Scan(&cs.ID, &cs.ScriptLabel, &cs.MapName, &cs.TriggerType,
-				&triggerLabel, &reqFlag, &reqFlagAbsent, &reqFlagsJSON, &reqFlagsAbsentJSON, &reqItemID, &reqItemAbsentID, &reqCaught, &reqMoney, &reqMoneyBelow, &reqCoins, &reqCoinsBelow, &reqPlayerFacing,
-				&setsFlagsJSON, &actionsJSON, &warpMapID, &warpX, &warpY); err != nil {
-				log.Printf("[CutsceneManager] Error scanning row: %v", err)
-				continue
-			}
-		} else if queryShape.hasTriggerLabel && queryShape.hasRequiresItemID && queryShape.hasRequiresItemAbsentID && queryShape.hasRequiresCaught && queryShape.hasRequiresMoney && queryShape.hasRequiresCoins && queryShape.hasRequiresPlayerFacing {
-			if err := rows.Scan(&cs.ID, &cs.ScriptLabel, &cs.MapName, &cs.TriggerType,
-				&triggerLabel, &reqFlag, &reqFlagAbsent, &reqItemID, &reqItemAbsentID, &reqCaught, &reqMoney, &reqMoneyBelow, &reqCoins, &reqCoinsBelow, &reqPlayerFacing,
-				&setsFlagsJSON, &actionsJSON, &warpMapID, &warpX, &warpY); err != nil {
-				log.Printf("[CutsceneManager] Error scanning row: %v", err)
-				continue
-			}
-		} else if queryShape.hasTriggerLabel && queryShape.hasRequiresItemID && queryShape.hasRequiresItemAbsentID && queryShape.hasRequiresCaught && queryShape.hasRequiresMoney && queryShape.hasRequiresCoins {
-			if err := rows.Scan(&cs.ID, &cs.ScriptLabel, &cs.MapName, &cs.TriggerType,
-				&triggerLabel, &reqFlag, &reqFlagAbsent, &reqItemID, &reqItemAbsentID, &reqCaught, &reqMoney, &reqMoneyBelow, &reqCoins, &reqCoinsBelow,
-				&setsFlagsJSON, &actionsJSON, &warpMapID, &warpX, &warpY); err != nil {
-				log.Printf("[CutsceneManager] Error scanning row: %v", err)
-				continue
-			}
-		} else if queryShape.hasTriggerLabel && queryShape.hasRequiresItemID && queryShape.hasRequiresItemAbsentID && queryShape.hasRequiresCaught && queryShape.hasRequiresMoney {
-			if err := rows.Scan(&cs.ID, &cs.ScriptLabel, &cs.MapName, &cs.TriggerType,
-				&triggerLabel, &reqFlag, &reqFlagAbsent, &reqItemID, &reqItemAbsentID, &reqCaught, &reqMoney, &reqMoneyBelow,
-				&setsFlagsJSON, &actionsJSON, &warpMapID, &warpX, &warpY); err != nil {
-				log.Printf("[CutsceneManager] Error scanning row: %v", err)
-				continue
-			}
-		} else if queryShape.hasTriggerLabel && queryShape.hasRequiresItemID && queryShape.hasRequiresItemAbsentID && queryShape.hasRequiresCaught {
-			if err := rows.Scan(&cs.ID, &cs.ScriptLabel, &cs.MapName, &cs.TriggerType,
-				&triggerLabel, &reqFlag, &reqFlagAbsent, &reqItemID, &reqItemAbsentID, &reqCaught,
-				&setsFlagsJSON, &actionsJSON, &warpMapID, &warpX, &warpY); err != nil {
-				log.Printf("[CutsceneManager] Error scanning row: %v", err)
-				continue
-			}
-		} else if queryShape.hasTriggerLabel && queryShape.hasRequiresItemID && queryShape.hasRequiresCaught {
-			if err := rows.Scan(&cs.ID, &cs.ScriptLabel, &cs.MapName, &cs.TriggerType,
-				&triggerLabel, &reqFlag, &reqFlagAbsent, &reqItemID, &reqCaught,
-				&setsFlagsJSON, &actionsJSON, &warpMapID, &warpX, &warpY); err != nil {
-				log.Printf("[CutsceneManager] Error scanning row: %v", err)
-				continue
-			}
-		} else if queryShape.hasTriggerLabel && queryShape.hasRequiresItemID {
-			if err := rows.Scan(&cs.ID, &cs.ScriptLabel, &cs.MapName, &cs.TriggerType,
-				&triggerLabel, &reqFlag, &reqFlagAbsent, &reqItemID, &setsFlagsJSON,
-				&actionsJSON, &warpMapID, &warpX, &warpY); err != nil {
-				log.Printf("[CutsceneManager] Error scanning row: %v", err)
-				continue
-			}
-		} else if queryShape.hasTriggerLabel {
-			if err := rows.Scan(&cs.ID, &cs.ScriptLabel, &cs.MapName, &cs.TriggerType,
-				&triggerLabel, &reqFlag, &reqFlagAbsent, &setsFlagsJSON, &actionsJSON,
-				&warpMapID, &warpX, &warpY); err != nil {
-				log.Printf("[CutsceneManager] Error scanning row: %v", err)
-				continue
-			}
-		} else {
-			if err := rows.Scan(&cs.ID, &cs.ScriptLabel, &cs.MapName, &cs.TriggerType,
-				&reqFlag, &reqFlagAbsent, &setsFlagsJSON, &actionsJSON,
-				&warpMapID, &warpX, &warpY); err != nil {
-				log.Printf("[CutsceneManager] Error scanning row: %v", err)
-				continue
-			}
+		if err := rows.Scan(&cs.ID, &cs.ScriptLabel, &cs.MapName, &cs.TriggerType,
+			&triggerLabel, &reqFlag, &reqFlagAbsent, &reqFlagsJSON, &reqFlagsAbsentJSON, &reqItemID, &reqItemAbsentID, &reqCaught, &reqMoney, &reqMoneyBelow, &reqCoins, &reqCoinsBelow, &reqPlayerFacing,
+			&setsFlagsJSON, &actionsJSON, &warpMapID, &warpX, &warpY); err != nil {
+			return fmt.Errorf("scan cutscene row: %w", err)
 		}
+
 		cs.TriggerLabel = triggerLabel
 		cs.RequiresFlag = reqFlag
 		cs.RequiresFlagAbst = reqFlagAbsent
-		cs.RequiresFlags = parseStringJSONList(reqFlagsJSON, cs.ScriptLabel, "requires_flags")
-		cs.RequiresFlagsAbst = parseStringJSONList(reqFlagsAbsentJSON, cs.ScriptLabel, "requires_flags_absent")
+		cs.RequiresFlags, err = parseStringJSONList(reqFlagsJSON, cs.ScriptLabel, "requires_flags")
+		if err != nil {
+			return err
+		}
+		cs.RequiresFlagsAbst, err = parseStringJSONList(reqFlagsAbsentJSON, cs.ScriptLabel, "requires_flags_absent")
+		if err != nil {
+			return err
+		}
 		cs.RequiresItemID = reqItemID
 		cs.RequiresItemAbst = reqItemAbsentID
 		cs.RequiresCaught = reqCaught
@@ -203,16 +176,24 @@ func (m *CutsceneManager) Load() {
 		cs.RequiresCoins = reqCoins
 		cs.RequiresCoinsBelow = reqCoinsBelow
 		cs.RequiresPlayerFacing = reqPlayerFacing
+		var actions []CutsceneAction
+		if err := json.Unmarshal(actionsJSON, &actions); err != nil {
+			return fmt.Errorf("cutscene %s actions: %w", cs.ScriptLabel, err)
+		}
+		if actions == nil {
+			return fmt.Errorf("cutscene %s actions must be an array", cs.ScriptLabel)
+		}
+		if err := validateCutsceneActionTypes(actions, "cutscene "+cs.ScriptLabel+" actions"); err != nil {
+			return err
+		}
 		cs.Actions = actionsJSON
 		cs.WarpToMapID = warpMapID
 		cs.WarpToX = warpX
 		cs.WarpToY = warpY
 
-		// Parse sets_flags JSON array
-		if setsFlagsJSON != nil {
-			if err := json.Unmarshal(setsFlagsJSON, &cs.SetsFlags); err != nil {
-				log.Printf("[CutsceneManager] Error parsing sets_flags for %s: %v", cs.ScriptLabel, err)
-			}
+		cs.SetsFlags, err = parseStringJSONList(setsFlagsJSON, cs.ScriptLabel, "sets_flags")
+		if err != nil {
+			return err
 		}
 
 		byMap[cs.MapName] = append(byMap[cs.MapName], &cs)
@@ -223,135 +204,18 @@ func (m *CutsceneManager) Load() {
 		count++
 	}
 
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read cutscene rows: %w", err)
+	}
 	m.mu.Lock()
+	m.mapIDToName = idToName
 	m.byMap = byMap
 	m.byLabel = byLabel
 	m.byTriggerLabel = byTriggerLabel
 	m.mu.Unlock()
 
 	log.Printf("[CutsceneManager] Loaded %d cutscene scripts across %d maps", count, len(byMap))
-}
-
-type cutsceneQueryShape struct {
-	hasRequiresFlagArrays   bool
-	hasTriggerLabel         bool
-	hasRequiresItemID       bool
-	hasRequiresItemAbsentID bool
-	hasRequiresCaught       bool
-	hasRequiresMoney        bool
-	hasRequiresCoins        bool
-	hasRequiresPlayerFacing bool
-}
-
-func (m *CutsceneManager) queryCutsceneRows() (*sql.Rows, cutsceneQueryShape, error) {
-	rows, err := m.db.Query(`
-		SELECT id, script_label, map_name, trigger_type, trigger_label,
-			requires_flag, requires_flag_absent, requires_flags, requires_flags_absent, requires_item_id, requires_item_absent_id, requires_pokedex_caught,
-			requires_money, requires_money_below, requires_coins, requires_coins_below, requires_player_facing, sets_flags, actions,
-			warp_to_map_id, warp_to_x, warp_to_y
-		FROM phaser_cutscene_scripts
-		ORDER BY id`)
-	if err == nil {
-		return rows, cutsceneQueryShape{
-			hasRequiresFlagArrays: true,
-			hasTriggerLabel:       true, hasRequiresItemID: true, hasRequiresItemAbsentID: true,
-			hasRequiresCaught: true, hasRequiresMoney: true, hasRequiresCoins: true,
-			hasRequiresPlayerFacing: true,
-		}, nil
-	}
-
-	log.Printf("[CutsceneManager] requires_flags columns unavailable, using scalar-flag cutscene query: %v", err)
-	rows, err = m.db.Query(`
-		SELECT id, script_label, map_name, trigger_type, trigger_label,
-			requires_flag, requires_flag_absent, requires_item_id, requires_item_absent_id, requires_pokedex_caught,
-			requires_money, requires_money_below, requires_coins, requires_coins_below, requires_player_facing, sets_flags, actions,
-			warp_to_map_id, warp_to_x, warp_to_y
-		FROM phaser_cutscene_scripts
-		ORDER BY id`)
-	if err == nil {
-		return rows, cutsceneQueryShape{
-			hasTriggerLabel: true, hasRequiresItemID: true, hasRequiresItemAbsentID: true,
-			hasRequiresCaught: true, hasRequiresMoney: true, hasRequiresCoins: true,
-			hasRequiresPlayerFacing: true,
-		}, nil
-	}
-
-	log.Printf("[CutsceneManager] requires_player_facing column unavailable, using coin-gated cutscene query: %v", err)
-	rows, err = m.db.Query(`
-		SELECT id, script_label, map_name, trigger_type, trigger_label,
-			requires_flag, requires_flag_absent, requires_item_id, requires_item_absent_id, requires_pokedex_caught,
-			requires_money, requires_money_below, requires_coins, requires_coins_below, sets_flags, actions,
-			warp_to_map_id, warp_to_x, warp_to_y
-		FROM phaser_cutscene_scripts
-		ORDER BY id`)
-	if err == nil {
-		return rows, cutsceneQueryShape{hasTriggerLabel: true, hasRequiresItemID: true, hasRequiresItemAbsentID: true, hasRequiresCaught: true, hasRequiresMoney: true, hasRequiresCoins: true}, nil
-	}
-
-	log.Printf("[CutsceneManager] requires_coins columns unavailable, using money-gated cutscene query: %v", err)
-	rows, err = m.db.Query(`
-		SELECT id, script_label, map_name, trigger_type, trigger_label,
-			requires_flag, requires_flag_absent, requires_item_id, requires_item_absent_id, requires_pokedex_caught,
-			requires_money, requires_money_below, sets_flags, actions,
-			warp_to_map_id, warp_to_x, warp_to_y
-		FROM phaser_cutscene_scripts
-		ORDER BY id`)
-	if err == nil {
-		return rows, cutsceneQueryShape{hasTriggerLabel: true, hasRequiresItemID: true, hasRequiresItemAbsentID: true, hasRequiresCaught: true, hasRequiresMoney: true}, nil
-	}
-
-	log.Printf("[CutsceneManager] requires_money columns unavailable, using caught/item-absent cutscene query: %v", err)
-	rows, err = m.db.Query(`
-		SELECT id, script_label, map_name, trigger_type, trigger_label,
-			requires_flag, requires_flag_absent, requires_item_id, requires_item_absent_id, requires_pokedex_caught, sets_flags, actions,
-			warp_to_map_id, warp_to_x, warp_to_y
-		FROM phaser_cutscene_scripts
-		ORDER BY id`)
-	if err == nil {
-		return rows, cutsceneQueryShape{hasTriggerLabel: true, hasRequiresItemID: true, hasRequiresItemAbsentID: true, hasRequiresCaught: true}, nil
-	}
-
-	log.Printf("[CutsceneManager] requires_item_absent_id column unavailable, using caught-gated cutscene query: %v", err)
-	rows, err = m.db.Query(`
-		SELECT id, script_label, map_name, trigger_type, trigger_label,
-			requires_flag, requires_flag_absent, requires_item_id, requires_pokedex_caught, sets_flags, actions,
-			warp_to_map_id, warp_to_x, warp_to_y
-		FROM phaser_cutscene_scripts
-		ORDER BY id`)
-	if err == nil {
-		return rows, cutsceneQueryShape{hasTriggerLabel: true, hasRequiresItemID: true, hasRequiresCaught: true}, nil
-	}
-
-	log.Printf("[CutsceneManager] requires_pokedex_caught column unavailable, using item-gated cutscene query: %v", err)
-	rows, err = m.db.Query(`
-		SELECT id, script_label, map_name, trigger_type, trigger_label,
-			requires_flag, requires_flag_absent, requires_item_id, sets_flags, actions,
-			warp_to_map_id, warp_to_x, warp_to_y
-		FROM phaser_cutscene_scripts
-		ORDER BY id`)
-	if err == nil {
-		return rows, cutsceneQueryShape{hasTriggerLabel: true, hasRequiresItemID: true}, nil
-	}
-
-	log.Printf("[CutsceneManager] requires_item_id column unavailable, using trigger-label cutscene query: %v", err)
-	rows, err = m.db.Query(`
-		SELECT id, script_label, map_name, trigger_type, trigger_label,
-			requires_flag, requires_flag_absent, sets_flags, actions,
-			warp_to_map_id, warp_to_x, warp_to_y
-		FROM phaser_cutscene_scripts
-		ORDER BY id`)
-	if err == nil {
-		return rows, cutsceneQueryShape{hasTriggerLabel: true}, nil
-	}
-
-	log.Printf("[CutsceneManager] trigger_label column unavailable, using legacy cutscene query: %v", err)
-	rows, err = m.db.Query(`
-		SELECT id, script_label, map_name, trigger_type,
-			requires_flag, requires_flag_absent, sets_flags, actions,
-			warp_to_map_id, warp_to_x, warp_to_y
-		FROM phaser_cutscene_scripts
-		ORDER BY id`)
-	return rows, cutsceneQueryShape{}, err
+	return nil
 }
 
 // GetByLabel returns a cutscene script by its label, or nil.

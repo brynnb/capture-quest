@@ -414,6 +414,22 @@ actor preload, retry after a failed collision query, concurrent lazy readers and
 single-connection loading. Existing actor identity checks passed through the full
 preload entry point. These are headless checks, not rendered NPC verification.
 
+Cutscene preload checkpoint: the loader now uses one canonical-schema query;
+the chain of older queries that dropped prerequisite columns after arbitrary
+errors is removed. Map names and scripts stage together and publish only after
+complete success. Query/scan/iteration errors propagate through world construction
+and the simulator. Invalid prerequisite/completion-flag arrays (including null or
+empty entries) identify the script and field instead of becoming empty conditions.
+Actions must be a typed array with nonempty action types, including nested action
+lists; this is structural validation, not a claim of complete action semantics.
+
+PostgreSQL race suites passed for world, simulator and server. New tests exercise
+malformed conditions, completion flags and nested actions, rejected world startup,
+cache preservation and a missing prerequisite column that previously could have
+selected a weaker query. All packages compiled. No new schema or generated data
+was introduced. Preload query deadlines, shutdown cancellation and the remaining
+wire/domain migration still keep the full goal incomplete.
+
 ## Reproducible PostgreSQL tests
 
 With `initdb`, `pg_ctl`, and Go available, run:

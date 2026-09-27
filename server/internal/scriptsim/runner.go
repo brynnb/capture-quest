@@ -140,7 +140,9 @@ func Run(scenario *Scenario) (*Result, error) {
 		return nil, err
 	}
 	cutscenes := world.NewCutsceneManager(db.GlobalWorldDB.DB)
-	cutscenes.Load()
+	if err := cutscenes.Load(); err != nil {
+		return nil, fmt.Errorf("load cutscenes: %w", err)
+	}
 
 	initial, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {

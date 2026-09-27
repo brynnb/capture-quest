@@ -106,9 +106,10 @@ the world and closing its captured database connection. Startup returns listener
 and TLS failures to main rather than logging them inside detached goroutines.
 `/api/ready` checks listener startup, failure/draining state and a one-second
 database ping. Unexpected HTTP or WebTransport serve failures notify main, clear
-readiness and initiate cleanup followed by a nonzero exit. Content loaders still
-need to propagate initialization errors; a bounded shutdown deadline remains in
-progress.
+readiness and initiate cleanup followed by a nonzero exit. Required world preload
+errors propagate through construction before timers/listeners start. Cutscenes
+require the canonical prerequisite columns; they never retry weaker query shapes.
+Preload deadlines and a bounded shutdown deadline remain in progress.
 
 We follow a **"Model-First"** architecture. Data is categorized into distinct streams to avoid massive "god-object" updates and to minimize bandwidth.
 

@@ -85,7 +85,9 @@ func NewWorldHandler(sessionManager *session.SessionManager) (*WorldHandler, err
 		return nil, fmt.Errorf("preload MapScripts: %w", err)
 	}
 	wh.Cutscenes = NewCutsceneManager(db.GlobalWorldDB.DB)
-	wh.Cutscenes.Load()
+	if err := wh.Cutscenes.Load(); err != nil {
+		return nil, fmt.Errorf("preload cutscenes: %w", err)
+	}
 	wh.SpinTiles = NewSpinTileManager(db.GlobalWorldDB.DB)
 	if err := wh.SpinTiles.Load(); err != nil {
 		return nil, fmt.Errorf("preload SpinTiles: %w", err)
