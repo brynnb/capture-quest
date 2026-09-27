@@ -2,9 +2,12 @@ package world
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"log"
+	"time"
 
 	"capturequest/internal/api"
 	"capturequest/internal/api/opcodes"
@@ -155,6 +158,21 @@ func (r *HandlerRegistry) ShouldHandleGlobally(data []byte) bool {
 }
 
 func (r *HandlerRegistry) HandleWorldPacket(ses *session.Session, data []byte) bool {
+	if ses == nil || len(data) < 2 || len(data) > api.MaxClientPacketSize {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	var result bool
+	err := ses.ExecuteCommand(ctx, func() { result = r.handleWorldPacket(ses, data) })
+	if err != nil && !errors.Is(err, session.ErrSessionClosed) {
+		log.Printf("[HandlerRegistry] Session %d command rejected: %v", ses.SessionID, err)
+		ses.Close()
+	}
+	return result
+}
+
+func (r *HandlerRegistry) handleWorldPacket(ses *session.Session, data []byte) bool {
 	if ses == nil || ses.IsClosed() || len(data) < 2 || len(data) > api.MaxClientPacketSize {
 		return false
 	}

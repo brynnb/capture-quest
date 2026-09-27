@@ -1,8 +1,8 @@
 package world
 
 import (
+	"context"
 	"database/sql"
-	"encoding/binary"
 	"log"
 	"sync"
 	"time"
@@ -87,25 +87,7 @@ func NewWorldHandler(sessionManager *session.SessionManager) *WorldHandler {
 // HandlePacket processes incoming datagrams.
 // All handlers are now at the world level - no zone routing needed.
 func (wh *WorldHandler) HandlePacket(ses *session.Session, data []byte) {
-	if len(data) < 2 {
-		return
-	}
-
-	// All opcodes are handled globally now
-	if wh.globalRegistry.ShouldHandleGlobally(data) {
-		wh.globalRegistry.HandleWorldPacket(ses, data)
-		return
-	}
-
-	// Unknown opcode
-	if !ses.Authenticated {
-		op := binary.LittleEndian.Uint16(data[:2])
-		log.Printf("unauthenticated opcode %d from session %d – dropping", op, ses.SessionID)
-		return
-	}
-
-	op := binary.LittleEndian.Uint16(data[:2])
-	log.Printf("unhandled opcode %d from session %d", op, ses.SessionID)
+	wh.globalRegistry.HandleWorldPacket(ses, data)
 }
 
 // RemoveSession cleans up session data.
@@ -115,7 +97,7 @@ func (wh *WorldHandler) RemoveSession(sessionID int) {
 		return
 	}
 	log.Printf("[WORLD] Removing session %d", sessionID)
-	wh.cleanupCharacterSession(ses)
+	ses.DrainCommands(func() { wh.cleanupCharacterSession(ses) })
 }
 
 func (wh *WorldHandler) cleanupCharacterSession(ses *session.Session) {
@@ -160,7 +142,9 @@ func (wh *WorldHandler) persistSessionPlaytime(ses *session.Session, now time.Ti
 func (wh *WorldHandler) Shutdown() {
 	now := time.Now()
 	wh.sessionManager.ForEachSession(func(ses *session.Session) {
-		wh.persistSessionPlaytime(ses, now)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = ses.ExecuteCommand(ctx, func() { wh.persistSessionPlaytime(ses, now) })
 	})
 }
 
@@ -188,7 +172,9 @@ func (wh *WorldHandler) StartSessionTimeoutChecker() {
 
 			if !now.Before(nextPlaytimeFlush) {
 				wh.sessionManager.ForEachSession(func(ses *session.Session) {
-					wh.persistSessionPlaytime(ses, now)
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					defer cancel()
+					_ = ses.ExecuteCommand(ctx, func() { wh.persistSessionPlaytime(ses, now) })
 				})
 				nextPlaytimeFlush = now.Add(playtimeFlushInterval)
 			}

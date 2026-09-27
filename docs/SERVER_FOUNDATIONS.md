@@ -216,6 +216,24 @@ small verified changes. No production deployment or push is part of this goal.
   checkpoint. Next: serialize packet execution and disconnect cleanup, then bind
   each character to one active session and coordinate world/timer writers.
 
+- Session execution checkpoint: the real opcode dispatcher serializes prerequisite
+  validation and handler execution through a per-session gate shared by both
+  reliable and datagram readers. At most 32 callbacks may execute/wait; admission
+  waits have a five-second deadline and overload closes the connection. Callbacks
+  run on the transport caller, without creating a goroutine per packet. Existing
+  handlers retain their own operation deadlines; gate cancellation bounds waiting,
+  not an already running callback.
+- Disconnect closes first, rejects queued work, and drains the running callback
+  before character cleanup. Periodic/shutdown playtime flushes enter the same gate.
+  Inline camp/character cleanup already executes inside the dispatcher and must
+  not recursively enter the gate. Session/server/world race tests passed with
+  PostgreSQL; focused tests cover bounded admission, concurrent handler updates,
+  cancellation, close versus queued/running work, and cleanup ordering.
+- This does not yet establish single-character ownership across sessions, ordered
+  publication across different character sessions, timer/world synchronization,
+  or bounded shutdown of every running handler. Those are the next required
+  ownership/lifecycle changes; the goal remains active.
+
 ## Reproducible PostgreSQL tests
 
 With `initdb`, `pg_ctl`, and Go available, run:

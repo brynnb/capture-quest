@@ -480,3 +480,11 @@ are consumed only after successful transaction completion; concurrent claims
 are rejected. The frontend and backend must move together for this wire change.
 This authorization is distinct from durable command deduplication and delivery
 recovery across reconnects, which remain unfinished.
+
+The opcode dispatcher executes prerequisite validation and gameplay handlers
+through `Session.ExecuteCommand`, shared by reliable and datagram traffic. The
+bounded gate admits at most 32 running/waiting callbacks and bounds admission
+waits. Callbacks must not recursively enter it. Disconnect closes transport and
+uses `DrainCommands` before character cleanup. Inline character quit already runs
+inside the gate. This session serialization does not replace the still-required
+character owner shared across sessions and world/timer writers.

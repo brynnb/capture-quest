@@ -17,6 +17,7 @@ type ClientMessenger interface {
 
 // Session holds the context for a client session.
 type Session struct {
+	commands        commandGate
 	IssuedCutscenes IssuedEvents
 	SessionID       int
 	Authenticated   bool
