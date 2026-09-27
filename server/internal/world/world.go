@@ -24,6 +24,7 @@ type WorldHandler struct {
 	sessionManager   *session.SessionManager
 	globalRegistry   *HandlerRegistry
 	characterOwners  characterOwners
+	timeoutWorker    periodicWorker
 	ActorManager     *PhaserActorManager       `json:"actorManager,omitempty"`
 	PlayerMovement   *PlayerMovementManager    `json:"playerMovement,omitempty"`
 	ActorRegistry    *ActorRegistry            `json:"actorRegistry,omitempty"`
@@ -147,6 +148,13 @@ func (wh *WorldHandler) persistSessionPlaytime(ses *session.Session, now time.Ti
 
 // Shutdown flushes active playtime before the database connection closes.
 func (wh *WorldHandler) Shutdown() {
+	wh.timeoutWorker.stop()
+	if wh.PlayerMovement != nil {
+		wh.PlayerMovement.Stop()
+	}
+	if wh.ActorManager != nil {
+		wh.ActorManager.Stop()
+	}
 	now := time.Now()
 	wh.sessionManager.ForEachSession(func(ses *session.Session) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -156,35 +164,30 @@ func (wh *WorldHandler) Shutdown() {
 }
 
 func (wh *WorldHandler) StartSessionTimeoutChecker() {
-	go func() {
-		ticker := time.NewTicker(5 * time.Second)
-		defer ticker.Stop()
-		nextPlaytimeFlush := time.Now().Add(playtimeFlushInterval)
+	nextPlaytimeFlush := time.Now().Add(playtimeFlushInterval)
+	wh.timeoutWorker.start(5*time.Second, nil, func() {
+		now := time.Now()
+		var timedOutSessions []int
 
-		for range ticker.C {
-			now := time.Now()
-			var timedOutSessions []int
-
-			wh.sessionManager.ForEachSession(func(ses *session.Session) {
-				lastHeartbeat := ses.LastHeartbeat()
-				if !lastHeartbeat.IsZero() && now.Sub(lastHeartbeat) > 15*time.Second {
-					log.Printf("[WORLD] Session %d timed out (last heartbeat: %v)", ses.SessionID, lastHeartbeat)
-					timedOutSessions = append(timedOutSessions, ses.SessionID)
-				}
-			})
-
-			for _, sessionID := range timedOutSessions {
-				wh.RemoveSession(sessionID)
+		wh.sessionManager.ForEachSession(func(ses *session.Session) {
+			lastHeartbeat := ses.LastHeartbeat()
+			if !lastHeartbeat.IsZero() && now.Sub(lastHeartbeat) > 15*time.Second {
+				log.Printf("[WORLD] Session %d timed out (last heartbeat: %v)", ses.SessionID, lastHeartbeat)
+				timedOutSessions = append(timedOutSessions, ses.SessionID)
 			}
+		})
 
-			if !now.Before(nextPlaytimeFlush) {
-				wh.sessionManager.ForEachSession(func(ses *session.Session) {
-					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-					defer cancel()
-					_ = ses.ExecuteCommand(ctx, func() { wh.persistSessionPlaytime(ses, now) })
-				})
-				nextPlaytimeFlush = now.Add(playtimeFlushInterval)
-			}
+		for _, sessionID := range timedOutSessions {
+			wh.RemoveSession(sessionID)
 		}
-	}()
+
+		if !now.Before(nextPlaytimeFlush) {
+			wh.sessionManager.ForEachSession(func(ses *session.Session) {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				_ = ses.ExecuteCommand(ctx, func() { wh.persistSessionPlaytime(ses, now) })
+			})
+			nextPlaytimeFlush = now.Add(playtimeFlushInterval)
+		}
+	})
 }

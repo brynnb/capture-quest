@@ -73,8 +73,7 @@ type PlayerMovementManager struct {
 	actorManager *PhaserActorManager
 	players      map[int]*PlayerMovementState // CharacterID -> state
 	mu           sync.RWMutex
-	ticker       *time.Ticker
-	stopChan     chan struct{}
+	worker       periodicWorker
 }
 
 // NewPlayerMovementManager creates a new player movement manager
@@ -83,33 +82,16 @@ func NewPlayerMovementManager(wh *WorldHandler, actorManager *PhaserActorManager
 		wh:           wh,
 		actorManager: actorManager,
 		players:      make(map[int]*PlayerMovementState),
-		stopChan:     make(chan struct{}),
 	}
 }
 
 // Start begins the movement tick loop
 func (m *PlayerMovementManager) Start() {
-	m.ticker = time.NewTicker(50 * time.Millisecond) // Check every 50ms for smooth movement
-	go func() {
-		for {
-			select {
-			case <-m.ticker.C:
-				m.processTick()
-			case <-m.stopChan:
-				return
-			}
-		}
-	}()
-	log.Println("[PlayerMovement] Started player state manager")
+	m.worker.start(50*time.Millisecond, nil, m.processTick)
 }
 
-// Stop stops the movement tick loop
-func (m *PlayerMovementManager) Stop() {
-	if m.ticker != nil {
-		m.ticker.Stop()
-	}
-	close(m.stopChan)
-}
+// Stop waits for movement persistence and step effects already in flight.
+func (m *PlayerMovementManager) Stop() { m.worker.stop() }
 
 // RegisterPlayer adds or updates a player's movement state
 func (m *PlayerMovementManager) RegisterPlayer(ses *session.Session, charID int, x, y, mapID int, direction string) {

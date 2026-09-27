@@ -291,6 +291,22 @@ explicitly publish their setup state, matching the production command boundary.
 This does not prove all NPC actor pointers, external callbacks, or shutdown
 writers safe; those remain part of the unfinished ownership/lifecycle audit.
 
+Timer lifecycle checkpoint: actor simulation, player movement and session timeout/
+playtime maintenance now use one shared periodic-worker lifecycle. Start is
+one-shot; stop is safe before start and across repeated/concurrent callers. Stop
+signals the loop, stops its ticker and joins the running callback. World shutdown
+joins all three workers before its final playtime flush. Tests hold each callback
+open and verify both worker stop and world shutdown wait for release.
+Race-enabled session, world and server suites passed against disposable PostgreSQL.
+The runner exited nonzero during cleanup because the shutdown checkpoint needed
+71 seconds of filesystem sync, exceeding pg_ctl's wait. Subsequent pg_ctl status
+reported no server running and the cluster log confirmed completed shutdown.
+
+This is not yet complete orderly server shutdown: transport admission, active
+session removal/cleanup, background chat persistence and database-close ordering
+still require a coordinated drain. Running callbacks also retain their existing
+operation deadlines; this join does not introduce a global shutdown deadline.
+
 ## Reproducible PostgreSQL tests
 
 With `initdb`, `pg_ctl`, and Go available, run:

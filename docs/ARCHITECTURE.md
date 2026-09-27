@@ -96,6 +96,11 @@ mutable fields. They never acquire the recipient's command gate. Closed sessions
 immediately return empty presence. Other background writers and actor state
 publication still require auditing and coordination with this ownership boundary.
 
+Actor, movement and session-maintenance timers share an idempotent periodic-worker
+lifecycle. World shutdown stops and joins these workers before flushing playtime;
+stopping a ticker alone is not treated as callback completion. The remaining
+server-wide transport/session/background-task drain is still in progress.
+
 We follow a **"Model-First"** architecture. Data is categorized into distinct streams to avoid massive "god-object" updates and to minimize bandwidth.
 
 ### Durable State Ownership

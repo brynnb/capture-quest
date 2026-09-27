@@ -45,8 +45,7 @@ type PhaserActorManager struct {
 	rawFootTileMap  map[int]map[string]int  // mapID -> "x,y" -> original 8x8 feet tile ID
 	overworldMapIds map[int]bool            // Set of map IDs that are part of the overworld
 	mu              sync.RWMutex
-	movementTicker  *time.Ticker
-	stopChan        chan struct{}
+	worker          periodicWorker
 	nextActionTimes map[int]time.Time
 }
 
@@ -59,7 +58,6 @@ func NewPhaserActorManager(wh *WorldHandler) *PhaserActorManager {
 		collisionMap:    make(map[int]map[string]int),
 		rawFootTileMap:  make(map[int]map[string]int),
 		overworldMapIds: make(map[int]bool),
-		stopChan:        make(chan struct{}),
 		nextActionTimes: make(map[int]time.Time),
 	}
 	return mgr
@@ -67,32 +65,15 @@ func NewPhaserActorManager(wh *WorldHandler) *PhaserActorManager {
 
 // Start begins the actor simulation
 func (m *PhaserActorManager) Start() {
-	m.loadOverworldMapIds()
-	m.loadWalkingActors()
-
-	// Start movement ticker (staggered - check every 250ms)
-	m.movementTicker = time.NewTicker(250 * time.Millisecond)
-	go func() {
-		for {
-			select {
-			case <-m.movementTicker.C:
-				m.simulateMovement()
-			case <-m.stopChan:
-				return
-			}
-		}
-	}()
-
-	log.Printf("[PhaserActorManager] Started simulation for %d actors", len(m.walkingActors))
+	m.worker.start(250*time.Millisecond, func() {
+		m.loadOverworldMapIds()
+		m.loadWalkingActors()
+		log.Printf("[PhaserActorManager] Loaded simulation for %d actors", len(m.walkingActors))
+	}, m.simulateMovement)
 }
 
-// Stop stops the actor simulation
-func (m *PhaserActorManager) Stop() {
-	if m.movementTicker != nil {
-		m.movementTicker.Stop()
-	}
-	close(m.stopChan)
-}
+// Stop waits for the actor simulation and its current callback to finish.
+func (m *PhaserActorManager) Stop() { m.worker.stop() }
 
 // IsOverworld returns true if the map ID is part of the overworld
 func (m *PhaserActorManager) IsOverworld(mapID int) bool {
