@@ -183,6 +183,27 @@ small verified changes. No production deployment or push is part of this goal.
   migration; rendered and live-transport gameplay validation. Deferred runtime
   publication is not a durable outbox and does not establish crash recovery.
 
+- Issued-cutscene authorization checkpoint: the server stores an immutable issued
+  script snapshot against a random completion token, session and character. Client
+  completion echoes that token; naming a catalog label alone cannot execute a
+  script. A claimed token rejects competing completions, successful completion
+  consumes it, and transaction failure permits retry. Session close/character
+  cleanup clears pending grants. Dynamic dialogue scripts execute their actual
+  issued content rather than resolving another catalog script with the same label.
+- Pending authorization is bounded to eight events with a 30-minute lifetime;
+  it is session-local and is not durable command deduplication or reconnect
+  recovery. The client returns the token from its original playback payload.
+  Old clients cannot complete events and must reload with the updated frontend.
+  Cancelled/ignored playback authorization expires; an explicit cancellation and
+  completion acknowledgment protocol remains part of session lifecycle work.
+- Race-enabled PostgreSQL/dispatcher tests prove unissued requests do not grant,
+  issued snapshots cannot be replaced by catalog edits, committed tokens cannot
+  replay, and failed commits can retry. Session tests cover competing claims,
+  wrong character/label, expiry and bounded storage. Type generation, frontend
+  typechecking, runtime asset validation and the production build passed.
+  This is not yet rendered or real-socket cutscene verification. Next: complete
+  eligibility checks and serialized character/session ownership.
+
 ## Reproducible PostgreSQL tests
 
 With `initdb`, `pg_ctl`, and Go available, run:

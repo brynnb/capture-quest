@@ -1,8 +1,10 @@
 package world
 
 import (
+	"capturequest/internal/api/opcodes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -170,5 +172,56 @@ func TestCutsceneBattleStartRollsBackWithLaterAction(t *testing.T) {
 	saved, err := pokebattle.ResumeBattle(context.Background(), database, 42)
 	if err != nil || saved == nil || saved.PlayerParty[0].CurHP != saved.PlayerParty[0].MaxHP || getBattle(42) == nil {
 		t.Fatalf("start=%+v %v", saved, err)
+	}
+}
+
+func TestCutsceneCompletionRequiresIssuedSnapshotAndToken(t *testing.T) {
+	database, wh, ses, messages := battleTestWorld(t)
+	script := &CutsceneScript{ScriptLabel: "Reward", Actions: json.RawMessage(`[{"type":"giveItem","itemId":1}]`)}
+	// Knowing a real script label grants no authority.
+	battleDispatch(t, wh, ses, opcodes.CutsceneEndRequest, `{"scriptLabel":"Reward"}`)
+	var count int
+	if err := database.QueryRow(`SELECT count(*) FROM cq_character_inventory WHERE character_id=42`).Scan(&count); err != nil || count != 0 {
+		t.Fatal("unissued reward granted")
+	}
+	SendCutsceneToPlayer(ses, script)
+	var issued struct {
+		CompletionToken string `json:"completionToken"`
+	}
+	if err := json.Unmarshal(messages.streams[0].payload, &issued); err != nil || issued.CompletionToken == "" {
+		t.Fatalf("issued=%+v %v", issued, err)
+	}
+	// Completion executes the issued snapshot, not later edits to the catalog.
+	script.Actions = json.RawMessage(`[{"type":"giveItem","itemId":2}]`)
+	request := fmt.Sprintf(`{"scriptLabel":"Reward","completionToken":%q}`, issued.CompletionToken)
+	battleDispatch(t, wh, ses, opcodes.CutsceneEndRequest, request)
+	battleDispatch(t, wh, ses, opcodes.CutsceneEndRequest, request)
+	var quantity int
+	if err := database.QueryRow(`SELECT COALESCE(sum(quantity),0) FROM cq_item_instances WHERE owner_id=42 AND item_id=1`).Scan(&quantity); err != nil || quantity != 1 {
+		t.Fatalf("quantity=%d %v", quantity, err)
+	}
+	if err := database.QueryRow(`SELECT count(*) FROM cq_item_instances WHERE owner_id=42 AND item_id=2`).Scan(&count); err != nil || count != 0 {
+		t.Fatal("executed replacement script")
+	}
+}
+
+func TestIssuedCutsceneFailureKeepsTokenForRetry(t *testing.T) {
+	database, wh, ses, messages := battleTestWorld(t)
+	script := &CutsceneScript{ScriptLabel: "Retry", Actions: json.RawMessage(`[{"type":"giveItem","itemId":1}]`), SetsFlags: []string{"RETRY_DONE"}}
+	testdb.Exec(t, database, `ALTER TABLE character_event_flags ADD CONSTRAINT reject_retry CHECK(flag_name<>'RETRY_DONE')`)
+	SendCutsceneToPlayer(ses, script)
+	var issued struct {
+		CompletionToken string `json:"completionToken"`
+	}
+	if err := json.Unmarshal(messages.streams[0].payload, &issued); err != nil {
+		t.Fatal(err)
+	}
+	request := fmt.Sprintf(`{"scriptLabel":"Retry","completionToken":%q}`, issued.CompletionToken)
+	battleDispatch(t, wh, ses, opcodes.CutsceneEndRequest, request)
+	testdb.Exec(t, database, `ALTER TABLE character_event_flags DROP CONSTRAINT reject_retry`)
+	battleDispatch(t, wh, ses, opcodes.CutsceneEndRequest, request)
+	var quantity int
+	if err := database.QueryRow(`SELECT sum(quantity) FROM cq_item_instances WHERE owner_id=42`).Scan(&quantity); err != nil || quantity != 1 {
+		t.Fatalf("retry quantity=%d %v", quantity, err)
 	}
 }

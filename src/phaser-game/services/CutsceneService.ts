@@ -106,6 +106,7 @@ export interface CutsceneAction {
 }
 
 export interface CutsceneStartPayload {
+  completionToken: string;
   scriptLabel: string;
   mapName: string;
   actions: CutsceneAction[];
@@ -266,7 +267,7 @@ export async function handleCutsceneStart(
   ) {
     lastCompletedScriptLabel = currentScriptLabel;
     NetworkBridge.send(
-      { scriptLabel: currentScriptLabel },
+      { scriptLabel: currentScriptLabel, completionToken: payload.completionToken },
       OpCodes.CutsceneEndRequest,
     );
     console.log(

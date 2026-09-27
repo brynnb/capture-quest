@@ -17,18 +17,19 @@ type ClientMessenger interface {
 
 // Session holds the context for a client session.
 type Session struct {
-	SessionID     int
-	Authenticated bool
-	AccountID     int64
-	MapID         int     // Current map the session is in
-	PreviousMapID int     // Per-player source map for dynamic LAST_MAP exits
-	X             float32 // Current X coordinate
-	Y             float32 // Current Y coordinate
-	InstanceID    int     // Current instance ID the session is in
-	IP            string  // Client IP address
-	CharacterName string
-	Client        entity.Client
-	Messenger     ClientMessenger // For sending replies
+	IssuedCutscenes IssuedEvents
+	SessionID       int
+	Authenticated   bool
+	AccountID       int64
+	MapID           int     // Current map the session is in
+	PreviousMapID   int     // Per-player source map for dynamic LAST_MAP exits
+	X               float32 // Current X coordinate
+	Y               float32 // Current Y coordinate
+	InstanceID      int     // Current instance ID the session is in
+	IP              string  // Client IP address
+	CharacterName   string
+	Client          entity.Client
+	Messenger       ClientMessenger // For sending replies
 	// Private
 
 	sendMu        sync.Mutex
@@ -180,6 +181,7 @@ func (s *Session) Close() {
 		return
 	}
 	s.closed = true
+	s.IssuedCutscenes.Clear()
 	stream := s.controlStream
 	s.closedMu.Unlock()
 

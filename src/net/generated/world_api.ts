@@ -350,6 +350,7 @@ export interface GameCornerSlotPlayResult {
  * CutsceneEndRequest is sent when the client finishes playing a cutscene.
  */
 export interface CutsceneEndRequest {
+  completionToken: string;
   scriptLabel: string; // The cutscene that was completed
 }
 export type CutsceneAction = import("./scriptedactions").Action;

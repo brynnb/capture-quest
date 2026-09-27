@@ -22,7 +22,8 @@ var pokemonLookupUnderscorePattern = regexp.MustCompile(`_+`)
 
 // CutsceneEndRequest is sent when the client finishes playing a cutscene.
 type CutsceneEndRequest struct {
-	ScriptLabel string `json:"scriptLabel"` // The cutscene that was completed
+	CompletionToken string `json:"completionToken"`
+	ScriptLabel     string `json:"scriptLabel"` // The cutscene that was completed
 }
 
 type CutsceneAction = scriptedactions.Action
@@ -64,25 +65,30 @@ func HandleCutsceneEndRequest(ses *session.Session, payload []byte, wh *WorldHan
 	charID := int64(ses.Client.CharData().ID)
 	log.Printf("[Cutscene] Player %d completed cutscene %s", charID, req.ScriptLabel)
 
-	if wh.Cutscenes == nil {
+	if ses.IsClosed() {
+		return false
+	}
+	issued, ok := ses.IssuedCutscenes.Claim(charID, req.ScriptLabel, req.CompletionToken)
+	if !ok {
+		return false
+	}
+	committed := false
+	defer func() { ses.IssuedCutscenes.Finish(req.CompletionToken, committed) }()
+	var cs CutsceneScript
+	if err := json.Unmarshal(issued, &cs); err != nil {
 		return false
 	}
 
-	cs := wh.Cutscenes.GetByLabel(req.ScriptLabel)
-	if cs == nil {
-		log.Printf("[Cutscene] Unknown cutscene label: %s", req.ScriptLabel)
-		return false
-	}
-
-	_, completed, err := ApplyCutsceneScript(CutsceneActionContext{Session: ses, WorldHandler: wh, EventFlags: wh.EventFlags}, cs, charID)
+	_, completed, err := ApplyCutsceneScript(CutsceneActionContext{Session: ses, WorldHandler: wh, EventFlags: wh.EventFlags}, &cs, charID)
 	if err != nil {
 		log.Printf("[Cutscene] Failed to apply script %s for character %d: %v", cs.ScriptLabel, charID, err)
 		SendSystemMessage(ses, "That event could not be completed. Please try again.")
 		return false
 	}
+	committed = true
 	if completed {
 		sendEventTileStatesForSession(ses, charID, cs.MapName, wh)
-		if cutsceneAffectsTrainerCard(cs) {
+		if cutsceneAffectsTrainerCard(&cs) {
 			sendTrainerCardResponse(ses, wh)
 		}
 	}
@@ -133,6 +139,19 @@ func isBadgeFlag(flag string) bool {
 
 // SendCutsceneToPlayer sends a cutscene action sequence to a specific player.
 func SendCutsceneToPlayer(ses *session.Session, cs *CutsceneScript, handlers ...*WorldHandler) {
+	if cs == nil || !ses.HasValidClient() || ses.IsClosed() {
+		return
+	}
+	snapshot, err := json.Marshal(cs)
+	if err != nil {
+		log.Printf("[Cutscene] Encode issued event: %v", err)
+		return
+	}
+	token, err := ses.IssuedCutscenes.Issue(int64(ses.Client.CharData().ID), cs.ScriptLabel, snapshot)
+	if err != nil {
+		log.Printf("[Cutscene] Issue event: %v", err)
+		return
+	}
 	actions := cs.Actions
 	if len(handlers) > 0 && handlers[0] != nil {
 		if annotated, err := annotateCutsceneActionsForClient(cs, handlers[0]); err != nil {
@@ -142,11 +161,16 @@ func SendCutsceneToPlayer(ses *session.Session, cs *CutsceneScript, handlers ...
 		}
 	}
 	payload := map[string]interface{}{
-		"scriptLabel": cs.ScriptLabel,
-		"mapName":     cs.MapName,
-		"actions":     json.RawMessage(actions),
+		"scriptLabel":     cs.ScriptLabel,
+		"completionToken": token,
+		"mapName":         cs.MapName,
+		"actions":         json.RawMessage(actions),
 	}
-	ses.SendStreamJSON(payload, opcodes.CutsceneStartNotify)
+	if err := ses.SendStreamJSON(payload, opcodes.CutsceneStartNotify); err != nil {
+		ses.IssuedCutscenes.Finish(token, true)
+		log.Printf("[Cutscene] Send issued event: %v", err)
+		return
+	}
 	log.Printf("[Cutscene] Sent cutscene %s to player", cs.ScriptLabel)
 }
 

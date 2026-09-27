@@ -472,3 +472,11 @@ toggles use the character transaction. Scripted rewards no longer publish succes
 before a later completion write can fail. This is not durable notification
 recovery: session ownership, issued-event authorization, all completion eligibility
 checks, and reconnect delivery remain tracked in `SERVER_FOUNDATIONS.md`.
+
+Cutscene completion additionally requires the session's issued completion token,
+matching character and label. The server executes the retained script snapshot,
+not a client-selected catalog entry. Tokens have a bounded lifetime/capacity and
+are consumed only after successful transaction completion; concurrent claims
+are rejected. The frontend and backend must move together for this wire change.
+This authorization is distinct from durable command deduplication and delivery
+recovery across reconnects, which remain unfinished.
