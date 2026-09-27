@@ -172,20 +172,78 @@ func cutsceneIsPresentationOnly(actions []CutsceneAction) bool {
 	return true
 }
 
+// Recheck durable eligibility under the same character lock as the reward.
+// Facing and trigger proximity authorize issuance; playback can intentionally
+// move the player, so completion must not reinterpret that original trigger.
 func cutsceneCompletionAllowed(database db.DBTX, charID int64, script *CutsceneScript) (bool, error) {
+	required := append([]string(nil), script.RequiresFlags...)
+	if script.RequiresFlag != nil {
+		required = append(required, *script.RequiresFlag)
+	}
 	absent := append([]string(nil), script.RequiresFlagsAbst...)
 	if script.RequiresFlagAbst != nil {
 		absent = append(absent, *script.RequiresFlagAbst)
 	}
-	for _, flag := range absent {
-		if flag == "" {
+	for _, group := range []struct {
+		flags []string
+		want  bool
+	}{{required, true}, {absent, false}} {
+		for _, flag := range group.flags {
+			if flag == "" {
+				continue
+			}
+			on, err := queryEventFlag(database, charID, flag)
+			if err != nil {
+				return false, err
+			}
+			if on != group.want {
+				return false, nil
+			}
+		}
+	}
+	for _, check := range []struct {
+		id   *int
+		want bool
+	}{{script.RequiresItemID, true}, {script.RequiresItemAbst, false}} {
+		if check.id == nil || *check.id <= 0 {
 			continue
 		}
-		on, err := queryEventFlag(database, charID, flag)
+		var owns bool
+		err := database.QueryRow(`SELECT EXISTS(SELECT 1 FROM cq_character_inventory ci JOIN cq_item_instances ii ON ii.id=ci.item_instance_id WHERE ci.character_id=$1 AND ii.owner_id=$1 AND ii.owner_type=0 AND ii.item_id=$2 AND ii.quantity>0)`, charID, *check.id).Scan(&owns)
 		if err != nil {
 			return false, err
 		}
-		if on {
+		if owns != check.want {
+			return false, nil
+		}
+	}
+	if script.RequiresCaught != nil && *script.RequiresCaught > 0 {
+		var caught int
+		if err := database.QueryRow(`SELECT COALESCE(SUM(caught),0) FROM character_pokedex WHERE character_id=$1`, charID).Scan(&caught); err != nil {
+			return false, err
+		}
+		if caught < *script.RequiresCaught {
+			return false, nil
+		}
+	}
+	for _, balance := range []struct {
+		query          string
+		minimum, below *int
+	}{
+		{`SELECT COALESCE((SELECT pokedollars FROM character_wallet WHERE character_id=$1),0)`, script.RequiresMoney, script.RequiresMoneyBelow},
+		{`SELECT COALESCE((SELECT coins FROM character_coins WHERE character_id=$1),0)`, script.RequiresCoins, script.RequiresCoinsBelow},
+	} {
+		if (balance.minimum == nil || *balance.minimum <= 0) && (balance.below == nil || *balance.below <= 0) {
+			continue
+		}
+		var value int
+		if err := database.QueryRow(balance.query, charID).Scan(&value); err != nil {
+			return false, err
+		}
+		if balance.minimum != nil && *balance.minimum > 0 && value < *balance.minimum {
+			return false, nil
+		}
+		if balance.below != nil && *balance.below > 0 && value >= *balance.below {
 			return false, nil
 		}
 	}

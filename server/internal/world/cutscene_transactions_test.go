@@ -225,3 +225,61 @@ func TestIssuedCutsceneFailureKeepsTokenForRetry(t *testing.T) {
 		t.Fatalf("retry quantity=%d %v", quantity, err)
 	}
 }
+
+func TestCutsceneCompletionRechecksDurableEligibility(t *testing.T) {
+	database, _, _, _ := battleTestWorld(t)
+	tests := []struct {
+		name      string
+		configure func(*CutsceneScript)
+		prepare   string
+	}{
+		{"required flag", func(s *CutsceneScript) { v := "MISSING"; s.RequiresFlag = &v }, ""},
+		{"required flags", func(s *CutsceneScript) { s.RequiresFlags = []string{"MISSING"} }, ""},
+		{"absent flags", func(s *CutsceneScript) { s.RequiresFlagsAbst = []string{"PRESENT"} }, `INSERT INTO character_event_flags VALUES(42,'PRESENT',CURRENT_TIMESTAMP) ON CONFLICT DO NOTHING`},
+		{"missing item", func(s *CutsceneScript) { v := 2; s.RequiresItemID = &v }, ""},
+		{"caught threshold", func(s *CutsceneScript) { v := 1; s.RequiresCaught = &v }, ""},
+		{"money minimum", func(s *CutsceneScript) { v := 101; s.RequiresMoney = &v }, ""},
+		{"money exclusive upper", func(s *CutsceneScript) { v := 100; s.RequiresMoneyBelow = &v }, ""},
+		{"coin minimum", func(s *CutsceneScript) { v := 1; s.RequiresCoins = &v }, ""},
+		{"coin exclusive upper", func(s *CutsceneScript) { v := 1; s.RequiresCoinsBelow = &v }, `INSERT INTO character_coins(character_id,coins) VALUES(42,1)`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.prepare != "" {
+				testdb.Exec(t, database, tt.prepare)
+			}
+			script := &CutsceneScript{Actions: json.RawMessage(`[{"type":"giveItem","itemId":1}]`)}
+			tt.configure(script)
+			if _, completed, err := ApplyCutsceneScript(CutsceneActionContext{Database: database}, script, 42); err != nil || completed {
+				t.Fatalf("ineligible completed=%t error=%v", completed, err)
+			}
+		})
+	}
+	var count int
+	if err := database.QueryRow(`SELECT count(*) FROM cq_character_inventory WHERE character_id=42`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("ineligible grants=%d %v", count, err)
+	}
+}
+
+func TestCutsceneEligibilityUsesOwnedInventoryAndExactThresholds(t *testing.T) {
+	database, _, _, _ := battleTestWorld(t)
+	testdb.Exec(t, database, `INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'READY');
+ INSERT INTO character_coins(character_id,coins) VALUES(42,10);
+ INSERT INTO character_pokedex(character_id,pokemon_id,seen,caught) VALUES(42,25,1,1);`)
+	itemID, money, coins, caught := 2, 100, 10, 1
+	flag := "READY"
+	script := &CutsceneScript{RequiresFlag: &flag, RequiresItemAbst: &itemID, RequiresMoney: &money, RequiresCoins: &coins, RequiresCaught: &caught, Actions: json.RawMessage(`[{"type":"giveItem","itemId":2}]`)}
+	if _, done, err := ApplyCutsceneScript(CutsceneActionContext{Database: database}, script, 42); err != nil || !done {
+		t.Fatalf("eligible done=%t %v", done, err)
+	}
+	if _, done, err := ApplyCutsceneScript(CutsceneActionContext{Database: database}, script, 42); err != nil || done {
+		t.Fatalf("owned item did not reject duplicate: %t %v", done, err)
+	}
+	// A corrupt link to someone else's item must never satisfy ownership.
+	testdb.Exec(t, database, `UPDATE cq_item_instances SET owner_id=43 WHERE owner_id=42`)
+	script.RequiresItemAbst = nil
+	script.RequiresItemID = &itemID
+	if _, done, err := ApplyCutsceneScript(CutsceneActionContext{Database: database}, script, 42); err != nil || done {
+		t.Fatalf("foreign item authorized reward: %t %v", done, err)
+	}
+}

@@ -204,6 +204,18 @@ small verified changes. No production deployment or push is part of this goal.
   This is not yet rendered or real-socket cutscene verification. Next: complete
   eligibility checks and serialized character/session ownership.
 
+- Completion eligibility checkpoint: required and absent flags, owned item presence
+  and absence, caught count, minimum and exclusive-upper money/coin thresholds
+  are rechecked under the reward transaction's character lock. Database errors
+  abort; invalid inventory ownership cannot satisfy a prerequisite. Facing and
+  trigger proximity remain issuance-time conditions because playback may move
+  the player. Issuance paths still need the broader authorization/ownership audit.
+- Race-enabled world/simulator PostgreSQL tests passed, including rejected
+  prerequisites, exact balance thresholds, absent-item duplicate prevention and
+  foreign-owner inventory links. No wire, generated-data or schema change in this
+  checkpoint. Next: serialize packet execution and disconnect cleanup, then bind
+  each character to one active session and coordinate world/timer writers.
+
 ## Reproducible PostgreSQL tests
 
 With `initdb`, `pg_ctl`, and Go available, run:
