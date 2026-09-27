@@ -71,7 +71,9 @@ func TestLoadWalkingActorsPreservesOriginalObjectID(t *testing.T) {
 	mgr := NewPhaserActorManager(wh)
 	wh.ActorManager = mgr
 
-	mgr.loadWalkingActors()
+	if err := mgr.Load(); err != nil {
+		t.Fatal(err)
+	}
 
 	runtimeID := wh.ActorRegistry.GetPhaserID(ActorTypeNPC, 101)
 	actor, ok := mgr.walkingActors[runtimeID]

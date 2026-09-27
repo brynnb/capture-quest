@@ -64,10 +64,21 @@ func NewPhaserActorManager(wh *WorldHandler) *PhaserActorManager {
 }
 
 // Start begins the actor simulation
-func (m *PhaserActorManager) Load() {
-	m.loadOverworldMapIds()
-	m.loadWalkingActors()
-	log.Printf("[PhaserActorManager] Loaded simulation for %d actors", len(m.walkingActors))
+func (m *PhaserActorManager) Load() error {
+	staged := NewPhaserActorManager(m.wh)
+	if err := staged.loadOverworldMapIds(); err != nil {
+		return err
+	}
+	if err := staged.loadWalkingActors(); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	m.overworldMapIds, m.walkingActors = staged.overworldMapIds, staged.walkingActors
+	m.collisionMap, m.rawFootTileMap = staged.collisionMap, staged.rawFootTileMap
+	m.nextActionTimes = staged.nextActionTimes
+	m.mu.Unlock()
+	log.Printf("[PhaserActorManager] Loaded simulation for %d actors", len(staged.walkingActors))
+	return nil
 }
 
 func (m *PhaserActorManager) Start() {
@@ -228,27 +239,30 @@ func (m *PhaserActorManager) applyRuntimeActorState(actor *PhaserActor) {
 	}
 }
 
-func (m *PhaserActorManager) loadOverworldMapIds() {
+func (m *PhaserActorManager) loadOverworldMapIds() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	rows, err := db.GlobalWorldDB.DB.Query("SELECT id FROM phaser_maps WHERE is_overworld = 1")
 	if err != nil {
-		log.Printf("[PhaserActorManager] Error loading overworld map IDs: %v", err)
-		return
+		return fmt.Errorf("[PhaserActorManager] Error loading overworld map IDs: %w", err)
 	}
 	defer rows.Close()
 
 	for rows.Next() {
 		var id int
-		if err := rows.Scan(&id); err == nil {
-			m.overworldMapIds[id] = true
+		if err := rows.Scan(&id); err != nil {
+			return fmt.Errorf("scan overworld map: %w", err)
 		}
+		m.overworldMapIds[id] = true
 	}
-	log.Printf("[PhaserActorManager] Loaded %d overworld map IDs", len(m.overworldMapIds))
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read overworld maps: %w", err)
+	}
+	return nil
 }
 
-func (m *PhaserActorManager) loadWalkingActors() {
+func (m *PhaserActorManager) loadWalkingActors() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -262,8 +276,7 @@ func (m *PhaserActorManager) loadWalkingActors() {
 		JOIN phaser_maps pm ON po.map_id = pm.id
 		WHERE po.object_type = 'npc' AND po.sprite_name IS NOT NULL`)
 	if err != nil {
-		log.Printf("[PhaserActorManager] Error loading walking actors: %v", err)
-		return
+		return fmt.Errorf("[PhaserActorManager] Error loading walking actors: %w", err)
 	}
 	defer rows.Close()
 
@@ -272,8 +285,10 @@ func (m *PhaserActorManager) loadWalkingActors() {
 		var n PhaserActor
 		var x, y sql.NullInt64
 		if err := rows.Scan(&n.ID, &n.MapID, &x, &y, &n.ObjectType, &n.SpriteName, &n.Name, &n.ActionType, &n.ActionDirection, &n.MovementType, &n.Text, &n.TrainerClass, &n.TrainerPartyIndex, &n.ItemID); err != nil {
-			log.Printf("[PhaserActorManager] Error scanning actor: %v", err)
-			continue
+			return fmt.Errorf("[PhaserActorManager] Error scanning actor: %w", err)
+		}
+		if !x.Valid || !y.Valid {
+			return fmt.Errorf("actor %d on map %d has no coordinates", n.ID, n.MapID)
 		}
 
 		if x.Valid {
@@ -301,19 +316,26 @@ func (m *PhaserActorManager) loadWalkingActors() {
 		// Initialize next action time with a random offset to stagger them immediately
 		m.nextActionTimes[n.ID] = time.Now().Add(time.Duration(rand.Intn(2000)) * time.Millisecond)
 
-		// Ensure walkable map for this map is loaded
-		if !loadedMaps[n.MapID] {
-			m.ensureWalkableMapLoaded(n.MapID)
-			loadedMaps[n.MapID] = true
-		}
+		loadedMaps[n.MapID] = true
 	}
 
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read actors: %w", err)
+	}
+	// Exhaust the actor cursor before issuing collision queries, including when
+	// the database pool permits only one active connection.
+	for mapID := range loadedMaps {
+		if err := m.ensureWalkableMapLoadedLocked(mapID); err != nil {
+			return fmt.Errorf("actor map %d collision: %w", mapID, err)
+		}
+	}
 	if len(loadedMaps) > 0 {
 		log.Printf("[PhaserActorManager] Pre-loaded collision maps for %d maps", len(loadedMaps))
 	}
+	return nil
 }
 
-func (m *PhaserActorManager) ensureWalkableMapLoaded(mapID int) {
+func (m *PhaserActorManager) ensureWalkableMapLoadedLocked(mapID int) error {
 	if m.collisionMap == nil {
 		m.collisionMap = make(map[int]map[string]int)
 	}
@@ -321,11 +343,11 @@ func (m *PhaserActorManager) ensureWalkableMapLoaded(mapID int) {
 		m.rawFootTileMap = make(map[int]map[string]int)
 	}
 	if _, ok := m.collisionMap[mapID]; ok {
-		return
+		return nil
 	}
 
-	m.collisionMap[mapID] = make(map[string]int)
-	m.rawFootTileMap[mapID] = make(map[string]int)
+	collisions := make(map[string]int)
+	feet := make(map[string]int)
 
 	var rows *sql.Rows
 	var err error
@@ -340,8 +362,7 @@ func (m *PhaserActorManager) ensureWalkableMapLoaded(mapID int) {
 				WHERE map_id IS NULL
 				  AND is_tile_erased = 0`)
 		if err != nil {
-			log.Printf("[PhaserActorManager] Error loading overworld walkable maps: %v", err)
-			return
+			return fmt.Errorf("[PhaserActorManager] Error loading overworld walkable maps: %w", err)
 		}
 	} else {
 		// For interior maps, just load that specific map
@@ -351,8 +372,7 @@ func (m *PhaserActorManager) ensureWalkableMapLoaded(mapID int) {
 				WHERE map_id = $1
 				  AND is_tile_erased = 0`, mapID)
 		if err != nil {
-			log.Printf("[PhaserActorManager] Error loading walkable map %d: %v", mapID, err)
-			return
+			return fmt.Errorf("[PhaserActorManager] Error loading walkable map %d: %w", mapID, err)
 		}
 	}
 	defer rows.Close()
@@ -361,14 +381,25 @@ func (m *PhaserActorManager) ensureWalkableMapLoaded(mapID int) {
 		var x, y, collisionType int
 		var rawFootTileID sql.NullInt64
 		if err := rows.Scan(&x, &y, &collisionType, &rawFootTileID); err != nil {
-			continue
+			return fmt.Errorf("scan collision map %d: %w", mapID, err)
 		}
 		key := fmt.Sprintf("%d,%d", x, y)
-		m.collisionMap[mapID][key] = collisionType
+		collisions[key] = collisionType
 		if rawFootTileID.Valid {
-			m.rawFootTileMap[mapID][key] = int(rawFootTileID.Int64)
+			feet[key] = int(rawFootTileID.Int64)
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read collision map %d: %w", mapID, err)
+	}
+	m.collisionMap[mapID], m.rawFootTileMap[mapID] = collisions, feet
+	return nil
+}
+
+func (m *PhaserActorManager) ensureWalkableMapLoaded(mapID int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.ensureWalkableMapLoadedLocked(mapID)
 }
 
 // InvalidateCollisionMap removes the cached collision map for a given mapID,
@@ -839,7 +870,10 @@ func (m *PhaserActorManager) collisionMapForMap(mapID int) map[string]int {
 	m.mu.RUnlock()
 
 	if !exists {
-		m.ensureWalkableMapLoaded(mapID)
+		if err := m.ensureWalkableMapLoaded(mapID); err != nil {
+			log.Printf("[PhaserActorManager] Collision load failed: %v", err)
+			return nil
+		}
 		m.mu.RLock()
 		collisionMap = m.collisionMap[mapID]
 		m.mu.RUnlock()
@@ -857,7 +891,10 @@ func (m *PhaserActorManager) rawFootTileMapForMap(mapID int) map[string]int {
 	m.mu.RUnlock()
 
 	if !exists {
-		m.ensureWalkableMapLoaded(mapID)
+		if err := m.ensureWalkableMapLoaded(mapID); err != nil {
+			log.Printf("[PhaserActorManager] Collision load failed: %v", err)
+			return nil
+		}
 		m.mu.RLock()
 		rawFootTileMap = m.rawFootTileMap[mapID]
 		m.mu.RUnlock()

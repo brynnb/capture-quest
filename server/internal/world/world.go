@@ -63,7 +63,9 @@ func NewWorldHandler(sessionManager *session.SessionManager) (*WorldHandler, err
 	}
 	registry.WH = wh
 	wh.ActorManager = NewPhaserActorManager(wh)
-	wh.ActorManager.Load()
+	if err := wh.ActorManager.Load(); err != nil {
+		return nil, fmt.Errorf("preload actors: %w", err)
+	}
 	wh.PlayerMovement = NewPlayerMovementManager(wh, wh.ActorManager)
 	wh.TrainerEncounter = NewTrainerEncounterManager(wh)
 	if err := wh.TrainerEncounter.Load(); err != nil {

@@ -395,6 +395,25 @@ two battle-fixture schema-creation timeouts during high filesystem I/O pressure;
 the server race suite passed. A fresh focused PostgreSQL race run passed both
 timed-out battle tests and all affected preload checks with unchanged deadlines.
 
+Actor/collision preload checkpoint: actor loading stages overworld IDs, actors,
+action timers, collision maps and raw-foot-tile provenance in a temporary manager.
+Query/scan/iteration failures propagate to world construction; missing actor
+coordinates report the object/map identity. The published manager is replaced
+only after complete success. Actor rows are exhausted before collision queries,
+so a single-connection pool can load without waiting on its own open cursor.
+
+Lazy collision loading now takes the manager lock and stages both collision and
+raw-foot-tile maps before publication. Failed queries no longer install an empty
+cache entry; later requests can retry. Runtime callers log the error and decline
+the lookup rather than treating a failed query as a valid loaded map. Actor data
+still uses the legacy database access path; moving that dependency and validating
+all preload deadlines remain part of the broader goal. Cutscene preload failure
+propagation is the next outstanding initialization boundary.
+Final world/server PostgreSQL race suites passed, including preservation on failed
+actor preload, retry after a failed collision query, concurrent lazy readers and
+single-connection loading. Existing actor identity checks passed through the full
+preload entry point. These are headless checks, not rendered NPC verification.
+
 ## Reproducible PostgreSQL tests
 
 With `initdb`, `pg_ctl`, and Go available, run:
