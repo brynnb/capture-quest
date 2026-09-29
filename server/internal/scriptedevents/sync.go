@@ -151,7 +151,7 @@ type syncStats struct {
 
 // SyncDefault syncs scripted-event definitions from the default repo directory
 // into the runtime DB. The DB remains the hot path for existing managers.
-func SyncDefault(ctx context.Context, db db.ContextDBTX) error {
+func SyncDefault(ctx context.Context, db *sql.DB) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -176,22 +176,63 @@ func SyncDefault(ctx context.Context, db db.ContextDBTX) error {
 	return nil
 }
 
-// Sync applies all scripted-event files under root.
-func Sync(ctx context.Context, db db.ContextDBTX, root string) (syncStats, error) {
+// Sync publishes the complete PostgreSQL scripted-event family in one transaction.
+// Files are loaded first so malformed inputs never acquire runtime table locks.
+func Sync(ctx context.Context, database *sql.DB, root string) (syncStats, error) {
 	if err := ctx.Err(); err != nil {
 		return syncStats{}, err
 	}
-	if err := ensureCutsceneRequirementColumns(ctx, db); err != nil {
-		return syncStats{}, err
+	if database == nil {
+		return syncStats{}, fmt.Errorf("scripted-event database is required")
 	}
-	if err := ensureConditionalDialogueColumns(ctx, db); err != nil {
-		return syncStats{}, err
-	}
-
 	events, err := LoadEvents(root)
 	if err != nil {
 		return syncStats{}, err
 	}
+	rules, err := LoadObjectVisibility(root)
+	if err != nil {
+		return syncStats{}, err
+	}
+	tileRules, err := LoadEventTileOverrides(root)
+	if err != nil {
+		return syncStats{}, err
+	}
+	dialogueRules, err := LoadConditionalDialogue(root)
+	if err != nil {
+		return syncStats{}, err
+	}
+	tx, err := database.BeginTx(ctx, nil)
+	if err != nil {
+		return syncStats{}, fmt.Errorf("begin scripted-event sync: %w", err)
+	}
+	defer tx.Rollback()
+	// Serialize publishers before reading the prior family. This also prevents
+	// competing schema upgrades from deadlocking when they strengthen table locks.
+	if _, err := tx.ExecContext(ctx, `LOCK TABLE phaser_cutscene_scripts,
+  phaser_conditional_dialogue, phaser_coordinate_triggers,
+  phaser_event_object_visibility, phaser_event_tile_overrides
+  IN SHARE ROW EXCLUSIVE MODE`); err != nil {
+		return syncStats{}, fmt.Errorf("lock scripted-event family: %w", err)
+	}
+	if err := ensureCutsceneRequirementColumns(ctx, tx); err != nil {
+		return syncStats{}, err
+	}
+	if err := ensureConditionalDialogueColumns(ctx, tx); err != nil {
+		return syncStats{}, err
+	}
+	stats, err := syncLoaded(ctx, tx, events, rules, tileRules, dialogueRules)
+	if err != nil {
+		return syncStats{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return syncStats{}, fmt.Errorf("commit scripted-event sync: %w", err)
+	}
+	return stats, nil
+}
+
+func syncLoaded(ctx context.Context, db db.ContextDBTX, events []EventFile,
+	rules []ObjectVisibilityRule, tileRules []EventTileOverrideRule,
+	dialogueRules []ConditionalDialogueRule) (syncStats, error) {
 
 	stats := syncStats{ScriptFiles: len(events)}
 	for _, event := range events {
@@ -219,10 +260,6 @@ func Sync(ctx context.Context, db db.ContextDBTX, root string) (syncStats, error
 		stats.TriggerRowsChanged = changed
 	}
 
-	rules, err := LoadObjectVisibility(root)
-	if err != nil {
-		return stats, err
-	}
 	stats.VisibilityRules = len(rules)
 	if rules != nil {
 		changed, err := syncObjectVisibility(ctx, db, rules)
@@ -232,10 +269,6 @@ func Sync(ctx context.Context, db db.ContextDBTX, root string) (syncStats, error
 		stats.VisibilityChanged = changed
 	}
 
-	tileRules, err := LoadEventTileOverrides(root)
-	if err != nil {
-		return stats, err
-	}
 	stats.EventTileRules = len(tileRules)
 	if tileRules != nil {
 		changed, err := syncEventTileOverrides(ctx, db, tileRules)
@@ -245,10 +278,6 @@ func Sync(ctx context.Context, db db.ContextDBTX, root string) (syncStats, error
 		stats.EventTilesChanged = changed
 	}
 
-	dialogueRules, err := LoadConditionalDialogue(root)
-	if err != nil {
-		return stats, err
-	}
 	stats.ConditionalDialogueRules = len(dialogueRules)
 	if dialogueRules != nil {
 		changed, err := syncConditionalDialogue(ctx, db, dialogueRules)
@@ -263,15 +292,15 @@ func Sync(ctx context.Context, db db.ContextDBTX, root string) (syncStats, error
 
 func ensureCutsceneRequirementColumns(ctx context.Context, db db.ContextDBTX) error {
 	for _, statement := range []string{
-		`ALTER TABLE phaser_cutscene_scripts ADD COLUMN requires_money INTEGER DEFAULT NULL`,
-		`ALTER TABLE phaser_cutscene_scripts ADD COLUMN requires_money_below INTEGER DEFAULT NULL`,
-		`ALTER TABLE phaser_cutscene_scripts ADD COLUMN requires_coins INTEGER DEFAULT NULL`,
-		`ALTER TABLE phaser_cutscene_scripts ADD COLUMN requires_coins_below INTEGER DEFAULT NULL`,
-		`ALTER TABLE phaser_cutscene_scripts ADD COLUMN requires_player_facing VARCHAR(10) DEFAULT NULL`,
-		`ALTER TABLE phaser_cutscene_scripts ADD COLUMN requires_flags JSONB DEFAULT NULL`,
-		`ALTER TABLE phaser_cutscene_scripts ADD COLUMN requires_flags_absent JSONB DEFAULT NULL`,
+		`ALTER TABLE phaser_cutscene_scripts ADD COLUMN IF NOT EXISTS requires_money INTEGER DEFAULT NULL`,
+		`ALTER TABLE phaser_cutscene_scripts ADD COLUMN IF NOT EXISTS requires_money_below INTEGER DEFAULT NULL`,
+		`ALTER TABLE phaser_cutscene_scripts ADD COLUMN IF NOT EXISTS requires_coins INTEGER DEFAULT NULL`,
+		`ALTER TABLE phaser_cutscene_scripts ADD COLUMN IF NOT EXISTS requires_coins_below INTEGER DEFAULT NULL`,
+		`ALTER TABLE phaser_cutscene_scripts ADD COLUMN IF NOT EXISTS requires_player_facing VARCHAR(10) DEFAULT NULL`,
+		`ALTER TABLE phaser_cutscene_scripts ADD COLUMN IF NOT EXISTS requires_flags JSONB DEFAULT NULL`,
+		`ALTER TABLE phaser_cutscene_scripts ADD COLUMN IF NOT EXISTS requires_flags_absent JSONB DEFAULT NULL`,
 	} {
-		if _, err := db.ExecContext(ctx, statement); err != nil && !isDuplicateColumnError(err) {
+		if _, err := db.ExecContext(ctx, statement); err != nil {
 			return fmt.Errorf("ensure cutscene requirement column: %w", err)
 		}
 	}
@@ -280,25 +309,16 @@ func ensureCutsceneRequirementColumns(ctx context.Context, db db.ContextDBTX) er
 
 func ensureConditionalDialogueColumns(ctx context.Context, db db.ContextDBTX) error {
 	for _, statement := range []string{
-		`ALTER TABLE phaser_conditional_dialogue ADD COLUMN requires_flags JSONB DEFAULT NULL`,
-		`ALTER TABLE phaser_conditional_dialogue ADD COLUMN requires_flags_absent JSONB DEFAULT NULL`,
-		`ALTER TABLE phaser_conditional_dialogue ADD COLUMN dialogue_labels JSONB DEFAULT NULL`,
-		`ALTER TABLE phaser_conditional_dialogue ADD COLUMN source VARCHAR(100) DEFAULT 'manual'`,
+		`ALTER TABLE phaser_conditional_dialogue ADD COLUMN IF NOT EXISTS requires_flags JSONB DEFAULT NULL`,
+		`ALTER TABLE phaser_conditional_dialogue ADD COLUMN IF NOT EXISTS requires_flags_absent JSONB DEFAULT NULL`,
+		`ALTER TABLE phaser_conditional_dialogue ADD COLUMN IF NOT EXISTS dialogue_labels JSONB DEFAULT NULL`,
+		`ALTER TABLE phaser_conditional_dialogue ADD COLUMN IF NOT EXISTS source VARCHAR(100) DEFAULT 'manual'`,
 	} {
-		if _, err := db.ExecContext(ctx, statement); err != nil && !isDuplicateColumnError(err) {
+		if _, err := db.ExecContext(ctx, statement); err != nil {
 			return fmt.Errorf("ensure conditional dialogue column: %w", err)
 		}
 	}
 	return nil
-}
-
-func isDuplicateColumnError(err error) bool {
-	if err == nil {
-		return false
-	}
-	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "duplicate column") ||
-		strings.Contains(message, "already exists")
 }
 
 type loadedEventRef struct {

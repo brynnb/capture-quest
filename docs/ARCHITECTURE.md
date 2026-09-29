@@ -114,9 +114,14 @@ world preloads share the process signal context and one minute for bootstrap and
 preload together. Every database query in these stages observes cancellation;
 preloads also check before cache publication. Failed bootstrap or construction
 closes the opened database. Lazy collision queries have a five-second deadline.
-Local scripted-event file reads are synchronous; synchronization can retain writes
-from earlier stages on failure and still needs an atomic publication boundary. A
-bounded server shutdown deadline remains in progress.
+Scripted-event sync loads all file inputs before opening a PostgreSQL transaction.
+It locks the five published content tables to serialize publishers, upgrades
+required columns with IF NOT EXISTS and applies scripts, coordinates, visibility,
+tile overrides and conditional dialogue together. Applied statistics and success
+logs follow commit; errors, cancellation and commit failure preserve the previous
+family, including schema changes. Schema upgrades can block readers until commit;
+sync runs during startup/import before serving traffic. Local file reads remain
+synchronous. A bounded server shutdown deadline remains in progress.
 
 We follow a **"Model-First"** architecture. Data is categorized into distinct streams to avoid massive "god-object" updates and to minimize bandwidth.
 

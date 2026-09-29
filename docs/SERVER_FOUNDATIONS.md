@@ -465,6 +465,26 @@ its stages, synchronous file loading is not interruptible, and bounded shutdown,
 remaining state ownership, domain/wire migration and rendered integration remain
 unfinished. Changes are local only.
 
+Atomic scripted-event publication checkpoint: Sync now owns a PostgreSQL
+transaction for all five content families and its required-column upgrades. It
+loads the source file families first, locks the published tables before reading
+prior state to serialize concurrent publishers, and returns applied statistics
+only after commit. Duplicate-column error suppression was removed in favor of
+ADD COLUMN IF NOT EXISTS, which does not abort the transaction. The existing
+shared sync helpers execute against the same transaction; no second interpreter
+or parallel content pipeline was introduced. Schema upgrades can block readers
+until commit, consistent with startup/import publication before serving traffic.
+
+PostgreSQL race tests prove rollback after a late dialogue lookup error, deferred
+commit constraint failure, and cancellation after earlier writes. Snapshots cover
+all five families and stored row identities; the late-error test also proves a
+required-column upgrade rolls back. Successful retry publishes every family and
+repeated publication preserves identities. Four concurrent publishers serialize
+and only one applies changes. Scripted-event, simulator and importer suites
+passed; all Go packages compile. The original goal remains incomplete, including
+bounded shutdown, remaining ownership/mutation audits, domain separation, the
+explicit wire-contract migration and rendered integration. No push/deploy.
+
 ## Reproducible PostgreSQL tests
 
 With `initdb`, `pg_ctl`, and Go available, run:
