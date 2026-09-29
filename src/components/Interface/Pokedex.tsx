@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import styled from "styled-components";
-import usePokedexStore, { PokedexSpecies } from "@/stores/PokedexStore";
+import usePokedexStore from "@/stores/PokedexStore";
+import type { PokedexSpeciesEntry } from "@/net/generated/protocol";
 import useGameStatusStore from "@stores/GameStatusStore";
 import { WorldSocket, OpCodes } from "@/net";
 import AudioManager from "@/services/audio/AudioManager";
@@ -297,7 +298,7 @@ const Pokedex: React.FC = () => {
     return () => window.removeEventListener("keydown", onKey);
   }, [handleClose]);
 
-  const allEntries: { id: number; species?: PokedexSpecies; seen: boolean; caught: boolean }[] = [];
+  const allEntries: { id: number; species?: PokedexSpeciesEntry; seen: boolean; caught: boolean }[] = [];
   const speciesMap = new Map(species.map(s => [s.id, s]));
   for (let i = 1; i <= 151; i++) {
     const s = speciesMap.get(i);
@@ -324,7 +325,7 @@ const Pokedex: React.FC = () => {
     return `${lbs.toFixed(1)} lbs`;
   };
 
-  const playCry = useCallback((entry: PokedexSpecies) => {
+  const playCry = useCallback((entry: PokedexSpeciesEntry) => {
     const path = cryPathForPokemon(entry.name, entry.crySfx);
     if (path) {
       void AudioManager.playSFX(path, 0.8);

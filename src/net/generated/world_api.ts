@@ -1011,38 +1011,6 @@ export interface PokeCenterHealRequest {
 }
 
 //////////
-// source: handler-pokedex.go
-
-export interface PokedexSpeciesEntry {
-  id: number /* int */;
-  name: string;
-  type1: string;
-  type2?: string;
-  pokedexType?: string;
-  height?: string;
-  weight?: number /* int */;
-  pokedexText?: string;
-  iconImage?: string;
-  crySfx?: string;
-  cryPitch?: number /* int */;
-  cryLength?: number /* int */;
-}
-export interface PokedexStatusEntry {
-  pokemonId: number /* int */;
-  seen: boolean;
-  caught: boolean;
-}
-export interface TrainerCardResponse {
-  name: string;
-  money: number /* int */;
-  timePlayed: number /* int */;
-  badges: string[];
-  badgeCount: number /* int */;
-  pokedexSeen: number /* int */;
-  pokedexCaught: number /* int */;
-}
-
-//////////
 // source: handler-pokemon-pc.go
 
 

@@ -10,41 +10,9 @@ import (
 	"capturequest/internal/db"
 	"capturequest/internal/db/pokedex"
 	"capturequest/internal/pokebattle"
+	"capturequest/internal/protocol"
 	"capturequest/internal/session"
 )
-
-// --- Response types ---
-
-type PokedexSpeciesEntry struct {
-	ID          int     `json:"id"`
-	Name        string  `json:"name"`
-	Type1       string  `json:"type1"`
-	Type2       *string `json:"type2"`
-	PokedexType *string `json:"pokedexType"`
-	Height      *string `json:"height"`
-	Weight      *int    `json:"weight"`
-	PokedexText *string `json:"pokedexText"`
-	IconImage   *string `json:"iconImage"`
-	CrySFX      *string `json:"crySfx,omitempty"`
-	CryPitch    *int    `json:"cryPitch,omitempty"`
-	CryLength   *int    `json:"cryLength,omitempty"`
-}
-
-type PokedexStatusEntry struct {
-	PokemonID int  `json:"pokemonId"`
-	Seen      bool `json:"seen"`
-	Caught    bool `json:"caught"`
-}
-
-type TrainerCardResponse struct {
-	Name          string   `json:"name"`
-	Money         int      `json:"money"`
-	TimePlayed    int      `json:"timePlayed"`
-	Badges        []string `json:"badges"`
-	BadgeCount    int      `json:"badgeCount"`
-	PokedexSeen   int      `json:"pokedexSeen"`
-	PokedexCaught int      `json:"pokedexCaught"`
-}
 
 // Badge event flag names in gym order.
 var badgeFlags = []string{
@@ -66,20 +34,20 @@ func HandlePokedexListRequest(ses *session.Session, payload []byte, wh *WorldHan
 	}
 
 	// Fetch all Pokémon species (1-151)
-	rows, err := db.GlobalWorldDB.DB.Query(`
+	rows, err := wh.database.Query(`
 		SELECT id, name, type_1, type_2, pokedex_type, height, weight, pokedex_text, icon_image,
 		       base_cry, cry_pitch, cry_length
 		FROM phaser_pokemon WHERE id BETWEEN 1 AND 151 ORDER BY id`)
 	if err != nil {
 		log.Printf("[Pokedex] Error querying species: %v", err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.PokedexListResponse)
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: err.Error()}, opcodes.PokedexListResponse)
 		return false
 	}
 	defer rows.Close()
 
-	var species []PokedexSpeciesEntry
+	species := make([]protocol.PokedexSpeciesEntry, 0)
 	for rows.Next() {
-		var s PokedexSpeciesEntry
+		var s protocol.PokedexSpeciesEntry
 		var baseCry, cryPitch, cryLength sql.NullInt64
 		if err := rows.Scan(
 			&s.ID, &s.Name, &s.Type1, &s.Type2, &s.PokedexType,
@@ -87,7 +55,8 @@ func HandlePokedexListRequest(ses *session.Session, payload []byte, wh *WorldHan
 			&baseCry, &cryPitch, &cryLength,
 		); err != nil {
 			log.Printf("[Pokedex] Error scanning species: %v", err)
-			continue
+			ses.SendStreamJSON(protocol.ErrorResponse{Error: err.Error()}, opcodes.PokedexListResponse)
+			return false
 		}
 		if baseCry.Valid {
 			crySFX := fmt.Sprintf("SFX_CRY_%02X", baseCry.Int64)
@@ -104,34 +73,44 @@ func HandlePokedexListRequest(ses *session.Session, payload []byte, wh *WorldHan
 		species = append(species, s)
 	}
 
+	if err := rows.Err(); err != nil {
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: err.Error()}, opcodes.PokedexListResponse)
+		return false
+	}
+
 	// Fetch seen/caught status for this character
-	var status []PokedexStatusEntry
+	status := make([]protocol.PokedexStatusEntry, 0)
 	if charID > 0 {
-		if err := reconcileOwnedPokemonPokedex(db.GlobalWorldDB.DB, charID); err != nil {
+		if err := reconcileOwnedPokemonPokedex(wh.database, charID); err != nil {
 			log.Printf("[Pokedex] Error reconciling owned pokemon for char %d: %v", charID, err)
+			ses.SendStreamJSON(protocol.ErrorResponse{Error: err.Error()}, opcodes.PokedexListResponse)
+			return false
 		}
-		statusRows, err := db.GlobalWorldDB.DB.Query(`
+		statusRows, err := wh.database.Query(`
 			SELECT pokemon_id, seen, caught
 			FROM character_pokedex WHERE character_id = $1 ORDER BY pokemon_id`, charID)
 		if err != nil {
 			log.Printf("[Pokedex] Error querying status for char %d: %v", charID, err)
+			ses.SendStreamJSON(protocol.ErrorResponse{Error: err.Error()}, opcodes.PokedexListResponse)
+			return false
 		} else {
 			defer statusRows.Close()
 			for statusRows.Next() {
-				var e PokedexStatusEntry
+				var e protocol.PokedexStatusEntry
 				if err := statusRows.Scan(&e.PokemonID, &e.Seen, &e.Caught); err != nil {
-					continue
+					ses.SendStreamJSON(protocol.ErrorResponse{Error: err.Error()}, opcodes.PokedexListResponse)
+					return false
 				}
 				status = append(status, e)
+			}
+			if err := statusRows.Err(); err != nil {
+				ses.SendStreamJSON(protocol.ErrorResponse{Error: err.Error()}, opcodes.PokedexListResponse)
+				return false
 			}
 		}
 	}
 
-	res := map[string]interface{}{
-		"success": true,
-		"species": StructToMap(species),
-		"status":  StructToMap(status),
-	}
+	res := protocol.PokedexListResponse{Success: true, Species: species, Status: status}
 	ses.SendStreamJSON(res, opcodes.PokedexListResponse)
 	log.Printf("[Pokedex] Sent %d species + %d status entries for char %d", len(species), len(status), charID)
 	return false
@@ -144,36 +123,40 @@ func HandlePokedexStatusRequest(ses *session.Session, payload []byte, wh *WorldH
 		charID = int64(ses.Client.CharData().ID)
 	}
 	if charID == 0 {
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "not logged in"}, opcodes.PokedexStatusResponse)
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: "not logged in"}, opcodes.PokedexStatusResponse)
 		return false
 	}
-	if err := reconcileOwnedPokemonPokedex(db.GlobalWorldDB.DB, charID); err != nil {
+	if err := reconcileOwnedPokemonPokedex(wh.database, charID); err != nil {
 		log.Printf("[Pokedex] Error reconciling owned pokemon for char %d: %v", charID, err)
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: err.Error()}, opcodes.PokedexStatusResponse)
+		return false
 	}
 
-	statusRows, err := db.GlobalWorldDB.DB.Query(`
+	statusRows, err := wh.database.Query(`
 		SELECT pokemon_id, seen, caught
 		FROM character_pokedex WHERE character_id = $1 ORDER BY pokemon_id`, charID)
 	if err != nil {
 		log.Printf("[Pokedex] Error querying status for char %d: %v", charID, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.PokedexStatusResponse)
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: err.Error()}, opcodes.PokedexStatusResponse)
 		return false
 	}
 	defer statusRows.Close()
 
-	var status []PokedexStatusEntry
+	status := make([]protocol.PokedexStatusEntry, 0)
 	for statusRows.Next() {
-		var e PokedexStatusEntry
+		var e protocol.PokedexStatusEntry
 		if err := statusRows.Scan(&e.PokemonID, &e.Seen, &e.Caught); err != nil {
-			continue
+			ses.SendStreamJSON(protocol.ErrorResponse{Error: err.Error()}, opcodes.PokedexStatusResponse)
+			return false
 		}
 		status = append(status, e)
 	}
 
-	res := map[string]interface{}{
-		"success": true,
-		"status":  StructToMap(status),
+	if err := statusRows.Err(); err != nil {
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: err.Error()}, opcodes.PokedexStatusResponse)
+		return false
 	}
+	res := protocol.PokedexStatusResponse{Success: true, Status: status}
 	ses.SendStreamJSON(res, opcodes.PokedexStatusResponse)
 	return false
 }
@@ -186,26 +169,32 @@ func HandleTrainerCardRequest(ses *session.Session, payload []byte, wh *WorldHan
 
 func sendTrainerCardResponse(ses *session.Session, wh *WorldHandler) {
 	if !ses.HasValidClient() {
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "not logged in"}, opcodes.TrainerCardResponse)
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: "not logged in"}, opcodes.TrainerCardResponse)
 		return
 	}
 
 	charData := ses.Client.CharData()
 	charID := int64(charData.ID)
-	if err := reconcileOwnedPokemonPokedex(db.GlobalWorldDB.DB, charID); err != nil {
+	if err := reconcileOwnedPokemonPokedex(wh.database, charID); err != nil {
 		log.Printf("[TrainerCard] Error reconciling owned pokemon for char %d: %v", charID, err)
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: err.Error()}, opcodes.TrainerCardResponse)
+		return
 	}
 
 	// Build trainer card
-	card := TrainerCardResponse{
+	card := protocol.TrainerCardResponse{
+		Success:    true,
+		Badges:     make([]string, 0),
 		Name:       charData.Name,
 		TimePlayed: int(ses.CurrentPlaytime(time.Now())),
 	}
 
-	err := db.GlobalWorldDB.DB.QueryRow(`
+	err := wh.database.QueryRow(`
 		SELECT COALESCE(pokedollars, 0) FROM character_wallet WHERE character_id = $1`, charData.ID).Scan(&card.Money)
 	if err != nil {
 		log.Printf("[TrainerCard] Error querying money for char %d: %v", charID, err)
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: err.Error()}, opcodes.TrainerCardResponse)
+		return
 	}
 
 	// Get badges from event flags
@@ -219,16 +208,16 @@ func sendTrainerCardResponse(ses *session.Session, wh *WorldHandler) {
 	}
 
 	// Get pokédex counts
-	err = db.GlobalWorldDB.DB.QueryRow(`
+	err = wh.database.QueryRow(`
 		SELECT COALESCE(SUM(seen), 0), COALESCE(SUM(caught), 0)
 		FROM character_pokedex WHERE character_id = $1`, charID).Scan(&card.PokedexSeen, &card.PokedexCaught)
 	if err != nil {
 		log.Printf("[TrainerCard] Error querying pokedex counts for char %d: %v", charID, err)
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: err.Error()}, opcodes.TrainerCardResponse)
+		return
 	}
 
-	res := StructToMap(card).(map[string]interface{})
-	res["success"] = true
-	ses.SendStreamJSON(res, opcodes.TrainerCardResponse)
+	ses.SendStreamJSON(card, opcodes.TrainerCardResponse)
 	log.Printf("[TrainerCard] Sent card for %s: %d badges, %d seen, %d caught",
 		card.Name, card.BadgeCount, card.PokedexSeen, card.PokedexCaught)
 }
@@ -289,6 +278,5 @@ func reconcileOwnedPokemonPokedex(database pokebattle.DBTX, charID int64) error 
 	return err
 }
 
-// StructToMap helper is already defined in handler-phaser-data.go, reuse it.
 // We reference it here but it's defined elsewhere in the package.
 // (Go allows this since both files are in the same package.)

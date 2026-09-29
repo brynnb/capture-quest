@@ -15,3 +15,60 @@ for both encoding/json and generated TypeScript; no field-name conversion runs.
 export interface CharacterData extends CharacterBase {
   options?: import("./character_options").CharacterOptions;
 }
+
+//////////
+// source: pokedex.go
+
+export interface PokedexSpeciesEntry {
+  id: number /* int */;
+  name: string;
+  type1: string;
+  type2: string | null;
+  pokedexType: string | null;
+  height: string | null;
+  weight: number | null;
+  pokedexText: string | null;
+  iconImage: string | null;
+  crySfx?: string;
+  cryPitch?: number /* int */;
+  cryLength?: number /* int */;
+}
+export interface PokedexStatusEntry {
+  pokemonId: number /* int */;
+  seen: boolean;
+  caught: boolean;
+}
+export interface TrainerCardResponse {
+  success: true;
+  name: string;
+  money: number /* int */;
+  timePlayed: number /* int */;
+  badges: string[];
+  badgeCount: number /* int */;
+  pokedexSeen: number /* int */;
+  pokedexCaught: number /* int */;
+}
+/**
+ * PokedexListResponse publishes complete species and character status arrays.
+ */
+export interface PokedexListResponse {
+  success: true;
+  species: PokedexSpeciesEntry[];
+  status: PokedexStatusEntry[];
+}
+export interface PokedexStatusResponse {
+  success: true;
+  status: PokedexStatusEntry[];
+}
+
+//////////
+// source: response.go
+
+/**
+ * ErrorResponse is the shared unsuccessful query response. The generated literal
+ * discriminator lets clients narrow a success/error union without field casts.
+ */
+export interface ErrorResponse {
+  success: false;
+  error: string;
+}

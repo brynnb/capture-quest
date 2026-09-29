@@ -262,13 +262,13 @@ export class NetworkBridge {
 
       // Pokédex & UI (Phase 10)
       case OpCodes.PokedexListResponse:
-        this.handlePokedexListResponse(data as Record<string, unknown>);
+        this.handlePokedexListResponse(data as ProtocolTypes.PokedexListResponse | ProtocolTypes.ErrorResponse);
         break;
       case OpCodes.PokedexStatusResponse:
-        this.handlePokedexStatusResponse(data as Record<string, unknown>);
+        this.handlePokedexStatusResponse(data as ProtocolTypes.PokedexStatusResponse | ProtocolTypes.ErrorResponse);
         break;
       case OpCodes.TrainerCardResponse:
-        this.handleTrainerCardResponse(data as Record<string, unknown>);
+        this.handleTrainerCardResponse(data as ProtocolTypes.TrainerCardResponse | ProtocolTypes.ErrorResponse);
         break;
 
       // Debug Scene Debugger
@@ -941,45 +941,25 @@ export class NetworkBridge {
     });
   }
 
-  private handlePokedexListResponse(data: Record<string, unknown>) {
+  private handlePokedexListResponse(data: ProtocolTypes.PokedexListResponse | ProtocolTypes.ErrorResponse) {
     if (!data.success) return;
     import("@/stores/PokedexStore").then(({ default: usePokedexStore }) => {
-      const species = (data.species || []) as Array<{
-        id: number; name: string; type1: string; type2?: string;
-        pokedexType?: string; height?: string; weight?: number;
-        pokedexText?: string; iconImage?: string;
-        crySfx?: string; cryPitch?: number; cryLength?: number;
-      }>;
-      const status = (data.status || []) as Array<{
-        pokemonId: number; seen: boolean; caught: boolean;
-      }>;
-      usePokedexStore.getState().setSpecies(species);
-      usePokedexStore.getState().setStatus(status);
+      usePokedexStore.getState().setSpecies(data.species);
+      usePokedexStore.getState().setStatus(data.status);
     });
   }
 
-  private handlePokedexStatusResponse(data: Record<string, unknown>) {
+  private handlePokedexStatusResponse(data: ProtocolTypes.PokedexStatusResponse | ProtocolTypes.ErrorResponse) {
     if (!data.success) return;
     import("@/stores/PokedexStore").then(({ default: usePokedexStore }) => {
-      const status = (data.status || []) as Array<{
-        pokemonId: number; seen: boolean; caught: boolean;
-      }>;
-      usePokedexStore.getState().setStatus(status);
+      usePokedexStore.getState().setStatus(data.status);
     });
   }
 
-  private handleTrainerCardResponse(data: Record<string, unknown>) {
+  private handleTrainerCardResponse(data: ProtocolTypes.TrainerCardResponse | ProtocolTypes.ErrorResponse) {
     if (!data.success) return;
     import("@/stores/PokedexStore").then(({ default: usePokedexStore }) => {
-      usePokedexStore.getState().setTrainerCard({
-        name: data.name as string,
-        money: data.money as number,
-        timePlayed: data.timePlayed as number,
-        badges: (data.badges || []) as string[],
-        badgeCount: data.badgeCount as number,
-        pokedexSeen: data.pokedexSeen as number,
-        pokedexCaught: data.pokedexCaught as number,
-      });
+      usePokedexStore.getState().setTrainerCard(data);
     });
   }
 

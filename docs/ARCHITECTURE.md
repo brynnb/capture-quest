@@ -308,7 +308,15 @@ field-name conversion or generated-name postprocessor will remain.
    the parsed object. Wallet and bind models encode directly. These modules are
    excluded from the legacy casing postprocessor. NetworkBridge and the player
    store consume the wire type rather than the persistence type.
-2. **Remaining: world queries and gameplay messages.** Move substantive response
+2. **In progress: world queries and gameplay messages.** Pokédex species,
+   status and trainer-card payloads now live in protocol declarations and encode
+   directly. Their success/error union uses literal discriminators in generated
+   TypeScript; nullable species fields are explicit unions, optional cry metadata
+   is omitted when absent, and success collections are arrays even when empty.
+   The bridge, store and Pokédex consumer share the generated declarations.
+   These queries use their world's database dependency and return failure on
+   query, scan or iteration errors instead of publishing partial snapshots.
+   Remaining families must follow the same migration. Move substantive response
    families into protocol declarations by mechanical extraction, reuse existing
    tagged model/action types, and replace map enrichment with explicit flat
    response views. Audit actual wire keys, nullable fields, omitted fields and

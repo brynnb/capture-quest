@@ -1,45 +1,16 @@
 import { create } from "zustand";
 
-export interface PokedexSpecies {
-  id: number;
-  name: string;
-  type1: string;
-  type2?: string;
-  pokedexType?: string;
-  height?: string;
-  weight?: number;
-  pokedexText?: string;
-  iconImage?: string;
-  crySfx?: string;
-  cryPitch?: number;
-  cryLength?: number;
-}
-
-export interface PokedexStatus {
-  pokemonId: number;
-  seen: boolean;
-  caught: boolean;
-}
-
-export interface TrainerCardData {
-  name: string;
-  money: number;
-  timePlayed: number;
-  badges: string[];
-  badgeCount: number;
-  pokedexSeen: number;
-  pokedexCaught: number;
-}
+import type { PokedexSpeciesEntry, PokedexStatusEntry, TrainerCardResponse } from "@/net/generated/protocol";
 
 interface PokedexState {
-  species: PokedexSpecies[];
+  species: PokedexSpeciesEntry[];
   statusMap: Map<number, { seen: boolean; caught: boolean }>;
   isLoaded: boolean;
-  trainerCard: TrainerCardData | null;
+  trainerCard: TrainerCardResponse | null;
 
-  setSpecies: (species: PokedexSpecies[]) => void;
-  setStatus: (status: PokedexStatus[]) => void;
-  setTrainerCard: (card: TrainerCardData) => void;
+  setSpecies: (species: PokedexSpeciesEntry[]) => void;
+  setStatus: (status: PokedexStatusEntry[]) => void;
+  setTrainerCard: (card: TrainerCardResponse) => void;
   isSeen: (pokemonId: number) => boolean;
   isCaught: (pokemonId: number) => boolean;
   getSeenCount: () => number;

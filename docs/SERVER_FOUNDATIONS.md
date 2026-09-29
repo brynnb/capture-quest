@@ -508,6 +508,27 @@ still exist, and other query/gameplay families require typed declarations, field
 and nullability audits, coordinated consumer migration and rendered integration.
 The complete migration and retirement plan is documented in ARCHITECTURE.md.
 
+Pokédex query contract checkpoint: species, status and trainer-card types were
+mechanically extracted from handlers into protocol declarations, with typed
+success/error responses. The handlers encode directly and use the world's
+injected database. The bridge/store/consumer use generated types; handwritten
+interfaces and field casts were removed. Existing nullable species fields remain
+explicit null values with matching TypeScript unions. Absent optional cry values
+are omitted, and empty collections remain arrays. JSON now publishes crySfx,
+which the client expects; legacy StructToMap incorrectly published crySFX.
+
+Query, reconciliation, scan and iteration failures now return typed errors rather
+than partial success. Trainer-card database query failures also reject the
+snapshot. Event-flag badge checks still use the existing boolean API and require
+the broader failure/ownership audit. PostgreSQL race suites passed for world, protocol and simulator. A dispatcher-to-
+framed-message test verifies cry metadata, nullability, empty status/badge arrays,
+injected database use and typed errors for query/scan/reconciliation failures.
+Frontend typecheck, focused Pokédex store tests, runtime asset validation and
+production build passed; canonical regeneration is byte-stable. All Go packages
+compile. Existing bundling warnings remain. Query cancellation and cohesive domain
+services remain part of the unfinished original goal. This checkpoint does not
+claim completion of the wire migration or rendered cry/UI verification.
+
 ## Reproducible PostgreSQL tests
 
 With `initdb`, `pg_ctl`, and Go available, run:
