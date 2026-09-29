@@ -1,6 +1,7 @@
 #!/bin/bash
 # Converts PascalCase TypeScript interface fields to camelCase in Tygo-generated files
-# This matches the runtime behavior of StructToMap() in Go
+# Legacy world types only: migrated model/protocol types use explicit JSON tags.
+# Retire this script once the remaining world contracts are migrated.
 #
 # Pattern: "  FieldName:" or "  FieldName?:" -> "  fieldName:" or "  fieldName?:"
 # Special handling for:
@@ -10,7 +11,6 @@
 set -e
 
 TARGET_FILES=(
-    "src/net/generated/models.ts"
     "src/net/generated/world.ts"
     "src/net/generated/world_api.ts"
     "src/net/generated/world_db.ts"

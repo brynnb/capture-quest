@@ -79,7 +79,7 @@ func (c *Client) SetAllowTrainerRebattlesEnabled(enabled bool) {
 	c.options.AllowTrainerRebattles = enabled
 }
 
-func (c *Client) Options() interface{} {
+func (c *Client) Options() *db_character.CharacterOptions {
 	return c.options
 }
 

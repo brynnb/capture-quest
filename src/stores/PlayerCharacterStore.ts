@@ -3,6 +3,7 @@ import CharacterProfile from "@entities/CharacterProfile";
 import { Item } from "@entities/Item";
 import useChatStore, { MessageType } from "./ChatStore";
 import useGameStatusStore from "./GameStatusStore";
+import type * as ProtocolTypes from "@/net/generated/protocol";
 import * as ModelTypes from "@/net/generated/models";
 import useStaticDataStore from "./StaticDataStore";
 
@@ -17,7 +18,7 @@ interface PlayerCharacterStore {
   hoveredItem: Item | null;
   setHoveredItem: (item: Item | null) => void;
   setCharacterMap: (mapId: number) => void;
-  handleCharacterData: (data: ModelTypes.CharacterData) => void;
+  handleCharacterData: (data: ProtocolTypes.CharacterData) => void;
   handleCharacterWalletData: (wallet: ModelTypes.CharacterWallet) => void;
   handleCharacterBindData: (bind: ModelTypes.CharacterBind) => void;
 }
@@ -49,7 +50,7 @@ const usePlayerCharacterStore = create<PlayerCharacterStore>()((set, get) => ({
       },
     }));
   },
-  handleCharacterData: (charData: ModelTypes.CharacterData) => {
+  handleCharacterData: (charData: ProtocolTypes.CharacterData) => {
     if (!charData) return;
 
     if (charData.options) {

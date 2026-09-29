@@ -12,6 +12,7 @@ import (
 	db_character "capturequest/internal/db/character"
 	"capturequest/internal/db/cqitems"
 	"capturequest/internal/options"
+	"capturequest/internal/protocol"
 	"capturequest/internal/session"
 	"capturequest/internal/zone/client"
 )
@@ -312,24 +313,20 @@ func buildAndSendCharacterState(ses *session.Session) {
 	charData := ses.Client.CharData()
 	ctx := context.Background()
 
-	// Send persisted character data through the owned DB model shape.
-	// We also include the options object explicitly so the client doesn't have to parse a JSON string
-	charMap, _ := StructToMap(charData).(map[string]interface{})
-	if charMap != nil {
-		charMap["options"] = ses.Client.Options()
-	}
-
-	ses.SendStreamJSON(charMap, opcodes.CharacterData)
+	ses.SendStreamJSON(protocol.CharacterData{
+		CharacterData: *charData,
+		Options:       ses.Client.Options(),
+	}, opcodes.CharacterData)
 
 	// Send wallet as its own persisted model stream.
 	wallet, _ := db_character.GetCharacterWallet(ctx, charData.ID)
-	ses.SendStreamJSON(StructToMap(wallet), opcodes.CharacterWallet)
+	ses.SendStreamJSON(wallet, opcodes.CharacterWallet)
 
 	sendCQInventorySnapshot(ses, int32(charData.ID))
 
 	// Send bind data as its own persisted model stream.
 	bind, _ := db_character.GetCharacterBind(ctx, charData.ID)
-	ses.SendStreamJSON(StructToMap(bind), opcodes.CharacterBind)
+	ses.SendStreamJSON(bind, opcodes.CharacterBind)
 }
 
 func sendCQInventorySnapshot(ses *session.Session, charID int32) {

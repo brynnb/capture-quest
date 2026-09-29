@@ -63,6 +63,10 @@ export interface BoulderObjectState {
 }
 
 //////////
+// source: character_owner.go
+
+
+//////////
 // source: chat_commands.go
 
 /**
@@ -1198,6 +1202,10 @@ export interface ActorPathState {
 }
 export interface PhaserActorManager {
 }
+
+//////////
+// source: periodic_worker.go
+
 
 //////////
 // source: phaser_warps.go

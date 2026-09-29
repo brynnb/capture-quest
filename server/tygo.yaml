@@ -52,3 +52,15 @@ packages:
   - path: capturequest/internal/db/cqitems
     include_files: [types.go]
     output_path: ../src/net/generated/cqitems.ts
+
+  - path: capturequest/internal/protocol
+    frontmatter: |
+      import type { CharacterData as CharacterBase } from "./models";
+    type_mappings:
+      models.CharacterData: CharacterBase
+      db_character.CharacterOptions: 'import("./character_options").CharacterOptions'
+    output_path: ../src/net/generated/protocol.ts
+
+  - path: capturequest/internal/db/character
+    include_files: [character-options.go]
+    output_path: ../src/net/generated/character_options.ts

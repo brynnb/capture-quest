@@ -132,7 +132,7 @@ We follow a **"Model-First"** architecture. Data is categorized into distinct st
 - **Casing & Naming**: Keep server field names, database columns, and Go struct tags aligned with the runtime model.
 - **Movement**: The Phaser client owns ordinary walking/pathing responsiveness and reports its current position to the server. The server persists and relays that position to other players, while still applying durable step effects such as encounters, Safari steps, cut tiles, scripted triggers, and forced movement mechanics.
 - **Adaptation**: The client code and Tygo types adapt to the server's structure. Map location state should use `mapId`; `zoneId` only remains where older protocol/data aliases still need compatibility.
-- **Automation**: We rely on the `StructToMap` utility in Go and `tygo` in TypeScript to handle the bridge—we do not manually mangle the backend to accommodate the frontend.
+- **Automation**: Explicit JSON tags drive standard Go encoding and Tygo generation. Character state, wallet and bind streams use this contract. Remaining legacy world messages still pass through `StructToMap` while the documented migration proceeds.
 
 ### A. Persisted Base Data (`CharacterData`)
 
@@ -218,7 +218,7 @@ We follow a **"Model-First"** architecture. Data is categorized into distinct st
 One of the primary goals is to keep wire types aligned with the server's runtime model.
 
 - **Anti-Pattern**: Manually building a `map[string]interface{}` or a custom struct that mirrors 90% of a server model. This introduces "Shadow Models" that drift and break.
-- **Standard**: Prefer the owned model structs under `server/internal/db/models` and the `StructToMap` utility in `world-utils.go`. `StructToMap` converts Go's `PascalCase` fields to the frontend's `camelCase` shape while respecting the model's structure.
+- **Standard**: Reuse tagged owned models under `server/internal/db/models` and encode them directly. A wire view belongs in `server/internal/protocol` when its shape differs from persistence. `protocol.CharacterData` embeds the base fields and adds typed parsed preferences; the stored options string is excluded from JSON. Do not add new `StructToMap` consumers.
 
 ### When to use a DTO (The "Last Resort" Exceptions)
 
@@ -276,10 +276,8 @@ The client can use the response directly: `const char = response;`
 1. **State Streams**: For `CharacterData`, inventory, party, PC, and battle data, send the model or map directly.
 2. **Query Responses**: For request/response APIs such as `GetItemResponse`, include `success: true` on the root object alongside the data fields.
    ```go
-   // Example: GetItemResponse
-   res := StructToMap(itemData).(map[string]interface{})
-   res["success"] = true
-   ses.SendStreamJSON(res, opcodes.GetItemResponse)
+   // ItemResponse is a tagged protocol view with a flattened embedded item.
+   ses.SendStreamJSON(ItemResponse{Item: itemData, Success: true}, opcodes.GetItemResponse)
    ```
 3. **Composite Responses**: When a single response _must_ contain multiple distinct lists (e.g., `GetRecipeDetailsResponse` with `recipe`, `components`, and `outputs`), nesting is acceptable. This is the exception, not the rule.
 4. **Error Responses**: Always use a flat structure with `success: false` and `error: "..."`.
@@ -290,35 +288,49 @@ The client can use the response directly: `const char = response;`
 
 ### Tygo (The Standard)
 
-We use `tygo` to generate TypeScript interfaces directly from Go structs (stored in `src/net/generated/`). This ensures 100% type alignment between the backend and frontend without manual duplicating fields.
+Tygo generates TypeScript from authoritative Go types. Run `npm run tygo`
+after changing contracts. `server/tygo.yaml` defines generated modules and explicit
+external type mappings. Encoding uses `encoding/json`; exported wire fields have
+explicit `json` tags. Go anonymous fields flatten in JSON, so flattened views use
+Tygo's supported `tstype:",extends"` tag and an imported base type for generation.
 
-- **Workflow**: When a Go struct is modified, run `npm run tygo` from the project root. **Never run `tygo generate` directly** because the npm script also runs `scripts/fix-tygo-casing.sh`, a post-processor that converts PascalCase field names to camelCase in the generated files. Running tygo directly will produce PascalCase output that breaks the client.
-- **Why the post-processor exists**: Tygo outputs Go field names as-is for structs without `json` tags, including the owned database model structs in `server/internal/db/models`. These are PascalCase in Go, but `StructToMap` sends them as camelCase on the wire. The fix script bridges this gap by lowercasing the first letter and handling the `ID` suffix convention.
-- **Use**: Always use `generated/world_api.ts` or `generated/models.ts` for casting incoming network data.
-- **Config**: `server/tygo.yaml` — maps Go packages to output TS files.
+### Wire-contract migration
 
-### Casing Pipeline (CRITICAL)
+The migration is in progress. Its final state is tagged, typed messages encoded
+directly, with TypeScript generated from those same declarations. No runtime
+field-name conversion or generated-name postprocessor will remain.
 
-There are **two independent casing systems** that must stay in agreement:
+1. **Completed: character streams.** Base model fields now have explicit JSON
+   names. CharacterData uses `protocol.CharacterData` and generated
+   `protocol.ts`; options use the existing authoritative `CharacterOptions`
+   declaration in `character_options.ts`. Persisted `models.CharacterData.Options`
+   is a JSON string and is excluded from serialization; the wire view contains
+   the parsed object. Wallet and bind models encode directly. These modules are
+   excluded from the legacy casing postprocessor. NetworkBridge and the player
+   store consume the wire type rather than the persistence type.
+2. **Remaining: world queries and gameplay messages.** Move substantive response
+   families into protocol declarations by mechanical extraction, reuse existing
+   tagged model/action types, and replace map enrichment with explicit flat
+   response views. Audit actual wire keys, nullable fields, omitted fields and
+   empty collections before converting each family. For example,
+   `PhaserPokemonFull.HP` declares `hp`, but the legacy conversion emits `hP`;
+   `DefaultMove1` declares `defaultMove1Id`, but it emits `defaultMove1`. These
+   disagreements must be resolved against consumers through coordinated changes,
+   rather than carrying aliases forward.
+3. **Remaining: retire legacy conversion.** Replace all StructToMap/ItemToMap
+   consumers, require explicit tags on the published contracts, remove the helper
+   and `scripts/fix-tygo-casing.sh`, and simplify the generation command. Existing
+   map payloads must become typed responses as part of the same audit.
+4. **Remaining: integrated verification.** Prove transport encoding, generated
+   shapes, success/error cases, reconnect and stale-client behavior, then run
+   frontend build and rendered gameplay checks. Breaking families require a
+   coordinated frontend/backend release with explicit stale-client handling.
 
-1. **Tygo** generates TS interfaces from Go structs using `json` tags for field names.
-   - Go `MapID int \`json:"mapId"\``→ TS`mapId: number`
-2. **`StructToMap`** (`world-utils.go`) converts Go structs to `map[string]interface{}` at runtime using **Go field names** (ignores json tags):
-   - `ID` → `id`
-   - Fields ending in `ID` (e.g., `MapID`) → `mapId` (special suffix rule)
-   - Everything else: lowercase first letter (e.g., `SightRange` → `sightRange`)
-
-**These two systems must produce the same keys.** They agree by convention because:
-
-- Go field `MapID` with `json:"mapId"` → Tygo produces `mapId`, StructToMap produces `mapId` ✓
-- Go field `Name` with `json:"name"` → Tygo produces `name`, StructToMap produces `name` ✓
-
-**Rules to avoid casing bugs:**
-
-- **Always add `json` tags** to exported struct fields, and ensure the tag matches what StructToMap would produce from the Go field name.
-- **Never use acronyms in field names** except `ID` at the end (e.g., use `MapId` not `MapID` only if you want `mapId` — but the convention is `MapID` which StructToMap handles specially).
-- **Manual `map[string]interface{}`** payloads bypass both systems — keys must be hand-written in camelCase matching the client's expectations. Double-check these against Tygo types.
-- **After adding/modifying Go structs**, always re-run `npm run tygo` (from project root) and verify the output in `src/net/generated/world_api.ts`.
+The first stage preserves established camelCase character keys and the existing
+flat shape. Options were already sent as an object; the generated type now
+represents that fact. Nil deletedAt/options fields are omitted and typed optional.
+No new wire version or fallback aliases were introduced in this stage. The
+legacy world casing rules remain isolated until their consumers are migrated.
 
 ## 6. Client Communication & Logic
 

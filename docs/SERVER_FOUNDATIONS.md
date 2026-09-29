@@ -485,6 +485,29 @@ passed; all Go packages compile. The original goal remains incomplete, including
 bounded shutdown, remaining ownership/mutation audits, domain separation, the
 explicit wire-contract migration and rendered integration. No push/deploy.
 
+Character wire-contract migration checkpoint: base database models now declare
+explicit JSON tags and are excluded from the legacy generated-name postprocessor.
+CharacterData uses a typed protocol view that embeds base fields and exposes the
+existing parsed CharacterOptions object. Persistence retains its stored string,
+which is excluded from JSON. The client interface returns typed options; the
+network bridge and player store use the generated wire view. Wallet and bind
+streams serialize tagged models directly. Tygo's supported inheritance tag and
+explicit imported base mapping preserve the flat payload without copying fields.
+The generator had previously represented options as a string despite the runtime
+sending an object; this checkpoint fixes that observed disagreement.
+
+Focused race tests verify actual framed Session.SendStreamJSON output, flat keys,
+parsed options, timestamps, omitted optional fields and explicit tags;
+character-adjacent world tests pass. PostgreSQL race suites passed for world,
+simulator and server. All Go packages compile. Canonical generation is byte-stable
+on a repeated run; frontend typecheck, runtime asset validation and production
+build passed. Existing bundling warnings remain. No rendered gameplay check or
+production deployment was performed.
+The full casing migration remains incomplete: StructToMap and world postprocessing
+still exist, and other query/gameplay families require typed declarations, field
+and nullability audits, coordinated consumer migration and rendered integration.
+The complete migration and retirement plan is documented in ARCHITECTURE.md.
+
 ## Reproducible PostgreSQL tests
 
 With `initdb`, `pg_ctl`, and Go available, run:

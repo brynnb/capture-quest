@@ -1,6 +1,9 @@
 package entity
 
-import model "capturequest/internal/db/models"
+import (
+	db_character "capturequest/internal/db/character"
+	model "capturequest/internal/db/models"
+)
 
 // Client defines the minimal methods Session needs.
 type Client interface {
@@ -15,7 +18,7 @@ type Client interface {
 	AllowTrainerRebattles() bool
 	SetAllowTrainerRebattlesEnabled(enabled bool)
 
-	Options() interface{}
+	Options() *db_character.CharacterOptions
 	SaveOptions() error
 
 	SendSystemMessage(text string)

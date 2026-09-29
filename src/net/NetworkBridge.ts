@@ -2,6 +2,7 @@ import { WorldSocket } from "./index";
 import * as OpCodes from "./generated/opcodes";
 import type { OpCode } from "./generated/opcodes";
 import * as WorldTypes from "./generated/world";
+import type * as ProtocolTypes from "@/net/generated/protocol";
 import * as ModelTypes from "./generated/models";
 import useChatStore, { MessageType } from "@/stores/ChatStore";
 import useCharacterSelectStore, {
@@ -70,7 +71,7 @@ export class NetworkBridge {
 
       // New separate character data streams (replaces legacy CharacterState)
       case OpCodes.CharacterData:
-        this.handleCharacterData(data as ModelTypes.CharacterData);
+        this.handleCharacterData(data as ProtocolTypes.CharacterData);
         break;
 
       case OpCodes.CharacterWallet:
@@ -313,7 +314,7 @@ export class NetworkBridge {
   }
 
   // New separate handlers for character data streams
-  private handleCharacterData(data: ModelTypes.CharacterData) {
+  private handleCharacterData(data: ProtocolTypes.CharacterData) {
     usePlayerCharacterStore.getState().handleCharacterData(data);
   }
 

@@ -43,5 +43,4 @@ export interface CharacterData {
   timePlayed: number /* uint32 */;
   gm: number /* uint8 */;
   deletedAt?: string;
-  options?: string;
 }

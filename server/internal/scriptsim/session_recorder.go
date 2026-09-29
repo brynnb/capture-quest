@@ -1,6 +1,7 @@
 package scriptsim
 
 import (
+	db_character "capturequest/internal/db/character"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -74,16 +75,16 @@ type recordedClient struct {
 	systemMessages []string
 }
 
-func (c *recordedClient) CharData() *model.CharacterData       { return c.char }
-func (c *recordedClient) ID() int                              { return int(c.char.ID) }
-func (c *recordedClient) Name() string                         { return c.char.Name }
-func (c *recordedClient) Say(string)                           {}
-func (c *recordedClient) ShowNetworkStatsEnabled() bool        { return false }
-func (c *recordedClient) SetShowNetworkStatsEnabled(bool)      {}
-func (c *recordedClient) AllowTrainerRebattles() bool          { return false }
-func (c *recordedClient) SetAllowTrainerRebattlesEnabled(bool) {}
-func (c *recordedClient) Options() interface{}                 { return nil }
-func (c *recordedClient) SaveOptions() error                   { return nil }
+func (c *recordedClient) CharData() *model.CharacterData          { return c.char }
+func (c *recordedClient) ID() int                                 { return int(c.char.ID) }
+func (c *recordedClient) Name() string                            { return c.char.Name }
+func (c *recordedClient) Say(string)                              {}
+func (c *recordedClient) ShowNetworkStatsEnabled() bool           { return false }
+func (c *recordedClient) SetShowNetworkStatsEnabled(bool)         {}
+func (c *recordedClient) AllowTrainerRebattles() bool             { return false }
+func (c *recordedClient) SetAllowTrainerRebattlesEnabled(bool)    {}
+func (c *recordedClient) Options() *db_character.CharacterOptions { return nil }
+func (c *recordedClient) SaveOptions() error                      { return nil }
 func (c *recordedClient) SendSystemMessage(text string) {
 	c.systemMessages = append(c.systemMessages, text)
 }
