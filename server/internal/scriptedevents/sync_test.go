@@ -1,6 +1,7 @@
 package scriptedevents
 
 import (
+	"context"
 	"database/sql"
 	"os"
 	"path/filepath"
@@ -20,7 +21,7 @@ func TestResolveEventItemRequirementsUsesItemNames(t *testing.T) {
 		RequiresItemAbsentID:   &pokeFluteID,
 	}
 
-	requires, requiresAbsent, err := resolveEventItemRequirements(db, event)
+	requires, requiresAbsent, err := resolveEventItemRequirements(context.Background(), db, event)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +36,7 @@ func TestResolveEventItemRequirementsUsesItemNames(t *testing.T) {
 func TestResolveEventItemRequirementsReportsUnknownItem(t *testing.T) {
 	db := newItemRequirementTestDB(t)
 
-	_, _, err := resolveEventItemRequirements(db, EventFile{
+	_, _, err := resolveEventItemRequirements(context.Background(), db, EventFile{
 		ScriptLabel:      "UnknownItemGate",
 		RequiresItemName: "NOT_A_REAL_ITEM",
 	})
@@ -47,7 +48,7 @@ func TestResolveEventItemRequirementsReportsUnknownItem(t *testing.T) {
 func TestDeleteStaleExtractorTriggerScripts(t *testing.T) {
 	db := newCutsceneCleanupTestDB(t)
 
-	deleted, err := deleteStaleExtractorTriggerScripts(db, []EventFile{
+	deleted, err := deleteStaleExtractorTriggerScripts(context.Background(), db, []EventFile{
 		{
 			ScriptLabel: "FishingGuruGift",
 			MapName:     "VERMILION_OLD_ROD_HOUSE",
@@ -314,7 +315,7 @@ func TestLoadConditionalDialogueGeneratedFile(t *testing.T) {
 
 func TestBuildConditionalDialogueRowsHydratesDialogueLabels(t *testing.T) {
 	db := newConditionalDialogueHydrationTestDB(t)
-	rows, err := buildConditionalDialogueRows(db, []ConditionalDialogueRule{
+	rows, err := buildConditionalDialogueRows(context.Background(), db, []ConditionalDialogueRule{
 		{
 			TextConstant:        "TEXT_OAKSLAB_RIVAL",
 			Priority:            200,
@@ -381,7 +382,7 @@ func TestSyncEventTileOverridesReplacesRuntimeRows(t *testing.T) {
 		},
 	}
 
-	changed, err := syncEventTileOverrides(db, rules)
+	changed, err := syncEventTileOverrides(context.Background(), db, rules)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -389,7 +390,7 @@ func TestSyncEventTileOverridesReplacesRuntimeRows(t *testing.T) {
 		t.Fatal("first sync changed = false, want true")
 	}
 
-	changed, err = syncEventTileOverrides(db, rules)
+	changed, err = syncEventTileOverrides(context.Background(), db, rules)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -397,7 +398,7 @@ func TestSyncEventTileOverridesReplacesRuntimeRows(t *testing.T) {
 		t.Fatal("second sync changed = true, want false")
 	}
 
-	rows, err := loadEventTileOverrideRows(db)
+	rows, err := loadEventTileOverrideRows(context.Background(), db)
 	if err != nil {
 		t.Fatal(err)
 	}

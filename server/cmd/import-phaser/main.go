@@ -90,7 +90,7 @@ func main() {
 	if err := importPhaserToPostgres(sqlite, postgres, importContext); err != nil {
 		log.Fatalf("Failed to import Phaser data into Postgres: %v", err)
 	}
-	if err := scriptedevents.SyncDefault(postgres); err != nil {
+	if err := scriptedevents.SyncDefault(context.Background(), postgres); err != nil {
 		log.Fatalf("Failed to sync scripted events from files: %v", err)
 	}
 

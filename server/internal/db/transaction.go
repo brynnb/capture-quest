@@ -15,6 +15,14 @@ type DBTX interface {
 	Exec(string, ...any) (sql.Result, error)
 }
 
+// ContextDBTX is the cancellable query surface shared by database and transaction handles.
+// Bootstrap operations use the caller's lifecycle context on every query.
+type ContextDBTX interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
 // RequireTransaction guards operations whose caller owns the atomic boundary.
 // A plain database would let partially completed writes escape on failure.
 func RequireTransaction(database DBTX) error {

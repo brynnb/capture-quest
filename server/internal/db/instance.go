@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 
@@ -13,12 +14,12 @@ type WorldDB struct {
 
 var GlobalWorldDB *WorldDB
 
-func InitWorldDB(driverName, dsn string) error {
+func InitWorldDB(ctx context.Context, driverName, dsn string) error {
 	db, err := sql.Open(driverName, dsn)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
-	if err := db.Ping(); err != nil {
+	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
 		return fmt.Errorf("failed to ping database: %w", err)
 	}

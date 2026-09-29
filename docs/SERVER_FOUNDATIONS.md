@@ -447,6 +447,24 @@ before world construction and server-wide shutdown cancellation still require
 coverage; this checkpoint does not claim that every startup/shutdown operation
 is bounded. Lazy collision mutex acquisition is also separate from query timeout.
 
+Database bootstrap cancellation checkpoint: database initialization now uses
+PingContext, tile schema upgrades use BeginTx/ExecContext, and all scripted-event
+sync queries explicitly receive their caller's context. The server gives database
+bootstrap and world preload one shared minute, linked to SIGINT/SIGTERM. Failure
+closes the opened handle; signal cancellation during bootstrap exits normally.
+The startup deadline is separate from the running server's process context.
+Importer and offline simulator callers explicitly supply their context; this
+checkpoint does not claim deadlines for those standalone tools.
+
+PostgreSQL race suites passed for database bootstrap, scripted events, simulator
+and importer. Tests prove cancelled initialization preserves the existing global
+handle, locked schema/sync queries observe deadlines, and retries succeed after
+locks release. All Go packages compile. No schema definitions, generated assets
+or content rules changed. Sync still needs an atomic publication boundary across
+its stages, synchronous file loading is not interruptible, and bounded shutdown,
+remaining state ownership, domain/wire migration and rendered integration remain
+unfinished. Changes are local only.
+
 ## Reproducible PostgreSQL tests
 
 With `initdb`, `pg_ctl`, and Go available, run:

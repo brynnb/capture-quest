@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -35,35 +36,33 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to read database target: %v", err)
 	}
-	if err := db.InitWorldDB(target.DriverName, target.DSN); err != nil {
-		log.Fatalf("failed to initialize db.WorldDB: %v", err)
-	}
-	if err := db.EnsureWorldTileMutationSchema(db.GlobalWorldDB.DB); err != nil {
-		log.Fatalf("failed to upgrade world tile schema: %v", err)
-	}
-	if err := scriptedevents.SyncDefault(db.GlobalWorldDB.DB); err != nil {
-		log.Fatalf("failed to sync scripted events: %v", err)
+	// One startup budget covers database bootstrap and world preload. The process
+	// context remains independent so expiration cannot stop an already ready server.
+	startupCtx, cancelStartup := context.WithTimeout(processCtx, time.Minute)
+	defer cancelStartup()
+	if err := initializeWorldDatabase(startupCtx, target.DriverName, target.DSN); err != nil {
+		if processCtx.Err() != nil {
+			log.Println("Startup cancelled")
+			return
+		}
+		log.Fatalf("failed to initialize world database: %v", err)
 	}
 
-	srv, err := server.NewServer(processCtx, target.DSN, time.Duration(serverConfig.GracePeriod), serverConfig.Local)
+	srv, err := server.NewServer(startupCtx, target.DSN, time.Duration(serverConfig.GracePeriod), serverConfig.Local)
 	if err != nil {
+		_ = db.GlobalWorldDB.DB.Close()
 		if processCtx.Err() != nil {
-			_ = db.GlobalWorldDB.DB.Close()
 			log.Println("Startup cancelled")
 			return
 		}
 		log.Fatalf("failed to create server: %v", err)
 	}
+	cancelStartup()
+
 	if processCtx.Err() != nil {
 		srv.StopServer()
 		return
 	}
-
-	// _, err = nav.GetNavigation()
-
-	// if err != nil {
-	// 	log.Fatalf("Failed to create navigation %v", err)
-	// }
 
 	if err := srv.StartServer(); err != nil {
 		srv.StopServer()
@@ -82,4 +81,22 @@ func main() {
 	if serveErr != nil {
 		os.Exit(1)
 	}
+}
+
+// No database consumers or listeners run until all bootstrap stages succeed.
+// A failed or cancelled stage relinquishes the opened handle before returning.
+func initializeWorldDatabase(ctx context.Context, driverName, dsn string) error {
+	if err := db.InitWorldDB(ctx, driverName, dsn); err != nil {
+		return err
+	}
+	database := db.GlobalWorldDB.DB
+	if err := db.EnsureWorldTileMutationSchema(ctx, database); err != nil {
+		_ = database.Close()
+		return fmt.Errorf("upgrade world tile schema: %w", err)
+	}
+	if err := scriptedevents.SyncDefault(ctx, database); err != nil {
+		_ = database.Close()
+		return fmt.Errorf("sync scripted events: %w", err)
+	}
+	return nil
 }

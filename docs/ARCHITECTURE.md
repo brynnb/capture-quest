@@ -109,10 +109,14 @@ database ping. Unexpected HTTP or WebTransport serve failures notify main, clear
 readiness and initiate cleanup followed by a nonzero exit. Required world preload
 errors propagate through construction before timers/listeners start. Cutscenes
 require the canonical prerequisite columns; they never retry weaker query shapes.
-Required world preloads share the process startup context and a one-minute ceiling;
-queries and final cache publication observe cancellation. Lazy collision queries
-have a five-second deadline. Earlier schema/bootstrap initialization and a bounded
-server shutdown deadline remain in progress.
+Database ping, tile schema upgrades, scripted-event synchronization and required
+world preloads share the process signal context and one minute for bootstrap and
+preload together. Every database query in these stages observes cancellation;
+preloads also check before cache publication. Failed bootstrap or construction
+closes the opened database. Lazy collision queries have a five-second deadline.
+Local scripted-event file reads are synchronous; synchronization can retain writes
+from earlier stages on failure and still needs an atomic publication boundary. A
+bounded server shutdown deadline remains in progress.
 
 We follow a **"Model-First"** architecture. Data is categorized into distinct streams to avoid massive "god-object" updates and to minimize bandwidth.
 

@@ -1,6 +1,7 @@
 package scriptsim
 
 import (
+	"context"
 	"fmt"
 
 	"capturequest/internal/config"
@@ -13,10 +14,10 @@ func InitDB() error {
 	if err != nil {
 		return fmt.Errorf("read database target: %w", err)
 	}
-	if err := db.InitWorldDB(target.DriverName, target.DSN); err != nil {
+	if err := db.InitWorldDB(context.Background(), target.DriverName, target.DSN); err != nil {
 		return err
 	}
-	if err := scriptedevents.SyncDefault(db.GlobalWorldDB.DB); err != nil {
+	if err := scriptedevents.SyncDefault(context.Background(), db.GlobalWorldDB.DB); err != nil {
 		return fmt.Errorf("sync scripted events: %w", err)
 	}
 	return nil

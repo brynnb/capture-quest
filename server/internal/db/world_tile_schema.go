@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 )
@@ -9,7 +10,7 @@ import (
 // any tile consumers start querying it. Fresh databases receive the same
 // columns from postgres_runtime_schema.sql; this path keeps long-lived local
 // and deployed databases compatible without requiring a destructive import.
-func EnsureWorldTileMutationSchema(database *sql.DB) error {
+func EnsureWorldTileMutationSchema(ctx context.Context, database *sql.DB) error {
 	if database == nil {
 		return fmt.Errorf("world database is nil")
 	}
@@ -34,19 +35,19 @@ func EnsureWorldTileMutationSchema(database *sql.DB) error {
 		`ALTER TABLE phaser_tiles ADD COLUMN IF NOT EXISTS last_edit_source varchar(32)`,
 	}
 
-	tx, err := database.Begin()
+	tx, err := database.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin world tile schema upgrade: %w", err)
 	}
 	defer tx.Rollback()
 
 	for _, statement := range statements {
-		if _, err := tx.Exec(statement); err != nil {
+		if _, err := tx.ExecContext(ctx, statement); err != nil {
 			return fmt.Errorf("upgrade world tile schema: %w", err)
 		}
 	}
 
-	if _, err := tx.Exec(`
+	if _, err := tx.ExecContext(ctx, `
 		UPDATE phaser_tiles
 		SET
 			is_original_tile_location = 1,
