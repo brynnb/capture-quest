@@ -529,6 +529,27 @@ compile. Existing bundling warnings remain. Query cancellation and cohesive doma
 services remain part of the unfinished original goal. This checkpoint does not
 claim completion of the wire migration or rendered cry/UI verification.
 
+Content detail contract/service checkpoint: Pokémon, move and item request and
+projection types were extracted into protocol. Flat typed success views embed
+the existing fields; required nullable values use matching TypeScript unions.
+The direct encoder now respects hp, pp, isHm and defaultMove1Id through
+defaultMove4Id, correcting legacy converter disagreements without aliases.
+SQL reads were mechanically extracted into an injected content service with
+caller cancellation and a five-second operation cap. Handlers decode/publish
+and distinguish missing records, invalid requests and database read failures.
+Local TM/HM previews now declare the generated-field subset they actually store;
+no content records or generation inputs changed.
+
+Focused PostgreSQL race checks prove flat framed responses through dispatch,
+correct acronym keys/nullability, explicit database ownership, typed failures,
+query cancellation, lock deadlines and retry. A locked background query also
+proves the service's own five-second limit. Content and world/protocol/simulator
+race suites passed. Frontend typecheck, runtime asset validation, production
+build and repeat-generation stability passed; all Go packages compile. Existing
+bundling warnings remain. The full migration, domain cleanup and server-wide
+shutdown cancellation remain unfinished. No production or rendered gameplay
+verification is claimed.
+
 ## Reproducible PostgreSQL tests
 
 With `initdb`, `pg_ctl`, and Go available, run:

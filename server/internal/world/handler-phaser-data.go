@@ -1,12 +1,15 @@
 package world
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"log"
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
+	"capturequest/internal/protocol"
 	"capturequest/internal/session"
 )
 
@@ -25,24 +28,12 @@ type PhaserTrainerDataRequest struct {
 	TrainerPartyIndex int    `json:"trainerPartyIndex"` // party index within the class
 }
 
-type PhaserPokemonDataRequest struct {
-	PokemonID int `json:"pokemonId"`
-}
-
-type PhaserMoveDataRequest struct {
-	MoveID int `json:"moveId"`
-}
-
 type PhaserMapScriptsRequest struct {
 	MapName string `json:"mapName"` // CamelCase map name e.g. "PalletTown"
 }
 
 type PhaserLearnsetRequest struct {
 	PokemonID int `json:"pokemonId"`
-}
-
-type PhaserItemDataRequest struct {
-	ItemID int `json:"itemId"`
 }
 
 type PhaserHiddenObjectsRequest struct {
@@ -109,64 +100,6 @@ type PhaserTrainerDataResponse struct {
 	Party   []PhaserTrainerPartyPokemon `json:"party"`
 	Header  *PhaserTrainerHeader        `json:"header"`
 	Success bool                        `json:"success"`
-}
-
-type PhaserPokemonFull struct {
-	ID               int     `json:"id"`
-	Name             string  `json:"name"`
-	HP               int     `json:"hp"`
-	Atk              int     `json:"atk"`
-	Def              int     `json:"def"`
-	Spd              int     `json:"spd"`
-	Spc              int     `json:"spc"`
-	Type1            string  `json:"type1"`
-	Type2            *string `json:"type2"`
-	CatchRate        int     `json:"catchRate"`
-	BaseExp          int     `json:"baseExp"`
-	DefaultMove1     *string `json:"defaultMove1Id"`
-	DefaultMove2     *string `json:"defaultMove2Id"`
-	DefaultMove3     *string `json:"defaultMove3Id"`
-	DefaultMove4     *string `json:"defaultMove4Id"`
-	BaseCry          *int    `json:"baseCry"`
-	CryPitch         *int    `json:"cryPitch"`
-	CryLength        *int    `json:"cryLength"`
-	PokedexType      *string `json:"pokedexType"`
-	Height           *string `json:"height"`
-	Weight           *int    `json:"weight"`
-	PokedexText      *string `json:"pokedexText"`
-	EvolveLevel      *int    `json:"evolveLevel"`
-	EvolvePokemon    *string `json:"evolvePokemon"`
-	EvolvesFromTrade *int    `json:"evolvesFromTrade"`
-	IconImage        *string `json:"iconImage"`
-	PaletteType      *string `json:"paletteType"`
-}
-
-type PhaserMoveFull struct {
-	ID              int     `json:"id"`
-	Name            string  `json:"name"`
-	ShortName       string  `json:"shortName"`
-	Effect          *string `json:"effect"`
-	Power           *int    `json:"power"`
-	Type            *string `json:"type"`
-	Accuracy        *int    `json:"accuracy"`
-	PP              *int    `json:"pp"`
-	BattleAnimation *string `json:"battleAnimation"`
-	BattleSound     *string `json:"battleSound"`
-	IsHM            int     `json:"isHm"`
-	FieldMoveEffect *int    `json:"fieldMoveEffect"`
-}
-
-type PhaserItemFull struct {
-	ID            int    `json:"id"`
-	Name          string `json:"name"`
-	ShortName     string `json:"shortName"`
-	Price         *int   `json:"price"`
-	IsUsable      int    `json:"isUsable"`
-	UsesPartyMenu int    `json:"usesPartyMenu"`
-	VendingPrice  *int   `json:"vendingPrice"`
-	MoveID        *int   `json:"moveId"`
-	IsGuardDrink  int    `json:"isGuardDrink"`
-	IsKeyItem     int    `json:"isKeyItem"`
 }
 
 type PhaserLearnsetEntry struct {
@@ -461,59 +394,42 @@ func HandlePhaserTrainerDataRequest(ses *session.Session, payload []byte, wh *Wo
 
 // HandlePhaserPokemonDataRequest returns full Pokémon data by ID
 func HandlePhaserPokemonDataRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	var req PhaserPokemonDataRequest
+	var req protocol.PhaserPokemonDataRequest
 	if err := json.Unmarshal(payload, &req); err != nil {
 		log.Printf("[Phaser] Invalid PokemonDataRequest: %v", err)
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: "invalid pokemon data request"}, opcodes.PhaserPokemonDataResponse)
 		return false
 	}
 
-	var p PhaserPokemonFull
-	err := db.GlobalWorldDB.DB.QueryRow(`
-		SELECT id, name, hp, atk, def, spd, spc, type_1, type_2, catch_rate, base_exp,
-			default_move_1_id, default_move_2_id, default_move_3_id, default_move_4_id,
-			base_cry, cry_pitch, cry_length, pokedex_type, height, weight, pokedex_text,
-			evolve_level, evolve_pokemon, evolves_from_trade, icon_image, palette_type
-		FROM phaser_pokemon WHERE id = $1`, req.PokemonID).Scan(
-		&p.ID, &p.Name, &p.HP, &p.Atk, &p.Def, &p.Spd, &p.Spc, &p.Type1, &p.Type2, &p.CatchRate, &p.BaseExp,
-		&p.DefaultMove1, &p.DefaultMove2, &p.DefaultMove3, &p.DefaultMove4,
-		&p.BaseCry, &p.CryPitch, &p.CryLength, &p.PokedexType, &p.Height, &p.Weight, &p.PokedexText,
-		&p.EvolveLevel, &p.EvolvePokemon, &p.EvolvesFromTrade, &p.IconImage, &p.PaletteType)
+	p, err := wh.Content.Pokemon(context.Background(), req.PokemonID)
 	if err != nil {
-		log.Printf("[Phaser] Pokémon not found: %d: %v", req.PokemonID, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "pokemon not found"}, opcodes.PhaserPokemonDataResponse)
+		log.Printf("[Phaser] Pokémon query failed: %d: %v", req.PokemonID, err)
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: contentQueryError("pokemon", err)}, opcodes.PhaserPokemonDataResponse)
 		return false
 	}
 
-	res := StructToMap(p).(map[string]interface{})
-	res["success"] = true
-	ses.SendStreamJSON(res, opcodes.PhaserPokemonDataResponse)
+	ses.SendStreamJSON(protocol.PhaserPokemonDataResponse{PhaserPokemonFull: p, Success: true}, opcodes.PhaserPokemonDataResponse)
 	log.Printf("[Phaser] Sent Pokémon data for #%d %s", p.ID, p.Name)
 	return false
 }
 
 // HandlePhaserMoveDataRequest returns move data by ID
 func HandlePhaserMoveDataRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	var req PhaserMoveDataRequest
+	var req protocol.PhaserMoveDataRequest
 	if err := json.Unmarshal(payload, &req); err != nil {
 		log.Printf("[Phaser] Invalid MoveDataRequest: %v", err)
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: "invalid move data request"}, opcodes.PhaserMoveDataResponse)
 		return false
 	}
 
-	var m PhaserMoveFull
-	err := db.GlobalWorldDB.DB.QueryRow(`
-		SELECT id, name, short_name, effect, power, type, accuracy, pp, battle_animation, battle_sound, is_hm, field_move_effect
-		FROM phaser_moves WHERE id = $1`, req.MoveID).Scan(
-		&m.ID, &m.Name, &m.ShortName, &m.Effect, &m.Power, &m.Type, &m.Accuracy, &m.PP,
-		&m.BattleAnimation, &m.BattleSound, &m.IsHM, &m.FieldMoveEffect)
+	m, err := wh.Content.Move(context.Background(), req.MoveID)
 	if err != nil {
-		log.Printf("[Phaser] Move not found: %d: %v", req.MoveID, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "move not found"}, opcodes.PhaserMoveDataResponse)
+		log.Printf("[Phaser] Move query failed: %d: %v", req.MoveID, err)
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: contentQueryError("move", err)}, opcodes.PhaserMoveDataResponse)
 		return false
 	}
 
-	res := StructToMap(m).(map[string]interface{})
-	res["success"] = true
-	ses.SendStreamJSON(res, opcodes.PhaserMoveDataResponse)
+	ses.SendStreamJSON(protocol.PhaserMoveDataResponse{PhaserMoveFull: m, Success: true}, opcodes.PhaserMoveDataResponse)
 	log.Printf("[Phaser] Sent move data for #%d %s", m.ID, m.Name)
 	return false
 }
@@ -688,27 +604,21 @@ func HandlePhaserLearnsetRequest(ses *session.Session, payload []byte, wh *World
 
 // HandlePhaserItemDataRequest returns item data by ID
 func HandlePhaserItemDataRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	var req PhaserItemDataRequest
+	var req protocol.PhaserItemDataRequest
 	if err := json.Unmarshal(payload, &req); err != nil {
 		log.Printf("[Phaser] Invalid ItemDataRequest: %v", err)
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: "invalid item data request"}, opcodes.PhaserItemDataResponse)
 		return false
 	}
 
-	var item PhaserItemFull
-	err := db.GlobalWorldDB.DB.QueryRow(`
-		SELECT id, name, short_name, price, is_usable, uses_party_menu, vending_price, move_id, is_guard_drink, is_key_item
-		FROM phaser_items WHERE id = $1`, req.ItemID).Scan(
-		&item.ID, &item.Name, &item.ShortName, &item.Price, &item.IsUsable, &item.UsesPartyMenu,
-		&item.VendingPrice, &item.MoveID, &item.IsGuardDrink, &item.IsKeyItem)
+	item, err := wh.Content.Item(context.Background(), req.ItemID)
 	if err != nil {
-		log.Printf("[Phaser] Item not found: %d: %v", req.ItemID, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "item not found"}, opcodes.PhaserItemDataResponse)
+		log.Printf("[Phaser] Item query failed: %d: %v", req.ItemID, err)
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: contentQueryError("item", err)}, opcodes.PhaserItemDataResponse)
 		return false
 	}
 
-	res := StructToMap(item).(map[string]interface{})
-	res["success"] = true
-	ses.SendStreamJSON(res, opcodes.PhaserItemDataResponse)
+	ses.SendStreamJSON(protocol.PhaserItemDataResponse{PhaserItemFull: item, Success: true}, opcodes.PhaserItemDataResponse)
 	log.Printf("[Phaser] Sent item data for #%d %s", item.ID, item.Name)
 	return false
 }
@@ -815,4 +725,11 @@ func HandlePhaserMapMusicRequest(ses *session.Session, payload []byte, wh *World
 	ses.SendStreamJSON(res, opcodes.PhaserMapMusicResponse)
 	log.Printf("[Phaser] Sent music for map %d: %s", req.MapID, musicConstant)
 	return false
+}
+
+func contentQueryError(kind string, err error) string {
+	if errors.Is(err, sql.ErrNoRows) {
+		return kind + " not found"
+	}
+	return "failed to load " + kind + " data"
 }

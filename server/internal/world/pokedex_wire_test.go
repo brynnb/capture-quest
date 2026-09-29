@@ -74,24 +74,24 @@ func TestPokedexAndTrainerCardWireContracts(t *testing.T) {
 
 	testdb.Exec(t, database, `ALTER TABLE phaser_pokemon RENAME TO unavailable_pokemon`)
 	battleDispatch(t, wh, ses, opcodes.PokedexListRequest, `{}`)
-	assertPokedexWireFailure(t, messages.streams[3], opcodes.PokedexListResponse)
+	assertQueryWireFailure(t, messages.streams[3], opcodes.PokedexListResponse)
 	// A scan error after a valid species must not publish a shortened success list.
 	testdb.Exec(t, database, `ALTER TABLE unavailable_pokemon RENAME TO phaser_pokemon;
   ALTER TABLE phaser_pokemon ALTER COLUMN name DROP NOT NULL;
   UPDATE phaser_pokemon SET name=NULL WHERE id=129`)
 	battleDispatch(t, wh, ses, opcodes.PokedexListRequest, `{}`)
-	assertPokedexWireFailure(t, messages.streams[4], opcodes.PokedexListResponse)
+	assertQueryWireFailure(t, messages.streams[4], opcodes.PokedexListResponse)
 	testdb.Exec(t, database, `UPDATE phaser_pokemon SET name='MAGIKARP' WHERE id=129;
   ALTER TABLE character_wallet RENAME TO unavailable_wallet`)
 	battleDispatch(t, wh, ses, opcodes.TrainerCardRequest, `{}`)
-	assertPokedexWireFailure(t, messages.streams[5], opcodes.TrainerCardResponse)
+	assertQueryWireFailure(t, messages.streams[5], opcodes.TrainerCardResponse)
 	// Reconciliation failure must not masquerade as an empty status snapshot.
 	testdb.Exec(t, database, `DROP TABLE character_pokedex`)
 	battleDispatch(t, wh, ses, opcodes.PokedexStatusRequest, `{}`)
-	assertPokedexWireFailure(t, messages.streams[6], opcodes.PokedexStatusResponse)
+	assertQueryWireFailure(t, messages.streams[6], opcodes.PokedexStatusResponse)
 }
 
-func assertPokedexWireFailure(t *testing.T, message recordedStreamMessage, opcode opcodes.OpCode) {
+func assertQueryWireFailure(t *testing.T, message recordedStreamMessage, opcode opcodes.OpCode) {
 	t.Helper()
 	var failure map[string]any
 	if err := json.Unmarshal(message.payload, &failure); err != nil {

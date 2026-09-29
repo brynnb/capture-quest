@@ -17,6 +17,83 @@ export interface CharacterData extends CharacterBase {
 }
 
 //////////
+// source: content.go
+
+export interface PhaserPokemonDataRequest {
+  pokemonId: number /* int */;
+}
+export interface PhaserMoveDataRequest {
+  moveId: number /* int */;
+}
+export interface PhaserItemDataRequest {
+  itemId: number /* int */;
+}
+export interface PhaserPokemonFull {
+  id: number /* int */;
+  name: string;
+  hp: number /* int */;
+  atk: number /* int */;
+  def: number /* int */;
+  spd: number /* int */;
+  spc: number /* int */;
+  type1: string;
+  type2: string | null;
+  catchRate: number /* int */;
+  baseExp: number /* int */;
+  defaultMove1Id: string | null;
+  defaultMove2Id: string | null;
+  defaultMove3Id: string | null;
+  defaultMove4Id: string | null;
+  baseCry: number | null;
+  cryPitch: number | null;
+  cryLength: number | null;
+  pokedexType: string | null;
+  height: string | null;
+  weight: number | null;
+  pokedexText: string | null;
+  evolveLevel: number | null;
+  evolvePokemon: string | null;
+  evolvesFromTrade: number | null;
+  iconImage: string | null;
+  paletteType: string | null;
+}
+export interface PhaserMoveFull {
+  id: number /* int */;
+  name: string;
+  shortName: string;
+  effect: string | null;
+  power: number | null;
+  type: string | null;
+  accuracy: number | null;
+  pp: number | null;
+  battleAnimation: string | null;
+  battleSound: string | null;
+  isHm: number /* int */;
+  fieldMoveEffect: number | null;
+}
+export interface PhaserItemFull {
+  id: number /* int */;
+  name: string;
+  shortName: string;
+  price: number | null;
+  isUsable: number /* int */;
+  usesPartyMenu: number /* int */;
+  vendingPrice: number | null;
+  moveId: number | null;
+  isGuardDrink: number /* int */;
+  isKeyItem: number /* int */;
+}
+export interface PhaserPokemonDataResponse extends PhaserPokemonFull {
+  success: true;
+}
+export interface PhaserMoveDataResponse extends PhaserMoveFull {
+  success: true;
+}
+export interface PhaserItemDataResponse extends PhaserItemFull {
+  success: true;
+}
+
+//////////
 // source: pokedex.go
 
 export interface PokedexSpeciesEntry {

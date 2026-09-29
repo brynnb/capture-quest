@@ -316,15 +316,20 @@ field-name conversion or generated-name postprocessor will remain.
    The bridge, store and Pokédex consumer share the generated declarations.
    These queries use their world's database dependency and return failure on
    query, scan or iteration errors instead of publishing partial snapshots.
-   Remaining families must follow the same migration. Move substantive response
-   families into protocol declarations by mechanical extraction, reuse existing
-   tagged model/action types, and replace map enrichment with explicit flat
-   response views. Audit actual wire keys, nullable fields, omitted fields and
-   empty collections before converting each family. For example,
-   `PhaserPokemonFull.HP` declares `hp`, but the legacy conversion emits `hP`;
-   `DefaultMove1` declares `defaultMove1Id`, but it emits `defaultMove1`. These
-   disagreements must be resolved against consumers through coordinated changes,
-   rather than carrying aliases forward.
+   Pokémon, move and item detail requests/projections also live in protocol.
+   Their flat success views embed the projections; all nullable fields match
+   explicit TypeScript unions. The content query service owns the SQL reads,
+   uses an injected database and caps each operation at five seconds while
+   honoring caller cancellation. Transport handlers decode requests and publish
+   responses without SQL scanning or reflection. The migration corrects hP to
+   hp, pP to pp, isHM to isHm and defaultMove1 to defaultMove1Id (and the other
+   default move fields), using their already declared JSON names. Database
+   errors are distinguished from missing records. Local TM/HM preview records
+   use a generated-field projection instead of pretending to be full responses.
+   Remaining families must follow the same migration: extract substantive
+   response families, reuse tagged types, replace map enrichment with flat
+   typed views, and audit actual keys, nullability and empty collections against
+   consumers. No permanent fallback aliases should be introduced.
 3. **Remaining: retire legacy conversion.** Replace all StructToMap/ItemToMap
    consumers, require explicit tags on the published contracts, remove the helper
    and `scripts/fix-tygo-casing.sh`, and simplify the generation command. Existing

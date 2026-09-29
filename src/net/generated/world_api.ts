@@ -557,20 +557,11 @@ export interface PhaserTrainerDataRequest {
   trainerClass: string; // e.g. "BUG_CATCHER"
   trainerPartyIndex: number /* int */; // party index within the class
 }
-export interface PhaserPokemonDataRequest {
-  pokemonId: number /* int */;
-}
-export interface PhaserMoveDataRequest {
-  moveId: number /* int */;
-}
 export interface PhaserMapScriptsRequest {
   mapName: string; // CamelCase map name e.g. "PalletTown"
 }
 export interface PhaserLearnsetRequest {
   pokemonId: number /* int */;
-}
-export interface PhaserItemDataRequest {
-  itemId: number /* int */;
 }
 export interface PhaserHiddenObjectsRequest {
   mapId: number /* int */;
@@ -626,61 +617,6 @@ export interface PhaserTrainerDataResponse {
   party: PhaserTrainerPartyPokemon[];
   header?: PhaserTrainerHeader;
   success: boolean;
-}
-export interface PhaserPokemonFull {
-  id: number /* int */;
-  name: string;
-  hp: number /* int */;
-  atk: number /* int */;
-  def: number /* int */;
-  spd: number /* int */;
-  spc: number /* int */;
-  type1: string;
-  type2?: string;
-  catchRate: number /* int */;
-  baseExp: number /* int */;
-  defaultMove1Id?: string;
-  defaultMove2Id?: string;
-  defaultMove3Id?: string;
-  defaultMove4Id?: string;
-  baseCry?: number /* int */;
-  cryPitch?: number /* int */;
-  cryLength?: number /* int */;
-  pokedexType?: string;
-  height?: string;
-  weight?: number /* int */;
-  pokedexText?: string;
-  evolveLevel?: number /* int */;
-  evolvePokemon?: string;
-  evolvesFromTrade?: number /* int */;
-  iconImage?: string;
-  paletteType?: string;
-}
-export interface PhaserMoveFull {
-  id: number /* int */;
-  name: string;
-  shortName: string;
-  effect?: string;
-  power?: number /* int */;
-  type?: string;
-  accuracy?: number /* int */;
-  pp?: number /* int */;
-  battleAnimation?: string;
-  battleSound?: string;
-  isHm: number /* int */;
-  fieldMoveEffect?: number /* int */;
-}
-export interface PhaserItemFull {
-  id: number /* int */;
-  name: string;
-  shortName: string;
-  price?: number /* int */;
-  isUsable: number /* int */;
-  usesPartyMenu: number /* int */;
-  vendingPrice?: number /* int */;
-  moveId?: number /* int */;
-  isGuardDrink: number /* int */;
-  isKeyItem: number /* int */;
 }
 export interface PhaserLearnsetEntry {
   level: number /* int */;
