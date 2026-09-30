@@ -620,6 +620,43 @@ Other dialogue/trainer interaction authorization, atomic dynamic puzzle updates,
 durable duplicate/reconnect delivery, broader domain/wire migration and bounded
 shutdown remain part of the active original goal.
 
+Dialogue/trainer authorization checkpoint: direct trainer clicks and battle-start
+requests share the existing server object reach/visibility check. Battle start
+rechecks after dialogue; the separate server-issued sight encounter path is
+unchanged. Metadata queries and direct battle transactions use the captured world
+database with bounded queries, and rebattle policy uses the session's loaded
+typed options. Battle responses reuse the committed trainer name instead of
+querying the global database again. Missing trainer dialogue rejects success.
+
+Dialogue choices require the reachable runtime actor's actual text constant and
+matching catalog map identity before any trade/action. This also removes the old
+map lookup that confused runtime actor IDs with database IDs. Script-owned
+prompts cannot bypass issued completion through the legacy choice opcode.
+Required flags are checked against durable state under the same character lock
+as the effects, using the existing transactional interpreter. Follow-up lookup
+errors reject success instead of silently returning empty dialogue. Authorization
+and catalog reads share one five-second context; mutations use the existing
+bounded transaction boundary. Trades propagate that caller context throughout
+their transaction and return a committed party snapshot, with no post-commit
+global reload. Existing trade completion rows still deduplicate retries.
+
+The real PostgreSQL trainer-start test exposed nested queries while trainer party
+rows were open on a transaction's single connection. BuildTrainerParty now stages
+and closes those rows before species/move reads, and rejects scan/iteration errors
+instead of accepting partial parties. Other inspected dbloader loops do not nest
+queries inside row iteration; their remaining error-handling audit is unfinished.
+
+Dispatcher tests with the global database removed cover wrong actor/prompt/map,
+distant/hidden trainers, movement after dialogue, durable flags disagreeing with
+cache, valid choices/trades/battles and repeated battle start. PostgreSQL trade
+checks prove late-failure rollback preserving Pokémon row identity, cancellation,
+retry and durable duplicate protection with commit-before-party publication.
+World/pokebattle/simulator/server/session race suites passed; canonical generated
+contracts remain unchanged. All Go packages compile and frontend typecheck passes.
+No rendered gameplay check, push or deployment. Atomic dynamic puzzles, durable
+choice duplicate/reconnect delivery, remaining interaction/mutation audits,
+domain/wire migration and bounded shutdown remain in the active original goal.
+
 ## Reproducible PostgreSQL tests
 
 With `initdb`, `pg_ctl`, and Go available, run:

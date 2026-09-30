@@ -343,8 +343,16 @@ field-name conversion or generated-name postprocessor will remain.
    mutations or token issuance. Interaction requires adjacency or a straight
    two-tile reach across an effective talk-over tile, including eligible event
    tile properties. The authorization loaders share one five-second budget and
-   injected database; SQL failures reject the request. Other interaction paths
-   and shared issuance authorization still need auditing.
+   injected database; SQL failures reject the request. Direct trainer interaction
+   and battle-start requests use that same reach/visibility boundary and recheck
+   after dialogue. Their metadata queries and battle start use the captured world
+   database; rebattle policy comes from the owned session's typed options.
+   Dialogue choices bind the runtime actor to its actual text constant and source
+   map before trade or action execution. Script-owned prompts require issued
+   completion instead. Required choice flags are rechecked in the same locked
+   transaction as effects. In-game trades use the bounded transaction helper and
+   publish the party snapshot loaded inside that successful transaction.
+   Other interaction paths and shared issuance authorization still need auditing.
    Remaining families must follow the same migration: extract substantive
    response families, reuse tagged types, replace map enrichment with flat
    typed views, and audit actual keys, nullability and empty collections against

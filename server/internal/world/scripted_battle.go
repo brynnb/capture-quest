@@ -2,6 +2,7 @@ package world
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -61,9 +62,13 @@ type BattlePokemonSummary struct {
 }
 
 func StartScriptedTrainerBattle(charID int64, spec ScriptedTrainerBattleSpec) (*pokebattle.BattleState, []pokebattle.BattleEvent, error) {
+	return startScriptedTrainerBattle(db.GlobalWorldDB.DB, charID, spec)
+}
+
+func startScriptedTrainerBattle(database *sql.DB, charID int64, spec ScriptedTrainerBattleSpec) (*pokebattle.BattleState, []pokebattle.BattleEvent, error) {
 	var battle *pokebattle.BattleState
 	var events []pokebattle.BattleEvent
-	err := db.Transaction(context.Background(), db.GlobalWorldDB.DB, func(tx db.DBTX) (err error) {
+	err := db.Transaction(context.Background(), database, func(tx db.DBTX) (err error) {
 		if err := db.LockCharacter(tx, charID); err != nil {
 			return err
 		}
