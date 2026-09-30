@@ -165,7 +165,7 @@ func tryHandleSilphCardKeyClick(ses *session.Session, wh *WorldHandler, charID i
 		if door.MapName != mapName {
 			return true, fmt.Errorf("card key door %s belongs to %s, got %s", key, door.MapName, mapName)
 		}
-		outcome, err := HandleSilphCardKeyDoor(charID, key, wh.EventFlags)
+		outcome, err := handleSilphCardKeyDoor(context.Background(), wh.database, charID, key, wh.EventFlags)
 		if err != nil {
 			return true, err
 		}

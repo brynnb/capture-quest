@@ -1,8 +1,10 @@
 package world
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
+	"log"
 
 	"capturequest/internal/db"
 )
@@ -78,12 +80,37 @@ func SilphCardKeyDoorForTextConstant(textConstant string) (SilphCardKeyDoor, boo
 }
 
 func HandleSilphCardKeyDoor(charID int64, textConstant string, efm *EventFlagManager) (*SilphCardKeyOutcome, error) {
+	return handleSilphCardKeyDoor(context.Background(), db.GlobalWorldDB.DB, charID, textConstant, efm)
+}
+
+func handleSilphCardKeyDoor(ctx context.Context, database *sql.DB, charID int64, textConstant string, efm *EventFlagManager) (*SilphCardKeyOutcome, error) {
+	var outcome *SilphCardKeyOutcome
+	err := db.Transaction(ctx, database, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, charID); err != nil {
+			return err
+		}
+		var err error
+		outcome, err = applySilphCardKeyDoor(tx, charID, textConstant)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	if outcome.Changed && efm != nil {
+		if err := efm.LoadFlags(charID); err != nil {
+			log.Printf("refresh committed Silph flags for character %d: %v", charID, err)
+		}
+	}
+	return outcome, nil
+}
+
+func applySilphCardKeyDoor(tx db.DBTX, charID int64, textConstant string) (*SilphCardKeyOutcome, error) {
 	door, ok := SilphCardKeyDoorForTextConstant(textConstant)
 	if !ok {
 		return nil, fmt.Errorf("unknown Silph Card Key door text constant %q", textConstant)
 	}
 
-	hasCardKey, err := characterHasCQItem(charID, cardKeyItemID)
+	hasCardKey, err := characterHasCQItemIn(tx, charID, cardKeyItemID)
 	if err != nil {
 		return nil, err
 	}
@@ -95,9 +122,12 @@ func HandleSilphCardKeyDoor(charID int64, textConstant string, efm *EventFlagMan
 		}, nil
 	}
 
-	alreadyOpen := efm != nil && efm.CheckFlag(charID, door.Flag)
-	if !alreadyOpen && efm != nil {
-		if err := efm.SetFlag(charID, door.Flag); err != nil {
+	alreadyOpen, err := queryEventFlag(tx, charID, door.Flag)
+	if err != nil {
+		return nil, err
+	}
+	if !alreadyOpen {
+		if err := writeEventFlag(tx, charID, door.Flag, true); err != nil {
 			return nil, err
 		}
 	}
@@ -126,8 +156,18 @@ func silphCardKeyDoor(mapName, floorLabel string, doorIndex int, flag string, bl
 }
 
 func characterHasCQItem(charID int64, itemID int) (bool, error) {
+	var has bool
+	err := db.Transaction(context.Background(), db.GlobalWorldDB.DB, func(tx db.DBTX) error {
+		var err error
+		has, err = characterHasCQItemIn(tx, charID, itemID)
+		return err
+	})
+	return has, err
+}
+
+func characterHasCQItemIn(tx db.DBTX, charID int64, itemID int) (bool, error) {
 	var quantity sql.NullInt64
-	if err := db.GlobalWorldDB.DB.QueryRow(`
+	if err := tx.QueryRow(`
 		SELECT SUM(ii.quantity)
 		FROM cq_character_inventory ci
 		JOIN cq_item_instances ii ON ii.id = ci.item_instance_id

@@ -593,3 +593,10 @@ Returned outcomes and cached flags become visible only after commit. A failed
 cache refresh is logged as a publication problem, not described as a rollback.
 Repeated clicks are ordinary state transitions; durable command identity and
 reconnect result recovery remain tracked in `SERVER_FOUNDATIONS.md`.
+
+Item-ball collection uses the same character lock for the collection marker and
+inventory grant. Its response carries the inventory/wallet snapshot loaded
+inside the successful transaction. Actor authorization shares scripted-target
+visibility/position rules, with a stricter one-tile pickup reach. Silph doors
+read Card Key ownership and durable unlock flags under the character lock before
+committing an unlock; cache contents do not determine the durable transition.

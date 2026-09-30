@@ -3,7 +3,8 @@
 Status: active. Started 2026-09-25 from `02c51ba`.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-atomic Vermilion puzzle transitions (2026-09-30), following `a6a8392`.
+atomic item-ball collection and Silph doors (2026-09-30), following
+Vermilion checkpoint `7e5df1e`.
 All earlier foundation checkpoints are retained in this
 branch's history. No push or production deployment is authorized by this goal.
 
@@ -29,7 +30,7 @@ evidence, including remaining-work notes that subsequent commits may resolve.
 | Area | Implemented | Still required |
 | --- | --- | --- |
 | Request/session boundary | Packet and connection limits, centralized session prerequisites, removal of insecure session takeover, actual transport closure, and location/visibility checks for scripted clicks, dialogue choices and direct trainer battles. | Audit remaining interaction/mutation endpoints; propagate cancellation through running commands and remaining database/network work. |
-| Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery of committed results across reconnects. |
+| Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection and Silph doors, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery of committed results across reconnects. |
 | Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, and movement ticks coordinated with the owner. | Finish timer/callback/shared-state and Safari audits; prove remaining concurrent/reconnect behavior across real transports. |
 | Domains and wire contracts | Injected content-query service; typed character/wallet/bind, Pokédex/card, content detail, map-script and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
 | Lifecycle and verification | Owned HTTP/listeners, readiness, listener failure propagation, joined periodic workers, sealed session admissions, fail-closed staged preload, startup cancellation, and atomic scripted-event publication. | Bounded shutdown with active players and running work; complete transport/rendered integration and failure/retry/cancellation coverage. |
@@ -37,8 +38,9 @@ evidence, including remaining-work notes that subsequent commits may resolve.
 ## Remaining work, in recommended order
 
 1. **Finish atomic dynamic mechanics.** Vermilion puzzle state and its lock
-   flags now share one character-locked transaction. Audit Silph doors, item pickups,
-   Game Corner prizes and remaining field effects for the same requirements.
+   flags now share one character-locked transaction, as do item-ball grants/collection
+   markers and Silph Card Key checks/unlocks. Audit hidden-coin collection,
+   Game Corner purchases/prizes and remaining field effects for the same requirements.
    Extend the shared transaction/domain operations already in use. Acceptance:
    a late failure leaves all affected state unchanged; retry and concurrent
    requests cannot duplicate a reward or publish uncommitted success.
@@ -87,6 +89,39 @@ deployment, and complete its applicable workflow and live checks.
 
 Continue with item 1 above. Keep this current summary synchronized with coherent
 checkpoint commits; retain the original milestone acceptance criteria below.
+
+## Item collection and Silph checkpoint (2026-09-30)
+
+Item-ball pickup previously committed its inventory grant before inserting the
+collection marker, ignored marker failures, and still reported success. Its
+collection lookup also ignored database errors. Repeated/concurrent requests
+could grant the same object again. The new operation locks the character and
+loads the object/item, checks the collection marker, grants the item, records
+collection and loads the inventory/wallet snapshot in one bounded transaction.
+The handler publishes that snapshot after commit through its owned database.
+Pickup authorization reuses server-owned actor position, visibility and map
+checks while retaining immediate cardinal adjacency (no pickup over counters).
+The obsolete parallel position fallback helpers are removed.
+
+Silph doors now check Card Key ownership and durable door flags while holding
+the same character lock as inventory mutations, then commit the unlock before
+returning an outcome or refreshing cached flags. Live handlers inject the owned
+database; simulator wrappers share the operation. Existing dialogue and key
+retention rules are preserved.
+
+PostgreSQL race tests cover pickup late-write rollback through the dispatcher,
+successful retry and inventory publication, duplicate/concurrent collection,
+remote/hidden/counter rejection, missing/removed Card Key, deferred door commit
+failure and retry, and repeated opens with an unloaded flag cache. World and
+script-simulator suites pass; all Go packages compile. These are local durable
+and dispatcher checks, not rendered gameplay or reconnect recovery evidence.
+
+Audit finding still to resolve: Game Corner prize grants and coin payment use
+separate commits. Coin purchase/slot/hidden-coin paths also need review for
+bounded queries, error propagation, shared character locking and owned database
+injection. Next: migrate those operations, preserving their existing data-driven
+prize and slot rules. No push, deployment, schema or generated content changes
+are part of this checkpoint.
 
 ## Atomic Vermilion puzzle checkpoint (2026-09-30)
 
