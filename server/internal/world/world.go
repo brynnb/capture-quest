@@ -143,6 +143,7 @@ func (wh *WorldHandler) RemoveSession(sessionID int) {
 
 func (wh *WorldHandler) cleanupCharacterSession(ses *session.Session) {
 	ses.IssuedCutscenes.Clear()
+	ses.GameCorner.Clear()
 	if !ses.HasValidClient() {
 		return
 	}

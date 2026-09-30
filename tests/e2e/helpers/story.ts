@@ -32,6 +32,8 @@ export interface StoryCheckpointScenario {
     type?: string;
     bet?: number;
     isLucky?: boolean;
+    machineX?: number;
+    machineY?: number;
     mapName?: string;
     textConstant?: string;
     scriptLabel?: string;
@@ -156,16 +158,17 @@ export async function performScenarioTrigger(page: Page, checkpoint: StoryCheckp
     case "gameCornerPrizeList":
       await page.evaluate(() => window.__capturequestTest?.requestGameCornerPrizeList());
       return;
-    case "gameCornerSlotPlay":
+    case "gameCornerSlotPlay": {
+      const { machineX, machineY, bet } = checkpoint.scenario.trigger ?? {};
+      if (machineX === undefined || machineY === undefined) {
+        throw new Error("Runtime slot checkpoints require explicit machineX/machineY");
+      }
       await page.evaluate(
-        ([bet, isLucky]) =>
-          window.__capturequestTest?.playGameCornerSlot(
-            Number(bet) || 1,
-            Boolean(isLucky),
-          ),
-        [checkpoint.scenario.trigger?.bet, checkpoint.scenario.trigger?.isLucky],
+        ([bet, x, y]) => window.__capturequestTest?.playGameCornerSlot(bet, x, y),
+        [bet ?? 1, machineX, machineY],
       );
       return;
+    }
     case "npcClick":
     case "objectClick":
     case "dialogueChoice":

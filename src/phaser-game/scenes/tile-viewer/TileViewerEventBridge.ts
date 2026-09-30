@@ -18,7 +18,6 @@ export class TileViewerEventBridge {
   private safariEnterHandler: ((e: Event) => void) | null = null;
   private safariExitHandler: ((e: Event) => void) | null = null;
   private safariStepHandler: ((e: Event) => void) | null = null;
-  private gameCornerSlotHandler: ((e: Event) => void) | null = null;
   private gameCornerPrizeHandler: ((e: Event) => void) | null = null;
   private gameCornerBuyHandler: ((e: Event) => void) | null = null;
   private gameCornerCoinHandler: ((e: Event) => void) | null = null;
@@ -98,13 +97,6 @@ export class TileViewerEventBridge {
     };
     window.addEventListener("safariStepUpdate", this.safariStepHandler);
 
-    this.gameCornerSlotHandler = (event: Event) => {
-      const data = (event as CustomEvent).detail;
-      console.log("[GameCorner] Slot result:", data);
-      this.deps.overlays.handleSlotResult(data);
-    };
-    window.addEventListener("gameCornerSlotResult", this.gameCornerSlotHandler);
-
     this.gameCornerPrizeHandler = (event: Event) => {
       const data = (event as CustomEvent).detail;
       console.log("[GameCorner] Prize list:", data);
@@ -180,10 +172,6 @@ export class TileViewerEventBridge {
     if (this.safariStepHandler) {
       window.removeEventListener("safariStepUpdate", this.safariStepHandler);
       this.safariStepHandler = null;
-    }
-    if (this.gameCornerSlotHandler) {
-      window.removeEventListener("gameCornerSlotResult", this.gameCornerSlotHandler);
-      this.gameCornerSlotHandler = null;
     }
     if (this.gameCornerPrizeHandler) {
       window.removeEventListener("gameCornerPrizeList", this.gameCornerPrizeHandler);

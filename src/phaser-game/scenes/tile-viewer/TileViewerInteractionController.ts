@@ -280,8 +280,7 @@ export class TileViewerInteractionController {
       const dist =
         Math.abs(playerPos.x - clickTileX) + Math.abs(playerPos.y - clickTileY);
       if (dist <= 2) {
-        const isLucky = Math.random() < 0.125;
-        useSlotMachineStore.getState().openSlotMachine(isLucky);
+        useSlotMachineStore.getState().openSlotMachine(clickTileX, clickTileY);
         return;
       }
     }
@@ -540,22 +539,6 @@ export class TileViewerInteractionController {
 
       console.log(`[TileViewer] Clerk clicked on map ${actor.mapId}, opening shop`);
       PhaserNet.sendCQMerchantOpenByMap(actor.mapId);
-      return;
-    }
-
-    if (actor.mapId === 135 && actor.objectType === "sign") {
-      console.log("[TileViewer] Game Corner slot machine clicked");
-      void import("@/phaser-game/services/PhaserNetworkService").then(
-        (network) => {
-          network.requestCoinBalance();
-        },
-      );
-      const onBalance = (event: Event) => {
-        const data = (event as CustomEvent).detail as { coins: number };
-        window.removeEventListener("gameCornerCoinBalance", onBalance);
-        this.deps.overlays().showSlotMachineUI(data.coins);
-      };
-      window.addEventListener("gameCornerCoinBalance", onBalance);
       return;
     }
 

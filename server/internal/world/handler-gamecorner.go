@@ -294,10 +294,7 @@ func HandleGameCornerBuyCoins(ses *session.Session, payload []byte, wh *WorldHan
 // The server is the source of truth: it picks reel positions, checks matches,
 // applies win probability flags, deducts/awards coins, and returns the result.
 func HandleGameCornerSlotPlay(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	var req struct {
-		Bet     int  `json:"bet"`     // 1, 2, or 3 coins
-		IsLucky bool `json:"isLucky"` // whether this machine was flagged lucky
-	}
+	var req GameCornerSlotPlayRequest
 	if err := json.Unmarshal(payload, &req); err != nil {
 		log.Printf("[GameCorner] Invalid slot request: %v", err)
 		return false
@@ -313,22 +310,17 @@ func HandleGameCornerSlotPlay(ses *session.Session, payload []byte, wh *WorldHan
 	}
 	charID := int64(char.ID)
 
-	_, _, mapID := wh.scriptPlayerPosition(ses)
-	if mapID != GameCornerMapID {
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Visit the Game Corner first."}, opcodes.GameCornerSlotResultResponse)
+	isLucky, err := wh.authorizeSlotMachine(ses, req)
+	if err != nil {
+		ses.SendStreamJSON(GameCornerSlotResultResponse{Error: err.Error(), Bet: req.Bet}, opcodes.GameCornerSlotResultResponse)
 		return false
 	}
-	result, err := playGameCornerSlot(context.Background(), wh.database, charID, req.Bet, req.IsLucky, gameCornerRandSource{})
+	result, err := playGameCornerSlot(context.Background(), wh.database, charID, req.Bet, isLucky, gameCornerRandSource{})
 	if err != nil {
 		log.Printf("Game Corner slots character %d: %v", charID, err)
 	}
 	if !result.Success {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   result.Message,
-			"coins":   result.Coins,
-			"bet":     result.Bet,
-		}, opcodes.GameCornerSlotResultResponse)
+		ses.SendStreamJSON(GameCornerSlotResultResponse{Error: result.Message, Coins: &result.Coins, Bet: result.Bet}, opcodes.GameCornerSlotResultResponse)
 		return false
 	}
 	if result.Payout > 0 {
@@ -338,14 +330,8 @@ func HandleGameCornerSlotPlay(ses *session.Session, payload []byte, wh *WorldHan
 
 	// Return reel positions so the client can animate the reels faithfully
 	// Also return the visible symbols as names for display
-	ses.SendStreamJSON(map[string]interface{}{
-		"success":       true,
-		"reelPositions": result.ReelPositions,
-		"reels":         result.Reels,
-		"payout":        result.Payout,
-		"matchLine":     result.MatchLine,
-		"coins":         result.Coins,
-		"bet":           result.Bet,
+	ses.SendStreamJSON(GameCornerSlotResultResponse{
+		Success: true, ReelPositions: result.ReelPositions, Reels: result.Reels, Payout: result.Payout, MatchLine: result.MatchLine, Coins: &result.Coins, Bet: result.Bet, IsLucky: &isLucky,
 	}, opcodes.GameCornerSlotResultResponse)
 	return false
 }

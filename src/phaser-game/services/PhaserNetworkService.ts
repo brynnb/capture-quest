@@ -1,3 +1,4 @@
+import type { GameCornerSlotPlayRequest } from "@/net/generated/world_api";
 import type { PhaserMapScriptsRequest } from "@/net/generated/protocol";
 /**
  * Phaser Network Service
@@ -321,9 +322,10 @@ export function buyCoins(): void {
 /**
  * Play slot machine (bet 1-3 coins)
  */
-export function playSlotMachine(bet: number, isLucky: boolean): void {
+export function playSlotMachine(bet: number, machineX: number, machineY: number): void {
   if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ bet, isLucky }, OpCodes.GameCornerSlotPlayRequest);
+  const request: GameCornerSlotPlayRequest = { bet, machineX, machineY };
+  NetworkBridge.send(request, OpCodes.GameCornerSlotPlayRequest);
 }
 
 /**

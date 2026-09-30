@@ -296,7 +296,7 @@ export interface CaptureQuestTestBridge {
   }) => Promise<CaptureQuestWarpProbeCasesResponse>;
   requestGameCornerCoinBalance: () => void;
   buyGameCornerCoins: () => void;
-  playGameCornerSlot: (bet: number, isLucky?: boolean) => void;
+  playGameCornerSlot: (bet: number, machineX: number, machineY: number) => void;
   requestGameCornerPrizeList: () => void;
   buyGameCornerPrize: (prizeId: number) => void;
   requestPokemonParty: () => void;
@@ -984,7 +984,7 @@ export function installCaptureQuestTestBridge(): void {
     requestWarpProbeCases,
     requestGameCornerCoinBalance: requestCoinBalance,
     buyGameCornerCoins: buyCoins,
-    playGameCornerSlot: (bet, isLucky = false) => playSlotMachine(bet, isLucky),
+    playGameCornerSlot: (bet, machineX, machineY) => playSlotMachine(bet, machineX, machineY),
     requestGameCornerPrizeList: requestPrizeList,
     buyGameCornerPrize: buyPrize,
     requestPokemonParty: sendPokemonPartyRequest,

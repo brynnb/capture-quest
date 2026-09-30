@@ -20,6 +20,7 @@ type Session struct {
 	presence        atomic.Pointer[Presence]
 	commands        commandGate
 	IssuedCutscenes IssuedEvents
+	GameCorner      GameCornerState
 	SessionID       int
 	Authenticated   bool
 	AccountID       int64
@@ -198,6 +199,7 @@ func (s *Session) Close() {
 	}
 	s.closed = true
 	s.IssuedCutscenes.Clear()
+	s.GameCorner.Clear()
 	stream := s.controlStream
 	s.closedMu.Unlock()
 

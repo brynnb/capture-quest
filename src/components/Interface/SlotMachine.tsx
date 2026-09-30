@@ -1,3 +1,4 @@
+import type { GameCornerSlotResultResponse } from "@/net/generated/world_api";
 import React, { useEffect, useRef, useCallback, useState } from "react";
 import styled, { keyframes, css } from "styled-components";
 import useSlotMachineStore from "@/stores/SlotMachineStore";
@@ -528,15 +529,7 @@ const CloseButton = styled.button`
 
 // Server response shape from GameCornerSlotResultResponse
 interface SlotResultEvent {
-  detail: {
-    success: boolean;
-    reelPositions?: number[];
-    payout?: number;
-    matchLine?: string;
-    coins?: number;
-    bet?: number;
-    error?: string;
-  };
+  detail: GameCornerSlotResultResponse;
 }
 
 // Server response shape from GameCornerCoinBalanceResponse
@@ -616,6 +609,7 @@ const SlotMachine: React.FC = () => {
 
       const store = useSlotMachineStore.getState();
 
+      if (!store.isOpen || !store.isSpinning) return;
       if (!data.success) {
         // Error (e.g. not enough coins)
         useChatStore.getState().addMessage(data.error || "Error!", MessageType.SYSTEM);
@@ -626,6 +620,7 @@ const SlotMachine: React.FC = () => {
         return;
       }
 
+      if (data.isLucky !== undefined) store.setIsLuckyMachine(data.isLucky);
       // Store the server result — the animation loop will use it
       serverResultRef.current = data;
 
@@ -730,6 +725,7 @@ const SlotMachine: React.FC = () => {
       useChatStore.getState().addMessage("Not enough coins!", MessageType.SYSTEM);
       return;
     }
+    if (store.machineX === null || store.machineY === null) return;
     // Start local animation
     setShowWinCelebration(false);
     setLeverPulling(true);
@@ -740,7 +736,7 @@ const SlotMachine: React.FC = () => {
     store.setMatchLine("");
     store.setMessage("Spinning...");
     // Send request to server — result will arrive via event listener
-    playSlotMachine(store.bet, store.isLuckyMachine);
+    playSlotMachine(store.bet, store.machineX, store.machineY);
   }, [isSpinning]);
 
   const handleClose = useCallback(() => {

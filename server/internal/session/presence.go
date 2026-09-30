@@ -22,6 +22,7 @@ func (s *Session) PublishPresence() Presence {
 		p.CharacterID, p.Name, p.Gender = c.ID, c.Name, c.Gender
 		p.CharacterMapID, p.CharacterX, p.CharacterY = c.MapID, c.X, c.Y
 	}
+	s.GameCorner.ObserveMap(int(p.CharacterMapID))
 	s.presence.Store(&p)
 	return p
 }

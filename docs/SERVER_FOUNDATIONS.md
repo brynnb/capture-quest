@@ -3,8 +3,8 @@
 Status: active. Started 2026-09-25 from `02c51ba`.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-bounded Game Corner coin operations (2026-09-30), following prize
-checkpoint `ed3ec19`.
+server-owned slot-machine target and luck boundary (2026-09-30),
+following coin checkpoint `4147974`.
 All earlier foundation checkpoints are retained in this
 branch's history. No push or production deployment is authorized by this goal.
 
@@ -40,7 +40,8 @@ evidence, including remaining-work notes that subsequent commits may resolve.
 1. **Finish atomic dynamic mechanics.** Vermilion puzzle state and its lock
    flags now share one character-locked transaction, as do item-ball grants/collection
    markers and Silph Card Key checks/unlocks. Game Corner prizes, coin purchases,
-   slots and hidden-coin collection now share this boundary. Audit remaining field
+   slots and hidden-coin collection now share this boundary; slot requests validate
+   imported machine availability/reach and use server-owned luck. Audit remaining field
    effects and other mutation paths for the same requirements.
    Extend the shared transaction/domain operations already in use. Acceptance:
    a late failure leaves all affected state unchanged; retry and concurrent
@@ -90,6 +91,47 @@ deployment, and complete its applicable workflow and live checks.
 
 Continue with item 1 above. Keep this current summary synchronized with coherent
 checkpoint commits; retain the original milestone acceptance criteria below.
+
+## Server-owned slot boundary checkpoint (2026-09-30)
+
+The live slot endpoint no longer accepts client luck. Requests name machine
+coordinates; the server resolves `phaser_hidden_objects` on the Game Corner map,
+requires `routine = StartSlotMachine`, validates `item_or_direction`, and rechecks
+owned player reach on every spin. Targetless packets from old clients fail closed.
+Unavailable machines (`SLOTS_OUTOFORDER`, `SLOTS_OUTTOLUNCH`,
+`SLOTS_SOMEONESKEYS`) cannot spend coins. The existing two-tile Manhattan reach
+is retained; machine coordinates never bypass the server-owned map/position.
+
+Provenance: bundled pokered `data/events/hidden_objects.asm` contains the slot
+records; `engine/slots/game_corner_slots.asm` defines availability and compares a
+one-based hidden-object index with the lucky index. `scripts/GameCorner.asm`
+draws a byte, promotes values below seven to eight and shifts three bits. Export
+preserves source order as SQLite IDs and the existing Postgres import preserves
+those IDs; the runtime orders the map's hidden objects by ID. The server applies
+that source draw rule once per character/map visit, stores it in synchronized
+session-owned state, and resets on published map departure, character change or
+session cleanup. Modal reopening cannot reroll luck. Reconnect is a fresh visit;
+this is not durable command/reconnect recovery.
+
+The client sends generated typed coordinate/bet requests and consumes a generated
+typed response. It displays luck only from the accepted server result. The old
+parallel Phaser slot overlay and blanket sign-to-slot handler are retired; the
+existing slot component remains the UI. Closed/nonspinning modals ignore results.
+Further response correlation, spin timeout/cancellation and close/reopen race
+verification remain part of the integrated networking acceptance work.
+
+PostgreSQL world/session/simulator race suites pass, including forged luck,
+missing/remote/unavailable/non-machine targets and reach after movement. Session
+tests prove concurrent single draw, map reset, character reset and cleanup.
+Canonical contract generation, frontend typecheck, runtime asset validation and
+production build pass. The expected local test frontend was not running during
+this checkpoint; rendered slot opening/spinning/closing and stale-client behavior
+remain unverified. No generated game-data pipeline, schema, push or deployment
+changed.
+
+Next: run the rendered Game Corner check in the isolated test environment, then
+finish issued prize-window/merchant interaction authorization and the remaining
+field-effect/opcode/ownership audits. The full foundations goal remains active.
 
 ## Game Corner coin checkpoint (2026-09-30)
 

@@ -617,3 +617,14 @@ collection-marker/grant pairs each commit atomically. Failed transactions discar
 speculative results. Server-issued machine luck and actor reach are still required
 for the slot wire boundary; the foundations roadmap records this unresolved
 client-trust issue alongside durable replay/reconnect recovery.
+
+The live slot endpoint now names a generated hidden-object coordinate instead
+of accepting luck. The server resolves source `StartSlotMachine` records, applies
+availability rules and rechecks owned reach for every spin. Luck uses the bundled
+ASM draw/index rule and synchronized character/session state; presence publication
+resets that state on map departure, and cleanup clears it. Source hidden-object
+order is preserved by exported/imported IDs. Explicit Go JSON request/response
+types generate the frontend contract. Old targetless packets fail closed. The
+existing React slot component replaces the retired parallel Phaser slot overlay;
+rendered flow and remaining asynchronous response-correlation checks are tracked
+in `SERVER_FOUNDATIONS.md`.

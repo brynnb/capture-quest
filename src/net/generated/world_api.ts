@@ -295,6 +295,31 @@ export interface GameCornerHiddenCoinPickupResult {
 }
 
 //////////
+// source: gamecorner_interaction.go
+
+/**
+ * Coordinates identify a generated hidden-object record; the client supplies
+ * neither machine availability nor luck. Pointers reject old requests that omit
+ * the target rather than interpreting them as the tile at zero, zero.
+ */
+export interface GameCornerSlotPlayRequest {
+  bet: number /* int */;
+  machineX?: number /* int */;
+  machineY?: number /* int */;
+}
+export interface GameCornerSlotResultResponse {
+  success: boolean;
+  error?: string;
+  reelPositions?: number /* int */[];
+  reels?: string[][];
+  payout: number /* int */;
+  matchLine: string;
+  coins?: number /* int */;
+  bet: number /* int */;
+  isLucky?: boolean;
+}
+
+//////////
 // source: gamecorner_prizes.go
 
 export interface GameCornerPrize {

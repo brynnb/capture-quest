@@ -11,8 +11,11 @@ export interface SlotMachineState {
   message: string;
   matchLine: string;
   isLuckyMachine: boolean;
+  machineX: number | null;
+  machineY: number | null;
+  setIsLuckyMachine: (isLucky: boolean) => void;
 
-  openSlotMachine: (isLucky: boolean) => void;
+  openSlotMachine: (machineX: number, machineY: number) => void;
   closeSlotMachine: () => void;
   setBet: (bet: number) => void;
   setCoins: (coins: number) => void;
@@ -38,11 +41,15 @@ const useSlotMachineStore = create<SlotMachineState>((set, get) => ({
   message: "Insert coins and pull the lever!",
   matchLine: "",
   isLuckyMachine: false,
+  machineX: null,
+  machineY: null,
+  setIsLuckyMachine: (isLuckyMachine) => set({ isLuckyMachine }),
 
-  openSlotMachine: (isLucky: boolean) =>
+  openSlotMachine: (machineX: number, machineY: number) =>
     set({
       isOpen: true,
-      isLuckyMachine: isLucky,
+      machineX, machineY,
+      isLuckyMachine: false,
       isSpinning: false,
       reelStopped: [false, false, false],
       payout: 0,
