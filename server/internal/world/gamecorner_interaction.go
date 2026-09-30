@@ -109,3 +109,26 @@ func (wh *WorldHandler) authorizeSlotMachine(ses *session.Session, req GameCorne
 	})
 	return luckyIndex == targetIndex, err
 }
+
+// A prize ID selects an existing source window. The server resolves its sign
+// identity and authorizes current actor visibility/reach; being in the room is
+// insufficient. Catalog-only list requests do not authorize purchases.
+func (wh *WorldHandler) authorizePrizeWindow(ses *session.Session, prizeID int) error {
+	window := GameCornerPrizeWindowForID(prizeID)
+	if window == 0 {
+		return errScriptInteractionDenied
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	text := fmt.Sprintf("TEXT_GAMECORNERPRIZEROOM_PRIZE_VENDOR_%d", window)
+	var objectID *int
+	var count int
+	if err := wh.database.QueryRowContext(ctx, `SELECT MIN(id),COUNT(*) FROM phaser_objects WHERE map_id=$1 AND text=$2`, PrizeRoomMapID, text).Scan(&objectID, &count); err != nil {
+		return err
+	}
+	if count != 1 || objectID == nil {
+		return fmt.Errorf("prize window %d has %d source actors", window, count)
+	}
+	_, _, err := wh.scriptInteractionTargetContext(ctx, ses, *objectID)
+	return err
+}

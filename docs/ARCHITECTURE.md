@@ -60,6 +60,18 @@ For durable gameplay changes, run `bash scripts/testing/run-go-postgres.sh` from
 the repository root. It uses a disposable PostgreSQL cluster and tests rollback,
 concurrency, ownership, and cancellation against the runtime database engine.
 
+For rendered local acceptance checks, use
+`bash scripts/testing/run-isolated-e2e.sh tests/e2e/game-corner.spec.ts`.
+It creates a private Unix-socket PostgreSQL cluster under `/var/tmp`, bootstraps
+matched local artifacts through the canonical database script, starts an owned
+server/frontend on available dedicated ports, and runs local Playwright Chromium.
+It does not source `.env` or connect to the normal development database. Logs,
+ports, exact owned process IDs and failure traces remain in the printed evidence
+directory. Cleanup stops only those owned processes and that private cluster;
+a cleanup deadline failure makes the run fail. Existing generated assets and a
+local Playwright browser installation are prerequisites; this runner does not
+regenerate game data or deploy anything.
+
 ---
 
 ## 1. Data Ownership & Streams
@@ -628,3 +640,10 @@ types generate the frontend contract. Old targetless packets fail closed. The
 existing React slot component replaces the retired parallel Phaser slot overlay;
 rendered flow and remaining asynchronous response-correlation checks are tracked
 in `SERVER_FOUNDATIONS.md`.
+
+Prize purchases resolve the selected prize's existing source window and require
+current reach/visibility to its unique imported sign. They reuse the authoritative
+actor/counter interaction evaluator before invoking the atomic purchase operation.
+A catalog listing alone grants no purchase authorization. The standalone simulator
+still exercises the same transaction operation without pretending to simulate a
+rendered player's physical interaction.

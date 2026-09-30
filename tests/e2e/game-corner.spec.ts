@@ -16,6 +16,7 @@ import {
   waitForPartyPokemon,
   waitForPCPokemon,
   waitForPlayerTile,
+  waitForPlayerIdle,
 } from "./helpers/state";
 
 type CoinBalanceEvent = {
@@ -112,6 +113,22 @@ async function pressSpaceUntilInventoryItem(
   }
 
   await waitForInventoryItem(page, matcher);
+}
+
+// Source bg-events are at y=2; the floor immediately below is y=3.
+// Wait for each actual tile step so taps are not coalesced by movement.
+async function standAtPrizeWindow(page: Page, windowX: number) {
+  await dismissDialogue(page, 6);
+  await waitForPlayerIdle(page);
+  await waitForPlayerTile(page, 2, 4);
+  for (let x = 3; x <= windowX; x += 1) {
+    await pressMovement(page, "right");
+    await waitForPlayerTile(page, x, 4);
+    await waitForPlayerIdle(page);
+  }
+  await pressMovement(page, "up");
+  await waitForPlayerTile(page, windowX, 3);
+  await waitForPlayerIdle(page);
 }
 
 test("Game Corner clerk can be reached through the counter", async ({ page }) => {
@@ -259,6 +276,8 @@ test("Game Corner prize exchange requires Coin Case and buys rewards", async ({
   );
   expect(tm23).toBeTruthy();
 
+  await standAtPrizeWindow(page, 6);
+
   const prizeBuy = await withNextWindowEvent<PrizeBuyEvent>(
     page,
     "gameCornerPrizeBuy",
@@ -304,6 +323,8 @@ test("Game Corner prize Pokemon go to party or PC when party is full", async ({
   );
   const abra = openPartyPrizeList.prizes.find((prize) => prize.name === "ABRA");
   expect(abra).toBeTruthy();
+
+  await standAtPrizeWindow(page, 2);
 
   const partyPrizeBuy = await withNextWindowEvent<PrizeBuyEvent>(
     page,
@@ -356,6 +377,8 @@ test("Game Corner prize Pokemon go to party or PC when party is full", async ({
     (prize) => prize.name === "ABRA",
   );
   expect(fullPartyAbra).toBeTruthy();
+
+  await standAtPrizeWindow(page, 2);
 
   const pcPrizeBuy = await withNextWindowEvent<PrizeBuyEvent>(
     page,

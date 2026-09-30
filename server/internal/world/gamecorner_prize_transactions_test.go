@@ -65,6 +65,12 @@ func TestGameCornerPrizeCommitFailureDispatcherAndOwnedDatabase(t *testing.T) {
 	if _, err := cqitems.NewStore(database).AddItemToInventory(42, 69, 1); err != nil {
 		t.Fatal(err)
 	}
+	wh.ActorRegistry = NewActorRegistry()
+	wh.ActorManager = NewPhaserActorManager(wh)
+	testdb.Exec(t, database, `INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(137,'GAME_CORNER_PRIZE_ROOM',10,10,0),(135,'GAME_CORNER',20,20,0);
+ INSERT INTO phaser_objects(id,map_id,x,y,object_type,text) VALUES(10,137,6,2,'sign','TEXT_GAMECORNERPRIZEROOM_PRIZE_VENDOR_3')`)
+	ses.Client.CharData().X = 6
+	ses.Client.CharData().Y = 3
 	ses.Client.CharData().MapID = PrizeRoomMapID
 	db.GlobalWorldDB = nil
 	request := func(want bool) {
@@ -98,6 +104,12 @@ func TestGameCornerPrizeCommitFailureDispatcherAndOwnedDatabase(t *testing.T) {
 	ses.Client.CharData().MapID = GameCornerMapID
 	request(false)
 	ses.Client.CharData().MapID = PrizeRoomMapID
+	ses.Client.CharData().X = 2
+	request(false) // Wrong window in the correct room.
+	ses.Client.CharData().X = 6
+	testdb.Exec(t, database, `INSERT INTO character_object_visibility_overrides(character_id,object_id,visible,source) VALUES(42,10,false,'test')`)
+	request(false)
+	testdb.Exec(t, database, `DELETE FROM character_object_visibility_overrides`)
 	request(true)
 }
 

@@ -3,8 +3,8 @@
 Status: active. Started 2026-09-25 from `02c51ba`.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-server-owned slot-machine target and luck boundary (2026-09-30),
-following coin checkpoint `4147974`.
+source-window prize authorization and rendered Game Corner verification
+(2026-09-30), following slot boundary checkpoint `16ec82b`.
 All earlier foundation checkpoints are retained in this
 branch's history. No push or production deployment is authorized by this goal.
 
@@ -41,7 +41,8 @@ evidence, including remaining-work notes that subsequent commits may resolve.
    flags now share one character-locked transaction, as do item-ball grants/collection
    markers and Silph Card Key checks/unlocks. Game Corner prizes, coin purchases,
    slots and hidden-coin collection now share this boundary; slot requests validate
-   imported machine availability/reach and use server-owned luck. Audit remaining field
+   imported machine availability/reach and use server-owned luck; prize buys require
+   reach/visibility to the source window selling the selected prize. Audit remaining field
    effects and other mutation paths for the same requirements.
    Extend the shared transaction/domain operations already in use. Acceptance:
    a late failure leaves all affected state unchanged; retry and concurrent
@@ -91,6 +92,58 @@ deployment, and complete its applicable workflow and live checks.
 
 Continue with item 1 above. Keep this current summary synchronized with coherent
 checkpoint commits; retain the original milestone acceptance criteria below.
+
+## Prize windows and rendered Game Corner checkpoint (2026-09-30)
+
+Being anywhere in the prize room no longer authorizes a purchase. The live
+handler resolves the selected prize's existing window through
+`GameCornerPrizeWindowForID`, requires its unique imported sign text/map identity,
+and reuses the actor visibility/position/counter-reach evaluator before calling
+the atomic transaction operation. Catalog-only requests remain presentation;
+they grant no purchase authorization. Missing/ambiguous source sign records
+produce diagnostics rather than an invented target. Simulator purchases continue
+to exercise the shared transaction operation without claiming physical reach.
+
+PostgreSQL dispatcher tests cover the wrong window in the correct room, hidden
+signs, remote rooms, valid source-sign reach, commit failure and retry with the
+global database disabled. Real local Playwright checks now cover Coin Case
+acquisition, coin purchase, visible slot modal/spin/close, TM purchase and Pokémon
+purchase into party and full-party PC storage through the live WebSocket server.
+The slot/coin test passed individually and in the four-test run. That run's two
+prize failures were investigated; the corrected two prize tests then passed.
+This is evidence across focused reruns, not a claim that the whole original
+foundations integration suite is complete.
+
+The initial prize tests assumed player `y=4` could reach a sign at `y=2` across a
+counter at `y=3`. Actual imported sign records are at `(2,2)`, `(4,2)`, `(6,2)`.
+Tile row `y=3` has `tile_image_id=485`, `talk_over_tile=false`,
+`collision_type=1`; the adjacent playable floor is `y=3`. The tests now stand
+there and wait for each completed tile step instead of sending overlapping taps.
+Production reach/data rules were not weakened to accommodate those assumptions.
+
+Reproduce in an isolated local environment:
+
+```bash
+bash scripts/testing/run-isolated-e2e.sh tests/e2e/game-corner.spec.ts
+```
+
+The runner validates the existing atomic asset family, bootstraps a fresh private
+Unix-socket Postgres cluster through the canonical preflight/schema/import/smoke
+workflow, starts exact owned app/frontend processes on dedicated available ports,
+and uses the installed local Playwright Chromium. It never sources `.env` or
+reuses the normal development database. `/var/tmp` evidence includes logs, ports,
+owned PIDs, and failure screenshots/traces; cleanup touches only these processes
+and the private cluster and fails if an owned process exceeds its deadline.
+Successful evidence: `/var/tmp/capturequest-rendered.d9vNsl` (slot/coins),
+`/var/tmp/capturequest-rendered.k42UYM` (prizes). The investigated full-file failure
+is preserved in `/var/tmp/capturequest-rendered.W6PHey`. These local paths are
+handoff evidence, not repository artifacts or production verification.
+
+Next: finish coin-clerk reach authorization (coin buying currently checks the
+Game Corner map), then continue mutation/field-effect and ownership/timer audits;
+complete durable request replay/reconnect recovery, bounded shutdown, contract
+migration and broader transport/rendered acceptance. No push or deployment
+occurred, and the full goal remains active.
 
 ## Server-owned slot boundary checkpoint (2026-09-30)
 

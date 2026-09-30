@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math/rand"
@@ -388,9 +389,11 @@ func HandleGameCornerPrizeBuy(ses *session.Session, payload []byte, wh *WorldHan
 	}
 	charID := int64(char.ID)
 
-	_, _, mapID := wh.scriptPlayerPosition(ses)
-	if mapID != PrizeRoomMapID {
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Visit the prize room first."}, opcodes.GameCornerPrizeBuyResponse)
+	if err := wh.authorizePrizeWindow(ses, req.PrizeID); err != nil {
+		if !errors.Is(err, errScriptInteractionDenied) {
+			log.Printf("authorize Game Corner prize %d for character %d: %v", req.PrizeID, charID, err)
+		}
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Move to the window selling this prize first."}, opcodes.GameCornerPrizeBuyResponse)
 		return false
 	}
 	result, err := buyGameCornerPrize(context.Background(), wh.database, charID, req.PrizeID, "")
