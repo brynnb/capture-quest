@@ -332,8 +332,13 @@ field-name conversion or generated-name postprocessor will remain.
    typed row collector closes results between queries and reports scan/iteration
    failures. Empty lists are arrays. Their direct encoding corrects rawASM to
    rawAsm and tMHMName/isHM to tmHmName/isHm. The map-ready request uses its
-   generated request type; its cutscene issuance still needs authoritative
-   location authorization rather than trusting the requested map name.
+   generated request type. Map-ready cutscene issuance requires its requested
+   name to match the server's native player location; post-battle selection uses
+   the same resolver. Interior identity comes from the owned map ID. Overworld
+   identity comes from original tile source-map provenance at the owned movement
+   position, with a five-second query budget. Missing or conflicting provenance
+   rejects issuance; editing or erasing tile art does not change script identity.
+   NPC-click proximity and shared issuance authorization still need auditing.
    Remaining families must follow the same migration: extract substantive
    response families, reuse tagged types, replace map enrichment with flat
    typed views, and audit actual keys, nullability and empty collections against

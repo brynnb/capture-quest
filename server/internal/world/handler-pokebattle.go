@@ -704,12 +704,9 @@ func sendEligibleMapScriptAfterBattleClose(ses *session.Session, charID int64, w
 	if wh == nil || wh.Cutscenes == nil || wh.EventFlags == nil {
 		return
 	}
-	mapID := ses.MapID
-	if charData := ses.Client.CharData(); charData != nil {
-		mapID = int(charData.MapID)
-	}
-	mapName := wh.Cutscenes.MapNameForID(mapID)
-	if mapName == "" {
+	mapName, err := wh.nativeScriptMap(ses)
+	if err != nil {
+		log.Printf("[Cutscene] Resolve post-battle location: %v", err)
 		return
 	}
 	playerFacing := ""

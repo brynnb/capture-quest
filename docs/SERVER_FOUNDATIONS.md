@@ -574,6 +574,25 @@ and native player-location authorization need the next audit. Other metadata
 families, wire-helper retirement, domain cleanup, ownership/shutdown work and
 rendered integration remain incomplete. No push or deployment.
 
+Map-script location authorization checkpoint: map-ready metadata remains readable
+for arbitrary maps, but its request cannot issue a cutscene unless the requested
+name equals the player's server-resolved native map. Post-battle map scripts use
+the same resolver, including local scripts in the unified overworld. Owned
+movement state takes precedence over the character snapshot. Interiors resolve
+by map ID; overworld coordinates resolve through the imported original tile
+source-map identity, retained across edits/erasure. User tiles cannot manufacture
+native identity, and missing/ambiguous provenance or SQL failures prevent issuance.
+Queries use the injected world database with one five-second budget.
+
+Dispatcher/framing PostgreSQL tests cover remote requests, valid interior and
+overworld issuance, stale character position, edited/erased provenance, missing
+identity, deliberately corrupted conflicting provenance and SQL failure. A
+locked-table test verifies the query deadline and successful retry. World,
+server and session PostgreSQL race suites passed. No frontend protocol change,
+rendered gameplay check, push or deployment. NPC-click location/proximity checks
+must still precede durable puzzle/door effects; broader shared issuance,
+ownership/shutdown, domain/wire migration and integration work remain incomplete.
+
 ## Reproducible PostgreSQL tests
 
 With `initdb`, `pg_ctl`, and Go available, run:

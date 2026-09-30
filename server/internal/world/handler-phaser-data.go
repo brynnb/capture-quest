@@ -407,12 +407,20 @@ func HandlePhaserMapScriptsRequest(ses *session.Session, payload []byte, wh *Wor
 	}
 
 	if ses.HasValidClient() && wh.Cutscenes != nil && wh.EventFlags != nil {
+		mapName, err := wh.nativeScriptMap(ses)
+		if err != nil {
+			log.Printf("[Cutscene] Resolve map-ready location: %v", err)
+			return false
+		}
+		if mapName != req.MapName {
+			return false
+		}
 		charID := int64(ses.Client.CharData().ID)
 		playerFacing := ""
 		if wh.PlayerMovement != nil {
 			playerFacing, _ = wh.PlayerMovement.GetDirection(int(charID))
 		}
-		if cs := wh.Cutscenes.FindEligibleMapScriptCutscene(req.MapName, charID, wh.EventFlags, playerFacing); cs != nil {
+		if cs := wh.Cutscenes.FindEligibleMapScriptCutscene(mapName, charID, wh.EventFlags, playerFacing); cs != nil {
 			SendCutsceneToPlayer(ses, cs, wh)
 		}
 	}
