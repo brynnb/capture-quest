@@ -582,3 +582,14 @@ waits. Callbacks must not recursively enter it. Disconnect closes transport and
 uses `DrainCommands` before character cleanup. Inline character quit already runs
 inside the gate. This session serialization does not replace the still-required
 character owner shared across sessions and world/timer writers.
+
+### Dynamic puzzle transactions
+
+Vermilion trash-can interactions read durable lock flags and can indices under
+the shared character lock. Initialization, selecting a replacement can and
+setting/resetting lock flags commit in one bounded transaction. The live handler
+injects its database; simulator wrappers invoke the same implementation.
+Returned outcomes and cached flags become visible only after commit. A failed
+cache refresh is logged as a publication problem, not described as a rollback.
+Repeated clicks are ordinary state transitions; durable command identity and
+reconnect result recovery remain tracked in `SERVER_FOUNDATIONS.md`.

@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -127,7 +128,7 @@ func tryHandleVermilionGymTrashClick(ses *session.Session, wh *WorldHandler, cha
 		if !ok {
 			continue
 		}
-		outcome, err := HandleVermilionGymTrashCan(charID, canIndex, wh.EventFlags)
+		outcome, err := handleVermilionGymTrashCan(context.Background(), wh.database, charID, canIndex, wh.EventFlags, RandomVermilionGymTrashPicker{})
 		if err != nil {
 			return true, err
 		}

@@ -1,9 +1,11 @@
 package world
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"fmt"
+	"log"
 	"math/big"
 	"strconv"
 	"strings"
@@ -84,37 +86,71 @@ func HandleVermilionGymTrashCan(charID int64, canIndex int, efm *EventFlagManage
 }
 
 func HandleVermilionGymTrashCanWithPicker(charID int64, canIndex int, efm *EventFlagManager, picker VermilionGymTrashPicker) (*VermilionGymTrashOutcome, error) {
+	return handleVermilionGymTrashCan(context.Background(), db.GlobalWorldDB.DB, charID, canIndex, efm, picker)
+}
+
+// The live handler supplies its owned database. State and flags share the character
+// lock; cached flags must never decide a durable puzzle transition.
+func handleVermilionGymTrashCan(ctx context.Context, database *sql.DB, charID int64, canIndex int, efm *EventFlagManager, picker VermilionGymTrashPicker) (*VermilionGymTrashOutcome, error) {
+	var outcome *VermilionGymTrashOutcome
+	err := db.Transaction(ctx, database, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, charID); err != nil {
+			return err
+		}
+		var err error
+		outcome, err = applyVermilionGymTrashCan(tx, charID, canIndex, picker)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	if outcome.Changed && efm != nil {
+		if err := efm.LoadFlags(charID); err != nil {
+			// The durable result has committed. Reporting rollback here would invite
+			// a retry of an already accepted click.
+			log.Printf("refresh committed Vermilion flags for character %d: %v", charID, err)
+		}
+	}
+	return outcome, nil
+}
+
+func applyVermilionGymTrashCan(tx db.DBTX, charID int64, canIndex int, picker VermilionGymTrashPicker) (*VermilionGymTrashOutcome, error) {
 	if canIndex < 0 || canIndex > 14 {
 		return nil, fmt.Errorf("vermilion gym trash can index %d out of range", canIndex)
 	}
 	if picker == nil {
 		picker = RandomVermilionGymTrashPicker{}
 	}
-	state, err := ensureVermilionGymTrashState(charID, picker)
+	state, err := ensureVermilionGymTrashState(tx, charID, picker)
 	if err != nil {
 		return nil, err
 	}
 
-	if efm != nil && efm.CheckFlag(charID, EventVermilionGymSecondLockOpened) {
+	secondOpen, err := queryEventFlag(tx, charID, EventVermilionGymSecondLockOpened)
+	if err != nil {
+		return nil, err
+	}
+	if secondOpen {
 		return trashOutcome(canIndex, state), nil
 	}
 
-	firstOpen := efm != nil && efm.CheckFlag(charID, EventVermilionGymFirstLockOpened)
+	firstOpen, err := queryEventFlag(tx, charID, EventVermilionGymFirstLockOpened)
+	if err != nil {
+		return nil, err
+	}
 	if !firstOpen {
 		if canIndex != state.FirstLockCanIndex {
 			return trashOutcome(canIndex, state), nil
 		}
-		if efm != nil {
-			if err := efm.SetFlag(charID, EventVermilionGymFirstLockOpened); err != nil {
-				return nil, err
-			}
+		if err := writeEventFlag(tx, charID, EventVermilionGymFirstLockOpened, true); err != nil {
+			return nil, err
 		}
 		second, err := picker.PickSecondLockCanIndex(canIndex)
 		if err != nil {
 			return nil, err
 		}
 		state.SecondLockCanIndex = &second
-		if err := saveVermilionGymTrashState(charID, state); err != nil {
+		if err := saveVermilionGymTrashState(tx, charID, state); err != nil {
 			return nil, err
 		}
 		return &VermilionGymTrashOutcome{
@@ -131,10 +167,8 @@ func HandleVermilionGymTrashCanWithPicker(charID int64, canIndex int, efm *Event
 	}
 
 	if state.SecondLockCanIndex != nil && canIndex == *state.SecondLockCanIndex {
-		if efm != nil {
-			if err := efm.SetFlag(charID, EventVermilionGymSecondLockOpened); err != nil {
-				return nil, err
-			}
+		if err := writeEventFlag(tx, charID, EventVermilionGymSecondLockOpened, true); err != nil {
+			return nil, err
 		}
 		return &VermilionGymTrashOutcome{
 			CanIndex:     canIndex,
@@ -149,17 +183,15 @@ func HandleVermilionGymTrashCanWithPicker(charID int64, canIndex int, efm *Event
 		}, nil
 	}
 
-	if efm != nil {
-		if err := efm.ResetFlag(charID, EventVermilionGymFirstLockOpened); err != nil {
-			return nil, err
-		}
+	if err := writeEventFlag(tx, charID, EventVermilionGymFirstLockOpened, false); err != nil {
+		return nil, err
 	}
 	first, err := picker.PickFirstLockCanIndex()
 	if err != nil {
 		return nil, err
 	}
 	state = VermilionGymTrashState{FirstLockCanIndex: first}
-	if err := saveVermilionGymTrashState(charID, state); err != nil {
+	if err := saveVermilionGymTrashState(tx, charID, state); err != nil {
 		return nil, err
 	}
 	return &VermilionGymTrashOutcome{
@@ -176,9 +208,19 @@ func HandleVermilionGymTrashCanWithPicker(charID int64, canIndex int, efm *Event
 }
 
 func LoadVermilionGymTrashState(charID int64) (*VermilionGymTrashState, error) {
+	var state *VermilionGymTrashState
+	err := db.Transaction(context.Background(), db.GlobalWorldDB.DB, func(tx db.DBTX) error {
+		var err error
+		state, err = loadVermilionGymTrashState(tx, charID)
+		return err
+	})
+	return state, err
+}
+
+func loadVermilionGymTrashState(tx db.DBTX, charID int64) (*VermilionGymTrashState, error) {
 	var state VermilionGymTrashState
 	var second sql.NullInt64
-	err := db.GlobalWorldDB.DB.QueryRow(`
+	err := tx.QueryRow(`
 		SELECT first_lock_can_index, second_lock_can_index
 		FROM character_vermilion_gym_trash_state
 		WHERE character_id = $1`, charID).Scan(&state.FirstLockCanIndex, &second)
@@ -202,7 +244,12 @@ func SetVermilionGymTrashState(charID int64, state VermilionGymTrashState) error
 	if state.SecondLockCanIndex != nil && (*state.SecondLockCanIndex < 0 || *state.SecondLockCanIndex > 14) {
 		return fmt.Errorf("second trash can index %d out of range", *state.SecondLockCanIndex)
 	}
-	return saveVermilionGymTrashState(charID, state)
+	return db.Transaction(context.Background(), db.GlobalWorldDB.DB, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, charID); err != nil {
+			return err
+		}
+		return saveVermilionGymTrashState(tx, charID, state)
+	})
 }
 
 func (RandomVermilionGymTrashPicker) PickFirstLockCanIndex() (int, error) {
@@ -248,8 +295,8 @@ func (p FixedVermilionGymTrashPicker) PickSecondLockCanIndex(firstLockCanIndex i
 	return 0, fmt.Errorf("fixed second trash can index %d is not valid after first can %d", *p.SecondLockCanIndex, firstLockCanIndex)
 }
 
-func ensureVermilionGymTrashState(charID int64, picker VermilionGymTrashPicker) (VermilionGymTrashState, error) {
-	state, err := LoadVermilionGymTrashState(charID)
+func ensureVermilionGymTrashState(tx db.DBTX, charID int64, picker VermilionGymTrashPicker) (VermilionGymTrashState, error) {
+	state, err := loadVermilionGymTrashState(tx, charID)
 	if err != nil {
 		return VermilionGymTrashState{}, err
 	}
@@ -261,18 +308,18 @@ func ensureVermilionGymTrashState(charID int64, picker VermilionGymTrashPicker) 
 		return VermilionGymTrashState{}, err
 	}
 	newState := VermilionGymTrashState{FirstLockCanIndex: first}
-	if err := saveVermilionGymTrashState(charID, newState); err != nil {
+	if err := saveVermilionGymTrashState(tx, charID, newState); err != nil {
 		return VermilionGymTrashState{}, err
 	}
 	return newState, nil
 }
 
-func saveVermilionGymTrashState(charID int64, state VermilionGymTrashState) error {
+func saveVermilionGymTrashState(tx db.DBTX, charID int64, state VermilionGymTrashState) error {
 	var second interface{}
 	if state.SecondLockCanIndex != nil {
 		second = *state.SecondLockCanIndex
 	}
-	_, err := db.GlobalWorldDB.DB.Exec(`
+	_, err := tx.Exec(`
 		INSERT INTO character_vermilion_gym_trash_state
 			(character_id, first_lock_can_index, second_lock_can_index)
 		VALUES ($1, $2, $3)

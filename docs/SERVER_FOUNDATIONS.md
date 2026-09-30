@@ -2,8 +2,9 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Current implementation checkpoint:
-`a6a8392` (2026-09-29). All earlier foundation checkpoints are retained in this
+Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+atomic Vermilion puzzle transitions (2026-09-30), following `a6a8392`.
+All earlier foundation checkpoints are retained in this
 branch's history. No push or production deployment is authorized by this goal.
 
 Keep Go, PostgreSQL, one deployable server, and the authoritative extractor,
@@ -28,15 +29,15 @@ evidence, including remaining-work notes that subsequent commits may resolve.
 | Area | Implemented | Still required |
 | --- | --- | --- |
 | Request/session boundary | Packet and connection limits, centralized session prerequisites, removal of insecure session takeover, actual transport closure, and location/visibility checks for scripted clicks, dialogue choices and direct trainer battles. | Audit remaining interaction/mutation endpoints; propagate cancellation through running commands and remaining database/network work. |
-| Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, and commit-before-publication in migrated paths. | Finish dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery of committed results across reconnects. |
+| Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery of committed results across reconnects. |
 | Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, and movement ticks coordinated with the owner. | Finish timer/callback/shared-state and Safari audits; prove remaining concurrent/reconnect behavior across real transports. |
 | Domains and wire contracts | Injected content-query service; typed character/wallet/bind, Pokédex/card, content detail, map-script and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
 | Lifecycle and verification | Owned HTTP/listeners, readiness, listener failure propagation, joined periodic workers, sealed session admissions, fail-closed staged preload, startup cancellation, and atomic scripted-event publication. | Bounded shutdown with active players and running work; complete transport/rendered integration and failure/retry/cancellation coverage. |
 
 ## Remaining work, in recommended order
 
-1. **Finish atomic dynamic mechanics.** Put Vermilion puzzle state and its lock
-   flags in one character-locked transaction. Audit Silph doors, item pickups,
+1. **Finish atomic dynamic mechanics.** Vermilion puzzle state and its lock
+   flags now share one character-locked transaction. Audit Silph doors, item pickups,
    Game Corner prizes and remaining field effects for the same requirements.
    Extend the shared transaction/domain operations already in use. Acceptance:
    a late failure leaves all affected state unchanged; retry and concurrent
@@ -86,6 +87,33 @@ deployment, and complete its applicable workflow and live checks.
 
 Continue with item 1 above. Keep this current summary synchronized with coherent
 checkpoint commits; retain the original milestone acceptance criteria below.
+
+## Atomic Vermilion puzzle checkpoint (2026-09-30)
+
+Previously the first-lock flag committed before selecting and saving the second
+can; resetting likewise cleared the flag before saving the replacement state.
+A later error could leave the flag and can indices inconsistent. Cached flag
+reads also allowed stale state to choose a transition.
+
+The live handler now supplies its owned database to one bounded transaction.
+It locks the character, loads durable flags and puzzle state, chooses the next
+state, and writes the state and flags together. Initialization joins that same
+transaction. Success is returned only after commit; the flag cache refreshes
+from committed storage. A cache refresh failure is logged without falsely
+reporting rollback of an accepted click. Simulator entry points share the same
+operation; fixture state writes also acquire the character lock.
+
+PostgreSQL race tests cover late state-write failure, reset rollback, deferred
+commit failure, successful retries, stale/unloaded caches, concurrent
+initialization and transitions, and lock-wait cancellation followed by retry.
+The world and simulator suites pass. This is durable-state evidence, not a
+rendered puzzle check or proof of reconnect recovery. Repeated clicks remain
+separate gameplay actions; request replay identity and recovery across transport
+loss still require the goal's durable retry work. No schema, generated content,
+frontend contract, push or deployment is part of this checkpoint.
+
+Next: audit Silph doors, pickups, prizes and field effects, then migrate unsafe
+operations through the existing character-locked transaction boundary.
 
 ## Milestones and acceptance checks
 
