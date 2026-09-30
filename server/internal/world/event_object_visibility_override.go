@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strings"
@@ -58,11 +59,15 @@ func setCharacterObjectVisibilityOverride(database db.DBTX, charID int64, object
 }
 
 func objectVisibilityOverridesForCharacter(charID int64) (map[int]objectVisibilityOverride, error) {
+	return objectVisibilityOverridesForCharacterContext(context.Background(), db.GlobalWorldDB.DB, charID)
+}
+
+func objectVisibilityOverridesForCharacterContext(ctx context.Context, database db.ContextDBTX, charID int64) (map[int]objectVisibilityOverride, error) {
 	overrides := make(map[int]objectVisibilityOverride)
 	if charID == 0 {
 		return overrides, nil
 	}
-	rows, err := db.GlobalWorldDB.DB.Query(`
+	rows, err := database.QueryContext(ctx, `
 		SELECT object_id, visible, source
 		FROM character_object_visibility_overrides
 		WHERE character_id = $1`,

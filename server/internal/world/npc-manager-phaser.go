@@ -694,9 +694,13 @@ func (m *PhaserActorManager) SendObjectActorToSession(objectID int, ses *session
 }
 
 func (m *PhaserActorManager) loadPhaserObjectActor(objectID int) (PhaserActor, error) {
+	return m.loadPhaserObjectActorContext(context.Background(), db.GlobalWorldDB.DB, objectID)
+}
+
+func (m *PhaserActorManager) loadPhaserObjectActorContext(ctx context.Context, database db.ContextDBTX, objectID int) (PhaserActor, error) {
 	var actor PhaserActor
 	var x, y sql.NullInt64
-	if err := db.GlobalWorldDB.DB.QueryRow(`
+	if err := database.QueryRowContext(ctx, `
 		SELECT id, map_id,
 			COALESCE(x, local_x) AS x,
 			COALESCE(y, local_y) AS y,

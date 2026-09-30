@@ -15,13 +15,7 @@ func (wh *WorldHandler) nativeScriptMap(ses *session.Session) (string, error) {
 	if wh == nil || wh.database == nil || ses == nil || !ses.HasValidClient() || ses.IsClosed() {
 		return "", fmt.Errorf("script location unavailable")
 	}
-	char := ses.Client.CharData()
-	x, y, mapID := int(char.X), int(char.Y), int(char.MapID)
-	if wh.PlayerMovement != nil {
-		if mx, my, mm, ok := wh.PlayerMovement.GetPosition(int(char.ID)); ok {
-			x, y, mapID = mx, my, mm
-		}
-	}
+	x, y, mapID := wh.scriptPlayerPosition(ses)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if mapID != UnifiedOverworldMapID {
@@ -50,4 +44,15 @@ func (wh *WorldHandler) nativeScriptMap(ses *session.Session) (string, error) {
 		return "", fmt.Errorf("script location at %d,%d has %d native maps", x, y, count)
 	}
 	return name, nil
+}
+
+func (wh *WorldHandler) scriptPlayerPosition(ses *session.Session) (x, y, mapID int) {
+	char := ses.Client.CharData()
+	x, y, mapID = int(char.X), int(char.Y), int(char.MapID)
+	if wh.PlayerMovement != nil {
+		if mx, my, mm, ok := wh.PlayerMovement.GetPosition(int(char.ID)); ok {
+			x, y, mapID = mx, my, mm
+		}
+	}
+	return x, y, mapID
 }

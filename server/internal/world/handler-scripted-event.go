@@ -1,13 +1,12 @@
 package world
 
 import (
-	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 
 	"capturequest/internal/api/opcodes"
-	"capturequest/internal/db"
 	"capturequest/internal/session"
 )
 
@@ -60,17 +59,18 @@ func HandleScriptedEventInteract(ses *session.Session, payload []byte, wh *World
 		return false
 	}
 
-	mapName, triggerKeys, err := scriptedEventTriggerKeys(objectID)
+	actor, mapName, err := wh.scriptInteractionTarget(ses, objectID)
 	if err != nil {
-		if err != sql.ErrNoRows {
-			log.Printf("[ScriptedEvent] Failed to load object %d: %v", objectID, err)
+		if !errors.Is(err, errScriptInteractionDenied) {
+			log.Printf("[ScriptedEvent] Authorize object %d: %v", objectID, err)
 		}
 		ses.SendStreamJSON(ScriptedEventInteractResponse{
-			Success: true,
-			Started: false,
+			Success: false,
+			Error:   "actor unavailable or out of reach",
 		}, opcodes.ScriptedEventInteractResponse)
 		return false
 	}
+	triggerKeys := scriptedEventTriggerKeys(actor)
 
 	charID := int64(ses.Client.CharData().ID)
 	if handled, err := tryHandleVermilionGymTrashClick(ses, wh, charID, mapName, triggerKeys); handled || err != nil {
@@ -200,34 +200,19 @@ func dynamicDialogueActions(lines []string) (json.RawMessage, error) {
 	})
 }
 
-func scriptedEventTriggerKeys(objectID int) (string, []string, error) {
-	var (
-		objectType sql.NullString
-		name       sql.NullString
-		text       sql.NullString
-		mapName    string
-	)
-	err := db.GlobalWorldDB.DB.QueryRow(`
-		SELECT pm.name, po.object_type, po.name, po.text
-		FROM phaser_objects po
-		JOIN phaser_maps pm ON pm.id = po.map_id
-		WHERE po.id = $1`, objectID).Scan(&mapName, &objectType, &name, &text)
-	if err != nil {
-		return "", nil, err
-	}
-
+func scriptedEventTriggerKeys(actor PhaserActor) []string {
 	keys := []string{
-		fmt.Sprintf("object:%d", objectID),
-		fmt.Sprintf("phaser_object:%d", objectID),
+		fmt.Sprintf("object:%d", actor.DbID),
+		fmt.Sprintf("phaser_object:%d", actor.DbID),
 	}
-	if text.Valid && text.String != "" {
-		keys = append(keys, text.String)
+	if actor.Text != nil && *actor.Text != "" {
+		keys = append(keys, *actor.Text)
 	}
-	if name.Valid && name.String != "" {
-		keys = append(keys, name.String)
+	if actor.Name != nil && *actor.Name != "" {
+		keys = append(keys, *actor.Name)
 	}
-	if objectType.Valid && objectType.String != "" {
-		keys = append(keys, fmt.Sprintf("%s:%d", objectType.String, objectID))
+	if actor.ObjectType != "" {
+		keys = append(keys, fmt.Sprintf("%s:%d", actor.ObjectType, actor.DbID))
 	}
-	return mapName, keys, nil
+	return keys
 }

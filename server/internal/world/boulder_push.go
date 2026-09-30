@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"database/sql"
 	"strings"
 
@@ -204,7 +205,11 @@ type objectPosition struct {
 }
 
 func characterObjectPositions(charID int64) (map[int]objectPosition, error) {
-	rows, err := db.GlobalWorldDB.DB.Query(
+	return characterObjectPositionsContext(context.Background(), db.GlobalWorldDB.DB, charID)
+}
+
+func characterObjectPositionsContext(ctx context.Context, database db.ContextDBTX, charID int64) (map[int]objectPosition, error) {
+	rows, err := database.QueryContext(ctx,
 		`SELECT object_id, x, y FROM character_object_positions WHERE character_id = $1`,
 		charID,
 	)

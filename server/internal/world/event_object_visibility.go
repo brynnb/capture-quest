@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"database/sql"
 	"log"
 
@@ -150,7 +151,11 @@ func currentEventObjectVisibility(charID int64, efm *EventFlagManager, objectNam
 }
 
 func eventObjectVisibilityForMap(mapID int) ([]eventObjectVisibility, error) {
-	rows, err := db.GlobalWorldDB.DB.Query(`
+	return eventObjectVisibilityForMapContext(context.Background(), db.GlobalWorldDB.DB, mapID)
+}
+
+func eventObjectVisibilityForMapContext(ctx context.Context, database db.ContextDBTX, mapID int) ([]eventObjectVisibility, error) {
+	rows, err := database.QueryContext(ctx, `
 		SELECT object_name, visible, requires_flag, requires_flag_absent, label
 		FROM phaser_event_object_visibility
 		WHERE map_id = $1

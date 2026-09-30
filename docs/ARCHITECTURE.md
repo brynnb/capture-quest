@@ -338,7 +338,13 @@ field-name conversion or generated-name postprocessor will remain.
    identity comes from original tile source-map provenance at the owned movement
    position, with a five-second query budget. Missing or conflicting provenance
    rejects issuance; editing or erasing tile art does not change script identity.
-   NPC-click proximity and shared issuance authorization still need auditing.
+   Scripted NPC/object clicks resolve the current runtime position followed by
+   per-character position overrides and reject hidden targets before puzzle/door
+   mutations or token issuance. Interaction requires adjacency or a straight
+   two-tile reach across an effective talk-over tile, including eligible event
+   tile properties. The authorization loaders share one five-second budget and
+   injected database; SQL failures reject the request. Other interaction paths
+   and shared issuance authorization still need auditing.
    Remaining families must follow the same migration: extract substantive
    response families, reuse tagged types, replace map enrichment with flat
    typed views, and audit actual keys, nullability and empty collections against

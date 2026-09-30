@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -225,7 +226,11 @@ func eventTileMapID(mapName string, ses *session.Session) int {
 }
 
 func eventTileOverridesForMap(mapID int) ([]eventTileOverride, error) {
-	rows, err := db.GlobalWorldDB.DB.Query(`
+	return eventTileOverridesForMapContext(context.Background(), db.GlobalWorldDB.DB, mapID)
+}
+
+func eventTileOverridesForMapContext(ctx context.Context, database db.ContextDBTX, mapID int) ([]eventTileOverride, error) {
+	rows, err := database.QueryContext(ctx, `
 		SELECT x, y, tile_image_id, collision_type, requires_flag, requires_flag_absent, label
 		FROM phaser_event_tile_overrides
 		WHERE map_id = $1

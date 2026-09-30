@@ -593,6 +593,33 @@ rendered gameplay check, push or deployment. NPC-click location/proximity checks
 must still precede durable puzzle/door effects; broader shared issuance,
 ownership/shutdown, domain/wire migration and integration work remain incomplete.
 
+Scripted interaction authorization checkpoint: the actor ID now resolves through
+the registry to a server-loaded object. Before any ordinary script issuance,
+Vermilion trash state creation or Silph door flag write, the handler validates
+effective visibility, movement-map identity and reach. It reuses locked/cloned
+NPC runtime state, per-character position overrides and existing visibility
+evaluators. The existing client rule is enforced: cardinal adjacency, or exactly
+two cardinal tiles across an effective talk-over tile. Eligible event tile art
+can introduce or remove that permission. Native overworld actor IDs and unified
+player IDs share global coordinates; interiors remain separate.
+
+The existing object/position/visibility/tile loaders now also accept context and
+an injected database without duplicating their SQL. Authorization has one shared
+five-second budget; missing data, SQL errors or hidden/distant targets cannot
+fall back to issuing events. Expected denials stay quiet; terminal load failures
+are logged with the object ID. Trigger keys come from the authorized object.
+
+Dispatcher/framing PostgreSQL tests prove valid adjacency/counters, event counter
+changes, diagonal/distant/other-map rejection, runtime and per-character position
+precedence, visibility rules/overrides, unified overworld reach and SQL failure.
+Remote puzzle and door requests leave durable state/flags untouched; valid
+requests still create puzzle state and unlock a door. Locked visibility queries
+time out and retry successfully. World/server/session/simulator PostgreSQL race
+suites passed and all Go packages compile. No rendered check, push or deployment.
+Other dialogue/trainer interaction authorization, atomic dynamic puzzle updates,
+durable duplicate/reconnect delivery, broader domain/wire migration and bounded
+shutdown remain part of the active original goal.
+
 ## Reproducible PostgreSQL tests
 
 With `initdb`, `pg_ctl`, and Go available, run:
