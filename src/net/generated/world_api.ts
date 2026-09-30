@@ -557,12 +557,6 @@ export interface PhaserTrainerDataRequest {
   trainerClass: string; // e.g. "BUG_CATCHER"
   trainerPartyIndex: number /* int */; // party index within the class
 }
-export interface PhaserMapScriptsRequest {
-  mapName: string; // CamelCase map name e.g. "PalletTown"
-}
-export interface PhaserLearnsetRequest {
-  pokemonId: number /* int */;
-}
 export interface PhaserHiddenObjectsRequest {
   mapId: number /* int */;
 }
@@ -617,37 +611,6 @@ export interface PhaserTrainerDataResponse {
   party: PhaserTrainerPartyPokemon[];
   header?: PhaserTrainerHeader;
   success: boolean;
-}
-export interface PhaserLearnsetEntry {
-  level: number /* int */;
-  moveName: string;
-  moveId?: number /* int */;
-}
-export interface PhaserTMHMEntry {
-  tmHmName: string;
-  moveName: string;
-  moveId?: number /* int */;
-  isHm: number /* int */;
-}
-export interface PhaserMapScript {
-  scriptIndex: number /* int */;
-  scriptLabel: string;
-  scriptConstant: string;
-  rawAsm?: string;
-}
-export interface PhaserEventFlag {
-  flagName: string;
-  operation: string;
-  contextLabel?: string;
-}
-export interface PhaserCoordinateTrigger {
-  label: string;
-  x: number /* int */;
-  y: number /* int */;
-}
-export interface PhaserNPCMovement {
-  label: string;
-  movements: string; // JSON array string
 }
 export interface PhaserHiddenItem {
   id: number /* int */;

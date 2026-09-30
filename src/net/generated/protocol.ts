@@ -94,6 +94,61 @@ export interface PhaserItemDataResponse extends PhaserItemFull {
 }
 
 //////////
+// source: map_content.go
+
+export interface PhaserMapScriptsRequest {
+  mapName: string; // Runtime map name
+}
+export interface PhaserLearnsetRequest {
+  pokemonId: number /* int */;
+}
+export interface PhaserLearnsetEntry {
+  level: number /* int */;
+  moveName: string;
+  moveId: number | null;
+}
+export interface PhaserTMHMEntry {
+  tmHmName: string;
+  moveName: string;
+  moveId: number | null;
+  isHm: number /* int */;
+}
+export interface PhaserMapScript {
+  scriptIndex: number /* int */;
+  scriptLabel: string;
+  scriptConstant: string;
+  rawAsm: string | null;
+}
+export interface PhaserEventFlag {
+  flagName: string;
+  operation: string;
+  contextLabel: string | null;
+}
+export interface PhaserCoordinateTrigger {
+  label: string;
+  x: number /* int */;
+  y: number /* int */;
+}
+export interface PhaserNPCMovement {
+  label: string;
+  movements: string; // JSON array string
+}
+export interface PhaserMapScriptsResponse {
+  success: true;
+  mapName: string;
+  scripts: PhaserMapScript[];
+  eventFlags: PhaserEventFlag[];
+  coordinateTriggers: PhaserCoordinateTrigger[];
+  npcMovements: PhaserNPCMovement[];
+}
+export interface PhaserLearnsetResponse {
+  success: true;
+  pokemonId: number /* int */;
+  learnset: PhaserLearnsetEntry[];
+  tmhm: PhaserTMHMEntry[];
+}
+
+//////////
 // source: pokedex.go
 
 export interface PokedexSpeciesEntry {

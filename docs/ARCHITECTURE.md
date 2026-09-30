@@ -326,6 +326,14 @@ field-name conversion or generated-name postprocessor will remain.
    default move fields), using their already declared JSON names. Database
    errors are distinguished from missing records. Local TM/HM preview records
    use a generated-field projection instead of pretending to be full responses.
+   Map-script and learnset aggregates now also use the service and protocol
+   types. They read under one read-only repeatable-read transaction and one
+   five-second budget, returning no partial projection on any failure. A shared
+   typed row collector closes results between queries and reports scan/iteration
+   failures. Empty lists are arrays. Their direct encoding corrects rawASM to
+   rawAsm and tMHMName/isHM to tmHmName/isHm. The map-ready request uses its
+   generated request type; its cutscene issuance still needs authoritative
+   location authorization rather than trusting the requested map name.
    Remaining families must follow the same migration: extract substantive
    response families, reuse tagged types, replace map enrichment with flat
    typed views, and audit actual keys, nullability and empty collections against

@@ -1,3 +1,4 @@
+import type { PhaserMapScriptsRequest } from "@/net/generated/protocol";
 /**
  * Phaser Network Service
  *
@@ -51,7 +52,7 @@ export function requestMapScripts(mapName: string): void {
     console.warn("[PhaserNetwork] Not connected - cannot request map scripts");
     return;
   }
-  NetworkBridge.send({ mapName }, OpCodes.PhaserMapScriptsRequest);
+  NetworkBridge.send({ mapName } satisfies PhaserMapScriptsRequest, OpCodes.PhaserMapScriptsRequest);
 }
 
 /**

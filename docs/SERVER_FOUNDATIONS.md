@@ -550,6 +550,30 @@ bundling warnings remain. The full migration, domain cleanup and server-wide
 shutdown cancellation remain unfinished. No production or rendered gameplay
 verification is claimed.
 
+Map/learnset aggregate checkpoint: request, entry and response declarations were
+extracted into protocol. Handlers delegate all metadata reads to the injected
+content service and encode typed success/error responses. The service uses one
+read-only repeatable-read transaction and one five-second context per aggregate;
+every query receives that bounded context. A reusable typed collector closes rows
+between queries, rejects scan/iteration errors and preserves empty arrays. Late
+query or commit failure discards the entire projection. Direct JSON tags correct
+rawASM, tMHMName and isHM disagreements while retaining source values and explicit
+nullable fields. Existing map-ready cutscene handling stays after successful
+metadata publication; failed publication no longer starts a cutscene.
+
+Focused PostgreSQL checks prove snapshot consistency across a concurrent update,
+late query failure, cancellation/retry, cancelled commit, empty arrays, nullable
+fields, source movement strings and framed dispatcher responses. A locked final
+query also proves the aggregate's own five-second budget for background callers.
+Content/world/protocol/simulator race suites passed. Frontend typecheck, runtime
+asset validation, production build and byte-stable regeneration passed; all Go
+packages compile. Existing bundling warnings remain; no rendered check was run.
+The map-ready handler still
+passes the client's requested map name to cutscene selection; shared issuance
+and native player-location authorization need the next audit. Other metadata
+families, wire-helper retirement, domain cleanup, ownership/shutdown work and
+rendered integration remain incomplete. No push or deployment.
+
 ## Reproducible PostgreSQL tests
 
 With `initdb`, `pg_ctl`, and Go available, run:

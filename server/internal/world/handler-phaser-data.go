@@ -28,14 +28,6 @@ type PhaserTrainerDataRequest struct {
 	TrainerPartyIndex int    `json:"trainerPartyIndex"` // party index within the class
 }
 
-type PhaserMapScriptsRequest struct {
-	MapName string `json:"mapName"` // CamelCase map name e.g. "PalletTown"
-}
-
-type PhaserLearnsetRequest struct {
-	PokemonID int `json:"pokemonId"`
-}
-
 type PhaserHiddenObjectsRequest struct {
 	MapID int `json:"mapId"`
 }
@@ -100,43 +92,6 @@ type PhaserTrainerDataResponse struct {
 	Party   []PhaserTrainerPartyPokemon `json:"party"`
 	Header  *PhaserTrainerHeader        `json:"header"`
 	Success bool                        `json:"success"`
-}
-
-type PhaserLearnsetEntry struct {
-	Level    int    `json:"level"`
-	MoveName string `json:"moveName"`
-	MoveID   *int   `json:"moveId"`
-}
-
-type PhaserTMHMEntry struct {
-	TMHMName string `json:"tmHmName"`
-	MoveName string `json:"moveName"`
-	MoveID   *int   `json:"moveId"`
-	IsHM     int    `json:"isHm"`
-}
-
-type PhaserMapScript struct {
-	ScriptIndex    int     `json:"scriptIndex"`
-	ScriptLabel    string  `json:"scriptLabel"`
-	ScriptConstant string  `json:"scriptConstant"`
-	RawASM         *string `json:"rawAsm"`
-}
-
-type PhaserEventFlag struct {
-	FlagName     string  `json:"flagName"`
-	Operation    string  `json:"operation"`
-	ContextLabel *string `json:"contextLabel"`
-}
-
-type PhaserCoordinateTrigger struct {
-	Label string `json:"label"`
-	X     int    `json:"x"`
-	Y     int    `json:"y"`
-}
-
-type PhaserNPCMovement struct {
-	Label     string `json:"label"`
-	Movements string `json:"movements"` // JSON array string
 }
 
 type PhaserHiddenItem struct {
@@ -436,100 +391,20 @@ func HandlePhaserMoveDataRequest(ses *session.Session, payload []byte, wh *World
 
 // HandlePhaserMapScriptsRequest returns map scripts, event flags, coordinate triggers, and NPC movements for a map
 func HandlePhaserMapScriptsRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	var req PhaserMapScriptsRequest
+	var req protocol.PhaserMapScriptsRequest
 	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("[Phaser] Invalid MapScriptsRequest: %v", err)
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: "invalid map scripts request"}, opcodes.PhaserMapScriptsResponse)
 		return false
 	}
-
-	// Map scripts
-	scriptRows, err := db.GlobalWorldDB.DB.Query(`
-		SELECT script_index, script_label, script_constant, raw_asm
-		FROM phaser_map_scripts WHERE map_name = $1 ORDER BY script_index`, req.MapName)
+	res, err := wh.Content.MapScripts(context.Background(), req.MapName)
 	if err != nil {
-		log.Printf("[Phaser] Error querying map scripts for %s: %v", req.MapName, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.PhaserMapScriptsResponse)
+		log.Printf("[Phaser] Map script query failed for %s: %v", req.MapName, err)
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: "failed to load map scripts"}, opcodes.PhaserMapScriptsResponse)
 		return false
 	}
-	defer scriptRows.Close()
-
-	var scripts []PhaserMapScript
-	for scriptRows.Next() {
-		var s PhaserMapScript
-		if err := scriptRows.Scan(&s.ScriptIndex, &s.ScriptLabel, &s.ScriptConstant, &s.RawASM); err != nil {
-			continue
-		}
-		scripts = append(scripts, s)
+	if err := ses.SendStreamJSON(res, opcodes.PhaserMapScriptsResponse); err != nil {
+		return false
 	}
-
-	// Event flags
-	flagRows, err := db.GlobalWorldDB.DB.Query(`
-		SELECT flag_name, operation, context_label
-		FROM phaser_event_flags WHERE map_name = $1`, req.MapName)
-	if err != nil {
-		log.Printf("[Phaser] Error querying event flags for %s: %v", req.MapName, err)
-	}
-	var flags []PhaserEventFlag
-	if flagRows != nil {
-		defer flagRows.Close()
-		for flagRows.Next() {
-			var f PhaserEventFlag
-			if err := flagRows.Scan(&f.FlagName, &f.Operation, &f.ContextLabel); err != nil {
-				continue
-			}
-			flags = append(flags, f)
-		}
-	}
-
-	// Coordinate triggers
-	triggerRows, err := db.GlobalWorldDB.DB.Query(`
-		SELECT label, x, y
-		FROM phaser_coordinate_triggers WHERE map_name = $1`, req.MapName)
-	if err != nil {
-		log.Printf("[Phaser] Error querying coordinate triggers for %s: %v", req.MapName, err)
-	}
-	var triggers []PhaserCoordinateTrigger
-	if triggerRows != nil {
-		defer triggerRows.Close()
-		for triggerRows.Next() {
-			var t PhaserCoordinateTrigger
-			if err := triggerRows.Scan(&t.Label, &t.X, &t.Y); err != nil {
-				continue
-			}
-			triggers = append(triggers, t)
-		}
-	}
-
-	// NPC movement data
-	movementRows, err := db.GlobalWorldDB.DB.Query(`
-		SELECT label, movements
-		FROM phaser_npc_movement_data WHERE map_name = $1`, req.MapName)
-	if err != nil {
-		log.Printf("[Phaser] Error querying NPC movements for %s: %v", req.MapName, err)
-	}
-	var movements []PhaserNPCMovement
-	if movementRows != nil {
-		defer movementRows.Close()
-		for movementRows.Next() {
-			var m PhaserNPCMovement
-			if err := movementRows.Scan(&m.Label, &m.Movements); err != nil {
-				continue
-			}
-			movements = append(movements, m)
-		}
-	}
-
-	res := map[string]interface{}{
-		"success":            true,
-		"mapName":            req.MapName,
-		"scripts":            StructToMap(scripts),
-		"eventFlags":         StructToMap(flags),
-		"coordinateTriggers": StructToMap(triggers),
-		"npcMovements":       StructToMap(movements),
-	}
-	ses.SendStreamJSON(res, opcodes.PhaserMapScriptsResponse)
-	log.Printf("[Phaser] Sent map scripts for %s (%d scripts, %d flags, %d triggers, %d movements)",
-		req.MapName, len(scripts), len(flags), len(triggers), len(movements))
 
 	if ses.HasValidClient() && wh.Cutscenes != nil && wh.EventFlags != nil {
 		charID := int64(ses.Client.CharData().ID)
@@ -546,59 +421,18 @@ func HandlePhaserMapScriptsRequest(ses *session.Session, payload []byte, wh *Wor
 
 // HandlePhaserLearnsetRequest returns learnset + TM/HM compatibility for a Pokémon
 func HandlePhaserLearnsetRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	var req PhaserLearnsetRequest
+	var req protocol.PhaserLearnsetRequest
 	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("[Phaser] Invalid LearnsetRequest: %v", err)
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: "invalid learnset request"}, opcodes.PhaserLearnsetResponse)
 		return false
 	}
-
-	// Level-up learnset
-	learnRows, err := db.GlobalWorldDB.DB.Query(`
-		SELECT level, move_name, move_id
-		FROM phaser_pokemon_learnset WHERE pokemon_id = $1 ORDER BY level`, req.PokemonID)
+	res, err := wh.Content.Learnset(context.Background(), req.PokemonID)
 	if err != nil {
-		log.Printf("[Phaser] Error querying learnset for pokemon %d: %v", req.PokemonID, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.PhaserLearnsetResponse)
+		log.Printf("[Phaser] Learnset query failed for pokemon %d: %v", req.PokemonID, err)
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: "failed to load learnset"}, opcodes.PhaserLearnsetResponse)
 		return false
-	}
-	defer learnRows.Close()
-
-	var learnset []PhaserLearnsetEntry
-	for learnRows.Next() {
-		var e PhaserLearnsetEntry
-		if err := learnRows.Scan(&e.Level, &e.MoveName, &e.MoveID); err != nil {
-			continue
-		}
-		learnset = append(learnset, e)
-	}
-
-	// TM/HM compatibility
-	tmhmRows, err := db.GlobalWorldDB.DB.Query(`
-		SELECT tm_hm_name, move_name, move_id, is_hm
-		FROM phaser_pokemon_tmhm WHERE pokemon_id = $1 ORDER BY tm_hm_name`, req.PokemonID)
-	if err != nil {
-		log.Printf("[Phaser] Error querying TM/HM for pokemon %d: %v", req.PokemonID, err)
-	}
-	var tmhm []PhaserTMHMEntry
-	if tmhmRows != nil {
-		defer tmhmRows.Close()
-		for tmhmRows.Next() {
-			var e PhaserTMHMEntry
-			if err := tmhmRows.Scan(&e.TMHMName, &e.MoveName, &e.MoveID, &e.IsHM); err != nil {
-				continue
-			}
-			tmhm = append(tmhm, e)
-		}
-	}
-
-	res := map[string]interface{}{
-		"success":   true,
-		"pokemonId": req.PokemonID,
-		"learnset":  StructToMap(learnset),
-		"tmhm":      StructToMap(tmhm),
 	}
 	ses.SendStreamJSON(res, opcodes.PhaserLearnsetResponse)
-	log.Printf("[Phaser] Sent learnset for pokemon %d (%d level-up, %d TM/HM)", req.PokemonID, len(learnset), len(tmhm))
 	return false
 }
 
