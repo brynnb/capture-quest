@@ -262,9 +262,11 @@ func HandleGameCornerBuyCoins(ses *session.Session, payload []byte, wh *WorldHan
 	}
 	charID := int64(char.ID)
 
-	_, _, mapID := wh.scriptPlayerPosition(ses)
-	if mapID != GameCornerMapID {
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Visit the Game Corner first."}, opcodes.GameCornerCoinBalanceResponse)
+	if err := wh.authorizeSourceInteraction(ses, GameCornerMapID, "TEXT_GAMECORNER_CLERK1"); err != nil {
+		if !errors.Is(err, errScriptInteractionDenied) {
+			log.Printf("authorize Game Corner coin clerk for character %d: %v", charID, err)
+		}
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Move to the coin clerk first."}, opcodes.GameCornerCoinBalanceResponse)
 		return false
 	}
 	result, err := buyGameCornerCoins(context.Background(), wh.database, charID)

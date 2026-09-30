@@ -118,16 +118,23 @@ func (wh *WorldHandler) authorizePrizeWindow(ses *session.Session, prizeID int) 
 	if window == 0 {
 		return errScriptInteractionDenied
 	}
+	text := fmt.Sprintf("TEXT_GAMECORNERPRIZEROOM_PRIZE_VENDOR_%d", window)
+	return wh.authorizeSourceInteraction(ses, PrizeRoomMapID, text)
+}
+
+// Resolve source identity once for direct gameplay requests that do not carry
+// an actor ID. Both prize windows and the coin clerk use the same bounded,
+// fail-closed identity and runtime reach/visibility boundary.
+func (wh *WorldHandler) authorizeSourceInteraction(ses *session.Session, mapID int, text string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	text := fmt.Sprintf("TEXT_GAMECORNERPRIZEROOM_PRIZE_VENDOR_%d", window)
 	var objectID *int
 	var count int
-	if err := wh.database.QueryRowContext(ctx, `SELECT MIN(id),COUNT(*) FROM phaser_objects WHERE map_id=$1 AND text=$2`, PrizeRoomMapID, text).Scan(&objectID, &count); err != nil {
+	if err := wh.database.QueryRowContext(ctx, `SELECT MIN(id),COUNT(*) FROM phaser_objects WHERE map_id=$1 AND text=$2`, mapID, text).Scan(&objectID, &count); err != nil {
 		return err
 	}
 	if count != 1 || objectID == nil {
-		return fmt.Errorf("prize window %d has %d source actors", window, count)
+		return fmt.Errorf("source interaction map=%d text=%q has %d actors", mapID, text, count)
 	}
 	_, _, err := wh.scriptInteractionTargetContext(ctx, ses, *objectID)
 	return err

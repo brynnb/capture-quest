@@ -158,6 +158,61 @@ func TestGameCornerSlotsRollbackAndConcurrentSpending(t *testing.T) {
 	}
 }
 
+func TestGameCornerCoinPurchaseRequiresSourceClerkReach(t *testing.T) {
+	database, wh, ses, messages := battleTestWorld(t)
+	testdb.Exec(t, database, `INSERT INTO cq_items(id,name,short_name,is_key_item) VALUES(69,'COIN CASE','COIN_CASE',true);
+ UPDATE character_wallet SET pokedollars=2000 WHERE character_id=42;
+ INSERT INTO character_coins(character_id,coins) VALUES(42,3);
+ INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(135,'GAME_CORNER',20,20,0);
+ INSERT INTO phaser_objects(id,map_id,x,y,object_type,name,text) VALUES(10,135,5,6,'npc','CLERK1','TEXT_GAMECORNER_CLERK1'),(11,135,10,6,'npc','CLERK2','TEXT_GAMECORNER_CLERK2');
+ INSERT INTO phaser_tiles(map_id,x,y,tile_image_id,talk_over_tile) VALUES(135,5,7,1,true),(135,10,7,1,true)`)
+	if _, err := cqitems.NewStore(database).AddItemToInventory(42, 69, 1); err != nil {
+		t.Fatal(err)
+	}
+	wh.ActorRegistry = NewActorRegistry()
+	wh.ActorManager = NewPhaserActorManager(wh)
+	db.GlobalWorldDB = nil
+	ses.Client.CharData().MapID = GameCornerMapID
+	ses.Client.CharData().Y = 8
+	buy := func(wantSuccess bool) {
+		t.Helper()
+		messages.streams = nil
+		battleDispatch(t, wh, ses, opcodes.GameCornerBuyCoinsRequest, `{}`)
+		if len(messages.streams) == 0 {
+			t.Fatal("missing coin purchase response")
+		}
+		var response struct {
+			Success bool
+			Error   string
+		}
+		if err := json.Unmarshal(messages.streams[0].payload, &response); err != nil || response.Success != wantSuccess {
+			t.Fatalf("response %+v, want success=%v: %v", response, wantSuccess, err)
+		}
+		if !wantSuccess && (len(messages.streams) != 1 || response.Error != "Move to the coin clerk first.") {
+			t.Fatalf("denied purchase published unexpected result: %+v", messages.streams)
+		}
+	}
+	for _, x := range []float64{15, 10} {
+		ses.Client.CharData().X = x
+		buy(false)
+	}
+	ses.Client.CharData().X = 5
+	testdb.Exec(t, database, `INSERT INTO character_object_visibility_overrides(character_id,object_id,visible,source) VALUES(42,10,false,'test')`)
+	buy(false)
+	money, err := cqitems.NewStore(database).GetCharacterMoney(42)
+	coins, coinErr := gameCornerCoinBalance(database, 42)
+	if err != nil || coinErr != nil || money != 2000 || coins != 3 {
+		t.Fatalf("denied purchase changed balances money=%d coins=%d %v %v", money, coins, err, coinErr)
+	}
+	testdb.Exec(t, database, `DELETE FROM character_object_visibility_overrides`)
+	buy(true)
+	money, err = cqitems.NewStore(database).GetCharacterMoney(42)
+	coins, coinErr = gameCornerCoinBalance(database, 42)
+	if err != nil || coinErr != nil || money != 1000 || coins != 53 {
+		t.Fatalf("valid purchase balances money=%d coins=%d %v %v", money, coins, err, coinErr)
+	}
+}
+
 func TestGameCornerCoinHandlersDoNotPublishFailedChanges(t *testing.T) {
 	database, wh, ses, messages := battleTestWorld(t)
 	testdb.Exec(t, database, `INSERT INTO cq_items(id,name,short_name,is_key_item) VALUES(69,'COIN CASE','COIN_CASE',true);
@@ -167,12 +222,20 @@ func TestGameCornerCoinHandlersDoNotPublishFailedChanges(t *testing.T) {
 	if _, err := cqitems.NewStore(database).AddItemToInventory(42, 69, 1); err != nil {
 		t.Fatal(err)
 	}
+	wh.ActorRegistry = NewActorRegistry()
+	wh.ActorManager = NewPhaserActorManager(wh)
+	testdb.Exec(t, database, `INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(135,'GAME_CORNER',20,20,0),(137,'GAME_CORNER_PRIZE_ROOM',10,10,0);
+ INSERT INTO phaser_objects(id,map_id,x,y,object_type,name,text) VALUES(10,135,5,6,'npc','CLERK1','TEXT_GAMECORNER_CLERK1');
+ INSERT INTO phaser_tiles(map_id,x,y,tile_image_id,talk_over_tile) VALUES(135,5,7,1,true);
+ INSERT INTO phaser_hidden_objects(id,map_constant,map_id,x,y,item_or_direction,routine) VALUES(1,'GAME_CORNER',135,6,8,'ANY_FACING','StartSlotMachine')`)
+	ses.Client.CharData().X = 5
+	ses.Client.CharData().Y = 8
 	db.GlobalWorldDB = nil
 	for _, mapID := range []int{PrizeRoomMapID, GameCornerMapID} {
 		ses.Client.CharData().MapID = uint32(mapID)
 		for _, opcode := range []opcodes.OpCode{opcodes.GameCornerBuyCoinsRequest, opcodes.GameCornerSlotPlayRequest} {
 			messages.streams = nil
-			battleDispatch(t, wh, ses, opcode, `{"bet":3,"isLucky":true}`)
+			battleDispatch(t, wh, ses, opcode, `{"bet":3,"machineX":6,"machineY":8,"isLucky":true}`)
 			if len(messages.streams) != 1 {
 				t.Fatalf("failed handler publication %+v", messages.streams)
 			}
@@ -182,6 +245,15 @@ func TestGameCornerCoinHandlersDoNotPublishFailedChanges(t *testing.T) {
 			}
 			if err := json.Unmarshal(messages.streams[0].payload, &response); err != nil || response.Success || response.Error == "" {
 				t.Fatalf("failure %+v %v", response, err)
+			}
+			if mapID == GameCornerMapID {
+				expected := "Could not buy coins."
+				if opcode == opcodes.GameCornerSlotPlayRequest {
+					expected = "Could not play slots."
+				}
+				if response.Error != expected {
+					t.Fatalf("transaction failure was masked by earlier denial: %+v", response)
+				}
 			}
 		}
 	}

@@ -616,19 +616,18 @@ committing an unlock; cache contents do not determine the durable transition.
 Game Corner prize purchases load catalog identity, Coin Case ownership and the
 coin balance inside one character-locked transaction. Pokémon/TM grants, Pokédex
 registration and payment share its commit. The live prize handler injects its
-database, checks the owned player location against the prize room and publishes
+database, checks owned reach/visibility to the selected source prize window and publishes
 the transaction's inventory/wallet snapshot after commit. Simulator purchase by
-name shares this operation. Coin/slot/hidden-coin operations and catalog-list
-dependencies remain tracked in the foundations roadmap.
+name shares this operation. Remaining catalog-list dependencies are tracked in
+the foundations roadmap.
 
 Coin purchases, spins and hidden-coin collection also acquire the character lock
 before eligibility/balance reads and compose through the bounded transaction
 helper. Their live coin/slot handlers use the owned database and owned map
 position; simulator wrappers share the operation. Wallet payment, bet/payout and
 collection-marker/grant pairs each commit atomically. Failed transactions discard
-speculative results. Server-issued machine luck and actor reach are still required
-for the slot wire boundary; the foundations roadmap records this unresolved
-client-trust issue alongside durable replay/reconnect recovery.
+speculative results. Durable replay/reconnect recovery remains tracked in the
+foundations roadmap.
 
 The live slot endpoint now names a generated hidden-object coordinate instead
 of accepting luck. The server resolves source `StartSlotMachine` records, applies
@@ -647,3 +646,10 @@ actor/counter interaction evaluator before invoking the atomic purchase operatio
 A catalog listing alone grants no purchase authorization. The standalone simulator
 still exercises the same transaction operation without pretending to simulate a
 rendered player's physical interaction.
+
+Coin purchases resolve the unique imported `TEXT_GAMECORNER_CLERK1` actor on
+map `135` through the same bounded source-identity helper as prize windows.
+The existing actor/counter evaluator checks current owned position and visibility
+before the atomic payment/grant operation. Map membership or proximity to another
+clerk grants no purchase authorization. Missing/ambiguous source identities fail
+closed rather than selecting an arbitrary actor.

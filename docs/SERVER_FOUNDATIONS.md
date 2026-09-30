@@ -3,8 +3,8 @@
 Status: active. Started 2026-09-25 from `02c51ba`.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-source-window prize authorization and rendered Game Corner verification
-(2026-09-30), following slot boundary checkpoint `16ec82b`.
+source coin-clerk authorization (2026-09-30), following prize-window and
+rendered Game Corner checkpoint `895991f`.
 All earlier foundation checkpoints are retained in this
 branch's history. No push or production deployment is authorized by this goal.
 
@@ -42,7 +42,8 @@ evidence, including remaining-work notes that subsequent commits may resolve.
    markers and Silph Card Key checks/unlocks. Game Corner prizes, coin purchases,
    slots and hidden-coin collection now share this boundary; slot requests validate
    imported machine availability/reach and use server-owned luck; prize buys require
-   reach/visibility to the source window selling the selected prize. Audit remaining field
+   reach/visibility to the source window selling the selected prize, and coin buys
+   require reach/visibility to the source coin clerk. Audit remaining field
    effects and other mutation paths for the same requirements.
    Extend the shared transaction/domain operations already in use. Acceptance:
    a late failure leaves all affected state unchanged; retry and concurrent
@@ -92,6 +93,33 @@ deployment, and complete its applicable workflow and live checks.
 
 Continue with item 1 above. Keep this current summary synchronized with coherent
 checkpoint commits; retain the original milestone acceptance criteria below.
+
+## Coin-clerk interaction checkpoint (2026-09-30)
+
+Coin purchases now require current reach and visibility to the unique imported
+`TEXT_GAMECORNER_CLERK1` actor in map `135`, identified by the bundled
+`scripts/GameCorner.asm` source. Being elsewhere in the Game Corner or standing
+at the other clerk no longer authorizes a purchase. Coin clerks and prize windows
+share a bounded source-identity lookup and the existing actor/counter interaction
+evaluator; missing or ambiguous source identities fail closed with diagnostics.
+The existing atomic payment/grant operation and payment/cap rules are unchanged.
+
+Dispatcher tests use the handler's captured database with the global database
+disabled. They reject distant, wrong-clerk and hidden-clerk purchases without
+changing either balance, then allow the visible clerk across a real talk-over
+tile. The late-failure fixture now supplies valid clerk/machine targets and checks
+the transaction failure response, so authorization cannot accidentally mask its
+rollback assertion. Race-enabled PostgreSQL suites for `internal/world` and
+`internal/scriptsim` passed; all Go packages compiled and `git diff --check`
+passed. The isolated Chromium Coin Case/coin purchase/slot flow also passed
+(13.0 seconds), with evidence retained at
+`/var/tmp/capturequest-rendered.Bicvfv`. This proves the focused local flow,
+not full-goal acceptance or production behavior.
+
+Next: continue the remaining mutation/field-effect and callback/ownership audits.
+Durable replay/reconnect recovery, bounded shutdown, remaining domain/contract
+migration and broad transport acceptance remain open. This is a local checkpoint;
+the full goal remains active, with no push or deployment.
 
 ## Prize windows and rendered Game Corner checkpoint (2026-09-30)
 
