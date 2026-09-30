@@ -2,9 +2,90 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
+Working branch: `codex/server-foundations`. Current implementation checkpoint:
+`a6a8392` (2026-09-29). All earlier foundation checkpoints are retained in this
+branch's history. No push or production deployment is authorized by this goal.
+
 Keep Go, PostgreSQL, one deployable server, and the authoritative extractor,
 runtime asset, and scripted-action contracts. Improve runtime safety through
 small verified changes. No production deployment or push is part of this goal.
+
+## Current scope and status
+
+We are making the existing server reliable when requests overlap, connections
+are replaced, database operations fail, and the process starts or stops. The
+intended result is one authoritative gameplay state, atomic durable changes,
+explicit transport contracts, and lifecycle behavior that can be verified.
+Go, PostgreSQL, the single-server deployment and the content pipeline remain
+the architectural foundation. Runtime design is described in
+[`ARCHITECTURE.md`](ARCHITECTURE.md).
+
+The full goal is **in progress**. A completed checkpoint proves its documented
+behavior; it does not prove that every gameplay path has migrated. The summary
+below is the current handoff. Later checkpoint entries preserve historical
+evidence, including remaining-work notes that subsequent commits may resolve.
+
+| Area | Implemented | Still required |
+| --- | --- | --- |
+| Request/session boundary | Packet and connection limits, centralized session prerequisites, removal of insecure session takeover, actual transport closure, and location/visibility checks for scripted clicks, dialogue choices and direct trainer battles. | Audit remaining interaction/mutation endpoints; propagate cancellation through running commands and remaining database/network work. |
+| Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, and commit-before-publication in migrated paths. | Finish dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery of committed results across reconnects. |
+| Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, and movement ticks coordinated with the owner. | Finish timer/callback/shared-state and Safari audits; prove remaining concurrent/reconnect behavior across real transports. |
+| Domains and wire contracts | Injected content-query service; typed character/wallet/bind, Pokédex/card, content detail, map-script and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
+| Lifecycle and verification | Owned HTTP/listeners, readiness, listener failure propagation, joined periodic workers, sealed session admissions, fail-closed staged preload, startup cancellation, and atomic scripted-event publication. | Bounded shutdown with active players and running work; complete transport/rendered integration and failure/retry/cancellation coverage. |
+
+## Remaining work, in recommended order
+
+1. **Finish atomic dynamic mechanics.** Put Vermilion puzzle state and its lock
+   flags in one character-locked transaction. Audit Silph doors, item pickups,
+   Game Corner prizes and remaining field effects for the same requirements.
+   Extend the shared transaction/domain operations already in use. Acceptance:
+   a late failure leaves all affected state unchanged; retry and concurrent
+   requests cannot duplicate a reward or publish uncommitted success.
+2. **Complete the mutation and interaction audit.** Check every remaining opcode
+   against authoritative session state, location, ownership and eligibility.
+   Cover ordinary metadata/presentation separately from requests that grant
+   durable effects. Acceptance: forged IDs, stale sessions and remote/hidden
+   targets cannot change gameplay, while legitimate interactions still work.
+3. **Make retries and reconnect recovery durable.** Extend existing trade/battle
+   and issued-event protections to remaining mutating commands. Define how a
+   client recovers a result committed just before transport loss or process
+   failure. Acceptance: replay does not duplicate effects, and reconnect can
+   recover the committed outcome without relying on an old session token.
+4. **Finish ownership and bounded shutdown.** Audit remaining NPC callbacks,
+   timers, Safari and shared world writers; propagate cancellation into running
+   work. Replace unbounded shutdown waits with a documented drain deadline and
+   failure policy that preserves persistence ordering. Acceptance: shutdown
+   during gameplay terminates predictably, persists accepted work as specified,
+   and does not close the database while owned work still uses it.
+5. **Complete domain and contract migration.** Extract cohesive gameplay services
+   as their operations move, inject their dependencies, and migrate remaining
+   wire families through the existing protocol generator. Audit real JSON keys,
+   nullability and empty collections with their frontend consumers. Acceptance:
+   one source defines each contract; legacy casing/reflection paths are removed,
+   regeneration is stable, and frontend typecheck/build and boundary tests pass.
+6. **Verify the integrated result.** Exercise real transport and rendered local
+   gameplay: overlapping/duplicate requests, reconnect in battle, slow clients,
+   cancellation/timeouts, failure/retry and shutdown with active players.
+   Acceptance: evidence covers the original five milestones, including visible
+   behavior where relevant. Only then mark the full goal complete.
+
+## Verification and release boundary
+
+At `a6a8392`, the disposable PostgreSQL runner passed race-enabled suites for
+`internal/world`, `internal/pokebattle`, `internal/scriptsim`, `internal/server`
+and `internal/session`. All Go packages compiled; `npm run typecheck` passed;
+canonical `npm run tygo` left generated contracts unchanged. Earlier checkpoints
+record their relevant production-build and runtime-asset checks below.
+
+These checks establish the tested local behavior. They do **not** establish a
+complete rendered gameplay flow, production deployment, or completion of the
+whole roadmap. No production behavior has been verified for these new changes.
+Reproducible PostgreSQL commands are at the end of this document. Read
+[`DEPLOYMENT.md`](DEPLOYMENT.md) immediately before any separately requested
+deployment, and complete its applicable workflow and live checks.
+
+Continue with item 1 above. Keep this current summary synchronized with coherent
+checkpoint commits; retain the original milestone acceptance criteria below.
 
 ## Milestones and acceptance checks
 
