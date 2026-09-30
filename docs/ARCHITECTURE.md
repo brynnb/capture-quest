@@ -608,3 +608,12 @@ database, checks the owned player location against the prize room and publishes
 the transaction's inventory/wallet snapshot after commit. Simulator purchase by
 name shares this operation. Coin/slot/hidden-coin operations and catalog-list
 dependencies remain tracked in the foundations roadmap.
+
+Coin purchases, spins and hidden-coin collection also acquire the character lock
+before eligibility/balance reads and compose through the bounded transaction
+helper. Their live coin/slot handlers use the owned database and owned map
+position; simulator wrappers share the operation. Wallet payment, bet/payout and
+collection-marker/grant pairs each commit atomically. Failed transactions discard
+speculative results. Server-issued machine luck and actor reach are still required
+for the slot wire boundary; the foundations roadmap records this unresolved
+client-trust issue alongside durable replay/reconnect recovery.

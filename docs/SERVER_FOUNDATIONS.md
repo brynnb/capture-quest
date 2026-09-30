@@ -3,8 +3,8 @@
 Status: active. Started 2026-09-25 from `02c51ba`.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-atomic Game Corner prizes (2026-09-30), following item collection and
-Silph checkpoint `1fe5b0e`.
+bounded Game Corner coin operations (2026-09-30), following prize
+checkpoint `ed3ec19`.
 All earlier foundation checkpoints are retained in this
 branch's history. No push or production deployment is authorized by this goal.
 
@@ -30,7 +30,7 @@ evidence, including remaining-work notes that subsequent commits may resolve.
 | Area | Implemented | Still required |
 | --- | --- | --- |
 | Request/session boundary | Packet and connection limits, centralized session prerequisites, removal of insecure session takeover, actual transport closure, and location/visibility checks for scripted clicks, dialogue choices and direct trainer battles. | Audit remaining interaction/mutation endpoints; propagate cancellation through running commands and remaining database/network work. |
-| Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors and Game Corner prizes, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery of committed results across reconnects. |
+| Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors, Game Corner prizes and bounded coin/slot/hidden-coin operations, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery of committed results across reconnects. |
 | Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, and movement ticks coordinated with the owner. | Finish timer/callback/shared-state and Safari audits; prove remaining concurrent/reconnect behavior across real transports. |
 | Domains and wire contracts | Injected content-query service; typed character/wallet/bind, Pokédex/card, content detail, map-script and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
 | Lifecycle and verification | Owned HTTP/listeners, readiness, listener failure propagation, joined periodic workers, sealed session admissions, fail-closed staged preload, startup cancellation, and atomic scripted-event publication. | Bounded shutdown with active players and running work; complete transport/rendered integration and failure/retry/cancellation coverage. |
@@ -39,8 +39,9 @@ evidence, including remaining-work notes that subsequent commits may resolve.
 
 1. **Finish atomic dynamic mechanics.** Vermilion puzzle state and its lock
    flags now share one character-locked transaction, as do item-ball grants/collection
-   markers and Silph Card Key checks/unlocks. Audit hidden-coin collection,
-   Game Corner coin purchases/slots and remaining field effects for the same requirements.
+   markers and Silph Card Key checks/unlocks. Game Corner prizes, coin purchases,
+   slots and hidden-coin collection now share this boundary. Audit remaining field
+   effects and other mutation paths for the same requirements.
    Extend the shared transaction/domain operations already in use. Acceptance:
    a late failure leaves all affected state unchanged; retry and concurrent
    requests cannot duplicate a reward or publish uncommitted success.
@@ -89,6 +90,38 @@ deployment, and complete its applicable workflow and live checks.
 
 Continue with item 1 above. Keep this current summary synchronized with coherent
 checkpoint commits; retain the original milestone acceptance criteria below.
+
+## Game Corner coin checkpoint (2026-09-30)
+
+Coin purchases, slots and hidden-coin collection now use the shared bounded
+transaction and acquire the character lock before reading eligibility/balances.
+Coin Case checks, wallet reads and collection checks propagate query errors.
+Wallet payment/coin grant, spin bet/payout and hidden-coin marker/grant commit as
+one operation; a failed commit discards speculative success, balances and reels.
+The reel layouts, payout rules, bet normalization and coin cap are preserved.
+
+Live coin purchase/slot handlers inject their database and check the owned player
+location against the Game Corner. Coin balance queries also use a bounded owned
+database read. Simulator entry points share these operations. Unused standalone
+coin setter and amount-only pickup callback were removed; script grants continue
+to compose through the transaction-aware coin-grant primitive.
+
+PostgreSQL world/simulator race suites pass. Tests cover coin-payment rollback,
+retry/cancellation, hidden-coin marker rollback and concurrent collection, slot
+rollback and concurrent spending, dispatcher failure publication and room
+rejection with global database access disabled. This proves tested local durable
+boundaries, not rendered slot/coin interactions or recovery after transport loss.
+
+Still required: the slot request accepts client `isLucky`; the client currently
+chooses that flag when opening the slot modal. Move machine eligibility/luck and
+actor reach into a server-owned issued interaction contract while preserving the
+supported gameplay rules. Complete hidden-object runtime integration/audit,
+remaining global catalog/presentation reads, durable request replay, and the full
+ownership/shutdown/domain/contract acceptance work. These transaction changes
+do not establish those requirements. No push or deployment occurred.
+
+Next: implement the server-owned slot/prize interaction boundary, then continue
+the remaining opcode/field-effect and ownership audits.
 
 ## Game Corner prize checkpoint (2026-09-30)
 

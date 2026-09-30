@@ -192,30 +192,6 @@ func getCoins(charID int64) int {
 	return coins
 }
 
-func setCoins(charID int64, coins int) error {
-	if coins < 0 {
-		coins = 0
-	}
-	if coins > MaxCoins {
-		coins = MaxCoins
-	}
-	myDB := db.GlobalWorldDB.DB
-	_, err := myDB.Exec(`INSERT INTO character_coins (character_id, coins) VALUES ($1, $2)
-		ON CONFLICT (character_id) DO UPDATE SET coins = EXCLUDED.coins`, charID, coins)
-	return err
-}
-
-func addCoins(charID int64, amount int) (int, error) {
-	var total int
-	err := db.Transaction(context.Background(), db.GlobalWorldDB.DB, func(tx db.DBTX) (err error) {
-		if err := db.LockCharacter(tx, charID); err != nil {
-			return err
-		}
-		total, err = addCoinsInTransaction(tx, charID, amount)
-		return err
-	})
-	return total, err
-}
 func addCoinsInTransaction(database db.DBTX, charID int64, amount int) (int, error) {
 	if err := db.RequireTransaction(database); err != nil {
 		return 0, err
@@ -244,103 +220,12 @@ func hasCoinCase(q sqlQueryer, charID int64) bool {
 	return err == nil
 }
 
-func gameCornerMoneyBalance(q sqlQueryer, charID int64) int {
-	var money sql.NullInt64
-	if err := q.QueryRow(
-		`SELECT pokedollars FROM character_wallet WHERE character_id = $1`, charID).Scan(&money); err != nil {
-		return 0
-	}
-	if !money.Valid {
-		return 0
-	}
-	return int(money.Int64)
-}
-
-func getCoinsForUpdate(q sqlQueryer, charID int64) int {
-	var coins int
-	if err := q.QueryRow(
-		`SELECT coins FROM character_coins WHERE character_id = $1 FOR UPDATE`, charID).Scan(&coins); err != nil {
-		return 0
-	}
-	return coins
-}
-
 func TryBuyGameCornerCoins(charID int64) GameCornerCoinPurchaseResult {
-	tx, err := db.GlobalWorldDB.DB.Begin()
+	result, err := buyGameCornerCoins(context.Background(), db.GlobalWorldDB.DB, charID)
 	if err != nil {
-		log.Printf("[GameCorner] Failed to start coin purchase transaction for char %d: %v", charID, err)
-		return GameCornerCoinPurchaseResult{
-			Success: false,
-			Message: "Could not buy coins.",
-			Money:   gameCornerMoneyBalance(db.GlobalWorldDB.DB, charID),
-			Coins:   getCoins(charID),
-		}
+		log.Printf("Game Corner coin purchase character %d: %v", charID, err)
 	}
-	defer tx.Rollback()
-
-	current := getCoinsForUpdate(tx, charID)
-	money := gameCornerMoneyBalance(tx, charID)
-	if !hasCoinCase(tx, charID) {
-		return GameCornerCoinPurchaseResult{
-			Success: false,
-			Message: "You need a COIN CASE!",
-			Money:   money,
-			Coins:   current,
-		}
-	}
-	if current >= MaxCoins {
-		return GameCornerCoinPurchaseResult{
-			Success: false,
-			Message: "Your COIN CASE is full!",
-			Money:   money,
-			Coins:   current,
-		}
-	}
-	if _, err := tx.Exec(
-		`INSERT INTO character_wallet (character_id, pokedollars)
-		VALUES ($1, 0)
-		ON CONFLICT (character_id) DO NOTHING`,
-		charID); err != nil {
-		log.Printf("[GameCorner] Failed to ensure wallet row for char %d: %v", charID, err)
-		return GameCornerCoinPurchaseResult{Success: false, Message: "Could not buy coins.", Money: money, Coins: current}
-	}
-	result, err := tx.Exec(
-		`UPDATE character_wallet SET pokedollars = pokedollars - $1 WHERE character_id = $2 AND pokedollars >= $3`,
-		CoinPurchasePrice, charID, CoinPurchasePrice)
-	if err != nil {
-		log.Printf("[GameCorner] Failed to deduct coin purchase price for char %d: %v", charID, err)
-		return GameCornerCoinPurchaseResult{Success: false, Message: "Could not buy coins.", Money: money, Coins: current}
-	}
-	changed, _ := result.RowsAffected()
-	if changed == 0 {
-		return GameCornerCoinPurchaseResult{
-			Success: false,
-			Message: "Not enough money!",
-			Money:   gameCornerMoneyBalance(tx, charID),
-			Coins:   current,
-		}
-	}
-
-	newTotal := current + CoinPurchaseAmount
-	if newTotal > MaxCoins {
-		newTotal = MaxCoins
-	}
-	if _, err := tx.Exec(`INSERT INTO character_coins (character_id, coins) VALUES ($1, $2)
-		ON CONFLICT (character_id) DO UPDATE SET coins = EXCLUDED.coins`, charID, newTotal); err != nil {
-		log.Printf("[GameCorner] Failed to add purchased coins for char %d: %v", charID, err)
-		return GameCornerCoinPurchaseResult{Success: false, Message: "Could not buy coins.", Money: money, Coins: current}
-	}
-	money = gameCornerMoneyBalance(tx, charID)
-	if err := tx.Commit(); err != nil {
-		log.Printf("[GameCorner] Failed to commit coin purchase for char %d: %v", charID, err)
-		return GameCornerCoinPurchaseResult{Success: false, Message: "Could not buy coins.", Money: money, Coins: newTotal}
-	}
-	return GameCornerCoinPurchaseResult{
-		Success: true,
-		Message: "Here are 50 coins!",
-		Money:   money,
-		Coins:   newTotal,
-	}
+	return result
 }
 
 // --- Handlers ---
@@ -351,7 +236,17 @@ func HandleGameCornerCoinBalance(ses *session.Session, payload []byte, wh *World
 	if char == nil {
 		return false
 	}
-	coins := getCoins(int64(char.ID))
+	var coins int
+	err := db.Transaction(context.Background(), wh.database, func(tx db.DBTX) error {
+		var err error
+		coins, err = gameCornerCoinBalance(tx, int64(char.ID))
+		return err
+	})
+	if err != nil {
+		log.Printf("Game Corner coin balance character %d: %v", char.ID, err)
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not load coins."}, opcodes.GameCornerCoinBalanceResponse)
+		return false
+	}
 	ses.SendStreamJSON(map[string]interface{}{
 		"coins": coins,
 	}, opcodes.GameCornerCoinBalanceResponse)
@@ -366,7 +261,15 @@ func HandleGameCornerBuyCoins(ses *session.Session, payload []byte, wh *WorldHan
 	}
 	charID := int64(char.ID)
 
-	result := TryBuyGameCornerCoins(charID)
+	_, _, mapID := wh.scriptPlayerPosition(ses)
+	if mapID != GameCornerMapID {
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Visit the Game Corner first."}, opcodes.GameCornerCoinBalanceResponse)
+		return false
+	}
+	result, err := buyGameCornerCoins(context.Background(), wh.database, charID)
+	if err != nil {
+		log.Printf("Game Corner coin purchase character %d: %v", charID, err)
+	}
 	if !result.Success {
 		ses.SendStreamJSON(map[string]interface{}{
 			"success": false,
@@ -410,7 +313,15 @@ func HandleGameCornerSlotPlay(ses *session.Session, payload []byte, wh *WorldHan
 	}
 	charID := int64(char.ID)
 
-	result := TryPlayGameCornerSlot(charID, req.Bet, req.IsLucky, gameCornerRandSource{})
+	_, _, mapID := wh.scriptPlayerPosition(ses)
+	if mapID != GameCornerMapID {
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Visit the Game Corner first."}, opcodes.GameCornerSlotResultResponse)
+		return false
+	}
+	result, err := playGameCornerSlot(context.Background(), wh.database, charID, req.Bet, req.IsLucky, gameCornerRandSource{})
+	if err != nil {
+		log.Printf("Game Corner slots character %d: %v", charID, err)
+	}
 	if !result.Success {
 		ses.SendStreamJSON(map[string]interface{}{
 			"success": false,
@@ -552,21 +463,4 @@ func getPrizePokemonLevel(pokemonID int) int {
 	default:
 		return 10
 	}
-}
-
-// HandleGameCornerCoinPickup handles picking up hidden coins on the floor.
-// Called when the player interacts with a hidden object that is a coin.
-func HandleGameCornerCoinPickup(charID int64, coinAmount int, ses *session.Session) {
-	newTotal, err := addCoins(charID, coinAmount)
-	if err != nil {
-		log.Printf("[GameCorner] Failed to add hidden coins for char %d: %v", charID, err)
-		return
-	}
-
-	log.Printf("[GameCorner] Player %d picked up %d hidden coins (total: %d)", charID, coinAmount, newTotal)
-	ses.SendStreamJSON(map[string]interface{}{
-		"coins":      newTotal,
-		"coinAmount": coinAmount,
-		"message":    "Found coins!",
-	}, opcodes.GameCornerCoinPickupNotify)
 }

@@ -1,7 +1,9 @@
 package world
 
 import (
+	"context"
 	"database/sql"
+	"log"
 
 	"capturequest/internal/db"
 )
@@ -16,60 +18,70 @@ type GameCornerHiddenCoinPickupResult struct {
 }
 
 func TryPickUpGameCornerHiddenCoin(charID int64, mapID, x, y int) GameCornerHiddenCoinPickupResult {
-	tx, err := db.GlobalWorldDB.DB.Begin()
+	result, err := collectGameCornerHiddenCoin(context.Background(), db.GlobalWorldDB.DB, charID, mapID, x, y)
 	if err != nil {
-		return gameCornerHiddenCoinFailure(charID, "Could not pick up hidden coins.")
-	}
-	defer tx.Rollback()
-
-	coinID, amount, err := gameCornerHiddenCoinAt(tx, mapID, x, y)
-	if err == sql.ErrNoRows {
-		return gameCornerHiddenCoinFailure(charID, "No hidden coins.")
-	}
-	if err != nil {
-		return gameCornerHiddenCoinFailure(charID, "Could not pick up hidden coins.")
-	}
-	result := GameCornerHiddenCoinPickupResult{
-		CoinID: coinID,
-		Amount: amount,
-		Coins:  getCoins(charID),
-	}
-	if !hasCoinCase(tx, charID) {
-		result.Message = "You need a COIN CASE!"
-		return result
-	}
-	if hiddenCoinAlreadyCollected(tx, charID, coinID) {
-		result.Message = "No hidden coins."
-		result.AlreadyFound = true
-		return result
-	}
-	if _, err := tx.Exec(
-		`INSERT INTO character_collected_hidden_coins (character_id, hidden_coin_id) VALUES ($1, $2)`,
-		charID, coinID); err != nil {
-		return gameCornerHiddenCoinFailure(charID, "Could not pick up hidden coins.")
-	}
-
-	current := getCoinsForUpdate(tx, charID)
-	newTotal := current + amount
-	if newTotal > MaxCoins {
-		newTotal = MaxCoins
-	}
-	if _, err := tx.Exec(
-		`INSERT INTO character_coins (character_id, coins) VALUES ($1, $2)
-		ON CONFLICT (character_id) DO UPDATE SET coins = EXCLUDED.coins`,
-		charID, newTotal); err != nil {
-		return gameCornerHiddenCoinFailure(charID, "Could not pick up hidden coins.")
-	}
-	if err := tx.Commit(); err != nil {
-		return gameCornerHiddenCoinFailure(charID, "Could not pick up hidden coins.")
-	}
-	result.Success = true
-	result.Message = "Found coins!"
-	result.Coins = newTotal
-	if newTotal >= MaxCoins {
-		result.Message = "Found coins, but the COIN CASE is full!"
+		log.Printf("Game Corner hidden coin character %d: %v", charID, err)
 	}
 	return result
+}
+
+func collectGameCornerHiddenCoin(ctx context.Context, database *sql.DB, charID int64, mapID, x, y int) (GameCornerHiddenCoinPickupResult, error) {
+	var result GameCornerHiddenCoinPickupResult
+	previousCoins := 0
+	err := db.Transaction(ctx, database, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, charID); err != nil {
+			return err
+		}
+		var err error
+		previousCoins, err = gameCornerCoinBalance(tx, charID)
+		if err != nil {
+			return err
+		}
+		result.Coins = previousCoins
+		coinID, amount, err := gameCornerHiddenCoinAt(tx, mapID, x, y)
+		if err == sql.ErrNoRows {
+			result.Message = "No hidden coins."
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		result.CoinID, result.Amount = coinID, amount
+		hasCase, err := characterHasCQItemIn(tx, charID, CoinCaseItemID)
+		if err != nil {
+			return err
+		}
+		if !hasCase {
+			result.Message = "You need a COIN CASE!"
+			return nil
+		}
+		var collected bool
+		if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM character_collected_hidden_coins WHERE character_id=$1 AND hidden_coin_id=$2)`, charID, coinID).Scan(&collected); err != nil {
+			return err
+		}
+		if collected {
+			result.Message = "No hidden coins."
+			result.AlreadyFound = true
+			return nil
+		}
+		if _, err := tx.Exec(`INSERT INTO character_collected_hidden_coins(character_id,hidden_coin_id) VALUES($1,$2)`, charID, coinID); err != nil {
+			return err
+		}
+		result.Coins, err = addCoinsInTransaction(tx, charID, amount)
+		if err != nil {
+			return err
+		}
+		result.Success = true
+		result.Message = "Found coins!"
+		if result.Coins >= MaxCoins {
+			result.Message = "Found coins, but the COIN CASE is full!"
+		}
+		return nil
+	})
+	if err != nil {
+		return GameCornerHiddenCoinPickupResult{Message: "Could not pick up hidden coins.", Coins: previousCoins}, err
+	}
+	return result, nil
 }
 
 func gameCornerHiddenCoinAt(q sqlQueryer, mapID, x, y int) (int, int, error) {
@@ -81,20 +93,4 @@ func gameCornerHiddenCoinAt(q sqlQueryer, mapID, x, y int) (int, int, error) {
 		return 0, 0, err
 	}
 	return coinID, amount, nil
-}
-
-func hiddenCoinAlreadyCollected(q sqlQueryer, charID int64, coinID int) bool {
-	var exists int
-	err := q.QueryRow(
-		`SELECT 1 FROM character_collected_hidden_coins WHERE character_id = $1 AND hidden_coin_id = $2`,
-		charID, coinID).Scan(&exists)
-	return err == nil
-}
-
-func gameCornerHiddenCoinFailure(charID int64, message string) GameCornerHiddenCoinPickupResult {
-	return GameCornerHiddenCoinPickupResult{
-		Success: false,
-		Message: message,
-		Coins:   getCoins(charID),
-	}
 }
