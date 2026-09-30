@@ -10,7 +10,6 @@ import (
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
-	"capturequest/internal/db/cqitems"
 	"capturequest/internal/session"
 )
 
@@ -492,7 +491,15 @@ func HandleGameCornerPrizeBuy(ses *session.Session, payload []byte, wh *WorldHan
 	}
 	charID := int64(char.ID)
 
-	result := TryBuyGameCornerPrize(charID, req.PrizeID)
+	_, _, mapID := wh.scriptPlayerPosition(ses)
+	if mapID != PrizeRoomMapID {
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Visit the prize room first."}, opcodes.GameCornerPrizeBuyResponse)
+		return false
+	}
+	result, err := buyGameCornerPrize(context.Background(), wh.database, charID, req.PrizeID, "")
+	if err != nil {
+		log.Printf("Game Corner prize purchase character %d: %v", charID, err)
+	}
 	if !result.Success {
 		ses.SendStreamJSON(map[string]interface{}{
 			"success": false,
@@ -520,14 +527,9 @@ func HandleGameCornerPrizeBuy(ses *session.Session, payload []byte, wh *WorldHan
 		"pcSlot":       result.PCSlot,
 	}, opcodes.GameCornerPrizeBuyResponse)
 
-	if inv, err := cqitems.NewStore(db.GlobalWorldDB.DB).GetCharacterInventory(int32(charID)); err == nil {
-		money, _ := cqitems.NewStore(db.GlobalWorldDB.DB).GetCharacterMoney(int32(charID))
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": true,
-			"items":   inv,
-			"money":   money,
-		}, opcodes.CQInventoryResponse)
-	}
+	ses.SendStreamJSON(map[string]interface{}{
+		"success": true, "items": result.inventory, "money": result.money,
+	}, opcodes.CQInventoryResponse)
 	return false
 }
 

@@ -3,8 +3,8 @@
 Status: active. Started 2026-09-25 from `02c51ba`.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-atomic item-ball collection and Silph doors (2026-09-30), following
-Vermilion checkpoint `7e5df1e`.
+atomic Game Corner prizes (2026-09-30), following item collection and
+Silph checkpoint `1fe5b0e`.
 All earlier foundation checkpoints are retained in this
 branch's history. No push or production deployment is authorized by this goal.
 
@@ -30,7 +30,7 @@ evidence, including remaining-work notes that subsequent commits may resolve.
 | Area | Implemented | Still required |
 | --- | --- | --- |
 | Request/session boundary | Packet and connection limits, centralized session prerequisites, removal of insecure session takeover, actual transport closure, and location/visibility checks for scripted clicks, dialogue choices and direct trainer battles. | Audit remaining interaction/mutation endpoints; propagate cancellation through running commands and remaining database/network work. |
-| Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection and Silph doors, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery of committed results across reconnects. |
+| Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors and Game Corner prizes, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery of committed results across reconnects. |
 | Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, and movement ticks coordinated with the owner. | Finish timer/callback/shared-state and Safari audits; prove remaining concurrent/reconnect behavior across real transports. |
 | Domains and wire contracts | Injected content-query service; typed character/wallet/bind, Pokédex/card, content detail, map-script and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
 | Lifecycle and verification | Owned HTTP/listeners, readiness, listener failure propagation, joined periodic workers, sealed session admissions, fail-closed staged preload, startup cancellation, and atomic scripted-event publication. | Bounded shutdown with active players and running work; complete transport/rendered integration and failure/retry/cancellation coverage. |
@@ -40,7 +40,7 @@ evidence, including remaining-work notes that subsequent commits may resolve.
 1. **Finish atomic dynamic mechanics.** Vermilion puzzle state and its lock
    flags now share one character-locked transaction, as do item-ball grants/collection
    markers and Silph Card Key checks/unlocks. Audit hidden-coin collection,
-   Game Corner purchases/prizes and remaining field effects for the same requirements.
+   Game Corner coin purchases/slots and remaining field effects for the same requirements.
    Extend the shared transaction/domain operations already in use. Acceptance:
    a late failure leaves all affected state unchanged; retry and concurrent
    requests cannot duplicate a reward or publish uncommitted success.
@@ -89,6 +89,36 @@ deployment, and complete its applicable workflow and live checks.
 
 Continue with item 1 above. Keep this current summary synchronized with coherent
 checkpoint commits; retain the original milestone acceptance criteria below.
+
+## Game Corner prize checkpoint (2026-09-30)
+
+Prize purchases previously committed the Pokémon/TM grant (and Pokémon Pokédex
+registration) before coin payment. A late payment failure left a free prize;
+competing purchases could both spend a stale balance. The shared operation now
+locks the character, loads the authoritative prize and durable Coin Case/balance,
+and commits reward, Pokédex registration and payment together. Missing coin rows
+mean zero; query failures propagate instead of becoming an eligible balance.
+Malformed price/type/identity data aborts with the affected prize in diagnostics.
+Existing prize levels, names and item/Pokémon creation rules are unchanged.
+
+The live handler injects its owned database and requires the server-owned player
+position to be in the prize room. It publishes the inventory/wallet snapshot
+loaded in the transaction only after commit. Simulator purchase-by-name uses the
+same operation. Existing catalog/list wrappers remain to migrate; prize-window
+actor reach and issued dialogue context also remain part of the interaction audit.
+
+PostgreSQL race suites for world/simulator pass; all Go packages compile, frontend typecheck passes, and
+canonical contract generation leaves generated files unchanged. New tests cover late payment
+failure for Pokémon and TM rewards (including Pokédex rollback), deferred commit
+failure through the dispatcher, retry, remote-room rejection, owned dependencies,
+lock-wait cancellation, and competing purchases that cannot overspend. Repeated
+purchase commands still represent separate paid purchases; durable request replay
+identity/reconnect result recovery is not claimed by this checkpoint.
+
+Next: migrate Game Corner coin purchases, slots and hidden coins through bounded,
+error-propagating operations under the shared character lock; finish the remaining
+interaction/domain/contract work and integrated acceptance checks. No push or
+production deployment is part of this checkpoint.
 
 ## Item collection and Silph checkpoint (2026-09-30)
 

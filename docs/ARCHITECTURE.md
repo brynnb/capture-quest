@@ -600,3 +600,11 @@ inside the successful transaction. Actor authorization shares scripted-target
 visibility/position rules, with a stricter one-tile pickup reach. Silph doors
 read Card Key ownership and durable unlock flags under the character lock before
 committing an unlock; cache contents do not determine the durable transition.
+
+Game Corner prize purchases load catalog identity, Coin Case ownership and the
+coin balance inside one character-locked transaction. Pokémon/TM grants, Pokédex
+registration and payment share its commit. The live prize handler injects its
+database, checks the owned player location against the prize room and publishes
+the transaction's inventory/wallet snapshot after commit. Simulator purchase by
+name shares this operation. Coin/slot/hidden-coin operations and catalog-list
+dependencies remain tracked in the foundations roadmap.

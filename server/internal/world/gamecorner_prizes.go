@@ -1,12 +1,14 @@
 package world
 
 import (
-	"capturequest/internal/db/pokedex"
+	"context"
 	"database/sql"
 	"fmt"
+	"log"
 
 	"capturequest/internal/db"
 	"capturequest/internal/db/cqitems"
+	"capturequest/internal/db/pokedex"
 	"capturequest/internal/pokebattle"
 )
 
@@ -37,6 +39,8 @@ type GameCornerPrizePurchaseResult struct {
 	AddedToParty bool
 	PCBox        int
 	PCSlot       int
+	inventory    []cqitems.CQInventoryItem
+	money        int64
 }
 
 func AvailableGameCornerPrizes(charID int64) (GameCornerPrizeListResult, error) {
@@ -115,36 +119,47 @@ func GameCornerPrizes() ([]GameCornerPrize, error) {
 }
 
 func TryBuyGameCornerPrize(charID int64, prizeID int) GameCornerPrizePurchaseResult {
-	prize, err := GameCornerPrizeByID(prizeID)
-	if err != nil {
-		return gameCornerPrizeFailure(charID, "Prize not found", nil)
-	}
-	return tryBuyGameCornerPrize(charID, prize)
+	return gameCornerPrizePurchaseForSimulator(charID, prizeID, "")
 }
 
 func TryBuyGameCornerPrizeByName(charID int64, prizeName string) GameCornerPrizePurchaseResult {
-	prize, err := GameCornerPrizeByName(prizeName)
+	return gameCornerPrizePurchaseForSimulator(charID, 0, prizeName)
+}
+
+func gameCornerPrizePurchaseForSimulator(charID int64, prizeID int, prizeName string) GameCornerPrizePurchaseResult {
+	result, err := buyGameCornerPrize(context.Background(), db.GlobalWorldDB.DB, charID, prizeID, prizeName)
 	if err != nil {
-		return gameCornerPrizeFailure(charID, "Prize not found", nil)
+		log.Printf("Game Corner prize purchase character %d: %v", charID, err)
 	}
-	return tryBuyGameCornerPrize(charID, prize)
+	return result
 }
 
 func GameCornerPrizeByID(prizeID int) (GameCornerPrize, error) {
-	row := db.GlobalWorldDB.DB.QueryRow(`
-		SELECT id, prize_type, pokemon_id, tm_move_id, item_id, prize_name, coin_cost
-		FROM phaser_game_corner_prizes
-		WHERE id = $1`, prizeID)
-	return scanGameCornerPrize(row)
+	return readGameCornerPrize(prizeID, "")
 }
 
 func GameCornerPrizeByName(prizeName string) (GameCornerPrize, error) {
-	row := db.GlobalWorldDB.DB.QueryRow(`
-		SELECT id, prize_type, pokemon_id, tm_move_id, item_id, prize_name, coin_cost
-		FROM phaser_game_corner_prizes
-		WHERE prize_name = $1
-		LIMIT 1`, prizeName)
-	return scanGameCornerPrize(row)
+	return readGameCornerPrize(0, prizeName)
+}
+
+func readGameCornerPrize(prizeID int, prizeName string) (GameCornerPrize, error) {
+	var prize GameCornerPrize
+	err := db.Transaction(context.Background(), db.GlobalWorldDB.DB, func(tx db.DBTX) error {
+		var err error
+		prize, err = loadGameCornerPrize(tx, prizeID, prizeName)
+		return err
+	})
+	return prize, err
+}
+
+func loadGameCornerPrize(database db.DBTX, prizeID int, prizeName string) (GameCornerPrize, error) {
+	query := `SELECT id,prize_type,pokemon_id,tm_move_id,item_id,prize_name,coin_cost FROM phaser_game_corner_prizes WHERE id=$1`
+	var identity interface{} = prizeID
+	if prizeName != "" {
+		query = `SELECT id,prize_type,pokemon_id,tm_move_id,item_id,prize_name,coin_cost FROM phaser_game_corner_prizes WHERE prize_name=$1 LIMIT 1`
+		identity = prizeName
+	}
+	return scanGameCornerPrize(database.QueryRow(query, identity))
 }
 
 type prizeScanner interface {
@@ -180,64 +195,94 @@ func nullablePrizeInt(v sql.NullInt64) *int {
 	return &n
 }
 
-func tryBuyGameCornerPrize(charID int64, prize GameCornerPrize) GameCornerPrizePurchaseResult {
-	coins := getCoins(charID)
-	if !hasCoinCase(db.GlobalWorldDB.DB, charID) {
-		return gameCornerPrizeFailure(charID, "You need a COIN CASE!", &prize)
-	}
-	if coins < prize.CoinCost {
-		return gameCornerPrizeFailure(charID, "You don't have enough coins!", &prize)
-	}
-
-	result := GameCornerPrizePurchaseResult{
-		Success: true,
-		Message: "Here you go!",
-		Coins:   coins - prize.CoinCost,
-		Prize:   &prize,
-		PCBox:   -1,
-		PCSlot:  -1,
-	}
-	switch prize.Type {
-	case "pokemon":
-		if prize.PokemonID == nil {
-			return gameCornerPrizeFailure(charID, "Prize unavailable.", &prize)
+// Prize eligibility, reward, Pokédex registration and coin payment share one
+// character lock and commit. Live callers inject their owned database.
+func buyGameCornerPrize(ctx context.Context, database *sql.DB, charID int64, prizeID int, prizeName string) (GameCornerPrizePurchaseResult, error) {
+	result := GameCornerPrizePurchaseResult{PCBox: -1, PCSlot: -1}
+	previousCoins := 0
+	err := db.Transaction(ctx, database, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, charID); err != nil {
+			return err
 		}
-		level := getPrizePokemonLevel(*prize.PokemonID)
-		added, box, slot, err := pokebattle.AddPokemonToPartyOrPC(db.GlobalWorldDB.DB, charID, *prize.PokemonID, level)
+		var err error
+		previousCoins, err = gameCornerCoinBalance(tx, charID)
 		if err != nil {
-			return gameCornerPrizeFailure(charID, "Failed to create Pokemon.", &prize)
+			return err
 		}
-		if err := pokedex.MarkCaught(db.GlobalWorldDB.DB, charID, *prize.PokemonID); err != nil {
-			return gameCornerPrizeFailure(charID, "Failed to register Pokemon.", &prize)
+		result.Coins = previousCoins
+		prize, err := loadGameCornerPrize(tx, prizeID, prizeName)
+		if err == sql.ErrNoRows {
+			result.Message = "Prize not found"
+			return nil
 		}
-		result.PrizeLevel = level
-		result.AddedToParty = added
-		result.PCBox = box
-		result.PCSlot = slot
-	case "tm":
-		if prize.ItemID == nil {
-			return gameCornerPrizeFailure(charID, "Prize unavailable.", &prize)
+		if err != nil {
+			return err
 		}
-		if _, err := cqitems.NewStore(db.GlobalWorldDB.DB).AddItemToInventory(int32(charID), int32(*prize.ItemID), 1); err != nil {
-			return gameCornerPrizeFailure(charID, "Could not add prize.", &prize)
+		result.Prize = &prize
+		if prize.CoinCost <= 0 {
+			return fmt.Errorf("prize %d has invalid coin_cost=%d", prize.ID, prize.CoinCost)
 		}
-	default:
-		return gameCornerPrizeFailure(charID, "Prize unavailable.", &prize)
+		hasCase, err := characterHasCQItemIn(tx, charID, CoinCaseItemID)
+		if err != nil {
+			return err
+		}
+		if !hasCase {
+			result.Message = "You need a COIN CASE!"
+			return nil
+		}
+		if previousCoins < prize.CoinCost {
+			result.Message = "You don't have enough coins!"
+			return nil
+		}
+		switch prize.Type {
+		case "pokemon":
+			if prize.PokemonID == nil {
+				return fmt.Errorf("prize %d missing pokemon_id", prize.ID)
+			}
+			level := getPrizePokemonLevel(*prize.PokemonID)
+			result.AddedToParty, result.PCBox, result.PCSlot, err = pokebattle.AddPokemonToPartyOrPC(tx, charID, *prize.PokemonID, level)
+			if err != nil {
+				return err
+			}
+			if err := pokedex.MarkCaught(tx, charID, *prize.PokemonID); err != nil {
+				return err
+			}
+			result.PrizeLevel = level
+		case "tm":
+			if prize.ItemID == nil {
+				return fmt.Errorf("prize %d missing item_id", prize.ID)
+			}
+			if _, err := cqitems.NewStore(tx).AddItemToInventory(int32(charID), int32(*prize.ItemID), 1); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("prize %d has unsupported type %q", prize.ID, prize.Type)
+		}
+		result.Coins = previousCoins - prize.CoinCost
+		if _, err := tx.Exec(`INSERT INTO character_coins(character_id,coins) VALUES($1,$2) ON CONFLICT(character_id) DO UPDATE SET coins=EXCLUDED.coins`, charID, result.Coins); err != nil {
+			return err
+		}
+		store := cqitems.NewStore(tx)
+		result.inventory, err = store.GetCharacterInventory(int32(charID))
+		if err != nil {
+			return err
+		}
+		result.money, err = store.GetCharacterMoney(int32(charID))
+		if err != nil {
+			return err
+		}
+		result.Success = true
+		result.Message = "Here you go!"
+		return nil
+	})
+	if err != nil {
+		return GameCornerPrizePurchaseResult{Message: "Could not buy prize.", Coins: previousCoins, PCBox: -1, PCSlot: -1}, err
 	}
-
-	if err := setCoins(charID, result.Coins); err != nil {
-		return gameCornerPrizeFailure(charID, "Could not buy prize.", &prize)
-	}
-	return result
+	return result, nil
 }
 
-func gameCornerPrizeFailure(charID int64, message string, prize *GameCornerPrize) GameCornerPrizePurchaseResult {
-	return GameCornerPrizePurchaseResult{
-		Success: false,
-		Message: message,
-		Coins:   getCoins(charID),
-		Prize:   prize,
-		PCBox:   -1,
-		PCSlot:  -1,
-	}
+func gameCornerCoinBalance(database db.DBTX, charID int64) (int, error) {
+	var coins int
+	err := database.QueryRow(`SELECT COALESCE((SELECT coins FROM character_coins WHERE character_id=$1),0)`, charID).Scan(&coins)
+	return coins, err
 }
