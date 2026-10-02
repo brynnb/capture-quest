@@ -48,13 +48,25 @@ var fieldMoveRules = map[string]fieldMoveRule{
 }
 
 func CanUseFieldMove(charID int64, moveName string, efm *EventFlagManager) FieldMovePermissionResult {
+	result, err := fieldMovePermissionIn(db.GlobalWorldDB.DB, charID, moveName, func(flag string) (bool, error) {
+		return characterHasEventFlag(charID, flag, efm), nil
+	})
+	if err != nil {
+		result.Message = fmt.Sprintf("Failed to load field move eligibility: %v", err)
+	}
+	return result
+}
+
+// Durable effects supply their transaction and read badges from that same
+// snapshot; presentation/simulator callers can retain their existing flag view.
+func fieldMovePermissionIn(database db.DBTX, charID int64, moveName string, hasFlag func(string) (bool, error)) (FieldMovePermissionResult, error) {
 	rule, ok := fieldMoveRuleForName(moveName)
 	if !ok {
 		return FieldMovePermissionResult{
 			Allowed:  false,
 			Message:  "Unknown field move.",
 			MoveName: strings.ToUpper(strings.TrimSpace(moveName)),
-		}
+		}, nil
 	}
 
 	result := FieldMovePermissionResult{
@@ -63,25 +75,30 @@ func CanUseFieldMove(charID int64, moveName string, efm *EventFlagManager) Field
 		RequiredBadgeFlag: rule.RequiredBadgeFlag,
 	}
 
-	knownBySpecies, knownByName, err := fieldMoveKnownByParty(charID, rule)
+	knownBySpecies, knownByName, err := fieldMoveKnownByPartyIn(database, charID, rule)
 	if err != nil {
-		result.Message = fmt.Sprintf("Failed to load party: %v", err)
-		return result
+		return result, err
 	}
 	if knownBySpecies == 0 {
 		result.Message = "No POKEMON knows that move."
-		return result
+		return result, nil
 	}
 	result.KnownBySpeciesID = knownBySpecies
 	result.KnownByName = knownByName
 
-	if rule.RequiredBadgeFlag != "" && !characterHasEventFlag(charID, rule.RequiredBadgeFlag, efm) {
-		result.Message = NewBadgeRequiredMessage
-		return result
+	if rule.RequiredBadgeFlag != "" {
+		on, err := hasFlag(rule.RequiredBadgeFlag)
+		if err != nil {
+			return result, err
+		}
+		if !on {
+			result.Message = NewBadgeRequiredMessage
+			return result, nil
+		}
 	}
 
 	result.Allowed = true
-	return result
+	return result, nil
 }
 
 func TryUseFieldMove(charID int64, mapID int, moveName string, efm *EventFlagManager) FieldMoveUseResult {
@@ -139,8 +156,8 @@ func fieldMoveRuleForName(moveName string) (fieldMoveRule, bool) {
 	return rule, ok
 }
 
-func fieldMoveKnownByParty(charID int64, rule fieldMoveRule) (int, string, error) {
-	party, err := pokebattle.LoadParty(db.GlobalWorldDB.DB, charID)
+func fieldMoveKnownByPartyIn(database db.DBTX, charID int64, rule fieldMoveRule) (int, string, error) {
+	party, err := pokebattle.LoadParty(database, charID)
 	if err != nil {
 		return 0, "", err
 	}

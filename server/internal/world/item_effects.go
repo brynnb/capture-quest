@@ -118,8 +118,7 @@ func handleCQEscapeRopeUse(ses *session.Session, wh *WorldHandler, found *cqitem
 		sendCQItemUseError(ses, message)
 		return
 	}
-	applyServerTeleportedPlayerPosition(ses, wh, result.MapID, result.X, result.Y, "DOWN", false)
-	ses.SendStreamJSON(map[string]interface{}{"mapId": result.MapID, "x": result.X, "y": result.Y}, opcodes.WarpTileTeleportNotify)
+	publishCommittedTeleport(ses, wh, result.MapID, result.X, result.Y)
 	sendCQItemUseSuccess(ses, found, "You escaped from the dungeon.", result.NewQuantity)
 }
 
@@ -222,6 +221,11 @@ func teleportPlayerTo(ses *session.Session, wh *WorldHandler, mapID int, x int, 
 		"x":     x,
 		"y":     y,
 	}, opcodes.WarpTileTeleportNotify)
+}
+
+func publishCommittedTeleport(ses *session.Session, wh *WorldHandler, mapID, x, y int) {
+	applyServerTeleportedPlayerPosition(ses, wh, mapID, x, y, "DOWN", false)
+	ses.SendStreamJSON(map[string]interface{}{"mapId": mapID, "x": x, "y": y}, opcodes.WarpTileTeleportNotify)
 }
 
 func sendCQItemUseSuccess(ses *session.Session, found *cqitems.CQInventoryItem, message string, newQty uint16, extra ...map[string]interface{}) {

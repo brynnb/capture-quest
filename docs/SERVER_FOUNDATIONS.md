@@ -3,8 +3,8 @@
 Status: active. Started 2026-09-25 from `02c51ba`.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-atomic Escape Rope consumption/position (2026-10-02), following coin-clerk
-authorization checkpoint `dbffafe`.
+validated FLY catalog and atomic position publication (2026-10-02), following
+Escape Rope checkpoint `86d9d46`.
 All earlier foundation checkpoints are retained in this
 branch's history. No push or production deployment is authorized by this goal.
 
@@ -44,7 +44,9 @@ evidence, including remaining-work notes that subsequent commits may resolve.
    imported machine availability/reach and use server-owned luck; prize buys require
    reach/visibility to the source window selling the selected prize, and coin buys
    require reach/visibility to the source coin clerk. Escape Rope consumption and
-   saved destination now commit together before live teleport publication. Audit remaining field
+   saved destination now commit together before live teleport publication. FLY
+   validates the destination catalog and durable party/badge eligibility inside
+   its position transaction. Audit remaining field
    effects and other mutation paths for the same requirements.
    Extend the shared transaction/domain operations already in use. Acceptance:
    a late failure leaves all affected state unchanged; retry and concurrent
@@ -94,6 +96,48 @@ deployment, and complete its applicable workflow and live checks.
 
 Continue with item 1 above. Keep this current summary synchronized with coherent
 checkpoint commits; retain the original milestone acceptance criteria below.
+
+## FLY catalog and position checkpoint (2026-10-02)
+
+The UI lists destinations from `poke_start_cities`, then sends `mapId`, `targetX`
+and `targetY`. Previously the handler passed these coordinates directly to the
+teleport helper. Knowing FLY and having the Thunder Badge therefore permitted
+an arbitrary client-selected map/position rather than one of the offered towns.
+
+FLY now locks the character in a bounded transaction, loads the current party
+and durable badge flag through that transaction, and requires exactly one catalog
+destination for the submitted map with matching spawn coordinates. Unknown maps
+and forged coordinates reject; ambiguous catalog rows reject with diagnostics.
+The normalized destination is saved before committing. FLY and Escape Rope
+share the committed-teleport publisher and transaction-only position writer;
+failed commits publish no live position or teleport. All field-move requests
+now reject during an active ordinary battle, matching the item-use boundary.
+
+Eligibility reuses the existing field-move rule/party evaluator rather than
+creating a second ruleset. Simulator/presentation callers retain their current
+flag view; the durable FLY operation uses `queryEventFlag` and its injected
+database instead of cached eligibility or the process-global database.
+
+This preserves the project's current all-cities policy and catalog. The bundled
+`engine/menus/start_sub_menus.asm` and `engine/items/town_map.asm` also describe
+outdoor-only FLY and visited-town restrictions. Those historical restrictions
+are not implemented by this checkpoint; the server has no town-visit progression
+model, and the current UI offers all home towns. Do not claim historical parity.
+
+PostgreSQL dispatcher tests with the global database disabled cover missing
+party moves/badges, stale cached flags, forged map/coordinates, duplicate catalog
+rows, deferred commit failure, active battle and successful retry. Rejections
+leave saved character, session and movement position unchanged and publish only
+an error. Race-enabled `internal/world` and `internal/scriptsim` suites passed,
+as did the focused FLY/Escape Rope rerun after the shared publication extraction,
+compilation of all Go packages and `git diff --check`. This is state/dispatcher
+evidence, not a rendered FLY check.
+
+Next: Repel/Safari state ownership and remaining field-effect persistence;
+finish authoritative field eligibility, including defining progression before
+introducing visited-town restrictions. Remaining cancellation, durable result
+recovery, bounded shutdown, domain/contract migration and broad transport/rendered
+acceptance retain their full scope. No push or deployment occurred.
 
 ## Escape Rope transaction checkpoint (2026-10-02)
 

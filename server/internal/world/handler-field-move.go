@@ -4,10 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
+	"log"
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
 	db_character "capturequest/internal/db/character"
+	"capturequest/internal/itemuse"
 	"capturequest/internal/session"
 )
 
@@ -33,6 +36,12 @@ type FieldMoveUseResponsePayload struct {
 func HandleFieldMoveUse(ses *session.Session, payload []byte, wh *WorldHandler) bool {
 	if !ses.HasValidClient() {
 		return false
+	}
+	if char := ses.Client.CharData(); char != nil {
+		if battle := getBattle(int64(char.ID)); battle != nil && !battle.IsOver() {
+			sendFieldMoveUseError(ses, "Field moves can't be used during a battle.")
+			return false
+		}
 	}
 
 	var req FieldMoveUseRequestPayload
@@ -266,32 +275,38 @@ func handleFlyFieldMove(ses *session.Session, req FieldMoveUseRequestPayload, wh
 		return false
 	}
 
-	permission := CanUseFieldMove(int64(charData.ID), "FLY", eventFlagsForFieldMove(wh))
-	if !permission.Allowed {
-		sendFieldMoveUseError(ses, permission.Message)
-		return false
-	}
 	if req.MapID == nil || req.TargetX == nil || req.TargetY == nil {
 		sendFieldMoveUseError(ses, "Choose where to FLY.")
 		return false
 	}
 
-	destMapID := *req.MapID
-	destX := *req.TargetX
-	destY := *req.TargetY
-	teleportPlayerTo(ses, wh, destMapID, destX, destY)
+	result, err := useFly(context.Background(), wh.database, int64(charData.ID), *req.MapID, *req.TargetX, *req.TargetY, func(mapID int) int {
+		return normalizedVisiblePlayerMapID(wh, mapID)
+	})
+	if err != nil {
+		message := "Could not FLY. Please try again."
+		var rejection *itemuse.Rejection
+		if errors.As(err, &rejection) {
+			message = rejection.Message
+		} else {
+			log.Printf("[FieldMove] FLY failed for character %d: %v", charData.ID, err)
+		}
+		sendFieldMoveUseError(ses, message)
+		return false
+	}
+	publishCommittedTeleport(ses, wh, result.MapID, result.X, result.Y)
 
 	message := "Flew to destination."
-	if permission.KnownByName != "" {
-		message = permission.KnownByName + " used FLY!"
+	if result.Permission.KnownByName != "" {
+		message = result.Permission.KnownByName + " used FLY!"
 	}
 	ses.SendStreamJSON(FieldMoveUseResponsePayload{
 		Success:  true,
 		Message:  message,
-		MoveName: permission.MoveName,
-		MapID:    destMapID,
-		TargetX:  destX,
-		TargetY:  destY,
+		MoveName: result.Permission.MoveName,
+		MapID:    result.MapID,
+		TargetX:  result.X,
+		TargetY:  result.Y,
 	}, opcodes.FieldMoveUseResponse)
 	return false
 }

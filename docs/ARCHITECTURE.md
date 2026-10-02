@@ -661,3 +661,13 @@ after commit. The shared teleport helper can apply an already committed position
 without another independent persistence operation. A failed commit leaves both
 inventory and saved/live position unchanged. This does not yet migrate every
 field move or provide durable response recovery after a disconnect.
+
+FLY uses the same committed-position publication boundary. Its character-locked
+transaction checks current party move knowledge and the durable badge flag, then
+matches the requested map and coordinates against the unique `poke_start_cities`
+row served to the current destination UI. Unknown coordinates and ambiguous
+catalog identities cannot authorize teleportation. Position publication follows
+commit; cached event flags do not decide this durable effect. The shared
+field-move eligibility evaluator supports both transaction-backed effects and
+the existing simulator/presentation flag view. The current all-cities policy
+remains; historical outdoor/visited-town rules need further eligibility work.
