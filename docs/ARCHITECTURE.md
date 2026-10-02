@@ -653,3 +653,11 @@ The existing actor/counter evaluator checks current owned position and visibilit
 before the atomic payment/grant operation. Map membership or proximity to another
 clerk grants no purchase authorization. Missing/ambiguous source identities fail
 closed rather than selecting an arbitrary actor.
+
+Escape Rope resolves its imported exit, validates and consumes the owned item,
+and saves the normalized character position inside one bounded character-locked
+transaction. Session/movement position and the teleport response are published
+after commit. The shared teleport helper can apply an already committed position
+without another independent persistence operation. A failed commit leaves both
+inventory and saved/live position unchanged. This does not yet migrate every
+field move or provide durable response recovery after a disconnect.

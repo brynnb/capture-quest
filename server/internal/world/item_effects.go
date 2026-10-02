@@ -1,9 +1,12 @@
 package world
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"math"
 	"strings"
 
@@ -100,14 +103,24 @@ func handleCQRepelUse(ses *session.Session, wh *WorldHandler, found *cqitems.CQI
 }
 
 func handleCQEscapeRopeUse(ses *session.Session, wh *WorldHandler, found *cqitems.CQInventoryItem, charID int32) {
-	destMapID, destX, destY, err := escapeRopeDestination(ses, wh)
+	_, _, mapID := currentTilePosition(ses, wh)
+	result, err := useEscapeRope(context.Background(), wh.database, charID, found.Instance.ID, mapID, func(id int) int {
+		return normalizedVisiblePlayerMapID(wh, id)
+	})
 	if err != nil {
-		sendCQItemUseError(ses, err.Error())
+		message := "Could not use the Escape Rope. Please try again."
+		var rejection *itemuse.Rejection
+		if errors.As(err, &rejection) {
+			message = rejection.Message
+		} else {
+			log.Printf("[CQItems] Escape Rope failed for character %d instance %d: %v", charID, found.Instance.ID, err)
+		}
+		sendCQItemUseError(ses, message)
 		return
 	}
-	newQty, _ := cqitems.NewStore(db.GlobalWorldDB.DB).DecrementItemQuantity(charID, found.Instance.ID)
-	teleportPlayerTo(ses, wh, destMapID, destX, destY)
-	sendCQItemUseSuccess(ses, found, "You escaped from the dungeon.", newQty)
+	applyServerTeleportedPlayerPosition(ses, wh, result.MapID, result.X, result.Y, "DOWN", false)
+	ses.SendStreamJSON(map[string]interface{}{"mapId": result.MapID, "x": result.X, "y": result.Y}, opcodes.WarpTileTeleportNotify)
+	sendCQItemUseSuccess(ses, found, "You escaped from the dungeon.", result.NewQuantity)
 }
 
 func currentMapMessage(ses *session.Session) string {
@@ -142,12 +155,26 @@ func itemfinderMessage(ses *session.Session, wh *WorldHandler) string {
 
 func escapeRopeDestination(ses *session.Session, wh *WorldHandler) (int, int, int, error) {
 	_, _, mapID := currentTilePosition(ses, wh)
-	if isEscapeRopeBlockedOnMap(mapID) {
-		return 0, 0, 0, fmt.Errorf("Can't use that here")
+	if wh != nil {
+		return escapeRopeDestinationIn(wh.database, mapID)
+	}
+	return escapeRopeDestinationIn(db.GlobalWorldDB.DB, mapID)
+}
+
+func escapeRopeDestinationIn(database db.DBTX, mapID int) (int, int, int, error) {
+	if mapID == UnifiedOverworldMapID {
+		return 0, 0, 0, &itemuse.Rejection{Message: "Can't use that here"}
+	}
+	var isOverworld int
+	if err := database.QueryRow(`SELECT COALESCE(is_overworld, 0) FROM phaser_maps WHERE id = $1`, mapID).Scan(&isOverworld); err != nil {
+		return 0, 0, 0, fmt.Errorf("read escape map %d: %w", mapID, err)
+	}
+	if isOverworld != 0 {
+		return 0, 0, 0, &itemuse.Rejection{Message: "Can't use that here"}
 	}
 
 	var destMapID, destX, destY int
-	err := db.GlobalWorldDB.DB.QueryRow(`
+	err := database.QueryRow(`
 		SELECT pw.destination_map_id, pw.destination_x, pw.destination_y
 		FROM phaser_warps pw
 		LEFT JOIN phaser_maps pm ON pm.id = pw.destination_map_id
@@ -160,30 +187,12 @@ func escapeRopeDestination(ses *session.Session, wh *WorldHandler) (int, int, in
 		LIMIT 1
 	`, mapID, UnifiedOverworldMapID).Scan(&destMapID, &destX, &destY)
 	if err == sql.ErrNoRows {
-		return 0, 0, 0, fmt.Errorf("Can't use that here")
+		return 0, 0, 0, &itemuse.Rejection{Message: "Can't use that here"}
 	}
 	if err != nil {
-		return 0, 0, 0, fmt.Errorf("Failed to find an exit")
+		return 0, 0, 0, fmt.Errorf("read escape exit for map %d: %w", mapID, err)
 	}
 	return destMapID, destX, destY, nil
-}
-
-func isEscapeRopeBlockedOnMap(mapID int) bool {
-	if mapID == UnifiedOverworldMapID {
-		return true
-	}
-	if db.GlobalWorldDB == nil || db.GlobalWorldDB.DB == nil {
-		return false
-	}
-
-	var isOverworld int
-	err := db.GlobalWorldDB.DB.QueryRow(`
-		SELECT COALESCE(is_overworld, 0)
-		FROM phaser_maps
-		WHERE id = $1`,
-		mapID,
-	).Scan(&isOverworld)
-	return err == nil && isOverworld != 0
 }
 
 func currentTilePosition(ses *session.Session, wh *WorldHandler) (int, int, int) {

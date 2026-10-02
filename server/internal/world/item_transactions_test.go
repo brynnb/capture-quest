@@ -32,7 +32,7 @@ func TestItemDispatchPublishesOnlyCommittedEffects(t *testing.T) {
 	messenger := &recordingMessenger{}
 	ses := &session.Session{Authenticated: true, Client: &testSessionClient{char: &model.CharacterData{ID: 1}}, Messenger: messenger}
 	registry := NewWorldOpCodeRegistry()
-	registry.WH = &WorldHandler{Items: itemuse.New(database)}
+	registry.WH = &WorldHandler{database: database, Items: itemuse.New(database)}
 	request := clientPacket(opcodes.CQItemUseRequest, fmt.Sprintf(`{"instanceId":%d,"partySlot":0,"moveSlot":-1}`, instance))
 	registry.HandleWorldPacket(ses, request)
 	if len(messenger.streams) != 1 || messenger.streams[0].opcode != opcodes.CQItemUseResponse {

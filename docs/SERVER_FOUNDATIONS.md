@@ -3,8 +3,8 @@
 Status: active. Started 2026-09-25 from `02c51ba`.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-source coin-clerk authorization (2026-09-30), following prize-window and
-rendered Game Corner checkpoint `895991f`.
+atomic Escape Rope consumption/position (2026-10-02), following coin-clerk
+authorization checkpoint `dbffafe`.
 All earlier foundation checkpoints are retained in this
 branch's history. No push or production deployment is authorized by this goal.
 
@@ -43,7 +43,8 @@ evidence, including remaining-work notes that subsequent commits may resolve.
    slots and hidden-coin collection now share this boundary; slot requests validate
    imported machine availability/reach and use server-owned luck; prize buys require
    reach/visibility to the source window selling the selected prize, and coin buys
-   require reach/visibility to the source coin clerk. Audit remaining field
+   require reach/visibility to the source coin clerk. Escape Rope consumption and
+   saved destination now commit together before live teleport publication. Audit remaining field
    effects and other mutation paths for the same requirements.
    Extend the shared transaction/domain operations already in use. Acceptance:
    a late failure leaves all affected state unchanged; retry and concurrent
@@ -93,6 +94,46 @@ deployment, and complete its applicable workflow and live checks.
 
 Continue with item 1 above. Keep this current summary synchronized with coherent
 checkpoint commits; retain the original milestone acceptance criteria below.
+
+## Escape Rope transaction checkpoint (2026-10-02)
+
+The previous Escape Rope handler ignored `DecrementItemQuantity` errors, then
+teleported and reported success. Its destination lookup, consumption and position
+save used separate database operations; a consumption failure could therefore
+grant a free escape, and a position-save failure could spend the rope without
+saving the destination.
+
+The live handler now uses its captured database. A bounded character-locked
+transaction rechecks the item identity and owned consumption, resolves the exit
+from the imported warp data, consumes one rope and saves the normalized position.
+Only a successful commit updates session/movement state and emits the teleport
+and item-use response. The common teleport helper now supports publication of an
+already committed position without issuing a second independent save. DIG shares
+the extracted exit lookup; its own persistence migration remains open.
+
+The existing rule (reject overworld maps, prefer an overworld exit, otherwise the
+first eligible imported warp) is preserved. It is not a new claim of exact
+historical Escape Rope behavior. Missing map records and failed reads now reject
+instead of treating an unknown map as eligible. Ordinary blocked-map/no-exit
+rejections retain their player-facing message; database details stay in diagnostics.
+
+A PostgreSQL dispatcher test with the global database disabled rejects a deferred
+commit after consumption and position writes, proving the rope and saved/live
+positions remain unchanged and no teleport is published. Removing the failure
+allows a retry to consume and move together; replay of the consumed instance
+does not teleport again. The older party-item fixture now supplies the handler's
+explicit database dependency. Race-enabled `internal/world` and
+`internal/scriptsim` suites, compilation of all Go packages and `git diff --check`
+passed. This is dispatcher/state evidence, not a rendered Escape Rope check.
+
+Next: finish field-effect eligibility/persistence and ownership. The inspected
+FLY handler still accepts client-provided destination coordinates without checking
+an authoritative destination catalog; Repel activation follows consumption as
+separate state; Safari entry/session operations and pointer ownership still need
+their audit. Initial item classification and other legacy queries still need
+bounded cancellation. Durable result recovery, bounded shutdown, contract
+migration and broad transport/rendered acceptance remain required. No push or
+deployment occurred; the full goal remains active.
 
 ## Coin-clerk interaction checkpoint (2026-09-30)
 

@@ -170,7 +170,7 @@ func HandleCQItemUse(ses *session.Session, payload []byte, wh *WorldHandler) boo
 		sendCQItemUseError(ses, "Use the battle item menu during a battle")
 		return false
 	}
-	found, err := cqitems.NewStore(db.GlobalWorldDB.DB).FindInventoryItemByInstanceID(charID, req.InstanceID)
+	found, err := cqitems.NewStore(wh.database).FindInventoryItemByInstanceID(charID, req.InstanceID)
 	if err != nil {
 		sendCQItemUseError(ses, "Item not found in inventory")
 		return false

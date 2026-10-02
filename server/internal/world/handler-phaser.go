@@ -317,6 +317,12 @@ func currentPlayerVisibleMapID(ses *session.Session, wh *WorldHandler, charID in
 }
 
 func setServerTeleportedPlayerPosition(ses *session.Session, wh *WorldHandler, mapID, x, y int, direction string) int {
+	return applyServerTeleportedPlayerPosition(ses, wh, mapID, x, y, direction, true)
+}
+
+// persist=false publishes a position already saved by the caller's successful
+// transaction. Never issue a second independent write for that durable effect.
+func applyServerTeleportedPlayerPosition(ses *session.Session, wh *WorldHandler, mapID, x, y int, direction string, persist bool) int {
 	normalizedDirection := normalizeWarpDirection(direction)
 	if normalizedDirection == "" {
 		normalizedDirection = "DOWN"
@@ -349,8 +355,10 @@ func setServerTeleportedPlayerPosition(ses *session.Session, wh *WorldHandler, m
 			wh.PlayerMovement.RegisterPlayer(ses, charID, x, y, normalizedMapID, normalizedDirection)
 		}
 		wh.PlayerMovement.UpdatePosition(charID, x, y, normalizedMapID, normalizedDirection)
-		wh.PlayerMovement.FlushPlayerPosition(charID)
-	} else if db.GlobalWorldDB != nil && db.GlobalWorldDB.DB != nil {
+		if persist {
+			wh.PlayerMovement.FlushPlayerPosition(charID)
+		}
+	} else if persist && db.GlobalWorldDB != nil && db.GlobalWorldDB.DB != nil {
 		if err := db_character.UpdateCharacterPosition(
 			int32(char.ID),
 			uint32(normalizedMapID),
@@ -362,7 +370,7 @@ func setServerTeleportedPlayerPosition(ses *session.Session, wh *WorldHandler, m
 			log.Printf("[Phaser] Failed to save teleported player %d at map %d (%d,%d): %v",
 				char.ID, normalizedMapID, x, y, err)
 		}
-	} else {
+	} else if persist {
 		log.Printf("[Phaser] Skipped saving teleported player %d at map %d (%d,%d): database unavailable",
 			int32(char.ID),
 			normalizedMapID, x, y)
