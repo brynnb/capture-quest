@@ -791,4 +791,7 @@ metadata recovery/load effects remain coupled. Catalog membership alone does
 not authorize movement; explicit movement/warp intent and issued destination
 validation remain in the active roadmap. Ordinary-player Instant Warp retains
 its current policy. See `SERVER_FOUNDATIONS.md` for checkpoint validation and the
-unresolved far-overworld rendered keyboard test.
+far-overworld arrival readiness limitation: actor arrival precedes exact
+chunk/collision residency, so ending warp mode alone does not prove readiness
+for the first input. The rendered movement-origin check waits for actual exact
+tile data; coordinating input release with residency remains required.

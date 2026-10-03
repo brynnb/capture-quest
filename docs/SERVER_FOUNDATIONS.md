@@ -123,23 +123,52 @@ visibility assertions are retained with the catalog fields their fixture needs.
 The final world/server PostgreSQL race suites pass, all Go packages compile,
 and `git diff --check` passes.
 
-Rendered verification is **partial**. In the isolated run at
-`/var/tmp/capturequest-rendered.F3D2cM`, interior keyboard movement, interior click
-movement, indoor overview-to-overworld Instant Warp and multiplayer checks
-passed. The far-overworld case arrived at `(190,-81)` but timed out waiting for
-the next ArrowLeft position event. A focused repeat at
-`/var/tmp/capturequest-rendered.d8pdl7` reproduced it: input was unfrozen, the
-player was idle and warp mode had ended before the key press. No destination
-rejection appeared in that server log. The cause is unresolved, and a comparison
-against the previous checkpoint has not established whether this is a regression.
-Temporary diagnostic logging was removed; no assertion was weakened.
+### Far-overworld input diagnosis
 
-Next: diagnose the far-overworld keyboard failure and compare it with the prior
-checkpoint before changing movement or test timing. Then separate metadata,
-movement reports and explicit warp intent at the shared authoritative boundary,
-including state restrictions and server-issued destination recovery. Continue
-all six remaining-work items above. The goal remains active; this checkpoint is
-local only, with no push or deployment.
+The initial rendered run `/var/tmp/capturequest-rendered.F3D2cM` passed interior
+keyboard/click movement, indoor overview-to-overworld Instant Warp and
+multiplayer. Its far-overworld case arrived at `(190,-81)` but timed out waiting
+for the next ArrowLeft position event. A focused repeat at
+`/var/tmp/capturequest-rendered.d8pdl7` reproduced the failure without a server
+destination rejection.
+
+A private build of prior server checkpoint `7732412` reproduced the same failure
+in `/var/tmp/capturequest-rendered.PG7WAf`, before client catalog validation.
+Diagnostics against the current server in `/var/tmp/capturequest-rendered.QkfVQN`
+showed **no exact tiles** in the one-tile radius around the destination when warp
+mode ended. ArrowLeft was received: the actor turned RIGHT to LEFT while staying
+at `(190,-81)`. The canonical source catalog gives both `(190,-81)` and
+`(189,-81)` `collision_type=1`. The client had not installed that collision data
+when the test pressed the key.
+
+`ensureTileAvailable` fetches/verifies a catalog chunk; it does not install the
+camera plan's renderer/collision residency. Same-map Instant Warp updates the
+actor and restores camera follow immediately, then the camera stream installs
+exact chunks asynchronously. The movement-origin test now waits for both actual
+exact tiles to report collision type 1 before sending its native key press.
+The original keyboard/click destination and stale-origin assertions are retained;
+this is a data-readiness condition rather than an increased input delay or a
+relaxed coordinate assertion. Temporary diagnostic logging was removed.
+
+Verification: all four Instant Warp rendered cases pass in
+`/var/tmp/capturequest-rendered.iBp95V` (28.7 seconds), including native keyboard
+and click-path movement after the far warp. `npm run typecheck` and
+`git diff --check` pass. Multiplayer passed in the earlier catalog-boundary run;
+it was not rerun in this four-case check. No production code or assets changed
+in this verification checkpoint.
+
+Client input still appears unfrozen during that brief missing-residency window.
+The test change does not repair or prove user-facing arrival readiness. The
+explicit warp-flow migration must coordinate server acceptance, actor arrival,
+exact collision residency and input release, including cancellation, failed tile
+loads, superseded targets and reconnect. Metadata, movement reports, cutscene
+visual reports, warp acknowledgements, blackout and Instant Warp currently share
+position writers; preserve each producer's semantics during migration.
+
+Next: separate metadata, movement reports and explicit warp intent at the shared
+authoritative boundary, including state restrictions and server-issued destination
+recovery. Continue all six remaining-work items above. The goal remains active;
+this checkpoint is local only, with no push or deployment.
 
 ## Retired legacy map setter (2026-10-02)
 
