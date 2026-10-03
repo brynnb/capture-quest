@@ -803,6 +803,15 @@ reads do not issue it. Success/error replies carry request IDs. The shared clien
 settlement primitive releases subscriptions, timers and abort listeners on every
 terminal outcome; newer loads and scene cleanup abort local waits. A local abort
 does not reverse a server commit, and correlation is not durable deduplication.
+Current-map loading reads the movement registration first, falling back to the
+selected character before registration. It uses one owned snapshot for map
+permission, zero-position recovery, effects and acknowledgement. Every accepted
+load saves that location in the effect transaction. Post-commit projections mark
+the matching movement position saved without clearing its queued path, facing,
+surfing or previous-map state. Destination/recovery teleports keep the existing
+publication behavior. Stale character/session coordinates cannot redirect a
+current-map load. Other legacy position readers/writers still require audit.
+
 Arrival now uses one bounded character-locked transaction for saved position,
 Safari transitions and all load-effect flag/visibility/boulder mutations. Conditions
 read durable flags; runtime and simulator share the transaction implementation.

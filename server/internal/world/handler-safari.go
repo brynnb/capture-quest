@@ -126,7 +126,7 @@ func HandleSafariBattleAction(ses *session.Session, payload []byte, wh *WorldHan
 	}
 	charID := int64(char.ID)
 
-	_, _, mapID := wh.scriptPlayerPosition(ses)
+	_, _, mapID := wh.ownedPlayerPosition(ses)
 	if !IsInSafariZone(mapID) || getBattle(charID) != nil {
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "not in safari battle"}, opcodes.SafariBattleActionResponse)
 		return false

@@ -405,6 +405,19 @@ func (m *PlayerMovementManager) UpdateReportedPosition(charID int, x, y, mapID i
 	m.applyBicycleMapRules(state)
 }
 
+// ownedPlayerPosition reads the movement registration first and falls back to the
+// selected character before registration. Call from the owning session command gate.
+func (wh *WorldHandler) ownedPlayerPosition(ses *session.Session) (x, y, mapID int) {
+	char := ses.Client.CharData()
+	x, y, mapID = int(char.X), int(char.Y), int(char.MapID)
+	if wh.PlayerMovement != nil {
+		if mx, my, mm, ok := wh.PlayerMovement.GetPosition(int(char.ID)); ok {
+			x, y, mapID = mx, my, mm
+		}
+	}
+	return x, y, mapID
+}
+
 // GetPosition returns the latest server-visible position reported for a player.
 func (m *PlayerMovementManager) GetPosition(charID int) (x, y, mapID int, ok bool) {
 	m.mu.RLock()

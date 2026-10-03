@@ -52,7 +52,7 @@ func HandleItemPickup(ses *session.Session, payload []byte, wh *WorldHandler) bo
 	}
 	// Item balls require immediate cardinal adjacency, even when a counter would
 	// permit talking to a scripted NPC two tiles away.
-	x, y, _ := wh.scriptPlayerPosition(ses)
+	x, y, _ := wh.ownedPlayerPosition(ses)
 	if !canReachItemForPickup(itemPickupTile{X: x, Y: y, MapID: actor.MapID}, itemPickupTile{X: *actor.X, Y: *actor.Y, MapID: actor.MapID}) {
 		fail(fmt.Errorf("Move next to the item first."))
 		return false

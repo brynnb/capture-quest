@@ -263,8 +263,8 @@ func clearBoulderPositionsForMaps(tx db.DBTX, charID int64, mapIDs ...int) error
 
 // mapLoadArrival is an accepted destination, not a client-provided effect identity.
 type mapLoadArrival struct {
-	MapID, X, Y                                  int
-	WritePosition, ValidateCatalog, ApplyEffects bool
+	MapID, X, Y                   int
+	ValidateCatalog, ApplyEffects bool
 }
 
 // Position, Safari transition and all map-load mutations share the same commit.
@@ -274,15 +274,13 @@ func commitMapLoad(ctx context.Context, database *sql.DB, charID int64, arrival 
 		if err := db.LockCharacter(tx, charID); err != nil {
 			return err
 		}
-		if arrival.WritePosition {
-			if arrival.ValidateCatalog {
-				if err := validateClientDestinationIn(tx, arrival.MapID, arrival.X, arrival.Y); err != nil {
-					return err
-				}
-			}
-			if err := saveFieldDestinationIn(tx, charID, arrival.MapID, arrival.X, arrival.Y); err != nil {
+		if arrival.ValidateCatalog {
+			if err := validateClientDestinationIn(tx, arrival.MapID, arrival.X, arrival.Y); err != nil {
 				return err
 			}
+		}
+		if err := saveFieldDestinationIn(tx, charID, arrival.MapID, arrival.X, arrival.Y); err != nil {
+			return err
 		}
 		if !arrival.ApplyEffects {
 			return nil

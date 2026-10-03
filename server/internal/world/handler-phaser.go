@@ -188,14 +188,14 @@ func HandlePhaserMapLoadRequest(ses *session.Session, payload []byte, wh *WorldH
 	char := ses.Client.CharData()
 	charID := int64(char.ID)
 	normalizedID := normalizedVisiblePlayerMapID(wh, mapInfo.ID)
-	previousMapID := currentPlayerVisibleMapID(ses, wh, int(char.ID))
+	x, y, ownedMapID := wh.ownedPlayerPosition(ses)
+	previousMapID := normalizedVisiblePlayerMapID(wh, ownedMapID)
 	supplied := req.DestX != nil
 	if !supplied && normalizedID != previousMapID {
 		ses.SendStreamJSON(protocol.PhaserMapRequestError{RequestID: req.RequestID, Error: "Map loading requires the current player location."}, opcodes.PhaserMapLoadResponse)
 		return false
 	}
-	x, y := int(char.X), int(char.Y)
-	writePosition := supplied
+	teleport := supplied
 	direction := "DOWN"
 	if supplied {
 		x, y = *req.DestX, *req.DestY
@@ -209,10 +209,10 @@ func HandlePhaserMapLoadRequest(ses *session.Session, payload []byte, wh *WorldH
 		normalizedID = normalizedVisiblePlayerMapID(wh, RecoverySpawnMap)
 		x, y = int(RecoverySpawnX), int(RecoverySpawnY)
 		direction = RecoverySpawnDirection
-		writePosition = true
+		teleport = true
 	}
 	effect, err := commitMapLoad(ses.CommandContext(), wh.database, charID, mapLoadArrival{
-		MapID: normalizedID, X: x, Y: y, WritePosition: writePosition,
+		MapID: normalizedID, X: x, Y: y,
 		ValidateCatalog: supplied, ApplyEffects: wh.EventFlags != nil,
 	})
 	if err != nil {
@@ -225,15 +225,17 @@ func HandlePhaserMapLoadRequest(ses *session.Session, payload []byte, wh *WorldH
 			log.Printf("[Phaser] Refresh committed map-load flags for %d: %v", charID, err)
 		}
 	}
-	if writePosition {
+	if teleport {
 		publishCommittedPlayerPosition(ses, wh, normalizedID, x, y, direction)
 	} else {
-		ses.X, ses.Y = float32(char.X), float32(char.Y)
+		// A load of the current location persists the owned snapshot without
+		// clearing its path, facing, surfing or previous-map state.
+		publishCommittedPlayerLocation(ses, wh, normalizedID, x, y)
 	}
 	if effect.Changed() {
 		log.Printf("[Phaser] Committed map effects for %d map %s", charID, effect.MapName)
 	}
-	ses.SendStreamJSON(protocol.PhaserMapLoadResponse{Success: true, RequestID: req.RequestID, MapID: int(char.MapID), X: int(char.X), Y: int(char.Y)}, opcodes.PhaserMapLoadResponse)
+	ses.SendStreamJSON(protocol.PhaserMapLoadResponse{Success: true, RequestID: req.RequestID, MapID: normalizedID, X: x, Y: y}, opcodes.PhaserMapLoadResponse)
 
 	return false
 }
@@ -298,6 +300,17 @@ func setServerTeleportedPlayerPosition(ses *session.Session, wh *WorldHandler, m
 	return publishCommittedPlayerPosition(ses, wh, mapID, x, y, direction), nil
 }
 
+// publishCommittedPlayerLocation refreshes location projections only after commit.
+// It does not replace movement state or discard an in-progress path.
+func publishCommittedPlayerLocation(ses *session.Session, wh *WorldHandler, mapID, x, y int) {
+	char := ses.Client.CharData()
+	ses.X, ses.Y, ses.MapID = float32(x), float32(y), mapID
+	char.X, char.Y, char.MapID = float64(x), float64(y), uint32(mapID)
+	if wh != nil && wh.PlayerMovement != nil {
+		wh.PlayerMovement.markPositionCommitted(int(char.ID), x, y, mapID)
+	}
+}
+
 // Publication accepts only a position saved by the caller's successful commit.
 // It never writes storage or independently clears gameplay state.
 func publishCommittedPlayerPosition(ses *session.Session, wh *WorldHandler, mapID, x, y int, direction string) int {
@@ -317,12 +330,6 @@ func publishCommittedPlayerPosition(ses *session.Session, wh *WorldHandler, mapI
 
 	charID := int(char.ID)
 	previousMapID := currentPlayerVisibleMapID(ses, wh, charID)
-	ses.X = float32(x)
-	ses.Y = float32(y)
-	ses.MapID = normalizedMapID
-	char.X = float64(x)
-	char.Y = float64(y)
-	char.MapID = uint32(normalizedMapID)
 
 	if wh != nil && wh.PlayerMovement != nil {
 		if _, _, _, ok := wh.PlayerMovement.GetPosition(charID); !ok {
@@ -330,9 +337,7 @@ func publishCommittedPlayerPosition(ses *session.Session, wh *WorldHandler, mapI
 		}
 		wh.PlayerMovement.UpdatePosition(charID, x, y, normalizedMapID, normalizedDirection)
 	}
-	if wh != nil && wh.PlayerMovement != nil {
-		wh.PlayerMovement.markPositionCommitted(charID, x, y, normalizedMapID)
-	}
+	publishCommittedPlayerLocation(ses, wh, normalizedMapID, x, y)
 
 	if wh == nil || wh.ActorManager == nil {
 		return normalizedMapID

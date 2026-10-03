@@ -33,7 +33,7 @@ func (wh *WorldHandler) authorizeSlotMachine(ses *session.Session, req GameCorne
 	if req.MachineX == nil || req.MachineY == nil {
 		return false, fmt.Errorf("Select a slot machine first.")
 	}
-	x, y, mapID := wh.scriptPlayerPosition(ses)
+	x, y, mapID := wh.ownedPlayerPosition(ses)
 	dx, dy := x-*req.MachineX, y-*req.MachineY
 	if dx < 0 {
 		dx = -dx

@@ -131,7 +131,7 @@ func TestMapLoadCancellationRollsBackPositionAndRetries(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 75*time.Millisecond)
 	defer cancel()
-	_, err = commitMapLoad(ctx, database, 42, mapLoadArrival{MapID: 192, X: 3, Y: 4, WritePosition: true, ValidateCatalog: true, ApplyEffects: true})
+	_, err = commitMapLoad(ctx, database, 42, mapLoadArrival{MapID: 192, X: 3, Y: 4, ValidateCatalog: true, ApplyEffects: true})
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("deadline: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestMapLoadCancellationRollsBackPositionAndRetries(t *testing.T) {
 	if err := lock.Rollback(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := commitMapLoad(context.Background(), database, 42, mapLoadArrival{MapID: 192, X: 3, Y: 4, WritePosition: true, ValidateCatalog: true, ApplyEffects: true}); err != nil {
+	if _, err := commitMapLoad(context.Background(), database, 42, mapLoadArrival{MapID: 192, X: 3, Y: 4, ValidateCatalog: true, ApplyEffects: true}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -279,5 +279,104 @@ func TestMapLoadBrokenNativeProvenanceRollsBackArrival(t *testing.T) {
 				t.Fatal("corrected provenance retry failed")
 			}
 		})
+	}
+}
+
+func TestCurrentMapLoadCommitsOwnedMovementAndPreservesPath(t *testing.T) {
+	for _, zeroSnapshot := range []bool{true, false} {
+		t.Run(fmt.Sprintf("zeroSnapshot=%v", zeroSnapshot), func(t *testing.T) {
+			database, wh, ses, messages := battleTestWorld(t)
+			wh.PlayerMovement = NewPlayerMovementManager(wh, nil)
+			wh.PlayerMovement.RegisterPlayer(ses, 42, 200, 300, UnifiedOverworldMapID, "LEFT")
+			state := wh.PlayerMovement.players[42]
+			state.Path = []PathNode{{X: 201, Y: 300}, {X: 202, Y: 300}}
+			state.IsSurfing = true
+			state.PreviousMapID = 192
+			state.positionDirty = true
+			beforeSave := state.LastSaveTime
+			char := ses.Client.CharData()
+			char.MapID = 192
+			char.X, char.Y = 2, 3
+			if zeroSnapshot {
+				char.X, char.Y = 0, 0
+			}
+			ses.MapID = 192
+			ses.X, ses.Y = float32(char.X), float32(char.Y)
+			testdb.Exec(t, database, `UPDATE character_data SET map_id=192,x=2,y=3 WHERE id=42;
+    INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(31,'ROUTE_20',50,10,1),(192,'SEAFOAM_ISLANDS_1F',20,20,0);
+    INSERT INTO phaser_tiles(x,y,tile_image_id,source_map_id,is_original_tile_location) VALUES(200,300,1,31,1);
+    INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'EVENT_IN_SEAFOAM_ISLANDS');
+    CREATE FUNCTION reject_current_load_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'late current load failure'; END $$;
+    CREATE CONSTRAINT TRIGGER reject_current_load_commit AFTER UPDATE ON character_data
+    DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN(NEW.map_id=9999) EXECUTE FUNCTION reject_current_load_commit();`)
+			if err := wh.EventFlags.LoadFlags(42); err != nil {
+				t.Fatal(err)
+			}
+			db.GlobalWorldDB = nil
+			// A stale view is not permission to execute that map's effects.
+			battleDispatch(t, wh, ses, opcodes.PhaserMapLoadRequest, `{"mapId":192,"requestId":"remote"}`)
+			var failure protocol.PhaserMapRequestError
+			if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &failure) != nil || failure.Success || failure.Error == "" {
+				t.Fatal("stale view authorized")
+			}
+			messages.streams = nil
+			request := `{"mapId":9999,"requestId":"owned"}`
+			battleDispatch(t, wh, ses, opcodes.PhaserMapLoadRequest, request)
+			if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &failure) != nil || failure.Success || failure.Error == "" || failure.RequestID != "owned" {
+				t.Fatal("late failure published success")
+			}
+			var mapID, x, y int
+			if err := database.QueryRow(`SELECT map_id,x,y FROM character_data WHERE id=42`).Scan(&mapID, &x, &y); err != nil || mapID != 192 || x != 2 || y != 3 {
+				t.Fatal("current load partially committed position")
+			}
+			on, err := queryEventFlag(database, 42, "EVENT_IN_SEAFOAM_ISLANDS")
+			if err != nil || !on || !wh.EventFlags.CheckFlag(42, "EVENT_IN_SEAFOAM_ISLANDS") {
+				t.Fatal("current load partially committed effect")
+			}
+			if char.MapID != 192 || ses.MapID != 192 || state.MapID != 9999 || state.CurrentX != 200 || state.CurrentY != 300 || !state.positionDirty || !state.LastSaveTime.Equal(beforeSave) {
+				t.Fatal("failed load replaced live state")
+			}
+			testdb.Exec(t, database, `DROP TRIGGER reject_current_load_commit ON character_data`)
+			battleDispatch(t, wh, ses, opcodes.PhaserMapLoadRequest, request)
+			var response protocol.PhaserMapLoadResponse
+			if json.Unmarshal(messages.streams[len(messages.streams)-1].payload, &response) != nil || !response.Success || response.MapID != 9999 || response.X != 200 || response.Y != 300 {
+				t.Fatalf("owned arrival: %+v", response)
+			}
+			if err := database.QueryRow(`SELECT map_id,x,y FROM character_data WHERE id=42`).Scan(&mapID, &x, &y); err != nil || mapID != 9999 || x != 200 || y != 300 {
+				t.Fatal("owned arrival did not persist position")
+			}
+			if char.MapID != 9999 || char.X != 200 || char.Y != 300 || ses.MapID != 9999 || ses.X != 200 || ses.Y != 300 || state.positionDirty || wh.EventFlags.CheckFlag(42, "EVENT_IN_SEAFOAM_ISLANDS") {
+				t.Fatal("owned arrival projections disagree")
+			}
+			if len(state.Path) != 2 || state.Path[0] != (PathNode{X: 201, Y: 300}) || state.Direction != "LEFT" || !state.IsSurfing || state.PreviousMapID != 192 {
+				t.Fatal("current load discarded movement intent")
+			}
+		})
+	}
+}
+
+func TestCurrentMapLoadRecoversOwnedZeroInsteadOfValidStaleSnapshot(t *testing.T) {
+	database, wh, ses, messages := battleTestWorld(t)
+	wh.PlayerMovement = NewPlayerMovementManager(wh, nil)
+	wh.PlayerMovement.RegisterPlayer(ses, 42, 0, 0, UnifiedOverworldMapID, "LEFT")
+	state := wh.PlayerMovement.players[42]
+	state.Path = []PathNode{{X: 1, Y: 0}}
+	char := ses.Client.CharData()
+	char.MapID = 192
+	char.X, char.Y = 2, 3
+	testdb.Exec(t, database, `INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(0,'PALLET_TOWN',20,18,1),(31,'ROUTE_20',50,10,1);
+ INSERT INTO phaser_tiles(x,y,tile_image_id,source_map_id,is_original_tile_location) VALUES(0,0,1,31,1),(9,4,1,0,1);
+ INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'EVENT_GOT_POKEBALLS_FROM_OAK'),(42,'EVENT_IN_SEAFOAM_ISLANDS');`)
+	db.GlobalWorldDB = nil
+	battleDispatch(t, wh, ses, opcodes.PhaserMapLoadRequest, `{"mapId":9999,"requestId":"recover"}`)
+	var response protocol.PhaserMapLoadResponse
+	if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &response) != nil || !response.Success || response.MapID != RecoverySpawnMap || response.X != int(RecoverySpawnX) || response.Y != int(RecoverySpawnY) {
+		t.Fatalf("owned recovery: %+v", response)
+	}
+	if !wh.EventFlags.CheckFlag(42, "EVENT_PALLET_AFTER_GETTING_POKEBALLS_2") || !wh.EventFlags.CheckFlag(42, "EVENT_IN_SEAFOAM_ISLANDS") {
+		t.Fatal("recovery ran the stale map's effects")
+	}
+	if len(state.Path) != 0 || state.Direction != RecoverySpawnDirection || state.CurrentX != int(RecoverySpawnX) || state.CurrentY != int(RecoverySpawnY) {
+		t.Fatal("recovery did not publish its committed destination")
 	}
 }

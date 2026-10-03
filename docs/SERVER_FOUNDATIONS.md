@@ -2,10 +2,10 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest checkpoint: native provenance for map-load effects
-(2026-10-02), following atomic map-load checkpoint `b8f5ccd` and read-only
-metadata/correlated arrival checkpoint `7d4060c`. Earlier foundation
-checkpoints remain in this branch's history. No push or production deployment
+Working branch: `codex/server-foundations`. Latest checkpoint: owned-position
+map loading (2026-10-02), following native provenance checkpoint `057f758`,
+atomic map-load checkpoint `b8f5ccd` and correlated arrival checkpoint `7d4060c`.
+Earlier foundation checkpoints remain in this branch's history. No push or production deployment
 is authorized by this goal.
 
 Keep Go, PostgreSQL, one deployable server, and the authoritative extractor,
@@ -53,7 +53,8 @@ evidence, including remaining-work notes that subsequent commits may resolve.
    before live publication; movement saves retain dirty state on failure and
    release the shared player lock before database work. Audit remaining field
    effects and other mutation paths for the same requirements.
-   Map-load arrival/recovery and script effects now also share one transaction;
+   Map-load arrival/recovery and script effects now also share one transaction,
+   using the owned movement location for no-destination loads;
    post-commit cache recovery remains unfinished. Extend the shared transaction/domain operations already
    in use. Acceptance:
    a late failure leaves all affected state unchanged; retry and concurrent
@@ -86,6 +87,42 @@ evidence, including remaining-work notes that subsequent commits may resolve.
    cancellation/timeouts, failure/retry and shutdown with active players.
    Acceptance: evidence covers the original five milestones, including visible
    behavior where relevant. Only then mark the full goal complete.
+
+## Owned-position map loading (2026-10-02)
+
+A current-map load previously authorized the map against movement state but read
+coordinates from the character snapshot. It could recover a stale `(0,0)` snapshot,
+run effects at an older tile and acknowledge that older location. Map loading now
+reads one owned position through the shared movement-first helper used by script
+issuance, interactions, pickups, Game Corner and Safari eligibility. Before movement
+registration it reads the selected character. Current-map authorization, recovery
+selection and effects use that same snapshot.
+
+Every accepted map-load command now persists the selected location together with
+its effects, including a load with no supplied destination. A shared post-commit
+projection helper refreshes character/session coordinates and marks the matching
+movement position committed. A current-location load leaves queued movement,
+facing, surfing and previous-map intent intact. Supplied destinations and genuine
+zero-position recovery retain the existing teleport publication behavior. Replies
+use the transaction's accepted map and coordinates. A stale view cannot authorize
+another map's effects. This does not add destination eligibility or durable request
+deduplication.
+
+Focused PostgreSQL packet tests passed for stale zero/nonzero character snapshots,
+a remote stale map, deferred position/effect commit failure, retry and preservation
+of movement intent. They deliberately keep the movement registration ahead of the
+character/session projections. A separate test checks that genuine owned zero
+coordinates recover to the existing spawn and run that destination's effects.
+Race-enabled suites passed for `internal/world`, `internal/scriptsim`,
+`internal/server` and `internal/protocol`; `git diff --check` passed. All five
+isolated rendered Instant Warp and multiplayer visibility checks passed, with
+evidence retained at `/var/tmp/capturequest-rendered.CoXMLC`.
+
+Remaining: audit other legacy position readers/writers and callback ownership;
+replace shared client position authority with issued warp grants and explicit
+Instant Warp intent; define committed-result and flag-cache recovery after loss or
+cancellation; complete domain/contract and lifecycle integration work. The full
+roadmap remains active. No push or deployment is part of this checkpoint.
 
 ## Native provenance for map-load effects (2026-10-02)
 

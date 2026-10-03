@@ -59,7 +59,7 @@ func (wh *WorldHandler) scriptInteractionTargetContext(ctx context.Context, ses 
 	if err := wh.database.QueryRowContext(ctx, `SELECT name, is_overworld FROM phaser_maps WHERE id = $1`, actor.MapID).Scan(&mapName, &overworld); err != nil {
 		return PhaserActor{}, "", err
 	}
-	x, y, playerMap := wh.scriptPlayerPosition(ses)
+	x, y, playerMap := wh.ownedPlayerPosition(ses)
 	actorMap := actor.MapID
 	if overworld != 0 {
 		actorMap = UnifiedOverworldMapID
