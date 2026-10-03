@@ -1566,6 +1566,18 @@ func runActiveBattleState(scenario *Scenario, applied *AppliedFixture, initial *
 }
 
 func runFixtureState(scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
+	var safari *SafariSummary
+	if scenario.Fixture.Safari != nil {
+		wh, err := newSafariScenarioWorld(scenario, applied.CharacterID)
+		if err != nil {
+			return nil, err
+		}
+		saved, err := wh.Safari.GetSession(context.Background(), applied.CharacterID)
+		if err != nil {
+			return nil, err
+		}
+		safari = safariSummaryFromSession(saved)
+	}
 	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
@@ -1580,6 +1592,7 @@ func runFixtureState(scenario *Scenario, applied *AppliedFixture, initial *Snaps
 		},
 		Initial: initial,
 		Final:   final,
+		Safari:  safari,
 	}
 	if err := result.ValidateExpectations(); err != nil {
 		return result, err
