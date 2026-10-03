@@ -55,6 +55,8 @@ func publishBattleTurn(ses *session.Session, wh *WorldHandler, charID int64, bat
 			end["lossMessage"] = result.LossMessage
 		}
 		if b := result.Blackout; b != nil {
+			refreshSafariFlags(wh, charID)
+			publishCommittedPlayerPosition(ses, wh, b.MapID, b.X, b.Y, "DOWN")
 			end["money"] = b.NewMoney
 			end["moneyLost"] = b.MoneyLost
 			end["blackoutMapId"] = b.MapID

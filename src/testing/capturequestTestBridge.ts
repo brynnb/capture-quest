@@ -1,3 +1,4 @@
+import { MapDataService } from "@/phaser-game/services/MapDataService";
 import { WorldSocket, OpCodes } from "@/net";
 import AudioManager from "@/services/audio/AudioManager";
 import useAudioActivityStore from "@/stores/AudioActivityStore";
@@ -288,7 +289,7 @@ export interface CaptureQuestTestBridge {
   waitForEvent: (type: string, timeoutMs?: number) => Promise<unknown>;
   tileToViewport: (x: number, y: number) => TileViewportPoint | null;
   centerTileInView: (x: number, y: number) => void;
-  warpToMap: (mapId: number, x: number, y: number, direction?: string) => void;
+  warpToMap: (mapId: number, x: number, y: number, direction?: string) => Promise<void>;
   requestWarpProbeCases: (options?: {
     limit?: number;
     offset?: number;
@@ -914,7 +915,7 @@ async function sendCommand(
     } else if ("useFieldMove" in command) {
       sendFieldMoveCommand(command);
     } else if ("warpTo" in command) {
-      warpToMap(
+      await warpToMap(
         command.warpTo.mapId,
         command.warpTo.x,
         command.warpTo.y,
@@ -947,12 +948,11 @@ async function sendCommand(
   };
 }
 
-function warpToMap(mapId: number, x: number, y: number, direction = "DOWN"): void {
-  window.dispatchEvent(
-    new CustomEvent("warpTileTeleport", {
-      detail: { mapId, x, y, direction },
-    }),
-  );
+export async function warpToMap(mapId: number, x: number, y: number, direction = "DOWN"): Promise<void> {
+  const result = await new MapDataService().instantWarp(mapId, x, y, direction);
+  window.dispatchEvent(new CustomEvent("warpTileTeleport", {
+    detail: { ...result, serverCommitted: true },
+  }));
 }
 
 function requestWarpProbeCases(options: {

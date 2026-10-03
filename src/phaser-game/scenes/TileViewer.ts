@@ -43,6 +43,7 @@ import { captureTileStamp } from "./tile-viewer/tileEditorStamp";
 import {
   clearCaptureQuestTileViewerDiagnostics,
   emitCaptureQuestTestEvent,
+  warpToMap,
   setCaptureQuestTileViewerDiagnostics,
   type CaptureQuestTestActor,
 } from "@/testing/capturequestTestBridge";
@@ -333,16 +334,7 @@ export class TileViewer extends Scene {
         }
 
         if ("warpTo" in command) {
-          window.dispatchEvent(
-            new CustomEvent("warpTileTeleport", {
-              detail: {
-                mapId: command.warpTo.mapId,
-                x: command.warpTo.x,
-                y: command.warpTo.y,
-                direction: command.warpTo.direction ?? "DOWN",
-              },
-            }),
-          );
+          await warpToMap(command.warpTo.mapId, command.warpTo.x, command.warpTo.y, command.warpTo.direction);
           return { ok: true };
         }
 

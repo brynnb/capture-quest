@@ -68,6 +68,59 @@ func battleDispatch(t *testing.T, wh *WorldHandler, ses *session.Session, opcode
 	registry.HandleWorldPacket(ses, clientPacket(opcode, payload))
 }
 
+func TestStandaloneBlackoutCommitsRecoveryOrPublishesNoDestination(t *testing.T) {
+	database, wh, ses, messages := battleTestWorld(t)
+	char := ses.Client.CharData()
+	char.MapID, char.X, char.Y = 220, 7, 8
+	wh.PlayerMovement = NewPlayerMovementManager(wh, nil)
+	wh.PlayerMovement.RegisterPlayer(ses, 42, 7, 8, 220, "UP")
+	wh.Safari = NewSafariZoneManager(database)
+	if err := wh.Safari.SetSession(context.Background(), 42, SafariSession{Active: true, BallsLeft: 30, StepsLeft: 500}); err != nil {
+		t.Fatal(err)
+	}
+	testdb.Exec(t, database, `UPDATE character_data SET map_id=220,x=7,y=8 WHERE id=42;
+ CREATE FUNCTION reject_blackout_party_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'late blackout failure'; END $$;
+ CREATE CONSTRAINT TRIGGER reject_blackout_party_commit AFTER UPDATE ON character_pokemon
+ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_blackout_party_commit();`)
+	db.GlobalWorldDB = nil
+	sendStandaloneBlackout(ses, wh, 42)
+	for _, message := range messages.streams {
+		if message.opcode == opcodes.PokeBattleEndNotify {
+			t.Fatal("failed blackout published a destination")
+		}
+	}
+	var money, mapID, x, y, hp int
+	if err := database.QueryRow(`SELECT pokedollars,map_id,x,y,cur_hp FROM character_wallet w JOIN character_data c ON c.id=w.character_id JOIN character_pokemon p ON p.character_id=c.id WHERE c.id=42`).Scan(&money, &mapID, &x, &y, &hp); err != nil || money != 100 || mapID != 220 || x != 7 || y != 8 || hp != 1 {
+		t.Fatal("failed blackout changed durable state", err)
+	}
+	visit, err := wh.Safari.GetSession(context.Background(), 42)
+	if err != nil || visit == nil || !visit.Active || char.MapID != 220 {
+		t.Fatal("failed blackout changed Safari/live position")
+	}
+	testdb.Exec(t, database, `DROP TRIGGER reject_blackout_party_commit ON character_pokemon`)
+	messages.streams = nil
+	sendStandaloneBlackout(ses, wh, 42)
+	var end struct {
+		Blackout      bool
+		BlackoutMapID int
+		BlackoutX     int
+		BlackoutY     int
+	}
+	if len(messages.streams) < 2 || messages.streams[0].opcode != opcodes.CharacterWallet || messages.streams[1].opcode != opcodes.PokeBattleEndNotify || json.Unmarshal(messages.streams[1].payload, &end) != nil || !end.Blackout || end.BlackoutMapID != 41 {
+		t.Fatal("committed blackout omitted result")
+	}
+	if err := database.QueryRow(`SELECT pokedollars,map_id,x,y,cur_hp FROM character_wallet w JOIN character_data c ON c.id=w.character_id JOIN character_pokemon p ON p.character_id=c.id WHERE c.id=42`).Scan(&money, &mapID, &x, &y, &hp); err != nil || money != 50 || mapID != end.BlackoutMapID || x != end.BlackoutX || y != end.BlackoutY || hp != 95 {
+		t.Fatal("blackout result preceded durable recovery", err)
+	}
+	if char.MapID != uint32(mapID) || char.X != float64(x) || char.Y != float64(y) {
+		t.Fatal("blackout did not publish owned position")
+	}
+	visit, err = wh.Safari.GetSession(context.Background(), 42)
+	if err != nil || visit != nil {
+		t.Fatal("blackout did not end Safari")
+	}
+}
+
 func TestBattleItemTurnCommitFailureDoesNotSpendOrPublish(t *testing.T) {
 	database, wh, ses, messages := battleTestWorld(t)
 	current := battleTestStart(t, database, false, nil)
@@ -263,7 +316,9 @@ func TestMoveLearningPublishesOnlyAfterPartyAndBattleCommit(t *testing.T) {
 }
 
 func TestBlackoutAndPartyHealRollBackWithBattle(t *testing.T) {
-	database, _, _, _ := battleTestWorld(t)
+	database, wh, ses, _ := battleTestWorld(t)
+	ses.Client.CharData().MapID, ses.Client.CharData().X, ses.Client.CharData().Y = 220, 7, 8
+	testdb.Exec(t, database, `UPDATE character_data SET map_id=220,x=7,y=8 WHERE id=42`)
 	current := battleTestStart(t, database, false, nil)
 	var result battleTurnResult
 	apply := func(tx db.DBTX, next *pokebattle.BattleState) (err error) {
@@ -280,6 +335,10 @@ func TestBlackoutAndPartyHealRollBackWithBattle(t *testing.T) {
 	if err := database.QueryRow(`SELECT pokedollars FROM character_wallet WHERE character_id=42`).Scan(&money); err != nil || money != 100 {
 		t.Fatalf("failed blackout money=%d %v", money, err)
 	}
+	var mapID, x, y int
+	if err := database.QueryRow(`SELECT map_id,x,y FROM character_data WHERE id=42`).Scan(&mapID, &x, &y); err != nil || mapID != 220 || x != 7 || y != 8 {
+		t.Fatal("failed battle blackout changed destination", err)
+	}
 	saved, err := pokebattle.ResumeBattle(context.Background(), database, 42)
 	if err != nil || saved.IsOver() || saved.PlayerParty[0].CurHP != 1 {
 		t.Fatal("failed blackout changed battle/party")
@@ -294,6 +353,13 @@ func TestBlackoutAndPartyHealRollBackWithBattle(t *testing.T) {
 	}
 	if err := database.QueryRow(`SELECT pokedollars FROM character_wallet WHERE character_id=42`).Scan(&money); err != nil || money != 50 {
 		t.Fatalf("blackout money=%d %v", money, err)
+	}
+	if err := database.QueryRow(`SELECT map_id,x,y FROM character_data WHERE id=42`).Scan(&mapID, &x, &y); err != nil || mapID != result.Blackout.MapID || x != result.Blackout.X || y != result.Blackout.Y {
+		t.Fatal("battle blackout omitted durable destination", err)
+	}
+	publishBattleTurn(ses, wh, 42, next, result, opcodes.PokeBattleActionResponse)
+	if int(ses.Client.CharData().MapID) != mapID || int(ses.Client.CharData().X) != x || int(ses.Client.CharData().Y) != y {
+		t.Fatal("battle blackout omitted owned position publication")
 	}
 	if _, err := pokebattle.CommitBattle(context.Background(), database, 42, current, apply); err == nil {
 		t.Fatal("replayed blackout")

@@ -240,6 +240,11 @@ export interface WarpTileTeleportNotify {
   y: number /* int */;
   direction: string;
 }
+export interface SafariZoneExitNotify extends WarpTileTeleportNotify {
+  stepsLeft: number /* int */;
+  ballsLeft: number /* int */;
+  message: string;
+}
 
 //////////
 // source: pokedex.go

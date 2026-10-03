@@ -576,7 +576,7 @@ func HandleTrainerEncounterReady(ses *session.Session, payload []byte, wh *World
 	playerParty, err := pokebattle.LoadParty(myDB, charID)
 	if err != nil || len(playerParty) == 0 {
 		log.Printf("[TrainerEncounter] No party for char %d (err: %v), triggering blackout", charID, err)
-		ses.SendStreamJSON(buildBlackoutEndResponse(charID), opcodes.PokeBattleEndNotify)
+		sendStandaloneBlackout(ses, wh, charID)
 		return false
 	}
 
@@ -590,7 +590,7 @@ func HandleTrainerEncounterReady(ses *session.Session, payload []byte, wh *World
 	}
 	if !hasAlive {
 		log.Printf("[TrainerEncounter] All pokemon fainted for char %d, triggering blackout", charID)
-		ses.SendStreamJSON(buildBlackoutEndResponse(charID), opcodes.PokeBattleEndNotify)
+		sendStandaloneBlackout(ses, wh, charID)
 		return false
 	}
 

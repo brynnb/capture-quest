@@ -10,6 +10,7 @@ import (
 	"capturequest/internal/db"
 	"capturequest/internal/itemuse"
 	"capturequest/internal/pokebattle"
+	"capturequest/internal/protocol"
 	"capturequest/internal/session"
 )
 
@@ -177,15 +178,7 @@ func HandleSafariBattleAction(ses *session.Session, payload []byte, wh *WorldHan
 	// If safari visit is over (out of balls), send exit notification to warp player back
 	if !safariSes.Active {
 		publishSafariExpiry(ses, wh, charID)
-		ses.SendStreamJSON(map[string]interface{}{
-			"stepsLeft": 0,
-			"ballsLeft": 0,
-			"message":   "PA: Ding-dong! Your SAFARI GAME is over!",
-			"mapId":     SafariZoneGateMapID,
-			"x":         SafariZoneGateReturnX,
-			"y":         SafariZoneGateReturnY,
-			"direction": "DOWN",
-		}, opcodes.SafariZoneExitNotify)
+		sendCommittedSafariExit(ses, 0)
 	}
 
 	return false
@@ -234,7 +227,7 @@ func CheckSafariStep(charID int64, x, y, mapID int, ses *session.Session, wh *Wo
 	}
 	if expired {
 		publishSafariExpiry(ses, wh, charID)
-		ses.SendStreamJSON(map[string]interface{}{"stepsLeft": 0, "ballsLeft": safariSes.BallsLeft, "message": "PA: Ding-dong! Your SAFARI GAME is over!", "mapId": SafariZoneGateMapID, "x": SafariZoneGateReturnX, "y": SafariZoneGateReturnY, "direction": "DOWN"}, opcodes.SafariZoneExitNotify)
+		sendCommittedSafariExit(ses, safariSes.BallsLeft)
 		return true
 	}
 	ses.SendStreamJSON(map[string]interface{}{"stepsLeft": safariSes.StepsLeft, "ballsLeft": safariSes.BallsLeft}, opcodes.SafariZoneStepUpdate)
@@ -261,4 +254,11 @@ func refreshSafariFlags(wh *WorldHandler, charID int64) {
 func publishSafariExpiry(ses *session.Session, wh *WorldHandler, charID int64) {
 	refreshSafariFlags(wh, charID)
 	publishCommittedPlayerPosition(ses, wh, SafariZoneGateMapID, SafariZoneGateReturnX, SafariZoneGateReturnY, "DOWN")
+}
+
+func sendCommittedSafariExit(ses *session.Session, ballsLeft int) {
+	ses.SendStreamJSON(protocol.SafariZoneExitNotify{
+		WarpTileTeleportNotify: protocol.WarpTileTeleportNotify{MapID: SafariZoneGateMapID, X: SafariZoneGateReturnX, Y: SafariZoneGateReturnY, Direction: "DOWN"},
+		StepsLeft:              0, BallsLeft: ballsLeft, Message: "PA: Ding-dong! Your SAFARI GAME is over!",
+	}, opcodes.SafariZoneExitNotify)
 }

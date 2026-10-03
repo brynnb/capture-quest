@@ -832,7 +832,15 @@ write or supplied MapLoad coordinates. Shared movement callbacks distinguish
 walking steps from snaps: snaps refresh context without sending position reports.
 Committed presentation snaps immediately to retire source tweens and queues.
 Legacy arrival effects remain a subsequent MapLoad transaction for these producers;
-blackout/Safari store responses and test warp probes still require migration.
+blackout/Safari store responses and test warp probes have now migrated to committed
+presentation and explicit Instant Warp commands. Blackout wallet, destination,
+Safari transition and party healing share the initiating transaction. Its standalone
+path uses injected storage and the command context, publishes no fallback on failure,
+and sends the result only after updating owned location. Battle-start recovery without
+an open panel is presented immediately. Safari exit DTOs carry required destination
+fields; dialogue dismissal projects the committed gate. Test probes await a committed
+Instant Warp result. Supplied MapLoad coordinates remain to be retired, followed by
+walking/scripted position authority and replay/reconnect recovery.
 
 Current-map loading reads the movement registration first, falling back to the
 selected character before registration. It uses one owned snapshot for map

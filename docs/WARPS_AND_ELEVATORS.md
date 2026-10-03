@@ -50,8 +50,11 @@ across server movement pads, elevators, field moves/items, cutscene publication,
 recovery and scenario jumps. Its presentation skips position echoes and supplied
 MapLoad coordinates. Actor snaps refresh local context without reporting a walking
 step, and retire the source tween immediately. Legacy arrival effects still occur
-in the following MapLoad transaction; blackout/Safari store paths and test probes
-remain separate migrations.
+in the following MapLoad transaction. Blackout/Safari store paths now project
+committed recovery locations without echoes; blackout destination, wallet and party
+healing share the initiating transaction. Test probes await explicit Instant Warp
+commands. Supplied MapLoad coordinates and walking/scripted position authority
+remain to be retired.
 
 Frontend and backend must be released together when a deployment is authorized.
 

@@ -9,6 +9,7 @@ import useCharacterSelectStore, {
   type CharacterSelectEntry,
 } from "@/stores/CharacterSelectStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
+import useGameStatusStore from "@/stores/GameStatusStore";
 import useGameScreenStore from "@/stores/GameScreenStore";
 import usePokeBattleStore from "@/stores/PokeBattleStore";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
@@ -414,6 +415,12 @@ export class NetworkBridge {
           y: data.blackoutY as number,
         }
       : undefined;
+    // Battle-start recovery can arrive before a battle panel exists. Present its
+    // committed destination directly; an unopened panel cannot be dismissed.
+    if (blackoutWarp && !usePokeBattleStore.getState().isInBattle) {
+      useGameStatusStore.getState().triggerBlackoutWarp(blackoutWarp.mapId, blackoutWarp.x, blackoutWarp.y);
+      return;
+    }
     const sentToPC = data.sentToPC as boolean | undefined;
     const sentToPCBox = data.pcBox as number | undefined;
     const lossMessage = data.lossMessage as string | undefined;

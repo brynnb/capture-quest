@@ -1,3 +1,4 @@
+import type { SafariZoneExitNotify } from "@/net/generated/protocol";
 import { Scene } from "phaser";
 import usePokemonDialogueStore from "@/stores/PokemonDialogueStore";
 import usePokeBattleStore from "@/stores/PokeBattleStore";
@@ -54,13 +55,7 @@ export class TileViewerEventBridge {
     window.addEventListener("safariZoneEnter", this.safariEnterHandler);
 
     this.safariExitHandler = (event: Event) => {
-      const data = (event as CustomEvent).detail as {
-        message?: string;
-        mapId?: number;
-        x?: number;
-        y?: number;
-        direction?: string;
-      };
+      const data = (event as CustomEvent<SafariZoneExitNotify>).detail;
       console.log("[Safari] Zone exit:", data);
       if (usePokeBattleStore.getState().isSafari) {
         usePokeBattleStore.getState().closeBattle();
@@ -76,10 +71,11 @@ export class TileViewerEventBridge {
             window.dispatchEvent(
               new CustomEvent("warpTileTeleport", {
                 detail: {
-                  mapId: data.mapId ?? 156,
-                  x: data.x ?? 3,
-                  y: data.y ?? 4,
-                  direction: data.direction ?? "DOWN",
+                  mapId: data.mapId,
+                  x: data.x,
+                  y: data.y,
+                  direction: data.direction,
+                  serverCommitted: true,
                 },
               }),
             );

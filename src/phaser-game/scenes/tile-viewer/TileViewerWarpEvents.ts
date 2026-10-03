@@ -44,30 +44,9 @@ export class TileViewerWarpEvents {
         if (!pending) return;
 
         useGameStatusStore.getState().clearBlackoutWarp();
-        const destMapId = pending.mapId;
-        const destX = pending.x;
-        const destY = pending.y;
-        console.log(
-          `[Blackout] Warping to Pokémon Center (map ${destMapId}, ${destX}, ${destY})`,
-        );
-        PhaserNet.sendPlayerPosition(destX, destY, destMapId);
-
-        const playerActor = this.deps.getPlayerActor();
-        if (playerActor) {
-          playerActor.x = destX;
-          playerActor.y = destY;
-          playerActor.mapId = destMapId;
-          this.deps.setPlayerActor(playerActor);
-        }
-
-        const movement = this.deps.playerMovementController();
-        movement.stopMovement();
-        movement.syncPosition(destX, destY);
-        this.deps.scene.game.registry.set("destinationMapId", destMapId);
-        this.deps.scene.game.registry.set("destinationX", destX);
-        this.deps.scene.game.registry.set("destinationY", destY);
-        this.deps.scene.game.registry.set("useOverworldSavedCamera", false);
-        this.deps.resetScene(false);
+        void this.handleWarpTileTeleport(new CustomEvent("warpTileTeleport", {
+          detail: { ...pending, direction: "DOWN", serverCommitted: true },
+        }));
       },
     );
 

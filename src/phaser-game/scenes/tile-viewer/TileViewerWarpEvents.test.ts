@@ -1,4 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
+import useGameStatusStore from "@/stores/GameStatusStore";
 import { TileViewerWarpEvents } from "./TileViewerWarpEvents";
 
 const network = vi.hoisted(() => ({ sendPlayerPosition: vi.fn() }));
@@ -7,7 +8,7 @@ vi.mock("@/services/audio/AudioManager", () => ({ default: { playSFX: vi.fn() } 
 
 afterEach(() => vi.clearAllMocks());
 
-test.each([1, 2])("a committed teleport to map %s snaps immediately without a write or source wait", async (mapId) => {
+function warpFixture() {
   const registry = new Map<string, unknown>([["currentMapId", 1]]);
   const movement = {
     stopMovement: vi.fn(), syncMapId: vi.fn(), syncPosition: vi.fn(), syncDirection: vi.fn(),
@@ -24,6 +25,11 @@ test.each([1, 2])("a committed teleport to map %s snaps immediately without a wr
     setPlayerActor: vi.fn(),
     resetScene,
   } as never);
+  return { handler, registry, movement, renderer, resetScene, actor };
+}
+
+test.each([1, 2])("a committed teleport to map %s snaps immediately without a write or source wait", async (mapId) => {
+  const { handler, registry, movement, renderer, resetScene, actor } = warpFixture();
   await (handler as unknown as {
     handleWarpTileTeleport: (event: CustomEvent) => Promise<void>;
   }).handleWarpTileTeleport(new CustomEvent("warpTileTeleport", {
@@ -41,4 +47,17 @@ test.each([1, 2])("a committed teleport to map %s snaps immediately without a wr
   } else {
     expect(resetScene).not.toHaveBeenCalled();
   }
+});
+
+
+test("blackout store presentation uses the committed path without echoing coordinates", () => {
+  const { handler, registry, resetScene } = warpFixture();
+  handler.register();
+  try {
+    useGameStatusStore.getState().triggerBlackoutWarp(2, 3, 4);
+    expect(network.sendPlayerPosition).not.toHaveBeenCalled();
+    expect(registry.get("destinationServerCommitted")).toBe(true);
+    expect(resetScene).toHaveBeenCalledWith(false);
+    expect(useGameStatusStore.getState().pendingBlackoutWarp).toBeNull();
+  } finally { handler.cleanup(); }
 });

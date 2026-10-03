@@ -8,6 +8,7 @@ import (
 
 	"capturequest/internal/db"
 	db_character "capturequest/internal/db/character"
+	"capturequest/internal/pokebattle"
 )
 
 type BlackoutResult struct {
@@ -19,19 +20,31 @@ type BlackoutResult struct {
 	MoneyLost int
 }
 
-func ApplyBlackoutForCharacter(charID int64) (BlackoutResult, error) {
+// CommitStandaloneBlackout shares recovery between runtime and simulator callers.
+// Its destination, wallet and party are publishable only after successful return.
+func CommitStandaloneBlackout(ctx context.Context, database db.DBTX, charID int64) (BlackoutResult, []*pokebattle.Pokemon, error) {
+	var party []*pokebattle.Pokemon
 	var result BlackoutResult
-	err := db.Transaction(context.Background(), db.GlobalWorldDB.DB, func(tx db.DBTX) (err error) {
+	err := db.Transaction(ctx, database, func(tx db.DBTX) (err error) {
 		if err := db.LockCharacter(tx, charID); err != nil {
 			return err
 		}
 		result, err = applyBlackoutInTransaction(tx, charID)
+		if err != nil {
+			return err
+		}
+		party, err = pokebattle.LoadParty(tx, charID)
+		if err != nil {
+			return err
+		}
+		HealPokemonParty(party)
+		party, err = pokebattle.SavePartyInTransaction(tx, charID, party)
 		return err
 	})
 	if err != nil {
-		return BlackoutResult{}, err
+		return BlackoutResult{}, nil, err
 	}
-	return result, nil
+	return result, party, nil
 }
 
 func applyBlackoutInTransaction(tx db.DBTX, charID int64) (BlackoutResult, error) {
@@ -64,6 +77,9 @@ func applyBlackoutInTransaction(tx db.DBTX, charID int64) (BlackoutResult, error
 	result.MoneyLost = result.OldMoney - result.NewMoney
 	if _, err := tx.Exec(`UPDATE character_wallet SET pokedollars=$1 WHERE character_id=$2`, result.NewMoney, charID); err != nil {
 		return result, err
+	}
+	if err := saveFieldDestinationIn(tx, charID, result.MapID, result.X, result.Y); err != nil {
+		return BlackoutResult{}, err
 	}
 	return result, nil
 }

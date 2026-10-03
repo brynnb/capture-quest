@@ -1,6 +1,7 @@
 package scriptsim
 
 import (
+	"context"
 	"fmt"
 
 	"capturequest/internal/db"
@@ -72,7 +73,7 @@ func ResolveActiveBattle(charID int64, resolve ResolveBattle, efm *world.EventFl
 		effects = append(effects, postWinEffects...)
 	}
 	if resolve.Result == "lose" && !active.NoBlackoutOnLoss {
-		blackout, err := world.ApplyBlackoutForCharacter(charID)
+		blackout, _, err := world.CommitStandaloneBlackout(context.Background(), db.GlobalWorldDB.DB, charID)
 		if err != nil {
 			return effects, err
 		}

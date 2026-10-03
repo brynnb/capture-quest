@@ -2,10 +2,11 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest checkpoint: committed
-teleport notification contracts and removal of client echoes (2026-10-02),
-following explicit Instant Warp `e1f54a8`, normal warps `3899660`, owned-position
-map loading `64cf970`, native provenance `057f758` and atomic map-load `b8f5ccd`.
+Working branch: `codex/server-foundations`. Latest checkpoint: committed blackout
+recovery, Safari presentation and explicit test warp probes (2026-10-02), following
+teleport notification projection `65a5581`, Instant Warp `e1f54a8`, normal warps
+`3899660`, owned-position loading `64cf970`, provenance `057f758` and atomic
+map-load `b8f5ccd`.
 Earlier foundation checkpoints remain in this branch's history. No push or production deployment
 is authorized by this goal.
 
@@ -31,7 +32,7 @@ evidence, including remaining-work notes that subsequent commits may resolve.
 | Area | Implemented | Still required |
 | --- | --- | --- |
 | Request/session boundary | Packet and connection limits, centralized session prerequisites, removal of insecure session takeover, actual transport closure, location/visibility checks for scripted clicks, dialogue choices and direct trainer battles, client destination catalog validation, server-resolved normal warp activation, explicit Instant Warp commands, committed teleport notification contracts and read-only map metadata, and preserved command deadlines/disconnect cancellation in migrated operations. | Audit remaining interaction/mutation endpoints; propagate cancellation through legacy managers and remaining database/network work. |
-| Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors, Game Corner prizes and bounded coin/slot/hidden-coin operations, atomic Escape Rope/FLY positions, durable Repel counters, Safari entry/turn/capture state and exhaustion destinations, atomic recovery warps and map-load position/Safari/flag/visibility/boulder effects, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery of committed results across reconnects. |
+| Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors, Game Corner prizes and bounded coin/slot/hidden-coin operations, atomic Escape Rope/FLY positions, durable Repel counters, Safari entry/turn/capture state and exhaustion destinations, atomic blackout/recovery destinations and map-load position/Safari/flag/visibility/boulder effects, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery of committed results across reconnects. |
 | Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, and movement ticks coordinated with the owner. | Finish timer/callback/shared-state and legacy position-writer audits; prove remaining concurrent/reconnect behavior across real transports. |
 | Domains and wire contracts | Injected content-query service; typed character/wallet/bind, Pokédex/card, content detail, map-script, map-info/list and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
 | Lifecycle and verification | Owned HTTP/listeners, readiness, listener failure propagation, joined periodic workers, sealed session admissions, fail-closed staged preload, startup cancellation, atomic scripted-event publication, and deadline-aware shutdown waits with returned failure results. | Audit cancellation of remaining legacy work, define durable final-save recovery, and complete transport/rendered integration coverage. Owned HTTP and player transport retirement and isolated active-player shutdown checks have landed. |
@@ -88,6 +89,68 @@ evidence, including remaining-work notes that subsequent commits may resolve.
    cancellation/timeouts, failure/retry and shutdown with active players.
    Acceptance: evidence covers the original five milestones, including visible
    behavior where relevant. Only then mark the full goal complete.
+
+## Blackout recovery, Safari presentation and explicit test probes (2026-10-02)
+
+The shared blackout operation charged the wallet but did not save its returned
+Pokémon Center destination. Both committed battle losses and the older battle-start
+recovery path relied on a later browser position report. The older path also sent
+fallback destination coordinates after persistence failed and used an unbounded
+global database/context wrapper. The shared transaction now saves the destination
+and Safari exit with the wallet deduction. Battle settlement already heals the
+party in its transaction; standalone recovery now heals and saves the stable party
+rows in that same bounded, character-locked transaction using injected storage and
+the command context. A failure sends no blackout destination. Publication refreshes
+Safari state and updates owned position before sending the result and the typed wallet snapshot. Existing options
+and their documented default center remain the destination source.
+
+The blackout store uses shared committed warp presentation, with no position echo
+or supplied MapLoad destination. Battle-start recovery can arrive before any battle
+panel opens; the bridge presents that committed destination directly instead of
+waiting for an unopened panel to be dismissed. Existing battle losses retain their
+panel dismissal flow. Safari exhaustion notifications now use an explicit generated
+DTO with required destination coordinates; delayed dialogue dismissal marks its
+warp presentation committed and no longer invents fallback coordinates. The two
+server Safari expiry producers already save/publish the gate before notification.
+
+Both test warp producers now await the explicit Instant Warp command before
+presentation, including engine-probe commands forwarded through TileViewer. Failed
+probes reject without locally changing position. Test setup therefore exercises the
+same catalog validation and commit-before-publication boundary as the active tool.
+The new `debug_blackout_empty_party` scenario is a synthetic integration fixture,
+not recovered historical source data; map 51, center 41 and the usable fixture tile
+(6,10) were verified against the authoritative local extractor catalog.
+
+Focused PostgreSQL checks prove standalone late party-save rollback of wallet,
+position and Safari with no destination publication, successful retry/party healing,
+and battle-loss position rollback/publication within the existing battle transaction.
+All 25 focused frontend store/request/loader checks, typecheck, asset validation,
+production build and stable canonical generation passed. Eight isolated rendered
+blackout, Instant Warp and Safari cases passed (55.6 seconds), with evidence at
+`/var/tmp/capturequest-rendered.5TMFFz`. The focused rendered test-warp probe also passed (4.4 seconds), proving valid
+movement and rejection without local position changes, at
+`/var/tmp/capturequest-rendered.k2yYn5`. The broader check identified and migrated
+the simulator blackout caller to the same explicit recovery transaction; it no
+longer uses the removed global blackout wrapper. Fixture validation then identified
+blocked Viridian Forest (5,10); its catalog collision_type was 0. The synthetic
+fixture now starts at (6,10), collision_type 1, and the fixture validation passes.
+The corrected blackout browser rerun passed (5.7 seconds) at
+`/var/tmp/capturequest-rendered.CDUT9p`. The nine applicable browser cases therefore
+have passing evidence across these three runs; the full set was not repeated after
+the fixture-only correction and addition of wallet publication. Final isolated race-enabled world/simulator/protocol suites passed and the server
+package compiled.
+
+Remaining: reject supplied MapLoad coordinates and remove the client compatibility
+plumbing now that these producers have migrated. Walking/facing and scripted
+animation reports still retain opcode 45 location authority. Legacy teleport arrival
+effects remain a subsequent MapLoad transaction. Audit battle-start eligibility,
+repeated recovery commands (especially an empty party), delayed dialogue/session
+races and durable result recovery; this checkpoint does not prove replay protection
+or reconnect recovery. The original five milestones remain active. No push or
+deployment occurred.
+
+Next: retire supplied MapLoad destinations with forged-field boundary tests, then
+bind walking and scripted animation acknowledgements to accepted server movement.
 
 ## Committed teleport notifications and snap projection (2026-10-02)
 
@@ -241,7 +304,7 @@ The producer audit for the next retirement is:
 | `TileViewerInteractionController` Instant Warp | Explicit correlated catalog destination command (185/186) | Active migration complete; add durable result recovery. |
 | `PlayerMovementController.onStepComplete` and direction updates | Walking animation completion and turning/boulder attempts through opcode 45 | Separate intent from accepted movement results; reject stale location-changing echoes. |
 | TileViewer cutscene movement callback | Reports scripted animation coordinates | Bind acknowledgement to issued script movement instead of accepting coordinates as authority. |
-| Blackout/Safari store events and test warp probes | Separate legacy presentation/destination paths | Audit committed results and migrate probes to Instant Warp; committed teleport opcode echoes are now removed. |
+| Blackout/Safari store events and test warp probes | Committed recovery presentation and explicit Instant Warp probes | Active destination producer migration complete; verify remaining delayed/session races. |
 | `MapLoader.prepareMapLoad` | Ordinary loads read owned position; unmigrated producers still supply coordinates | Retire supplied destinations after the producers above move. |
 
 Remaining migration: Instant Warp now uses the explicit command documented above. Walking and scripted

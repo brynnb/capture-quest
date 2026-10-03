@@ -155,3 +155,10 @@ type WarpTileTeleportNotify struct {
 	Y         int    `json:"y"`
 	Direction string `json:"direction"`
 }
+
+type SafariZoneExitNotify struct {
+	WarpTileTeleportNotify `tstype:",extends"`
+	StepsLeft              int    `json:"stepsLeft"`
+	BallsLeft              int    `json:"ballsLeft"`
+	Message                string `json:"message"`
+}

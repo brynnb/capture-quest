@@ -1,14 +1,13 @@
 package world
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
-	db_character "capturequest/internal/db/character"
+	model "capturequest/internal/db/models"
 	"capturequest/internal/pokebattle"
 	"capturequest/internal/session"
 )
@@ -287,7 +286,7 @@ func HandlePokeBattleStart(ses *session.Session, payload []byte, wh *WorldHandle
 	playerParty, err := pokebattle.LoadParty(myDB, charID)
 	if err != nil || len(playerParty) == 0 {
 		log.Printf("[PokeBattle] No party for char %d (err: %v), triggering blackout", charID, err)
-		ses.SendStreamJSON(buildBlackoutEndResponse(charID), opcodes.PokeBattleEndNotify)
+		sendStandaloneBlackout(ses, wh, charID)
 		return false
 	}
 
@@ -301,7 +300,7 @@ func HandlePokeBattleStart(ses *session.Session, payload []byte, wh *WorldHandle
 	}
 	if !hasAlive {
 		log.Printf("[PokeBattle] All pokemon fainted for char %d, triggering blackout", charID)
-		ses.SendStreamJSON(buildBlackoutEndResponse(charID), opcodes.PokeBattleEndNotify)
+		sendStandaloneBlackout(ses, wh, charID)
 		return false
 	}
 
@@ -727,35 +726,21 @@ func battleEndedByRunSuccess(events []pokebattle.BattleEvent) bool {
 	return false
 }
 
-// buildBlackoutEndResponse creates a PokeBattleEndNotify payload for a loss/blackout,
-// including the last visited Pokémon Center coordinates so the client knows where to warp.
-func buildBlackoutEndResponse(charID int64) map[string]interface{} {
-	resp := map[string]interface{}{
-		"playerWon": false,
-		"blackout":  true,
+// Standalone battle-start recovery shares the same durable blackout operation.
+func sendStandaloneBlackout(ses *session.Session, wh *WorldHandler, charID int64) {
+	result, party, err := CommitStandaloneBlackout(ses.CommandContext(), wh.database, charID)
+	if err != nil {
+		log.Printf("[PokeBattle] Commit standalone blackout for %d: %v", charID, err)
+		SendSystemMessage(ses, "Could not save recovery. Please try again.")
+		return
 	}
-
-	blackout, blackoutErr := ApplyBlackoutForCharacter(charID)
-	if blackoutErr != nil {
-		log.Printf("[PokeBattle] Failed to apply blackout state (char %d): %v", charID, blackoutErr)
-		opts, err := db_character.LoadOptions(context.Background(), int32(charID))
-		if err == nil && opts.LastPokeCenterMapID != 0 {
-			resp["blackoutMapId"] = opts.LastPokeCenterMapID
-			resp["blackoutX"] = opts.LastPokeCenterX
-			resp["blackoutY"] = opts.LastPokeCenterY
-			return resp
-		}
-		// Fall back to Viridian City Pokémon Center
-		resp["blackoutMapId"] = 41
-		resp["blackoutX"] = 3
-		resp["blackoutY"] = 4
-		return resp
-	}
-
-	resp["money"] = blackout.NewMoney
-	resp["moneyLost"] = blackout.MoneyLost
-	resp["blackoutMapId"] = blackout.MapID
-	resp["blackoutX"] = blackout.X
-	resp["blackoutY"] = blackout.Y
-	return resp
+	refreshSafariFlags(wh, charID)
+	publishCommittedPlayerPosition(ses, wh, result.MapID, result.X, result.Y, "DOWN")
+	ses.SendStreamJSON(model.CharacterWallet{CharacterID: uint32(charID), Pokedollars: uint32(result.NewMoney)}, opcodes.CharacterWallet)
+	ses.SendStreamJSON(map[string]interface{}{
+		"playerWon": false, "blackout": true, "money": result.NewMoney,
+		"moneyLost": result.MoneyLost, "blackoutMapId": result.MapID,
+		"blackoutX": result.X, "blackoutY": result.Y,
+	}, opcodes.PokeBattleEndNotify)
+	sendPokemonPartySnapshot(ses, party)
 }

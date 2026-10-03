@@ -338,7 +338,7 @@ func (m *WildEncounterManager) startWildBattle(charID int64, area *encounterArea
 	playerParty, err := pokebattle.LoadParty(myDB, charID)
 	if err != nil || len(playerParty) == 0 {
 		log.Printf("[WildEncounter] No party for char %d (err: %v), triggering blackout", charID, err)
-		ses.SendStreamJSON(buildBlackoutEndResponse(charID), opcodes.PokeBattleEndNotify)
+		sendStandaloneBlackout(ses, m.wh, charID)
 		return
 	}
 
@@ -352,7 +352,7 @@ func (m *WildEncounterManager) startWildBattle(charID int64, area *encounterArea
 	}
 	if !hasAlive {
 		log.Printf("[WildEncounter] All pokemon fainted for char %d, triggering blackout", charID)
-		ses.SendStreamJSON(buildBlackoutEndResponse(charID), opcodes.PokeBattleEndNotify)
+		sendStandaloneBlackout(ses, m.wh, charID)
 		return
 	}
 
@@ -387,7 +387,7 @@ func (m *WildEncounterManager) startWildBattleWithPokemon(charID int64, pokemonI
 	playerParty, err := pokebattle.LoadParty(myDB, charID)
 	if err != nil || len(playerParty) == 0 {
 		log.Printf("[WildEncounter] No party for char %d (err: %v), triggering blackout", charID, err)
-		ses.SendStreamJSON(buildBlackoutEndResponse(charID), opcodes.PokeBattleEndNotify)
+		sendStandaloneBlackout(ses, m.wh, charID)
 		return
 	}
 
@@ -400,7 +400,7 @@ func (m *WildEncounterManager) startWildBattleWithPokemon(charID int64, pokemonI
 	}
 	if !hasAlive {
 		log.Printf("[WildEncounter] All pokemon fainted for char %d, triggering blackout", charID)
-		ses.SendStreamJSON(buildBlackoutEndResponse(charID), opcodes.PokeBattleEndNotify)
+		sendStandaloneBlackout(ses, m.wh, charID)
 		return
 	}
 
