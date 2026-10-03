@@ -2,8 +2,8 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest checkpoint: coherent gameplay recovery
-(2026-10-03), following durable cutscene issuance/completion `e9eb834`, pending trainer encounters `84f2d91` and ordinary-step receipts `80a544c`, following atomic movement-step effects `cfdeb9e`, retirement of the client coordinate setter `2df1db0`, correlated cutscene completion `6638a63`, issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
+Working branch: `codex/server-foundations`. Latest checkpoint: network battle command identity
+(2026-10-03), following coherent gameplay recovery `c0d31f9` and durable cutscene issuance/completion `e9eb834`, pending trainer encounters `84f2d91` and ordinary-step receipts `80a544c`, following atomic movement-step effects `cfdeb9e`, retirement of the client coordinate setter `2df1db0`, correlated cutscene completion `6638a63`, issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
 `0585dde`, committed
 blackout/recovery `2f62595`, teleport notification projection `65a5581`, Instant
 Warp `e1f54a8`, normal warps `3899660`, owned-position loading `64cf970`,
@@ -71,10 +71,95 @@ number of commits or passing tests. All five areas still have outstanding work.
 | Area | Implemented | Still required |
 | --- | --- | --- |
 | Request/session boundary | Packet and connection limits, centralized session prerequisites, removal of insecure session takeover, actual transport closure, location/visibility checks for scripted clicks, dialogue choices and direct trainer battles, client destination catalog validation, server-resolved normal warp activation, explicit Instant Warp commands, committed teleport notification contracts and read-only map metadata, retired coordinate/map setters, and preserved command deadlines/disconnect cancellation in migrated operations. | Audit remaining interaction/mutation endpoints; propagate cancellation through legacy managers and remaining database/network work. |
-| Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors, Game Corner prizes and bounded coin/slot/hidden-coin operations, atomic Escape Rope/FLY positions, durable Repel counters, Safari entry/turn/capture state and exhaustion destinations, atomic blackout/recovery destinations and map-load position/Safari/flag/visibility/boulder effects, atomic movement-step counters, encounters and recovery, durable latest ordinary-step receipts, durable sight-trainer plans/resumption and atomic readiness resolution, durable cutscene snapshots/completion receipts/cancellation, coherent battle/Safari/pending-plan recovery, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery for remaining mutations across reconnects; finish current-state recovery for inventory/wallet/flags and remaining presentation, and integrate recovery into remaining battle/Safari command timeout paths. |
+| Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors, Game Corner prizes and bounded coin/slot/hidden-coin operations, atomic Escape Rope/FLY positions, durable Repel counters, Safari entry/turn/capture state and exhaustion destinations, atomic blackout/recovery destinations and map-load position/Safari/flag/visibility/boulder effects, atomic movement-step counters, encounters and recovery, durable latest ordinary-step receipts, durable sight-trainer plans/resumption and atomic readiness resolution, durable cutscene snapshots/completion receipts/cancellation, coherent battle/Safari/pending-plan recovery, mandatory ordinary-battle command identity, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery for remaining mutations across reconnects; finish current-state recovery for inventory/wallet/flags and remaining presentation, and integrate recovery into remaining battle/Safari command timeout paths. |
 | Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, and movement ticks coordinated with the owner. | Finish timer/callback/shared-state and legacy position-writer audits; prove remaining concurrent/reconnect behavior across real transports. |
 | Domains and wire contracts | Injected content-query service; typed character/wallet/bind, Pokédex/card, content detail, map-script, map-info/list, sight-trainer notification/readiness, coherent gameplay recovery and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
 | Lifecycle and verification | Owned HTTP/listeners, readiness, listener failure propagation, joined periodic workers, sealed session admissions, fail-closed staged preload, startup cancellation, atomic scripted-event publication, and deadline-aware shutdown waits with returned failure results. | Audit cancellation of remaining legacy work, define durable final-save recovery, and complete transport/rendered integration coverage. Owned HTTP and player transport retirement and isolated active-player shutdown checks have landed. |
+
+## Network battle command identity checkpoint (2026-10-03)
+
+The existing `CommitBattle` compares a captured server battle against durable
+storage under the character lock. That protects concurrent stale server copies,
+but the old network request carried only its action. Once the first request
+committed, an identical packet captured the new server cache and could advance
+another turn or spend another inventory quantity. Closing a battle likewise
+captured whichever finished battle was current, even for a delayed old dismissal.
+
+Ordinary turn, forced switch, item-use alias, move-learning and close commands now
+require one explicit `battle: { battleId, revision }` identity. The shared match
+check rejects missing, wrong, zero or stale identity before any mutation. The
+existing transaction rechecks the captured identity against durable state under
+the row lock. Successful commits increment the durable revision; an old packet
+cannot apply to the next revision or to a replacement battle. The close path
+cannot delete a newer finished battle. Decoding rejects unknown fields instead
+of silently accepting a malformed command.
+
+Ordinary battle starts, turn/no-turn responses and move-learning results publish
+their actual committed identity. The existing store retains that identity even
+while HP/events animate, and recovery already supplies it. `BattleCommandService`
+uses generated request types and binds every menu action to the store's current
+identity at send time. Dismissal captures it before clearing presentation. The
+unused identity-free item-send helper is removed; the server item alias forwards
+the same mandatory identity through the authoritative ordinary action handler.
+Canonical Tygo generation owns these TypeScript contracts.
+
+Supported version-zero battle saves are upgraded once during resume, inside the
+existing character transaction, before an ID is advertised. The upgrade stores a
+new identity and the current stable party row references in version two without
+saving the party or advancing a turn. Late failure leaves the old JSON intact and
+returns no playable identity. Subsequent resumes keep the same ID/revision.
+Unsupported versions and malformed current-version identities still fail.
+
+This is revision rejection, not an outcome receipt. A duplicate gets an explicit
+rejection rather than the old success/animation. It proves at most one accepted
+mutation for the expected battle revision; it does not identify which of two
+competing commands won, retain an acknowledgement after close, or automatically
+recover a lost reply. Safari actions still lack encounter identity/revision.
+These are prerequisites for the remaining correlated timeout/recovery work,
+not completion of that work or of the five-area goal.
+
+The wire change is deliberately mandatory. Old clients cannot mutate ordinary
+battles through identity-free requests; a future authorized release must ship
+matching server/client contracts together. No schema or asset regeneration is
+required by this checkpoint. No push or deployment is included.
+
+Validation:
+
+- Final PostgreSQL race suites pass for world, pokebattle, server and session.
+  New real-dispatcher tests repeat the exact item packet with two available
+  quantities, discard its reply, restore the saved battle and repeat again:
+  only one item and turn commit. Missing/wrong/zero/future identity and unknown
+  fields reject; a missing move-learning identity preserves its pending choice.
+  A delayed close cannot delete a replacement finished battle. Existing rollback,
+  move-learning, item, party and transport tests remain passing.
+- The legacy resume test now verifies the required earlier upgrade boundary:
+  a rejecting SQL constraint rolls back the upgrade with no published identity;
+  successful upgrade preserves the party and turn; repeated resume retains the
+  same ID/revision; cancelled action leaves the upgraded JSON intact.
+- Nine focused frontend tests pass across command binding, gameplay recovery and
+  battle restoration. Canonical generation, typecheck, matched runtime-asset
+  validation and production build pass. The existing large-chunk warning remains.
+- All seven isolated Chromium checks pass (1.8 minutes). The new proxy duplicates
+  the real menu's first action packet: exactly one successful reply advances
+  revision 1 to 2 and the duplicate explicitly rejects. Keyboard combat, trainer
+  and Safari lost-notification reentry, Safari run and exhaustion also pass.
+  The first run caught phase validation preceding stale-identity validation when
+  a turn ended the battle; validation order was corrected without weakening the
+  assertion. No commit/restore/close storage failures appear in the final log.
+
+Evidence: `/var/tmp/capturequest-battle-identity-go-final.log`,
+`/var/tmp/capturequest-battle-identity-front.log`,
+`/var/tmp/capturequest-battle-identity-types-final.log`,
+`/var/tmp/capturequest-battle-identity-build.log`, and
+`/var/tmp/capturequest-battle-identity-rendered-final.log`. Browser/server artifacts:
+`/var/tmp/capturequest-rendered.UuUbYT`. These are isolated local checks, not
+production or process-death evidence. Rendered move-learning and forced-switch
+coverage remains to be expanded; PostgreSQL covers their mutation boundary.
+
+Recommended next step: correlate ordinary battle replies and apply current-state
+recovery on timeout with proper retirement/stale-response handling, then add
+Safari encounter identity and duplicate-command recovery. The remaining endpoint,
+mutation, callback/ownership, domain/wire and lifecycle audits remain in scope.
 
 ## Coherent gameplay recovery checkpoint (2026-10-03)
 

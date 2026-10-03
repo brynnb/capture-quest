@@ -977,3 +977,29 @@ causes one fresh read. Legacy command timeout integration and inventory/wallet/f
 resynchronization remain unfinished; see SERVER_FOUNDATIONS.md for the full scope.
 Local world-entry party fixtures seed only an empty party, preserving identities
 referenced by saved battles across reconnects.
+
+
+### Ordinary battle command identity
+
+Turn, forced-switch, item-use, move-learning and dismissal packets require the
+explicit `battle: { battleId, revision }` object generated from Go JSON fields.
+The transport handler validates it against the captured current battle; the
+existing transaction validates that same identity under the character lock.
+Only then can effects, party persistence and revision advancement commit.
+Capturing the server's latest battle alone does not reject duplicated network
+packets: the packet must identify the original revision it intends to mutate.
+
+Starts, turn replies and move-learning results publish the actual identity.
+The shared browser command service captures it from the existing battle store
+at send time, including while response events animate. Close requests retain
+it before clearing the store, preventing delayed dismissal of a later battle.
+Old identity-free requests reject; a release must update server and client
+together. Rejected duplicates do not replay a historical outcome. Correlated
+reply timeout handling, stale response retirement and Safari command identity
+remain unfinished; see SERVER_FOUNDATIONS.md for the full five-area roadmap.
+
+Supported version-zero battle saves receive a one-time version-two upgrade under
+the resume transaction before commands are admitted. Identity and current party
+row references persist without a turn, reward or party rewrite. Failure rolls
+back the upgrade; repeated resume keeps the established identity. Current-format
+malformation and unsupported versions remain explicit failures.

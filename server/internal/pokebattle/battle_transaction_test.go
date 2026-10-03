@@ -179,31 +179,51 @@ func TestBattleResumeRejectsMismatchedPartyWithoutDeletingRecord(t *testing.T) {
 	}
 }
 
-func TestLegacyBattleUpgradesOnlyOnCommittedAction(t *testing.T) {
+func TestLegacyBattleIdentityUpgradeOnResumeIsAtomicAndStable(t *testing.T) {
 	database := partyDatabase(t)
 	legacy := `{"phase":1,"battleType":0,"playerActive":0,"enemyActive":0,"enemyParty":[{"id":7,"name":"SQUIRTLE","curHp":20,"maxHp":20,"level":5}]}`
 	if _, err := database.Exec(`INSERT INTO character_battle_state(character_id,battle_json) VALUES(42,$1)`, legacy); err != nil {
 		t.Fatal(err)
 	}
+	before := mustLoadParty(t, database, 42)
+	testdb.Exec(t, database, `ALTER TABLE character_battle_state ADD CONSTRAINT reject_upgrade CHECK((battle_json::json->>'version') IS NULL)`)
+	if battle, err := ResumeBattle(context.Background(), database, 42); err == nil || battle != nil {
+		t.Fatal("failed migration published an identity")
+	}
+	var raw string
+	if err := database.QueryRow(`SELECT battle_json FROM character_battle_state WHERE character_id=42`).Scan(&raw); err != nil || raw != legacy {
+		t.Fatal("failed migration rewrote legacy save", err)
+	}
+	testdb.Exec(t, database, `ALTER TABLE character_battle_state DROP CONSTRAINT reject_upgrade`)
 	restored, err := ResumeBattle(context.Background(), database, 42)
-	if err != nil || restored == nil || restored.persistedVersion != 0 {
-		t.Fatalf("legacy resume: %+v %v", restored, err)
+	if err != nil || restored == nil || restored.persistedVersion != 2 || restored.BattleID == "" || restored.Revision != 1 {
+		t.Fatalf("legacy upgrade: %+v %v", restored, err)
+	}
+	if restored.TurnNumber != 0 || !reflect.DeepEqual(before, restored.PlayerParty) {
+		t.Fatal("identity upgrade changed party or advanced a turn")
+	}
+	var upgraded string
+	if err := database.QueryRow(`SELECT battle_json FROM character_battle_state WHERE character_id=42`).Scan(&upgraded); err != nil {
+		t.Fatal(err)
+	}
+	again, err := ResumeBattle(context.Background(), database, 42)
+	if err != nil || again.BattleID != restored.BattleID || again.Revision != 1 {
+		t.Fatal("resume replaced established identity", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if _, err := CommitBattle(ctx, database, 42, restored, nil); err == nil {
 		t.Fatal("accepted cancelled action")
 	}
-	var raw string
-	if err := database.QueryRow(`SELECT battle_json FROM character_battle_state WHERE character_id=42`).Scan(&raw); err != nil || raw != legacy {
-		t.Fatalf("failed action rewrote legacy save: %v", err)
+	if err := database.QueryRow(`SELECT battle_json FROM character_battle_state WHERE character_id=42`).Scan(&raw); err != nil || raw != upgraded {
+		t.Fatal("failed action rewrote migrated save", err)
 	}
 	committed, err := CommitBattle(context.Background(), database, 42, restored, nil)
-	if err != nil || committed.BattleID == "" || committed.Revision != 1 {
-		t.Fatalf("upgrade: %+v %v", committed, err)
+	if err != nil || committed.BattleID != restored.BattleID || committed.Revision != 2 {
+		t.Fatalf("committed upgraded action: %+v %v", committed, err)
 	}
 	saved, err := ResumeBattle(context.Background(), database, 42)
-	if err != nil || saved.persistedVersion != 2 {
+	if err != nil || saved.persistedVersion != 2 || saved.BattleID != committed.BattleID || saved.Revision != 2 {
 		t.Fatalf("new version restore: %+v %v", saved, err)
 	}
 }

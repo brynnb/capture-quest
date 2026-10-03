@@ -354,6 +354,8 @@ export class NetworkBridge {
     }
     useAudioActivityStore.getState().setBattleVictoryTrack(null);
     usePokeBattleStore.getState().startBattle({
+      battleId: data.battleId as string,
+      revision: data.revision as number,
       playerPokemon: data.playerPokemon as PokeBattlePokemonDTO,
       enemyPokemon: data.enemyPokemon as PokeBattlePokemonDTO,
       phase: data.phase as string,
@@ -389,6 +391,8 @@ export class NetworkBridge {
       return;
     }
     usePokeBattleStore.getState().updateBattleState({
+      battleId: data.battleId as string,
+      revision: data.revision as number,
       playerPokemon: data.playerPokemon as PokeBattlePokemonDTO,
       enemyPokemon: data.enemyPokemon as PokeBattlePokemonDTO,
       phase: data.phase as string,
@@ -816,6 +820,8 @@ export class NetworkBridge {
     // Show events via the normal animation flow, then transition to battle_end.
     const store = usePokeBattleStore.getState();
     store.updateBattleState({
+      battleId: data.battleId as string,
+      revision: data.revision as number,
       playerPokemon: (data.updatedPokemon as PokeBattlePokemonDTO) || store.playerPokemon!,
       enemyPokemon: store.enemyPokemon!,
       phase: "battle_end",

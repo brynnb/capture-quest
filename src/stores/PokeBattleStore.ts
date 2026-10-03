@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { GameplayStateResponse, PokemonDTO } from "@/net/generated/world_api";
+import type { BattleCommandIdentity, GameplayStateResponse, PokemonDTO } from "@/net/generated/world_api";
 import { WorldSocket, OpCodes } from "@/net";
 import useAudioActivityStore from "@/stores/AudioActivityStore";
 
@@ -41,7 +41,7 @@ export interface BattleEvent {
   evolvedName?: string;
 }
 
-interface PokeBattleState {
+interface PokeBattleState extends BattleCommandIdentity {
   restoreGameplay: (snapshot: GameplayStateResponse) => void;
   isInBattle: boolean;
   phase: BattlePhase;
@@ -78,7 +78,7 @@ interface PokeBattleState {
   sentToPC: boolean;
   sentToPCBox: number | null;
 
-  startBattle: (data: {
+  startBattle: (data: BattleCommandIdentity & {
     playerPokemon: PokemonDTO;
     enemyPokemon: PokemonDTO;
     phase: string;
@@ -92,7 +92,7 @@ interface PokeBattleState {
     guaranteedCatch?: boolean;
   }) => void;
 
-  updateBattleState: (data: {
+  updateBattleState: (data: BattleCommandIdentity & {
     playerPokemon: PokemonDTO;
     enemyPokemon: PokemonDTO;
     phase: string;
@@ -117,6 +117,8 @@ type BattlePresentationState = Omit<PokeBattleState,
   "restoreGameplay" | "startBattle" | "updateBattleState" | "endBattle" | "closeBattle" | "setPhase" | "advanceEvent" | "startSafariBattle" | "updateSafariState">;
 
 const initialBattleState: BattlePresentationState = {
+  battleId: "",
+  revision: 0,
   isInBattle: false,
   phase: "none",
   pendingPhase: "none",
@@ -169,6 +171,8 @@ const usePokeBattleStore = create<PokeBattleState>((set, get) => ({
     set({
       ...initialBattleState,
       isInBattle: true,
+      battleId: data.battleId,
+      revision: data.revision,
       phase: hasEvents ? "animating" : (data.phase as BattlePhase),
       pendingPhase: data.phase as BattlePhase,
       turnNumber: data.turnNumber,
@@ -195,7 +199,7 @@ const usePokeBattleStore = create<PokeBattleState>((set, get) => ({
     const serverPhase = data.phase as BattlePhase;
     const hasEvents = data.events && data.events.length > 0;
     // Store faint switch data if present
-    const faintUpdate: Partial<PokeBattleState> = {};
+    const faintUpdate: Partial<PokeBattleState> = { battleId: data.battleId, revision: data.revision };
     if (data.playerParty) faintUpdate.faintSwitchParty = data.playerParty;
     if (data.playerActive !== undefined) faintUpdate.faintSwitchActive = data.playerActive;
     if (data.battleType) faintUpdate.battleType = data.battleType as "wild" | "trainer";
@@ -260,10 +264,10 @@ const usePokeBattleStore = create<PokeBattleState>((set, get) => ({
   },
 
   closeBattle: () => {
-    const { isSafari } = get();
+    const { isSafari, battleId, revision } = get();
     // Tell the server we're done with this battle so it can clean up
-    if (!isSafari) {
-      WorldSocket.sendJsonMessage(OpCodes.PokeBattleCloseRequest, {});
+    if (!isSafari && battleId && revision > 0) {
+      WorldSocket.sendJsonMessage(OpCodes.PokeBattleCloseRequest, { battle: { battleId, revision } });
     }
     useAudioActivityStore.getState().setBattleVictoryTrack(null);
     set(initialBattleState);

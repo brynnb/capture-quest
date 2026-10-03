@@ -130,7 +130,25 @@ func ResumeBattle(ctx context.Context, database *sql.DB, charID int64) (*BattleS
 		if err != nil || battle == nil {
 			return err
 		}
-		return battle.RestoreParty(tx, charID)
+		if err := battle.RestoreParty(tx, charID); err != nil {
+			return err
+		}
+		// Version zero predates durable command identity. Upgrade exactly that
+		// supported format before advertising a playable battle, under the same lock.
+		// No turn, party save or reward occurs, and failed commit publishes no identity.
+		if battle.persistedVersion == 0 {
+			battle.BattleID = uuid.NewString()
+			battle.Revision = 1
+			if err := SaveBattleState(tx, charID, battle); err != nil {
+				return err
+			}
+			battle.persistedVersion = 2
+			battle.playerVolatile = make([]playerVolatileState, 0, len(battle.PlayerParty))
+			for _, p := range battle.PlayerParty {
+				battle.playerVolatile = append(battle.playerVolatile, volatileState(p))
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err

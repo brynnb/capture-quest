@@ -9,8 +9,8 @@ import useCQInventoryStore, {
   ITEM_TYPE_MEDICINE,
 } from "@stores/CQInventoryStore";
 import type { PokemonDTO } from "@/net/generated/world_api";
-import { WorldSocket, OpCodes } from "@/net";
 import { sendCQInventoryRequest, sendSafariAction } from "@/phaser-game/services/PhaserNetworkService";
+import { sendBattleAction, sendBattleSwitch, sendMoveLearningChoice } from "@/phaser-game/services/BattleCommandService";
 import AudioManager from "@/services/audio/AudioManager";
 import { sfxPathForConstant } from "@/services/audio/pokemonMusic";
 
@@ -1210,7 +1210,7 @@ const PokeBattleDisplay: React.FC = () => {
 
   const handleUseBall = useCallback(
     (itemId: number) => {
-      WorldSocket.sendJsonMessage(OpCodes.PokeBattleActionRequest, {
+      sendBattleAction( {
         action: "item",
         moveSlot: 0,
         itemId,
@@ -1222,7 +1222,7 @@ const PokeBattleDisplay: React.FC = () => {
 
   const handleUseItem = useCallback(
     (itemId: number) => {
-      WorldSocket.sendJsonMessage(OpCodes.PokeBattleActionRequest, {
+      sendBattleAction( {
         action: "item",
         moveSlot: 0,
         itemId,
@@ -1234,7 +1234,7 @@ const PokeBattleDisplay: React.FC = () => {
   );
 
   const handleRun = useCallback(() => {
-    WorldSocket.sendJsonMessage(OpCodes.PokeBattleActionRequest, {
+    sendBattleAction( {
       action: "run",
       moveSlot: 0,
     });
@@ -1259,7 +1259,7 @@ const PokeBattleDisplay: React.FC = () => {
 
   const handleMoveSelect = useCallback(
     (slot: number) => {
-      WorldSocket.sendJsonMessage(OpCodes.PokeBattleActionRequest, {
+      sendBattleAction( {
         action: "fight",
         moveSlot: slot,
       });
@@ -1274,7 +1274,7 @@ const PokeBattleDisplay: React.FC = () => {
 
   const handleFaintSwitch = useCallback(
     (partyIndex: number) => {
-      WorldSocket.sendJsonMessage(OpCodes.PokeBattleSwitchRequest, {
+      sendBattleSwitch( {
         partyIndex,
         action: "switch",
       });
@@ -1285,7 +1285,7 @@ const PokeBattleDisplay: React.FC = () => {
 
   const handleBattleSwitch = useCallback(
     (partyIndex: number) => {
-      WorldSocket.sendJsonMessage(OpCodes.PokeBattleActionRequest, {
+      sendBattleAction( {
         action: "switch",
         moveSlot: partyIndex,
       });
@@ -1295,7 +1295,7 @@ const PokeBattleDisplay: React.FC = () => {
   );
 
   const handleFaintRun = useCallback(() => {
-    WorldSocket.sendJsonMessage(OpCodes.PokeBattleSwitchRequest, {
+    sendBattleSwitch( {
       partyIndex: 0,
       action: "run",
     });
@@ -1305,7 +1305,7 @@ const PokeBattleDisplay: React.FC = () => {
 
   const handleForgetMove = useCallback(
     (slot: number) => {
-      WorldSocket.sendJsonMessage(OpCodes.PokeMoveLearnRequest, {
+      sendMoveLearningChoice( {
         forgetSlot: slot,
       });
     },
@@ -1313,7 +1313,7 @@ const PokeBattleDisplay: React.FC = () => {
   );
 
   const handleSkipLearn = useCallback(() => {
-    WorldSocket.sendJsonMessage(OpCodes.PokeMoveLearnRequest, {
+    sendMoveLearningChoice( {
       forgetSlot: -1,
     });
   }, []);

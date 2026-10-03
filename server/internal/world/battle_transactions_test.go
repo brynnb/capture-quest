@@ -65,6 +65,29 @@ func battleDispatch(t *testing.T, wh *WorldHandler, ses *session.Session, opcode
 	t.Helper()
 	registry := NewWorldOpCodeRegistry()
 	registry.WH = wh
+	// Older domain fixtures express the action only. Bind those valid commands to
+	// their current durable identity; tests of missing/stale identity dispatch raw
+	// packets or supply an explicit battle field, which is never rewritten here.
+	switch opcode {
+	case opcodes.PokeBattleActionRequest, opcodes.PokeBattleSwitchRequest, opcodes.CQBattleItemUseRequest, opcodes.PokeMoveLearnRequest, opcodes.PokeBattleCloseRequest:
+		var request map[string]json.RawMessage
+		if json.Unmarshal([]byte(payload), &request) == nil && request != nil {
+			if _, explicit := request["battle"]; !explicit {
+				if battle := getBattle(int64(ses.Client.CharData().ID)); battle != nil {
+					identity, err := json.Marshal(BattleCommandIdentity{BattleID: battle.BattleID, Revision: battle.Revision})
+					if err != nil {
+						t.Fatal(err)
+					}
+					request["battle"] = identity
+					data, err := json.Marshal(request)
+					if err != nil {
+						t.Fatal(err)
+					}
+					payload = string(data)
+				}
+			}
+		}
+	}
 	registry.HandleWorldPacket(ses, clientPacket(opcode, payload))
 }
 
@@ -300,9 +323,11 @@ func TestMoveLearningPublishesOnlyAfterPartyAndBattleCommit(t *testing.T) {
 	}
 	var learned struct {
 		Success    bool
+		BattleID   string `json:"battleId"`
+		Revision   int64  `json:"revision"`
 		PostEvents []pokebattle.BattleEvent
 	}
-	if err := json.Unmarshal(messages.streams[0].payload, &learned); err != nil || !learned.Success || len(learned.PostEvents) != 1 {
+	if err := json.Unmarshal(messages.streams[0].payload, &learned); err != nil || !learned.Success || learned.BattleID != pending.BattleID || learned.Revision != pending.Revision+1 || len(learned.PostEvents) != 1 {
 		t.Fatalf("learned=%+v error=%v", learned, err)
 	}
 	saved, err := pokebattle.ResumeBattle(context.Background(), database, 42)

@@ -548,14 +548,6 @@ export function sendCQMerchantSell(instanceId: number): void {
 }
 
 /**
- * Use an item during battle (Poké Ball, Potion, etc.)
- */
-export function sendCQBattleItemUse(itemId: number): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ itemId }, OpCodes.CQBattleItemUseRequest);
-}
-
-/**
  * Clear all registered handlers
  * Used during game destruction to prevent late network messages from calling stale handlers
  */

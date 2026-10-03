@@ -930,22 +930,36 @@ export interface MoveDTO {
   moveSfxPitch?: number /* int */;
   moveSfxTempo?: number /* int */;
 }
+export interface BattleCommandIdentity {
+  battleId: string;
+  revision: number /* int64 */;
+}
+export interface PokeBattleCloseRequest {
+  battle: BattleCommandIdentity;
+}
+export interface PokeMoveLearnRequest {
+  battle: BattleCommandIdentity;
+  forgetSlot: number /* int */;
+}
 export interface PokeBattleActionRequest {
+  battle: BattleCommandIdentity;
   action: string; // "fight", "run", "switch", "item"
-  moveSlot: number /* int */; // 0-3 for fight, party index for switch
-  itemId: number /* int32 */; // Item template ID (for "item" action)
-  instanceId: number /* int32 */; // Concrete inventory instance (optional)
-  targetSlot: number /* int */; // Party slot index for medicine items (-1 = active Pokémon)
+  moveSlot?: number /* int */; // 0-3 for fight, party index for switch
+  itemId?: number /* int32 */; // Item template ID (for "item" action)
+  instanceId?: number /* int32 */; // Concrete inventory instance (optional)
+  targetSlot?: number /* int */; // Party slot index for medicine items (-1 = active Pokémon)
 }
 export interface PokeBattleSwitchRequest {
+  battle: BattleCommandIdentity;
   partyIndex: number /* int */;
   action: string; // "switch" (default) or "run" (wild only)
 }
 export interface CQBattleItemUseRequest {
+  battle: BattleCommandIdentity;
   itemId: number /* int32 */;
-  instanceId: number /* int32 */;
-  targetSlot: number /* int */;
-  moveSlot: number /* int */;
+  instanceId?: number /* int32 */;
+  targetSlot?: number /* int */;
+  moveSlot?: number /* int */;
 }
 
 //////////
