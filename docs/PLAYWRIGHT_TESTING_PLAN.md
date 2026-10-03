@@ -370,8 +370,9 @@ Run the dedicated lane with:
 CQ_E2E_CRASH_RECOVERY=true bash scripts/testing/run-isolated-e2e.sh
 ```
 
-It defaults to `server-process-recovery.spec.ts` and accepts normal Playwright file
-and grep arguments. The runner creates a matched private PostgreSQL runtime under
+It defaults to `server-process-recovery.spec.ts` and
+`movement-process-recovery.spec.ts`, and accepts normal Playwright file and grep
+arguments. The runner creates a matched private PostgreSQL runtime under
 `/var/tmp`, records its exact server/client/Playwright PIDs and owns server signals.
 A test writes the expected current server PID atomically to `crash-request`; the
 shell rejects a different PID, kills/reaps only its current child, restarts the same
@@ -388,7 +389,8 @@ explicit correlated dismissal without replaying the mutation. The shared rendere
 Safari helper uses real capture/flee rolls and independent fixtures after a flee.
 Screenshot artifacts supplement automated state/DOM assertions; test success does
 not depend on manual screenshot interpretation. Automatic live-page reconnect,
-pre-commit crashes and issued script/movement plans need separate cases.
+crashes during database transactions and remaining script/movement plans need
+separate cases.
 
 Two move-choice cases also crash twice: after the earned-EXP turn commits with
 `pendingMove`, and after an explicit learn/skip choice commits while its reply is
@@ -406,6 +408,15 @@ current position, flags, visibility and saved party unchanged. The scenario has
 an intentionally empty party, so this also guards against login fixture seeding.
 Queued plans, source/catalog changes and crashes during presentation need their
 own acceptance cases.
+
+The walking case withholds an issued reply before completion, crashes and requires
+fresh entry to preserve the source and reject that retired session token. It then
+withholds an actual committed completion reply for a second crash. Fresh entry
+retains the position, Safari counter and latest receipt; explicit retries cannot
+repeat the counter or rewind a later warp. Owned reads distinguish current
+position from the historical receipt. A newer step replaces the bounded receipt
+and the superseded token must fail without effects. The shared helper and default
+lane keep exact PID ownership checks identical across the two specs.
 
 Shutdown mode remains separate:
 

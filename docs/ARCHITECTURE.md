@@ -1127,3 +1127,17 @@ receipt after a subsequent ordinary step returns current owned position without
 reapplying the script. Resolution refreshes receipt sequence for bounded outcome
 retention; replay does not. Queue ordering, source/catalog changes and crashes
 during presentation still require separate evidence.
+
+
+Ordinary walking has two process boundaries with distinct behavior. Uncompleted
+issued tokens are session-bound memory and become invalid after process death;
+fresh entry starts at the saved source, without a receipt or step effects.
+Committed ordinary steps persist their result with position and effects. The
+latest receipt survives process death and acknowledges an explicit completion
+retry without republishing triggers or replaying counters. Recovery returns
+current owned position separately from that historical result; a later warp does
+not replace the receipt or permit it to rewind position. A newer completed step
+replaces the one retained receipt and the superseded token is rejected. The
+rendered crash test checks this through real walking and Safari counters; crashes
+inside transactions, other movement/plan families and live-page reconnect still
+need separate acceptance.

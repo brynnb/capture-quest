@@ -39,7 +39,7 @@ trap cleanup EXIT
 echo "Evidence directory: $run_dir"
 cd "$repo_dir"
 if [[ "$#" == 0 ]]; then
- if [[ -n "$crash_recovery" ]]; then set -- tests/e2e/server-process-recovery.spec.ts; elif [[ -n "$shutdown_mode" ]]; then set -- tests/e2e/server-shutdown.spec.ts; else set -- tests/e2e/game-corner.spec.ts; fi
+ if [[ -n "$crash_recovery" ]]; then set -- tests/e2e/server-process-recovery.spec.ts tests/e2e/movement-process-recovery.spec.ts; elif [[ -n "$shutdown_mode" ]]; then set -- tests/e2e/server-shutdown.spec.ts; else set -- tests/e2e/game-corner.spec.ts; fi
 fi
 eval "$(HTTP_PORT=18280 WT_PORT=18433 HASH_PORT=18100 VITE_DEV_PORT=15178 node scripts/dev-port-env.mjs)"
 export LOCAL=true CAPTUREQUEST_TEST_MODE=true VITE_TEST_MODE=true VITE_FORCE_WEBSOCKET=true VITE_LOCAL_DEV=true VITE_OFFLINE_ASSETS=false
