@@ -12,6 +12,7 @@ import {
 import { PlayerMovementController } from "../../controllers/PlayerMovementController";
 import { WarpManager } from "../../managers";
 import { UiManager } from "../../managers/UiManager";
+import { MapDataService } from "../../services/MapDataService";
 import { MapRenderer } from "../../renderers/MapRenderer";
 import {
   fetchDialogueWithBranching,
@@ -42,6 +43,7 @@ const POKEMON_CENTER_PC_CLICK_TILES = [
 
 interface TileViewerInteractionDeps {
   scene: Scene;
+  mapDataService: () => MapDataService;
   mapRenderer: () => MapRenderer;
   uiManager: () => UiManager;
   cameraController: () => CameraController;
@@ -69,6 +71,9 @@ export class TileViewerInteractionController {
   private spaceKey?: Phaser.Input.Keyboard.Key;
   private suppressNextWorldPointerUp = false;
   private instantWarpRequestGeneration = 0;
+  private instantWarpActivation: AbortController | null = null;
+
+  isInstantWarpPending(): boolean { return this.instantWarpActivation !== null; }
   private instantWarpTargetUnsubscribe: (() => void) | null = null;
   private instantWarpErrorTimer: Phaser.Time.TimerEvent | null = null;
   private readonly pointerUpHandler = (pointer: Phaser.Input.Pointer) => {
@@ -143,6 +148,7 @@ export class TileViewerInteractionController {
 
   cleanup(): void {
     this.instantWarpRequestGeneration += 1;
+    this.instantWarpActivation?.abort();
     this.clearInstantWarpLoadError();
     this.deps.scene.input.off("pointerup", this.pointerUpHandler);
     this.deps.scene.events.off("actorClicked", this.actorClickHandler);
@@ -349,7 +355,7 @@ export class TileViewerInteractionController {
       return;
     }
 
-    this.commitInstantWarp(target);
+    await this.commitInstantWarp(target);
   }
 
   private async confirmPendingInstantWarp(): Promise<void> {
@@ -403,7 +409,7 @@ export class TileViewerInteractionController {
       return;
     }
 
-    this.commitInstantWarp(target);
+    await this.commitInstantWarp(target);
   }
 
   private showInstantWarpLoadError(message: string): void {
@@ -436,61 +442,51 @@ export class TileViewerInteractionController {
     }
   }
 
-  private commitInstantWarp(target: {
+  private async commitInstantWarp(target: {
     mapId: number;
     x: number;
     y: number;
-  }): void {
-    const playerActor = this.deps.getPlayerActor();
+  }): Promise<void> {
+    if (this.instantWarpActivation) return;
+    const abort = new AbortController();
+    this.instantWarpActivation = abort;
     const movement = this.deps.playerMovementController();
-    const currentMapId = movement.getCurrentMapId() ?? playerActor?.mapId;
-    const playerId = playerActor?.id;
-    const direction = movement.getCurrentDirection();
-    const gameStatus = useGameStatusStore.getState();
-
-    gameStatus.setWarpMode(false);
     movement.stopMovement();
-
-    if (currentMapId !== target.mapId) {
-      window.dispatchEvent(
-        new CustomEvent("warpTileTeleport", {
-          detail: {
-            mapId: target.mapId,
-            x: target.x,
-            y: target.y,
-            direction,
-          },
-        }),
-      );
-      return;
-    }
-
-    movement.syncMapId(target.mapId);
-    movement.syncPosition(target.x, target.y);
-    movement.syncDirection(direction);
-    if (playerActor) {
-      playerActor.x = target.x;
-      playerActor.y = target.y;
-      playerActor.mapId = target.mapId;
-      playerActor.actionDirection = direction;
-      const actorIndex = this.deps
-        .actors()
-        .findIndex((actor) => actor.id === playerActor.id);
-      if (actorIndex !== -1) {
-        this.deps.actors()[actorIndex] = playerActor;
+    let settleTimer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const actor = this.deps.getPlayerActor();
+      if (actor) {
+        await Promise.race([
+          this.deps.mapRenderer().waitForActorIdle(actor.id),
+          new Promise<never>((_, reject) => {
+            settleTimer = setTimeout(() => reject(new Error("Movement did not settle")), 1200);
+          }),
+        ]);
       }
-    }
-    if (playerId != null) {
-      this.deps.mapRenderer().snapActorPosition(
-        playerId,
-        target.x,
-        target.y,
-        direction,
-        playerActor ?? undefined,
+      if (abort.signal.aborted || !this.deps.scene.sys.isActive()) return;
+      const result = await this.deps.mapDataService().instantWarp(
+        target.mapId, target.x, target.y, movement.getCurrentDirection(), abort.signal,
       );
+      if (abort.signal.aborted || !this.deps.scene.sys.isActive()) return;
+      useGameStatusStore.getState().setWarpMode(false);
+      window.dispatchEvent(new CustomEvent("warpTileTeleport", {
+        detail: { ...result, serverCommitted: true },
+      }));
+      if (movement.getCurrentMapId() === result.mapId) {
+        useGameStatusStore.getState().setCameraFollowEnabled(true);
+        PhaserNet.requestActors(result.mapId);
+      }
+    } catch (error) {
+      if (!abort.signal.aborted) {
+        console.warn("[InstantWarp] Activation failed:", error);
+        // Release input before showing an error so Confirm/tap can retry.
+        this.instantWarpActivation = null;
+        this.showInstantWarpLoadError("Couldn't warp to that tile. Try again.");
+      }
+    } finally {
+      if (settleTimer !== undefined) clearTimeout(settleTimer);
+      if (this.instantWarpActivation === abort) this.instantWarpActivation = null;
     }
-    PhaserNet.sendPlayerPosition(target.x, target.y, target.mapId, direction);
-    gameStatus.setCameraFollowEnabled(true);
   }
 
   private async handleActorClicked(actor: PhaserActor): Promise<void> {

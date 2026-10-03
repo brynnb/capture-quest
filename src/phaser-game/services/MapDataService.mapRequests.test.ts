@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const network = vi.hoisted(() => ({
   info: new Set<(data: unknown) => void>(),
+  instant: new Set<(data: unknown) => void>(),
+  instantRequests: [] as Array<{ mapId: number; requestId: string }>,
   warp: new Set<(data: unknown) => void>(),
   warpRequests: [] as Array<{ warpId: number; requestId: string }>,
   load: new Set<(data: unknown) => void>(),
@@ -19,6 +21,11 @@ vi.mock("./PhaserNetworkService", () => ({
     network.load.add(receive);
     return () => network.load.delete(receive);
   },
+  onInstantWarp: (receive: (data: unknown) => void) => {
+    network.instant.add(receive);
+    return () => network.instant.delete(receive);
+  },
+  requestInstantWarp: (request: { mapId: number; requestId: string }) => network.instantRequests.push(request),
   onWarpActivation: (receive: (data: unknown) => void) => {
     network.warp.add(receive);
     return () => network.warp.delete(receive);
@@ -37,6 +44,8 @@ import { MapDataService } from "./MapDataService";
 describe("correlated map read and load requests", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    network.instant.clear();
+    network.instantRequests.length = 0;
     network.warp.clear();
     network.warpRequests.length = 0;
     network.info.clear();
@@ -47,6 +56,8 @@ describe("correlated map read and load requests", () => {
   afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
   const cases = [
+    { name: "Instant Warp", handlers: network.instant, requests: network.instantRequests,
+      start: (service: MapDataService, signal?: AbortSignal) => service.instantWarp(38, 3, 7, "DOWN", signal) },
     { name: "metadata", handlers: network.info, requests: network.infoRequests,
       start: (service: MapDataService, signal?: AbortSignal) => service.fetchMapInfo(38, signal) },
     { name: "warp activation", handlers: network.warp, requests: network.warpRequests,

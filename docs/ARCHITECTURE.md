@@ -785,7 +785,7 @@ Interiors require an existing map and non-erased tile; unified map 9999 uses
 NULL-map catalog tiles and supports negative coordinates. Trusted runtime
 destinations retain source-specific eligibility checks with the same persistence
 primitive. Catalog membership and a successful commit do not authorize a move.
-Ordinary reports, issued warp grants and explicit Instant Warp intent still need
+Ordinary reports and issued warp grants still need
 one authoritative eligibility boundary. Instant Warp remains ordinary-player
 functionality unless its policy is deliberately changed.
 
@@ -812,8 +812,14 @@ existing building-exit step is committed by the server and described for animati
 in the response. WarpManager waits for source animation/report settlement and
 freezes input during the request; scene shutdown aborts the local wait. Only a
 matching success transitions the scene. This normal-warp flow skips destination
-reports and supplies no destination to its subsequent map load. Instant Warp,
-walking/scripted reports and other teleport producers still require migration;
+reports and supplies no destination to its subsequent map load. Instant Warp
+uses its own explicit destination command (185/186), preserving ordinary-player
+catalog access while rejecting battle activation. Catalog validation, position,
+Safari transition and arrival effects commit together; the result alone drives
+presentation. Input remains held during its correlated request, and scene cleanup
+aborts the local wait. Its same-map path updates through shared warp presentation;
+cross-map loads supply no coordinates. Walking/scripted reports and other
+teleport producers still require migration;
 the legacy position authority remains until that retirement is complete. Request
 correlation does not provide durable replay or reconnect recovery.
 

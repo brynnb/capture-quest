@@ -43,6 +43,7 @@ func NewWorldOpCodeRegistry() *HandlerRegistry {
 		// Phaser 2D game handlers
 		opcodes.PhaserMapInfoRequest:       HandlePhaserMapInfoRequest,
 		opcodes.PhaserWarpActivateRequest:  HandlePhaserWarpActivateRequest,
+		opcodes.PhaserInstantWarpRequest:   HandlePhaserInstantWarpRequest,
 		opcodes.PhaserMapLoadRequest:       HandlePhaserMapLoadRequest,
 		opcodes.PhaserTilesRequest:         HandlePhaserTilesRequest,
 		opcodes.PhaserOverworldMapsRequest: HandlePhaserOverworldMapsRequest,

@@ -134,3 +134,58 @@ func commitNormalWarp(ctx context.Context, database db.DBTX, charID int64, req p
 	}
 	return result, nil
 }
+
+// Instant Warp deliberately permits arbitrary catalog tiles for ordinary players.
+// Keep that policy separate from normal warp source reach and walking reports.
+func HandlePhaserInstantWarpRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
+	var req protocol.PhaserInstantWarpRequest
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.DisallowUnknownFields()
+	err := decoder.Decode(&req)
+	if err == nil && decoder.Decode(new(any)) != io.EOF {
+		err = fmt.Errorf("trailing Instant Warp request")
+	}
+	fail := func(err error) {
+		log.Printf("[Warp] Character %d Instant Warp: %v", ses.Client.CharData().ID, err)
+		ses.SendStreamJSON(protocol.PhaserMapRequestError{RequestID: req.RequestID, Error: "Could not warp to that tile. Please try again."}, opcodes.PhaserInstantWarpResponse)
+	}
+	if err != nil || req.RequestID == "" || len(req.RequestID) > 64 || req.MapID <= 0 || req.X == nil || req.Y == nil || normalizeWarpDirection(req.Direction) == "" {
+		fail(fmt.Errorf("invalid Instant Warp request: %v", err))
+		return false
+	}
+	charID := int64(ses.Client.CharData().ID)
+	if getBattle(charID) != nil {
+		fail(fmt.Errorf("Instant Warp unavailable during battle"))
+		return false
+	}
+	mapID := req.MapID
+	err = db.Transaction(ses.CommandContext(), wh.database, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, charID); err != nil {
+			return err
+		}
+		if mapID != UnifiedOverworldMapID {
+			var isOverworld int
+			if err := tx.QueryRow(`SELECT is_overworld FROM phaser_maps WHERE id=$1`, mapID).Scan(&isOverworld); err != nil {
+				return err
+			}
+			if isOverworld != 0 {
+				mapID = UnifiedOverworldMapID
+			}
+		}
+		_, err := commitMapLoad(ses.CommandContext(), tx, charID, mapLoadArrival{MapID: mapID, X: *req.X, Y: *req.Y, ValidateCatalog: true, ApplyEffects: wh.EventFlags != nil})
+		return err
+	})
+	if err != nil {
+		fail(err)
+		return false
+	}
+	if wh.EventFlags != nil {
+		if err := wh.EventFlags.LoadFlagsContext(ses.CommandContext(), charID); err != nil {
+			log.Printf("[Warp] Refresh committed Instant Warp flags for %d: %v", charID, err)
+		}
+	}
+	direction := normalizeWarpDirection(req.Direction)
+	publishCommittedPlayerPosition(ses, wh, mapID, *req.X, *req.Y, direction)
+	ses.SendStreamJSON(protocol.PhaserInstantWarpResponse{Success: true, RequestID: req.RequestID, MapID: mapID, X: *req.X, Y: *req.Y, Direction: direction}, opcodes.PhaserInstantWarpResponse)
+	return false
+}

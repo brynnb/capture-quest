@@ -823,6 +823,7 @@ export class TileViewer extends Scene {
 
     this.interactionController = new TileViewerInteractionController({
       scene: this,
+      mapDataService: () => this.mapDataService,
       mapRenderer: () => this.mapRenderer,
       uiManager: () => this.uiManager,
       cameraController: () => this.cameraController,
@@ -1999,7 +2000,7 @@ export class TileViewer extends Scene {
   }
 
   public getWorldInputFreezeReason(): WorldInputFreezeReason | null {
-    if (this.mapLoadInProgress) return "map_loading";
+    if (this.mapLoadInProgress || this.interactionController?.isInstantWarpPending()) return "map_loading";
     const existingReason = getWorldInputFreezeReason({
       cutsceneInputLocked: this.cutsceneInputLocked || this.warpExitInputLocked,
     });

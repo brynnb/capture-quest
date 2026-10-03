@@ -41,7 +41,9 @@ one character-locked transaction. Normal warps are unavailable during battle.
 The building-exit step formerly added in WarpManager is now saved before success.
 Its native exit coordinate is returned only as animation-start metadata. Normal
 warp transitions neither report the destination through opcode 45 nor resubmit it
-as map-load destination fields. Instant Warp and other position-report producers
+as map-load destination fields. Instant Warp now uses its own correlated
+ordinary-player catalog command (185/186), committing destination and arrival
+effects before shared warp presentation. Walking, cutscene and other position-report producers
 remain separate migration work; this change does not retire those old endpoints.
 Frontend and backend must be released together when a deployment is authorized.
 

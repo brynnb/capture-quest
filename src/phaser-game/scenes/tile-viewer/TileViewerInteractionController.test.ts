@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import useGameStatusStore from "@/stores/GameStatusStore";
 import { TileViewerInteractionController } from "./TileViewerInteractionController";
+import type { PhaserInstantWarpResponse } from "@/net/generated/protocol";
 
 describe("TileViewerInteractionController editor gesture handoff", () => {
   afterEach(() => {
@@ -36,6 +37,59 @@ function deferred<T>() {
   });
   return { promise, resolve };
 }
+
+describe("Instant Warp committed response presentation", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    useGameStatusStore.setState({ isWarpMode: false });
+  });
+
+  function pendingActivation() {
+    const response = deferred<PhaserInstantWarpResponse>();
+    const instantWarp = vi.fn(() => response.promise);
+    const active = { value: true };
+    const stopMovement = vi.fn();
+    const controller = new TileViewerInteractionController({
+      scene: { sys: { isActive: () => active.value } },
+      getPlayerActor: () => null,
+      playerMovementController: () => ({ stopMovement, getCurrentDirection: () => "LEFT", getCurrentMapId: () => 38 }),
+      mapDataService: () => ({ instantWarp }),
+    } as never);
+    const activate = (controller as unknown as {
+      commitInstantWarp: (target: { mapId: number; x: number; y: number }) => Promise<void>;
+    }).commitInstantWarp.bind(controller);
+    return { controller, response, instantWarp, active, stopMovement, activate };
+  }
+
+  it("publishes only the committed result and rejects concurrent activation", async () => {
+    const dispatch = vi.spyOn(window, "dispatchEvent");
+    const { controller, response, instantWarp, activate } = pendingActivation();
+    useGameStatusStore.setState({ isWarpMode: true });
+    const pending = activate({ mapId: 50, x: 3, y: 4 });
+    await activate({ mapId: 60, x: 5, y: 6 });
+    expect(instantWarp).toHaveBeenCalledOnce();
+    expect(controller.isInstantWarpPending()).toBe(true);
+    expect(useGameStatusStore.getState().isWarpMode).toBe(true);
+    expect(dispatch).not.toHaveBeenCalled();
+    const result = { success: true as const, requestId: "owned", mapId: 50, x: 3, y: 4, direction: "LEFT" };
+    response.resolve(result);
+    await pending;
+    expect(controller.isInstantWarpPending()).toBe(false);
+    expect(useGameStatusStore.getState().isWarpMode).toBe(false);
+    expect((dispatch.mock.calls[0][0] as CustomEvent).detail).toEqual({ ...result, serverCommitted: true });
+  });
+
+  it("does not present a response after its scene has retired", async () => {
+    const dispatch = vi.spyOn(window, "dispatchEvent");
+    const { controller, response, active, activate } = pendingActivation();
+    const pending = activate({ mapId: 50, x: 3, y: 4 });
+    active.value = false;
+    response.resolve({ success: true, requestId: "retired", mapId: 50, x: 3, y: 4, direction: "LEFT" });
+    await pending;
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(controller.isInstantWarpPending()).toBe(false);
+  });
+});
 
 function createInstantWarpController(
   ensureDisplayedTileAvailable: (x: number, y: number) => Promise<boolean>,

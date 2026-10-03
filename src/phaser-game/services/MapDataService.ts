@@ -1,4 +1,4 @@
-import type { PhaserMapInfo, PhaserMapInfoResponse, PhaserMapLoadResponse, PhaserMapRequestError, PhaserWarpActivateResponse } from "@/net/generated/protocol";
+import type { PhaserMapInfo, PhaserMapInfoResponse, PhaserMapLoadResponse, PhaserMapRequestError, PhaserWarpActivateResponse, PhaserInstantWarpResponse } from "@/net/generated/protocol";
 /**
  * MapDataService - Phaser map data fetching via WebTransport
  *
@@ -228,6 +228,14 @@ export class MapDataService {
     await correlatedMapRequest<PhaserMapLoadResponse>(
       (receive) => PhaserNet.onMapLoad(receive),
       (requestId) => PhaserNet.requestMapLoad({ mapId, destX, destY, requestId }),
+      signal,
+    );
+  }
+
+  async instantWarp(mapId: number, x: number, y: number, direction: string, signal?: AbortSignal): Promise<PhaserInstantWarpResponse> {
+    return correlatedMapRequest<PhaserInstantWarpResponse>(
+      (receive) => PhaserNet.onInstantWarp(receive),
+      (requestId) => PhaserNet.requestInstantWarp({ mapId, x, y, direction, requestId }),
       signal,
     );
   }

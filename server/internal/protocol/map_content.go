@@ -128,3 +128,21 @@ type PhaserWarpActivateResponse struct {
 	AnimationStartX *int   `json:"animationStartX,omitempty"`
 	AnimationStartY *int   `json:"animationStartY,omitempty"`
 }
+
+// Instant Warp is an explicit ordinary-player catalog destination command.
+type PhaserInstantWarpRequest struct {
+	MapID     int    `json:"mapId"`
+	X         *int   `json:"x" tstype:"number,required"`
+	Y         *int   `json:"y" tstype:"number,required"`
+	Direction string `json:"direction"`
+	RequestID string `json:"requestId"`
+}
+
+type PhaserInstantWarpResponse struct {
+	Success   bool   `json:"success" tstype:"true"`
+	RequestID string `json:"requestId"`
+	MapID     int    `json:"mapId"`
+	X         int    `json:"x"`
+	Y         int    `json:"y"`
+	Direction string `json:"direction"`
+}

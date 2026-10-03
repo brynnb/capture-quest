@@ -1,4 +1,4 @@
-import type { PhaserMapInfo, PhaserMapInfoRequest, PhaserMapInfoResponse, PhaserMapLoadRequest, PhaserMapLoadResponse, PhaserMapRequestError, PhaserWarpActivateRequest, PhaserWarpActivateResponse } from "@/net/generated/protocol";
+import type { PhaserMapInfo, PhaserMapInfoRequest, PhaserMapInfoResponse, PhaserMapLoadRequest, PhaserMapLoadResponse, PhaserMapRequestError, PhaserWarpActivateRequest, PhaserWarpActivateResponse, PhaserInstantWarpRequest, PhaserInstantWarpResponse } from "@/net/generated/protocol";
 import type { GameCornerSlotPlayRequest } from "@/net/generated/world_api";
 import type { PhaserMapScriptsRequest } from "@/net/generated/protocol";
 /**
@@ -34,6 +34,10 @@ export function requestMapInfo(request: PhaserMapInfoRequest): void {
 
 export function requestMapLoad(request: PhaserMapLoadRequest): void {
   NetworkBridge.send(request, OpCodes.PhaserMapLoadRequest);
+}
+
+export function requestInstantWarp(request: PhaserInstantWarpRequest): void {
+  NetworkBridge.send(request, OpCodes.PhaserInstantWarpRequest);
 }
 
 export function requestWarpActivation(request: PhaserWarpActivateRequest): void {
@@ -356,6 +360,7 @@ export type PhaserMapMusicHandler = (data: MapMusicResult) => void;
 const handlers = {
   mapInfo: new Set<PhaserMapInfoHandler>(),
   mapLoad: new Set<PhaserMapLoadHandler>(),
+  instantWarp: new Set<(data: PhaserInstantWarpResponse | PhaserMapRequestError) => void>(),
   warpActivation: new Set<(data: PhaserWarpActivateResponse | PhaserMapRequestError) => void>(),
   tiles: new Set<PhaserTilesHandler>(),
   overworldMaps: new Set<PhaserOverworldMapsHandler>(),
@@ -371,6 +376,11 @@ const handlers = {
 export function onMapInfo(handler: PhaserMapInfoHandler): () => void {
   handlers.mapInfo.add(handler);
   return () => handlers.mapInfo.delete(handler);
+}
+
+export function onInstantWarp(handler: (data: PhaserInstantWarpResponse | PhaserMapRequestError) => void): () => void {
+  handlers.instantWarp.add(handler);
+  return () => { handlers.instantWarp.delete(handler); };
 }
 
 export function onWarpActivation(handler: (data: PhaserWarpActivateResponse | PhaserMapRequestError) => void): () => void {
@@ -514,6 +524,7 @@ export function clearAllHandlers(): void {
   handlers.mapInfo.clear();
   handlers.mapLoad.clear();
   handlers.warpActivation.clear();
+  handlers.instantWarp.clear();
   handlers.tiles.clear();
   handlers.overworldMaps.clear();
   handlers.actors.clear();
@@ -549,6 +560,9 @@ export function dispatchPhaserResponse(opcode: number, data: unknown): void {
   switch (opcode) {
     case OpCodes.PhaserMapInfoResponse:
       handlers.mapInfo.forEach((h) => h(data as PhaserMapInfoResponse | PhaserMapRequestError));
+      break;
+    case OpCodes.PhaserInstantWarpResponse:
+      handlers.instantWarp.forEach((h) => h(data as PhaserInstantWarpResponse | PhaserMapRequestError));
       break;
     case OpCodes.PhaserWarpActivateResponse:
       handlers.warpActivation.forEach((h) => h(data as PhaserWarpActivateResponse | PhaserMapRequestError));

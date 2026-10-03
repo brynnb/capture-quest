@@ -212,6 +212,24 @@ export interface PhaserWarpActivateResponse {
   animationStartX?: number /* int */;
   animationStartY?: number /* int */;
 }
+/**
+ * Instant Warp is an explicit ordinary-player catalog destination command.
+ */
+export interface PhaserInstantWarpRequest {
+  mapId: number /* int */;
+  x: number;
+  y: number;
+  direction: string;
+  requestId: string;
+}
+export interface PhaserInstantWarpResponse {
+  success: true;
+  requestId: string;
+  mapId: number /* int */;
+  x: number /* int */;
+  y: number /* int */;
+  direction: string;
+}
 
 //////////
 // source: pokedex.go

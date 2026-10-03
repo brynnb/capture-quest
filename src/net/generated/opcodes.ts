@@ -222,3 +222,5 @@ export const PhaserMapLoadRequest: OpCode = 181;
 export const PhaserMapLoadResponse: OpCode = 182;
 export const PhaserWarpActivateRequest: OpCode = 183;
 export const PhaserWarpActivateResponse: OpCode = 184;
+export const PhaserInstantWarpRequest: OpCode = 185;
+export const PhaserInstantWarpResponse: OpCode = 186;

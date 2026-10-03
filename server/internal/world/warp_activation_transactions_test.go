@@ -11,6 +11,80 @@ import (
 	"capturequest/internal/testdb"
 )
 
+func TestInstantWarpRequiresExplicitCatalogDestinationAndAtomicArrival(t *testing.T) {
+	database, wh, ses, messages := battleTestWorld(t)
+	wh.PlayerMovement = NewPlayerMovementManager(wh, nil)
+	wh.PlayerMovement.RegisterPlayer(ses, 42, 7, 8, 50, "DOWN")
+	char := ses.Client.CharData()
+	char.MapID, char.X, char.Y = 50, 7, 8
+	wh.Safari = NewSafariZoneManager(database)
+	if err := wh.Safari.SetSession(context.Background(), 42, SafariSession{Active: true, BallsLeft: 30, StepsLeft: 500}); err != nil {
+		t.Fatal(err)
+	}
+	testdb.Exec(t, database, `UPDATE character_data SET map_id=50,x=7,y=8 WHERE id=42;
+ INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(50,'ROOM',20,20,0),(192,'SEAFOAM_ISLANDS_1F',20,20,0),(31,'ROUTE_20',50,10,1);
+ INSERT INTO phaser_tiles(map_id,x,y,tile_image_id,is_tile_erased) VALUES(50,0,0,1,0),(50,1,1,1,1),(192,3,4,1,0);
+ INSERT INTO phaser_tiles(x,y,tile_image_id,source_map_id,is_original_tile_location) VALUES(-2,3,1,31,1);
+ CREATE FUNCTION reject_instant_warp_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'late Instant Warp failure'; END $$;
+ CREATE CONSTRAINT TRIGGER reject_instant_warp_commit AFTER INSERT ON character_event_flags
+ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN(NEW.flag_name='EVENT_IN_SEAFOAM_ISLANDS') EXECUTE FUNCTION reject_instant_warp_commit();`)
+	db.GlobalWorldDB = nil
+	for _, payload := range []string{
+		`{"mapId":50,"direction":"DOWN","requestId":"missing"}`,
+		`{"mapId":50,"x":1,"y":1,"direction":"DOWN","requestId":"erased"}`,
+		`{"mapId":50,"x":100,"y":100,"direction":"DOWN","requestId":"absent"}`,
+		`{"mapId":60,"x":0,"y":0,"direction":"DOWN","requestId":"unknown"}`,
+		`{"mapId":50,"x":0,"y":0,"direction":"DOWN","requestId":"extra","skipEffects":true}`,
+		`{"mapId":192,"x":3,"y":4,"direction":"DOWN","requestId":"late"}`,
+	} {
+		messages.streams = nil
+		battleDispatch(t, wh, ses, opcodes.PhaserInstantWarpRequest, payload)
+		var failure protocol.PhaserMapRequestError
+		if len(messages.streams) != 1 || messages.streams[0].opcode != opcodes.PhaserInstantWarpResponse || json.Unmarshal(messages.streams[0].payload, &failure) != nil || failure.Success || failure.Error == "" || failure.RequestID == "" {
+			t.Fatalf("invalid Instant Warp accepted: %s", payload)
+		}
+		var mapID, x, y int
+		if err := database.QueryRow(`SELECT map_id,x,y FROM character_data WHERE id=42`).Scan(&mapID, &x, &y); err != nil || mapID != 50 || x != 7 || y != 8 {
+			t.Fatal("failed Instant Warp changed durable position")
+		}
+		visit, err := wh.Safari.GetSession(context.Background(), 42)
+		if err != nil || visit == nil || !visit.Active || char.MapID != 50 || char.X != 7 || char.Y != 8 || wh.EventFlags.CheckFlag(42, "EVENT_IN_SEAFOAM_ISLANDS") {
+			t.Fatal("failed Instant Warp changed published position/effect/Safari state")
+		}
+	}
+	testdb.Exec(t, database, `DROP TRIGGER reject_instant_warp_commit ON character_event_flags`)
+	battle := battleTestStart(t, database, false, nil)
+	before := len(messages.streams)
+	battleDispatch(t, wh, ses, opcodes.PhaserInstantWarpRequest, `{"mapId":50,"x":0,"y":0,"direction":"DOWN","requestId":"battle"}`)
+	var failure protocol.PhaserMapRequestError
+	if len(messages.streams) != before+1 || json.Unmarshal(messages.streams[before].payload, &failure) != nil || failure.Success || failure.RequestID != "battle" || char.X != 7 {
+		t.Fatal("Instant Warp allowed during battle")
+	}
+	forgetBattle(42, battle)
+	for _, payload := range []string{
+		`{"mapId":192,"x":3,"y":4,"direction":"DOWN","requestId":"retry"}`,
+		`{"mapId":50,"x":0,"y":0,"direction":"LEFT","requestId":"zero"}`,
+		`{"mapId":31,"x":-2,"y":3,"direction":"UP","requestId":"overworld"}`,
+	} {
+		battleDispatch(t, wh, ses, opcodes.PhaserInstantWarpRequest, payload)
+		var result protocol.PhaserInstantWarpResponse
+		if json.Unmarshal(messages.streams[len(messages.streams)-1].payload, &result) != nil || !result.Success || int(char.MapID) != result.MapID || int(char.X) != result.X || int(char.Y) != result.Y {
+			t.Fatalf("Instant Warp retry/result not published: %+v", result)
+		}
+		var mapID, x, y int
+		if err := database.QueryRow(`SELECT map_id,x,y FROM character_data WHERE id=42`).Scan(&mapID, &x, &y); err != nil || mapID != result.MapID || x != result.X || y != result.Y {
+			t.Fatal("Instant Warp success preceded durable destination")
+		}
+	}
+	if char.MapID != UnifiedOverworldMapID || char.X != -2 || wh.EventFlags.CheckFlag(42, "EVENT_IN_SEAFOAM_ISLANDS") {
+		t.Fatal("native overworld normalization/effects failed")
+	}
+	visit, err := wh.Safari.GetSession(context.Background(), 42)
+	if err != nil || visit != nil {
+		t.Fatal("committed Instant Warp did not end Safari")
+	}
+}
+
 func TestNormalWarpBoundaryRejectsForgedActivationAndRollsBackLateFailure(t *testing.T) {
 	database, wh, ses, messages := battleTestWorld(t)
 	wh.PlayerMovement = NewPlayerMovementManager(wh, nil)

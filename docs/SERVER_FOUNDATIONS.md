@@ -2,9 +2,10 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest checkpoint: server-resolved
-normal warp activation (2026-10-02), following owned-position map loading
-`64cf970`, native provenance `057f758` and atomic map-load `b8f5ccd`.
+Working branch: `codex/server-foundations`. Latest checkpoint: explicit Instant
+Warp commands (2026-10-02), following server-resolved normal warps `3899660`,
+owned-position map loading `64cf970`, native provenance `057f758` and atomic
+map-load `b8f5ccd`.
 Earlier foundation checkpoints remain in this branch's history. No push or production deployment
 is authorized by this goal.
 
@@ -29,7 +30,7 @@ evidence, including remaining-work notes that subsequent commits may resolve.
 
 | Area | Implemented | Still required |
 | --- | --- | --- |
-| Request/session boundary | Packet and connection limits, centralized session prerequisites, removal of insecure session takeover, actual transport closure, location/visibility checks for scripted clicks, dialogue choices and direct trainer battles, client destination catalog validation, server-resolved normal warp activation and read-only map metadata, and preserved command deadlines/disconnect cancellation in migrated operations. | Audit remaining interaction/mutation endpoints; propagate cancellation through legacy managers and remaining database/network work. |
+| Request/session boundary | Packet and connection limits, centralized session prerequisites, removal of insecure session takeover, actual transport closure, location/visibility checks for scripted clicks, dialogue choices and direct trainer battles, client destination catalog validation, server-resolved normal warp activation, explicit Instant Warp commands and read-only map metadata, and preserved command deadlines/disconnect cancellation in migrated operations. | Audit remaining interaction/mutation endpoints; propagate cancellation through legacy managers and remaining database/network work. |
 | Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors, Game Corner prizes and bounded coin/slot/hidden-coin operations, atomic Escape Rope/FLY positions, durable Repel counters, Safari entry/turn/capture state and exhaustion destinations, atomic recovery warps and map-load position/Safari/flag/visibility/boulder effects, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery of committed results across reconnects. |
 | Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, and movement ticks coordinated with the owner. | Finish timer/callback/shared-state and legacy position-writer audits; prove remaining concurrent/reconnect behavior across real transports. |
 | Domains and wire contracts | Injected content-query service; typed character/wallet/bind, Pokédex/card, content detail, map-script, map-info/list and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
@@ -88,6 +89,52 @@ evidence, including remaining-work notes that subsequent commits may resolve.
    Acceptance: evidence covers the original five milestones, including visible
    behavior where relevant. Only then mark the full goal complete.
 
+## Explicit Instant Warp command (2026-10-02)
+
+Instant Warp intentionally remains available to ordinary players for arbitrary
+non-erased catalog tiles. The old controller changed the local movement origin
+before a position report had committed, and cross-map warps used both a position
+report and supplied map-load coordinates. It now sends an explicit destination
+command (185/186), awaits a correlated committed result, then uses the shared
+warp presentation with `serverCommitted: true`. It stops and settles source
+movement before admission, holds input during the request, preserves the choice
+on errors for retry and aborts the local wait on scene cleanup. Same-map results
+restore camera follow and request refreshed actors. Cross-map loads supply no
+destination coordinates. The old optimistic position update/report is removed.
+
+The server strictly decodes the request, requires both coordinates (zero and
+negative values remain valid), rejects battle activation and normalizes native
+overworld IDs using catalog data within the transaction. A bounded,
+character-locked arrival transaction validates the tile, saves the destination,
+ends Safari when appropriate and applies map-load effects. Only a successful
+commit updates live presence/movement and sends the result. PostgreSQL packet
+tests cover absent/erased/unknown destinations, missing and extra fields, battle,
+deferred effect failure with position/Safari/cache rollback, retry, zero
+coordinates and native/negative overworld destinations. Shared client request
+tests cover correlation, timeout, errors, retry, synchronous send failure and
+abort. Controller checks prove single admission and no presentation before the
+result or after scene retirement.
+
+Verification: isolated PostgreSQL race-enabled world/simulator/server/protocol
+checks and 26 focused frontend tests passed, along with typecheck, runtime asset
+validation and the production build. All five rendered Instant Warp and
+multiplayer cases passed (47.1 seconds) at
+`/var/tmp/capturequest-rendered.ZqU6N6`, including immediate keyboard/click movement,
+far overworld destinations and old-map visibility removal. Canonical protocol
+regeneration is stable. Existing bundling warnings remain. This is a local
+checkpoint; no push or deployment occurred.
+
+Still required: ordinary walking/facing and cutscene completion reports retain
+legacy position authority, and other teleport producers still need auditing.
+Supplied MapLoad destinations and opcode 45 cannot yet be retired. Request IDs
+correlate local waits; they do not supply durable replay protection or recover a
+commit lost with the response. Post-commit cache refresh failures remain logged
+without guaranteed recovery. The original five-part goal remains active.
+
+Next: bind walking and scripted animation acknowledgements to accepted server
+movement, remove redundant reports from server teleport producers, then retire
+supplied MapLoad destinations once every producer has migrated.
+
 ## Server-resolved normal warp activation (2026-10-02)
 
 Normal browser warps previously selected a destination from loaded metadata,
@@ -145,14 +192,13 @@ The producer audit for the next retirement is:
 | Producer | Current role | Required migration |
 | --- | --- | --- |
 | `WarpManager.activateWarp` | Correlated server-resolved normal warp | Active migration complete; add durable result recovery. |
-| `TileViewerInteractionController` Instant Warp | User-selected arbitrary catalog destination | Give this tool its own explicit correlated command. |
+| `TileViewerInteractionController` Instant Warp | Explicit correlated catalog destination command (185/186) | Active migration complete; add durable result recovery. |
 | `PlayerMovementController.onStepComplete` and direction updates | Walking animation completion and turning/boulder attempts through opcode 45 | Separate intent from accepted movement results; reject stale location-changing echoes. |
 | TileViewer cutscene movement callback | Reports scripted animation coordinates | Bind acknowledgement to issued script movement instead of accepting coordinates as authority. |
 | Blackout and non-normal `warpTileTeleport` events | Echo other server teleports, or carry Instant Warp | Audit each producer's committed result, then remove redundant reports and load destinations. |
 | `MapLoader.prepareMapLoad` | Ordinary loads read owned position; unmigrated producers still supply coordinates | Retire supplied destinations after the producers above move. |
 
-Remaining migration: Instant Warp still intentionally selects coordinates through
-the older position/load paths and needs an explicit command. Walking and scripted
+Remaining migration: Instant Warp now uses the explicit command documented above. Walking and scripted
 animation reports still share that position opcode; audit and replace their
 location-changing authority with accepted movement/command results. Other server
 teleport producers must stop redundant reports/load destinations too. Opcode 45 and
