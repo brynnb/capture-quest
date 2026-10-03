@@ -6,24 +6,66 @@ import (
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/pokebattle"
+	"capturequest/internal/protocol"
 	"capturequest/internal/session"
 )
 
-func sendBattleCommitError(ses *session.Session, charID int64, current *pokebattle.BattleState, err error, opcode opcodes.OpCode) {
+type BattleCommandResponse struct {
+	Success   bool                                 `json:"success" tstype:"true"`
+	RequestID string                               `json:"requestId"`
+	Battle    *GameplayBattleState                 `json:"battle" tstype:"GameplayBattleState | null"`
+	Position  protocol.OwnedPlayerPositionResponse `json:"position" tstype:"import(\"./protocol\").OwnedPlayerPositionResponse"`
+	Events    []pokebattle.BattleEvent             `json:"events"`
+	End       *BattleEndOutcome                    `json:"end,omitempty"`
+	Learning  *BattleLearningOutcome               `json:"learning,omitempty"`
+}
+
+type BattleCommandError struct {
+	Success   bool   `json:"success" tstype:"false"`
+	RequestID string `json:"requestId"`
+	Error     string `json:"error"`
+}
+
+type BattleEndOutcome struct {
+	PlayerWon     bool   `json:"playerWon"`
+	SentToPC      bool   `json:"sentToPC,omitempty"`
+	PCBox         int    `json:"pcBox,omitempty"`
+	Blackout      bool   `json:"blackout,omitempty"`
+	LossMessage   string `json:"lossMessage,omitempty"`
+	BlackoutMapID int    `json:"blackoutMapId"`
+	BlackoutX     int    `json:"blackoutX"`
+	BlackoutY     int    `json:"blackoutY"`
+	Money         int    `json:"money,omitempty"`
+	MoneyLost     int    `json:"moneyLost,omitempty"`
+}
+
+type BattleLearningOutcome struct {
+	Skipped        bool                     `json:"skipped"`
+	Message        string                   `json:"message"`
+	UpdatedPokemon *PokemonDTO              `json:"updatedPokemon,omitempty"`
+	ForgetSlot     int                      `json:"forgetSlot,omitempty"`
+	NewMoveID      int                      `json:"newMoveId,omitempty"`
+	NewMoveName    string                   `json:"newMoveName,omitempty"`
+	PostEvents     []pokebattle.BattleEvent `json:"postEvents,omitempty"`
+}
+
+func validBattleRequestID(requestID string) bool { return requestID != "" && len(requestID) <= 64 }
+
+func sendBattleCommitError(ses *session.Session, wh *WorldHandler, requestID string, charID int64, current *pokebattle.BattleState, err error, opcode opcodes.OpCode) {
 	var rule battleRuleError
 	if errors.As(err, &rule) {
 		if current != nil {
-			sendBattleNoTurnMessage(ses, current, rule.Error(), opcode)
+			sendBattleNoTurnMessage(ses, wh, requestID, current, rule.Error(), opcode)
 		} else {
-			sendBattleItemError(ses, opcode, rule.Error())
+			sendBattleCommandError(ses, requestID, opcode, rule.Error())
 		}
 		return
 	}
 	log.Printf("[PokeBattle] Commit failed for character %d: %v", charID, err)
-	sendBattleItemError(ses, opcode, "Could not save this battle action. Please reconnect to reload its state.")
+	sendBattleCommandError(ses, requestID, opcode, "Could not save this battle action. Recover its current state.")
 }
 
-func publishBattleTurn(ses *session.Session, wh *WorldHandler, charID int64, battle *pokebattle.BattleState, result battleTurnResult, opcode opcodes.OpCode) {
+func publishBattleTurn(ses *session.Session, wh *WorldHandler, charID int64, battle *pokebattle.BattleState, result battleTurnResult, opcode opcodes.OpCode, requestID string) {
 	if len(result.Flags) > 0 && wh.EventFlags != nil {
 		if err := wh.EventFlags.LoadFlags(charID); err != nil {
 			log.Printf("[PokeBattle] Refresh committed flags for character %d: %v", charID, err)
@@ -35,36 +77,38 @@ func publishBattleTurn(ses *session.Session, wh *WorldHandler, charID int64, bat
 	if result.WalletChanged {
 		ses.SendStreamJSON(map[string]interface{}{"characterId": charID, "pokedollars": result.Money}, opcodes.CharacterWallet)
 	}
-	response := map[string]interface{}{
-		"success": true, "phase": phaseToString(battle.Phase), "turnNumber": battle.TurnNumber,
-		"events": result.Events, "playerPokemon": pokemonToDTO(battle.GetPlayerPokemon()), "enemyPokemon": pokemonToDTO(battle.GetEnemyPokemon()),
+	response := BattleCommandResponse{Success: true, RequestID: requestID, Position: wh.ownedPlayerSnapshot(ses, requestID), Battle: gameplayBattleSnapshot(battle), Events: result.Events}
+	if response.Events == nil {
+		response.Events = []pokebattle.BattleEvent{}
 	}
-	attachBattlePartyMetadata(response, battle)
-	ses.SendStreamJSON(response, opcode)
 	if battle.IsOver() {
 		if battle.Trainer != nil && battle.Trainer.TrainerObjectID > 0 && wh.TrainerEncounter != nil {
 			wh.TrainerEncounter.ClearSpottedByTrainer(charID, battle.Trainer.TrainerObjectID)
 		}
-		end := map[string]interface{}{"playerWon": battle.PlayerWon() || battle.PlayerCaught}
+		end := &BattleEndOutcome{PlayerWon: battle.PlayerWon() || battle.PlayerCaught}
 		if result.SentToPC {
-			end["sentToPC"] = true
-			end["pcBox"] = result.PCBox + 1
+			end.SentToPC = true
+			end.PCBox = result.PCBox + 1
 		}
 		if result.Lost {
-			end["blackout"] = !result.NoBlackoutOnLoss
-			end["lossMessage"] = result.LossMessage
+			end.Blackout = !result.NoBlackoutOnLoss
+			end.LossMessage = result.LossMessage
 		}
 		if b := result.Blackout; b != nil {
 			refreshSafariFlags(wh, charID)
 			publishCommittedPlayerPosition(ses, wh, b.MapID, b.X, b.Y, "DOWN")
-			end["money"] = b.NewMoney
-			end["moneyLost"] = b.MoneyLost
-			end["blackoutMapId"] = b.MapID
-			end["blackoutX"] = b.X
-			end["blackoutY"] = b.Y
+			end.Money = b.NewMoney
+			end.MoneyLost = b.MoneyLost
+			end.BlackoutMapID = b.MapID
+			end.BlackoutX = b.X
+			end.BlackoutY = b.Y
 		}
-		ses.SendStreamJSON(end, opcodes.PokeBattleEndNotify)
+		response.End = end
 	}
+	response.Position = wh.ownedPlayerSnapshot(ses, requestID)
+	// Events and terminal outcome share one correlated publication. A late reply
+	// has no separate uncorrelated end notification that can mutate a newer panel.
+	ses.SendStreamJSON(response, opcode)
 	sendPokemonPartySnapshot(ses, battle.PlayerParty)
 }
 
@@ -78,25 +122,10 @@ func itemEffectEvent(message string, target *pokebattle.Pokemon) pokebattle.Batt
 	return event
 }
 
-func sendBattleNoTurnMessage(ses *session.Session, battle *pokebattle.BattleState, message string, responseOpcode opcodes.OpCode) {
-	resp := map[string]interface{}{
-		"success":       true,
-		"playerPokemon": pokemonToDTO(battle.GetPlayerPokemon()),
-		"enemyPokemon":  pokemonToDTO(battle.GetEnemyPokemon()),
-		"phase":         phaseToString(battle.Phase),
-		"turnNumber":    battle.TurnNumber,
-		"events": []pokebattle.BattleEvent{{
-			Type:    pokebattle.EventMessage,
-			Message: message,
-		}},
-	}
-	attachBattlePartyMetadata(resp, battle)
-	ses.SendStreamJSON(resp, responseOpcode)
+func sendBattleNoTurnMessage(ses *session.Session, wh *WorldHandler, requestID string, battle *pokebattle.BattleState, message string, responseOpcode opcodes.OpCode) {
+	ses.SendStreamJSON(BattleCommandResponse{Success: true, RequestID: requestID, Position: wh.ownedPlayerSnapshot(ses, requestID), Battle: gameplayBattleSnapshot(battle), Events: []pokebattle.BattleEvent{{Type: pokebattle.EventMessage, Message: message}}}, responseOpcode)
 }
 
-func sendBattleItemError(ses *session.Session, responseOpcode opcodes.OpCode, err string) {
-	ses.SendStreamJSON(map[string]interface{}{
-		"success": false,
-		"error":   err,
-	}, responseOpcode)
+func sendBattleCommandError(ses *session.Session, requestID string, responseOpcode opcodes.OpCode, message string) {
+	ses.SendStreamJSON(BattleCommandError{RequestID: requestID, Error: message}, responseOpcode)
 }

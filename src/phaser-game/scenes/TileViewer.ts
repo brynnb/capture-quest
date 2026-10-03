@@ -1,3 +1,4 @@
+import { bindBattleScene } from "@/phaser-game/services/BattleCommandService";
 import type { PhaserMapInfo } from "@/net/generated/protocol";
 import { Scene } from "phaser";
 import {
@@ -87,6 +88,8 @@ function numberOrNull(value: unknown): number | null {
 }
 
 export class TileViewer extends Scene {
+  private battleSceneUnsubscribe: (() => void) | null = null;
+
   // Services and managers
   private mapDataService: MapDataService;
   private tileManager!: TileManager;
@@ -552,6 +555,7 @@ export class TileViewer extends Scene {
       resetScene: (resetCamera) => this.resetScene(resetCamera),
     });
     this.warpEvents.register();
+    this.battleSceneUnsubscribe = bindBattleScene(position => this.warpEvents.reconcileOwnedPosition(position));
 
     this.eventBridge = new TileViewerEventBridge({
       scene: this,
@@ -2099,6 +2103,8 @@ export class TileViewer extends Scene {
   }
 
   cleanupResources() {
+    this.battleSceneUnsubscribe?.();
+    this.battleSceneUnsubscribe = null;
     // Explicit reset also cleans up before Phaser shutdown. Remove both hooks
     // so subsequent create calls install exactly one pair for the new lifetime.
     this.events.off("shutdown", this.cleanupResources, this);

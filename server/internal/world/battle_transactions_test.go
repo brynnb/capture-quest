@@ -72,6 +72,9 @@ func battleDispatch(t *testing.T, wh *WorldHandler, ses *session.Session, opcode
 	case opcodes.PokeBattleActionRequest, opcodes.PokeBattleSwitchRequest, opcodes.CQBattleItemUseRequest, opcodes.PokeMoveLearnRequest, opcodes.PokeBattleCloseRequest:
 		var request map[string]json.RawMessage
 		if json.Unmarshal([]byte(payload), &request) == nil && request != nil {
+			if _, explicit := request["requestId"]; !explicit {
+				request["requestId"] = json.RawMessage(`"test-battle"`)
+			}
 			if _, explicit := request["battle"]; !explicit {
 				if battle := getBattle(int64(ses.Client.CharData().ID)); battle != nil {
 					identity, err := json.Marshal(BattleCommandIdentity{BattleID: battle.BattleID, Revision: battle.Revision})
@@ -79,13 +82,13 @@ func battleDispatch(t *testing.T, wh *WorldHandler, ses *session.Session, opcode
 						t.Fatal(err)
 					}
 					request["battle"] = identity
-					data, err := json.Marshal(request)
-					if err != nil {
-						t.Fatal(err)
-					}
-					payload = string(data)
 				}
 			}
+			data, err := json.Marshal(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			payload = string(data)
 		}
 	}
 	registry.HandleWorldPacket(ses, clientPacket(opcode, payload))
@@ -321,13 +324,8 @@ func TestMoveLearningPublishesOnlyAfterPartyAndBattleCommit(t *testing.T) {
 	if len(messages.streams) != 2 || messages.streams[1].opcode != opcodes.PokemonPartyResponse {
 		t.Fatalf("move success messages=%+v", messages.streams)
 	}
-	var learned struct {
-		Success    bool
-		BattleID   string `json:"battleId"`
-		Revision   int64  `json:"revision"`
-		PostEvents []pokebattle.BattleEvent
-	}
-	if err := json.Unmarshal(messages.streams[0].payload, &learned); err != nil || !learned.Success || learned.BattleID != pending.BattleID || learned.Revision != pending.Revision+1 || len(learned.PostEvents) != 1 {
+	var learned BattleCommandResponse
+	if err := json.Unmarshal(messages.streams[0].payload, &learned); err != nil || !learned.Success || learned.Battle == nil || learned.Battle.BattleID != pending.BattleID || learned.Battle.Revision != pending.Revision+1 || learned.Learning == nil || len(learned.Learning.PostEvents) != 1 {
 		t.Fatalf("learned=%+v error=%v", learned, err)
 	}
 	saved, err := pokebattle.ResumeBattle(context.Background(), database, 42)
@@ -341,7 +339,7 @@ func TestMoveLearningPublishesOnlyAfterPartyAndBattleCommit(t *testing.T) {
 }
 
 func TestBlackoutAndPartyHealRollBackWithBattle(t *testing.T) {
-	database, wh, ses, _ := battleTestWorld(t)
+	database, wh, ses, messages := battleTestWorld(t)
 	ses.Client.CharData().MapID, ses.Client.CharData().X, ses.Client.CharData().Y = 220, 7, 8
 	testdb.Exec(t, database, `UPDATE character_data SET map_id=220,x=7,y=8 WHERE id=42`)
 	current := battleTestStart(t, database, false, nil)
@@ -382,7 +380,24 @@ func TestBlackoutAndPartyHealRollBackWithBattle(t *testing.T) {
 	if err := database.QueryRow(`SELECT map_id,x,y FROM character_data WHERE id=42`).Scan(&mapID, &x, &y); err != nil || mapID != result.Blackout.MapID || x != result.Blackout.X || y != result.Blackout.Y {
 		t.Fatal("battle blackout omitted durable destination", err)
 	}
-	publishBattleTurn(ses, wh, 42, next, result, opcodes.PokeBattleActionResponse)
+	publishBattleTurn(ses, wh, 42, next, result, opcodes.PokeBattleActionResponse, "test-turn")
+	var commandReply *BattleCommandResponse
+	for _, message := range messages.streams {
+		if message.opcode == opcodes.PokeBattleEndNotify {
+			t.Fatal("ordinary command published an uncorrelated end outcome")
+		}
+		if message.opcode == opcodes.PokeBattleActionResponse {
+			var reply BattleCommandResponse
+			if err := json.Unmarshal(message.payload, &reply); err != nil {
+				t.Fatal(err)
+			}
+			commandReply = &reply
+		}
+	}
+	if commandReply == nil || commandReply.RequestID != "test-turn" || commandReply.End == nil || !commandReply.End.Blackout || commandReply.End.BlackoutMapID != mapID || commandReply.Position.MapID != mapID || commandReply.Position.X != x || commandReply.Position.Y != y {
+		t.Fatal("committed blackout is not one correlated outcome")
+	}
+
 	if int(ses.Client.CharData().MapID) != mapID || int(ses.Client.CharData().X) != x || int(ses.Client.CharData().Y) != y {
 		t.Fatal("battle blackout omitted owned position publication")
 	}

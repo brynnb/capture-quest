@@ -223,4 +223,5 @@ const (
 	OwnedPlayerPositionResponse   OpCode = 196
 	GameplayStateRequest          OpCode = 197
 	GameplayStateResponse         OpCode = 198
+	PokeBattleCloseResponse       OpCode = 199
 )

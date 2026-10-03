@@ -4,6 +4,7 @@
 packages:
   - path: capturequest/internal/world
     type_mappings:
+      pokebattle.BattleEvent: 'import("./battle_events").BattleEvent'
       scriptedactions.Action: 'import("./scriptedactions").Action'
       int32: number
       int16: number
@@ -64,3 +65,7 @@ packages:
   - path: capturequest/internal/db/character
     include_files: [character-options.go]
     output_path: ../src/net/generated/character_options.ts
+
+  - path: capturequest/internal/pokebattle
+    include_files: [battle_events.go]
+    output_path: ../src/net/generated/battle_events.ts

@@ -15,6 +15,45 @@ export interface ActorRegistry {
 }
 
 //////////
+// source: battle_response.go
+
+export interface BattleCommandResponse {
+  success: true;
+  requestId: string;
+  battle?: GameplayBattleState | null;
+  position: import("./protocol").OwnedPlayerPositionResponse;
+  events: import("./battle_events").BattleEvent[];
+  end?: BattleEndOutcome;
+  learning?: BattleLearningOutcome;
+}
+export interface BattleCommandError {
+  success: false;
+  requestId: string;
+  error: string;
+}
+export interface BattleEndOutcome {
+  playerWon: boolean;
+  sentToPC?: boolean;
+  pcBox?: number /* int */;
+  blackout?: boolean;
+  lossMessage?: string;
+  blackoutMapId: number /* int */;
+  blackoutX: number /* int */;
+  blackoutY: number /* int */;
+  money?: number /* int */;
+  moneyLost?: number /* int */;
+}
+export interface BattleLearningOutcome {
+  skipped: boolean;
+  message: string;
+  updatedPokemon?: PokemonDTO;
+  forgetSlot?: number /* int */;
+  newMoveId?: number /* int */;
+  newMoveName?: string;
+  postEvents?: import("./battle_events").BattleEvent[];
+}
+
+//////////
 // source: battle_turn.go
 
 
@@ -935,13 +974,16 @@ export interface BattleCommandIdentity {
   revision: number /* int64 */;
 }
 export interface PokeBattleCloseRequest {
+  requestId: string;
   battle: BattleCommandIdentity;
 }
 export interface PokeMoveLearnRequest {
+  requestId: string;
   battle: BattleCommandIdentity;
   forgetSlot: number /* int */;
 }
 export interface PokeBattleActionRequest {
+  requestId: string;
   battle: BattleCommandIdentity;
   action: string; // "fight", "run", "switch", "item"
   moveSlot?: number /* int */; // 0-3 for fight, party index for switch
@@ -950,11 +992,13 @@ export interface PokeBattleActionRequest {
   targetSlot?: number /* int */; // Party slot index for medicine items (-1 = active Pokémon)
 }
 export interface PokeBattleSwitchRequest {
+  requestId: string;
   battle: BattleCommandIdentity;
   partyIndex: number /* int */;
   action: string; // "switch" (default) or "run" (wild only)
 }
 export interface CQBattleItemUseRequest {
+  requestId: string;
   battle: BattleCommandIdentity;
   itemId: number /* int32 */;
   instanceId?: number /* int32 */;

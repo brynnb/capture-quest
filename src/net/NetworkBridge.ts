@@ -1,3 +1,5 @@
+import type { BattleEndOutcome } from "@/net/generated/world_api";
+import { presentBattleEnd } from "@/phaser-game/services/BattleCommandService";
 import { WorldSocket } from "./index";
 import * as OpCodes from "./generated/opcodes";
 import type { OpCode } from "./generated/opcodes";
@@ -21,7 +23,6 @@ import AudioManager from "@/services/audio/AudioManager";
 import {
   cryPathForPokemon,
   sfxPathForConstant,
-  victoryMusicTrackForState,
 } from "@/services/audio/pokemonMusic";
 
 /**
@@ -41,8 +42,8 @@ export class NetworkBridge {
   /**
    * Send a JSON message to the server via WebTransport control stream.
    */
-  public static send(data: unknown, opcode: OpCode): void {
-    WorldSocket.sendStreamJsonMessage(opcode, data);
+  public static send(data: unknown, opcode: OpCode): Promise<void> {
+    return WorldSocket.sendStreamJsonMessage(opcode, data);
   }
 
   private constructor() {
@@ -92,6 +93,11 @@ export class NetworkBridge {
       case OpCodes.PhaserMapInfoResponse:
       case OpCodes.CutsceneEndResponse:
       case OpCodes.GameplayStateResponse:
+      case OpCodes.PokeBattleActionResponse:
+      case OpCodes.PokeBattleSwitchResponse:
+      case OpCodes.CQBattleItemUseResponse:
+      case OpCodes.PokeMoveLearnResponse:
+      case OpCodes.PokeBattleCloseResponse:
       case OpCodes.OwnedPlayerPositionResponse:
       case OpCodes.ServerPlayerMovementNotify:
       case OpCodes.PlayerFacingResponse:
@@ -130,11 +136,6 @@ export class NetworkBridge {
       // Pokémon Battle opcodes (Phase 4)
       case OpCodes.PokeBattleStartResponse:
         this.handlePokeBattleStart(data as Record<string, unknown>);
-        break;
-      case OpCodes.PokeBattleActionResponse:
-      case OpCodes.CQBattleItemUseResponse:
-      case OpCodes.PokeBattleSwitchResponse:
-        this.handlePokeBattleUpdate(data as Record<string, unknown>);
         break;
       case OpCodes.PokeBattleEndNotify:
         this.handlePokeBattleEnd(data as Record<string, unknown>);
@@ -197,9 +198,7 @@ export class NetworkBridge {
         break;
 
       // Move learning (Phase 6.2)
-      case OpCodes.PokeMoveLearnResponse:
-        this.handlePokeMoveLearnResponse(data as Record<string, unknown>);
-        break;
+
 
       // Party reorder (Phase 6.1)
       case OpCodes.PokemonPartyReorderResponse:
@@ -385,57 +384,15 @@ export class NetworkBridge {
     }
   }
 
-  private handlePokeBattleUpdate(data: Record<string, unknown>) {
-    if (!data.success) {
-      console.warn("[NetworkBridge] Battle action failed:", data.error);
-      return;
-    }
-    usePokeBattleStore.getState().updateBattleState({
-      battleId: data.battleId as string,
-      revision: data.revision as number,
-      playerPokemon: data.playerPokemon as PokeBattlePokemonDTO,
-      enemyPokemon: data.enemyPokemon as PokeBattlePokemonDTO,
-      phase: data.phase as string,
-      turnNumber: data.turnNumber as number,
-      events: (data.events || []) as BattleEventDTO[],
-      playerParty: data.playerParty as PokeBattlePokemonDTO[] | undefined,
-      playerActive: data.playerActive as number | undefined,
-      battleType: data.battleType as string | undefined,
-      allowedActions: data.allowedActions as string[] | undefined,
-      guaranteedCatch: data.guaranteedCatch as boolean | undefined,
-    });
-  }
-
   private handlePokeBattleEnd(data: Record<string, unknown>) {
-    const playerWon = data.playerWon as boolean;
-    if (playerWon) {
-      const battleState = usePokeBattleStore.getState();
-      const victoryTrack = victoryMusicTrackForState(
-        battleState.battleType,
-        battleState.trainerClass,
-      );
-      useAudioActivityStore.getState().setBattleVictoryTrack(victoryTrack);
-      if (victoryTrack) {
-        AudioManager.playMusic(victoryTrack);
-      }
-    }
-    const blackoutWarp = !playerWon && data.blackoutMapId
-      ? {
-          mapId: data.blackoutMapId as number,
-          x: data.blackoutX as number,
-          y: data.blackoutY as number,
-        }
-      : undefined;
-    // Battle-start recovery can arrive before a battle panel exists. Present its
-    // committed destination directly; an unopened panel cannot be dismissed.
-    if (blackoutWarp && !usePokeBattleStore.getState().isInBattle) {
-      useGameStatusStore.getState().triggerBlackoutWarp(blackoutWarp.mapId, blackoutWarp.x, blackoutWarp.y);
+    // Only standalone battle-start blackout still uses this unsolicited opcode.
+    // Ordinary command end outcomes travel inside their correlated reply.
+    const end = data as unknown as BattleEndOutcome;
+    if (!end.playerWon && end.blackoutMapId > 0 && !usePokeBattleStore.getState().isInBattle) {
+      useGameStatusStore.getState().triggerBlackoutWarp(end.blackoutMapId, end.blackoutX, end.blackoutY);
       return;
     }
-    const sentToPC = data.sentToPC as boolean | undefined;
-    const sentToPCBox = data.pcBox as number | undefined;
-    const lossMessage = data.lossMessage as string | undefined;
-    usePokeBattleStore.getState().endBattle(playerWon, blackoutWarp, sentToPC, sentToPCBox, lossMessage);
+    presentBattleEnd(end);
   }
 
   private handlePokeCenterHealResponse(data: Record<string, unknown>) {
@@ -799,39 +756,6 @@ export class NetworkBridge {
     console.log(`[NetworkBridge] Switched to box ${currentBox} with ${box.length} Pokémon`);
   }
 
-  private handlePokeMoveLearnResponse(data: Record<string, unknown>) {
-    if (!data.success) {
-      console.warn("[NetworkBridge] Move learn failed:", data.error);
-      return;
-    }
-    this.playSourceSFX("SFX_GET_ITEM_1", 0.75);
-    const message = data.message as string;
-    const skipped = data.skipped as boolean;
-    console.log("[NetworkBridge] Move learn:", skipped ? "skipped" : "learned", message);
-
-    // Build the event list: move learn confirmation message + any post-events
-    // (trainer dialogue, prize money) that were deferred.
-    const allEvents: BattleEventDTO[] = [{ type: "message" as const, message }];
-    const postEvents = data.postEvents as BattleEventDTO[] | undefined;
-    if (postEvents && postEvents.length > 0) {
-      allEvents.push(...postEvents);
-    }
-
-    // Show events via the normal animation flow, then transition to battle_end.
-    const store = usePokeBattleStore.getState();
-    store.updateBattleState({
-      battleId: data.battleId as string,
-      revision: data.revision as number,
-      playerPokemon: (data.updatedPokemon as PokeBattlePokemonDTO) || store.playerPokemon!,
-      enemyPokemon: store.enemyPokemon!,
-      phase: "battle_end",
-      turnNumber: store.turnNumber,
-      events: allEvents,
-    });
-    // The move learn prompt only fires when the player won, so always set "win".
-    store.endBattle(true);
-  }
-
   private handleDialogueChoiceResponse(data: Record<string, unknown>) {
     if (!data.success) {
       console.warn("[NetworkBridge] Dialogue choice failed:", data.error);
@@ -932,7 +856,7 @@ export class NetworkBridge {
       this.playSourceSFX("SFX_GO_OUTSIDE", 0.85);
       const battleStore = usePokeBattleStore.getState();
       if (battleStore.isInBattle) {
-        battleStore.closeBattle();
+        battleStore.retireBattle();
       }
       chat.addMessage((data.message as string) || "Warped home.", MessageType.SYSTEM);
     } else {
@@ -999,7 +923,7 @@ export class NetworkBridge {
     if (data.success) {
       const battleStore = usePokeBattleStore.getState();
       if (battleStore.isInBattle) {
-        battleStore.closeBattle();
+        battleStore.retireBattle();
       }
       import("@/stores/DebugSceneStore").then(({ default: useDebugSceneStore }) => {
         useDebugSceneStore.getState().setLastAppliedScenario({

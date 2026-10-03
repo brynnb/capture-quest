@@ -61,15 +61,18 @@ type BattleCommandIdentity struct {
 }
 
 type PokeBattleCloseRequest struct {
-	Battle BattleCommandIdentity `json:"battle"`
+	RequestID string                `json:"requestId"`
+	Battle    BattleCommandIdentity `json:"battle"`
 }
 
 type PokeMoveLearnRequest struct {
+	RequestID  string                `json:"requestId"`
 	Battle     BattleCommandIdentity `json:"battle"`
 	ForgetSlot int                   `json:"forgetSlot"`
 }
 
 type PokeBattleActionRequest struct {
+	RequestID  string                `json:"requestId"`
 	Battle     BattleCommandIdentity `json:"battle"`
 	Action     string                `json:"action"`               // "fight", "run", "switch", "item"
 	MoveSlot   int                   `json:"moveSlot,omitempty"`   // 0-3 for fight, party index for switch
@@ -79,12 +82,14 @@ type PokeBattleActionRequest struct {
 }
 
 type PokeBattleSwitchRequest struct {
+	RequestID  string                `json:"requestId"`
 	Battle     BattleCommandIdentity `json:"battle"`
 	PartyIndex int                   `json:"partyIndex"`
 	Action     string                `json:"action"` // "switch" (default) or "run" (wild only)
 }
 
 type CQBattleItemUseRequest struct {
+	RequestID  string                `json:"requestId"`
 	Battle     BattleCommandIdentity `json:"battle"`
 	ItemID     int32                 `json:"itemId"`
 	InstanceID int32                 `json:"instanceId,omitempty"`
@@ -351,24 +356,28 @@ func HandlePokeBattleStart(ses *session.Session, payload []byte, wh *WorldHandle
 
 // HandlePokeBattleAction processes a player's turn action (fight, run, switch).
 func HandlePokeBattleAction(ses *session.Session, payload []byte, wh *WorldHandler) bool {
+	return handleBattleAction(ses, payload, wh, opcodes.PokeBattleActionResponse)
+}
+
+func handleBattleAction(ses *session.Session, payload []byte, wh *WorldHandler, responseOpcode opcodes.OpCode) bool {
 	var req PokeBattleActionRequest
-	if err := decodePlayerMovement(payload, &req); err != nil {
-		sendBattleItemError(ses, opcodes.PokeBattleActionResponse, "Invalid battle command")
+	if err := decodePlayerMovement(payload, &req); err != nil || !validBattleRequestID(req.RequestID) {
+		sendBattleCommandError(ses, req.RequestID, responseOpcode, "Invalid battle command")
 		return false
 	}
 	charID := int64(ses.Client.CharData().ID)
 	current := getBattle(charID)
 	if current == nil {
-		sendBattleItemError(ses, opcodes.PokeBattleActionResponse, "Not in battle")
+		sendBattleCommandError(ses, req.RequestID, responseOpcode, "Not in battle")
 		return false
 	}
 	if !battleCommandMatches(current, req.Battle) {
-		sendBattleItemError(ses, opcodes.PokeBattleActionResponse, "Battle changed. Reconnect to recover its current state.")
+		sendBattleCommandError(ses, req.RequestID, responseOpcode, "Battle changed. Reconnect to recover its current state.")
 		return false
 	}
 
 	if current.IsOver() {
-		sendBattleItemError(ses, opcodes.PokeBattleActionResponse, "Not in battle")
+		sendBattleCommandError(ses, req.RequestID, responseOpcode, "Not in battle")
 		return false
 	}
 
@@ -378,11 +387,11 @@ func HandlePokeBattleAction(ses *session.Session, payload []byte, wh *WorldHandl
 		return err
 	})
 	if err != nil {
-		sendBattleCommitError(ses, charID, current, err, opcodes.PokeBattleActionResponse)
+		sendBattleCommitError(ses, wh, req.RequestID, charID, current, err, responseOpcode)
 		return false
 	}
 	setBattle(charID, committed)
-	publishBattleTurn(ses, wh, charID, committed, result, opcodes.PokeBattleActionResponse)
+	publishBattleTurn(ses, wh, charID, committed, result, responseOpcode, req.RequestID)
 	if req.Action == "item" || committed.IsOver() {
 		sendCQInventorySnapshot(ses, int32(charID))
 	}
@@ -393,12 +402,13 @@ func HandlePokeBattleAction(ses *session.Session, payload []byte, wh *WorldHandl
 // through the same battle action flow the current battle UI uses.
 func HandleCQBattleItemUse(ses *session.Session, payload []byte, wh *WorldHandler) bool {
 	var req CQBattleItemUseRequest
-	if err := decodePlayerMovement(payload, &req); err != nil {
-		sendBattleItemError(ses, opcodes.CQBattleItemUseResponse, "Invalid battle command")
+	if err := decodePlayerMovement(payload, &req); err != nil || !validBattleRequestID(req.RequestID) {
+		sendBattleCommandError(ses, req.RequestID, opcodes.CQBattleItemUseResponse, "Invalid battle command")
 		log.Printf("[PokeBattle] Invalid CQ battle item request: %v", err)
 		return false
 	}
 	actionPayload, err := json.Marshal(PokeBattleActionRequest{
+		RequestID:  req.RequestID,
 		Battle:     req.Battle,
 		Action:     "item",
 		MoveSlot:   req.MoveSlot,
@@ -409,24 +419,24 @@ func HandleCQBattleItemUse(ses *session.Session, payload []byte, wh *WorldHandle
 	if err != nil {
 		return false
 	}
-	return HandlePokeBattleAction(ses, actionPayload, wh)
+	return handleBattleAction(ses, actionPayload, wh, opcodes.CQBattleItemUseResponse)
 }
 
 // HandlePokeBattleSwitch handles forced switch-in after a faint, or running from a wild battle.
 func HandlePokeBattleSwitch(ses *session.Session, payload []byte, wh *WorldHandler) bool {
 	var req PokeBattleSwitchRequest
-	if err := decodePlayerMovement(payload, &req); err != nil {
-		sendBattleItemError(ses, opcodes.PokeBattleSwitchResponse, "Invalid battle command")
+	if err := decodePlayerMovement(payload, &req); err != nil || !validBattleRequestID(req.RequestID) {
+		sendBattleCommandError(ses, req.RequestID, opcodes.PokeBattleSwitchResponse, "Invalid battle command")
 		return false
 	}
 	charID := int64(ses.Client.CharData().ID)
 	current := getBattle(charID)
 	if current == nil {
-		sendBattleItemError(ses, opcodes.PokeBattleSwitchResponse, "Not in battle")
+		sendBattleCommandError(ses, req.RequestID, opcodes.PokeBattleSwitchResponse, "Not in battle")
 		return false
 	}
 	if !battleCommandMatches(current, req.Battle) {
-		sendBattleItemError(ses, opcodes.PokeBattleSwitchResponse, "Battle changed. Reconnect to recover its current state.")
+		sendBattleCommandError(ses, req.RequestID, opcodes.PokeBattleSwitchResponse, "Battle changed. Reconnect to recover its current state.")
 		return false
 	}
 
@@ -453,11 +463,11 @@ func HandlePokeBattleSwitch(ses *session.Session, payload []byte, wh *WorldHandl
 		return err
 	})
 	if err != nil {
-		sendBattleCommitError(ses, charID, current, err, opcodes.PokeBattleSwitchResponse)
+		sendBattleCommitError(ses, wh, req.RequestID, charID, current, err, opcodes.PokeBattleSwitchResponse)
 		return false
 	}
 	setBattle(charID, committed)
-	publishBattleTurn(ses, wh, charID, committed, result, opcodes.PokeBattleSwitchResponse)
+	publishBattleTurn(ses, wh, charID, committed, result, opcodes.PokeBattleSwitchResponse, req.RequestID)
 	return false
 }
 
@@ -657,27 +667,27 @@ func HandlePokemonPartyRequest(ses *session.Session, payload []byte, wh *WorldHa
 // The client sends forgetSlot (0-3 to forget a move, or -1 to skip learning).
 func HandlePokeMoveLearn(ses *session.Session, payload []byte, wh *WorldHandler) bool {
 	var req PokeMoveLearnRequest
-	if err := decodePlayerMovement(payload, &req); err != nil {
-		sendBattleItemError(ses, opcodes.PokeMoveLearnResponse, "Invalid request")
+	if err := decodePlayerMovement(payload, &req); err != nil || !validBattleRequestID(req.RequestID) {
+		sendBattleCommandError(ses, req.RequestID, opcodes.PokeMoveLearnResponse, "Invalid request")
 		return false
 	}
 	charID := int64(ses.Client.CharData().ID)
 	current := getBattle(charID)
 	if current == nil {
-		sendBattleItemError(ses, opcodes.PokeMoveLearnResponse, "No pending move to learn")
+		sendBattleCommandError(ses, req.RequestID, opcodes.PokeMoveLearnResponse, "No pending move to learn")
 		return false
 	}
 	if !battleCommandMatches(current, req.Battle) {
-		sendBattleItemError(ses, opcodes.PokeMoveLearnResponse, "Battle changed. Reconnect to recover its current state.")
+		sendBattleCommandError(ses, req.RequestID, opcodes.PokeMoveLearnResponse, "Battle changed. Reconnect to recover its current state.")
 		return false
 	}
 
 	if current.PendingMoveLearn == nil {
-		sendBattleItemError(ses, opcodes.PokeMoveLearnResponse, "No pending move to learn")
+		sendBattleCommandError(ses, req.RequestID, opcodes.PokeMoveLearnResponse, "No pending move to learn")
 		return false
 	}
 
-	var response map[string]interface{}
+	var learning BattleLearningOutcome
 	committed, err := pokebattle.CommitBattle(ses.CommandContext(), wh.database, charID, current, func(tx db.DBTX, next *pokebattle.BattleState) error {
 		pending := next.PendingMoveLearn
 		if req.ForgetSlot < -1 || req.ForgetSlot >= 4 {
@@ -687,35 +697,34 @@ func HandlePokeMoveLearn(ses *session.Session, payload []byte, wh *WorldHandler)
 			return fmt.Errorf("invalid pending move pokemon index")
 		}
 		pokemon := next.PlayerParty[pending.PokemonIndex]
-		response = map[string]interface{}{"success": true, "skipped": req.ForgetSlot == -1}
+		learning.Skipped = req.ForgetSlot == -1
 		if req.ForgetSlot == -1 {
-			response["message"] = fmt.Sprintf("%s did not learn %s.", pokemon.Name, pending.MoveName)
+			learning.Message = fmt.Sprintf("%s did not learn %s.", pokemon.Name, pending.MoveName)
 		} else {
 			forgotten := pokemon.Moves[req.ForgetSlot].Name
 			if err := pokebattle.ForgetAndLearnMove(tx, pokemon, req.ForgetSlot, pending.MoveID); err != nil {
 				return err
 			}
-			response["message"] = fmt.Sprintf("1, 2, and… Poof!\n%s forgot %s.\nAnd…\n%s learned %s!", pokemon.Name, forgotten, pokemon.Name, pending.MoveName)
-			response["updatedPokemon"] = pokemonToDTO(pokemon)
-			response["forgetSlot"] = req.ForgetSlot
-			response["newMoveId"] = pending.MoveID
-			response["newMoveName"] = pending.MoveName
+			learning.Message = fmt.Sprintf("1, 2, and… Poof!\n%s forgot %s.\nAnd…\n%s learned %s!", pokemon.Name, forgotten, pokemon.Name, pending.MoveName)
+			updated := pokemonToDTO(pokemon)
+			learning.UpdatedPokemon = &updated
+			learning.ForgetSlot = req.ForgetSlot
+			learning.NewMoveID = pending.MoveID
+			learning.NewMoveName = pending.MoveName
 		}
 		if len(next.PostMoveLearnEvents) > 0 {
-			response["postEvents"] = next.PostMoveLearnEvents
+			learning.PostEvents = next.PostMoveLearnEvents
 		}
 		next.PendingMoveLearn = nil
 		next.PostMoveLearnEvents = nil
 		return nil
 	})
 	if err != nil {
-		sendBattleCommitError(ses, charID, nil, err, opcodes.PokeMoveLearnResponse)
+		sendBattleCommitError(ses, wh, req.RequestID, charID, nil, err, opcodes.PokeMoveLearnResponse)
 		return false
 	}
 	setBattle(charID, committed)
-	response["battleId"] = committed.BattleID
-	response["revision"] = committed.Revision
-	ses.SendStreamJSON(response, opcodes.PokeMoveLearnResponse)
+	ses.SendStreamJSON(BattleCommandResponse{Success: true, RequestID: req.RequestID, Position: wh.ownedPlayerSnapshot(ses, req.RequestID), Battle: gameplayBattleSnapshot(committed), Events: []pokebattle.BattleEvent{}, Learning: &learning, End: &BattleEndOutcome{PlayerWon: true}}, opcodes.PokeMoveLearnResponse)
 	sendPokemonPartySnapshot(ses, committed.PlayerParty)
 	return false
 }
@@ -724,7 +733,8 @@ func HandlePokeMoveLearn(ses *session.Session, payload []byte, wh *WorldHandler)
 // This is the only place where the battle is cleaned up from memory.
 func HandlePokeBattleClose(ses *session.Session, payload []byte, wh *WorldHandler) bool {
 	var req PokeBattleCloseRequest
-	if err := decodePlayerMovement(payload, &req); err != nil {
+	if err := decodePlayerMovement(payload, &req); err != nil || !validBattleRequestID(req.RequestID) {
+		sendBattleCommandError(ses, req.RequestID, opcodes.PokeBattleCloseResponse, "Invalid battle close command")
 		return false
 	}
 	if !ses.HasValidClient() {
@@ -733,17 +743,16 @@ func HandlePokeBattleClose(ses *session.Session, payload []byte, wh *WorldHandle
 	charID := int64(ses.Client.CharData().ID)
 	battle := getBattle(charID)
 	if !battleCommandMatches(battle, req.Battle) {
+		sendBattleCommandError(ses, req.RequestID, opcodes.PokeBattleCloseResponse, "Battle changed. Recover its current state.")
 		return false
 	}
 	shouldSendPostBattleScript := battleShouldSendPostBattleMapScript(battle)
-	if battle == nil {
-		return false
-	}
 	if err := pokebattle.CloseBattle(ses.CommandContext(), wh.database, charID, battle); err != nil {
-		log.Printf("[PokeBattle] Close failed for character %d: %v", charID, err)
+		sendBattleCommitError(ses, wh, req.RequestID, charID, nil, err, opcodes.PokeBattleCloseResponse)
 		return false
 	}
 	forgetBattle(charID, battle)
+	ses.SendStreamJSON(BattleCommandResponse{Success: true, RequestID: req.RequestID, Position: wh.ownedPlayerSnapshot(ses, req.RequestID), Events: []pokebattle.BattleEvent{}}, opcodes.PokeBattleCloseResponse)
 	if shouldSendPostBattleScript {
 		sendEligibleMapScriptAfterBattleClose(ses, charID, wh)
 	}
@@ -802,10 +811,7 @@ func publishStandaloneBlackout(ses *session.Session, wh *WorldHandler, charID in
 	refreshSafariFlags(wh, charID)
 	publishCommittedPlayerPosition(ses, wh, result.MapID, result.X, result.Y, "DOWN")
 	ses.SendStreamJSON(model.CharacterWallet{CharacterID: uint32(charID), Pokedollars: uint32(result.NewMoney)}, opcodes.CharacterWallet)
-	ses.SendStreamJSON(map[string]interface{}{
-		"playerWon": false, "blackout": true, "money": result.NewMoney,
-		"moneyLost": result.MoneyLost, "blackoutMapId": result.MapID,
-		"blackoutX": result.X, "blackoutY": result.Y,
-	}, opcodes.PokeBattleEndNotify)
+	ses.SendStreamJSON(BattleEndOutcome{PlayerWon: false, Blackout: true, Money: result.NewMoney, MoneyLost: result.MoneyLost, BlackoutMapID: result.MapID, BlackoutX: result.X, BlackoutY: result.Y}, opcodes.PokeBattleEndNotify)
+
 	sendPokemonPartySnapshot(ses, party)
 }

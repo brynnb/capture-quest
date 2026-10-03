@@ -15,7 +15,7 @@ let requestSequence = 0;
 // A local cancellation cannot undo a server commit; a later load reads owned state.
 export function correlatedRequest<T extends { success: true; requestId: string }>(
   subscribe: (receive: (response: T | CorrelatedErrorResponse) => void) => () => void,
-  send: (requestId: string) => void,
+  send: (requestId: string) => void | Promise<void>,
   signal?: AbortSignal,
 ): Promise<T> {
   if (!PhaserNet.isConnected()) return Promise.reject(new Error("Not connected to server - please log in first"));
@@ -47,7 +47,7 @@ export function correlatedRequest<T extends { success: true; requestId: string }
     signal?.addEventListener("abort", abort, { once: true });
     if (signal?.aborted) { abort(); return; }
     timeout = setTimeout(() => finish(new CorrelatedRequestTimeoutError()), REQUEST_TIMEOUT_MS);
-    try { send(requestId); } catch (error) { finish(error instanceof Error ? error : new Error(String(error))); }
+    try { Promise.resolve(send(requestId)).catch((error) => finish(error instanceof Error ? error : new Error(String(error)))); } catch (error) { finish(error instanceof Error ? error : new Error(String(error))); }
   });
 }
 

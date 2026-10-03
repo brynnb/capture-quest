@@ -1,3 +1,4 @@
+import type { BattleCommandResponse, BattleCommandError } from "@/net/generated/world_api";
 import type { GameplayStateRequest, GameplayStateResponse } from "@/net/generated/world_api";
 import type { TrainerEncounterNotifyPayload } from "@/net/generated/protocol";
 import type { CutsceneEndRequest, CutsceneEndResponse, OwnedPlayerPositionRequest, OwnedPlayerPositionResponse, ServerPlayerMovementNotify, PlayerFacingRequest, PlayerFacingResponse, PlayerStepRequest, PlayerStepResponse, PlayerStepCompleteRequest, PlayerStepCompleteResponse, PlayerStepError, PhaserMapInfo, PhaserMapInfoRequest, PhaserMapInfoResponse, PhaserMapLoadRequest, PhaserMapLoadResponse, PhaserMapRequestError, PhaserWarpActivateRequest, PhaserWarpActivateResponse, PhaserInstantWarpRequest, PhaserInstantWarpResponse } from "@/net/generated/protocol";
@@ -29,42 +30,42 @@ export function isConnected(): boolean {
 }
 
 /** Read-only metadata; arrivals use the separate map-load command. */
-export function requestMapInfo(request: PhaserMapInfoRequest): void {
-  NetworkBridge.send(request, OpCodes.PhaserMapInfoRequest);
+export function requestMapInfo(request: PhaserMapInfoRequest): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.PhaserMapInfoRequest);
 }
 
-export function requestMapLoad(request: PhaserMapLoadRequest): void {
-  NetworkBridge.send(request, OpCodes.PhaserMapLoadRequest);
+export function requestMapLoad(request: PhaserMapLoadRequest): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.PhaserMapLoadRequest);
 }
 
-export function completeCutscene(request: CutsceneEndRequest): void {
-  NetworkBridge.send(request, OpCodes.CutsceneEndRequest);
+export function completeCutscene(request: CutsceneEndRequest): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.CutsceneEndRequest);
 }
-export function requestGameplayState(request: GameplayStateRequest): void {
-  NetworkBridge.send(request, OpCodes.GameplayStateRequest);
-}
-
-export function requestOwnedPlayerPosition(request: OwnedPlayerPositionRequest): void {
-  NetworkBridge.send(request, OpCodes.OwnedPlayerPositionRequest);
+export function requestGameplayState(request: GameplayStateRequest): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.GameplayStateRequest);
 }
 
-export function requestPlayerFacing(request: PlayerFacingRequest): void {
-  NetworkBridge.send(request, OpCodes.PlayerFacingRequest);
+export function requestOwnedPlayerPosition(request: OwnedPlayerPositionRequest): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.OwnedPlayerPositionRequest);
 }
 
-export function requestPlayerStep(request: PlayerStepRequest): void {
-  NetworkBridge.send(request, OpCodes.PlayerStepRequest);
-}
-export function completePlayerStep(request: PlayerStepCompleteRequest): void {
-  NetworkBridge.send(request, OpCodes.PlayerStepCompleteRequest);
+export function requestPlayerFacing(request: PlayerFacingRequest): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.PlayerFacingRequest);
 }
 
-export function requestInstantWarp(request: PhaserInstantWarpRequest): void {
-  NetworkBridge.send(request, OpCodes.PhaserInstantWarpRequest);
+export function requestPlayerStep(request: PlayerStepRequest): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.PlayerStepRequest);
+}
+export function completePlayerStep(request: PlayerStepCompleteRequest): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.PlayerStepCompleteRequest);
 }
 
-export function requestWarpActivation(request: PhaserWarpActivateRequest): void {
-  NetworkBridge.send(request, OpCodes.PhaserWarpActivateRequest);
+export function requestInstantWarp(request: PhaserInstantWarpRequest): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.PhaserInstantWarpRequest);
+}
+
+export function requestWarpActivation(request: PhaserWarpActivateRequest): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.PhaserWarpActivateRequest);
 }
 
 /**
@@ -357,6 +358,18 @@ export type TrainerEncounterHandler = (
 ) => void;
 export type PhaserMapMusicHandler = (data: MapMusicResult) => void;
 
+type BattleCommandHandler = (data: BattleCommandResponse | BattleCommandError) => void;
+const battleCommandHandlers = new Map<number, Set<BattleCommandHandler>>([
+  OpCodes.PokeBattleActionResponse, OpCodes.PokeBattleSwitchResponse,
+  OpCodes.CQBattleItemUseResponse, OpCodes.PokeMoveLearnResponse, OpCodes.PokeBattleCloseResponse,
+].map(opcode => [opcode, new Set<BattleCommandHandler>()]));
+
+export function onBattleCommand(opcode: number, receive: BattleCommandHandler): () => void {
+  const listeners = battleCommandHandlers.get(opcode);
+  if (!listeners) throw new Error("Unsupported battle response opcode");
+  listeners.add(receive); return () => listeners.delete(receive);
+}
+
 const handlers = {
   gameplayState: new Set<(data: GameplayStateResponse | PlayerStepError) => void>(),
   cutsceneEnd: new Set<(data: CutsceneEndResponse | PlayerStepError) => void>(),
@@ -552,19 +565,10 @@ export function sendCQMerchantSell(instanceId: number): void {
  * Used during game destruction to prevent late network messages from calling stale handlers
  */
 export function clearAllHandlers(): void {
-  handlers.mapInfo.clear();
-  handlers.mapLoad.clear();
-  handlers.warpActivation.clear();
-  handlers.instantWarp.clear();
-  handlers.tiles.clear();
-  handlers.overworldMaps.clear();
-  handlers.actors.clear();
-  handlers.warps.clear();
-  handlers.actorUpdate.clear();
-  handlers.actorDespawn.clear();
-  handlers.trainerEncounter.clear();
-  handlers.mapMusic.clear();
+  for (const listeners of Object.values(handlers)) listeners.clear();
+  for (const listeners of battleCommandHandlers.values()) listeners.clear();
 }
+
 
 export function normalizePhaserArrayPayload<T>(
   data: unknown,
@@ -589,6 +593,14 @@ export function normalizePhaserArrayPayload<T>(
 // Internal: dispatch incoming Phaser responses
 export function dispatchPhaserResponse(opcode: number, data: unknown): void {
   switch (opcode) {
+    case OpCodes.PokeBattleActionResponse:
+    case OpCodes.PokeBattleSwitchResponse:
+    case OpCodes.CQBattleItemUseResponse:
+    case OpCodes.PokeMoveLearnResponse:
+    case OpCodes.PokeBattleCloseResponse:
+      battleCommandHandlers.get(opcode)?.forEach(receive => receive(data as BattleCommandResponse | BattleCommandError));
+      break;
+
     case OpCodes.GameplayStateResponse:
       handlers.gameplayState.forEach(h => h(data as GameplayStateResponse | PlayerStepError));
       break;

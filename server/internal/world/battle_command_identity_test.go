@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	"capturequest/internal/api/opcodes"
@@ -73,7 +74,7 @@ func TestBattleCommandIdentityIsMandatoryAcrossMutationOpcodes(t *testing.T) {
 	} {
 		for _, identity := range []string{"", `"battle":{"battleId":"wrong","revision":1},`, fmt.Sprintf(`"battle":{"battleId":%q,"revision":0},`, current.BattleID), fmt.Sprintf(`"battle":{"battleId":%q,"revision":%d},`, current.BattleID, current.Revision+1), fmt.Sprintf(`"battle":{"battleId":%q,"revision":1},"unexpected":true,`, current.BattleID)} {
 			messages.streams = nil
-			registry.HandleWorldPacket(ses, clientPacket(tc.opcode, "{"+identity+tc.action+"}"))
+			registry.HandleWorldPacket(ses, clientPacket(tc.opcode, `{"requestId":"reject",`+identity+tc.action+"}"))
 			assertRejectedBattleCommand(t, messages)
 			if getBattle(42) != current {
 				t.Fatal("invalid identity replaced authority")
@@ -90,7 +91,7 @@ func TestBattleCommandIdentityIsMandatoryAcrossMutationOpcodes(t *testing.T) {
 	}
 	setBattle(42, next)
 	messages.streams = nil
-	registry.HandleWorldPacket(ses, clientPacket(opcodes.PokeMoveLearnRequest, `{"forgetSlot":-1}`))
+	registry.HandleWorldPacket(ses, clientPacket(opcodes.PokeMoveLearnRequest, `{"requestId":"reject-learn","forgetSlot":-1}`))
 	assertRejectedBattleCommand(t, messages)
 	if getBattle(42).PendingMoveLearn == nil {
 		t.Fatal("unbound command consumed pending move")
@@ -117,5 +118,34 @@ func TestDelayedBattleCloseCannotDeleteReplacementFinishedBattle(t *testing.T) {
 	saved, err := pokebattle.LoadBattleState(database, 42)
 	if err != nil || saved == nil || saved.BattleID != replacement.BattleID || getBattle(42) != replacement {
 		t.Fatal("delayed close deleted replacement battle", err)
+	}
+}
+
+func TestBattleCommandsRequireCorrelationAndReturnItOnEveryOutcome(t *testing.T) {
+	database, wh, ses, messages := battleTestWorld(t)
+	current := battleTestStart(t, database, false, nil)
+	registry := NewWorldOpCodeRegistry()
+	registry.WH = wh
+	for _, requestID := range []string{"", strings.Repeat("x", 65)} {
+		request := fmt.Sprintf(`{"requestId":%q,"battle":{"battleId":%q,"revision":1},"action":"fight","moveSlot":0}`, requestID, current.BattleID)
+		messages.streams = nil
+		registry.HandleWorldPacket(ses, clientPacket(opcodes.PokeBattleActionRequest, request))
+		assertRejectedBattleCommand(t, messages)
+		var reply BattleCommandError
+		if err := json.Unmarshal(messages.streams[0].payload, &reply); err != nil || reply.RequestID != requestID || getBattle(42) != current {
+			t.Fatal("invalid correlation changed authority or lost its ID", err)
+		}
+	}
+	// The alias must return its own opcode and correlation, rather than silently
+	// forwarding a response through opcode 71 that its caller cannot settle.
+	request := fmt.Sprintf(`{"requestId":"alias","battle":{"battleId":%q,"revision":1},"itemId":1}`, current.BattleID)
+	messages.streams = nil
+	registry.HandleWorldPacket(ses, clientPacket(opcodes.CQBattleItemUseRequest, request))
+	if len(messages.streams) != 1 || messages.streams[0].opcode != opcodes.CQBattleItemUseResponse {
+		t.Fatal("item alias replied through the wrong boundary")
+	}
+	var noTurn BattleCommandResponse
+	if err := json.Unmarshal(messages.streams[0].payload, &noTurn); err != nil || !noTurn.Success || noTurn.RequestID != "alias" || noTurn.Battle == nil || noTurn.Battle.Revision != 1 || len(noTurn.Events) != 1 {
+		t.Fatal("rule rejection lost phase/correlation", err)
 	}
 }

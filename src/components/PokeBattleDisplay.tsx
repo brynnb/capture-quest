@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import styled, { keyframes } from "styled-components";
 import usePokeBattleStore from "@stores/PokeBattleStore";
 import type { BattleEvent } from "@stores/PokeBattleStore";
-import useGameStatusStore from "@stores/GameStatusStore";
 import useCQInventoryStore, {
   type CQInventoryItem,
   ITEM_TYPE_BATTLE_ITEM,
@@ -966,6 +965,8 @@ const MoveLearnPanel: React.FC<{
 const PokeBattleDisplay: React.FC = () => {
   const {
     isInBattle,
+    battleCommandPending,
+    commandError,
     phase,
     playerPokemon,
     enemyPokemon,
@@ -1178,21 +1179,13 @@ const PokeBattleDisplay: React.FC = () => {
   const blackoutWarp = usePokeBattleStore((s) => s.blackoutWarp);
 
   const handleTextClick = useCallback(() => {
+    if (battleCommandPending || commandError) return;
     if (phase === "animating") {
       advanceEvent();
     } else if (phase === "battle_end") {
-      if (battleResult === "lose" && blackoutWarp) {
-        useGameStatusStore
-          .getState()
-          .triggerBlackoutWarp(
-            blackoutWarp.mapId,
-            blackoutWarp.x,
-            blackoutWarp.y,
-          );
-      }
       closeBattle();
     }
-  }, [phase, battleResult, blackoutWarp, advanceEvent, closeBattle]);
+  }, [phase, battleCommandPending, commandError, advanceEvent, closeBattle]);
 
   const handleFight = useCallback(() => {
     setPhase("move_select");
@@ -1215,7 +1208,6 @@ const PokeBattleDisplay: React.FC = () => {
         moveSlot: 0,
         itemId,
       });
-      setPhase("animating");
     },
     [setPhase],
   );
@@ -1228,7 +1220,6 @@ const PokeBattleDisplay: React.FC = () => {
         itemId,
         targetSlot: -1,
       });
-      setPhase("animating");
     },
     [setPhase],
   );
@@ -1263,7 +1254,6 @@ const PokeBattleDisplay: React.FC = () => {
         action: "fight",
         moveSlot: slot,
       });
-      setPhase("animating");
     },
     [setPhase],
   );
@@ -1278,7 +1268,6 @@ const PokeBattleDisplay: React.FC = () => {
         partyIndex,
         action: "switch",
       });
-      setPhase("animating");
     },
     [setPhase],
   );
@@ -1289,7 +1278,6 @@ const PokeBattleDisplay: React.FC = () => {
         action: "switch",
         moveSlot: partyIndex,
       });
-      setPhase("animating");
     },
     [setPhase],
   );
@@ -1664,11 +1652,11 @@ const PokeBattleDisplay: React.FC = () => {
         </BattleScene>
 
         {/* Text / Events display */}
-        {phase === "animating" && (
+        {(phase === "animating" || commandError) && (
           <TextBox data-testid="battle-text-box" onClick={handleTextClick}>
             <MessageText>
-              {displayMessage}
-              <TextArrow>▼</TextArrow>
+              {commandError ?? (battleCommandPending ? "Waiting for the battle…" : displayMessage)}
+              {!battleCommandPending && !commandError && <TextArrow>▼</TextArrow>}
             </MessageText>
           </TextBox>
         )}

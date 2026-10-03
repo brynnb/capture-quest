@@ -994,12 +994,43 @@ The shared browser command service captures it from the existing battle store
 at send time, including while response events animate. Close requests retain
 it before clearing the store, preventing delayed dismissal of a later battle.
 Old identity-free requests reject; a release must update server and client
-together. Rejected duplicates do not replay a historical outcome. Correlated
-reply timeout handling, stale response retirement and Safari command identity
-remain unfinished; see SERVER_FOUNDATIONS.md for the full five-area roadmap.
+together. Rejected duplicates do not replay a historical outcome. Ordinary command correlation, timeout recovery and stale response retirement
+are implemented as described below. Safari command identity remains unfinished; see SERVER_FOUNDATIONS.md for the full five-area roadmap.
 
 Supported version-zero battle saves receive a one-time version-two upgrade under
 the resume transaction before commands are admitted. Identity and current party
 row references persist without a turn, reward or party rewrite. Failure rolls
 back the upgrade; repeated resume keeps the established identity. Current-format
 malformation and unsupported versions remain explicit failures.
+
+
+### Correlated ordinary battle replies and scene ownership
+
+Ordinary battle mutation requests carry both durable `battle` identity and a
+bounded `requestId`. One generated `BattleCommandResponse` bundles battle state,
+events, owned position and optional terminal/learning outcomes. Errors echo the
+request ID. Close returns opcode 199 after committed deletion. Ordinary terminal
+commands emit no separate end notification; standalone start-blackout delivery
+remains unsolicited. Go battle events are the single source of the generated
+browser event contract through `server/tygo.yaml`.
+
+`BattleCommandService` owns one in-flight command over the reliable stream. Its
+captured scene projection and monotonic store presentation generation define who
+may apply a reply. Replacement, including the same durable battle ID, or scene
+retirement aborts the operation and unregisters listeners/timers. Command replies
+are dispatched to correlated subscribers rather than globally mutating the store.
+Close waits for acknowledgement; quit/warp retirement clears local presentation
+without issuing a close. Async transport rejection enters the same recovery path
+as timeout. A failed command is never automatically resent with a fresh revision.
+
+Current recovery first reads owned position, then a map-bound coherent gameplay
+snapshot, applies it under the captured ownership guard, and reconciles position.
+A second failure leaves an explicit reconnect error with battle input locked.
+This chain still needs consolidation: the owned-position endpoint can redeliver
+pending trainer/cutscene plans before the gameplay snapshot chooses presentation.
+An explicit current-owned query mode on the existing snapshot endpoint is the
+recommended next change, preserving strict source validation for map-bound reads.
+Finished-battle absence also needs terminal trainer/post-battle script progression
+acceptance coverage. Safari correlation, other state streams and historical
+outcome replay remain separate unfinished work. See `SERVER_FOUNDATIONS.md` for
+validation evidence and the full five-area scope.
