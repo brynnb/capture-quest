@@ -347,6 +347,10 @@ field-name conversion or generated-name postprocessor will remain.
    default move fields), using their already declared JSON names. Database
    errors are distinguished from missing records. Local TM/HM preview records
    use a generated-field projection instead of pretending to be full responses.
+   Native map info, unified bounds and overworld lists also use the service;
+   their DTOs generate from protocol JSON tags. Lists cannot assign player
+   presence, are ordered by ID, and honor optional field omission. Map-info
+   retains destination/recovery/load effects until gameplay intent is migrated.
    Map-script and learnset aggregates now also use the service and protocol
    types. They read under one read-only repeatable-read transaction and one
    five-second budget, returning no partial projection on any failure. A shared
@@ -795,3 +799,15 @@ far-overworld arrival readiness limitation: actor arrival precedes exact
 chunk/collision residency, so ending warp mode alone does not prove readiness
 for the first input. The rendered movement-origin check waits for actual exact
 tile data; coordinating input release with residency remains required.
+
+
+Map metadata projections (native info, active unified bounds and overworld list)
+now belong to the injected content query service, with caller cancellation and
+five-second query budgets. Runtime supplies ID 9999 for the synthetic bounds
+projection. Overworld lists are pure reads and cannot assign session presence;
+empty lists are arrays and SQL scan/iteration failures reject partial output.
+Map info/request DTOs now generate from explicit `internal/protocol` JSON tags;
+all frontend consumers use that source and list output bypasses `StructToMap`.
+Destination-bearing map-info recovery/effects remain coupled in the world handler
+until the explicit gameplay-intent migration. Query listener/error correlation
+and arrival residency still need coordinated networking changes.

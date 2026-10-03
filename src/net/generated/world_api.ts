@@ -736,21 +736,6 @@ export interface TilePropertyUpdateReq {
 // source: handler-phaser.go
 
 /**
- * PhaserMapInfo represents a map in the 2D Phaser game
- */
-export interface PhaserMapInfo {
-  id: number /* int */;
-  name: string;
-  width: number /* int */;
-  height: number /* int */;
-  tilesetId?: number /* int */;
-  isOverworld: number /* int */;
-  tileMinX?: number /* int */;
-  tileMinY?: number /* int */;
-  tileMaxX?: number /* int */;
-  tileMaxY?: number /* int */;
-}
-/**
  * PhaserTile represents a single tile in the game
  */
 export interface PhaserTile {
@@ -815,14 +800,6 @@ export interface PhaserWarp {
   destinationWarpId: number /* int */;
   warpType: string;
   warpDirection?: string;
-}
-/**
- * PhaserMapInfoRequest is the request payload
- */
-export interface PhaserMapInfoRequest {
-  mapId: number /* int */;
-  destX?: number /* int */;
-  destY?: number /* int */;
 }
 /**
  * PhaserTilesRequest is the request payload

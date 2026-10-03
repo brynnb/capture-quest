@@ -1,3 +1,4 @@
+import type { PhaserMapInfo } from "@/net/generated/protocol";
 /**
  * MapDataService - Phaser map data fetching via WebTransport
  *
@@ -10,7 +11,6 @@
 import * as PhaserNet from "./PhaserNetworkService";
 import { getTileImageUrl } from "../api/tileService";
 import type {
-  PhaserMapInfo,
   PhaserTile,
   PhaserTilesRequest,
   PhaserTilesResponse,

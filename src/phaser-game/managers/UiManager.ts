@@ -1,10 +1,10 @@
+import type { PhaserMapInfo } from "@/net/generated/protocol";
 import { Scene } from "phaser";
 import { IS_LOCAL_DEV } from "@/config";
 import useWorldDebugStore from "@/stores/WorldDebugStore";
 import { TILE_SIZE } from "../constants";
 import type {
   PhaserActor,
-  PhaserMapInfo,
   PhaserTile,
   PhaserWarp,
 } from "@/net/generated/world_api";

@@ -1,3 +1,4 @@
+import type { PhaserMapInfo } from "@/net/generated/protocol";
 import { Scene } from "phaser";
 import {
   DEFAULT_ZOOM,
@@ -23,7 +24,6 @@ import useGameStatusStore from "@/stores/GameStatusStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import * as PhaserNet from "./PhaserNetworkService";
 import type {
-  PhaserMapInfo,
   PhaserTile,
   PhaserActor,
   PhaserWarp,

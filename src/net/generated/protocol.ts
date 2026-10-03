@@ -147,6 +147,29 @@ export interface PhaserLearnsetResponse {
   learnset: PhaserLearnsetEntry[];
   tmhm: PhaserTMHMEntry[];
 }
+/**
+ * PhaserMapInfo represents a map in the 2D Phaser game
+ */
+export interface PhaserMapInfo {
+  id: number /* int */;
+  name: string;
+  width: number /* int */;
+  height: number /* int */;
+  tilesetId?: number /* int */;
+  isOverworld: number /* int */;
+  tileMinX?: number /* int */;
+  tileMinY?: number /* int */;
+  tileMaxX?: number /* int */;
+  tileMaxY?: number /* int */;
+}
+/**
+ * PhaserMapInfoRequest is the request payload
+ */
+export interface PhaserMapInfoRequest {
+  mapId: number /* int */;
+  destX?: number /* int */;
+  destY?: number /* int */;
+}
 
 //////////
 // source: pokedex.go

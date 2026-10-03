@@ -3,7 +3,8 @@
 Status: active. Started 2026-09-25 from `02c51ba`.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-client destination catalog boundary (2026-10-02), following retired legacy map
+bounded map content queries and explicit map DTOs (2026-10-02), following client
+destination checkpoint `42cfa37`, rendered diagnosis `e455b24`, and retired legacy map
 setter `7732412` and active-player shutdown
 checkpoint `c811917` and
 owned transport checkpoint `fea2a16` and HTTP retirement checkpoint
@@ -41,7 +42,7 @@ evidence, including remaining-work notes that subsequent commits may resolve.
 | Request/session boundary | Packet and connection limits, centralized session prerequisites, removal of insecure session takeover, actual transport closure, location/visibility checks for scripted clicks, dialogue choices and direct trainer battles, client destination catalog validation and remote map metadata presence guards, and preserved command deadlines/disconnect cancellation in migrated operations. | Audit remaining interaction/mutation endpoints; propagate cancellation through legacy managers and remaining database/network work. |
 | Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors, Game Corner prizes and bounded coin/slot/hidden-coin operations, atomic Escape Rope/FLY positions, durable Repel counters, Safari entry/turn/capture state and exhaustion destinations, atomic recovery warps, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery of committed results across reconnects. |
 | Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, and movement ticks coordinated with the owner. | Finish timer/callback/shared-state and legacy position-writer audits; prove remaining concurrent/reconnect behavior across real transports. |
-| Domains and wire contracts | Injected content-query service; typed character/wallet/bind, Pokédex/card, content detail, map-script and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
+| Domains and wire contracts | Injected content-query service; typed character/wallet/bind, Pokédex/card, content detail, map-script, map-info/list and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
 | Lifecycle and verification | Owned HTTP/listeners, readiness, listener failure propagation, joined periodic workers, sealed session admissions, fail-closed staged preload, startup cancellation, atomic scripted-event publication, and deadline-aware shutdown waits with returned failure results. | Audit cancellation of remaining legacy work, define durable final-save recovery, and complete transport/rendered integration coverage. Owned HTTP and player transport retirement and isolated active-player shutdown checks have landed. |
 
 ## Remaining work, in recommended order
@@ -93,6 +94,56 @@ evidence, including remaining-work notes that subsequent commits may resolve.
    cancellation/timeouts, failure/retry and shutdown with active players.
    Acceptance: evidence covers the original five milestones, including visible
    behavior where relevant. Only then mark the full goal complete.
+
+## Bounded map content queries and explicit map DTOs (2026-10-02)
+
+`PhaserOverworldMapsRequest` previously queried the global database without a
+context, skipped scan failures, used `StructToMap`, and assigned
+`session.MapID = maps[0].ID`. Reading a map list could therefore change the
+player's visible-map tracking to the first native overworld map. The list is now
+a pure read through the existing injected `content.Service`: it preserves
+session/character presence, orders maps by ID, returns `[]` for an empty catalog,
+and rejects scan/iteration errors rather than publishing partial success.
+
+Map-info and unified-overworld bounds use the same service and captured database.
+Each query respects caller cancellation and a maximum five-second deadline.
+The bounds query preserves negative coordinates and excludes erased tiles and
+interior rows. The world handler supplies runtime map ID 9999 for the synthetic
+bounds projection; it is not a physical catalog row. Terminal failures are logged
+server-side and return the shared typed query error without SQL text.
+
+`PhaserMapInfo` and `PhaserMapInfoRequest` now live in `internal/protocol` and
+regenerate directly from explicit JSON tags. All shipped frontend consumers
+import the DTO from generated `protocol.ts`; the old `world_api.ts` declarations
+are removed rather than aliased. Successful map/list wire shapes retain existing
+field names and explicit zero/negative coordinates. Map-info preserves optional
+bounds/tileset omission. Lists now also honor those `omitempty` tags instead of
+serializing absent pointers as `null` through reflection; frontend consumers
+already declare these fields optional. Empty list output remains `[]`. Lists
+bypass reflection/casing conversion. No opcode or asset
+contract changed.
+
+PostgreSQL tests prove empty/nonempty sorted lists, interior metadata,
+NULL-map active bounds, cancellation, blocked-query deadlines and retry. Real
+packet dispatch with the global database removed proves list success/error
+responses do not claim presence; framed JSON tests cover actual key names and
+omitted/zero/negative values. The destination transaction tests still pass after
+injection. Content/world/server/protocol PostgreSQL race suites and all Go
+package compilation pass. Eight focused frontend response/lifecycle tests,
+TypeScript typecheck, runtime asset validation and the production build pass.
+Canonical `npm run tygo` regeneration is byte-stable. All five isolated Instant
+Warp/multiplayer rendered cases pass in
+`/var/tmp/capturequest-rendered.P5TqpG` (44.8 seconds).
+
+Map-list separation does not make the destination-bearing map-info
+handler read-only: current-map recovery/load effects and destination writes
+remain there. Error-response correlation and cleanup of map-query listeners on
+failure/timeout/supersession also remain part of the networking migration.
+
+Next: retire the destination-bearing metadata path through explicit gameplay
+intent, coordinate server acceptance with client arrival/collision residency, and
+finish the remaining cancellation, reconnect and domain/wire roadmap. The goal
+remains active; no push or deployment.
 
 ## Client destination catalog boundary (2026-10-02)
 

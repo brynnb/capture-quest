@@ -60,3 +60,24 @@ type PhaserLearnsetResponse struct {
 	Learnset  []PhaserLearnsetEntry `json:"learnset"`
 	TMHM      []PhaserTMHMEntry     `json:"tmhm"`
 }
+
+// PhaserMapInfo represents a map in the 2D Phaser game
+type PhaserMapInfo struct {
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Width       int    `json:"width"`
+	Height      int    `json:"height"`
+	TilesetID   *int   `json:"tilesetId,omitempty"`
+	IsOverworld int    `json:"isOverworld"`
+	TileMinX    *int   `json:"tileMinX,omitempty"`
+	TileMinY    *int   `json:"tileMinY,omitempty"`
+	TileMaxX    *int   `json:"tileMaxX,omitempty"`
+	TileMaxY    *int   `json:"tileMaxY,omitempty"`
+}
+
+// PhaserMapInfoRequest is the request payload
+type PhaserMapInfoRequest struct {
+	MapID int  `json:"mapId"`
+	DestX *int `json:"destX,omitempty"`
+	DestY *int `json:"destY,omitempty"`
+}

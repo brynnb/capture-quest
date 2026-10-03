@@ -1,3 +1,4 @@
+import type { PhaserMapInfo } from "@/net/generated/protocol";
 import { Scene } from "phaser";
 import {
   DEFAULT_ZOOM,
@@ -15,7 +16,6 @@ import { TileManager, ActorManager, UiManager, WarpManager } from "../managers";
 import * as PhaserNet from "../services/PhaserNetworkService";
 
 import {
-  PhaserMapInfo,
   PhaserTile,
   PhaserActor,
   PhaserWarp,

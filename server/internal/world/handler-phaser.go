@@ -1,7 +1,6 @@
 package world
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -11,22 +10,9 @@ import (
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
+	"capturequest/internal/protocol"
 	"capturequest/internal/session"
 )
-
-// PhaserMapInfo represents a map in the 2D Phaser game
-type PhaserMapInfo struct {
-	ID          int    `json:"id"`
-	Name        string `json:"name"`
-	Width       int    `json:"width"`
-	Height      int    `json:"height"`
-	TilesetID   *int   `json:"tilesetId,omitempty"`
-	IsOverworld int    `json:"isOverworld"`
-	TileMinX    *int   `json:"tileMinX,omitempty"`
-	TileMinY    *int   `json:"tileMinY,omitempty"`
-	TileMaxX    *int   `json:"tileMaxX,omitempty"`
-	TileMaxY    *int   `json:"tileMaxY,omitempty"`
-}
 
 // PhaserTile represents a single tile in the game
 type PhaserTile struct {
@@ -107,13 +93,6 @@ type PhaserWarp struct {
 	WarpDirection     *string `json:"warpDirection,omitempty"`
 }
 
-// PhaserMapInfoRequest is the request payload
-type PhaserMapInfoRequest struct {
-	MapID int  `json:"mapId"`
-	DestX *int `json:"destX,omitempty"`
-	DestY *int `json:"destY,omitempty"`
-}
-
 // PhaserTilesRequest is the request payload
 type PhaserTilesRequest struct {
 	MapID     int    `json:"mapId"`
@@ -147,58 +126,34 @@ type PhaserWarpsRequest struct {
 
 // HandlePhaserMapInfoRequest returns info about a specific map
 func HandlePhaserMapInfoRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	var req PhaserMapInfoRequest
+	var req protocol.PhaserMapInfoRequest
 	if err := json.Unmarshal(payload, &req); err != nil {
 		log.Printf("[Phaser] Invalid MapInfoRequest: %v", err)
 		return false
 	}
 
 	if (req.DestX == nil) != (req.DestY == nil) {
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Destination requires both coordinates."}, opcodes.PhaserMapInfoResponse)
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: "Destination requires both coordinates."}, opcodes.PhaserMapInfoResponse)
 		return false
 	}
-	ctx, cancel := context.WithTimeout(ses.CommandContext(), 5*time.Second)
-	defer cancel()
-	var mapInfo PhaserMapInfo
+	var mapInfo protocol.PhaserMapInfo
+	var err error
 	if req.MapID == UnifiedOverworldMapID {
-		var minX, minY, maxX, maxY sql.NullInt64
-		if err := wh.database.QueryRowContext(ctx, `
-			SELECT MIN(x), MIN(y), MAX(x), MAX(y)
-			FROM phaser_tiles
-			WHERE map_id IS NULL AND is_tile_erased = 0`).Scan(&minX, &minY, &maxX, &maxY); err != nil {
-			log.Printf("[Phaser] Error querying unified overworld bounds: %v", err)
-			ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.PhaserMapInfoResponse)
-			return false
-		}
-		mapInfo = PhaserMapInfo{
-			ID:          UnifiedOverworldMapID,
-			Name:        "Unified Overworld",
-			IsOverworld: 1,
-		}
-		if minX.Valid && minY.Valid && maxX.Valid && maxY.Valid {
-			minXV, minYV := int(minX.Int64), int(minY.Int64)
-			maxXV, maxYV := int(maxX.Int64), int(maxY.Int64)
-			mapInfo.TileMinX, mapInfo.TileMinY = &minXV, &minYV
-			mapInfo.TileMaxX, mapInfo.TileMaxY = &maxXV, &maxYV
-			mapInfo.Width = maxXV - minXV + 1
-			mapInfo.Height = maxYV - minYV + 1
-		}
+		mapInfo, err = wh.Content.OverworldInfo(ses.CommandContext())
+		mapInfo.ID = UnifiedOverworldMapID
 	} else {
-		err := wh.database.QueryRowContext(ctx, `
-			SELECT id, name, width, height, tileset_id, is_overworld
-			FROM phaser_maps WHERE id = $1`, req.MapID).Scan(
-			&mapInfo.ID, &mapInfo.Name, &mapInfo.Width, &mapInfo.Height, &mapInfo.TilesetID, &mapInfo.IsOverworld)
-		if err != nil {
-			log.Printf("[Phaser] Error querying map info for %d: %v", req.MapID, err)
-			ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.PhaserMapInfoResponse)
-			return false
-		}
+		mapInfo, err = wh.Content.MapInfo(ses.CommandContext(), req.MapID)
+	}
+	if err != nil {
+		log.Printf("[Phaser] Error querying map info for %d: %v", req.MapID, err)
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: "Could not load map information."}, opcodes.PhaserMapInfoResponse)
+		return false
 	}
 
 	if req.DestX != nil && req.DestY != nil && ses.HasValidClient() {
 		if err := commitClientPlayerPosition(ses.CommandContext(), wh.database, int64(ses.Client.CharData().ID), normalizedVisiblePlayerMapID(wh, mapInfo.ID), *req.DestX, *req.DestY); err != nil {
 			log.Printf("[Phaser] Save map destination: %v", err)
-			ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not save the destination. Please try again."}, opcodes.PhaserMapInfoResponse)
+			ses.SendStreamJSON(protocol.ErrorResponse{Error: "Could not save the destination. Please try again."}, opcodes.PhaserMapInfoResponse)
 			return false
 		}
 		refreshSafariFlags(wh, int64(ses.Client.CharData().ID))
@@ -592,31 +547,13 @@ func HandlePhaserTilesRequest(ses *session.Session, payload []byte, wh *WorldHan
 
 // HandlePhaserOverworldMapsRequest returns all overworld maps
 func HandlePhaserOverworldMapsRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	rows, err := db.GlobalWorldDB.DB.Query(`
-		SELECT id, name, width, height, tileset_id, is_overworld
-		FROM phaser_maps WHERE is_overworld = 1`)
+	maps, err := wh.Content.OverworldMaps(ses.CommandContext())
 	if err != nil {
 		log.Printf("[Phaser] Error querying overworld maps: %v", err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.PhaserOverworldMapsResponse)
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: "Could not load overworld maps."}, opcodes.PhaserOverworldMapsResponse)
 		return false
 	}
-	defer rows.Close()
-
-	var maps []PhaserMapInfo
-	for rows.Next() {
-		var m PhaserMapInfo
-		if err := rows.Scan(&m.ID, &m.Name, &m.Width, &m.Height, &m.TilesetID, &m.IsOverworld); err != nil {
-			log.Printf("[Phaser] Error scanning map: %v", err)
-			continue
-		}
-		maps = append(maps, m)
-	}
-
-	ses.SendStreamJSON(StructToMap(maps), opcodes.PhaserOverworldMapsResponse)
-	if len(maps) > 0 {
-		ses.MapID = maps[0].ID
-	}
-	log.Printf("[Phaser] Sent %d overworld maps, updated session map ID to %d", len(maps), ses.MapID)
+	ses.SendStreamJSON(maps, opcodes.PhaserOverworldMapsResponse)
 	return false
 }
 

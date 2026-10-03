@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"capturequest/internal/api/opcodes"
+	"capturequest/internal/content"
 	"capturequest/internal/db"
 	"capturequest/internal/db/cqitems"
 	model "capturequest/internal/db/models"
@@ -29,7 +30,7 @@ func battleTestWorld(t *testing.T) (*sql.DB, *WorldHandler, *session.Session, *r
  INSERT INTO phaser_moves(id,constant_name,name,short_name,effect,power,type,accuracy,pp) VALUES(150,'SPLASH','SPLASH','SPLASH','SPLASH_EFFECT',0,'NORMAL',0,40);
  INSERT INTO character_pokemon(character_id,party_slot,box_slot,pokemon_id,level,exp,cur_hp,max_hp) VALUES(42,0,0,25,50,125000,1,95);
  INSERT INTO cq_items(id,name,short_name,is_usable,heal_amount,ball_modifier) VALUES(1,'Potion','POTION',true,20,0),(2,'Master Ball','MASTER_BALL',true,0,255);`)
-	wh := &WorldHandler{database: database, EventFlags: NewEventFlagManager(database)}
+	wh := &WorldHandler{database: database, Content: content.New(database), EventFlags: NewEventFlagManager(database)}
 	messages := &recordingMessenger{}
 	ses := &session.Session{Authenticated: true, Client: &testSessionClient{char: &model.CharacterData{ID: 42}}, Messenger: messages}
 	return database, wh, ses, messages

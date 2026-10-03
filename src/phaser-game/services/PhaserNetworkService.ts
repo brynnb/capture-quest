@@ -1,3 +1,4 @@
+import type { PhaserMapInfo, PhaserMapInfoRequest } from "@/net/generated/protocol";
 import type { GameCornerSlotPlayRequest } from "@/net/generated/world_api";
 import type { PhaserMapScriptsRequest } from "@/net/generated/protocol";
 /**
@@ -11,7 +12,6 @@ import { WorldSocket } from "@/net/index";
 import { NetworkBridge } from "@/net/NetworkBridge";
 import * as OpCodes from "@/net/generated/opcodes";
 import type {
-  PhaserMapInfo,
   PhaserTile,
   PhaserTilesRequest,
   PhaserTilesResponse,
@@ -37,7 +37,7 @@ export function requestMapInfo(mapId: number, destX?: number, destY?: number): v
     console.warn("[PhaserNetwork] Not connected - cannot request map info");
     return;
   }
-  const payload: Record<string, number> = { mapId: mapId };
+  const payload: PhaserMapInfoRequest = { mapId };
   if (destX !== undefined && destY !== undefined) {
     payload.destX = destX;
     payload.destY = destY;
