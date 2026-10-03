@@ -55,15 +55,6 @@ func (s *Service) UsePartyItem(ctx context.Context, charID int32, instanceID int
 		if owned == nil || owned.Instance.Quantity == 0 {
 			return reject("Item not found in inventory")
 		}
-		// The link alone is not authority if corrupt/stale inventory data points
-		// at another owner's instance, including reusable items such as HMs.
-		var owns bool
-		if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM cq_item_instances WHERE id=$1 AND owner_id=$2 AND owner_type=0)`, instanceID, charID).Scan(&owns); err != nil {
-			return err
-		}
-		if !owns {
-			return reject("Item not found in inventory")
-		}
 		item := owned.Item
 		flute := ShortName(item) == "POKE_FLUTE"
 		if !flute && !item.IsUsable {

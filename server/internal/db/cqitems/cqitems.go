@@ -1,6 +1,7 @@
 package cqitems
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 
@@ -279,8 +280,28 @@ func (s *Store) FindInventoryItemByItemID(charID int32, itemID int32) (*CQInvent
 	return inv, nil
 }
 
-// FindInventoryItemByInstanceID finds one inventory item by its concrete instance ID.
+// FindInventoryItemByInstanceID retains the legacy API while sharing the bounded
+// owned reader. Transaction consumers keep their caller's existing boundary.
 func (s *Store) FindInventoryItemByInstanceID(charID int32, instanceID int32) (*CQInventoryItem, error) {
+	return s.FindInventoryItemByInstanceIDContext(context.Background(), charID, instanceID)
+}
+
+func (s *Store) FindInventoryItemByInstanceIDContext(ctx context.Context, charID, instanceID int32) (*CQInventoryItem, error) {
+	var result *CQInventoryItem
+	err := db.Transaction(ctx, s.database, func(tx db.DBTX) error {
+		var err error
+		result, err = NewStore(tx).findOwnedInventoryItem(charID, instanceID)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// Both the inventory link and instance must agree on character ownership.
+// Reusable field items need this same boundary even when nothing is consumed.
+func (s *Store) findOwnedInventoryItem(charID int32, instanceID int32) (*CQInventoryItem, error) {
 	inv := &CQInventoryItem{}
 	var vendingPrice, moveID sql.NullInt64
 	var statusCure, loreText sql.NullString
@@ -297,7 +318,7 @@ func (s *Store) FindInventoryItemByInstanceID(charID int32, instanceID int32) (*
 		FROM cq_character_inventory ci
 		JOIN cq_item_instances ii ON ii.id = ci.item_instance_id
 		JOIN cq_items i ON i.id = ii.item_id
-		WHERE ci.character_id = $1 AND ii.id = $2
+		WHERE ci.character_id = $1 AND ii.id = $2 AND ii.owner_id = $1 AND ii.owner_type = 0 AND ii.quantity > 0
 		LIMIT 1
 	`, charID, instanceID).Scan(
 		&inv.Instance.ID, &inv.Instance.ItemID, &inv.Instance.Charges, &inv.Instance.Quantity, &inv.Instance.OwnerType,

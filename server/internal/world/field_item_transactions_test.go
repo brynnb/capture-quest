@@ -11,6 +11,55 @@ import (
 	"capturequest/internal/testdb"
 )
 
+func TestBicycleDispatchRequiresOwnedInstanceAndReportsReadFailures(t *testing.T) {
+	database, wh, ses, messages := battleTestWorld(t)
+	testdb.Exec(t, database, `INSERT INTO cq_items(id,name,short_name,is_usable) VALUES(100,'Bicycle','BICYCLE',true)`)
+	instance, err := cqitems.NewStore(database).AddItemToInventory(42, 100, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wh.PlayerMovement = NewPlayerMovementManager(wh, nil)
+	wh.PlayerMovement.RegisterPlayer(ses, 42, 7, 8, UnifiedOverworldMapID, "UP")
+	db.GlobalWorldDB = nil
+	request := fmt.Sprintf(`{"instanceId":%d}`, instance)
+	assertRejected := func(payload, expected string) {
+		t.Helper()
+		messages.streams = nil
+		battleDispatch(t, wh, ses, opcodes.CQItemUseRequest, payload)
+		if wh.PlayerMovement.players[42].WantsBicycle || len(messages.streams) != 1 || messages.streams[0].opcode != opcodes.CQItemUseResponse {
+			t.Fatalf("rejection changed bicycle or published unexpected messages: %+v", messages.streams)
+		}
+		var response struct {
+			Success bool
+			Error   string
+		}
+		if err := json.Unmarshal(messages.streams[0].payload, &response); err != nil || response.Success || response.Error != expected {
+			t.Fatalf("response=%+v error=%v", response, err)
+		}
+	}
+	assertRejected(fmt.Sprintf(`{"instanceId":%d,"unknown":true}`, instance), "Invalid item use request")
+	for _, mutation := range []string{
+		`UPDATE cq_item_instances SET owner_id=43`,
+		`UPDATE cq_item_instances SET owner_id=42,owner_type=1`,
+		`UPDATE cq_item_instances SET owner_type=0,quantity=0`,
+	} {
+		testdb.Exec(t, database, mutation)
+		assertRejected(request, "Item not found in inventory")
+	}
+	testdb.Exec(t, database, `UPDATE cq_item_instances SET quantity=1; ALTER TABLE cq_items RENAME TO unavailable_items`)
+	assertRejected(request, "Could not read this item. Please try again.")
+	testdb.Exec(t, database, `ALTER TABLE unavailable_items RENAME TO cq_items`)
+	messages.streams = nil
+	battleDispatch(t, wh, ses, opcodes.CQItemUseRequest, request)
+	if !wh.PlayerMovement.players[42].WantsBicycle {
+		t.Fatal("owned bicycle did not toggle")
+	}
+	owned, err := cqitems.NewStore(database).FindInventoryItemByInstanceID(42, instance)
+	if err != nil || owned.Instance.Quantity != 1 {
+		t.Fatalf("reusable bicycle was consumed: %+v %v", owned, err)
+	}
+}
+
 func TestEscapeRopeCommitFailureDoesNotConsumeMoveOrPublish(t *testing.T) {
 	database, wh, ses, messages := battleTestWorld(t)
 	testdb.Exec(t, database, `INSERT INTO cq_items(id,name,short_name,is_usable) VALUES(29,'Escape Rope','ESCAPE_ROPE',true);

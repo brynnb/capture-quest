@@ -2,7 +2,7 @@ package world
 
 import (
 	"context"
-	"encoding/json"
+	"database/sql"
 	"errors"
 	"log"
 	"time"
@@ -218,8 +218,8 @@ func HandleCQItemUse(ses *session.Session, payload []byte, wh *WorldHandler) boo
 		return false
 	}
 	var req cqItemUseRequest
-	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("[CQItems] Failed to unmarshal item use request: %v", err)
+	if err := decodePlayerMovement(payload, &req); err != nil {
+		sendCQItemUseError(ses, "Invalid item use request")
 		return false
 	}
 
@@ -228,15 +228,23 @@ func HandleCQItemUse(ses *session.Session, payload []byte, wh *WorldHandler) boo
 		sendCQItemUseError(ses, "Use the battle item menu during a battle")
 		return false
 	}
-	found, err := cqitems.NewStore(wh.database).FindInventoryItemByInstanceID(charID, req.InstanceID)
+	ctx, cancel := context.WithTimeout(ses.CommandContext(), 5*time.Second)
+	defer cancel()
+	found, err := cqitems.NewStore(wh.database).FindInventoryItemByInstanceIDContext(ctx, charID, req.InstanceID)
 	if err != nil {
-		sendCQItemUseError(ses, "Item not found in inventory")
+		message := "Could not read this item. Please try again."
+		if errors.Is(err, sql.ErrNoRows) {
+			message = "Item not found in inventory"
+		} else {
+			log.Printf("[CQItems] Read owned instance %d for character %d: %v", req.InstanceID, charID, err)
+		}
+		sendCQItemUseError(ses, message)
 		return false
 	}
 	if tryHandleFieldItemUse(ses, wh, found, charID, req) {
 		return false
 	}
-	result, err := wh.Items.UsePartyItem(ses.CommandContext(), charID, req.InstanceID, req.PartySlot, req.MoveSlot)
+	result, err := wh.Items.UsePartyItem(ctx, charID, req.InstanceID, req.PartySlot, req.MoveSlot)
 	if err != nil {
 		message := "Could not use this item. Please try again."
 		var rejection *itemuse.Rejection

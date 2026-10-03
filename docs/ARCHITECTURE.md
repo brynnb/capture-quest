@@ -207,6 +207,16 @@ We follow a **"Model-First"** architecture. Data is categorized into distinct st
   state, and the later selection revalidates the current item and moves. Field
   movement effects remain separate migration work. Battle item turns use the
   commit boundary described below.
+- **Owned item lookup**: the shared instance reader requires the inventory link's
+  character and the instance's `owner_id`/character `owner_type` to agree, with
+  positive quantity. Both legacy and context APIs use this boundary. Standalone
+  reads own a bounded transaction; mutation readers join the caller's transaction.
+  Item-use dispatch supplies its session cancellation and a five-second deadline,
+  including subsequent party use, rejects unknown JSON fields and reports read
+  failures separately from missing ownership. Reusable field items use the same
+  ownership check. Remaining field contexts/global reads and durable party/field
+  command identity, correlated outcomes and timeout recovery are tracked in
+  `SERVER_FOUNDATIONS.md`.
 
 ### D. Pokémon Party, PC, and Battle State
 

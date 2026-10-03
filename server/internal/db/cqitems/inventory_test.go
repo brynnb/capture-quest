@@ -10,6 +10,49 @@ import (
 	"capturequest/internal/testdb"
 )
 
+func TestOwnedInstanceReaderRequiresAgreementAndCancelsBlockedReads(t *testing.T) {
+	database, store := inventoryDatabase(t)
+	id, err := store.AddItemToInventory(1, 1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, err := store.FindInventoryItemByInstanceIDContext(context.Background(), 1, id)
+	if err != nil || item == nil || item.Instance.ID != id {
+		t.Fatalf("owned item=%+v %v", item, err)
+	}
+	for _, mutation := range []string{
+		`UPDATE cq_item_instances SET owner_id=2`,
+		`UPDATE cq_item_instances SET owner_id=1,owner_type=1`,
+	} {
+		testdb.Exec(t, database, mutation)
+		item, err := store.FindInventoryItemByInstanceIDContext(context.Background(), 1, id)
+		if err != sql.ErrNoRows || item != nil {
+			t.Fatalf("foreign instance=%+v %v", item, err)
+		}
+		if _, err := store.FindInventoryItemByInstanceID(1, id); err != sql.ErrNoRows {
+			t.Fatalf("legacy API bypassed ownership: %v", err)
+		}
+	}
+	testdb.Exec(t, database, `UPDATE cq_item_instances SET owner_type=0`)
+	tx, err := database.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`LOCK TABLE cq_item_instances IN ACCESS EXCLUSIVE MODE`); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	if item, err := store.FindInventoryItemByInstanceIDContext(ctx, 1, id); err == nil || item != nil {
+		t.Fatalf("cancelled instance=%+v %v", item, err)
+	}
+	if time.Since(started) > time.Second {
+		t.Fatal("owned reader ignored caller deadline")
+	}
+}
+
 func TestInventorySnapshotZeroWalletAndReadFailures(t *testing.T) {
 	database, store := inventoryDatabase(t)
 	testdb.Exec(t, database, `CREATE FUNCTION reject_snapshot_update() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'snapshot wrote character'; END $$;

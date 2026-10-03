@@ -1,9 +1,10 @@
 # Server foundations goal
 
-Status: active. Started 2026-09-25 from `02c51ba`.
+Status: paused (confirmed in the goal tool on 2026-10-03). Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest verified checkpoint: committed
-shop buy/sale recovery across two actual process crashes (2026-10-03). The runtime
+Working branch: `codex/server-foundations`. Latest checkpoint: shared owned-item
+instance reads and bounded item dispatch (2026-10-03), following committed
+shop buy/sale recovery across two actual process crashes. The shop runtime
 implementation is `f118916` (per-command clerk authorization and source sale
 policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected menu
 reads) and `21fd084` (durable shop revisions and correlated recovery).
@@ -24,7 +25,7 @@ Go, PostgreSQL, the single-server deployment and the content pipeline remain
 the architectural foundation. Runtime design is described in
 [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
-The full goal is **in progress**. A completed checkpoint proves its documented
+The full goal is **incomplete and paused**. A completed checkpoint proves its documented
 behavior; it does not prove that every gameplay path has migrated. The summary
 below is the current handoff. Later checkpoint entries preserve historical
 evidence, including remaining-work notes that subsequent commits may resolve.
@@ -32,7 +33,7 @@ evidence, including remaining-work notes that subsequent commits may resolve.
 ### Checkpoint handoff (2026-10-03)
 
 Implementation checkpoints are committed locally on `codex/server-foundations`.
-The goal remains active; no push or deployment is part of these checkpoints.
+The broad goal remains incomplete and paused; no push or deployment is part of these checkpoints.
 MapLoad now rejects supplied destinations. Ordinary walking requests a direction
 from its expected owned source, animates a server-issued step, then acknowledges
 its token before continuing the path. Blackout, Safari and explicit warp commands
@@ -94,8 +95,11 @@ menu's actor ID; an earlier open is not a reusable server permission. Source sal
 policy and real-transport delivered/lost sale acknowledgement checks have landed.
 Committed shop buy/sale commands now also have two actual process crashes with
 stale-revision rejection, stable item identities and verified late-reply delivery.
-The immediate next checkpoint is party/field item commands through the same typed
-ownership and recovery boundary. The sale browser check exercises the existing coordinator
+The shared item-instance reader now rejects inventory links whose instance has a
+different `owner_id`, non-character `owner_type`, or zero quantity. Item dispatch
+uses a cancellable bounded read and distinguishes missing ownership from database
+failure. The next checkpoint, when the goal resumes, is durable party/field command
+identity, typed correlated outcomes and timeout recovery. The sale browser check exercises the existing coordinator
 and rendered balance; the product still has no Sell button.
 
 Continue with recovery integration for the remaining mutation commands and the
@@ -116,6 +120,40 @@ legacy behavior and verification limits; a narrow passing checkpoint does not
 close the broad goal. Production validation belongs to a separately authorized
 deployment. Current work is committed locally; nothing has been pushed or
 deployed by this goal.
+
+## Shared item ownership and bounded dispatch (2026-10-03)
+
+The earlier instance lookup trusted `cq_character_inventory.character_id` and
+the instance ID without requiring `cq_item_instances.owner_id` and `owner_type`
+to agree. Party use added a later ownership check, but reusable field effects
+such as Bicycle could run directly after the weaker lookup.
+
+`cqitems.Store.FindInventoryItemByInstanceIDContext` now requires both ownership
+records to agree and a positive quantity. It joins an existing transaction or
+owns a bounded transaction; the legacy API delegates to the same reader. The
+redundant party-only ownership query is removed. Item-use dispatch rejects
+unknown JSON fields, bounds the read with the session command context and a
+five-second deadline, and passes its remaining deadline into party use. Missing
+items receive an inventory rejection; database failures receive a retry message
+and a concise server log rather than masquerading as missing data.
+
+Verification covers real registry dispatch for foreign-owner, non-character and
+zero-quantity Bicycle instances, malformed requests, database read failure and
+successful reusable ownership without consumption. Repository tests check both
+reader APIs and cancellation of a PostgreSQL read blocked by a table lock.
+These are packet/database checks, not rendered browser or production evidence.
+Focused checks and the complete `cqitems`, `itemuse`, `economy` and `world`
+suites passed with the race detector against isolated PostgreSQL; the world suite
+completed in 37.318 seconds. `git diff --check` passed. No frontend source or
+wire contract changed; verification for this checkpoint is Go/packet/database
+coverage, with no new rendered browser or frontend production-build check.
+
+Remaining: party/field requests still lack durable command identity, correlated
+typed outcomes and lost-reply recovery. Party publication still sends separate
+party/inventory notifications. Some field effects still use legacy global reads
+or separate contexts; the dispatch deadline does not yet govern every field
+operation. This checkpoint does not complete the party/field migration or any
+of the five broad goal areas.
 
 ## Committed shop buy/sale process-death acceptance (2026-10-03)
 
