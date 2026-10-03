@@ -2,8 +2,8 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest checkpoint: owned facing and committed server-path projection
-(2026-10-02), following source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
+Working branch: `codex/server-foundations`. Latest checkpoint: issued cutscene movement source binding
+(2026-10-02), following facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
 `0585dde`, committed
 blackout/recovery `2f62595`, teleport notification projection `65a5581`, Instant
 Warp `e1f54a8`, normal warps `3899660`, owned-position loading `64cf970`,
@@ -41,9 +41,11 @@ publish server-committed destinations.
 
 Facing now uses expected-source direction requests (191/192), without saving
 client coordinates. Server-path points commit before owned-state publication and
-project through a dedicated origin notification (193). Legacy opcode 45 still
-accepts scripted/field animation reports; bind those to issued results before
-retiring that writer. Step-effect atomicity and durable result recovery remain
+project through a dedicated origin notification (193). CutsceneSpriteController
+no longer reports animation tiles through opcode 45;
+completion applies the captured script from its issued owned source. The remaining
+generic field/animation and uncommitted teleport producers still require audit
+before retiring opcode 45. Step-effect atomicity and durable result recovery remain
 unfinished. Evidence and verification limits appear in the checkpoint sections below.
 
 There is no reliable overall completion percentage: the remaining endpoint
@@ -111,6 +113,52 @@ number of commits or passing tests. All five areas still have outstanding work.
    cancellation/timeouts, failure/retry and shutdown with active players.
    Acceptance: evidence covers the original five milestones, including visible
    behavior where relevant. Only then mark the full goal complete.
+
+## Issued cutscene movement source binding (2026-10-02)
+
+The cutscene scene callback sent every animated player tile through opcode 45.
+Completion then applied the issued `movePlayer` relative movements from the current
+owned location. This created two position writers for one action sequence and
+allowed animation reports to alter the interpreter's input position.
+
+The scene callback now updates presentation only. Server issuance stores a private
+snapshot containing the script and its owned map/source coordinates. Completion
+claims the existing character-bound token and validates both live and saved source inside the
+character-locked script transaction before applying any rewards or relative moves.
+Nested movements share the detached transaction position, starting from the issued
+source. A changed source rejects completion; failed transactions preserve the token
+for retry. The simulator and battle interpreter continue using the existing shared
+transaction without an issued-session source requirement.
+
+Verification: the isolated rendered run
+`/var/tmp/capturequest-rendered.3LMDSZ` passes all seven scripted-event/field-move
+cases, including the real Oak Lab player movement and the next ordinary issued
+step, parcel reward, Surf/Cut and Strength. Its server log contains no opcode 45
+reports. The final durable-source guard also passes both scripted cases in
+`/var/tmp/capturequest-rendered.gvG0kq`; no opcode 45 reports or completion
+errors appear in its server log. A corpus audit of 380 script JSON files finds
+24 `movePlayer` actions and no `move` actions targeting `__PLAYER__`. The source-bound
+transaction test proves stale live state and stale saved state grant no rewards,
+late failure rolls movement/rewards back, retry applies nested movement from the
+original source, and duplicate completion adds nothing. Final race-enabled
+world/protocol/simulator results and server compilation are recorded in
+`/var/tmp/capturequest-cutscene-source-go-final.log`. Fifty-two focused frontend
+tests, typecheck, production build and runtime asset validation pass; protocol
+regeneration leaves generated files unchanged.
+
+Limits: this removes the cutscene callback's coordinate reports; it does not disable
+the generic opcode 45 endpoint. Remaining producers include the no-issued-step
+animation fallback and uncommitted teleport event handling. Cutscene completion
+still lacks a correlated success/error acknowledgement, so client unlock timing,
+failed-completion reconciliation, cancellation of player tweens, notification loss,
+and durable reconnect recovery remain unfinished. Issued tokens authorize session
+completion; they are not a durable replay log. Complete those lifecycle paths and
+the five-area roadmap before claiming the goal complete. Nothing was pushed or
+deployed.
+
+Recommended next step: add a typed correlated completion result and keep cutscene
+input locked until committed success or explicit failure/reconciliation, then audit
+and retire the last generic coordinate-report producers.
 
 ## Owned facing and committed server-path projection (2026-10-02)
 

@@ -41,6 +41,7 @@ type CutsceneActionContext struct {
 	EventFlags   *EventFlagManager
 	Choice       *bool
 	StopAtChoice bool
+	issuedSource *cutscenePosition
 	state        *cutsceneActionState
 }
 
@@ -73,12 +74,13 @@ func HandleCutsceneEndRequest(ses *session.Session, payload []byte, wh *WorldHan
 	}
 	committed := false
 	defer func() { ses.IssuedCutscenes.Finish(req.CompletionToken, committed) }()
-	var cs CutsceneScript
-	if err := json.Unmarshal(issued, &cs); err != nil {
+	var event issuedCutscene
+	if err := json.Unmarshal(issued, &event); err != nil {
 		return false
 	}
 
-	_, completed, err := ApplyCutsceneScript(ses.CommandContext(), CutsceneActionContext{Session: ses, WorldHandler: wh, EventFlags: wh.EventFlags}, &cs, charID)
+	cs := event.Script
+	_, completed, err := ApplyCutsceneScript(ses.CommandContext(), CutsceneActionContext{Session: ses, WorldHandler: wh, EventFlags: wh.EventFlags, issuedSource: &cutscenePosition{mapID: event.MapID, x: event.X, y: event.Y}}, &cs, charID)
 	if err != nil {
 		log.Printf("[Cutscene] Failed to apply script %s for character %d: %v", cs.ScriptLabel, charID, err)
 		SendSystemMessage(ses, "That event could not be completed. Please try again.")
@@ -136,12 +138,28 @@ func isBadgeFlag(flag string) bool {
 	return false
 }
 
+// issuedCutscene is private authorization state, never a client-supplied position.
+// Playback is presentation-only; relative actions start from this owned source.
+type issuedCutscene struct {
+	Script CutsceneScript `json:"script"`
+	MapID  int            `json:"mapId"`
+	X      int            `json:"x"`
+	Y      int            `json:"y"`
+}
+
 // SendCutsceneToPlayer sends a cutscene action sequence to a specific player.
 func SendCutsceneToPlayer(ses *session.Session, cs *CutsceneScript, handlers ...*WorldHandler) {
 	if cs == nil || !ses.HasValidClient() || ses.IsClosed() {
 		return
 	}
-	snapshot, err := json.Marshal(cs)
+	x, y, mapID, err := currentCutscenePlayerPosition(ses, int64(ses.Client.CharData().ID))
+	if err != nil {
+		return
+	}
+	if len(handlers) > 0 && handlers[0] != nil {
+		x, y, mapID = handlers[0].ownedPlayerPosition(ses)
+	}
+	snapshot, err := json.Marshal(issuedCutscene{Script: *cs, MapID: mapID, X: x, Y: y})
 	if err != nil {
 		log.Printf("[Cutscene] Encode issued event: %v", err)
 		return

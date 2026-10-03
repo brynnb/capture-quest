@@ -118,6 +118,25 @@ func runCutsceneMutation(executionCtx context.Context, ctx CutsceneActionContext
 			return err
 		}
 		mutation.database = tx
+		if source := ctx.issuedSource; source != nil {
+			x, y, mapID, err := mutation.currentPosition(ctx)
+			if err != nil {
+				return err
+			}
+			if x != source.x || y != source.y || mapID != source.mapID {
+				return fmt.Errorf("issued cutscene source changed: owned=(%d,%d,%d) issued=(%d,%d,%d)", mapID, x, y, source.mapID, source.x, source.y)
+			}
+			var savedX, savedY, savedMapID int
+			if err := tx.QueryRow(`SELECT CAST(x AS INTEGER),CAST(y AS INTEGER),map_id FROM character_data WHERE id=$1`, charID).Scan(&savedX, &savedY, &savedMapID); err != nil {
+				return err
+			}
+			if savedX != source.x || savedY != source.y || savedMapID != source.mapID {
+				return fmt.Errorf("issued cutscene durable source changed: saved=(%d,%d,%d) issued=(%d,%d,%d)", savedMapID, savedX, savedY, source.mapID, source.x, source.y)
+			}
+			// Seed all nested relative actions from the captured source. Animation
+			// coordinates never become the input to durable gameplay decisions.
+			mutation.position = &cutscenePosition{mapID: source.mapID, x: source.x, y: source.y}
+		}
 		if script != nil {
 			allowed, err := cutsceneCompletionAllowed(tx, charID, script)
 			if err != nil {
@@ -263,6 +282,10 @@ type cutscenePosition struct{ mapID, x, y int }
 func (m *cutsceneMutation) currentPosition(ctx CutsceneActionContext) (int, int, int, error) {
 	if p := m.position; p != nil {
 		return p.x, p.y, p.mapID, nil
+	}
+	if ctx.Session != nil && ctx.WorldHandler != nil {
+		x, y, mapID := ctx.WorldHandler.ownedPlayerPosition(ctx.Session)
+		return x, y, mapID, nil
 	}
 	if ctx.Session != nil {
 		return currentCutscenePlayerPosition(ctx.Session, m.characterID)

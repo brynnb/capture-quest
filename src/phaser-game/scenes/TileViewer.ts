@@ -864,14 +864,8 @@ export class TileViewer extends Scene {
       syncPlayerMovement: (x, y, direction) => {
         this.playerMovementController.syncPosition(x, y);
         this.playerMovementController.syncDirection(direction);
-        if (this.playerMovementController.getCurrentMapId() != null) {
-          PhaserNet.sendPlayerPosition(
-            x,
-            y,
-            this.playerMovementController.getCurrentMapId(),
-            direction,
-          );
-        }
+        // These tiles are cutscene presentation. Only token completion applies
+        // the server-issued relative movement and rewards in its transaction.
       },
       setInputLocked: (locked) => this.setCutsceneInputLocked(locked),
       onHideObject: (actorId) => this.handleActorDespawn(actorId),

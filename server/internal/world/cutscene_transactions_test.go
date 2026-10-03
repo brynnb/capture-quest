@@ -283,3 +283,49 @@ func TestCutsceneEligibilityUsesOwnedInventoryAndExactThresholds(t *testing.T) {
 		t.Fatalf("foreign item authorized reward: %t %v", done, err)
 	}
 }
+
+func TestIssuedCutsceneMovementUsesCapturedSourceAndCommitsOnce(t *testing.T) {
+	wh, ses, messages := setupIssuedStep(t)
+	script := &CutsceneScript{ScriptLabel: "IssuedMove", MapName: "ROOM", Actions: json.RawMessage(`[{"type":"movePlayer","movements":["RIGHT"]},{"type":"parallel","actions":[{"type":"movePlayer","movements":["RIGHT"]}]},{"type":"giveItem","itemId":1}]`), SetsFlags: []string{"ISSUED_MOVE_DONE"}}
+	SendCutsceneToPlayer(ses, script, wh)
+	var issued struct {
+		CompletionToken string `json:"completionToken"`
+	}
+	if err := json.Unmarshal(messages.streams[0].payload, &issued); err != nil {
+		t.Fatal(err)
+	}
+	request := fmt.Sprintf(`{"scriptLabel":"IssuedMove","completionToken":%q}`, issued.CompletionToken)
+	// A later location cannot become the starting point for the old relative plan.
+	wh.PlayerMovement.UpdatePosition(42, 8, 8, 50, "RIGHT")
+	battleDispatch(t, wh, ses, opcodes.CutsceneEndRequest, request)
+	var x, count int
+	if err := wh.database.QueryRow(`SELECT x FROM character_data WHERE id=42`).Scan(&x); err != nil || x != 7 {
+		t.Fatalf("stale event moved durable source: %d %v", x, err)
+	}
+	if err := wh.database.QueryRow(`SELECT count(*) FROM cq_character_inventory WHERE character_id=42`).Scan(&count); err != nil || count != 0 {
+		t.Fatal("stale event granted reward")
+	}
+	wh.PlayerMovement.UpdatePosition(42, 7, 8, 50, "UP")
+	// A durable location changed by another writer also invalidates the source,
+	// even if the live owner has not yet refreshed its cache.
+	testdb.Exec(t, wh.database, `UPDATE character_data SET x=8 WHERE id=42`)
+	battleDispatch(t, wh, ses, opcodes.CutsceneEndRequest, request)
+	if err := wh.database.QueryRow(`SELECT x FROM character_data WHERE id=42`).Scan(&x); err != nil || x != 8 {
+		t.Fatal("durable drift accepted old movement")
+	}
+	if err := wh.database.QueryRow(`SELECT count(*) FROM cq_character_inventory WHERE character_id=42`).Scan(&count); err != nil || count != 0 {
+		t.Fatal("durable drift granted reward")
+	}
+	testdb.Exec(t, wh.database, `UPDATE character_data SET x=7 WHERE id=42`)
+	testdb.Exec(t, wh.database, `ALTER TABLE character_event_flags ADD CONSTRAINT reject_issued_move CHECK(flag_name<>'ISSUED_MOVE_DONE')`)
+	battleDispatch(t, wh, ses, opcodes.CutsceneEndRequest, request)
+	assertStepPosition(t, wh, ses, 7)
+	testdb.Exec(t, wh.database, `ALTER TABLE character_event_flags DROP CONSTRAINT reject_issued_move`)
+	battleDispatch(t, wh, ses, opcodes.CutsceneEndRequest, request)
+	assertStepPosition(t, wh, ses, 9)
+	battleDispatch(t, wh, ses, opcodes.CutsceneEndRequest, request)
+	assertStepPosition(t, wh, ses, 9)
+	if err := wh.database.QueryRow(`SELECT sum(quantity) FROM cq_item_instances WHERE owner_id=42 AND item_id=1`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("reward=%d %v", count, err)
+	}
+}

@@ -600,6 +600,16 @@ private party. The mutation context accumulates publication work and messages
 until commit. Nested lists share that context. Scripted battle startup joins it
 rather than opening a second database connection while the character is locked.
 
+
+Issued cutscene playback now keeps animated player coordinates in presentation.
+The server's private issuance snapshot binds the exact script and owned source;
+completion validates both owned and saved source under the character transaction
+before applying relative movement and rewards. Nested movement starts from this snapshot rather
+than client-reported animation tiles. Failed transactions retain the session token
+for retry. Correlated completion acknowledgement, client failure reconciliation,
+tween cancellation and durable reconnect recovery remain tracked in
+`SERVER_FOUNDATIONS.md`.
+
 Event flags refresh their cached snapshot after durable writes; batches and
 toggles use the character transaction. Scripted rewards no longer publish success
 before a later completion write can fail. This is not durable notification
