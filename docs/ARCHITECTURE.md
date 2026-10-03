@@ -606,8 +606,16 @@ The server's private issuance snapshot binds the exact script and owned source;
 completion validates both owned and saved source under the character transaction
 before applying relative movement and rewards. Nested movement starts from this snapshot rather
 than client-reported animation tiles. Failed transactions retain the session token
-for retry. Correlated completion acknowledgement, client failure reconciliation,
-tween cancellation and durable reconnect recovery remain tracked in
+for retry. Completion now requires correlation ID and returns committed owned
+position and queued-movement phase through response 194. Playback remains locked through reconciliation;
+unknown outcomes use the read-only owned-position request/result (195/196), while
+failed recovery retains the lock until retirement. Retirement aborts listeners
+and stops only the active cutscene controller's tweens. Facing results also expose
+queued server movement; pending facing excludes ordinary intents, and owned
+position correction preserves an unfinished server path. Position correction uses
+the movement map identity for unchanged-map projection, with the shared committed
+warp path for changed maps. Durable reconnect/result recovery, server token
+revocation and remaining legacy coordinate authority remain in
 `SERVER_FOUNDATIONS.md`.
 
 Event flags refresh their cached snapshot after durable writes; batches and

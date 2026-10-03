@@ -47,6 +47,10 @@ func TestDispatcherSessionStagesAndMalformedCommands(t *testing.T) {
 		{account, opcodes.EnterWorld, true}, {account, opcodes.CQMerchantBuyRequest, false},
 		{playing, opcodes.EnterWorld, false}, {playing, opcodes.JWTLogin, false},
 		{playing, opcodes.CQMerchantBuyRequest, true},
+		{guest, opcodes.OwnedPlayerPositionRequest, false}, {account, opcodes.OwnedPlayerPositionRequest, false},
+		{playing, opcodes.OwnedPlayerPositionRequest, true},
+		{guest, opcodes.CutsceneEndRequest, false}, {account, opcodes.CutsceneEndRequest, false},
+		{playing, opcodes.CutsceneEndRequest, true},
 	} {
 		before := called
 		registry.HandleWorldPacket(tc.ses, clientPacket(tc.op, "{}"))

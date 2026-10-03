@@ -4,6 +4,7 @@ import { TILE_SIZE } from "../../constants";
 import { ActorManager } from "../../managers/ActorManager";
 import { MapRenderer } from "../../renderers/MapRenderer";
 import {
+  type CutsceneOwnedPosition,
   registerCutsceneCallbacks,
   unregisterCutsceneCallbacks,
 } from "../../services/CutsceneService";
@@ -17,15 +18,19 @@ interface CutsceneSpriteControllerDeps {
   syncPlayerMovement: (x: number, y: number, direction: string) => void;
   setInputLocked: (locked: boolean) => void;
   onHideObject: (actorId: number) => void;
+  onReconcile: (position: CutsceneOwnedPosition) => Promise<void>;
 }
 
 export class CutsceneSpriteController {
+  private readonly pendingMoves = new Set<() => void>();
   private readonly sprites = new Map<string, Phaser.GameObjects.Sprite>();
 
   constructor(private readonly deps: CutsceneSpriteControllerDeps) {}
 
   registerCallbacks(): void {
     registerCutsceneCallbacks({
+      onCancelPlayback: () => this.cancelMoves(),
+      onReconcile: this.deps.onReconcile,
       onMove: (actor: string, movements: string[]): Promise<void> => {
         return this.moveActor(actor, movements);
       },
@@ -47,7 +52,12 @@ export class CutsceneSpriteController {
     });
   }
 
+  private cancelMoves(): void {
+    for (const cancel of Array.from(this.pendingMoves)) cancel();
+  }
+
   cleanup(): void {
+    this.cancelMoves();
     this.sprites.forEach((sprite) => {
       if (sprite.active) sprite.destroy();
     });
@@ -126,14 +136,20 @@ export class CutsceneSpriteController {
     if (!sprite || !sprite.active) return Promise.resolve();
 
     return new Promise<void>((resolve) => {
+      let tween: Phaser.Tweens.Tween | null = null;
+      let cancelled = false;
+      const finish = () => { this.pendingMoves.delete(cancel); resolve(); };
+      const cancel = () => { cancelled = true; tween?.stop(); finish(); };
+      this.pendingMoves.add(cancel);
       let stepIndex = 0;
       let stepCount = 0;
       let lastMove = "DOWN";
 
       const doNextStep = () => {
+        if (cancelled) return;
         if (stepIndex >= movements.length || !sprite.active) {
           this.faceActor(actor, lastMove);
-          resolve();
+          finish();
           return;
         }
 
@@ -152,13 +168,14 @@ export class CutsceneSpriteController {
         stepCount++;
         const alternateFlip = stepCount % 2 === 1;
 
-        this.deps.scene.tweens.add({
+        tween = this.deps.scene.tweens.add({
           targets: sprite,
           x: sprite.x + delta.dx * TILE_SIZE,
           y: sprite.y + delta.dy * TILE_SIZE,
           duration: 300,
           ease: "Linear",
           onUpdate: (tween) => {
+            if (cancelled) return;
             this.setSpriteFrame(
               sprite,
               move,
@@ -167,6 +184,7 @@ export class CutsceneSpriteController {
             );
           },
           onComplete: () => {
+            if (cancelled) return;
             this.faceActor(actor, move);
             doNextStep();
           },
@@ -220,14 +238,20 @@ export class CutsceneSpriteController {
       trackedPosition?.direction ?? playerActor.actionDirection ?? "DOWN";
 
     return new Promise<void>((resolve) => {
+      let tween: Phaser.Tweens.Tween | null = null;
+      let cancelled = false;
+      const finish = () => { this.pendingMoves.delete(cancel); resolve(); };
+      const cancel = () => { cancelled = true; tween?.stop(); finish(); };
+      this.pendingMoves.add(cancel);
       let stepIndex = 0;
       let stepCount = 0;
 
       const doNextStep = () => {
+        if (cancelled) return;
         if (stepIndex >= movements.length || !playerSprite.active) {
           syncPlayerTile(lastMove);
           this.deps.syncPlayerMovement(tileX, tileY, lastMove);
-          resolve();
+          finish();
           return;
         }
 
@@ -249,13 +273,14 @@ export class CutsceneSpriteController {
         stepCount++;
         const alternateFlip = stepCount % 2 === 1;
 
-        this.deps.scene.tweens.add({
+        tween = this.deps.scene.tweens.add({
           targets: playerSprite,
           x: playerSprite.x + delta.dx * TILE_SIZE,
           y: playerSprite.y + delta.dy * TILE_SIZE,
           duration: 300,
           ease: "Linear",
           onUpdate: (tween) => {
+            if (cancelled) return;
             this.setSpriteFrame(
               playerSprite,
               move,
@@ -264,6 +289,7 @@ export class CutsceneSpriteController {
             );
           },
           onComplete: () => {
+            if (cancelled) return;
             tileX = nextX;
             tileY = nextY;
             syncPlayerTile(move);

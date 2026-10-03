@@ -297,7 +297,7 @@ func TestPlayerFacingPreservesAdjacentStrengthBoulderAndQueuedStep(t *testing.T)
 	battleDispatch(t, wh, ses, opcodes.PlayerFacingRequest, `{"mapId":50,"fromX":7,"fromY":8,"direction":"RIGHT","requestId":"push"}`)
 	var result protocol.PlayerFacingResponse
 	json.Unmarshal(messages.streams[len(messages.streams)-1].payload, &result)
-	if !result.Success {
+	if !result.Success || !result.ServerMovementPending {
 		t.Fatalf("facing rejected: %+v", result)
 	}
 	var x, y int

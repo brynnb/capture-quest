@@ -45,6 +45,7 @@ func NewWorldOpCodeRegistry() *HandlerRegistry {
 		opcodes.PhaserWarpActivateRequest:  HandlePhaserWarpActivateRequest,
 		opcodes.PhaserInstantWarpRequest:   HandlePhaserInstantWarpRequest,
 		opcodes.PhaserMapLoadRequest:       HandlePhaserMapLoadRequest,
+		opcodes.OwnedPlayerPositionRequest: HandleOwnedPlayerPositionRequest,
 		opcodes.PlayerFacingRequest:        HandlePlayerFacingRequest,
 		opcodes.PlayerStepRequest:          HandlePlayerStepRequest,
 		opcodes.PlayerStepCompleteRequest:  HandlePlayerStepCompleteRequest,

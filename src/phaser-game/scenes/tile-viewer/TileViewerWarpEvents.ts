@@ -70,6 +70,31 @@ export class TileViewerWarpEvents {
     }
   }
 
+  async reconcileOwnedPosition(position: { mapId: number; x: number; y: number; direction: string; serverMovementPending: boolean }): Promise<void> {
+    const movement = this.deps.playerMovementController();
+    // A view registry is not the owned movement map. Correct the existing actor
+    // in place so an ordinary result cannot reload/retrigger a map script.
+    if (movement.getCurrentMapId() === position.mapId) {
+      movement.stopMovement(true);
+      movement.syncPosition(position.x, position.y);
+      movement.syncDirection(position.direction);
+      const player = this.deps.getPlayerActor();
+      if (player) {
+        player.x = position.x;
+        player.y = position.y;
+        player.mapId = position.mapId;
+        player.actionDirection = position.direction;
+        this.deps.setPlayerActor(player);
+        this.deps.mapRenderer().snapActorPosition(player.id, position.x, position.y, position.direction, player);
+      }
+      if (position.serverMovementPending) movement.beginServerMovement(false);
+      return;
+    }
+    await this.handleWarpTileTeleport(new CustomEvent("warpTileTeleport", {
+      detail: { ...position, serverCommitted: true, sfxAlreadyPlayed: true },
+    }));
+  }
+
   private async handleWarpTileTeleport(
     event: CustomEvent<WarpTileTeleportDetail>,
   ): Promise<void> {

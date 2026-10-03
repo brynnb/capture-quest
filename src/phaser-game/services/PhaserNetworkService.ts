@@ -1,4 +1,4 @@
-import type { ServerPlayerMovementNotify, PlayerFacingRequest, PlayerFacingResponse, PlayerStepRequest, PlayerStepResponse, PlayerStepCompleteRequest, PlayerStepCompleteResponse, PlayerStepError, PhaserMapInfo, PhaserMapInfoRequest, PhaserMapInfoResponse, PhaserMapLoadRequest, PhaserMapLoadResponse, PhaserMapRequestError, PhaserWarpActivateRequest, PhaserWarpActivateResponse, PhaserInstantWarpRequest, PhaserInstantWarpResponse } from "@/net/generated/protocol";
+import type { CutsceneEndRequest, CutsceneEndResponse, OwnedPlayerPositionRequest, OwnedPlayerPositionResponse, ServerPlayerMovementNotify, PlayerFacingRequest, PlayerFacingResponse, PlayerStepRequest, PlayerStepResponse, PlayerStepCompleteRequest, PlayerStepCompleteResponse, PlayerStepError, PhaserMapInfo, PhaserMapInfoRequest, PhaserMapInfoResponse, PhaserMapLoadRequest, PhaserMapLoadResponse, PhaserMapRequestError, PhaserWarpActivateRequest, PhaserWarpActivateResponse, PhaserInstantWarpRequest, PhaserInstantWarpResponse } from "@/net/generated/protocol";
 import type { GameCornerSlotPlayRequest } from "@/net/generated/world_api";
 import type { PhaserMapScriptsRequest } from "@/net/generated/protocol";
 /**
@@ -34,6 +34,13 @@ export function requestMapInfo(request: PhaserMapInfoRequest): void {
 
 export function requestMapLoad(request: PhaserMapLoadRequest): void {
   NetworkBridge.send(request, OpCodes.PhaserMapLoadRequest);
+}
+
+export function completeCutscene(request: CutsceneEndRequest): void {
+  NetworkBridge.send(request, OpCodes.CutsceneEndRequest);
+}
+export function requestOwnedPlayerPosition(request: OwnedPlayerPositionRequest): void {
+  NetworkBridge.send(request, OpCodes.OwnedPlayerPositionRequest);
 }
 
 export function requestPlayerFacing(request: PlayerFacingRequest): void {
@@ -361,6 +368,8 @@ export type TrainerEncounterHandler = (
 export type PhaserMapMusicHandler = (data: MapMusicResult) => void;
 
 const handlers = {
+  cutsceneEnd: new Set<(data: CutsceneEndResponse | PlayerStepError) => void>(),
+  ownedPlayerPosition: new Set<(data: OwnedPlayerPositionResponse | PlayerStepError) => void>(),
   serverPlayerMovement: new Set<(data: ServerPlayerMovementNotify) => void>(),
   playerFacing: new Set<(data: PlayerFacingResponse | PlayerStepError) => void>(),
   playerStep: new Set<(data: PlayerStepResponse | PlayerStepError) => void>(),
@@ -383,6 +392,15 @@ const handlers = {
 export function onMapInfo(handler: PhaserMapInfoHandler): () => void {
   handlers.mapInfo.add(handler);
   return () => handlers.mapInfo.delete(handler);
+}
+
+export function onCutsceneEnd(handler: (data: CutsceneEndResponse | PlayerStepError) => void): () => void {
+  handlers.cutsceneEnd.add(handler);
+  return () => { handlers.cutsceneEnd.delete(handler); };
+}
+export function onOwnedPlayerPosition(handler: (data: OwnedPlayerPositionResponse | PlayerStepError) => void): () => void {
+  handlers.ownedPlayerPosition.add(handler);
+  return () => { handlers.ownedPlayerPosition.delete(handler); };
 }
 
 export function onServerPlayerMovement(handler: (data: ServerPlayerMovementNotify) => void): () => void {
@@ -584,6 +602,12 @@ export function normalizePhaserArrayPayload<T>(
 // Internal: dispatch incoming Phaser responses
 export function dispatchPhaserResponse(opcode: number, data: unknown): void {
   switch (opcode) {
+    case OpCodes.CutsceneEndResponse:
+      handlers.cutsceneEnd.forEach((h) => h(data as CutsceneEndResponse | PlayerStepError));
+      break;
+    case OpCodes.OwnedPlayerPositionResponse:
+      handlers.ownedPlayerPosition.forEach((h) => h(data as OwnedPlayerPositionResponse | PlayerStepError));
+      break;
     case OpCodes.ServerPlayerMovementNotify:
       handlers.serverPlayerMovement.forEach((h) => h(data as ServerPlayerMovementNotify));
       break;

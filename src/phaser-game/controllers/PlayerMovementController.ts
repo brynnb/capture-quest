@@ -294,7 +294,7 @@ export class PlayerMovementController {
     inputSource: "click" | "keyboard" = "click",
     activateWarpId?: number,
   ): boolean {
-    if (this.inputFrozenChecker()) return false;
+    if (this.inputFrozenChecker() || this.facingAbort || this.serverMovementInProgress) return false;
     if (this.playerId === null || !this.mapRenderer) return false;
 
     const path = this.findPath(this.currentTileX, this.currentTileY, destX, destY);
@@ -321,7 +321,7 @@ export class PlayerMovementController {
     onReach: () => void,
     inputSource: "click" | "keyboard" = "click",
   ): boolean {
-    if (this.inputFrozenChecker()) return false;
+    if (this.inputFrozenChecker() || this.facingAbort || this.serverMovementInProgress) return false;
     if (this.playerId === null || !this.mapRenderer) return false;
     if (!this.isWalkable(destX, destY)) return false;
 
@@ -893,7 +893,7 @@ export class PlayerMovementController {
   }
 
   handleFieldMoveInteractionInFront(): boolean {
-    if (this.inputFrozenChecker()) return false;
+    if (this.inputFrozenChecker() || this.facingAbort || this.serverMovementInProgress) return false;
     if (this.playerId === null || !this.mapRenderer) return false;
     if (this.isMoving) return false;
 
@@ -929,7 +929,7 @@ export class PlayerMovementController {
   }
 
   private requestFacing(direction: MovementDirection): void {
-    if (this.playerId === null || this.stepAbort) return;
+    if (this.playerId === null || this.stepAbort || this.serverMovementInProgress) return;
     const request = { mapId: this.currentMapId, fromX: this.currentTileX, fromY: this.currentTileY, direction };
     const key = [request.mapId, request.fromX, request.fromY, direction].join(":");
     if (this.facingAbort && key === this.facingRequestKey) return;
@@ -937,7 +937,15 @@ export class PlayerMovementController {
     const abort = new AbortController();
     this.facingAbort = abort;
     this.facingRequestKey = key;
-    void requestPlayerFacing(request, abort.signal).catch((error: unknown) => {
+    void requestPlayerFacing(request, abort.signal).then((result) => {
+      if (abort.signal.aborted) return;
+      if (result.serverMovementPending && result.mapId === this.currentMapId && result.x === this.currentTileX && result.y === this.currentTileY) {
+        // Boulder updates can arrive before the first committed path point.
+        // Preserve that server-owned phase instead of issuing an ordinary step
+        // into the now visually unoccupied tile during this interval.
+        this.beginServerMovement(false);
+      }
+    }).catch((error: unknown) => {
       if (abort.signal.aborted) return;
       // Facing cannot change position. A rejected/stale turn must not snap the
       // player or turn a later movement response into a position write.
@@ -1355,7 +1363,7 @@ export class PlayerMovementController {
   handleTileClick(worldX: number, worldY: number): void {
     // A new click cannot replace a server-issued step while its animation or
     // completion is outstanding. Scene snaps retire it explicitly instead.
-    if (this.stepAbort || this.inputFrozenChecker()) {
+    if (this.stepAbort || this.facingAbort || this.serverMovementInProgress || this.inputFrozenChecker()) {
       return;
     }
 
@@ -1689,6 +1697,7 @@ export class PlayerMovementController {
         this.syncPosition(owned.x, owned.y);
         this.syncDirection(owned.direction);
         this.mapRenderer?.snapActorPosition(this.playerId, owned.x, owned.y, owned.direction);
+        if (owned.serverMovementPending) this.beginServerMovement(false);
       }
     }
     // A timeout does not prove rollback. Stop the path instead of animating or
@@ -1820,7 +1829,7 @@ export class PlayerMovementController {
    * Returns true if the move was initiated, false if blocked.
    */
   handleKeyboardMove(direction: "UP" | "DOWN" | "LEFT" | "RIGHT"): boolean {
-    if (this.inputFrozenChecker()) return false;
+    if (this.inputFrozenChecker() || this.facingAbort || this.serverMovementInProgress) return false;
     if (this.playerId === null || !this.mapRenderer) return false;
     if (this.isMoving) return false;
 

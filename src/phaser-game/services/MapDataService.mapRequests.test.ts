@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const network = vi.hoisted(() => ({
+  cutscene: new Set<(data: unknown) => void>(),
+  cutsceneRequests: [] as Array<{ requestId: string }>,
+  position: new Set<(data: unknown) => void>(),
+  positionRequests: [] as Array<{ requestId: string }>,
   facing: new Set<(data: unknown) => void>(),
   facingRequests: [] as Array<{ mapId: number; requestId: string }>,
   step: new Set<(data: unknown) => void>(),
@@ -19,6 +23,10 @@ const network = vi.hoisted(() => ({
 
 vi.mock("./PhaserNetworkService", () => ({
   isConnected: () => true,
+  onCutsceneEnd: (receive: (data: unknown) => void) => { network.cutscene.add(receive); return () => network.cutscene.delete(receive); },
+  completeCutscene: (request: { requestId: string }) => network.cutsceneRequests.push(request),
+  onOwnedPlayerPosition: (receive: (data: unknown) => void) => { network.position.add(receive); return () => network.position.delete(receive); },
+  requestOwnedPlayerPosition: (request: { requestId: string }) => network.positionRequests.push(request),
   onPlayerFacing: (receive: (data: unknown) => void) => { network.facing.add(receive); return () => network.facing.delete(receive); },
   requestPlayerFacing: (request: { mapId: number; requestId: string }) => network.facingRequests.push(request),
   onPlayerStep: (receive: (data: unknown) => void) => { network.step.add(receive); return () => network.step.delete(receive); },
@@ -51,12 +59,14 @@ vi.mock("./RuntimeAssetCompatibility", () => ({
   ensureRuntimeTileCatalogCurrent: vi.fn(async () => undefined),
 }));
 
-import { requestPlayerFacing, requestPlayerStep, completePlayerStep } from "./PlayerMovementService";
+import { completeCutscene, readOwnedPlayerPosition, requestPlayerFacing, requestPlayerStep, completePlayerStep } from "./PlayerMovementService";
 import { MapDataService } from "./MapDataService";
 
 describe("correlated map read and load requests", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    network.cutscene.clear(); network.cutsceneRequests.length = 0;
+    network.position.clear(); network.positionRequests.length = 0;
     network.facing.clear();
     network.facingRequests.length = 0;
     network.step.clear();
@@ -75,6 +85,10 @@ describe("correlated map read and load requests", () => {
   afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
   const cases = [
+    { name: "cutscene completion", handlers: network.cutscene, requests: network.cutsceneRequests,
+      start: (_service: MapDataService, signal?: AbortSignal) => completeCutscene("Issued", "token", signal) },
+    { name: "owned position recovery", handlers: network.position, requests: network.positionRequests,
+      start: (_service: MapDataService, signal?: AbortSignal) => readOwnedPlayerPosition(signal) },
     { name: "facing", handlers: network.facing, requests: network.facingRequests,
       start: (_service: MapDataService, signal?: AbortSignal) => requestPlayerFacing({ mapId: 38, fromX: 3, fromY: 7, direction: "DOWN" }, signal) },
     { name: "movement intent", handlers: network.step, requests: network.stepRequests,

@@ -13,17 +13,12 @@ import (
 	"capturequest/internal/db/cqitems"
 	"capturequest/internal/db/pokedex"
 	"capturequest/internal/pokebattle"
+	"capturequest/internal/protocol"
 	"capturequest/internal/scriptedactions"
 	"capturequest/internal/session"
 )
 
 var pokemonLookupUnderscorePattern = regexp.MustCompile(`_+`)
-
-// CutsceneEndRequest is sent when the client finishes playing a cutscene.
-type CutsceneEndRequest struct {
-	CompletionToken string `json:"completionToken"`
-	ScriptLabel     string `json:"scriptLabel"` // The cutscene that was completed
-}
 
 type CutsceneAction = scriptedactions.Action
 
@@ -52,9 +47,9 @@ type cutsceneActionState struct {
 // HandleCutsceneEndRequest processes the client's confirmation that a cutscene finished.
 // Sets any event flags associated with the cutscene.
 func HandleCutsceneEndRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	var req CutsceneEndRequest
-	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("[Cutscene] Invalid CutsceneEndRequest: %v", err)
+	var req protocol.CutsceneEndRequest
+	if err := decodePlayerMovement(payload, &req); err != nil || req.RequestID == "" || len(req.RequestID) > 64 || req.CompletionToken == "" || len(req.CompletionToken) > 64 || req.ScriptLabel == "" || len(req.ScriptLabel) > 256 {
+		sendOwnedPlayerError(ses, wh, req.RequestID, opcodes.CutsceneEndResponse, "Invalid cutscene completion.")
 		return false
 	}
 
@@ -70,12 +65,14 @@ func HandleCutsceneEndRequest(ses *session.Session, payload []byte, wh *WorldHan
 	}
 	issued, ok := ses.IssuedCutscenes.Claim(charID, req.ScriptLabel, req.CompletionToken)
 	if !ok {
+		sendOwnedPlayerError(ses, wh, req.RequestID, opcodes.CutsceneEndResponse, "Cutscene completion was not accepted.")
 		return false
 	}
 	committed := false
 	defer func() { ses.IssuedCutscenes.Finish(req.CompletionToken, committed) }()
 	var event issuedCutscene
 	if err := json.Unmarshal(issued, &event); err != nil {
+		sendOwnedPlayerError(ses, wh, req.RequestID, opcodes.CutsceneEndResponse, "Invalid issued event.")
 		return false
 	}
 
@@ -83,7 +80,7 @@ func HandleCutsceneEndRequest(ses *session.Session, payload []byte, wh *WorldHan
 	_, completed, err := ApplyCutsceneScript(ses.CommandContext(), CutsceneActionContext{Session: ses, WorldHandler: wh, EventFlags: wh.EventFlags, issuedSource: &cutscenePosition{mapID: event.MapID, x: event.X, y: event.Y}}, &cs, charID)
 	if err != nil {
 		log.Printf("[Cutscene] Failed to apply script %s for character %d: %v", cs.ScriptLabel, charID, err)
-		SendSystemMessage(ses, "That event could not be completed. Please try again.")
+		sendOwnedPlayerError(ses, wh, req.RequestID, opcodes.CutsceneEndResponse, "That event could not be completed. Please try again.")
 		return false
 	}
 	committed = true
@@ -94,6 +91,7 @@ func HandleCutsceneEndRequest(ses *session.Session, payload []byte, wh *WorldHan
 		}
 	}
 
+	ses.SendStreamJSON(protocol.CutsceneEndResponse{OwnedPlayerPositionResponse: wh.ownedPlayerSnapshot(ses, req.RequestID), Completed: completed}, opcodes.CutsceneEndResponse)
 	return false
 }
 
@@ -177,12 +175,7 @@ func SendCutsceneToPlayer(ses *session.Session, cs *CutsceneScript, handlers ...
 			actions = annotated
 		}
 	}
-	payload := map[string]interface{}{
-		"scriptLabel":     cs.ScriptLabel,
-		"completionToken": token,
-		"mapName":         cs.MapName,
-		"actions":         json.RawMessage(actions),
-	}
+	payload := protocol.CutsceneStartNotify{ScriptLabel: cs.ScriptLabel, CompletionToken: token, MapName: cs.MapName, Actions: actions}
 	if err := ses.SendStreamJSON(payload, opcodes.CutsceneStartNotify); err != nil {
 		ses.IssuedCutscenes.Finish(token, true)
 		log.Printf("[Cutscene] Send issued event: %v", err)

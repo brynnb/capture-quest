@@ -47,6 +47,7 @@ function buildLedgeController() {
       updates.push(args);
     }),
     getMovementController: () => movementController,
+    snapActorPosition: vi.fn(),
   };
   const controller = new PlayerMovementController({ events: { emit: vi.fn(), once: vi.fn() } } as unknown as Scene);
   controller.buildCollisionMap([
@@ -121,6 +122,7 @@ describe("PlayerMovementController completed facing", () => {
     const movementController = { handleDirectionUpdate: vi.fn() };
     const mapRenderer = {
       getMovementController: () => movementController,
+    snapActorPosition: vi.fn(),
     };
     const scene = { events: { emit: vi.fn() } } as unknown as Scene;
     const controller = new PlayerMovementController(scene);
@@ -227,7 +229,7 @@ describe("owned-source facing", () => {
     expect(signal.aborted).toBe(false);
     controller.clear();
     expect(signal.aborted).toBe(true);
-    settle({ success: true, requestId: "face", mapId: 9999, x: 10, y: 0, direction: "LEFT" });
+    settle({ serverMovementPending: false, success: true, requestId: "face", mapId: 9999, x: 10, y: 0, direction: "LEFT" });
     await Promise.resolve();
     expect(controller.getIsMoving()).toBe(false);
   });
@@ -269,4 +271,39 @@ test("committed server path projection stays busy until its final point and neve
   expect(legacy).not.toHaveBeenCalled();
   controller.clear();
   legacy.mockRestore();
+});
+
+
+test("facing acceptance reserves queued server movement before its first published point", async () => {
+  let settle!: (value: Awaited<ReturnType<typeof movement.requestPlayerFacing>>) => void;
+  vi.mocked(movement.requestPlayerFacing).mockImplementationOnce(() => new Promise((resolve) => { settle = resolve; }));
+  const { controller } = buildLedgeController();
+  controller.faceTile(9, 0);
+  expect(controller.handleKeyboardMove("DOWN")).toBe(false);
+  expect(controller.requestMoveTo(9, 0)).toBe(false);
+  controller.handleTileClick(9 * TILE_SIZE + 8, 8);
+  expect(movement.requestPlayerStep).not.toHaveBeenCalled();
+  settle({ serverMovementPending: true, success: true, requestId: "face", mapId: 9999, x: 10, y: 0, direction: "LEFT" });
+  await vi.waitFor(() => expect(controller.getIsMoving()).toBe(true));
+  expect(controller.handleKeyboardMove("DOWN")).toBe(false);
+  expect(controller.requestMoveTo(9, 0)).toBe(false);
+  expect(movement.requestPlayerStep).not.toHaveBeenCalled();
+  controller.beginServerMovement(true);
+  controller.onStepComplete(1, 9, 0, "LEFT", "serverStep");
+  expect(controller.getIsMoving()).toBe(false);
+  controller.clear();
+});
+
+
+test("a rejected ordinary step preserves an owned unfinished server path", async () => {
+  const error = {success:false as const,requestId:"busy",error:"server path busy",mapId:9999,x:10,y:0,direction:"DOWN",serverMovementPending:true};
+  vi.mocked(movement.requestPlayerStep).mockRejectedValueOnce(new CorrelatedResponseError(error));
+  const log = vi.spyOn(console,"error").mockImplementation(() => undefined);
+  const {controller}=buildLedgeController();
+  controller.handleKeyboardMove("DOWN");
+  await vi.waitFor(()=>expect(log).toHaveBeenCalled());
+  expect(controller.getIsMoving()).toBe(true);
+  expect(controller.handleKeyboardMove("LEFT")).toBe(false);
+  expect(controller.requestMoveTo(9,0)).toBe(false);
+  controller.clear();log.mockRestore();
 });

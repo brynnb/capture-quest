@@ -2,6 +2,7 @@ package world
 
 import (
 	"capturequest/internal/api/opcodes"
+	"capturequest/internal/protocol"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -179,11 +180,12 @@ func TestCutsceneCompletionRequiresIssuedSnapshotAndToken(t *testing.T) {
 	database, wh, ses, messages := battleTestWorld(t)
 	script := &CutsceneScript{ScriptLabel: "Reward", Actions: json.RawMessage(`[{"type":"giveItem","itemId":1}]`)}
 	// Knowing a real script label grants no authority.
-	battleDispatch(t, wh, ses, opcodes.CutsceneEndRequest, `{"scriptLabel":"Reward"}`)
+	battleDispatch(t, wh, ses, opcodes.CutsceneEndRequest, `{"requestId":"completion-test","scriptLabel":"Reward"}`)
 	var count int
 	if err := database.QueryRow(`SELECT count(*) FROM cq_character_inventory WHERE character_id=42`).Scan(&count); err != nil || count != 0 {
 		t.Fatal("unissued reward granted")
 	}
+	messages.streams = nil
 	SendCutsceneToPlayer(ses, script)
 	var issued struct {
 		CompletionToken string `json:"completionToken"`
@@ -193,7 +195,7 @@ func TestCutsceneCompletionRequiresIssuedSnapshotAndToken(t *testing.T) {
 	}
 	// Completion executes the issued snapshot, not later edits to the catalog.
 	script.Actions = json.RawMessage(`[{"type":"giveItem","itemId":2}]`)
-	request := fmt.Sprintf(`{"scriptLabel":"Reward","completionToken":%q}`, issued.CompletionToken)
+	request := fmt.Sprintf(`{"requestId":"completion-test","scriptLabel":"Reward","completionToken":%q}`, issued.CompletionToken)
 	battleDispatch(t, wh, ses, opcodes.CutsceneEndRequest, request)
 	battleDispatch(t, wh, ses, opcodes.CutsceneEndRequest, request)
 	var quantity int
@@ -209,6 +211,7 @@ func TestIssuedCutsceneFailureKeepsTokenForRetry(t *testing.T) {
 	database, wh, ses, messages := battleTestWorld(t)
 	script := &CutsceneScript{ScriptLabel: "Retry", Actions: json.RawMessage(`[{"type":"giveItem","itemId":1}]`), SetsFlags: []string{"RETRY_DONE"}}
 	testdb.Exec(t, database, `ALTER TABLE character_event_flags ADD CONSTRAINT reject_retry CHECK(flag_name<>'RETRY_DONE')`)
+	messages.streams = nil
 	SendCutsceneToPlayer(ses, script)
 	var issued struct {
 		CompletionToken string `json:"completionToken"`
@@ -216,7 +219,7 @@ func TestIssuedCutsceneFailureKeepsTokenForRetry(t *testing.T) {
 	if err := json.Unmarshal(messages.streams[0].payload, &issued); err != nil {
 		t.Fatal(err)
 	}
-	request := fmt.Sprintf(`{"scriptLabel":"Retry","completionToken":%q}`, issued.CompletionToken)
+	request := fmt.Sprintf(`{"requestId":"completion-test","scriptLabel":"Retry","completionToken":%q}`, issued.CompletionToken)
 	battleDispatch(t, wh, ses, opcodes.CutsceneEndRequest, request)
 	testdb.Exec(t, database, `ALTER TABLE character_event_flags DROP CONSTRAINT reject_retry`)
 	battleDispatch(t, wh, ses, opcodes.CutsceneEndRequest, request)
@@ -294,7 +297,7 @@ func TestIssuedCutsceneMovementUsesCapturedSourceAndCommitsOnce(t *testing.T) {
 	if err := json.Unmarshal(messages.streams[0].payload, &issued); err != nil {
 		t.Fatal(err)
 	}
-	request := fmt.Sprintf(`{"scriptLabel":"IssuedMove","completionToken":%q}`, issued.CompletionToken)
+	request := fmt.Sprintf(`{"requestId":"completion-test","scriptLabel":"IssuedMove","completionToken":%q}`, issued.CompletionToken)
 	// A later location cannot become the starting point for the old relative plan.
 	wh.PlayerMovement.UpdatePosition(42, 8, 8, 50, "RIGHT")
 	battleDispatch(t, wh, ses, opcodes.CutsceneEndRequest, request)
@@ -328,4 +331,54 @@ func TestIssuedCutsceneMovementUsesCapturedSourceAndCommitsOnce(t *testing.T) {
 	if err := wh.database.QueryRow(`SELECT sum(quantity) FROM cq_item_instances WHERE owner_id=42 AND item_id=1`).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("reward=%d %v", count, err)
 	}
+}
+
+func TestCutsceneCompletionResultAndReadOnlyPositionRecovery(t *testing.T) {
+	wh, ses, messages := setupIssuedStep(t)
+	script := &CutsceneScript{ScriptLabel: "Result", MapName: "ROOM", Actions: json.RawMessage(`[{"type":"movePlayer","movements":["RIGHT"]}]`)}
+	SendCutsceneToPlayer(ses, script, wh)
+	var issued struct {
+		CompletionToken string `json:"completionToken"`
+	}
+	if err := json.Unmarshal(messages.streams[0].payload, &issued); err != nil {
+		t.Fatal(err)
+	}
+	request := fmt.Sprintf(`{"requestId":"end","scriptLabel":"Result","completionToken":%q}`, issued.CompletionToken)
+	testdb.Exec(t, wh.database, `CREATE FUNCTION reject_completion_position() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'completion late failure'; END $$; CREATE CONSTRAINT TRIGGER reject_completion_position AFTER UPDATE ON character_data DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_completion_position();`)
+	battleDispatch(t, wh, ses, opcodes.CutsceneEndRequest, request)
+	var failure protocol.PlayerStepError
+	last := messages.streams[len(messages.streams)-1]
+	if err := json.Unmarshal(last.payload, &failure); err != nil || last.opcode != opcodes.CutsceneEndResponse || failure.Success || failure.RequestID != "end" || failure.X != 7 || failure.Error == "" {
+		t.Fatalf("failure=%+v %v", failure, err)
+	}
+	assertStepPosition(t, wh, ses, 7)
+	testdb.Exec(t, wh.database, `DROP TRIGGER reject_completion_position ON character_data`)
+	battleDispatch(t, wh, ses, opcodes.CutsceneEndRequest, request)
+	var success protocol.CutsceneEndResponse
+	last = messages.streams[len(messages.streams)-1]
+	if err := json.Unmarshal(last.payload, &success); err != nil || last.opcode != opcodes.CutsceneEndResponse || !success.Success || !success.Completed || success.RequestID != "end" || success.X != 8 {
+		t.Fatalf("success=%+v %v", success, err)
+	}
+	assertStepPosition(t, wh, ses, 8)
+	// An unknown client outcome can recover owned state without an arrival mutation.
+	testdb.Exec(t, wh.database, `CREATE CONSTRAINT TRIGGER reject_completion_position AFTER UPDATE ON character_data DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_completion_position();`)
+	battleDispatch(t, wh, ses, opcodes.OwnedPlayerPositionRequest, `{"requestId":"read"}`)
+	var position protocol.OwnedPlayerPositionResponse
+	last = messages.streams[len(messages.streams)-1]
+	if err := json.Unmarshal(last.payload, &position); err != nil || last.opcode != opcodes.OwnedPlayerPositionResponse || !position.Success || position.RequestID != "read" || position.X != 8 {
+		t.Fatalf("read=%+v %v", position, err)
+	}
+	battleDispatch(t, wh, ses, opcodes.CutsceneEndRequest, request)
+	last = messages.streams[len(messages.streams)-1]
+	if err := json.Unmarshal(last.payload, &failure); err != nil || failure.Success || failure.X != 8 {
+		t.Fatal("duplicate completion succeeded")
+	}
+	for _, payload := range []string{`{"requestId":"forged","x":99}`, `{"requestId":"trailing"} {}`} {
+		battleDispatch(t, wh, ses, opcodes.OwnedPlayerPositionRequest, payload)
+		last = messages.streams[len(messages.streams)-1]
+		if err := json.Unmarshal(last.payload, &failure); err != nil || failure.Success || failure.X != 8 {
+			t.Fatal("invalid read accepted")
+		}
+	}
+	assertStepPosition(t, wh, ses, 8)
 }

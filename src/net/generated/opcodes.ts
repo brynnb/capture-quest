@@ -231,3 +231,6 @@ export const PlayerStepCompleteResponse: OpCode = 190;
 export const PlayerFacingRequest: OpCode = 191;
 export const PlayerFacingResponse: OpCode = 192;
 export const ServerPlayerMovementNotify: OpCode = 193;
+export const CutsceneEndResponse: OpCode = 194;
+export const OwnedPlayerPositionRequest: OpCode = 195;
+export const OwnedPlayerPositionResponse: OpCode = 196;

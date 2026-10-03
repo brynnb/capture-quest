@@ -218,4 +218,7 @@ const (
 	PlayerFacingRequest           OpCode = 191
 	PlayerFacingResponse          OpCode = 192
 	ServerPlayerMovementNotify    OpCode = 193
+	CutsceneEndResponse           OpCode = 194
+	OwnedPlayerPositionRequest    OpCode = 195
+	OwnedPlayerPositionResponse   OpCode = 196
 )

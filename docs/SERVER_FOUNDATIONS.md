@@ -2,8 +2,8 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest checkpoint: issued cutscene movement source binding
-(2026-10-02), following facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
+Working branch: `codex/server-foundations`. Latest checkpoint: correlated cutscene completion and position recovery
+(2026-10-02), following issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
 `0585dde`, committed
 blackout/recovery `2f62595`, teleport notification projection `65a5581`, Instant
 Warp `e1f54a8`, normal warps `3899660`, owned-position loading `64cf970`,
@@ -45,7 +45,8 @@ project through a dedicated origin notification (193). CutsceneSpriteController
 no longer reports animation tiles through opcode 45;
 completion applies the captured script from its issued owned source. The remaining
 generic field/animation and uncommitted teleport producers still require audit
-before retiring opcode 45. Step-effect atomicity and durable result recovery remain
+before retiring opcode 45. Cutscene completion now returns a correlated committed
+result and reconciles owned position before unlocking. Step-effect atomicity and durable result recovery remain
 unfinished. Evidence and verification limits appear in the checkpoint sections below.
 
 There is no reliable overall completion percentage: the remaining endpoint
@@ -113,6 +114,90 @@ number of commits or passing tests. All five areas still have outstanding work.
    cancellation/timeouts, failure/retry and shutdown with active players.
    Acceptance: evidence covers the original five milestones, including visible
    behavior where relevant. Only then mark the full goal complete.
+
+## Correlated cutscene completion and position recovery (2026-10-02)
+
+The client formerly sent completion and unlocked without observing commit. Failed
+transactions sent only chat text, leaving animated coordinates in presentation.
+Request 121 now requires a correlation ID and accepts only label/token/ID fields;
+response 194 contains committed owned map/position/direction, queued-movement phase
+and whether the script
+completed. Errors use the shared owned-position error contract. Claims and durable
+script mutation still run under the existing character owner/transaction boundary.
+The result is published after commit; a rollback reports the unchanged source.
+Start and action types now come from the generated protocol and existing shared
+scripted-action contract; the handwritten frontend duplicates are retired.
+
+Position recovery requests 195/196 read the selected character's owned snapshot
+under its command gate. They accept no destination, save no coordinates and apply
+no arrival/step effects. The client uses the existing correlated request primitive
+for completion and recovery, with timeout, cancellation and stale-response cleanup.
+A correlated failure reconciles its owned snapshot. An unconfirmed outcome reads
+owned state rather than replaying the event or assuming rollback. If both result
+and recovery fail, input remains locked until scene/session retirement; this is
+observable in a terminal diagnostic, not treated as success.
+
+Playback keeps input locked through the result and position projection, including
+nested `unlockInput` actions. Only confirmed completed results advance the completed
+script marker. A following issued script arriving before the result is queued and
+deduplicated by token, then starts after reconciliation. Retirement clears that
+queue, aborts listeners, stops only the controller's own active tweens and settles
+its pending movement promises; stale tween callbacks cannot update player tiles.
+
+Reconciliation compares the movement controller's current owned map, correcting
+an unchanged-map actor in place. Reusing warp routing initially compared the view
+registry's map identity and caused repeated map loads and empty Seafoam map-script
+issuance. A regression test varies those identities and requires no scene reset.
+Cross-map recovery uses the existing committed destination presentation path.
+
+The stricter rendered Strength check then caught two ordinary intents while the
+server still owned a queued push step: `map=192 x=18 y=11 path=1`. Boulder updates
+made its source tile look empty before the first committed player point arrived.
+Facing results now expose `serverMovementPending`, and pending facing excludes
+ordinary keyboard/click/path intents until the result arrives. A queued result
+reserves server movement through its final projected point. Owned success/error
+snapshots carry the same phase atomically with their location; position correction
+and rejected ordinary steps preserve that phase. This fixes the acceptance-to-first
+point interval without weakening the severe-error assertion.
+
+Verification: 78 focused frontend checks pass across completion lifecycle,
+owned/correlated reads, actor/player movement, map loading and committed-position
+presentation. They cover delayed success/projection, rollback, unknown outcome,
+failed recovery, duplicate queued scripts, cancellation during completion and
+animation, stale tween updates, map-identity mismatch and the acceptance-to-first
+server-point interval. Race-enabled world/protocol/simulator suites and server
+compilation pass in `/var/tmp/capturequest-cutscene-ack-go-final.log`. Typecheck,
+production build, runtime asset validation and stable protocol regeneration pass.
+The read-only recovery test runs with a trigger rejecting all character updates;
+late completion failure and retry tests verify owned/durable position and result
+packets. Dispatcher tests reject both operations before character selection.
+
+Rendered acceptance: all 26 checks pass in
+`/var/tmp/capturequest-rendered.9TabcV`: scripted events/Oak movement, ordinary and
+Instant Warp, multiplayer visibility, Surf/Cut/Strength, Safari and blackout.
+Inspected Strength screenshots confirm the visible follow-up step. The final
+server log has no rejected movement intents or failed cutscene applications for
+these cases. It still contains opcode 45 packets during normal warp tests, proving
+that the remaining animation/teleport producers have not been retired. This is
+checkpoint acceptance, not completion of the full five-area goal.
+Initial integrated runs retained at `/var/tmp/capturequest-rendered.LngOaS` and
+`/var/tmp/capturequest-rendered.5rd7Sh` each passed 25/26 cases. Their Strength
+failures respectively exposed the map-reload loop and the two rejected ordinary
+intents during queued server movement. Assertions were preserved. The final run above verifies the corrected behavior; these initial runs remain
+failure evidence.
+
+Limits: session token consumption still does not recover a committed reward result
+after reconnect or process failure. Cancellation does not revoke the server's
+issued token; its existing bounded lifetime/capacity remain. Failed position recovery
+has no retry UI yet, and reliable-result loss/cross-map retirement and transport
+ordering need broader recovery work. Opcode 45 remains available through its last
+generic producers. Field/step-effect atomicity, other callback ownership, remaining
+domain/contracts and the complete five-area acceptance checks remain unfinished.
+No push or deployment was performed.
+
+Recommended next step: audit the remaining generic coordinate-report producers,
+migrate genuine intent to authoritative commands, and retire opcode 45; continue
+with durable result recovery and atomic field/step effects afterward.
 
 ## Issued cutscene movement source binding (2026-10-02)
 

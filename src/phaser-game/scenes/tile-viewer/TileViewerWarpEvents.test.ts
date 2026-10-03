@@ -11,7 +11,7 @@ afterEach(() => vi.clearAllMocks());
 function warpFixture() {
   const registry = new Map<string, unknown>([["currentMapId", 1]]);
   const movement = {
-    stopMovement: vi.fn(), syncMapId: vi.fn(), syncPosition: vi.fn(), syncDirection: vi.fn(),
+    getCurrentMapId: () => 1, stopMovement: vi.fn(), syncMapId: vi.fn(), syncPosition: vi.fn(), syncDirection: vi.fn(), beginServerMovement: vi.fn(),
   };
   const renderer = { waitForActorIdle: vi.fn(() => new Promise(() => {})), snapActorPosition: vi.fn() };
   const resetScene = vi.fn();
@@ -62,4 +62,23 @@ test("blackout store presentation uses the committed path without echoing coordi
     expect(resetScene).toHaveBeenCalledWith(false);
     expect(useGameStatusStore.getState().pendingBlackoutWarp).toBeNull();
   } finally { handler.cleanup(); }
+});
+
+
+test("owned position reconciliation uses movement map identity without reloading the viewed scene", async () => {
+  const { handler, registry, movement, renderer, resetScene, actor } = warpFixture();
+  registry.set("currentMapId", 9999); // View registry can differ from owned movement.
+  await handler.reconcileOwnedPosition({ mapId: 1, x: 3, y: 4, direction: "UP", serverMovementPending: false });
+  expect(resetScene).not.toHaveBeenCalled();
+  expect(network.sendPlayerPosition).not.toHaveBeenCalled();
+  expect(movement.syncPosition).toHaveBeenCalledWith(3, 4);
+  expect(renderer.snapActorPosition).toHaveBeenCalledWith(10, 3, 4, "UP", actor);
+});
+
+
+test("owned correction preserves an unfinished server movement phase", async () => {
+ const {handler,movement,resetScene}=warpFixture();
+ await handler.reconcileOwnedPosition({mapId:1,x:3,y:4,direction:"UP",serverMovementPending:true});
+ expect(movement.beginServerMovement).toHaveBeenCalledWith(false);
+ expect(resetScene).not.toHaveBeenCalled();
 });

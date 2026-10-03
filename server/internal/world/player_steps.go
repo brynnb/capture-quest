@@ -39,15 +39,38 @@ func decodePlayerMovement(payload []byte, target any) error {
 	return nil
 }
 
-func sendPlayerStepError(ses *session.Session, wh *WorldHandler, requestID string, opcode opcodes.OpCode) {
-	x, y, mapID := wh.ownedPlayerPosition(ses)
-	direction := "DOWN"
-	if wh.PlayerMovement != nil {
-		if facing, ok := wh.PlayerMovement.GetDirection(int(ses.Client.CharData().ID)); ok {
-			direction = facing
+func (wh *WorldHandler) ownedPlayerSnapshot(ses *session.Session, requestID string) protocol.OwnedPlayerPositionResponse {
+	char := ses.Client.CharData()
+	p := protocol.OwnedPlayerPositionResponse{Success: true, RequestID: requestID, MapID: int(char.MapID), X: int(char.X), Y: int(char.Y), Direction: "DOWN"}
+	if m := wh.PlayerMovement; m != nil {
+		m.mu.RLock()
+		if state := m.players[int(char.ID)]; state != nil && state.SessionID == ses.SessionID {
+			p.MapID, p.X, p.Y, p.Direction = state.MapID, state.CurrentX, state.CurrentY, state.Direction
+			p.ServerMovementPending = len(state.Path) != 0
 		}
+		m.mu.RUnlock()
 	}
-	ses.SendStreamJSON(protocol.PlayerStepError{RequestID: requestID, Error: "Movement was not accepted. Please try again.", MapID: mapID, X: x, Y: y, Direction: direction}, opcode)
+	return p
+}
+
+func sendOwnedPlayerError(ses *session.Session, wh *WorldHandler, requestID string, opcode opcodes.OpCode, message string) {
+	p := wh.ownedPlayerSnapshot(ses, requestID)
+	ses.SendStreamJSON(protocol.PlayerStepError{RequestID: requestID, Error: message, MapID: p.MapID, X: p.X, Y: p.Y, Direction: p.Direction, ServerMovementPending: p.ServerMovementPending}, opcode)
+}
+func sendPlayerStepError(ses *session.Session, wh *WorldHandler, requestID string, opcode opcodes.OpCode) {
+	sendOwnedPlayerError(ses, wh, requestID, opcode, "Movement was not accepted. Please try again.")
+}
+
+// Read under the selected character's command gate after preceding mutations.
+// No arrival effects, position writes or client destination are part of recovery.
+func HandleOwnedPlayerPositionRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
+	var req protocol.OwnedPlayerPositionRequest
+	if decodePlayerMovement(payload, &req) != nil || req.RequestID == "" || len(req.RequestID) > 64 {
+		sendOwnedPlayerError(ses, wh, req.RequestID, opcodes.OwnedPlayerPositionResponse, "Invalid position read.")
+		return false
+	}
+	ses.SendStreamJSON(wh.ownedPlayerSnapshot(ses, req.RequestID), opcodes.OwnedPlayerPositionResponse)
+	return false
 }
 
 func HandlePlayerStepRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
@@ -241,14 +264,15 @@ func HandlePlayerFacingRequest(ses *session.Session, payload []byte, wh *WorldHa
 		sendPlayerStepError(ses, wh, req.RequestID, opcodes.PlayerFacingResponse)
 		return false
 	}
-	ses.SendStreamJSON(protocol.PlayerFacingResponse{Success: true, RequestID: req.RequestID, MapID: facing.mapID, X: facing.x, Y: facing.y, Direction: facing.direction}, opcodes.PlayerFacingResponse)
+	ses.SendStreamJSON(protocol.PlayerFacingResponse{Success: true, RequestID: req.RequestID, MapID: facing.mapID, X: facing.x, Y: facing.y, Direction: facing.direction, ServerMovementPending: facing.serverMovementPending}, opcodes.PlayerFacingResponse)
 	broadcastCommittedPlayerStep(ses, wh, facing.x, facing.y, facing.mapID, facing.direction, facing.mapID)
 	return false
 }
 
 type ownedPlayerFacing struct {
-	x, y, mapID int
-	direction   string
+	serverMovementPending bool
+	x, y, mapID           int
+	direction             string
 }
 
 func (m *PlayerMovementManager) facePlayer(ses *session.Session, req protocol.PlayerFacingRequest) (ownedPlayerFacing, error) {
@@ -273,5 +297,8 @@ func (m *PlayerMovementManager) facePlayer(ses *session.Session, req protocol.Pl
 	if result, attempted := m.tryPushBoulderFromFacingAttempt(charID, mapID, x, y, direction); attempted && result.Success {
 		m.queueStepAfterBoulderPush(charID, x, y, mapID, result)
 	}
-	return ownedPlayerFacing{x: x, y: y, mapID: mapID, direction: direction}, nil
+	m.mu.RLock()
+	pending := m.players[charID] == state && len(state.Path) != 0
+	m.mu.RUnlock()
+	return ownedPlayerFacing{x: x, y: y, mapID: mapID, direction: direction, serverMovementPending: pending}, nil
 }

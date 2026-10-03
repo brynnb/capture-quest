@@ -1,5 +1,7 @@
 package protocol
 
+import "encoding/json"
+
 type PhaserMapScriptsRequest struct {
 	MapName string `json:"mapName"` // Runtime map name
 }
@@ -199,13 +201,14 @@ type PlayerStepCompleteResponse struct {
 
 // PlayerStepError returns the owned location so rejected animations can reconcile.
 type PlayerStepError struct {
-	Success   bool   `json:"success" tstype:"false"`
-	RequestID string `json:"requestId"`
-	Error     string `json:"error"`
-	MapID     int    `json:"mapId"`
-	X         int    `json:"x"`
-	Y         int    `json:"y"`
-	Direction string `json:"direction"`
+	Success               bool   `json:"success" tstype:"false"`
+	RequestID             string `json:"requestId"`
+	Error                 string `json:"error"`
+	MapID                 int    `json:"mapId"`
+	X                     int    `json:"x"`
+	Y                     int    `json:"y"`
+	Direction             string `json:"direction"`
+	ServerMovementPending bool   `json:"serverMovementPending"`
 }
 
 // Facing validates an expected owned source and cannot supply a destination.
@@ -217,12 +220,13 @@ type PlayerFacingRequest struct {
 	RequestID string `json:"requestId"`
 }
 type PlayerFacingResponse struct {
-	Success   bool   `json:"success" tstype:"true"`
-	RequestID string `json:"requestId"`
-	MapID     int    `json:"mapId"`
-	X         int    `json:"x"`
-	Y         int    `json:"y"`
-	Direction string `json:"direction"`
+	Success               bool   `json:"success" tstype:"true"`
+	RequestID             string `json:"requestId"`
+	MapID                 int    `json:"mapId"`
+	X                     int    `json:"x"`
+	Y                     int    `json:"y"`
+	Direction             string `json:"direction"`
+	ServerMovementPending bool   `json:"serverMovementPending"`
 }
 
 // Server-controlled path positions are committed before projection to the owner.
@@ -235,4 +239,36 @@ type ServerPlayerMovementNotify struct {
 	Direction    string `json:"direction"`
 	MoveSpeed    int    `json:"moveSpeed"`
 	PathFinished bool   `json:"pathFinished"`
+}
+
+// Cutscene completion carries authorization/correlation only, never coordinates.
+type CutsceneEndRequest struct {
+	CompletionToken string `json:"completionToken"`
+	ScriptLabel     string `json:"scriptLabel"`
+	RequestID       string `json:"requestId"`
+}
+
+type OwnedPlayerPositionRequest struct {
+	RequestID string `json:"requestId"`
+}
+type OwnedPlayerPositionResponse struct {
+	Success               bool   `json:"success" tstype:"true"`
+	RequestID             string `json:"requestId"`
+	MapID                 int    `json:"mapId"`
+	X                     int    `json:"x"`
+	Y                     int    `json:"y"`
+	Direction             string `json:"direction"`
+	ServerMovementPending bool   `json:"serverMovementPending"`
+}
+type CutsceneEndResponse struct {
+	OwnedPlayerPositionResponse `tstype:",extends"`
+	Completed                   bool `json:"completed"`
+}
+
+// Actions retain the shared compiler/runtime/simulator contract.
+type CutsceneStartNotify struct {
+	ScriptLabel     string          `json:"scriptLabel"`
+	CompletionToken string          `json:"completionToken"`
+	MapName         string          `json:"mapName"`
+	Actions         json.RawMessage `json:"actions" tstype:"import(\"./scriptedactions\").Action[]"`
 }

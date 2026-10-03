@@ -379,13 +379,6 @@ export interface GameCornerSlotPlayResult {
 //////////
 // source: handler-cutscene.go
 
-/**
- * CutsceneEndRequest is sent when the client finishes playing a cutscene.
- */
-export interface CutsceneEndRequest {
-  completionToken: string;
-  scriptLabel: string; // The cutscene that was completed
-}
 export type CutsceneAction = import("./scriptedactions").Action;
 export interface CutsceneActionEffect {
   type: string;

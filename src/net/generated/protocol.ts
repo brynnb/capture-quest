@@ -294,6 +294,7 @@ export interface PlayerStepError {
   x: number /* int */;
   y: number /* int */;
   direction: string;
+  serverMovementPending: boolean;
 }
 /**
  * Facing validates an expected owned source and cannot supply a destination.
@@ -312,6 +313,7 @@ export interface PlayerFacingResponse {
   x: number /* int */;
   y: number /* int */;
   direction: string;
+  serverMovementPending: boolean;
 }
 /**
  * Server-controlled path positions are committed before projection to the owner.
@@ -325,6 +327,38 @@ export interface ServerPlayerMovementNotify {
   direction: string;
   moveSpeed: number /* int */;
   pathFinished: boolean;
+}
+/**
+ * Cutscene completion carries authorization/correlation only, never coordinates.
+ */
+export interface CutsceneEndRequest {
+  completionToken: string;
+  scriptLabel: string;
+  requestId: string;
+}
+export interface OwnedPlayerPositionRequest {
+  requestId: string;
+}
+export interface OwnedPlayerPositionResponse {
+  success: true;
+  requestId: string;
+  mapId: number /* int */;
+  x: number /* int */;
+  y: number /* int */;
+  direction: string;
+  serverMovementPending: boolean;
+}
+export interface CutsceneEndResponse extends OwnedPlayerPositionResponse {
+  completed: boolean;
+}
+/**
+ * Actions retain the shared compiler/runtime/simulator contract.
+ */
+export interface CutsceneStartNotify {
+  scriptLabel: string;
+  completionToken: string;
+  mapName: string;
+  actions: import("./scriptedactions").Action[];
 }
 
 //////////

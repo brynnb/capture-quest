@@ -856,6 +856,7 @@ export class TileViewer extends Scene {
     this.warpManager.setupKeyboardWarpHandlers();
 
     this.cutsceneController = new CutsceneSpriteController({
+      onReconcile: (position) => this.warpEvents.reconcileOwnedPosition(position),
       scene: this,
       mapContainer: () => this.mapContainer,
       actorManager: () => this.actorManager,
