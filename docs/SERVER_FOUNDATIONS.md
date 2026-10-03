@@ -3,7 +3,7 @@
 Status: active. Started 2026-09-25 from `02c51ba`.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-durable Repel consumption/activation/expiry (2026-10-02), following FLY
+durable Repel consumption/activation/expiry `adaa047` (2026-10-02), following FLY
 checkpoint `b785d58`.
 All earlier foundation checkpoints are retained in this
 branch's history. No push or production deployment is authorized by this goal.
@@ -79,6 +79,39 @@ evidence, including remaining-work notes that subsequent commits may resolve.
    cancellation/timeouts, failure/retry and shutdown with active players.
    Acceptance: evidence covers the original five milestones, including visible
    behavior where relevant. Only then mark the full goal complete.
+
+## Branch handoff (2026-10-02)
+
+The implementation through `adaa047` is committed on
+`codex/server-foundations`. The working tree was clean when this handoff was
+prepared. The latest implementation and its verification are recorded in the
+Durable Repel checkpoint below. This handoff adds documentation only; no push,
+deployment, or normal local/production database migration has occurred.
+
+The next checkpoint is Safari ownership and transaction safety. Inspection of
+`handler-safari.go` confirms that `GetSession` returns a mutable session pointer
+after releasing the manager lock, and `SetSession` retains the supplied battle
+pointer. Direct entry deducts money before creating the in-memory session.
+Scripted entry pays inside its existing transaction but creates the session as
+an after-commit action. Capture marks the Pokédex separately from saving the
+Pokémon; save errors are logged while the response can still report a catch.
+These paths have not yet been migrated or verified against transaction failure.
+
+The proposed change is one durable Safari visit/battle state, replacing the
+mutable session map. Entry payment, counters, capture storage and Pokédex updates
+should use the existing bounded character transaction, with notifications only
+after commit. Scripted actions must join their existing transaction. Migrate
+movement/exit guards, local fixtures and simulator consumers together; propagate
+storage errors rather than treating them as an inactive visit. Audit direct
+entry authorization against the imported gate script before changing that route.
+
+Acceptance requires concurrent entry to charge once, rollback to preserve money,
+counters and capture state, recovery through a fresh manager, and existing Safari
+simulator scenarios to retain their intended behavior. Verify the rendered entry,
+battle and exit flow where affected. This is the next implementation plan, not a
+completed checkpoint. Durable command/result recovery, cancellation, bounded
+shutdown, remaining domain/contracts and integrated transport checks still remain
+in the full roadmap above.
 
 ## Verification and release boundary
 
