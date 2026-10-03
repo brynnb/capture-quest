@@ -1188,15 +1188,14 @@ that joins an existing transaction and locks the character before both reads.
 Gameplay recovery, standalone bag requests and shop mutations use the same
 currency policy and error boundary. Buy/sell capture their complete bag before
 commit; final read failures roll back the mutation. Tagged replies include
-`inventory: {items, money}` and the compatibility bag notification reuses that
-exact value. The client replaces the full bag and synchronizes both money views;
+`inventory: {items, money, shopRevision}`; shop mutations publish only their
+correlated result. The client replaces the full bag and synchronizes both money views;
 it does not reconstruct split-stack grants from the first returned instance ID.
 
-This provides correct committed publication and idempotent delivery, not durable
-request deduplication. Shop request identity, acknowledgement/timeout recovery,
-merchant eligibility, standalone packet revision fences and field-item outcome
-migration remain in SERVER_FOUNDATIONS.md. Updated frontend and backend shop
-contracts must be activated together.
+The durable revision rules below protect competing shop commands; publication
+alone is not duplicate protection. Remaining standalone stream and party/field
+outcome migrations are tracked in SERVER_FOUNDATIONS.md. Updated frontend and
+backend shop contracts must be activated together.
 
 ### Durable shop command identity
 
@@ -1214,5 +1213,15 @@ shop close, character change and scene retirement. The UI waits for a correlated
 reply or current-state recovery; a timeout never resends a mutation. The obsolete
 independent shop inventory publication and global buy/sell handlers are removed.
 Standalone inventory readers remain and filter lower shop revisions. Same-revision
-legacy notifications, merchant-open authority and party/field commands still need
-migration; shop revision is not a universal inventory version.
+legacy notifications and party/field commands still need migration; shop revision
+is not a universal inventory version. Source clerk authorization applies to
+opening, buying and selling, as described under Offers above.
+
+The isolated shop process-recovery test verifies committed buy and sale outcomes
+across two actual SIGKILL/restart boundaries with lost acknowledgements. It compares
+wallet, inventory ownership/row identities, revision and source stock directly in
+PostgreSQL, authenticates fresh pages, and rejects old revisions using a current
+clerk selector and a still-owned sale target. Delivery of the historical purchase
+reply cannot replace the final rendered balance. The test covers committed
+outcomes; uncommitted transaction rollback remains separate PostgreSQL suite
+evidence. See SERVER_FOUNDATIONS.md for exact receipts, scope and remaining work.

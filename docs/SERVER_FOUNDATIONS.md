@@ -2,15 +2,13 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-per-command clerk authorization and source sale policy, following source-authorized merchant opening and scene-bound replies `d638d8b`, then injected merchant reads and owned-map selection `5ac9f66`, then `21fd084` — durable shop revisions and correlated command recovery, explicit isolated simulator targeting `74defe0` and committed shop inventory snapshots `5082a39` and coherent inventory/wallet/party/flag recovery `129463c` and ordinary step crash acceptance `e0ecf41`, issued cutscene and creation-only fixtures `8c95d40`, move-choice acceptance `e0da0c4` and terminal Safari acceptance `9bf3630`
-(2026-10-03), following rendered capture recovery `fbe744e`, simulator contract migration `9f59dd3`, expiry presentation recovery `54dbef6`, guarded Safari commands `d673aea`, durable capture placement and terminal login retention `58d0b85`, rendered move-choice recovery `7eb3a7e`, move-choice storage/coordinator acceptance `072ad71`, blackout scene ownership `04579dc`, terminal dismissal/post-battle plans `8ce43ff`, current-owned gameplay recovery `c38a74c`, correlated battle recovery `30fa1bb` and network battle command identity `8a5ba4a`, coherent gameplay recovery `c0d31f9` and durable cutscene issuance/completion `e9eb834`, pending trainer encounters `84f2d91` and ordinary-step receipts `80a544c`, following atomic movement-step effects `cfdeb9e`, retirement of the client coordinate setter `2df1db0`, correlated cutscene completion `6638a63`, issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
-`0585dde`, committed
-blackout/recovery `2f62595`, teleport notification projection `65a5581`, Instant
-Warp `e1f54a8`, normal warps `3899660`, owned-position loading `64cf970`,
-provenance `057f758` and atomic map-load `b8f5ccd`.
-Earlier foundation checkpoints remain in this branch's history. No push or production deployment
-is authorized by this goal.
+Working branch: `codex/server-foundations`. Latest verified checkpoint: committed
+shop buy/sale recovery across two actual process crashes (2026-10-03). The runtime
+implementation is `f118916` (per-command clerk authorization and source sale
+policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected menu
+reads) and `21fd084` (durable shop revisions and correlated recovery).
+Earlier checkpoints and their verification limits are recorded below and in this
+branch's Git history. No push or production deployment is authorized by this goal.
 
 Keep Go, PostgreSQL, one deployable server, and the authoritative extractor,
 runtime asset, and scripted-action contracts. Improve runtime safety through
@@ -66,7 +64,7 @@ presentation is replaced. Capture placement now survives lost replies and
 character reentry, with explicit party/PC summary dismissal. Login retains
 terminal battles for coherent scene recovery and atomic post-battle plan issuance.
 Safari actions and dismissal now share the correlated command coordinator, with
-durable identity/revision guards and terminal catch placement recovery. Terminal Safari Run, party/PC captures, pending move choices and one issued Oak's Lab cutscene now have actual crash/restart acceptance. Ordinary walking now has acceptance for abandoning uncompleted tokens and recovering committed receipts without repeating Safari counters. Local/test party and inventory setup both belong to creation; reentry preserves intentionally empty parties.
+durable identity/revision guards and terminal catch placement recovery. Terminal Safari Run, party/PC captures, pending move choices, one issued Oak's Lab cutscene and committed shop buy/sale commands now have actual crash/restart acceptance. Ordinary walking now has acceptance for abandoning uncompleted tokens and recovering committed receipts without repeating Safari counters. Local/test party and inventory setup both belong to creation; reentry preserves intentionally empty parties.
 The coherent recovery response now includes inventory, wallet, the full party and
 sorted flags. Inventory reads share one bounded transactional reader, and shop
 buy/sell replies include their complete committed bag without client stack guessing.
@@ -94,9 +92,10 @@ Merchant opening and every buy/sell command now require a reachable visible
 source clerk and current script eligibility. The client retains the acknowledged
 menu's actor ID; an earlier open is not a reusable server permission. Source sale
 policy and real-transport delivered/lost sale acknowledgement checks have landed.
-The immediate next checkpoint is actual process-death acceptance for shop
-commands, followed by party/field item commands through the same typed ownership
-and recovery boundary. The sale browser check exercises the existing coordinator
+Committed shop buy/sale commands now also have two actual process crashes with
+stale-revision rejection, stable item identities and verified late-reply delivery.
+The immediate next checkpoint is party/field item commands through the same typed
+ownership and recovery boundary. The sale browser check exercises the existing coordinator
 and rendered balance; the product still has no Sell button.
 
 Continue with recovery integration for the remaining mutation commands and the
@@ -117,6 +116,56 @@ legacy behavior and verification limits; a narrow passing checkpoint does not
 close the broad goal. Production validation belongs to a separately authorized
 deployment. Current work is committed locally; nothing has been pushed or
 deployed by this goal.
+
+## Committed shop buy/sale process-death acceptance (2026-10-03)
+
+`tests/e2e/shop-process-recovery.spec.ts` reuses the existing exact-process private
+runtime helper and source shop fixture. It withholds a committed purchase reply,
+checks PostgreSQL independently, then asks the shell owner to SIGKILL and reap its
+recorded server child. It enters the same character through a fresh authenticated
+page without rerunning the fixture. It then repeats that boundary for a committed
+whole-stack sale and enters again after the second restart.
+
+The final run passed in 19.0 seconds at
+`/var/tmp/capturequest-rendered.4iV6gX`. Actual process receipts record
+`3099399 -> 3100101 -> 3100392`, with exit 137 at both crash boundaries and one
+unchanged private PostgreSQL cluster. The database went from money 10,000,
+revision 0 and instance 139 with 95 source POKE_BALL items, to money 8,000,
+revision 1 and instances 139/140 with 99/6 items. Selling instance 140 committed
+600 credit, money 8,600 and revision 2, retaining instance 139 with 99 items.
+Ownership and unlimited source stock stayed unchanged. These exact row IDs are
+run evidence, not production identities or fixture requirements.
+
+After each restart, the test obtains an acknowledged current runtime clerk ID
+and retries the old durable revision. It requires the economy rejection, avoiding
+an obsolete actor-ID rejection that could mask a missing revision guard. The
+stale sale targets the still-owned 99-item stack, so a missing sold instance cannot
+mask that guard either. Independent PostgreSQL snapshots stay identical after
+reentry and rejection. Only the original buy/sale and their explicit stale probes
+are sent; the coordinator does not resend lost mutations.
+
+The final scene receives the original withheld purchase packet through its real
+socket; a diagnostic listener proves delivery before asserting that the bag and
+rendered 8,600 balance remain current. The final screenshot was inspected, the
+shop exits normally, and authenticated logout succeeds. The exact final server,
+client and private PostgreSQL stopped. An initial run reached those recovery
+assertions but failed during cleanup because the open shop overlay blocked Quit;
+the test was repaired to click the existing Exit control, not weaken assertions.
+`git diff --check` passed. No runtime source changed in this acceptance checkpoint;
+the canonical harness built and checked the existing runtime and asset family.
+
+Limits: both SIGKILLs occur after a transaction committed, not during an
+uncommitted transaction. Existing PostgreSQL rollback/commit-failure suites cover
+those transaction boundaries separately. The unlimited-stock source fixture does
+not establish finite-stock crash behavior. The sale uses the existing coordinator
+because the product has no Sell button. This is isolated rendered/transport/database
+acceptance, not live deployment evidence or completion of the full goal.
+
+Remaining: party/field item identity and timeout recovery, remaining callbacks,
+global/domain/wire migrations, queued script/trainer plan ordering and remaining
+lifecycle acceptance in the five-area table. Recommended next step: migrate
+party/field item commands through the shared ownership and recovery boundaries.
+Local checkpoint only; nothing pushed or deployed.
 
 ## Per-command clerk authorization and source sale policy (2026-10-03)
 
