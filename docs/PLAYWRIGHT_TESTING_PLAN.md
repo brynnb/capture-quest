@@ -388,7 +388,15 @@ explicit correlated dismissal without replaying the mutation. The shared rendere
 Safari helper uses real capture/flee rolls and independent fixtures after a flee.
 Screenshot artifacts supplement automated state/DOM assertions; test success does
 not depend on manual screenshot interpretation. Automatic live-page reconnect,
-pre-commit crashes and pending learning/script/movement plans need separate cases.
+pre-commit crashes and issued script/movement plans need separate cases.
+
+Two move-choice cases also crash twice: after the earned-EXP turn commits with
+`pendingMove`, and after an explicit learn/skip choice commits while its reply is
+withheld. Fresh authenticated entry restores the pending choice, then the settled
+terminal state; the normal dismissal runs once. Full database rows, stable Pokémon
+IDs, EXP, move slots and action/choice/close counts prove settlement without replay.
+The same crash helper reads `current-server.pid` for each generation, so a second
+crash never targets the original retired PID.
 
 Shutdown mode remains separate:
 

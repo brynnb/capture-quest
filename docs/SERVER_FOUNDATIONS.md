@@ -2,7 +2,7 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest implementation checkpoint: `9bf3630`, terminal Safari process-death recovery acceptance
+Working branch: `codex/server-foundations`. Latest implementation checkpoint: pending move-choice process-death acceptance, following `9bf3630`, terminal Safari process-death recovery acceptance
 (2026-10-03), following rendered capture recovery `fbe744e`, simulator contract migration `9f59dd3`, expiry presentation recovery `54dbef6`, guarded Safari commands `d673aea`, durable capture placement and terminal login retention `58d0b85`, rendered move-choice recovery `7eb3a7e`, move-choice storage/coordinator acceptance `072ad71`, blackout scene ownership `04579dc`, terminal dismissal/post-battle plans `8ce43ff`, current-owned gameplay recovery `c38a74c`, correlated battle recovery `30fa1bb` and network battle command identity `8a5ba4a`, coherent gameplay recovery `c0d31f9` and durable cutscene issuance/completion `e9eb834`, pending trainer encounters `84f2d91` and ordinary-step receipts `80a544c`, following atomic movement-step effects `cfdeb9e`, retirement of the client coordinate setter `2df1db0`, correlated cutscene completion `6638a63`, issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
 `0585dde`, committed
 blackout/recovery `2f62595`, teleport notification projection `65a5581`, Instant
@@ -65,7 +65,7 @@ presentation is replaced. Capture placement now survives lost replies and
 character reentry, with explicit party/PC summary dismissal. Login retains
 terminal battles for coherent scene recovery and atomic post-battle plan issuance.
 Safari actions and dismissal now share the correlated command coordinator, with
-durable identity/revision guards and terminal catch placement recovery. Terminal Safari Run and party/PC captures now have actual crash/restart acceptance.
+durable identity/revision guards and terminal catch placement recovery. Terminal Safari Run, party/PC captures and pending move choices now have actual crash/restart acceptance.
 Full inventory, wallet and flag resynchronization and remaining process-recovery
 coverage still need work. Evidence and verification limits
 appear in the checkpoint sections below.
@@ -78,17 +78,16 @@ number of commits or passing tests. All five areas still have outstanding work.
 | Area | Implemented | Still required |
 | --- | --- | --- |
 | Request/session boundary | Packet and connection limits, centralized session prerequisites, removal of insecure session takeover, actual transport closure, location/visibility checks for scripted clicks, dialogue choices and direct trainer battles, client destination catalog validation, server-resolved normal warp activation, explicit Instant Warp commands, committed teleport notification contracts and read-only map metadata, retired coordinate/map setters, and preserved command deadlines/disconnect cancellation in migrated operations. | Audit remaining interaction/mutation endpoints; propagate cancellation through legacy managers and remaining database/network work. |
-| Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors, Game Corner prizes and bounded coin/slot/hidden-coin operations, atomic Escape Rope/FLY positions, durable Repel counters, Safari entry/turn/capture state and exhaustion destinations, atomic blackout/recovery destinations and map-load position/Safari/flag/visibility/boulder effects, atomic movement-step counters, encounters and recovery, durable latest ordinary-step receipts, durable sight-trainer plans/resumption and atomic readiness resolution, durable cutscene snapshots/completion receipts/cancellation, coherent battle/Safari/pending-plan recovery, mandatory ordinary/Safari battle command identity, correlated battle timeout recovery and retained Safari terminal/capture state, recoverable terminal dismissal and atomic post-battle plans, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery for remaining mutations across reconnects; finish current-state recovery for inventory/wallet/flags and remaining presentation, finish process-death acceptance for pending choices and issued movement/script plans; finish queued-plan/source/catalog ordering acceptance coverage and remaining command recovery. |
+| Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors, Game Corner prizes and bounded coin/slot/hidden-coin operations, atomic Escape Rope/FLY positions, durable Repel counters, Safari entry/turn/capture state and exhaustion destinations, atomic blackout/recovery destinations and map-load position/Safari/flag/visibility/boulder effects, atomic movement-step counters, encounters and recovery, durable latest ordinary-step receipts, durable sight-trainer plans/resumption and atomic readiness resolution, durable cutscene snapshots/completion receipts/cancellation, coherent battle/Safari/pending-plan recovery, mandatory ordinary/Safari battle command identity, correlated battle timeout recovery and retained Safari terminal/capture state, recoverable terminal dismissal and atomic post-battle plans, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery for remaining mutations across reconnects; finish current-state recovery for inventory/wallet/flags and remaining presentation, finish process-death acceptance for issued movement/script plans and remaining choices; finish queued-plan/source/catalog ordering acceptance coverage and remaining command recovery. |
 | Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, movement ticks coordinated with the owner, and immediate retirement of battle-scene command admission/subscriptions. | Finish timer/callback/shared-state and legacy position-writer audits; prove remaining concurrent/reconnect behavior across real transports. |
 | Domains and wire contracts | Injected content-query service; typed character/wallet/bind, Pokédex/card, content detail, map-script, map-info/list, sight-trainer notification/readiness, coherent gameplay recovery, ordinary/Safari battle command replies, shared battle events and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
 | Lifecycle and verification | Owned HTTP/listeners, readiness, listener failure propagation, joined periodic workers, sealed session admissions, fail-closed staged preload, startup cancellation, atomic scripted-event publication, and deadline-aware shutdown waits with returned failure results. | Audit cancellation of remaining legacy work, define durable final-save recovery, and complete transport/rendered integration coverage. Owned HTTP and player transport retirement and isolated active-player shutdown checks have landed. |
 
 ### Next work and completion criteria
 
-Continue with actual process-death acceptance for pending move learning, then
-issued movement and script plans. Verify unfinished decisions after fresh
-authenticated entry, settlement exactly once, unchanged earned experience and
-stable Pokémon row identities. These are planned checks, not completed coverage.
+Continue with actual process-death acceptance for issued movement and script
+plans. Pending move learning and skipping now have two-crash acceptance as
+documented below; other unfinished decisions still require their own evidence.
 
 Next, finish coherent inventory, wallet and flag resynchronization and audit the
 remaining mutation endpoints, timers/callbacks, cancellation and global domain
@@ -102,6 +101,46 @@ legacy behavior and verification limits; a narrow passing checkpoint does not
 close the broad goal. Production validation belongs to a separately authorized
 deployment. Current work is committed locally; nothing has been pushed or
 deployed by this goal.
+
+## Pending move-choice process-death acceptance (2026-10-03)
+
+Two real transport/rendered cases extend the private exact-process crash lane to
+learning or skipping LEECH_SEED. The existing fixture supplies a level-6 Bulbasaur
+with four configured moves and an original level-2 Chansey; the original EXP and
+learnset produce 72 earned EXP and the level-7 choice. Fixture moves are test
+preparation, not a claim about the natural level-6 moveset.
+
+The tests withhold the actual committed turn response containing `pendingMove`,
+inspect `character_battle_state.battle_json` and full `character_pokemon` rows,
+then crash the owned server. Fresh readiness and fresh authenticated character
+entry must preserve those exact records and show the unfinished choice without
+resending the turn. Each test sends one explicit learn/skip command, withholds its
+committed reply and crashes again. The second restart preserves the settled
+revision, row identities, EXP and moves. Fresh entry uses the existing normal
+terminal dismissal path exactly once, clears the saved battle and retains all
+settled Pokémon rows. A further character reentry cannot replay the choice or EXP.
+The crash/SQL/evidence helper is shared with the existing Safari cases in the same
+spec; the production implementation did not need a change.
+
+All five process-recovery cases passed (1.2 minutes), including both new two-crash
+cases (18.2/18.3 seconds), at `/var/tmp/capturequest-rendered.yRGAcx`. Learning used
+`2815403 -> 2815773 -> 2815963`; skipping used
+`2815963 -> 2816395 -> 2816559`. Every killed predecessor was reaped with exit 137.
+Stable Pokémon rows `[47]` and `[54]` each retain EXP 251, up from 179. Settled move
+IDs are `[75,73,45,22]` for learn and `[75,33,45,22]` for skip. The evidence JSON
+stores compared records and receipts. All four pending/settled screenshots were
+inspected. Typecheck and `git diff --check` pass. Logs are
+`/var/tmp/capturequest-move-crash-{rendered,types}.log`; the private runtime is
+stopped. A production build and broad Go suites were not repeated for this
+acceptance-only change.
+
+This proves recovery after committed boundaries through fresh authenticated
+entry. Automatic live-page reconnect, pre-commit crashes, issued movement/script
+plans, other unfinished choices and recovery of already-dismissed notices remain
+separate work. The full five-area goal remains active. Recommended next step:
+extend the crash lane to issued plans, then continue inventory/wallet/flag
+resynchronization and the remaining endpoint, callback, dependency/contract and
+shutdown audits. Local checkpoint only; no push or deployment.
 
 ## Terminal Safari process-death recovery acceptance (2026-10-03)
 

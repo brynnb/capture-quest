@@ -1097,3 +1097,22 @@ gameplay snapshot remains read-only and rejects an unupgraded encounter rather
 than inventing an ephemeral identity. Unsupported versions and malformed current
 records fail closed. See `SERVER_FOUNDATIONS.md` for checkpoint evidence and the
 remaining full-goal work.
+
+
+### Process recovery acceptance boundaries
+
+The private `CQ_E2E_CRASH_RECOVERY=true` lane verifies durable gameplay against a
+fresh server binary process and a fresh authenticated browser page. Safari Run
+and party/PC captures survive a committed terminal response loss before SIGKILL.
+Ordinary pending move choices survive two such boundaries: the turn earning EXP
+and issuing the choice, then the explicit learn/skip command settling it. Battle
+identity/revision and full Pokémon rows survive fresh readiness; pending entry
+cannot dismiss the unfinished choice, while settled entry performs one ordinary
+atomic terminal close. These checks use the existing persistence/recovery paths;
+no test-specific gameplay recovery implementation is added.
+
+This evidence covers committed boundaries and fresh authenticated entry. It does
+not establish automatic reconnect of a live page, recovery before transaction
+commit, or issued movement/script-plan crash behavior. Commands, raw database
+records, exact owned PID receipts and rendered screenshots are retained by the
+isolated runner. See `SERVER_FOUNDATIONS.md` for evidence and remaining scope.
