@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -29,15 +30,16 @@ type CutsceneActionEffect struct {
 }
 
 type CutsceneActionContext struct {
-	Database     *sql.DB
-	mutation     *cutsceneMutation
-	Session      *session.Session
-	WorldHandler *WorldHandler
-	EventFlags   *EventFlagManager
-	Choice       *bool
-	StopAtChoice bool
-	issuedSource *cutscenePosition
-	state        *cutsceneActionState
+	Database         *sql.DB
+	mutation         *cutsceneMutation
+	Session          *session.Session
+	WorldHandler     *WorldHandler
+	EventFlags       *EventFlagManager
+	Choice           *bool
+	StopAtChoice     bool
+	issuedCompletion *cutsceneCompletion
+	issuedSource     *cutscenePosition
+	state            *cutsceneActionState
 }
 
 type cutsceneActionState struct {
@@ -63,35 +65,22 @@ func HandleCutsceneEndRequest(ses *session.Session, payload []byte, wh *WorldHan
 	if ses.IsClosed() {
 		return false
 	}
-	issued, ok := ses.IssuedCutscenes.Claim(charID, req.ScriptLabel, req.CompletionToken)
-	if !ok {
-		sendOwnedPlayerError(ses, wh, req.RequestID, opcodes.CutsceneEndResponse, "Cutscene completion was not accepted.")
-		return false
-	}
-	committed := false
-	defer func() { ses.IssuedCutscenes.Finish(req.CompletionToken, committed) }()
-	var event issuedCutscene
-	if err := json.Unmarshal(issued, &event); err != nil {
-		sendOwnedPlayerError(ses, wh, req.RequestID, opcodes.CutsceneEndResponse, "Invalid issued event.")
-		return false
-	}
-
-	cs := event.Script
-	_, completed, err := ApplyCutsceneScript(ses.CommandContext(), CutsceneActionContext{Session: ses, WorldHandler: wh, EventFlags: wh.EventFlags, issuedSource: &cutscenePosition{mapID: event.MapID, x: event.X, y: event.Y}}, &cs, charID)
+	completion := &cutsceneCompletion{Token: req.CompletionToken, Label: req.ScriptLabel, Cancel: req.Cancel}
+	_, completed, err := runCutsceneMutation(ses.CommandContext(), CutsceneActionContext{Session: ses, WorldHandler: wh, EventFlags: wh.EventFlags, issuedCompletion: completion}, "", nil, charID, nil)
+	cs := completion.Event.Script
 	if err != nil {
 		log.Printf("[Cutscene] Failed to apply script %s for character %d: %v", cs.ScriptLabel, charID, err)
 		sendOwnedPlayerError(ses, wh, req.RequestID, opcodes.CutsceneEndResponse, "That event could not be completed. Please try again.")
 		return false
 	}
-	committed = true
-	if completed {
+	if completed && !completion.Replayed {
 		sendEventTileStatesForSession(ses, charID, cs.MapName, wh)
 		if cutsceneAffectsTrainerCard(&cs) {
 			sendTrainerCardResponse(ses, wh)
 		}
 	}
 
-	ses.SendStreamJSON(protocol.CutsceneEndResponse{OwnedPlayerPositionResponse: wh.ownedPlayerSnapshot(ses, req.RequestID), Completed: completed}, opcodes.CutsceneEndResponse)
+	ses.SendStreamJSON(protocol.CutsceneEndResponse{OwnedPlayerPositionResponse: wh.ownedPlayerSnapshot(ses, req.RequestID), Completed: completed, Replayed: completion.Replayed}, opcodes.CutsceneEndResponse)
 	return false
 }
 
@@ -146,45 +135,28 @@ type issuedCutscene struct {
 }
 
 // SendCutsceneToPlayer sends a cutscene action sequence to a specific player.
-func SendCutsceneToPlayer(ses *session.Session, cs *CutsceneScript, handlers ...*WorldHandler) {
-	if cs == nil || !ses.HasValidClient() || ses.IsClosed() {
+func SendCutsceneToPlayer(ses *session.Session, cs *CutsceneScript, wh *WorldHandler) {
+	if cs == nil || wh == nil || !ses.HasValidClient() || ses.IsClosed() {
 		return
 	}
-	x, y, mapID, err := currentCutscenePlayerPosition(ses, int64(ses.Client.CharData().ID))
-	if err != nil {
-		return
-	}
-	if len(handlers) > 0 && handlers[0] != nil {
-		x, y, mapID = handlers[0].ownedPlayerPosition(ses)
-	}
-	snapshot, err := json.Marshal(issuedCutscene{Script: *cs, MapID: mapID, X: x, Y: y})
-	if err != nil {
-		log.Printf("[Cutscene] Encode issued event: %v", err)
-		return
-	}
-	token, err := ses.IssuedCutscenes.Issue(int64(ses.Client.CharData().ID), cs.ScriptLabel, snapshot)
-	if err != nil {
-		log.Printf("[Cutscene] Issue event: %v", err)
-		return
-	}
-	actions := cs.Actions
-	if len(handlers) > 0 && handlers[0] != nil {
-		if annotated, err := annotateCutsceneActionsForClient(cs, handlers[0]); err != nil {
-			log.Printf("[Cutscene] Failed to annotate client actions for %s: %v", cs.ScriptLabel, err)
-		} else if len(annotated) > 0 {
-			actions = annotated
+	x, y, mapID := wh.ownedPlayerPosition(ses)
+	var plan *durableCutscene
+	err := db.Transaction(ses.CommandContext(), wh.database, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, int64(ses.Client.CharData().ID)); err != nil {
+			return err
 		}
-	}
-	payload := protocol.CutsceneStartNotify{ScriptLabel: cs.ScriptLabel, CompletionToken: token, MapName: cs.MapName, Actions: actions}
-	if err := ses.SendStreamJSON(payload, opcodes.CutsceneStartNotify); err != nil {
-		ses.IssuedCutscenes.Finish(token, true)
-		log.Printf("[Cutscene] Send issued event: %v", err)
+		var err error
+		plan, err = issueCutsceneIn(tx, int64(ses.Client.CharData().ID), issuedCutscene{Script: *cs, MapID: mapID, X: x, Y: y})
+		return err
+	})
+	if err != nil {
+		log.Printf("[Cutscene] Issue %s: %v", cs.ScriptLabel, err)
 		return
 	}
-	log.Printf("[Cutscene] Sent cutscene %s to player", cs.ScriptLabel)
+	publishCutscenePlan(ses, plan, wh)
 }
 
-func annotateCutsceneActionsForClient(cs *CutsceneScript, wh *WorldHandler) (json.RawMessage, error) {
+func annotateCutsceneActionsForClient(executionCtx context.Context, cs *CutsceneScript, wh *WorldHandler) (json.RawMessage, error) {
 	if cs == nil || wh == nil || wh.ActorRegistry == nil {
 		return nil, nil
 	}
@@ -192,14 +164,22 @@ func annotateCutsceneActionsForClient(cs *CutsceneScript, wh *WorldHandler) (jso
 	if err != nil {
 		return nil, err
 	}
-	changed := annotateCutsceneActionListForClient(actions, cs.MapName, wh)
+	changed := false
+	err = db.Transaction(executionCtx, wh.database, func(tx db.DBTX) error {
+		var err error
+		changed, err = annotateCutsceneActionListForClient(tx, actions, cs.MapName, wh)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
 	if !changed {
 		return nil, nil
 	}
 	return json.Marshal(actions)
 }
 
-func annotateCutsceneActionListForClient(actions []CutsceneAction, mapName string, wh *WorldHandler) bool {
+func annotateCutsceneActionListForClient(database db.DBTX, actions []CutsceneAction, mapName string, wh *WorldHandler) (bool, error) {
 	changed := false
 	for i := range actions {
 		actionMapName := mapName
@@ -211,19 +191,24 @@ func annotateCutsceneActionListForClient(actions []CutsceneAction, mapName strin
 			if actions[i].ActorID != 0 {
 				continue
 			}
-			objectIDs, err := resolveCutsceneObjectIDs(db.GlobalWorldDB.DB, actionMapName, actions[i])
-			if err != nil || len(objectIDs) == 0 {
-				continue
+			objectIDs, err := resolveCutsceneObjectIDs(database, actionMapName, actions[i])
+			if err != nil {
+				return false, err
+			}
+			if len(objectIDs) == 0 {
+				return false, fmt.Errorf("cutscene %s %s object not found: key=%s", actionMapName, actions[i].Type, actions[i].ObjectKey)
 			}
 			actions[i].ActorID = wh.ActorRegistry.GetPhaserID(ActorTypeNPC, objectIDs[0])
 			changed = true
 		case "parallel":
-			if annotateCutsceneActionListForClient(actions[i].Actions, mapName, wh) {
-				changed = true
+			nested, err := annotateCutsceneActionListForClient(database, actions[i].Actions, mapName, wh)
+			if err != nil {
+				return false, err
 			}
+			changed = changed || nested
 		}
 	}
-	return changed
+	return changed, nil
 }
 
 func applyCutsceneActionList(ctx CutsceneActionContext, mapName string, rawActions json.RawMessage, charID int64) ([]CutsceneActionEffect, bool, error) {

@@ -110,6 +110,9 @@ func (m *CutsceneManager) Load(ctx context.Context) error {
 	if m.db == nil {
 		return fmt.Errorf("cutscene preload requires a database")
 	}
+	if err := requireCutsceneIssuanceSchema(ctx, m.db); err != nil {
+		return err
+	}
 	mapRows, err := m.db.QueryContext(ctx, `SELECT id, name FROM phaser_maps`)
 	if err != nil {
 		return fmt.Errorf("load cutscene map names: %w", err)

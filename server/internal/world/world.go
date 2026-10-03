@@ -164,7 +164,6 @@ func (wh *WorldHandler) RemoveSession(sessionID int) {
 func (wh *WorldHandler) cleanupCharacterSession(ctx context.Context, ses *session.Session) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	ses.IssuedCutscenes.Clear()
 	ses.GameCorner.Clear()
 	if !ses.HasValidClient() {
 		return nil

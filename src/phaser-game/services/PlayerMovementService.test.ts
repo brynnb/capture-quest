@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import type { PlayerStepCompleteResponse } from "@/net/generated/protocol";
-import { completePlayerStep, readOwnedPlayerPosition } from "./PlayerMovementService";
+import { completeCutscene, completePlayerStep, readOwnedPlayerPosition } from "./PlayerMovementService";
 import { CorrelatedRequestTimeoutError, CorrelatedResponseError } from "./CorrelatedRequest";
 
 type StepReply = PlayerStepCompleteResponse | { success: false; requestId: string; error: string };
@@ -17,6 +17,8 @@ vi.mock("./PhaserNetworkService", () => ({
     net.listeners.add(receive); return () => net.listeners.delete(receive);
   },
   completePlayerStep: net.complete,
+  completeCutscene: net.complete,
+  onCutsceneEnd: (receive: (data: StepReply) => void) => { net.listeners.add(receive); return () => net.listeners.delete(receive); },
   onOwnedPlayerPosition: (receive: (data: StepReply) => void) => {
     net.listeners.add(receive); return () => net.listeners.delete(receive);
   },
@@ -68,4 +70,38 @@ test("owned position reads can ask for a receipt without resending a mutation", 
   for (const receive of net.listeners) receive({ success: true, requestId: request.requestId, mapId: 50, x: 7, y: 8, direction: "LEFT" });
   await expect(result).resolves.toMatchObject({ x: 7 });
   expect(net.complete).not.toHaveBeenCalled();
+});
+
+
+test("cutscene timeout retries its issued token once with a fresh correlation", async () => {
+  vi.useFakeTimers();
+  const result = completeCutscene("Reward", "issued");
+  const first = net.complete.mock.calls[0][0];
+  await vi.advanceTimersByTimeAsync(10000);
+  const second = net.complete.mock.calls[1][0];
+  expect(net.complete).toHaveBeenCalledTimes(2);
+  expect(second).toMatchObject({ scriptLabel: "Reward", completionToken: "issued" });
+  expect(second.requestId).not.toBe(first.requestId);
+  for (const receive of net.listeners) receive({ success: true, requestId: second.requestId, replayed: true, mapId: 50, x: 7, y: 8, direction: "LEFT" });
+  await expect(result).resolves.toMatchObject({ replayed: true, x: 7 });
+  expect(net.listeners.size).toBe(0);
+});
+
+test("cutscene second timeout is terminal; cancellation and rejection do not retry", async () => {
+  vi.useFakeTimers();
+  const result = completeCutscene("Reward", "issued");
+  const rejected = expect(result).rejects.toBeInstanceOf(CorrelatedRequestTimeoutError);
+  await vi.advanceTimersByTimeAsync(20000); await rejected;
+  expect(net.complete).toHaveBeenCalledTimes(2);
+  net.complete.mockClear();
+  const controller = new AbortController();
+  const cancelled = completeCutscene("Reward", "issued", controller.signal);
+  controller.abort(); await expect(cancelled).rejects.toMatchObject({ name: "AbortError" });
+  expect(net.complete).toHaveBeenCalledTimes(1);
+  net.complete.mockClear();
+  const failed = completeCutscene("Reward", "issued");
+  const request = net.complete.mock.calls[0][0];
+  for (const receive of net.listeners) receive({ success: false, requestId: request.requestId, error: "rejected" });
+  await expect(failed).rejects.toBeInstanceOf(CorrelatedResponseError);
+  expect(net.complete).toHaveBeenCalledTimes(1);
 });

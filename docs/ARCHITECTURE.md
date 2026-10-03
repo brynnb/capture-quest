@@ -784,8 +784,28 @@ with resolution. Shared destination changes cancel incompatible pending sources.
 Duplicate readiness resends only a matching current battle, without replaying
 blackout. Trainer notification/readiness use explicit protocol JSON DTOs generated
 into TypeScript. Presenter retirement cancels delays and ignores stale animation
-completion. Durable cutscene issuance and full current-state resynchronization
-remain unfinished; controller/transaction tests do not prove rendered recovery.
+completion. Full current-state resynchronization and rendered trainer recovery
+remain unfinished; trainer controller/transaction tests do not prove rendered recovery.
+
+Cutscene issuance also lives in PostgreSQL, in `character_cutscene_plans`, replacing
+the session-only claim registry. The versioned exact script snapshot and owned
+source retain authorization across reconnect. Coordinate issuance joins movement
+commits; other authorized triggers commit issuance before delivery. The existing
+script transaction loads the token under the character lock and commits its outcome
+with all effects. Retained outcomes replay through a read-only path and acknowledge
+current ownership without repeating effects. Up to eight pending plans and eight
+recent terminal outcomes are retained; resolution refreshes receipt order, and
+pending plans have no session-clock expiry. Shared destination changes cancel
+incompatible sources. Map-script/owned-state reads redeliver pending plans with
+current runtime actor annotations using injected, bounded database reads.
+
+Pending gameplay presentation blocks ordinary movement. Active declined/interrupted
+cutscenes cancel their token through the correlated completion endpoint before
+unlocking; scene retirement preserves pending authority. Browser completion and
+cancellation retry a lost reply once with the same token and fresh correlation.
+Local real-WebSocket/rendered checks prove lost cutscene delivery, re-entry,
+lost completion and replay after later movement. This does not establish full
+battle/Safari/presentation resynchronization or recovery after process death.
 
 Session commands now retain the original admission deadline through
 `Session.CommandContext()` and cancel it when the connection closes. Migrated

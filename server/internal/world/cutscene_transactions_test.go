@@ -186,7 +186,7 @@ func TestCutsceneCompletionRequiresIssuedSnapshotAndToken(t *testing.T) {
 		t.Fatal("unissued reward granted")
 	}
 	messages.streams = nil
-	SendCutsceneToPlayer(ses, script)
+	SendCutsceneToPlayer(ses, script, wh)
 	var issued struct {
 		CompletionToken string `json:"completionToken"`
 	}
@@ -212,7 +212,7 @@ func TestIssuedCutsceneFailureKeepsTokenForRetry(t *testing.T) {
 	script := &CutsceneScript{ScriptLabel: "Retry", Actions: json.RawMessage(`[{"type":"giveItem","itemId":1}]`), SetsFlags: []string{"RETRY_DONE"}}
 	testdb.Exec(t, database, `ALTER TABLE character_event_flags ADD CONSTRAINT reject_retry CHECK(flag_name<>'RETRY_DONE')`)
 	messages.streams = nil
-	SendCutsceneToPlayer(ses, script)
+	SendCutsceneToPlayer(ses, script, wh)
 	var issued struct {
 		CompletionToken string `json:"completionToken"`
 	}
@@ -370,8 +370,8 @@ func TestCutsceneCompletionResultAndReadOnlyPositionRecovery(t *testing.T) {
 	}
 	battleDispatch(t, wh, ses, opcodes.CutsceneEndRequest, request)
 	last = messages.streams[len(messages.streams)-1]
-	if err := json.Unmarshal(last.payload, &failure); err != nil || failure.Success || failure.X != 8 {
-		t.Fatal("duplicate completion succeeded")
+	if err := json.Unmarshal(last.payload, &success); err != nil || !success.Success || !success.Replayed || !success.Completed || success.X != 8 {
+		t.Fatalf("duplicate completion did not return committed current ownership: %+v %v", success, err)
 	}
 	for _, payload := range []string{`{"requestId":"forged","x":99}`, `{"requestId":"trailing"} {}`} {
 		battleDispatch(t, wh, ses, opcodes.OwnedPlayerPositionRequest, payload)

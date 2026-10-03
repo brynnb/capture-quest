@@ -135,6 +135,10 @@ export interface CutTileManager {
 }
 
 //////////
+// source: cutscene_issuance.go
+
+
+//////////
 // source: cutscene_manager.go
 
 /**

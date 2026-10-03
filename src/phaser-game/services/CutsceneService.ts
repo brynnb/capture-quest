@@ -242,7 +242,9 @@ export async function handleCutsceneStart(
       }
     } else {
       if (!isActiveRun(runId)) return;
-      position = await readOwnedPlayerPosition(abort.signal);
+      // A declined choice/interrupted active playback retires its durable plan
+      // before input unlock. Scene/session retirement leaves it for reconnect.
+      position = await completeCutscene(payload.scriptLabel, payload.completionToken, abort.signal, true);
     }
     if (!isActiveRun(runId)) return;
     if (!onReconcile) throw new Error("Cutscene position projection unavailable");

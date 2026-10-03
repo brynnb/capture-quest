@@ -425,6 +425,9 @@ func HandlePhaserMapScriptsRequest(ses *session.Session, payload []byte, wh *Wor
 				return false
 			}
 		}
+		resumed, err := resumePendingCutscene(ses, wh)
+		if err != nil { log.Printf("[Cutscene] Resume character %d: %v",charID,err); return false }
+		if resumed { return false }
 		playerFacing := ""
 		if wh.PlayerMovement != nil {
 			playerFacing, _ = wh.PlayerMovement.GetDirection(int(charID))

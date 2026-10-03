@@ -244,6 +244,7 @@ type ServerPlayerMovementNotify struct {
 
 // Cutscene completion carries authorization/correlation only, never coordinates.
 type CutsceneEndRequest struct {
+	Cancel          bool   `json:"cancel,omitempty"`
 	CompletionToken string `json:"completionToken"`
 	ScriptLabel     string `json:"scriptLabel"`
 	RequestID       string `json:"requestId"`
@@ -275,6 +276,7 @@ type OwnedPlayerPositionResponse struct {
 type CutsceneEndResponse struct {
 	OwnedPlayerPositionResponse `tstype:",extends"`
 	Completed                   bool `json:"completed"`
+	Replayed                    bool `json:"replayed"`
 }
 
 // Actions retain the shared compiler/runtime/simulator contract.

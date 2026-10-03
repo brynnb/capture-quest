@@ -73,3 +73,19 @@ test("retiring an active animation settles playback without completing or recove
   await vi.waitFor(() => expect(move).toHaveBeenCalledOnce()); cancelActiveCutscene("quit during animation"); await run;
   expect(cancel).toHaveBeenCalled(); expect(requests.complete).not.toHaveBeenCalled(); expect(requests.read).not.toHaveBeenCalled(); expect(reconcile).not.toHaveBeenCalled();
 });
+
+
+test("failed active animation cancels its issued plan before unlocking; retired scenes do not cancel", async () => {
+  const animation = vi.fn(async () => { throw new Error("animation interrupted") });
+  const cancellation = deferred<unknown>();
+  requests.complete.mockReturnValue(cancellation.promise);
+  registerCutsceneCallbacks({ onMove: animation, onShowActor: vi.fn(), onHideActor: vi.fn(), onFace: vi.fn(), onInputLock: lock, onReconcile: reconcile, onCancelPlayback: cancel });
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  const run = handleCutsceneStart({ ...event("Cancel"), actions: [{ type: "movePlayer", movements: ["RIGHT"] }] });
+  await vi.waitFor(() => expect(requests.complete).toHaveBeenCalledWith("Cancel", "token:Cancel", expect.any(AbortSignal), true));
+  expect(lock).not.toHaveBeenCalledWith(false);
+  cancellation.resolve({ ...owned, success: true, completed: false, replayed: false });
+  await run;
+  expect(reconcile).toHaveBeenCalled(); expect(lock).toHaveBeenLastCalledWith(false);
+  expect(requests.read).not.toHaveBeenCalled(); log.mockRestore();
+});

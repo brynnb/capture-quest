@@ -234,6 +234,7 @@ func resetCharacterState(charID int64) error {
 		`DELETE FROM character_repels WHERE character_id = $1`,
 		`DELETE FROM character_safari_state WHERE character_id = $1`,
 		`DELETE FROM character_trainer_encounters WHERE character_id = $1`,
+		`DELETE FROM character_cutscene_plans WHERE character_id = $1`,
 		`DELETE FROM character_object_positions WHERE character_id = $1`,
 		`DELETE FROM character_object_visibility_overrides WHERE character_id = $1`,
 		`DELETE FROM character_collected_items WHERE character_id = $1`,

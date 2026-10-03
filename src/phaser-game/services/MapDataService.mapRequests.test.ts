@@ -139,14 +139,14 @@ describe("correlated map read and load requests", () => {
 
       const timedOut = tc.start(new MapDataService());
       const timeout = expect(timedOut).rejects.toThrow("Timeout waiting for server response");
-      await vi.advanceTimersByTimeAsync(10_000);
+      await vi.advanceTimersByTimeAsync((tc.name === "movement completion" || tc.name === "cutscene completion") ? 20_000 : 10_000);
       await timeout;
       expect(tc.handlers.size).toBe(0);
 
       const retry = tc.start(new MapDataService());
       reply(success(obsolete));
       expect(tc.handlers.size).toBe(1);
-      reply(success(tc.requests[2].requestId));
+      reply(success(tc.requests.at(-1)!.requestId));
       await retry;
       expect(tc.handlers.size).toBe(0);
       expect(vi.getTimerCount()).toBe(0);

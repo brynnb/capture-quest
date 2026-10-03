@@ -114,10 +114,42 @@ func runCutsceneMutation(executionCtx context.Context, ctx CutsceneActionContext
 	mutation := &cutsceneMutation{characterID: charID}
 	ctx.mutation = mutation
 	err := db.Transaction(executionCtx, database, func(tx db.DBTX) (err error) {
-		if err := db.LockCharacter(tx, charID); err != nil {
-			return err
+		if ctx.issuedCompletion == nil {
+			if err := db.LockCharacter(tx, charID); err != nil {
+				return err
+			}
 		}
 		mutation.database = tx
+		if completion := ctx.issuedCompletion; completion != nil {
+			plan, err := loadCutscenePlanIn(tx, charID, completion.Token)
+			if err != nil {
+				return err
+			}
+			if plan.Resolution == "pending" {
+				if err := db.LockCharacter(tx, charID); err != nil {
+					return err
+				}
+				// A competing owner/command may have completed while the lock waited.
+				plan, err = loadCutscenePlanIn(tx, charID, completion.Token)
+				if err != nil {
+					return err
+				}
+			}
+			if plan.Event.Script.ScriptLabel != completion.Label || (plan.Resolution == "cancelled" && !completion.Cancel) {
+				return fmt.Errorf("cutscene completion authorization unavailable")
+			}
+			completion.Event = plan.Event
+			if plan.Resolution == "resolved" || plan.Resolution == "cancelled" {
+				completed, completion.Replayed = plan.Completed, true
+				return nil
+			}
+			if completion.Cancel {
+				return resolveCutscenePlanIn(tx, charID, completion, false)
+			}
+			script = &completion.Event.Script
+			mapName, raw = script.MapName, script.Actions
+			ctx.issuedSource = &cutscenePosition{mapID: plan.Event.MapID, x: plan.Event.X, y: plan.Event.Y}
+		}
 		if source := ctx.issuedSource; source != nil {
 			x, y, mapID, err := mutation.currentPosition(ctx)
 			if err != nil {
@@ -143,7 +175,7 @@ func runCutsceneMutation(executionCtx context.Context, ctx CutsceneActionContext
 				return err
 			}
 			if !allowed {
-				return nil
+				return resolveCutscenePlanIn(tx, charID, ctx.issuedCompletion, false)
 			}
 		}
 		effects, completed, err = applyCutsceneActionList(ctx, mapName, raw, charID)
@@ -167,7 +199,10 @@ func runCutsceneMutation(executionCtx context.Context, ctx CutsceneActionContext
 				effects = append(effects, CutsceneActionEffect{Type: "warp", Detail: fmt.Sprintf("map=%d x=%d y=%d", *script.WarpToMapID, *script.WarpToX, *script.WarpToY), Changed: true})
 			}
 		}
-		return mutation.saveParty()
+		if err := mutation.saveParty(); err != nil {
+			return err
+		}
+		return resolveCutscenePlanIn(tx, charID, ctx.issuedCompletion, completed)
 	})
 	if err != nil {
 		return nil, false, err
@@ -302,6 +337,13 @@ func (m *cutsceneMutation) movePlayer(ctx CutsceneActionContext, mapID, x, y int
 	}
 	if ended {
 		m.flagsChanged = true
+	}
+	exceptToken := ""
+	if ctx.issuedCompletion != nil {
+		exceptToken = ctx.issuedCompletion.Token
+	}
+	if err := cancelCutsceneSourcesIn(m.database, m.characterID, storedMapID, x, y, exceptToken); err != nil {
+		return err
 	}
 	if _, err := m.database.Exec(`UPDATE character_data SET map_id=$1,x=$2,y=$3 WHERE id=$4`, storedMapID, x, y, m.characterID); err != nil {
 		return err

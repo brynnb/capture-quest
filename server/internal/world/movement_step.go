@@ -25,7 +25,7 @@ type movementStepResult struct {
 	MapID, X, Y                      int
 	Direction                        string
 	Trainer                          *pendingEncounter
-	Cutscene                         *CutsceneScript
+	Cutscene                         *durableCutscene
 	Safari                           safariStepResult
 	Wild                             wildStepResult
 	ForcedPath                       []PathNode
@@ -63,11 +63,11 @@ func commitMovementStep(ctx context.Context, wh *WorldHandler, charID int64, c m
 			return err
 		}
 		var trainerPending bool
-		if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM character_trainer_encounters WHERE character_id=$1 AND resolution='pending')`, charID).Scan(&trainerPending); err != nil {
+		if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM character_trainer_encounters WHERE character_id=$1 AND resolution='pending') OR EXISTS(SELECT 1 FROM character_cutscene_plans WHERE character_id=$1 AND resolution='pending')`, charID).Scan(&trainerPending); err != nil {
 			return err
 		}
 		if trainerPending {
-			return fmt.Errorf("trainer encounter is pending")
+			return fmt.Errorf("gameplay presentation is pending")
 		}
 		var sourceMap, sourceX, sourceY int
 		if err := tx.QueryRow(`SELECT map_id,x,y FROM character_data WHERE id=$1`, charID).Scan(&sourceMap, &sourceX, &sourceY); err != nil {
@@ -159,11 +159,15 @@ func commitMovementStep(ctx context.Context, wh *WorldHandler, charID int64, c m
 			}
 			if wh.CoordTriggers != nil && wh.Cutscenes != nil && wh.EventFlags != nil {
 				for _, trigger := range wh.CoordTriggers.CheckTileTriggers(c.MapID, c.X, c.Y) {
-					result.Cutscene, err = wh.Cutscenes.findEligibleCoordCutsceneIn(tx, trigger, charID, flags, c.Direction)
+					script, err := wh.Cutscenes.findEligibleCoordCutsceneIn(tx, trigger, charID, flags, c.Direction)
 					if err != nil {
 						return err
 					}
-					if result.Cutscene != nil {
+					if script != nil {
+						result.Cutscene, err = issueCutsceneIn(tx, charID, issuedCutscene{Script: *script, MapID: c.MapID, X: c.X, Y: c.Y})
+						if err != nil {
+							return err
+						}
 						result.StopPath = true
 						return nil
 					}
@@ -269,7 +273,7 @@ func publishMovementStepEffects(ses *session.Session, wh *WorldHandler, charID i
 		return
 	}
 	if result.Cutscene != nil {
-		SendCutsceneToPlayer(ses, result.Cutscene, wh)
+		publishCutscenePlan(ses, result.Cutscene, wh)
 		return
 	}
 	if result.Safari.Visit != nil {

@@ -256,6 +256,12 @@ func TestMovementStepTrainerAndCutscenePlansPublishOnlyAfterCommit(t *testing.T)
 					t.Fatalf("rollback retained trainer plan: count=%d err=%v", count, err)
 				}
 			}
+			if kind == "cutscene" {
+				var count int
+				if err := wh.database.QueryRow(`SELECT COUNT(*) FROM character_cutscene_plans WHERE character_id=42`).Scan(&count); err != nil || count != 0 {
+					t.Fatalf("rollback retained cutscene plan %d %v", count, err)
+				}
+			}
 			testdb.Exec(t, wh.database, `DROP TRIGGER reject_step_plan ON character_data`)
 			messages.streams = nil
 			payload := attempt()

@@ -150,6 +150,23 @@ CREATE TABLE IF NOT EXISTS character_safari_state (
     updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Durable issued scripts and bounded completion receipts, scoped to a character.
+CREATE TABLE IF NOT EXISTS character_cutscene_plans (
+    sequence bigserial UNIQUE NOT NULL,
+    character_id bigint NOT NULL REFERENCES character_data(id) ON DELETE CASCADE,
+    completion_token varchar(36) NOT NULL,
+    version integer NOT NULL,
+    script_label text NOT NULL,
+    script_json text NOT NULL,
+    map_id integer NOT NULL,
+    x integer NOT NULL,
+    y integer NOT NULL,
+    resolution text NOT NULL CHECK (resolution IN ('pending','resolved','cancelled')),
+    completed boolean NOT NULL,
+    PRIMARY KEY(character_id, completion_token)
+);
+CREATE INDEX IF NOT EXISTS character_cutscene_plans_pending_idx ON character_cutscene_plans(character_id, resolution, sequence);
+
 -- Retain the latest sight encounter and its resolution across owner replacement.
 CREATE TABLE IF NOT EXISTS character_trainer_encounters (
     character_id bigint PRIMARY KEY REFERENCES character_data(id) ON DELETE CASCADE,

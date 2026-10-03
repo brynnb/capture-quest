@@ -333,6 +333,7 @@ export interface ServerPlayerMovementNotify {
  * Cutscene completion carries authorization/correlation only, never coordinates.
  */
 export interface CutsceneEndRequest {
+  cancel?: boolean;
   completionToken: string;
   scriptLabel: string;
   requestId: string;
@@ -363,6 +364,7 @@ export interface OwnedPlayerPositionResponse {
 }
 export interface CutsceneEndResponse extends OwnedPlayerPositionResponse {
   completed: boolean;
+  replayed: boolean;
 }
 /**
  * Actions retain the shared compiler/runtime/simulator contract.

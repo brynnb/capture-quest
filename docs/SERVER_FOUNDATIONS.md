@@ -2,8 +2,8 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest checkpoint: durable pending trainer encounters
-(2026-10-03), following ordinary-step receipts `80a544c`, following atomic movement-step effects `cfdeb9e`, retirement of the client coordinate setter `2df1db0`, correlated cutscene completion `6638a63`, issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
+Working branch: `codex/server-foundations`. Latest checkpoint: durable cutscene issuance/completion
+(2026-10-03), following pending trainer encounters `84f2d91` and ordinary-step receipts `80a544c`, following atomic movement-step effects `cfdeb9e`, retirement of the client coordinate setter `2df1db0`, correlated cutscene completion `6638a63`, issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
 `0585dde`, committed
 blackout/recovery `2f62595`, teleport notification projection `65a5581`, Instant
 Warp `e1f54a8`, normal warps `3899660`, owned-position loading `64cf970`,
@@ -57,8 +57,10 @@ matching historical receipt separately. Sight-triggered trainer plans now persis
 with the movement transaction and
 resume from map-script or owned-position reads after owner replacement. Readiness
 is token-bound and resolves the plan atomically with battle creation or blackout.
-Durable cutscene issuance, recovery of other commands and full current gameplay
-state after lost notifications remain unfinished. Evidence and verification limits
+Cutscene snapshots and completion outcomes now survive owner replacement;
+coordinate issuance joins movement commits and retries return current ownership.
+Recovery of other commands and full current gameplay state after lost
+notifications remain unfinished. Evidence and verification limits
 appear in the checkpoint sections below.
 
 There is no reliable overall completion percentage: the remaining endpoint
@@ -69,10 +71,114 @@ number of commits or passing tests. All five areas still have outstanding work.
 | Area | Implemented | Still required |
 | --- | --- | --- |
 | Request/session boundary | Packet and connection limits, centralized session prerequisites, removal of insecure session takeover, actual transport closure, location/visibility checks for scripted clicks, dialogue choices and direct trainer battles, client destination catalog validation, server-resolved normal warp activation, explicit Instant Warp commands, committed teleport notification contracts and read-only map metadata, retired coordinate/map setters, and preserved command deadlines/disconnect cancellation in migrated operations. | Audit remaining interaction/mutation endpoints; propagate cancellation through legacy managers and remaining database/network work. |
-| Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors, Game Corner prizes and bounded coin/slot/hidden-coin operations, atomic Escape Rope/FLY positions, durable Repel counters, Safari entry/turn/capture state and exhaustion destinations, atomic blackout/recovery destinations and map-load position/Safari/flag/visibility/boulder effects, atomic movement-step counters, encounters and recovery, durable latest ordinary-step receipts, durable sight-trainer plans/resumption and atomic readiness resolution, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery of committed results across reconnects. |
+| Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors, Game Corner prizes and bounded coin/slot/hidden-coin operations, atomic Escape Rope/FLY positions, durable Repel counters, Safari entry/turn/capture state and exhaustion destinations, atomic blackout/recovery destinations and map-load position/Safari/flag/visibility/boulder effects, atomic movement-step counters, encounters and recovery, durable latest ordinary-step receipts, durable sight-trainer plans/resumption and atomic readiness resolution, durable cutscene snapshots/completion receipts/cancellation, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery for remaining mutations across reconnects; full current gameplay-state resynchronization after lost notifications. |
 | Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, and movement ticks coordinated with the owner. | Finish timer/callback/shared-state and legacy position-writer audits; prove remaining concurrent/reconnect behavior across real transports. |
 | Domains and wire contracts | Injected content-query service; typed character/wallet/bind, Pokédex/card, content detail, map-script, map-info/list, sight-trainer notification/readiness and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
 | Lifecycle and verification | Owned HTTP/listeners, readiness, listener failure propagation, joined periodic workers, sealed session admissions, fail-closed staged preload, startup cancellation, atomic scripted-event publication, and deadline-aware shutdown waits with returned failure results. | Audit cancellation of remaining legacy work, define durable final-save recovery, and complete transport/rendered integration coverage. Owned HTTP and player transport retirement and isolated active-player shutdown checks have landed. |
+
+## Durable cutscene issuance/completion checkpoint (2026-10-03)
+
+Previously, `Session.IssuedCutscenes` kept authorization only in memory and cleared
+it on disconnect. Delivery failure erased the issued token. Completion applied
+rewards atomically, but consumed the token after commit without retaining an
+outcome; a lost reply could not be distinguished from an unaccepted command.
+
+`cutscene_issuance.go` stores a versioned script snapshot, original owned source,
+character-scoped UUID token and resolution in `character_cutscene_plans`. The
+script is the exact server-issued snapshot, not a later catalog lookup. Duplicate
+pending issuance of the same snapshot/source reuses its token. Coordinate-triggered
+issuance joins the position/effects/receipt transaction, so late failure leaves
+neither a moved player nor pending authorization. Other authorized triggers save
+issuance before notification. Delivery and annotation failures retain the plan.
+The old session registry and its claim/finish/clear paths are removed.
+
+The existing script interpreter loads and rechecks pending authority under its
+character lock. Eligibility, rewards, party/flags, movement and the completion
+outcome commit together. A failure leaves the plan pending for retry. Concurrent
+completion executes effects once. Retained terminal results use a read-only path;
+this matters because `LockCharacter` performs a no-op character UPDATE, which
+would still fire database triggers. Replays return the saved completed status and
+current owned position, without rewards, relative movement or presentation-effect
+publication. They can acknowledge a result after a later teleport or fresh owner
+without rewinding that owner.
+
+Pending playback blocks ordinary movement acceptance and movement commits.
+Owned-position and map-script reads can redeliver a pending snapshot/token.
+Native/runtime actor annotations use the injected database and command context;
+missing object annotations report the affected script/object rather than quietly
+publishing a degraded payload. Shared destination changes cancel incompatible
+pending sources transactionally. A completing script excludes its own token while
+moving, then resolves it with the script effects.
+
+An active declined choice or interrupted animation sends `cancel: true` through
+the correlated completion endpoint before unlocking input. Cancellation grants no
+rewards, frees pending movement admission and is safe to retry. Scene/session
+retirement leaves pending authority for reconnect. Both completion and cancellation
+retry once on response timeout with the same token and fresh correlation; explicit
+rejection, cancellation of the request and send failure never retry. After a second
+completion timeout the existing owned-state reconciliation remains available.
+
+Retention is bounded: eight pending plans and eight retained terminal outcomes
+per character in normal execution. Pending plans survive session replacement and
+have no session-clock expiry. Resolution refreshes its ordering before pruning,
+so a long-pending plan's newly committed outcome survives older receipt eviction.
+Destination cancellation can temporarily retain up to sixteen terminal rows; the
+next issuance/resolution prunes them. An evicted terminal token rejects completion
+and cannot recreate effects. The store is not an unlimited event history.
+
+Release boundary: this additive schema is required by cutscene preload. A future
+authorized release must apply the canonical schema and ship matching server/client
+contracts (`cancel`, `replayed`) together through the full-data lane, without a
+reset. No push or deployment is included in this checkpoint.
+
+Validation:
+
+- Final race-enabled PostgreSQL checks pass for `internal/db/...`, `internal/session`,
+  `internal/world`, `internal/pokebattle`, `internal/protocol`, `internal/scriptsim`,
+  `cmd/server` and `cmd/import-phaser`.
+- Focused PostgreSQL race checks cover fresh-owner snapshot/token resumption,
+  catalog replacement isolation, late resolution rollback, current-position replay
+  despite a rejecting character-update trigger, four concurrent completion calls,
+  bounded pending/terminal retention, long-pending completion retention, movement
+  admission, cancellation retries, destination cancellation and missing schema.
+  Existing coordinate-step rollback now also proves no cutscene row survives.
+- All 51 focused frontend tests pass across cutscene playback, movement completion
+  and correlated map requests. They cover timeout retry limits, fresh correlation,
+  cancellation/rejection/send failures, listener cleanup, projection/input locks,
+  retirement and explicit cancellation of an interrupted active animation.
+  Canonical Tygo generation, typecheck, runtime asset validation and production
+  build pass; the build retains its existing large-chunk warning.
+- All seven isolated Chromium checks pass (1.3 minutes). The new real-WebSocket
+  test drops an Oak Lab cutscene notification, quits/re-enters and verifies the
+  same issued token resumes. It drops the first successful completion reply,
+  observes exactly two requests with the same token and different correlations,
+  verifies a replayed completed result, walks to a later tile, re-enters again and
+  proves old completion returns the later current position. Existing scripted NPC,
+  player movement, ordinary-step receipt and reload checks also pass, with severe
+  page-error assertions enabled. No cutscene issuance/annotation/completion errors
+  appear in the final server log.
+
+Evidence: `/var/tmp/capturequest-durable-cutscene-go-final.log`,
+`/var/tmp/capturequest-durable-cutscene-frontend.log`,
+`/var/tmp/capturequest-durable-cutscene-typecheck.log`,
+`/var/tmp/capturequest-durable-cutscene-build.log`, and
+`/var/tmp/capturequest-durable-cutscene-rendered.log`. Browser/server artifacts:
+`/var/tmp/capturequest-rendered.gFqWzC`. The final retention-order correction is
+covered by PostgreSQL tests after that browser run; it changes receipt eviction,
+not the tested playback/wire flow. These are local checks, not production evidence.
+
+Still required: full current battle/Safari/presentation resynchronization after
+lost notifications; process-death acceptance checks; rendered trainer handoff and
+declined-choice cancellation coverage; remaining mutation/selector atomicity,
+interaction authorization, shared-state ownership, injected domains, typed wire
+families, legacy cancellation and final-save recovery audits. Recovery currently
+redelivers the oldest source-matching pending plan; resumption of multi-plan queues
+and coherent presentation after source/catalog changes need wider acceptance
+coverage. All five original areas retain unfinished work.
+
+Recommended next step: verify and centralize current gameplay-state recovery for
+pending trainer encounters and saved battles/Safari state, then complete the
+remaining endpoint and callback audits. The goal stays active.
 
 ## Durable pending trainer checkpoint (2026-10-03)
 

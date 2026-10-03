@@ -25,6 +25,13 @@ export function requestPlayerFacing(request: Omit<PlayerFacingRequest, "requestI
 export function readOwnedPlayerPosition(signal?: AbortSignal, stepToken?: string): Promise<OwnedPlayerPositionResponse> {
   return correlatedRequest<OwnedPlayerPositionResponse>(PhaserNet.onOwnedPlayerPosition, (requestId) => PhaserNet.requestOwnedPlayerPosition({ requestId, ...(stepToken ? { stepToken } : {}) }), signal);
 }
-export function completeCutscene(scriptLabel: string, completionToken: string, signal?: AbortSignal): Promise<CutsceneEndResponse> {
-  return correlatedRequest<CutsceneEndResponse>(PhaserNet.onCutsceneEnd, (requestId) => PhaserNet.completeCutscene({ scriptLabel, completionToken, requestId }), signal);
+export async function completeCutscene(scriptLabel: string, completionToken: string, signal?: AbortSignal, cancel = false): Promise<CutsceneEndResponse> {
+  const complete = () => correlatedRequest<CutsceneEndResponse>(PhaserNet.onCutsceneEnd, (requestId) => PhaserNet.completeCutscene({ scriptLabel, completionToken, requestId, ...(cancel ? { cancel: true } : {}) }), signal);
+  try { return await complete(); }
+  catch (error) {
+    // The durable script receipt makes one lost-reply retry safe. Explicit
+    // rejection and retirement never authorize another attempt.
+    if (!(error instanceof CorrelatedRequestTimeoutError) || signal?.aborted) throw error;
+    return complete();
+  }
 }
