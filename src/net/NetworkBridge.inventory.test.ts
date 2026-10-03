@@ -1,7 +1,7 @@
 import { beforeEach, expect, test, vi } from "vitest";
 import { NetworkBridge } from "./NetworkBridge";
 import { WorldSocket } from "./index";
-import { CQItemUseResponse, CQInventoryResponse, CQMerchantBuyResponse, CQMerchantSellResponse } from "./generated/opcodes";
+import { CQItemUseResponse, CQInventoryResponse, CQMerchantBuyResponse, CQMerchantSellResponse, RepelUseResponse } from "./generated/opcodes";
 import type { CQInventoryItem } from "./generated/cqitems";
 import useCQInventoryStore from "@/stores/CQInventoryStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
@@ -19,7 +19,7 @@ beforeEach(() => {
   vi.spyOn(AudioManager, "playSFX").mockResolvedValue(undefined);
 });
 
-test.each([CQMerchantBuyResponse,CQMerchantSellResponse,CQItemUseResponse])("unsolicited inventory reply %d cannot apply a historical bag", async opcode => {
+test.each([CQMerchantBuyResponse,CQMerchantSellResponse,CQItemUseResponse,RepelUseResponse])("unsolicited inventory reply %d cannot apply a historical bag", async opcode => {
   WorldSocket.onJson?.(opcode,{success:true,requestId:"retired",inventory:{items:[],money:0,commandRevision:1}});
   await Promise.resolve();
   expect(useCQInventoryStore.getState().items).toEqual([stack(1,95)]);

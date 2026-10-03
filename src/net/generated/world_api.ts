@@ -1127,6 +1127,23 @@ export interface PokeCenterHealRequest {
 
 
 //////////
+// source: handler-repel.go
+
+export interface RepelUseRequest {
+  requestId: string;
+  command?: InventoryCommandIdentity;
+  instanceId: number /* int32 */;
+}
+export interface RepelUseResponse {
+  success: true;
+  requestId: string;
+  instanceId: number /* int32 */;
+  message: string;
+  stepsLeft: number /* int */;
+  inventory: import("./cqitems").CQInventorySnapshot;
+}
+
+//////////
 // source: handler-safari.go
 
 /**
@@ -1359,8 +1376,8 @@ export type PriorityQueue = (AStarNode | undefined)[];
 
 export interface RepelUseResult {
   message: string;
-  newQuantity: number /* uint16 */;
   stepsLeft: number /* int */;
+  inventory: import("./cqitems").CQInventorySnapshot;
 }
 
 //////////

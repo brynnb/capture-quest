@@ -1,8 +1,9 @@
 import { OpCodes, WorldSocket } from "@/net";
-import type { CQMerchantOpenResponse, CQMerchantBuyResponse, CQMerchantSellResponse, CQPartyItemUseResponse } from "@/net/generated/world_api";
+import type { CQMerchantOpenResponse, CQMerchantBuyResponse, CQMerchantSellResponse, CQPartyItemUseResponse, RepelUseResponse } from "@/net/generated/world_api";
 import useCQInventoryStore from "@/stores/CQInventoryStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
+import useGameStatusStore from "@/stores/GameStatusStore";
 import useChatStore, { MessageType } from "@/stores/ChatStore";
 import { correlatedRequest, CorrelatedResponseError } from "./CorrelatedRequest";
 import * as PhaserNet from "./PhaserNetworkService";
@@ -12,7 +13,7 @@ import { sfxPathForConstant } from "@/services/audio/pokemonMusic";
 
 let scene: symbol | null = null;
 let active: AbortController | null = null;
-type Reply = CQMerchantOpenResponse | CQMerchantBuyResponse | CQMerchantSellResponse | CQPartyItemUseResponse;
+type Reply = CQMerchantOpenResponse | CQMerchantBuyResponse | CQMerchantSellResponse | CQPartyItemUseResponse | RepelUseResponse;
 
 export function bindInventoryScene(): () => void {
   active?.abort(); active = null;
@@ -111,6 +112,25 @@ export async function runInventoryRequest<T extends Reply>(options: {
 function reportError(message: string) {
   useCQInventoryStore.setState({inventoryCommandError: message});
   useChatStore.getState().addMessage(message, MessageType.SYSTEM);
+}
+
+export function sendRepelItemCommand(instanceId: number): Promise<void> {
+  return runInventoryRequest<RepelUseResponse>({
+    opcode: OpCodes.RepelUseRequest, responseOpcode: OpCodes.RepelUseResponse,
+    payload: {instanceId}, mutation: true,
+    watchPresentation: retire => useGameStatusStore.subscribe((state, previous) => {
+      if (previous.isInventoryOpen && !state.isInventoryOpen) retire();
+    }),
+    validate: reply => {
+      if (reply.instanceId !== instanceId || typeof reply.message !== "string"
+        || !Number.isSafeInteger(reply.stepsLeft) || reply.stepsLeft <= 0) throw new Error("Invalid repel result");
+    },
+    present: reply => {
+      useChatStore.getState().addMessage(reply.message, MessageType.SYSTEM);
+      const sound = sfxPathForConstant("SFX_PRESS_AB");
+      if (sound) void AudioManager.playSFX(sound, 0.75);
+    },
+  });
 }
 
 export function sendPartyItemCommand(instanceId: number, partySlot: number, moveSlot = -1, pokemonRowId = usePokemonPartyStore.getState().party[partySlot]?.rowId ?? 0): Promise<void> {

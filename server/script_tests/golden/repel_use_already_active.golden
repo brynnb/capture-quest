@@ -23,7 +23,7 @@ Actions
   - repelUse: success=false item=30 steps=50 message="A repel is already active!"
 
 Recorded messages
-  - stream opcode=144 payload={"error":"A repel is already active!","success":false}
+  - stream opcode=144 payload={"success":false,"requestId":"repel-use","error":"A repel is already active!"}
 
 Final state
   location: ROUTE_1[9999] (10,10)

@@ -1,9 +1,12 @@
 # Server foundations goal
 
-Status: paused (confirmed in the goal tool on 2026-10-03). Started 2026-09-25 from `02c51ba`.
+Status: broader roadmap incomplete. Started 2026-09-25 from `02c51ba`.
+The earlier goal was recorded as paused; the latest goal-tool check on 2026-10-03
+reports no attached goal. Current authorization is the bounded Repel migration below.
 
-Working branch: `codex/server-foundations`. Current bounded checkpoint: review
-fixes to shared purchase/party-item execution and recovery (2026-10-03), following the
+Working branch: `codex/server-foundations`. Current bounded checkpoint: Repel
+activation through the shared inventory command boundary (2026-10-03), following
+`a96eaa7` (commit/presentation review fixes), `5c8da47` (shop/party consolidation), the
 owned-item dispatch checkpoint and committed shop crash/restart acceptance. The shop runtime
 implementation is `f118916` (per-command clerk authorization and source sale
 policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected menu
@@ -22,6 +25,106 @@ consolidation below; a framework migration remains outside scope.
 Keep Go, PostgreSQL, one deployable server, and the authoritative extractor,
 runtime asset, and scripted-action contracts. Improve runtime safety through
 small verified changes. No production deployment or push is part of this goal.
+
+## Repel command migration (2026-10-03)
+
+The user authorized choosing and completing one additional family after the
+shared-boundary fixes. Chosen scope: Repel, Super Repel and Max Repel activation.
+The broader roadmap remains incomplete; this checkpoint adds no framework,
+database schema or asset-catalog changes.
+
+Why this family: the existing Repel transaction already owned consumption and the
+durable `character_repels` counter, but two uncorrelated entry routes remained.
+The active-effect guard prevented concurrent uses only until expiry. A delayed
+old request could then consume another item, and lost quantity-only replies had
+no scene-owned reconciliation. PC transfers need an additional box-state recovery
+contract; Escape Rope, Bicycle and fishing affect movement or battle ownership.
+Repel fits the current inventory boundary without widening its lifecycle policy.
+
+Implemented:
+
+- One typed activation route on opcode 143/144 carries the owned `instanceId`,
+  correlation ID and shared `{characterId, revision}` identity. Both old request
+  forms (item-ID-only opcode 143 and uncorrelated item use on opcode 100) reject
+  without mutation. The inventory UI and simulator now use the same route.
+- `UseRepelInventoryItem` delegates transaction, locking, revision admission and
+  final bag projection to `cqitems.Store.ExecuteCommand`. Its existing ownership,
+  battle, active-effect and 100/200/250-step rules remain explicit. Expiry retains
+  the committed revision, so old requests remain stale after wear-off or restart.
+- The existing `InventoryCommandService` owns admission, acknowledgement,
+  cancellation and current-state recovery. Repel adds only its result validation,
+  activation presentation and bag-close presentation watcher. No separate command
+  coordinator, retry loop or recovery store is introduced. The global activation
+  presenter and legacy quantity-only Repel publication are removed.
+- Simulator fixtures reset their command counter along with their other owned
+  state. Golden output aliases runtime inventory-instance IDs while preserving
+  equality within the reply; raw packet assertions still inspect the original
+  IDs and contents. This avoids dependence on sequence allocations from earlier
+  scenarios. Both changed goldens were regenerated through the simulator.
+
+Before/after: Repel's server operation replaces its own transaction/lock and two
+item-lookup modes with one shared-executor callback; the old field-item adapter is
+deleted. The client adds one small domain adapter to the existing coordinator and
+routes its opcode through the existing listener collection. Neither the executor
+nor the coordinator's admission/recovery algorithm needed new family-specific
+branches or policy flags.
+
+Verification completed:
+
+- PostgreSQL `-race` suites for cqitems, economy, itemuse, world and scriptsim
+  passed through `scripts/testing/run-go-postgres.sh`; world took 38.820 seconds.
+  Repel checks cover atomic rollback on projection/commit failure, cancellation,
+  concurrent duplicates, malformed/old identity, foreign instance ownership,
+  battle rejection, durable expiry, all three durations, a fresh use after expiry
+  and cross-family revision exclusion with shop sales.
+- 90 focused client checks passed across InventoryCommandService,
+  GameplayRecoveryService and NetworkBridge.inventory. Repel participates in the
+  existing shared success/timeout/rejection/malformed/stale/send-failure and
+  scene/character-retirement matrix. Additional cases cover bag closure during
+  acknowledgement/recovery, suppressed late sounds and invalid Repel outcomes.
+- All three Repel simulator scenarios passed on the private database retained
+  at `/var/tmp/capturequest-script-sim.mPM4Yt`. Activation passed twice more on that
+  same database, proving fixture revision reset and stable ID presentation.
+- Canonical `npm run tygo`, TypeScript and the production build (including runtime
+  asset validation) passed. Existing dynamic-import/chunk-size warnings remain.
+
+Rendered acceptance covered six cases across the existing inventory suite and
+`repel-command-recovery.spec.ts`. The four existing inventory cases passed in
+`/var/tmp/capturequest-rendered.VIVqLl`. The two new cases initially stopped at an
+incorrect test expectation for a visible `×1` label: the inventory intentionally
+renders quantities only above one. The corrected assertion expects the single
+item's name while retaining the exact state quantity check.
+
+Both new cases passed on the unchanged runtime in 29.2 seconds using the already
+bootstrapped private cluster at `/var/tmp/capturequest-rendered.tUpQSX`, with
+screenshots under `playwright-retry` and earlier failure traces under `playwright`.
+They duplicate each activation, prove
+timeout recovery while the bag is closed, allow a second intention after an
+explicit private-database expiry fixture, and retain bag/currency/counter/revision
+after reentry. The lost-reply case kills the exact owned server after its second
+commit but before acknowledgement/recovery; the restart receipt records exit 137.
+Two successful runs of that case produced separate kill/restart receipts in
+`process-recovery-evidence.json`. The final screenshot was inspected and shows
+the recovered empty bag. Actual movement-driven expiry remains covered by the Go
+tests and simulator rather than the browser's explicit expiry fixture.
+
+Verification caveat: the first corrected run's normal-reentry case hit one
+five-second `restoreBattleOnLogin` database timeout. The lost-reply/crash case in
+that same run passed. Rerunning both cases on the same isolated cluster with
+PostgreSQL lock-wait diagnostics passed without runtime changes or captured lock
+waits. The cause of that one timeout is not established or claimed fixed here.
+
+`git diff --check` passed. All evidence is local/disposable-database evidence;
+production was not exercised. This checkpoint is committed locally on
+`codex/server-foundations`.
+
+Remaining: Escape Rope, Bicycle, fishing and other legacy inventory/party writers
+still have separate contracts and are outside this revision's scope. Repel's
+counter remains authoritative on the server; the browser has no counter display
+or local timer to recover. Matching frontend/backend activation and a client
+refresh are required for the changed request/reply contract. No push or deployment
+is performed. Next: assess this completed family before choosing another bounded
+migration; the broad ownership/recovery roadmap below remains incomplete.
 
 ## Shared inventory command checkpoint (2026-10-03)
 
@@ -166,7 +269,7 @@ Go, PostgreSQL, the single-server deployment and the content pipeline remain
 the architectural foundation. Runtime design is described in
 [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
-The full goal is **incomplete and paused**. A completed checkpoint proves its documented
+The full roadmap is **incomplete**. A completed checkpoint proves its documented
 behavior; it does not prove that every gameplay path has migrated. The summary
 below is the current handoff. Later checkpoint entries preserve historical
 evidence, including remaining-work notes that subsequent commits may resolve.

@@ -19,9 +19,6 @@ import (
 func tryHandleFieldItemUse(ses *session.Session, wh *WorldHandler, found *cqitems.CQInventoryItem, charID int32, req CQItemUseRequest) bool {
 	item := found.Item
 	switch itemuse.ShortName(item) {
-	case "REPEL", "SUPER_REPEL", "MAX_REPEL":
-		handleCQRepelUse(ses, wh, found, charID)
-		return true
 	case "ESCAPE_ROPE":
 		handleCQEscapeRopeUse(ses, wh, found, charID)
 		return true
@@ -90,15 +87,6 @@ func coinCaseMessage(coins int) string {
 		return "You have 1 coin."
 	}
 	return fmt.Sprintf("You have %d coins.", coins)
-}
-
-func handleCQRepelUse(ses *session.Session, wh *WorldHandler, found *cqitems.CQInventoryItem, charID int32) {
-	result, err := UseRepelInventoryItem(ses.CommandContext(), wh, charID, found.Item.ID, found)
-	if err != nil {
-		sendCQItemUseError(ses, repelUseErrorMessage(int64(charID), err))
-		return
-	}
-	sendCQItemUseSuccess(ses, found, result.Message, result.NewQuantity)
 }
 
 func handleCQEscapeRopeUse(ses *session.Session, wh *WorldHandler, found *cqitems.CQInventoryItem, charID int32) {

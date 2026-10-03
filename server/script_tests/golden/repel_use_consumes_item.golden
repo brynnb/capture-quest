@@ -23,7 +23,7 @@ Actions
   - repelUse *: success=true item=30 steps=100 message="REPEL's effect started!"
 
 Recorded messages
-  - stream opcode=144 payload={"message":"REPEL's effect started!","newQuantity":1,"stepsLeft":100,"success":true}
+  - stream opcode=144 payload={"instanceId":"instance-1","inventory":{"commandRevision":1,"items":[{"instance":{"charges":0,"id":"instance-1","itemId":30,"ownerType":0,"quantity":1},"item":{"ballModifier":0,"bonusAccuracy":0,"bonusAttack":0,"bonusCatchRate":0,"bonusCrit":0,"bonusDefense":0,"bonusEncounterRate":-100,"bonusEvasion":0,"bonusExp":0,"bonusFlee":0,"bonusHp":0,"bonusSpecial":0,"bonusSpeed":0,"healAmount":0,"icon":0,"id":30,"isGuardDrink":false,"isKeyItem":false,"isUsable":true,"itemType":4,"name":"REPEL","ppRestore":0,"price":350,"revivePercent":0,"shortName":"REPEL","stackSize":99,"stackable":true,"usesPartyMenu":false}}],"money":0},"message":"REPEL's effect started!","requestId":"repel-use","stepsLeft":100,"success":true}
 
 Final state
   location: ROUTE_1[9999] (10,10)

@@ -8,6 +8,7 @@ import (
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
+	"capturequest/internal/db/cqitems"
 	"capturequest/internal/pokebattle"
 	"capturequest/internal/world"
 )
@@ -1407,7 +1408,21 @@ func runRepelUse(scenario *Scenario, applied *AppliedFixture, initial *Snapshot)
 		initial.X,
 		initial.Y,
 	)
-	payload, err := json.Marshal(map[string]int{"itemId": scenario.Trigger.ItemID})
+	// Fixtures name catalog items; runtime commands target the owned instance
+	// and current durable revision, exactly as the inventory UI does.
+	snapshot, err := cqitems.NewStore(db.GlobalWorldDB.DB).GetCharacterSnapshot(context.Background(), int32(applied.CharacterID))
+	if err != nil {
+		return nil, err
+	}
+	var instanceID int32
+	for _, item := range snapshot.Items {
+		if item.Item.ID == int32(scenario.Trigger.ItemID) {
+			instanceID = item.Instance.ID
+			break
+		}
+	}
+	payload, err := json.Marshal(world.RepelUseRequest{RequestID: "repel-use", InstanceID: instanceID,
+		Command: &world.InventoryCommandIdentity{CharacterID: applied.CharacterID, Revision: &snapshot.CommandRevision}})
 	if err != nil {
 		return nil, err
 	}

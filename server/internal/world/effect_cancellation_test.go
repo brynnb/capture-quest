@@ -51,7 +51,7 @@ func TestDurableEffectsRespectCallerCancellationWhileCharacterLocked(t *testing.
 				case "SafariTurn":
 					_, err = wh.Safari.act(ctx, 42, "ball", safariIdentity)
 				case "RepelActivation":
-					_, err = UseRepelInventoryItem(ctx, wh, 42, 30, nil)
+					_, err = UseRepelInventoryItem(ctx, wh, 42, instance, 0)
 				case "CutsceneCompletion":
 					_, _, err = ApplyCutsceneScript(ctx, CutsceneActionContext{Database: database}, &CutsceneScript{SetsFlags: []string{"CANCELLED_REWARD"}, Actions: json.RawMessage(`[{"type":"giveItem","itemId":1,"quantity":1}]`)}, 42)
 				case "ScriptedBattleStart":

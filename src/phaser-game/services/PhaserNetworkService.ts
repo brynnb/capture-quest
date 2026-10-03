@@ -1,4 +1,4 @@
-import type { CQPartyItemUseResponse, CQMerchantOpenResponse, CQMerchantBuyResponse, CQMerchantSellResponse, InventoryCommandError } from "@/net/generated/world_api";
+import type { CQPartyItemUseResponse, CQMerchantOpenResponse, CQMerchantBuyResponse, CQMerchantSellResponse, RepelUseResponse, InventoryCommandError } from "@/net/generated/world_api";
 import { openShopForActor, buyShopItem, sellShopItem } from "./ShopCommandService";
 import type { BattleCommandResponse, SafariBattleActionResponse, BattleCommandError } from "@/net/generated/world_api";
 import type { GameplayStateRequest, GameplayStateResponse } from "@/net/generated/world_api";
@@ -364,9 +364,10 @@ export function onBattleCommand(opcode: number, receive: BattleCommandHandler): 
   listeners.add(receive); return () => listeners.delete(receive);
 }
 
-type InventoryReply = CQPartyItemUseResponse | CQMerchantOpenResponse | CQMerchantBuyResponse | CQMerchantSellResponse | InventoryCommandError;
+type InventoryReply = CQPartyItemUseResponse | CQMerchantOpenResponse | CQMerchantBuyResponse | CQMerchantSellResponse | RepelUseResponse | InventoryCommandError;
 const inventoryCommandHandlers = new Map<number, Set<(reply: InventoryReply) => void>>([
  [OpCodes.CQItemUseResponse,new Set()], [OpCodes.CQMerchantOpenResponse,new Set()], [OpCodes.CQMerchantBuyResponse,new Set()], [OpCodes.CQMerchantSellResponse,new Set()],
+ [OpCodes.RepelUseResponse,new Set()],
 ]);
 export function onInventoryCommand<T extends InventoryReply>(opcode: number, receive: (reply: T) => void): () => void {
  const listeners = inventoryCommandHandlers.get(opcode);
@@ -572,6 +573,7 @@ export function dispatchPhaserResponse(opcode: number, data: unknown): void {
     case OpCodes.CQMerchantOpenResponse:
     case OpCodes.CQMerchantBuyResponse:
     case OpCodes.CQMerchantSellResponse:
+    case OpCodes.RepelUseResponse:
       inventoryCommandHandlers.get(opcode)?.forEach(receive => receive(data as InventoryReply));
       break;
     case OpCodes.SafariBattleActionResponse:

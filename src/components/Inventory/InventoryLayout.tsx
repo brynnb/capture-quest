@@ -19,7 +19,7 @@ import useCQInventoryStore, {
   type CQInventoryItem,
 } from "@/stores/CQInventoryStore";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
-import { sendPartyItemCommand } from "@/phaser-game/services/InventoryCommandService";
+import { sendPartyItemCommand, sendRepelItemCommand } from "@/phaser-game/services/InventoryCommandService";
 import { WorldSocket, OpCodes } from "@/net";
 
 const InventorySidebarContainer = styled.div`
@@ -57,11 +57,8 @@ const directUseShortNames = new Set([
   "EXP_ALL",
   "GOOD_ROD",
   "ITEMFINDER",
-  "MAX_REPEL",
   "OLD_ROD",
   "POKEDEX",
-  "REPEL",
-  "SUPER_REPEL",
   "SUPER_ROD",
   "TOWN_MAP",
 ]);
@@ -227,6 +224,12 @@ const InventorySidebar: React.FC = () => {
     item: CQInventoryItem,
     pointer?: { x: number; y: number },
   ) => {
+    if (["REPEL", "SUPER_REPEL", "MAX_REPEL"].includes(item.item.shortName.toUpperCase())) {
+      void sendRepelItemCommand(item.instance.id);
+      setSelectedCQItem(null);
+      setSelectedItemPointer(null);
+      return;
+    }
     if (item.item.shortName === "POKE_FLUTE") {
       void sendPartyItemCommand(item.instance.id, -1);
       setSelectedCQItem(null);

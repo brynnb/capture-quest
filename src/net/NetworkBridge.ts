@@ -97,6 +97,7 @@ export class NetworkBridge {
       case OpCodes.CQMerchantOpenResponse:
       case OpCodes.CQMerchantBuyResponse:
       case OpCodes.CQMerchantSellResponse:
+      case OpCodes.RepelUseResponse:
       case OpCodes.SafariBattleActionResponse:
       case OpCodes.PokeBattleActionResponse:
       case OpCodes.PokeBattleSwitchResponse:
@@ -229,7 +230,6 @@ export class NetworkBridge {
         break;
 
       // Repel (Phase 11.2)
-      case OpCodes.RepelUseResponse:
       case OpCodes.RepelWoreOffNotify:
         this.handleRepelEvent(data as { message?: string });
         break;

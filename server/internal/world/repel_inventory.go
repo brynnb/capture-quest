@@ -3,7 +3,6 @@ package world
 import (
 	"context"
 	"database/sql"
-	"fmt"
 
 	"capturequest/internal/db"
 	"capturequest/internal/db/cqitems"
@@ -11,12 +10,12 @@ import (
 )
 
 type RepelUseResult struct {
-	Message     string
-	NewQuantity uint16
-	StepsLeft   int
+	Message   string
+	StepsLeft int
+	Inventory cqitems.CQInventorySnapshot `tstype:"import(\"./cqitems\").CQInventorySnapshot"`
 }
 
-func UseRepelInventoryItem(ctx context.Context, wh *WorldHandler, charID int32, itemID int32, found *cqitems.CQInventoryItem) (RepelUseResult, error) {
+func UseRepelInventoryItem(ctx context.Context, wh *WorldHandler, charID, instanceID int32, expectedRevision int64) (RepelUseResult, error) {
 	if wh == nil || wh.WildEncounter == nil {
 		return RepelUseResult{}, &itemuse.Rejection{Message: "Repel can't be used right now"}
 	}
@@ -24,11 +23,16 @@ func UseRepelInventoryItem(ctx context.Context, wh *WorldHandler, charID int32, 
 		return RepelUseResult{}, &itemuse.Rejection{Message: "Use the battle item menu during a battle"}
 	}
 	var result RepelUseResult
-	err := db.Transaction(ctx, wh.WildEncounter.database, func(tx db.DBTX) error {
-		if err := db.LockCharacter(tx, int64(charID)); err != nil {
+	snapshot, err := cqitems.NewStore(wh.WildEncounter.database).ExecuteCommand(ctx, charID, expectedRevision, func(tx db.DBTX) error {
+		store := cqitems.NewStore(tx)
+		current, err := store.FindInventoryItemByInstanceID(charID, instanceID)
+		if err == sql.ErrNoRows {
+			return &itemuse.Rejection{Message: "You don't have that item."}
+		}
+		if err != nil {
 			return err
 		}
-		steps, ok := RepelStepsForItem(int(itemID))
+		steps, ok := RepelStepsForItem(int(current.Item.ID))
 		if !ok {
 			return &itemuse.Rejection{Message: "Not a repel item"}
 		}
@@ -39,23 +43,7 @@ func UseRepelInventoryItem(ctx context.Context, wh *WorldHandler, charID int32, 
 		if status.Active {
 			return &itemuse.Rejection{Message: "A repel is already active!"}
 		}
-		store := cqitems.NewStore(tx)
-		var current *cqitems.CQInventoryItem
-		if found == nil {
-			current, err = store.FindInventoryItemByItemID(charID, itemID)
-		} else {
-			current, err = store.FindInventoryItemByInstanceID(charID, found.Instance.ID)
-		}
-		if err == sql.ErrNoRows {
-			return &itemuse.Rejection{Message: "You don't have that item."}
-		}
-		if err != nil {
-			return err
-		}
-		if current.Item.ID != itemID {
-			return fmt.Errorf("repel instance %d item mismatch: got %d, want %d", current.Instance.ID, current.Item.ID, itemID)
-		}
-		result.NewQuantity, err = store.DecrementItemQuantity(charID, current.Instance.ID)
+		_, err = store.DecrementItemQuantity(charID, current.Instance.ID)
 		if err != nil {
 			return err
 		}
@@ -69,6 +57,7 @@ func UseRepelInventoryItem(ctx context.Context, wh *WorldHandler, charID int32, 
 	if err != nil {
 		return RepelUseResult{}, err
 	}
+	result.Inventory = snapshot
 	return result, nil
 }
 

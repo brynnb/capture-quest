@@ -754,9 +754,11 @@ field-move eligibility evaluator supports both transaction-backed effects and
 the existing simulator/presentation flag view. The current all-cities policy
 remains; historical outdoor/visited-town rules need further eligibility work.
 
-Repel has one durable owner: `character_repels`. Activation checks the current
-counter and owned inventory inside a character-locked transaction, then consumes
-the item and stores the effect together. Step updates/expiry are bounded durable
+Repel has one durable owner: `character_repels`. Activation uses the shared
+inventory executor to check the command revision, current counter and owned
+instance, then consume the item and store the effect in one commit. Expiry does
+not erase command identity: a delayed duplicate cannot consume another Repel
+after the counter runs out. Step updates/expiry are bounded durable
 operations; notifications follow commit. The old per-manager pointer map and
 disconnect deletion are retired. Runtime and simulator managers receive an
 explicit database, and a replacement manager reads the committed counter.
@@ -1200,18 +1202,18 @@ the full audit.
 
 ### Shared inventory command lifecycle
 
-Purchases, sales and the existing outside-battle party-item service use
+Purchases, sales, outside-battle party items and Repel activation use
 `cqitems.Store.ExecuteCommand`. It owns the bounded transaction, character lock,
 expected-revision comparison/advance and final inventory projection. The callback
 receives the transaction handle; payment/stock/stack rules remain in `economy`,
-while medicine, TM/HM, evolution and Flute rules remain in `itemuse`. The executor
+while medicine, TM/HM, evolution and Flute rules remain in `itemuse`, and Repel's
+existing duration/active-counter rules remain in `world/repel_inventory.go`. The executor
 requires a non-nil `*sql.DB` pool and rejects raw or wrapped parent transactions
 before invoking the callback or writing anything. It must own the final commit
 to promise a committed result; repository helpers inside its callback still join
-that owned transaction. Domain,
-snapshot, cancellation and commit errors return no successful projection and roll
-back the revision with the gameplay changes. This is a two-family consolidation,
-not a universal executor for movement or battles.
+that owned transaction. Domain, snapshot, cancellation and commit errors return
+no successful projection and roll back the revision with the gameplay changes.
+Movement and battles retain their own existing boundaries.
 
 `InventoryCommandService` is the single scene owner for these client operations:
 one pending request, correlation, character/scene cancellation, stale-view checks,
@@ -1224,8 +1226,9 @@ while the shop is closed; late purchase sounds are suppressed and the menu stays
 closed. The next admitted mutation uses the reconciled revision. Character or
 scene retirement still cancels request/recovery ownership. Domain projections
 apply independently of presentation (including the party-item party snapshot).
-Party-item presentation and stable-target validation
-use the same coordinator. Merchant opening uses its read path and preserves
+Party-item presentation, stable-target validation and the Repel adapter use the
+same coordinator. Closing the bag retires Repel presentation while its mutation
+keeps reconciling state. Merchant opening uses the read path and preserves
 existing state on failure. Recovery applies current bag, party and currency
 without replaying purchase sounds or old item outcomes. A timeout or rejection
 never automatically resends a mutation. Read recovery already checks for
@@ -1235,8 +1238,8 @@ overtaking state and permits one fresh read through `GameplayRecoveryService`.
 
 Mutations carry `requestId` for reply correlation and
 `command: {characterId, revision}` for durable duplicate protection. The existing
-`character_shop_state` row is deliberately retained: its revision now covers both
-shop and party-item commands, preserving deployed values without a second counter
+`character_shop_state` row is deliberately retained: its revision covers shop,
+party-item and Repel commands, preserving deployed values without a second counter
 or schema migration. Wire snapshots expose `commandRevision` in place of
 `shopRevision`. A successful command advances once; a repeated old revision is
 rejected, including reuse by another consumer or after restart. The client reads
@@ -1255,7 +1258,16 @@ applies unsolicited command replies globally. Party requests include
 PP/TM selection retains that original row identity. Whole-party Flute use has no
 individual target. Existing ownership, active-battle and item-rule checks remain.
 
-Field effects such as Repel, Escape Rope, Bicycle and fishing retain their
+Repel, Super Repel and Max Repel use opcode 143/144 with `instanceId`, `requestId`
+and the shared command identity. A successful reply carries the complete inventory
+snapshot plus the instance, activation message and step count. The old item-ID-only
+request and activation through opcode 100 are rejected. The global bridge no longer
+presents activation replies; only the scene coordinator may apply/present them.
+Expiry notifications retain their existing server-owned path. The browser has no
+local Repel counter to restore: gameplay recovery refreshes its bag/party/wallet,
+while encounter and expiry logic continue reading the durable server counter.
+
+Field effects such as Escape Rope, Bicycle and fishing retain their
 existing uncorrelated path on opcode 100/101. Correlated party requests cannot
 enter that branch, and uncorrelated requests cannot execute party-item mutations.
 The global bridge now handles only legacy field results; correlated results go to

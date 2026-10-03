@@ -1,6 +1,7 @@
 package scriptsim
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -53,8 +54,48 @@ func writeRecordedMessages(b *strings.Builder, messages []RecordedMessage) {
 	}
 	fmt.Fprintf(b, "\nRecorded messages\n")
 	for _, message := range messages {
-		fmt.Fprintf(b, "  - %s opcode=%d payload=%s\n", message.Channel, message.Opcode, string(message.Payload))
+		fmt.Fprintf(b, "  - %s opcode=%d payload=%s\n", message.Channel, message.Opcode, formatInventoryMessage(message.Payload))
 	}
+}
+
+// Golden output must not depend on sequence allocations from earlier fixtures.
+// Keep the raw recorded payload for assertions; alias only runtime instance IDs
+// in full inventory replies, preserving identity agreement across the reply.
+func formatInventoryMessage(payload json.RawMessage) string {
+	var reply map[string]any
+	if err := json.Unmarshal(payload, &reply); err != nil {
+		return string(payload)
+	}
+	inventory, ok := reply["inventory"].(map[string]any)
+	if !ok {
+		return string(payload)
+	}
+	aliases := map[float64]string{}
+	alias := func(object map[string]any, key string) {
+		if id, ok := object[key].(float64); ok && id > 0 {
+			name, found := aliases[id]
+			if !found {
+				name = fmt.Sprintf("instance-%d", len(aliases)+1)
+				aliases[id] = name
+			}
+			object[key] = name
+		}
+	}
+	alias(reply, "instanceId")
+	if items, ok := inventory["items"].([]any); ok {
+		for _, entry := range items {
+			if item, ok := entry.(map[string]any); ok {
+				if instance, ok := item["instance"].(map[string]any); ok {
+					alias(instance, "id")
+				}
+			}
+		}
+	}
+	formatted, err := json.Marshal(reply)
+	if err != nil {
+		return string(payload)
+	}
+	return string(formatted)
 }
 
 func writeSnapshot(b *strings.Builder, title string, s *Snapshot) {

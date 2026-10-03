@@ -1,6 +1,6 @@
 import { beforeEach, afterEach, expect, test, vi } from "vitest";
 const net = vi.hoisted(() => ({ listeners:new Map<number,Set<(reply:any)=>void>>(),send:vi.fn(),read:vi.fn() }));
-vi.mock("@/net",()=>({OpCodes:{CQItemUseRequest:100,CQItemUseResponse:101,CQMerchantOpenRequest:94,CQMerchantOpenResponse:95,CQMerchantBuyRequest:96,CQMerchantBuyResponse:97,CQMerchantSellRequest:98,CQMerchantSellResponse:99},WorldSocket:{sendStreamJsonMessage:net.send}}));
+vi.mock("@/net",()=>({OpCodes:{CQItemUseRequest:100,CQItemUseResponse:101,RepelUseRequest:143,RepelUseResponse:144,CQMerchantOpenRequest:94,CQMerchantOpenResponse:95,CQMerchantBuyRequest:96,CQMerchantBuyResponse:97,CQMerchantSellRequest:98,CQMerchantSellResponse:99},WorldSocket:{sendStreamJsonMessage:net.send}}));
 vi.mock("./PhaserNetworkService",()=>({isConnected:()=>true,onInventoryCommand:(opcode:number,receive:(reply:any)=>void)=>{
   if (!net.listeners.has(opcode)) net.listeners.set(opcode,new Set());
   const listeners=net.listeners.get(opcode)!;listeners.add(receive);return()=>listeners.delete(receive);
@@ -11,20 +11,22 @@ import useCQInventoryStore from "@/stores/CQInventoryStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import {openShopForActor,buyShopItem,sellShopItem} from "./ShopCommandService";
 
-import {bindInventoryScene,sendPartyItemCommand} from "./InventoryCommandService";
+import {bindInventoryScene,sendPartyItemCommand,sendRepelItemCommand} from "./InventoryCommandService";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
+import useGameStatusStore from "@/stores/GameStatusStore";
 import AudioManager from "@/services/audio/AudioManager";
 const party = [{rowId:7,curHp:21}] as any;
-const actions = ["buy","sell","party"] as const;
-const send = (action:typeof actions[number]) => action==="buy"?buyShopItem(1,1,10):action==="sell"?sellShopItem(7):sendPartyItemCommand(1,0);
-const opcode = (action:typeof actions[number]) => action==="buy"?97:action==="sell"?99:101;
-const reply = (requestId:string, revision=5) => ({success:true,requestId,inventory:{items:[],money:900,commandRevision:revision},party,outcome:{instanceId:1,partySlot:0,message:"Healed"}});
+const actions = ["buy","sell","party","repel"] as const;
+const send = (action:typeof actions[number]) => action==="buy"?buyShopItem(1,1,10):action==="sell"?sellShopItem(7):action==="repel"?sendRepelItemCommand(1):sendPartyItemCommand(1,0);
+const opcode = (action:typeof actions[number]) => action==="buy"?97:action==="sell"?99:action==="repel"?144:101;
+const reply = (requestId:string, revision=5) => ({success:true,requestId,instanceId:1,message:"Repel started",stepsLeft:100,inventory:{items:[],money:900,commandRevision:revision},party,outcome:{instanceId:1,partySlot:0,message:"Healed"}});
 let retire:()=>void;
 const id=()=>net.send.mock.calls.at(-1)![1].requestId;
 const emit=(opcode:number,reply:any)=>net.listeners.get(opcode)?.forEach(receive=>receive(reply));
 beforeEach(()=>{
   vi.useFakeTimers();net.listeners.clear();net.send.mockReset().mockResolvedValue(undefined);net.read.mockReset();
   vi.mocked(AudioManager.playSFX).mockClear();
+  useGameStatusStore.setState({isInventoryOpen:true});
   useCQInventoryStore.setState({items:[],money:1000,commandRevision:4,shopOpen:true,inventoryCommandPending:false});
   usePlayerCharacterStore.getState().setCharacterProfile({id:42,pokedollars:1000});
   usePokemonPartyStore.getState().setParty(party);
@@ -45,7 +47,8 @@ for (const action of actions) {
   const pending=send(action);
   expect(net.send.mock.calls[0][1].command).toEqual({characterId:42,revision:4});
   if(action==="party") expect(net.send.mock.calls[0][1].pokemonRowId).toBe(7);
-  else expect(net.send.mock.calls[0][1].actorId).toBe(1001);
+  else if(action!=="repel") expect(net.send.mock.calls[0][1].actorId).toBe(1001);
+  else expect(net.send.mock.calls[0][1].instanceId).toBe(1);
   expect(useCQInventoryStore.getState().inventoryCommandPending).toBe(true);
   for(const another of actions) await send(another);
   expect(net.send).toHaveBeenCalledTimes(1);
@@ -141,6 +144,29 @@ test("closing during recovery still applies the current gameplay snapshot", asyn
  await pending;
  expect(useCQInventoryStore.getState()).toMatchObject({money:900,commandRevision:5,shopOpen:false,inventoryCommandPending:false});
  expect(usePokemonPartyStore.getState().party).toEqual(recoveredParty);
+ expect(AudioManager.playSFX).not.toHaveBeenCalled();
+});
+
+test.each(["reply", "timeout"])("Repel reconciles after closing the bag on %s without late effects",async mode=>{
+ net.read.mockResolvedValue({inventory:[],wallet:{characterId:42,pokedollars:900},commandRevision:5,party});
+ const pending=sendRepelItemCommand(1); const requestId=id();
+ useGameStatusStore.setState({isInventoryOpen:false});
+ await buyShopItem(1,1,1);
+ expect(net.send).toHaveBeenCalledTimes(1);
+ expect(useCQInventoryStore.getState().inventoryCommandPending).toBe(true);
+ if(mode==="timeout") await vi.advanceTimersByTimeAsync(10000);
+ else emit(144,reply(requestId));
+ await pending;
+ expect(useCQInventoryStore.getState()).toMatchObject({commandRevision:5,money:900,inventoryCommandPending:false});
+ expect(AudioManager.playSFX).not.toHaveBeenCalled();
+ expect(net.read).toHaveBeenCalledTimes(mode==="timeout"?1:0);
+});
+
+test.each([{instanceId:99},{stepsLeft:0},{message:null}])("invalid Repel outcome recovers: %j",async invalid=>{
+ net.read.mockResolvedValue({inventory:[],wallet:{characterId:42,pokedollars:800},commandRevision:6,party});
+ const pending=sendRepelItemCommand(1); emit(144,{...reply(id()),...invalid}); await pending;
+ expect(net.read).toHaveBeenCalledTimes(1);
+ expect(useCQInventoryStore.getState()).toMatchObject({commandRevision:6,money:800});
  expect(AudioManager.playSFX).not.toHaveBeenCalled();
 });
 
