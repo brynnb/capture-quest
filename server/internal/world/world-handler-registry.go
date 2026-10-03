@@ -27,11 +27,10 @@ type HandlerRegistry struct {
 
 func NewWorldOpCodeRegistry() *HandlerRegistry {
 	handlers := map[opcodes.OpCode]DatagramHandler{
-		opcodes.JWTLogin:         HandleJWTLogin,
-		opcodes.CharacterCreate:  HandleCharacterCreate,
-		opcodes.DeleteCharacter:  HandleCharacterDelete,
-		opcodes.EnterWorld:       HandleEnterWorld,
-		opcodes.MapChangeRequest: HandleMapChangeRequest,
+		opcodes.JWTLogin:        HandleJWTLogin,
+		opcodes.CharacterCreate: HandleCharacterCreate,
+		opcodes.DeleteCharacter: HandleCharacterDelete,
+		opcodes.EnterWorld:      HandleEnterWorld,
 		// Data query handlers
 		opcodes.StaticDataRequest:     HandleStaticDataRequest,
 		opcodes.SendChatMessage:       HandleSendChatMessage,
@@ -205,6 +204,11 @@ func (r *HandlerRegistry) handleWorldPacket(ses *session.Session, data []byte) b
 // connection/account operations may run before selection. Battle-specific
 // rules and GM authorization remain in their authoritative gameplay handlers.
 func sessionAllowsOpcode(ses *session.Session, op opcodes.OpCode) bool {
+	// Opcode 176 was an unrestricted legacy map setter. The shipped client
+	// uses Phaser commands; keep the wire number reserved and never admit it.
+	if op == opcodes.MapChangeRequest {
+		return false
+	}
 	if op == opcodes.Heartbeat {
 		return true // The login screen also keeps its connection alive.
 	}

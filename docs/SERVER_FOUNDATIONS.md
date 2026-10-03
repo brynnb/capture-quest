@@ -3,7 +3,8 @@
 Status: active. Started 2026-09-25 from `02c51ba`.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-integrated active-player shutdown verification (2026-10-02), following
+retired legacy map setter (2026-10-02), following active-player shutdown
+checkpoint `c811917` and
 owned transport checkpoint `fea2a16` and HTTP retirement checkpoint
 `5160707`, shutdown
 wait/result checkpoint `d51956c` and lifecycle
@@ -91,6 +92,47 @@ evidence, including remaining-work notes that subsequent commits may resolve.
    cancellation/timeouts, failure/retry and shutdown with active players.
    Acceptance: evidence covers the original five milestones, including visible
    behavior where relevant. Only then mark the full goal complete.
+
+## Retired legacy map setter (2026-10-02)
+
+The only caller of `PerformMapChange` was the registered legacy
+`MapChangeRequest` opcode `176`. Repository-wide source search found no shipped
+client sender or other server caller. That handler accepted `mapId`/`zoneId`,
+`instanceId`, arbitrary floating coordinates, `z` and `heading`; it changed live
+state before its general save and continued publishing on failure. It also
+bypassed the active movement/Safari destination boundary.
+
+The obsolete setter and its registration are removed. Central session admission
+explicitly rejects opcode `176`, and the Go/generated TypeScript constants retain
+that number with a reservation comment so it cannot be reassigned to another
+operation. The shipped client's Phaser map and position contracts remain the
+supported path. This retires a redundant mutation path rather than adding a
+second authorization or persistence implementation for an unused client API.
+
+Verification: the selected-character registry test sends both payload naming
+forms and a same-map instance/coordinate mutation. Live character/session fields,
+registered movement, PostgreSQL position and outbound messages all remain
+unchanged. Focused position/teleport tests and the full PostgreSQL-backed
+world/server race suites pass; all Go packages compile, TypeScript typecheck
+passes, and canonical `npm run tygo` changes only the opcode reservation comment.
+No assets, schema, normal gameplay presentation or deployed services changed.
+
+The active paths still need systemic destination validation. In particular,
+`PhaserMapInfoRequest` accepts `destX`/`destY`, persists them, and updates session
+map tracking; `PhaserPlayerPositionUpdate` accepts `mapId`/`x`/`y` without proving
+a move or destination grant. Their commit-before-publication ordering alone does
+not prove eligibility. Current producers include ordinary visual-step reports,
+map loading, server warp acknowledgements, blackout handling and Instant Warp.
+The HUD currently presents Instant Warp to ordinary players without a GM gate;
+that existing gameplay policy must be preserved or deliberately changed with
+user direction, not silently reclassified as admin functionality.
+
+Next: separate map metadata reads, ordinary movement reports and explicit
+Instant Warp intent through the authoritative destination boundary. Validate
+real catalog coordinates and state restrictions while preserving normal warps,
+server-issued destinations and the current Instant Warp policy. Then continue
+the full mutation, cancellation, reconnect and wire-contract roadmap. The goal
+remains active; nothing is pushed or deployed.
 
 ## Integrated active-player shutdown verification (2026-10-02)
 

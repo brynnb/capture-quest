@@ -769,3 +769,12 @@ stream operations wake. quic-go v0.44.0 fixes the observed datagram error race
 and includes the earlier ConnContext fix; webtransport-go remains v0.8.0.
 Real Go transport checks cover idle/partial control streams and datagrams; they
 do not replace integrated active-player persistence or rendered browser checks.
+
+Legacy MapChangeRequest (wire number 176) is retired and rejected at session
+admission; its arbitrary setter and registration are removed. Keep the number
+reserved. The supported Phaser position/map requests still require destination
+eligibility migration: metadata reads must not independently claim player
+presence, and movement reports/server warp acknowledgements/Instant Warp intent
+need explicit authoritative decisions. Instant Warp is currently ordinary-player
+functionality, so validation must preserve that policy unless deliberately
+changed. Successful persistence alone is not authorization.

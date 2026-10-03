@@ -200,7 +200,7 @@ const (
 	WarpHomeRequest               OpCode = 173
 	WarpHomeResponse              OpCode = 174
 	CharacterQuitRequest          OpCode = 175
-	MapChangeRequest              OpCode = 176
+	MapChangeRequest              OpCode = 176 // Reserved retired legacy map setter; never reuse this wire number.
 	FieldMoveUseRequest           OpCode = 177
 	FieldMoveUseResponse          OpCode = 178
 	DebugWarpProbeCasesRequest    OpCode = 179
