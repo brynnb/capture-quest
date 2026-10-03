@@ -177,3 +177,26 @@ describe("issued player movement lifecycle", () => {
     legacy.mockRestore();
     controller.clear();
  });
+
+describe("issued movement exclusivity", () => {
+  test("discarded future input cannot replace an issued animation or pending completion", async () => {
+    let complete!: (value: Awaited<ReturnType<typeof movement.completePlayerStep>>) => void;
+    vi.mocked(movement.completePlayerStep).mockImplementationOnce(() => new Promise((resolve) => { complete = resolve; }));
+    const { controller, updates } = buildLedgeController();
+    controller.handleKeyboardMove("DOWN");
+    await vi.waitFor(() => expect(updates).toHaveLength(1));
+    controller.stopMovement();
+    expect(controller.getIsMoving()).toBe(true);
+    expect(controller.handleKeyboardMove("LEFT")).toBe(false);
+    controller.handleTileClick(9 * TILE_SIZE + 8, 8);
+    expect(movement.requestPlayerStep).toHaveBeenCalledTimes(1);
+    controller.onStepComplete(1, 10, 2, "DOWN");
+    await vi.waitFor(() => expect(movement.completePlayerStep).toHaveBeenCalledTimes(1));
+    expect(controller.handleKeyboardMove("LEFT")).toBe(false);
+    controller.handleTileClick(9 * TILE_SIZE + 8, 2 * TILE_SIZE + 8);
+    expect(movement.requestPlayerStep).toHaveBeenCalledTimes(1);
+    complete({ success: true, requestId: "complete", mapId: 9999, x: 10, y: 2, direction: "DOWN" });
+    await vi.waitFor(() => expect(controller.getIsMoving()).toBe(false));
+    controller.clear();
+  });
+});

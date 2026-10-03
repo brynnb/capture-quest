@@ -2,8 +2,9 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest checkpoint: issued ordinary
-player steps (implementation checkpoint; rendered acceptance incomplete, 2026-10-02), following owned-only MapLoad `0585dde`, committed
+Working branch: `codex/server-foundations`. Latest checkpoint: source collision and issued-step overlap follow-up
+(2026-10-02), following issued ordinary steps `9fd9b84`, owned-only MapLoad
+`0585dde`, committed
 blackout/recovery `2f62595`, teleport notification projection `65a5581`, Instant
 Warp `e1f54a8`, normal warps `3899660`, owned-position loading `64cf970`,
 provenance `057f758` and atomic map-load `b8f5ccd`.
@@ -38,9 +39,8 @@ from its expected owned source, animates a server-issued step, then acknowledges
 its token before continuing the path. Blackout, Safari and explicit warp commands
 publish server-committed destinations.
 
-Before the next migration, resolve the two rendered movement failures documented
-below and recheck input cancellation while an issued step is completing. Then
-continue retiring legacy opcode 45: scripted/field animation reports and
+The source collision and input-overlap follow-up passed all 23 rendered checks
+and eight targeted repeats. The next migration is legacy opcode 45: scripted/field animation reports and
 facing updates still share its broader coordinate authority. Bind those to issued
 script/field results and owned facing state before retiring that writer. Step
 side effects and durable result recovery also need further work. Evidence and
@@ -111,6 +111,66 @@ number of commits or passing tests. All five areas still have outstanding work.
    cancellation/timeouts, failure/retry and shutdown with active players.
    Acceptance: evidence covers the original five milestones, including visible
    behavior where relevant. Only then mark the full goal complete.
+
+## Source collision and issued-step overlap follow-up (2026-10-02)
+
+Authoritative steps exposed a producing-pipeline defect previously hidden by
+opcode 45. Red's House exit mats `(2,7)` and `(3,7)` were exported with
+`collision_type = 2` and `raw_foot_tile_id = 20`, so ordinary walking required
+Surf on an indoor carpet. Original source `data/tilesets/collision_tile_ids.asm`
+includes `$14` in `RedsHouse1_Coll`; `data/tilesets/water_tilesets.asm` excludes
+`REDS_HOUSE_1`. `engine/items/item_effects.asm:IsNextTileShoreOrWater` gates water
+by that tileset list and the tile in front of the player, including the `$32`
+Ship Port platform exception. The extractor instead classified any `$14`/`$48`
+subtile in a square as water without checking its tileset.
+
+The bundled extractor now derives the water tileset list from that original
+source and classifies the collision foot sample. It retains source walkable
+lists and rejects unsupported/missing water-list records. Walkable sets are
+loaded once instead of querying SQLite for every quadrant. This is a pipeline
+repair, with no per-map collision override or generated-file hand edit.
+Canonical asset bootstrap regenerated the complete family and passed validation;
+script candidates remained unchanged (321 unchanged). The temporary client
+blocked-carpet shortcut was removed before validating this root-cause repair.
+
+Corpus comparison: 284 rows across 101 maps change: 113 water-to-land,
+130 water-to-blocked and 41 blocked-to-water (source shore semantics). All 826
+tile-art identities and hashes remain identical. Local SQLite hash changed from
+`d0c5fa0b58f2f9d950cbce079cf509d994dd02b39a2cd7cfb990587d045d5709` to
+`005940406542b401972489f4d1a2e30d4e614df397fe3ea66c69b3573de0628e`;
+the new runtime contract records the latter. These hashes identify local runs,
+not a deployed release or expected CI byte identity.
+
+The client also keeps an issued animation/completion exclusive when future input
+is discarded. `stopMovement()` preserves its token and busy state; ordinary
+clicks cannot replace acceptance, animation or completion while outstanding.
+Explicit scene retirement/snaps still retire issued work. A deferred-completion
+test exercises keyboard/click overlap both during animation and before the reply.
+
+Verification: four extractor tests pass, including a real source map export and
+shore/platform cases. Every one of the 94,876 regenerated squares matches the
+final classifier. All eight targeted repeats pass in
+`/var/tmp/capturequest-rendered.buu8t9`; all 23 integrated checks pass in
+`/var/tmp/capturequest-rendered.vD72sg` (warps, Instant Warp, multiplayer visibility,
+Surf/Cut, Safari and blackout). Forty-one focused frontend tests, typecheck,
+production build, runtime asset validation, workflow YAML parsing and nonmutating
+script-candidate verification pass. Final importer/world/protocol/simulator race
+results are recorded in `/var/tmp/capturequest-water-final-go.log`.
+
+The first repeated run passed all four Instant Warp cases but failed all four
+house cases at sideways mat entry; this led to the source diagnosis above rather
+than a collision exception. The previous intermittent Instant Warp source mismatch
+did not reproduce in either repeated run or the final integration run. These
+checks establish current tested behavior; they do not explain that earlier race
+or prove every delayed actor/scene/transport ordering.
+
+Extractor commit `ed8b7d5` is local on `codex/source-water-collision`; the parent
+checkpoint records that submodule commit. A future authorized publication must
+publish the extractor commit before a checkout/deployment can fetch the parent
+pointer. Collision data changed, so a future deployment requires the canonical
+full-data lane, not a code-only release. No publication or deployment was run. The full five-area goal remains active.
+Next: retire legacy facing and issued script/field coordinate reports, then
+finish step-effect atomicity, durable result recovery and delayed/session races. No push or deployment is authorized.
 
 ## Issued ordinary player steps (2026-10-02)
 

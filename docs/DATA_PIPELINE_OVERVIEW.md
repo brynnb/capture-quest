@@ -41,6 +41,17 @@ catalog hash because numeric tile IDs are not stable across unrelated extractor
 catalogs. Never publish the database, tile directory, contract, or compiled
 frontend independently.
 
+## Collision provenance
+
+Placed-square collision uses the native bottom-left foot sample and its tileset's
+original passable list. Water classification additionally uses the original
+`WaterTilesets` allowlist and `IsNextTileShoreOrWater` tile checks, including the
+Ship Port platform exception. Numeric raw tile IDs are tileset-local; a `$14`
+inside Red's House is a walkable carpet, not water. Decorative subtiles elsewhere
+in the square do not determine terrain. The bundled extractor owns this rule;
+regenerate the atomic SQLite/art/contract family when it changes. Runtime
+movement and pathfinding consume that classification without per-map overrides.
+
 ## Import Flow
 
 ```text

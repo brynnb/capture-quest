@@ -1330,7 +1330,9 @@ export class PlayerMovementController {
    * Handle click on a tile using client-side pathing.
    */
   handleTileClick(worldX: number, worldY: number): void {
-    if (this.inputFrozenChecker()) {
+    // A new click cannot replace a server-issued step while its animation or
+    // completion is outstanding. Scene snaps retire it explicitly instead.
+    if (this.stepAbort || this.inputFrozenChecker()) {
       return;
     }
 
@@ -1940,7 +1942,8 @@ export class PlayerMovementController {
       this.issuedStep = null;
     }
     this.currentPath = [];
-    this.isMoving = false;
+    // Keep the current issued animation/completion exclusive until its response.
+    this.isMoving = this.issuedStep !== null;
     this.arrivalCallback = null;
     this.activeMoveDestination = null;
   }
