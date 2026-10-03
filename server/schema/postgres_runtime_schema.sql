@@ -144,6 +144,12 @@ CREATE TABLE IF NOT EXISTS character_field_move_state (
 );
 CREATE INDEX IF NOT EXISTS character_field_move_state_map_idx ON character_field_move_state (character_id, map_id);
 
+CREATE TABLE IF NOT EXISTS character_safari_state (
+    character_id bigint PRIMARY KEY REFERENCES character_data(id) ON DELETE CASCADE,
+    state_json text NOT NULL,
+    updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS character_repels (
     character_id bigint PRIMARY KEY REFERENCES character_data(id) ON DELETE CASCADE,
     steps_left integer NOT NULL CHECK (steps_left > 0),

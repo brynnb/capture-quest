@@ -262,6 +262,10 @@ export interface EventTileState {
 }
 
 //////////
+// source: field_effect_transactions.go
+
+
+//////////
 // source: field_moves.go
 
 export const NewBadgeRequiredMessage = "No! A new BADGE is required.";
@@ -939,43 +943,6 @@ export interface PokeCenterHealRequest {
 
 
 //////////
-// source: handler-safari.go
-
-export const SafariZoneEntryFee = 500;
-export const SafariZoneMaxBalls = 30;
-export const SafariZoneMaxSteps = 500;
-export const SafariZoneGateMapID = 156; // SAFARI_ZONE_GATE
-export const SafariZoneCenterMapID = 220;
-export const SafariZoneDefaultEntryX = 14;
-export const SafariZoneDefaultEntryY = 25;
-export const SafariZoneGateReturnX = 3;
-export const SafariZoneGateReturnY = 4;
-export const EventInSafariZone = "EVENT_IN_SAFARI_ZONE";
-export const EventSafariGameOver = "EVENT_SAFARI_GAME_OVER";
-/**
- * SafariSession tracks a player's current Safari Zone visit.
- */
-export interface SafariSession {
-  ballsLeft: number /* int */;
-  stepsLeft: number /* int */;
-  active: boolean;
-  battle?: any /* pokebattle.SafariBattleState */; // Non-nil if in a safari battle
-}
-export interface SafariEntryResult {
-  success: boolean;
-  message: string;
-  money: number /* int */;
-  ballsLeft: number /* int */;
-  stepsLeft: number /* int */;
-  alreadyActive: boolean;
-}
-/**
- * SafariZoneManager manages active Safari Zone sessions per player.
- */
-export interface SafariZoneManager {
-}
-
-//////////
 // source: handler-scripted-event.go
 
 /**
@@ -1171,6 +1138,44 @@ export interface RepelUseResult {
   message: string;
   newQuantity: number /* uint16 */;
   stepsLeft: number /* int */;
+}
+
+//////////
+// source: safari_state.go
+
+export const SafariZoneEntryFee = 500;
+export const SafariZoneMaxBalls = 30;
+export const SafariZoneMaxSteps = 500;
+export const SafariZoneGateMapID = 156; // SAFARI_ZONE_GATE
+export const SafariZoneCenterMapID = 220;
+export const SafariZoneDefaultEntryX = 14;
+export const SafariZoneDefaultEntryY = 25;
+export const SafariZoneGateReturnX = 3;
+export const SafariZoneGateReturnY = 4;
+export const EventInSafariZone = "EVENT_IN_SAFARI_ZONE";
+export const EventSafariGameOver = "EVENT_SAFARI_GAME_OVER";
+/**
+ * SafariSession tracks a player's current Safari Zone visit.
+ */
+export interface SafariSession {
+  ballsLeft: number /* int */;
+  stepsLeft: number /* int */;
+  active: boolean;
+  battle?: any /* pokebattle.SafariBattleState */; // Non-nil if in a safari battle
+}
+export interface SafariEntryResult {
+  success: boolean;
+  message: string;
+  money: number /* int */;
+  ballsLeft: number /* int */;
+  stepsLeft: number /* int */;
+  alreadyActive: boolean;
+}
+/**
+ * Safari has one durable owner. Returned snapshots are independent decoded
+ * values; mutation always reloads under the shared character lock.
+ */
+export interface SafariZoneManager {
 }
 
 //////////

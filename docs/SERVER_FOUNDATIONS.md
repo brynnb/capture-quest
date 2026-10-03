@@ -3,8 +3,8 @@
 Status: active. Started 2026-09-25 from `02c51ba`.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-durable Repel consumption/activation/expiry `adaa047` (2026-10-02), following FLY
-checkpoint `b785d58`.
+durable Safari visits, battles and captures (2026-10-02), following durable
+Repel checkpoint `adaa047` and FLY checkpoint `b785d58`.
 All earlier foundation checkpoints are retained in this
 branch's history. No push or production deployment is authorized by this goal.
 
@@ -30,8 +30,8 @@ evidence, including remaining-work notes that subsequent commits may resolve.
 | Area | Implemented | Still required |
 | --- | --- | --- |
 | Request/session boundary | Packet and connection limits, centralized session prerequisites, removal of insecure session takeover, actual transport closure, and location/visibility checks for scripted clicks, dialogue choices and direct trainer battles. | Audit remaining interaction/mutation endpoints; propagate cancellation through running commands and remaining database/network work. |
-| Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors, Game Corner prizes and bounded coin/slot/hidden-coin operations, atomic Escape Rope/FLY positions, durable Repel counters, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery of committed results across reconnects. |
-| Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, and movement ticks coordinated with the owner. | Finish timer/callback/shared-state and Safari audits; prove remaining concurrent/reconnect behavior across real transports. |
+| Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors, Game Corner prizes and bounded coin/slot/hidden-coin operations, atomic Escape Rope/FLY positions, durable Repel counters, Safari entry/turn/capture state and exhaustion destinations, atomic recovery warps, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery of committed results across reconnects. |
+| Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, and movement ticks coordinated with the owner. | Finish timer/callback/shared-state and legacy position-writer audits; prove remaining concurrent/reconnect behavior across real transports. |
 | Domains and wire contracts | Injected content-query service; typed character/wallet/bind, Pokédex/card, content detail, map-script and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
 | Lifecycle and verification | Owned HTTP/listeners, readiness, listener failure propagation, joined periodic workers, sealed session admissions, fail-closed staged preload, startup cancellation, and atomic scripted-event publication. | Bounded shutdown with active players and running work; complete transport/rendered integration and failure/retry/cancellation coverage. |
 
@@ -47,7 +47,9 @@ evidence, including remaining-work notes that subsequent commits may resolve.
    saved destination now commit together before live teleport publication. FLY
    validates the destination catalog and durable party/badge eligibility inside
    its position transaction. Repel consumption and activation now share a durable
-   transaction, with committed step updates and expiry. Audit remaining field
+   transaction, with committed step updates and expiry. Safari payment, visit/battle
+   state and captures now share this boundary, as do runtime exhaustion and its
+   saved gate destination. Audit remaining field
    effects and other mutation paths for the same requirements.
    Extend the shared transaction/domain operations already in use. Acceptance:
    a late failure leaves all affected state unchanged; retry and concurrent
@@ -63,7 +65,7 @@ evidence, including remaining-work notes that subsequent commits may resolve.
    failure. Acceptance: replay does not duplicate effects, and reconnect can
    recover the committed outcome without relying on an old session token.
 4. **Finish ownership and bounded shutdown.** Audit remaining NPC callbacks,
-   timers, Safari and shared world writers; propagate cancellation into running
+   timers and shared world writers, including legacy map-exit position ordering; propagate cancellation into running
    work. Replace unbounded shutdown waits with a documented drain deadline and
    failure policy that preserves persistence ordering. Acceptance: shutdown
    during gameplay terminates predictably, persists accepted work as specified,
@@ -80,7 +82,10 @@ evidence, including remaining-work notes that subsequent commits may resolve.
    Acceptance: evidence covers the original five milestones, including visible
    behavior where relevant. Only then mark the full goal complete.
 
-## Branch handoff (2026-10-02)
+## Pre-Safari branch handoff (2026-10-02)
+
+This records the handoff before the Safari implementation. The checkpoint below
+supersedes its Safari plan; the full remaining roadmap above stays current.
 
 The implementation through `adaa047` is committed on
 `codex/server-foundations`. The working tree was clean when this handoff was
@@ -130,6 +135,80 @@ deployment, and complete its applicable workflow and live checks.
 
 Continue with item 1 above. Keep this current summary synchronized with coherent
 checkpoint commits; retain the original milestone acceptance criteria below.
+
+## Durable Safari checkpoint (2026-10-02)
+
+Safari previously returned live session/battle pointers after releasing a map
+lock. Direct entry charged before allocating the visit; scripted entry committed
+payment before creating its memory-only session. Capture marked the Pokédex and
+saved the Pokémon through separate operations, logging save errors while still
+reporting success. Disconnect/process loss had no durable visit owner to recover.
+
+`character_safari_state` now owns the versioned visit/battle snapshot. The old
+pointer map is retired. Reads return independent snapshots and report corruption
+or storage errors. Mutations reload under the shared character lock and use the
+bounded transaction. Payment, activation and flags commit together; scripted
+entry/exit join their outer transaction, including entry position. Capture stores
+the prepared wild Pokémon in the first free party slot or PC and marks its
+Pokédex in the same turn commit, without replacing existing party identities.
+Notifications follow commit. Managers, fixtures and simulator consumers receive
+an explicit database and propagate state errors. Startup and database smoke
+checks require the new table.
+
+Runtime step exhaustion and out-of-balls turns save the gate destination and
+`EVENT_SAFARI_GAME_OVER` with the counter/turn. Gate transfer retains the visit
+until the source exit script clears it. The bundled
+`engine/events/hidden_objects/safari_game.asm` ends the visit on zero balls,
+including a last-ball catch; this repairs the old handler's caught exception.
+The current 500-step allowance and encounter probabilities are retained rather
+than claiming complete historical timing parity. Status requests recover the
+committed active battle. Direct entry now requires reach/visibility to the
+imported gate worker; battle actions require the character to be in a Safari map.
+
+The shared durable field-destination writer and scripted movement end Safari
+when moving outside the zones/gate, in the same position transaction. Recovery
+warp also deletes ordinary battle state, ends Safari and saves its destination
+in one commit through the captured database. Script position publication no
+longer performs a second independent save. Legacy movement/client-reported map
+paths still need a complete position-persistence audit: their Safari cleanup is
+bounded and error-reporting, but every such position change has not yet moved
+into the shared transaction. Cache refresh failures and post-commit delivery
+recovery remain broader foundation work.
+
+PostgreSQL tests cover concurrent entry charged once, recovery through a fresh
+manager, late entry/script/turn/capture/expiry/recovery-warp commit failure,
+retry, PC capture with a full party and preserved identities, remote/hidden-worker
+rejection, and missing/unsupported state rejection. Capture checks use the actual
+random roll with bounded attempts and no production RNG override. The initial
+broad run found a fixture using duplicate `box_slot=0` values; the fixture was
+corrected to respect the real storage constraint. Final race-enabled suites for
+`internal/world`, `internal/pokebattle`, `internal/scriptsim` and `cmd/db-smoke`
+passed. All Go packages compiled, canonical `npm run tygo` regenerated the moved
+Safari definitions, and TypeScript checks passed.
+
+All 11 Safari simulator goldens passed on the canonically bootstrapped private
+database retained at `/var/tmp/capturequest-rendered.mTtObI`. Two entry scenarios
+now require `EVENT_IN_SAFARI_ZONE`; their canonically regenerated goldens change
+only that final flag, reflecting the newly atomic activation. The gate-exit
+trace retains its prior counters from the transaction snapshot. No failing
+behavior assertion was removed.
+
+The first rendered run passed battle-run and expiry but never triggered gate
+entry: fixture placement is not a coordinate step. The test now walks off and
+back onto the source trigger tile. Failure evidence remains in the directory
+above. Final rendered evidence is `/var/tmp/capturequest-rendered.Lia1qg`: all
+three tests passed (19.3 seconds), with screenshots showing the zone/HUD, Safari
+battle action menu and expiry announcement, and checks confirming gate return.
+These are real WebSocket/browser flows on a private database. They do not prove
+abrupt reconnect, process restart, duplicate delivery recovery, or loaded-player
+throughput. Fresh-manager recovery tests prove storage independence only.
+
+The new runtime table must be applied through the documented deployment lane
+before activating this code; no normal local or production database was changed.
+Next: finish legacy position/callback ownership and cancellation, then bounded
+shutdown and durable request/result recovery. Remaining domains/contracts and
+integrated transport acceptance retain their full scope. The goal stays active;
+no push or deployment.
 
 ## Durable Repel checkpoint (2026-10-02)
 

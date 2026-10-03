@@ -95,6 +95,9 @@ func saveFieldDestinationIn(tx db.DBTX, charID int64, mapID, x, y int) error {
 	if err := db.RequireTransaction(tx); err != nil {
 		return err
 	}
+	if _, err := endSafariForDestinationIn(tx, charID, mapID); err != nil {
+		return err
+	}
 	_, err := tx.Exec(`UPDATE character_data SET map_id=$1,x=$2,y=$3,z=0,heading=0 WHERE id=$4`, mapID, x, y, charID)
 	return err
 }

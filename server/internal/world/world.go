@@ -106,7 +106,10 @@ func NewWorldHandler(ctx context.Context, sessionManager *session.SessionManager
 	if err := wh.phaserWarps.load(ctx); err != nil {
 		return nil, fmt.Errorf("preload phaserWarps: %w", err)
 	}
-	wh.Safari = NewSafariZoneManager()
+	wh.Safari = NewSafariZoneManager(wh.database)
+	if err := wh.Safari.Load(ctx); err != nil {
+		return nil, fmt.Errorf("preload Safari: %w", err)
+	}
 	LoadDisallowedWords()
 	if err := ctx.Err(); err != nil {
 		return nil, err

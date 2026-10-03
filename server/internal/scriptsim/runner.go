@@ -291,7 +291,11 @@ func Run(scenario *Scenario) (*Result, error) {
 		ObjectStates:  objectStates,
 	}
 	if scenarioWorld != nil && scenarioWorld.Safari != nil {
-		result.Safari = safariSummaryFromSession(scenarioWorld.Safari.GetSession(applied.CharacterID))
+		saved, err := scenarioWorld.Safari.GetSession(applied.CharacterID)
+		if err != nil {
+			return nil, err
+		}
+		result.Safari = safariSummaryFromSession(saved)
 	}
 	if err := result.ValidateExpectations(); err != nil {
 		return result, err
@@ -1149,8 +1153,11 @@ func gameCornerPrizeSummary(prize world.GameCornerPrize) GameCornerPrizeSummary 
 }
 
 func runSafariEnter(scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
-	safari := world.NewSafariZoneManager()
-	entry := world.TryStartSafariZoneVisit(applied.CharacterID, safari)
+	safari := world.NewSafariZoneManager(db.GlobalWorldDB.DB)
+	entry, err := world.TryStartSafariZoneVisit(applied.CharacterID, safari)
+	if err != nil {
+		return nil, err
+	}
 	detail := fmt.Sprintf("success=%t money=%d", entry.Success, entry.Money)
 	if entry.Message != "" {
 		detail = fmt.Sprintf("%s message=%q", detail, entry.Message)
@@ -1165,7 +1172,11 @@ func runSafariEnter(scenario *Scenario, applied *AppliedFixture, initial *Snapsh
 	}
 
 	summary := &SafariSummary{}
-	if session := safari.GetSession(applied.CharacterID); session != nil {
+	session, err := safari.GetSession(applied.CharacterID)
+	if err != nil {
+		return nil, err
+	}
+	if session != nil {
 		summary.Active = session.Active
 		summary.BallsLeft = session.BallsLeft
 		summary.StepsLeft = session.StepsLeft
@@ -1207,9 +1218,16 @@ func runSafariStep(scenario *Scenario, applied *AppliedFixture, initial *Snapsho
 	ballsLeft := 0
 	expired := false
 	for i := 0; i < repeat; i++ {
-		stepsLeft, ballsLeft, expired = safari.DecrementStep(applied.CharacterID)
+		stepsLeft, ballsLeft, expired, err = safari.DecrementStep(applied.CharacterID)
+		if err != nil {
+			return nil, err
+		}
 	}
-	summary := safariSummaryFromSession(safari.GetSession(applied.CharacterID))
+	saved, err := safari.GetSession(applied.CharacterID)
+	if err != nil {
+		return nil, err
+	}
+	summary := safariSummaryFromSession(saved)
 
 	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
@@ -1247,7 +1265,11 @@ func runSafariBattleAction(scenario *Scenario, applied *AppliedFixture, initial 
 	if err != nil {
 		return nil, err
 	}
-	before := safariSummaryFromSession(wh.Safari.GetSession(applied.CharacterID))
+	saved, err := wh.Safari.GetSession(applied.CharacterID)
+	if err != nil {
+		return nil, err
+	}
+	before := safariSummaryFromSession(saved)
 	ses, recorder := NewRecordedSession(
 		applied.CharacterID,
 		initial.CharacterName,
@@ -1268,7 +1290,11 @@ func runSafariBattleAction(scenario *Scenario, applied *AppliedFixture, initial 
 	if err != nil {
 		return nil, err
 	}
-	summary := safariSummaryFromSession(wh.Safari.GetSession(applied.CharacterID))
+	saved, err = wh.Safari.GetSession(applied.CharacterID)
+	if err != nil {
+		return nil, err
+	}
+	summary := safariSummaryFromSession(saved)
 
 	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
@@ -1339,7 +1365,7 @@ func parseSafariBattleActionResponse(payload []byte) (safariBattleActionResponse
 }
 
 func newSafariScenarioWorld(scenario *Scenario, charID int64) (*world.WorldHandler, error) {
-	safari := world.NewSafariZoneManager()
+	safari := world.NewSafariZoneManager(db.GlobalWorldDB.DB)
 	if fixture := scenario.Fixture.Safari; fixture != nil {
 		session := world.SafariSession{
 			Active:    fixture.Active,
@@ -1356,7 +1382,9 @@ func newSafariScenarioWorld(scenario *Scenario, charID int64) (*world.WorldHandl
 			}
 			session.Battle = pokebattle.NewSafariBattle(wild, fixture.BallsLeft, fixture.StepsLeft)
 		}
-		safari.SetSession(charID, session)
+		if err := safari.SetSession(charID, session); err != nil {
+			return nil, err
+		}
 	}
 	return &world.WorldHandler{Safari: safari}, nil
 }

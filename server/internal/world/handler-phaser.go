@@ -339,8 +339,11 @@ func applyServerTeleportedPlayerPosition(ses *session.Session, wh *WorldHandler,
 
 	charID := int(char.ID)
 	previousMapID := currentPlayerVisibleMapID(ses, wh, charID)
-	if previousMapID != 0 {
-		endSafariSessionIfLeavingMap(int64(char.ID), previousMapID, normalizedMapID, wh)
+	if persist && previousMapID != 0 {
+		if _, err := endSafariSessionIfLeavingMap(int64(char.ID), previousMapID, normalizedMapID, wh); err != nil {
+			log.Printf("[Safari] Teleport exit for %d: %v", char.ID, err)
+			return previousMapID
+		}
 	}
 
 	ses.X = float32(x)
@@ -966,7 +969,11 @@ func handleClientReportedStepEffects(ses *session.Session, wh *WorldHandler, cha
 		return
 	}
 	if mapChanged {
-		endSafariSessionIfLeavingMap(charID, previousMapID, mapID, wh)
+		if _, err := endSafariSessionIfLeavingMap(charID, previousMapID, mapID, wh); err != nil {
+			log.Printf("[Safari] Reported map exit for %d: %v", charID, err)
+			SendSystemMessage(ses, "Safari state is unavailable. Please try again.")
+			return
+		}
 	}
 	state := &PlayerMovementState{
 		SessionID:   ses.SessionID,

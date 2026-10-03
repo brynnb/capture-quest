@@ -273,13 +273,20 @@ func (m *cutsceneMutation) currentPosition(ctx CutsceneActionContext) (int, int,
 }
 func (m *cutsceneMutation) movePlayer(ctx CutsceneActionContext, mapID, x, y int, direction string, warp bool) error {
 	storedMapID := normalizedVisiblePlayerMapID(ctx.WorldHandler, mapID)
+	ended, err := endSafariForDestinationIn(m.database, m.characterID, storedMapID)
+	if err != nil {
+		return err
+	}
+	if ended {
+		m.flagsChanged = true
+	}
 	if _, err := m.database.Exec(`UPDATE character_data SET map_id=$1,x=$2,y=$3 WHERE id=$4`, storedMapID, x, y, m.characterID); err != nil {
 		return err
 	}
 	m.position = &cutscenePosition{mapID: mapID, x: x, y: y}
 	m.publishActions = append(m.publishActions, func(p CutsceneActionContext) error {
 		// This updates the existing movement/world owner only after its durable
-		// position has committed. The legacy movement flush is idempotent here.
+		// position has committed. Publication never issues another database write.
 		setCutscenePlayerPosition(p.Session, p.WorldHandler, m.characterID, mapID, x, y, direction)
 		if warp {
 			sendCutsceneWarp(p.Session, mapID, x, y, direction)

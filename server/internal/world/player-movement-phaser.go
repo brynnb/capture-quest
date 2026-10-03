@@ -646,7 +646,11 @@ func (m *PlayerMovementManager) applyMovementStepEffects(update playerMovementSt
 				return
 			}
 
-			endSafariSessionIfLeavingMap(int64(state.CharacterID), state.MapID, wt.DestMapID, m.wh)
+			if _, err := endSafariSessionIfLeavingMap(int64(state.CharacterID), state.MapID, wt.DestMapID, m.wh); err != nil {
+				log.Printf("[Safari] Warp exit for %d: %v", state.CharacterID, err)
+				m.StopMovement(state.CharacterID)
+				return
+			}
 
 			m.mu.Lock()
 			previousMapID := state.MapID
@@ -696,7 +700,15 @@ func (m *PlayerMovementManager) isSafariEntryWarpBlocked(charID int64, sourceMap
 		return false
 	}
 	if m.wh != nil && m.wh.Safari != nil {
-		if safari := m.wh.Safari.GetSession(charID); safari != nil && safari.Active {
+		safari, err := m.wh.Safari.GetSession(charID)
+		if err != nil {
+			log.Printf("[Safari] Entry guard for %d: %v", charID, err)
+			if ses != nil {
+				SendSystemMessage(ses, "Safari state is unavailable. Please try again.")
+			}
+			return true
+		}
+		if safari != nil && safari.Active {
 			return false
 		}
 	}

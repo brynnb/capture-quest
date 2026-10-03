@@ -10,7 +10,6 @@ import (
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
-	db_character "capturequest/internal/db/character"
 	"capturequest/internal/db/cqitems"
 	"capturequest/internal/db/pokedex"
 	"capturequest/internal/pokebattle"
@@ -487,25 +486,11 @@ func setCutscenePlayerPosition(ses *session.Session, wh *WorldHandler, charID in
 	if ses == nil || !ses.HasValidClient() {
 		if wh != nil && wh.PlayerMovement != nil {
 			wh.PlayerMovement.UpdatePosition(int(charID), x, y, sessionMapID, direction)
-			wh.PlayerMovement.FlushPlayerPosition(int(charID))
-		}
-		if db.GlobalWorldDB != nil && db.GlobalWorldDB.DB != nil {
-			if err := db_character.UpdateCharacterPosition(
-				int32(charID),
-				uint32(sessionMapID),
-				float64(x),
-				float64(y),
-				0,
-				0,
-			); err != nil {
-				log.Printf("[Cutscene] Failed to save moved player %d at map %d (%d,%d): %v",
-					charID, sessionMapID, x, y, err)
-			}
 		}
 		return
 	}
 
-	setServerTeleportedPlayerPosition(ses, wh, mapID, x, y, direction)
+	applyServerTeleportedPlayerPosition(ses, wh, mapID, x, y, direction, false)
 }
 
 func sendCutsceneSystemMessage(ses *session.Session, message string) {
@@ -648,33 +633,13 @@ func applyHealPartyAction(ctx CutsceneActionContext, charID int64) (string, erro
 }
 
 func applyStartSafariSessionAction(ctx CutsceneActionContext, action CutsceneAction, charID int64) (string, bool, error) {
-	safari := safariManagerForCutscene(ctx.WorldHandler)
-	var money int
-	if _, err := ctx.mutation.database.Exec(`INSERT INTO character_wallet(character_id,pokedollars) VALUES($1,0) ON CONFLICT(character_id) DO NOTHING`, charID); err != nil {
+	result, err := startSafariVisitIn(ctx.mutation.database, charID)
+	if err != nil {
 		return "", false, err
 	}
-	if err := ctx.mutation.database.QueryRow(`SELECT COALESCE(pokedollars,0) FROM character_wallet WHERE character_id=$1`, charID).Scan(&money); err != nil {
-		return "", false, err
-	}
-	result := SafariEntryResult{Money: money}
-	existing := safari.GetSession(charID)
-	if existing != nil && existing.Active {
-		result.Success = true
-		result.AlreadyActive = true
-		result.BallsLeft = existing.BallsLeft
-		result.StepsLeft = existing.StepsLeft
-	} else if money < SafariZoneEntryFee {
-		result.Message = "not enough money"
+	if !result.Success {
 		ctx.mutation.publishActions = append(ctx.mutation.publishActions, func(p CutsceneActionContext) error { sendSafariEntryFailure(p.Session, result); return nil })
-		return fmt.Sprintf("success=false money=%d message=%q", money, result.Message), false, nil
-	} else {
-		if err := ctx.mutation.database.QueryRow(`UPDATE character_wallet SET pokedollars=pokedollars-$1 WHERE character_id=$2 AND pokedollars>=$1 RETURNING pokedollars`, SafariZoneEntryFee, charID).Scan(&result.Money); err != nil {
-			return "", false, err
-		}
-		result.Success = true
-		result.BallsLeft = SafariZoneMaxBalls
-		result.StepsLeft = SafariZoneMaxSteps
-		ctx.mutation.publishActions = append(ctx.mutation.publishActions, func(_ CutsceneActionContext) error { safari.StartSession(charID); return nil })
+		return fmt.Sprintf("success=false money=%d message=%q", result.Money, result.Message), false, nil
 	}
 	if err := ctx.mutation.setFlag(EventInSafariZone, true); err != nil {
 		return "", false, err
@@ -695,30 +660,27 @@ func applyStartSafariSessionAction(ctx CutsceneActionContext, action CutsceneAct
 }
 
 func applyEndSafariSessionAction(ctx CutsceneActionContext, charID int64) (string, bool, error) {
+	previous, err := safariSessionIn(ctx.mutation.database, charID)
+	if err != nil {
+		return "", false, err
+	}
 	if err := ctx.mutation.setFlag(EventInSafariZone, false); err != nil {
 		return "", false, err
 	}
 	if err := ctx.mutation.setFlag(EventSafariGameOver, false); err != nil {
 		return "", false, err
 	}
+	if err := saveSafariSessionIn(ctx.mutation.database, charID, nil); err != nil {
+		return "", false, err
+	}
 	ctx.mutation.publishActions = append(ctx.mutation.publishActions, func(p CutsceneActionContext) error {
-		if p.WorldHandler != nil && p.WorldHandler.Safari != nil {
-			p.WorldHandler.Safari.EndSession(charID)
-		}
 		sendSafariManualExit(p.Session)
 		return nil
 	})
-	return "ended=true", true, nil
-}
-
-func safariManagerForCutscene(wh *WorldHandler) *SafariZoneManager {
-	if wh != nil {
-		if wh.Safari == nil {
-			wh.Safari = NewSafariZoneManager()
-		}
-		return wh.Safari
+	if previous != nil {
+		return fmt.Sprintf("active=%t balls=%d steps=%d ended=true", previous.Active, previous.BallsLeft, previous.StepsLeft), true, nil
 	}
-	return NewSafariZoneManager()
+	return "ended=true", true, nil
 }
 
 func safariEntryDestination(action CutsceneAction) (int, int, int) {

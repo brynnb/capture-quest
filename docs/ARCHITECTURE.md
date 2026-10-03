@@ -681,3 +681,21 @@ explicit database, and a replacement manager reads the committed counter.
 Preload/readiness and database smoke checks reject a missing effect schema.
 The existing eligible encounter-tile timing remains; broader movement timing,
 throughput and durable message recovery need their own integration evidence.
+
+
+Safari has one durable owner: `character_safari_state`. Its versioned JSON holds
+visit counters and the current encounter. Reads return independent snapshots;
+mutations reload under the shared character lock. Entry payment/flags and capture
+storage/Pokédex changes join that transaction, including scripted outer commits.
+Exhaustion saves the gate destination before publishing an exit. The source gate
+script clears the visit; status requests read the committed battle for recovery.
+Malformed/unsupported snapshots report errors rather than silently starting a
+new visit. Startup requires the schema, and fixtures use the same storage API.
+
+Field destinations and scripted moves end Safari outside the zones/gate inside
+their position transaction. Recovery warp commits ordinary battle deletion,
+Safari cleanup and destination together. Script movement publication performs no
+second save. Legacy movement/client-reported position ordering, cache refresh
+failure, durable command/result delivery, cancellation and throughput remain in
+`SERVER_FOUNDATIONS.md`; fresh-manager recovery and rendered Safari checks do not
+prove abrupt network/process recovery or completion of those wider requirements.

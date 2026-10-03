@@ -1,220 +1,39 @@
 package world
 
 import (
-	"database/sql"
+	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"math/rand"
-	"sync"
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
+	"capturequest/internal/itemuse"
 	"capturequest/internal/pokebattle"
 	"capturequest/internal/session"
 )
 
-const (
-	SafariZoneEntryFee  = 500
-	SafariZoneMaxBalls  = 30
-	SafariZoneMaxSteps  = 500
-	SafariZoneGateMapID = 156 // SAFARI_ZONE_GATE
-
-	SafariZoneCenterMapID   = 220
-	SafariZoneDefaultEntryX = 14
-	SafariZoneDefaultEntryY = 25
-	SafariZoneGateReturnX   = 3
-	SafariZoneGateReturnY   = 4
-
-	EventInSafariZone   = "EVENT_IN_SAFARI_ZONE"
-	EventSafariGameOver = "EVENT_SAFARI_GAME_OVER"
-)
-
-// Safari Zone map IDs (the 4 zones where encounters happen)
-var safariZoneMapIDs = map[int]bool{
-	217: true, // SAFARI_ZONE_EAST
-	218: true, // SAFARI_ZONE_NORTH
-	219: true, // SAFARI_ZONE_WEST
-	220: true, // SAFARI_ZONE_CENTER
-}
-
-// SafariSession tracks a player's current Safari Zone visit.
-type SafariSession struct {
-	BallsLeft int
-	StepsLeft int
-	Active    bool
-	Battle    *pokebattle.SafariBattleState // Non-nil if in a safari battle
-}
-
-type SafariEntryResult struct {
-	Success       bool
-	Message       string
-	Money         int
-	BallsLeft     int
-	StepsLeft     int
-	AlreadyActive bool
-}
-
-// SafariZoneManager manages active Safari Zone sessions per player.
-type SafariZoneManager struct {
-	mu       sync.RWMutex
-	sessions map[int64]*SafariSession // charID -> session
-}
-
-// NewSafariZoneManager creates a new SafariZoneManager.
-func NewSafariZoneManager() *SafariZoneManager {
-	return &SafariZoneManager{
-		sessions: make(map[int64]*SafariSession),
+func endSafariSessionIfLeavingMap(charID int64, sourceMapID, destMapID int, wh *WorldHandler) (bool, error) {
+	if wh == nil || wh.Safari == nil || !IsInSafariZone(sourceMapID) || IsInSafariZone(destMapID) || destMapID == SafariZoneGateMapID {
+		return false, nil
 	}
-}
-
-// GetSession returns the safari session for a character, or nil.
-func (m *SafariZoneManager) GetSession(charID int64) *SafariSession {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.sessions[charID]
-}
-
-// StartSession begins a new Safari Zone visit for a character.
-func (m *SafariZoneManager) StartSession(charID int64) *SafariSession {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	s := &SafariSession{
-		BallsLeft: SafariZoneMaxBalls,
-		StepsLeft: SafariZoneMaxSteps,
-		Active:    true,
-	}
-	m.sessions[charID] = s
-	return s
-}
-
-func (m *SafariZoneManager) SetSession(charID int64, session SafariSession) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.sessions[charID] = &SafariSession{
-		BallsLeft: session.BallsLeft,
-		StepsLeft: session.StepsLeft,
-		Active:    session.Active,
-		Battle:    session.Battle,
-	}
-}
-
-// EndSession removes a character's safari session.
-func (m *SafariZoneManager) EndSession(charID int64) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	delete(m.sessions, charID)
-}
-
-// DecrementStep decreases the step counter. Returns true if steps ran out.
-func (m *SafariZoneManager) DecrementStep(charID int64) (stepsLeft, ballsLeft int, expired bool) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	s := m.sessions[charID]
-	if s == nil || !s.Active {
-		return 0, 0, false
-	}
-	s.StepsLeft--
-	if s.StepsLeft <= 0 {
-		s.Active = false
-		return 0, s.BallsLeft, true
-	}
-	return s.StepsLeft, s.BallsLeft, false
-}
-
-// IsInSafariZone checks if a map ID is one of the safari zone maps.
-func IsInSafariZone(mapID int) bool {
-	return safariZoneMapIDs[mapID]
-}
-
-func endSafariSessionIfLeavingMap(charID int64, sourceMapID, destMapID int, wh *WorldHandler) bool {
-	if wh == nil || wh.Safari == nil {
-		return false
-	}
-	if !IsInSafariZone(sourceMapID) || IsInSafariZone(destMapID) {
-		return false
-	}
-	if session := wh.Safari.GetSession(charID); session == nil {
-		return false
-	}
-	if destMapID == SafariZoneGateMapID {
-		log.Printf("[Safari] Player %d entered Safari Zone gate from map %d; preserving session for gate exit script", charID, sourceMapID)
-		return false
-	}
-
-	wh.Safari.EndSession(charID)
-	if wh.EventFlags != nil {
-		if err := wh.EventFlags.ResetFlag(charID, EventInSafariZone); err != nil {
-			log.Printf("[Safari] Failed to reset %s for player %d: %v", EventInSafariZone, charID, err)
+	var ended bool
+	err := db.Transaction(context.Background(), wh.Safari.database, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, charID); err != nil {
+			return err
 		}
-	}
-	log.Printf("[Safari] Player %d left Safari Zone map %d for map %d; ended session", charID, sourceMapID, destMapID)
-	return true
-}
-
-func TryStartSafariZoneVisit(charID int64, safari *SafariZoneManager) SafariEntryResult {
-	if existing := safari.GetSession(charID); existing != nil && existing.Active {
-		return SafariEntryResult{
-			Success:       true,
-			Message:       "already in safari session",
-			Money:         safariMoneyBalance(charID),
-			BallsLeft:     existing.BallsLeft,
-			StepsLeft:     existing.StepsLeft,
-			AlreadyActive: true,
-		}
-	}
-
-	money, ok := deductSafariEntryFee(charID)
-	if !ok {
-		return SafariEntryResult{
-			Success: false,
-			Message: "not enough money",
-			Money:   money,
-		}
-	}
-
-	s := safari.StartSession(charID)
-	log.Printf("[Safari] Player %d entered Safari Zone (%d balls, %d steps)", charID, s.BallsLeft, s.StepsLeft)
-	return SafariEntryResult{
-		Success:   true,
-		Money:     money,
-		BallsLeft: s.BallsLeft,
-		StepsLeft: s.StepsLeft,
-	}
-}
-
-func deductSafariEntryFee(charID int64) (int, bool) {
-	if _, err := db.GlobalWorldDB.DB.Exec(
-		`INSERT INTO character_wallet (character_id, pokedollars)
-		VALUES ($1, 0)
-		ON CONFLICT (character_id) DO NOTHING`,
-		charID); err != nil {
-		log.Printf("[Safari] Failed to ensure wallet row for char %d: %v", charID, err)
-		return safariMoneyBalance(charID), false
-	}
-	result, err := db.GlobalWorldDB.DB.Exec(
-		`UPDATE character_wallet SET pokedollars = pokedollars - $1 WHERE character_id = $2 AND pokedollars >= $3`,
-		SafariZoneEntryFee, charID, SafariZoneEntryFee)
+		var err error
+		ended, err = endSafariForDestinationIn(tx, charID, destMapID)
+		return err
+	})
 	if err != nil {
-		log.Printf("[Safari] Failed to deduct entry fee for char %d: %v", charID, err)
-		return safariMoneyBalance(charID), false
+		return false, err
 	}
-	changed, _ := result.RowsAffected()
-	if changed == 0 {
-		return safariMoneyBalance(charID), false
+	if ended {
+		refreshSafariFlags(wh, charID)
 	}
-	return safariMoneyBalance(charID), true
-}
-
-func safariMoneyBalance(charID int64) int {
-	var money sql.NullInt64
-	if err := db.GlobalWorldDB.DB.QueryRow(
-		`SELECT pokedollars FROM character_wallet WHERE character_id = $1`, charID).Scan(&money); err != nil {
-		return 0
-	}
-	if !money.Valid {
-		return 0
-	}
-	return int(money.Int64)
+	return ended, nil
 }
 
 // HandleSafariZoneEnter handles the player entering the Safari Zone.
@@ -225,7 +44,9 @@ func HandleSafariZoneEnter(ses *session.Session, payload []byte, wh *WorldHandle
 	var req struct {
 		StatusOnly bool `json:"statusOnly"`
 	}
-	_ = json.Unmarshal(payload, &req)
+	if err := json.Unmarshal(payload, &req); err != nil {
+		return false
+	}
 
 	char := ses.Client.CharData()
 	if char == nil {
@@ -234,7 +55,12 @@ func HandleSafariZoneEnter(ses *session.Session, payload []byte, wh *WorldHandle
 	charID := int64(char.ID)
 
 	// Check if already in safari
-	if existing := wh.Safari.GetSession(charID); existing != nil && existing.Active {
+	existing, err := wh.Safari.GetSession(charID)
+	if err != nil {
+		safariStorageError(ses, charID, err, opcodes.SafariZoneEnterResponse)
+		return false
+	}
+	if existing != nil && existing.Active {
 		ses.SendStreamJSON(map[string]interface{}{
 			"success":   true,
 			"ballsLeft": existing.BallsLeft,
@@ -272,7 +98,16 @@ func HandleSafariZoneEnter(ses *session.Session, payload []byte, wh *WorldHandle
 		return false
 	}
 
-	result := TryStartSafariZoneVisit(charID, wh.Safari)
+	if getBattle(charID) != nil || wh.authorizeSourceInteraction(ses, SafariZoneGateMapID, "TEXT_SAFARIZONEGATE_SAFARI_ZONE_WORKER1") != nil {
+		sendSafariEntryFailure(ses, SafariEntryResult{Message: "Please check in at the counter first."})
+		return false
+	}
+	result, err := TryStartSafariZoneVisit(charID, wh.Safari)
+	if err != nil {
+		safariStorageError(ses, charID, err, opcodes.SafariZoneEnterResponse)
+		return false
+	}
+	refreshSafariFlags(wh, charID)
 	if !result.Success {
 		ses.SendStreamJSON(map[string]interface{}{
 			"success": false,
@@ -314,36 +149,23 @@ func HandleSafariBattleAction(ses *session.Session, payload []byte, wh *WorldHan
 	}
 	charID := int64(char.ID)
 
-	safariSes := wh.Safari.GetSession(charID)
-	if safariSes == nil || !safariSes.Active || safariSes.Battle == nil {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "not in safari battle",
-		}, opcodes.SafariBattleActionResponse)
+	_, _, mapID := wh.scriptPlayerPosition(ses)
+	if !IsInSafariZone(mapID) || getBattle(charID) != nil {
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "not in safari battle"}, opcodes.SafariBattleActionResponse)
 		return false
 	}
 
-	battle := safariSes.Battle
-
-	switch req.Action {
-	case "ball":
-		safariSes.BallsLeft = battle.BallsLeft // Sync before action
-		battle.ThrowBall()
-		safariSes.BallsLeft = battle.BallsLeft
-	case "bait":
-		battle.ThrowBait()
-	case "rock":
-		battle.ThrowRock()
-	case "run":
-		battle.Run()
-	default:
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "invalid action",
-		}, opcodes.SafariBattleActionResponse)
+	result, err := wh.Safari.act(charID, req.Action)
+	if err != nil {
+		var rejection *itemuse.Rejection
+		if errors.As(err, &rejection) {
+			ses.SendStreamJSON(map[string]interface{}{"success": false, "error": rejection.Message}, opcodes.SafariBattleActionResponse)
+		} else {
+			safariStorageError(ses, charID, err, opcodes.SafariBattleActionResponse)
+		}
 		return false
 	}
-
+	safariSes, battle := result.Visit, result.Battle
 	// Build response
 	resp := map[string]interface{}{
 		"success":   true,
@@ -356,63 +178,28 @@ func HandleSafariBattleAction(ses *session.Session, payload []byte, wh *WorldHan
 	}
 
 	if battle.Caught {
-		// Add the caught Pokémon to the player's party or PC
-		myDB := db.GlobalWorldDB.DB
 		caughtPoke := battle.WildPokemon
-		caughtPoke.IsWild = false
-		// Mark as caught in Pokédex (Phase 10.2)
-		MarkPokemonCaught(charID, caughtPoke.ID)
-
-		sentToPC := false
-		pcBox := -1
-
-		// Load current party to check if there's room
-		party, err := pokebattle.LoadParty(myDB, charID)
-		if err == nil && len(party) < 6 {
-			// Add to party
-			party = append(party, caughtPoke)
-			if saveErr := pokebattle.SaveParty(myDB, charID, party); saveErr != nil {
-				log.Printf("[Safari] Failed to save party for char %d: %v", charID, saveErr)
-			}
-		} else {
-			// Party full — save to Bill's PC
-			box, slot, pcErr := pokebattle.SavePokemonToPC(myDB, charID, caughtPoke)
-			if pcErr != nil {
-				log.Printf("[Safari] Failed to save %s to PC for char %d: %v", caughtPoke.Name, charID, pcErr)
-			} else {
-				sentToPC = true
-				pcBox = box
-				log.Printf("[Safari] Player %d party full, sent L%d %s to PC box %d slot %d",
-					charID, caughtPoke.Level, caughtPoke.Name, box, slot)
-			}
-		}
-
 		resp["caughtPokemon"] = map[string]interface{}{
 			"id":    caughtPoke.ID,
 			"name":  caughtPoke.Name,
 			"level": caughtPoke.Level,
 		}
-		resp["sentToPC"] = sentToPC
-		if sentToPC {
-			resp["pcBox"] = pcBox + 1 // 1-indexed for display
+		resp["sentToPC"] = result.SentToPC
+		if result.SentToPC {
+			resp["pcBox"] = result.PCBox + 1 // 1-indexed for display
 		}
 		log.Printf("[Safari] Player %d caught L%d %s", charID, caughtPoke.Level, caughtPoke.Name)
 	}
 
-	if battle.IsOver() {
-		safariSes.Battle = nil // Clear battle reference
-
-		// Check if out of balls — end safari visit and warp back to gate (Gen 1 behavior)
-		if safariSes.BallsLeft <= 0 && !battle.Caught {
-			safariSes.Active = false
-			resp["safariOver"] = true
-		}
+	if !safariSes.Active {
+		resp["safariOver"] = true
 	}
 
 	ses.SendStreamJSON(resp, opcodes.SafariBattleActionResponse)
 
 	// If safari visit is over (out of balls), send exit notification to warp player back
 	if !safariSes.Active {
+		publishSafariExpiry(ses, wh, charID)
 		ses.SendStreamJSON(map[string]interface{}{
 			"stepsLeft": 0,
 			"ballsLeft": 0,
@@ -434,87 +221,67 @@ func CheckSafariStep(charID int64, x, y, mapID int, ses *session.Session, wh *Wo
 		return false
 	}
 
-	safariSes := wh.Safari.GetSession(charID)
-	if safariSes == nil || !safariSes.Active {
-		return false
-	}
-
-	// Don't process steps while in a battle
-	if safariSes.Battle != nil {
-		return false
-	}
-
-	// Decrement step counter
-	stepsLeft, ballsLeft, expired := wh.Safari.DecrementStep(charID)
-
-	if expired {
-		log.Printf("[Safari] Player %d ran out of steps", charID)
-		ses.SendStreamJSON(map[string]interface{}{
-			"stepsLeft": 0,
-			"ballsLeft": ballsLeft,
-			"message":   "PA: Ding-dong! Your SAFARI GAME is over!",
-			"mapId":     SafariZoneGateMapID,
-			"x":         SafariZoneGateReturnX,
-			"y":         SafariZoneGateReturnY,
-			"direction": "DOWN",
-		}, opcodes.SafariZoneExitNotify)
-		return true // Stop movement
-	}
-
-	// Send step update every step so the client HUD stays current
-	ses.SendStreamJSON(map[string]interface{}{
-		"stepsLeft": stepsLeft,
-		"ballsLeft": ballsLeft,
-	}, opcodes.SafariZoneStepUpdate)
-
-	// Check for wild encounter (uses normal encounter system but starts safari battle)
-	areaID := wh.WildEncounter.getEncounterAreaID(mapID, x, y)
-	if areaID == 0 {
-		return false
-	}
-
-	area, ok := wh.WildEncounter.areas[areaID]
-	if !ok || area.EncounterRate == 0 || len(area.Slots) == 0 {
-		return false
-	}
-
-	// Gen 1 encounter rate check
-	roll := rand.Intn(256)
-	if roll >= area.EncounterRate {
-		return false
-	}
-
-	// Encounter triggered — start safari battle
-	pokemonID, level := wh.WildEncounter.selectEncounterPokemon(area)
-	myDB := db.GlobalWorldDB.DB
-	wildPokemon, err := pokebattle.BuildWildPokemon(myDB, pokemonID, level)
+	var safariSes *SafariSession
+	var expired bool
+	err := wh.Safari.mutate(charID, func(tx db.DBTX, s *SafariSession) error {
+		if s == nil || !s.Active || s.Battle != nil {
+			return nil
+		}
+		safariSes = s
+		expired = advanceSafariStep(s)
+		if expired {
+			return expireSafariVisitIn(tx, charID)
+		}
+		if wh.WildEncounter == nil {
+			return nil
+		}
+		areaID := wh.WildEncounter.getEncounterAreaID(mapID, x, y)
+		area := wh.WildEncounter.areas[areaID]
+		if area == nil || area.EncounterRate == 0 || len(area.Slots) == 0 || rand.Intn(256) >= area.EncounterRate {
+			return nil
+		}
+		pokemonID, level := wh.WildEncounter.selectEncounterPokemon(area)
+		wild, err := pokebattle.BuildWildPokemon(tx, pokemonID, level)
+		if err != nil {
+			return err
+		}
+		s.Battle = pokebattle.NewSafariBattle(wild, s.BallsLeft, s.StepsLeft)
+		return markPokemonSeen(tx, charID, pokemonID)
+	})
 	if err != nil {
-		log.Printf("[Safari] Failed to build wild pokemon %d: %v", pokemonID, err)
+		log.Printf("[Safari] Step for %d: %v", charID, err)
+		return true
+	}
+	if safariSes == nil {
 		return false
 	}
+	if expired {
+		publishSafariExpiry(ses, wh, charID)
+		ses.SendStreamJSON(map[string]interface{}{"stepsLeft": 0, "ballsLeft": safariSes.BallsLeft, "message": "PA: Ding-dong! Your SAFARI GAME is over!", "mapId": SafariZoneGateMapID, "x": SafariZoneGateReturnX, "y": SafariZoneGateReturnY, "direction": "DOWN"}, opcodes.SafariZoneExitNotify)
+		return true
+	}
+	ses.SendStreamJSON(map[string]interface{}{"stepsLeft": safariSes.StepsLeft, "ballsLeft": safariSes.BallsLeft}, opcodes.SafariZoneStepUpdate)
+	if safariSes.Battle == nil {
+		return false
+	}
+	wild := safariSes.Battle.WildPokemon
+	ses.SendStreamJSON(map[string]interface{}{"pokemon": map[string]interface{}{"id": wild.ID, "name": wild.Name, "level": wild.Level, "hp": wild.CurHP, "maxHp": wild.MaxHP, "spriteId": wild.ID, "catchRate": wild.CatchRate}, "ballsLeft": safariSes.BallsLeft, "stepsLeft": safariSes.StepsLeft}, opcodes.SafariBattleStartNotify)
+	return true
+}
 
-	battle := pokebattle.NewSafariBattle(wildPokemon, safariSes.BallsLeft, safariSes.StepsLeft)
-	safariSes.Battle = battle
+func safariStorageError(ses *session.Session, charID int64, err error, opcode opcodes.OpCode) {
+	log.Printf("[Safari] Character %d: %v", charID, err)
+	ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Safari state could not be saved. Please try again.", "message": "Safari state is unavailable. Please try again."}, opcode)
+}
+func refreshSafariFlags(wh *WorldHandler, charID int64) {
+	if wh != nil && wh.EventFlags != nil {
+		if err := wh.EventFlags.LoadFlags(charID); err != nil {
+			log.Printf("[Safari] Refresh flags for %d: %v", charID, err)
+		}
+	}
+}
 
-	// Mark safari Pokémon as seen in Pokédex (Phase 10.2)
-	MarkPokemonSeen(charID, pokemonID)
-
-	log.Printf("[Safari] Player %d encountered L%d %s (%d balls left)",
-		charID, wildPokemon.Level, wildPokemon.Name, safariSes.BallsLeft)
-
-	ses.SendStreamJSON(map[string]interface{}{
-		"pokemon": map[string]interface{}{
-			"id":        wildPokemon.ID,
-			"name":      wildPokemon.Name,
-			"level":     wildPokemon.Level,
-			"hp":        wildPokemon.CurHP,
-			"maxHp":     wildPokemon.MaxHP,
-			"spriteId":  wildPokemon.ID,
-			"catchRate": wildPokemon.CatchRate,
-		},
-		"ballsLeft": safariSes.BallsLeft,
-		"stepsLeft": safariSes.StepsLeft,
-	}, opcodes.SafariBattleStartNotify)
-
-	return true // Stop movement
+func publishSafariExpiry(ses *session.Session, wh *WorldHandler, charID int64) {
+	refreshSafariFlags(wh, charID)
+	applyServerTeleportedPlayerPosition(ses, wh, SafariZoneGateMapID, SafariZoneGateReturnX, SafariZoneGateReturnY, "DOWN", false)
 }

@@ -25,7 +25,7 @@ Actions
 
 Final state
   location: SAFARI_ZONE_GATE[156] (4,6)
-  flags: none
+  flags: EVENT_IN_SAFARI_ZONE
   party:
     none
   inventory:

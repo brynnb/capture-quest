@@ -1199,21 +1199,24 @@ func seedDebugSafariSession(charID int64, fixture *debugSafariFixture, wh *World
 		if !fixture.Active {
 			return fmt.Errorf("safari battle fixture requires active safari session")
 		}
-		wild, err := pokebattle.BuildWildPokemon(db.GlobalWorldDB.DB, fixture.Battle.PokemonID, fixture.Battle.Level)
+		wild, err := pokebattle.BuildWildPokemon(wh.Safari.database, fixture.Battle.PokemonID, fixture.Battle.Level)
 		if err != nil {
 			return fmt.Errorf("build safari battle pokemon #%d L%d: %w", fixture.Battle.PokemonID, fixture.Battle.Level, err)
 		}
 		session.Battle = pokebattle.NewSafariBattle(wild, fixture.BallsLeft, fixture.StepsLeft)
 	}
-	wh.Safari.SetSession(charID, session)
-	return nil
+	return wh.Safari.SetSession(charID, session)
 }
 
 func sendDebugSafariState(ses *session.Session, charID int64, wh *WorldHandler, mapID int) {
 	if wh == nil || wh.Safari == nil {
 		return
 	}
-	session := wh.Safari.GetSession(charID)
+	session, err := wh.Safari.GetSession(charID)
+	if err != nil {
+		safariStorageError(ses, charID, err, opcodes.SafariZoneEnterResponse)
+		return
+	}
 	if session == nil || !session.Active {
 		if IsInSafariZone(mapID) {
 			ses.SendStreamJSON(map[string]interface{}{
@@ -1363,7 +1366,9 @@ func resetDebugCharacterToFreshStart(charID int64, wh *WorldHandler) (int, int, 
 func resetDebugCharacterState(charID int64, wh *WorldHandler) error {
 	ClearBattleForCharacter(charID)
 	if wh != nil && wh.Safari != nil {
-		wh.Safari.EndSession(charID)
+		if err := wh.Safari.EndSession(charID); err != nil {
+			return err
+		}
 	}
 	if wh != nil && wh.EventFlags != nil {
 		for _, flag := range wh.EventFlags.GetAllFlags(charID) {
@@ -1380,6 +1385,7 @@ func resetDebugCharacterState(charID int64, wh *WorldHandler) error {
 		`DELETE FROM character_pc_state WHERE character_id = $1`,
 		`DELETE FROM character_field_move_state WHERE character_id = $1`,
 		`DELETE FROM character_repels WHERE character_id = $1`,
+		`DELETE FROM character_safari_state WHERE character_id = $1`,
 		`DELETE FROM character_object_positions WHERE character_id = $1`,
 		`DELETE FROM character_object_visibility_overrides WHERE character_id = $1`,
 		`DELETE FROM character_collected_items WHERE character_id = $1`,

@@ -15,6 +15,7 @@
   },
   "expect": {
     "scriptLabel": "SafariZoneEnter",
+    "flagsPresent": ["EVENT_IN_SAFARI_ZONE"],
     "money": 0,
     "safariActive": true,
     "safariBallsLeft": 30,

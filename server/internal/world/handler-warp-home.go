@@ -1,9 +1,12 @@
 package world
 
 import (
+	"context"
 	"log"
 
 	"capturequest/internal/api/opcodes"
+	"capturequest/internal/db"
+	"capturequest/internal/pokebattle"
 	"capturequest/internal/session"
 )
 
@@ -24,20 +27,26 @@ func HandleWarpHomeRequest(ses *session.Session, _ []byte, wh *WorldHandler) boo
 	x := int(RecoverySpawnX)
 	y := int(RecoverySpawnY)
 
-	ClearBattleForCharacter(charID)
-	if wh != nil && wh.Safari != nil {
-		wh.Safari.EndSession(charID)
-	}
-	if wh != nil && wh.EventFlags != nil {
-		if err := wh.EventFlags.ResetFlag(charID, EventInSafariZone); err != nil {
-			log.Printf("[WarpHome] Failed to reset %s for char %d: %v", EventInSafariZone, charID, err)
+	previousBattle := getBattle(charID)
+	if err := db.Transaction(context.Background(), wh.database, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, charID); err != nil {
+			return err
 		}
-		if err := wh.EventFlags.ResetFlag(charID, EventSafariGameOver); err != nil {
-			log.Printf("[WarpHome] Failed to reset %s for char %d: %v", EventSafariGameOver, charID, err)
+		if err := endSafariSessionIn(tx, charID); err != nil {
+			return err
 		}
+		if err := pokebattle.DeleteBattleState(tx, charID); err != nil {
+			return err
+		}
+		return saveFieldDestinationIn(tx, charID, mapID, x, y)
+	}); err != nil {
+		log.Printf("[WarpHome] Character %d: %v", charID, err)
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "message": "Could not warp home. Please try again."}, opcodes.WarpHomeResponse)
+		return false
 	}
-
-	setServerTeleportedPlayerPosition(ses, wh, mapID, x, y, direction)
+	forgetBattle(charID, previousBattle)
+	refreshSafariFlags(wh, charID)
+	applyServerTeleportedPlayerPosition(ses, wh, mapID, x, y, direction, false)
 
 	ses.SendStreamJSON(map[string]interface{}{
 		"mapId": mapID,

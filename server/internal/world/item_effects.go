@@ -224,6 +224,10 @@ func teleportPlayerTo(ses *session.Session, wh *WorldHandler, mapID int, x int, 
 }
 
 func publishCommittedTeleport(ses *session.Session, wh *WorldHandler, mapID, x, y int) {
+	// The shared position transaction can end a Safari visit and clear its flags.
+	if ses != nil && ses.HasValidClient() {
+		refreshSafariFlags(wh, int64(ses.Client.CharData().ID))
+	}
 	applyServerTeleportedPlayerPosition(ses, wh, mapID, x, y, "DOWN", false)
 	ses.SendStreamJSON(map[string]interface{}{"mapId": mapID, "x": x, "y": y}, opcodes.WarpTileTeleportNotify)
 }
