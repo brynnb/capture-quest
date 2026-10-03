@@ -15,12 +15,16 @@ type objectVisibilityOverride struct {
 }
 
 func SetCharacterObjectVisibilityOverrideByName(charID int64, objectName string, visible bool, source string) error {
+	return setCharacterObjectVisibilityOverrideByName(db.GlobalWorldDB.DB, charID, objectName, visible, source)
+}
+
+func setCharacterObjectVisibilityOverrideByName(database db.DBTX, charID int64, objectName string, visible bool, source string) error {
 	objectName = strings.TrimSpace(objectName)
 	if charID == 0 || objectName == "" {
 		return nil
 	}
 	var objectID int
-	if err := db.GlobalWorldDB.DB.QueryRow(
+	if err := database.QueryRow(
 		`SELECT id FROM phaser_objects WHERE name = $1 LIMIT 1`,
 		objectName,
 	).Scan(&objectID); err != nil {
@@ -29,7 +33,7 @@ func SetCharacterObjectVisibilityOverrideByName(charID int64, objectName string,
 		}
 		return err
 	}
-	return SetCharacterObjectVisibilityOverride(charID, objectID, visible, source)
+	return setCharacterObjectVisibilityOverride(database, charID, objectID, visible, source)
 }
 
 func SetCharacterObjectVisibilityOverride(charID int64, objectID int, visible bool, source string) error {

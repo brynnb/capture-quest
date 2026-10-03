@@ -120,17 +120,25 @@ func commitPosition(ctx context.Context, database *sql.DB, charID int64, mapID, 
 			return err
 		}
 		if validateCatalog {
-			// UnifiedOverworldMapID is synthetic; its catalog rows use NULL map_id.
-			var valid bool
-			if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM phaser_tiles
-    WHERE (($4 AND map_id IS NULL) OR (NOT $4 AND map_id=$1)) AND x=$2 AND y=$3 AND is_tile_erased=0)
-    AND ($4 OR EXISTS(SELECT 1 FROM phaser_maps WHERE id=$1))`, mapID, x, y, mapID == UnifiedOverworldMapID).Scan(&valid); err != nil {
+			if err := validateClientDestinationIn(tx, mapID, x, y); err != nil {
 				return err
 			}
-			if !valid {
-				return fmt.Errorf("destination map %d tile (%d,%d) is absent or erased", mapID, x, y)
-			}
 		}
+
 		return saveFieldDestinationIn(tx, charID, mapID, x, y)
 	})
+}
+
+func validateClientDestinationIn(tx db.DBTX, mapID, x, y int) error {
+	// UnifiedOverworldMapID is synthetic; its catalog rows use NULL map_id.
+	var valid bool
+	if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM phaser_tiles
+    WHERE (($4 AND map_id IS NULL) OR (NOT $4 AND map_id=$1)) AND x=$2 AND y=$3 AND is_tile_erased=0)
+    AND ($4 OR EXISTS(SELECT 1 FROM phaser_maps WHERE id=$1))`, mapID, x, y, mapID == UnifiedOverworldMapID).Scan(&valid); err != nil {
+		return err
+	}
+	if !valid {
+		return fmt.Errorf("destination map %d tile (%d,%d) is absent or erased", mapID, x, y)
+	}
+	return nil
 }

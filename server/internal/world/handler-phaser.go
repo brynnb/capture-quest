@@ -185,106 +185,57 @@ func HandlePhaserMapLoadRequest(ses *session.Session, payload []byte, wh *WorldH
 		return false
 	}
 
-	if req.DestX != nil && req.DestY != nil && ses.HasValidClient() {
-		if err := commitClientPlayerPosition(ses.CommandContext(), wh.database, int64(ses.Client.CharData().ID), normalizedVisiblePlayerMapID(wh, mapInfo.ID), *req.DestX, *req.DestY); err != nil {
-			log.Printf("[Phaser] Save map destination: %v", err)
-			ses.SendStreamJSON(protocol.PhaserMapRequestError{RequestID: req.RequestID, Error: "Could not save the destination. Please try again."}, opcodes.PhaserMapLoadResponse)
-			return false
-		}
-		refreshSafariFlags(wh, int64(ses.Client.CharData().ID))
-	}
-
-	// Normalize overworld maps to the unified ID for session tracking
-	normalizedID := mapInfo.ID
-	if wh.ActorManager.IsOverworld(normalizedID) {
-		normalizedID = UnifiedOverworldMapID
-	}
-	previousVisibleMapID := ses.MapID
-	if ses.HasValidClient() {
-		if char := ses.Client.CharData(); char != nil {
-			previousVisibleMapID = int(char.MapID)
-			if wh.ActorManager.IsOverworld(previousVisibleMapID) {
-				previousVisibleMapID = UnifiedOverworldMapID
-			}
-		}
-	}
-	if req.DestX == nil {
-		// Loading a saved location cannot claim another map without a destination.
-		if !ses.HasValidClient() || normalizedID != currentPlayerVisibleMapID(ses, wh, int(ses.Client.CharData().ID)) {
-			ses.SendStreamJSON(protocol.PhaserMapRequestError{RequestID: req.RequestID, Error: "Map loading requires the current player location."}, opcodes.PhaserMapLoadResponse)
-			return false
-		}
-	} else {
-		ses.MapID = normalizedID
-	}
-
-	// Keep char.MapID in sync so the server always knows the player's current map.
-	// This prevents stale interior map IDs from being used for auto-registration
-	// when the client loads a different map (e.g., overworld on login).
-	if ses.HasValidClient() {
-		char := ses.Client.CharData()
-		if char != nil {
-			// A supplied destination has already committed. Recover only when
-			// loading the saved position, or recovery would overwrite that commit.
-			if req.DestX == nil || req.DestY == nil {
-				if recovered, err := recoverInvalidCharacterPosition(ses, wh); err != nil {
-					log.Printf("[Phaser] Recover position: %v", err)
-					ses.SendStreamJSON(protocol.PhaserMapRequestError{RequestID: req.RequestID, Error: "Could not recover player position."}, opcodes.PhaserMapLoadResponse)
-					return false
-				} else if recovered {
-					char = ses.Client.CharData()
-				}
-			}
-			if req.DestX != nil && req.DestY != nil {
-				// Warp: update position atomically so fetchActors returns correct position
-				log.Printf("[Phaser] Warp position update via MapLoad: player %d -> map %d (%d,%d)",
-					char.ID, req.MapID, *req.DestX, *req.DestY)
-				char.X = float64(*req.DestX)
-				char.Y = float64(*req.DestY)
-				char.MapID = uint32(normalizedID)
-				ses.X = float32(*req.DestX)
-				ses.Y = float32(*req.DestY)
-
-				// Sync with movement manager
-				wh.PlayerMovement.UpdatePosition(int(char.ID), *req.DestX, *req.DestY, normalizedID, "DOWN")
-				wh.PlayerMovement.markPositionCommitted(int(char.ID), *req.DestX, *req.DestY, normalizedID)
-				broadcastPlayerVisibleMapChange(ses, wh, previousVisibleMapID)
-			} else {
-				charMapID := int(char.MapID)
-				if wh.ActorManager.IsOverworld(charMapID) {
-					charMapID = UnifiedOverworldMapID
-				}
-				if charMapID == normalizedID {
-					ses.X = float32(char.X)
-					ses.Y = float32(char.Y)
-				}
-			}
-			if wh.EventFlags != nil {
-				effectMapName := ""
-				if req.MapID == UnifiedOverworldMapID && req.DestX != nil && req.DestY != nil {
-					effectMapName = OverworldMapLoadNameForPosition(*req.DestX, *req.DestY)
-				}
-				var (
-					effect MapLoadEffect
-					err    error
-				)
-				if effectMapName != "" {
-					effect, err = ApplyMapLoadScriptEffectsForMapName(int64(char.ID), effectMapName, wh.EventFlags)
-				} else {
-					effect, err = ApplyMapLoadScriptEffects(int64(char.ID), req.MapID, wh.EventFlags)
-				}
-				if err != nil {
-					log.Printf("[Phaser] Map-load effects failed for char %d map %d: %v", char.ID, req.MapID, err)
-				} else if effect.Changed() {
-					log.Printf("[Phaser] Applied map-load effects for char %d map %s: set=%v reset=%v affected=%v",
-						char.ID, effect.MapName, effect.SetFlags, effect.ResetFlags, effect.AffectedMapNames)
-				}
-			}
-		}
-	}
-
 	char := ses.Client.CharData()
+	charID := int64(char.ID)
+	normalizedID := normalizedVisiblePlayerMapID(wh, mapInfo.ID)
+	previousMapID := currentPlayerVisibleMapID(ses, wh, int(char.ID))
+	supplied := req.DestX != nil
+	if !supplied && normalizedID != previousMapID {
+		ses.SendStreamJSON(protocol.PhaserMapRequestError{RequestID: req.RequestID, Error: "Map loading requires the current player location."}, opcodes.PhaserMapLoadResponse)
+		return false
+	}
+	x, y := int(char.X), int(char.Y)
+	writePosition := supplied
+	direction := "DOWN"
+	if supplied {
+		x, y = *req.DestX, *req.DestY
+	} else if isInvalidZeroPlayerPosition(x, y) {
+		// Recovery uses the actual recovery map's effects, never those of a stale view.
+		mapInfo, err = loadRuntimeMapInfo(ses.CommandContext(), wh.Content, RecoverySpawnMap)
+		if err != nil {
+			ses.SendStreamJSON(protocol.PhaserMapRequestError{RequestID: req.RequestID, Error: "Could not load recovery destination."}, opcodes.PhaserMapLoadResponse)
+			return false
+		}
+		normalizedID = normalizedVisiblePlayerMapID(wh, RecoverySpawnMap)
+		x, y = int(RecoverySpawnX), int(RecoverySpawnY)
+		direction = RecoverySpawnDirection
+		writePosition = true
+	}
+	effectMapID, effectMapName := mapInfo.ID, mapInfo.Name
+	if normalizedID == UnifiedOverworldMapID {
+		effectMapName = OverworldMapLoadNameForPosition(x, y)
+	}
+	effect, err := commitMapLoad(ses.CommandContext(), wh.database, charID, normalizedID, x, y, writePosition, supplied, wh.EventFlags != nil, effectMapID, effectMapName)
+	if err != nil {
+		log.Printf("[Phaser] Commit map load for %d: %v", charID, err)
+		ses.SendStreamJSON(protocol.PhaserMapRequestError{RequestID: req.RequestID, Error: "Could not finish map loading. Please try again."}, opcodes.PhaserMapLoadResponse)
+		return false
+	}
+	if wh.EventFlags != nil {
+		if err := wh.EventFlags.LoadFlagsContext(ses.CommandContext(), charID); err != nil {
+			log.Printf("[Phaser] Refresh committed map-load flags for %d: %v", charID, err)
+		}
+	}
+	if writePosition {
+		publishCommittedPlayerPosition(ses, wh, normalizedID, x, y, direction)
+	} else {
+		ses.X, ses.Y = float32(char.X), float32(char.Y)
+	}
+	if effect.Changed() {
+		log.Printf("[Phaser] Committed map effects for %d map %s", charID, effect.MapName)
+	}
 	ses.SendStreamJSON(protocol.PhaserMapLoadResponse{Success: true, RequestID: req.RequestID, MapID: int(char.MapID), X: int(char.X), Y: int(char.Y)}, opcodes.PhaserMapLoadResponse)
+
 	return false
 }
 

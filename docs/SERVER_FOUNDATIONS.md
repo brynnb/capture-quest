@@ -2,22 +2,11 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-read-only map metadata and correlated map-load commands (2026-10-02), following
-bounded map-query checkpoint `8e5d65f` and client
-destination checkpoint `42cfa37`, rendered diagnosis `e455b24`, and retired legacy map
-setter `7732412` and active-player shutdown
-checkpoint `c811917` and
-owned transport checkpoint `fea2a16` and HTTP retirement checkpoint
-`5160707`, shutdown
-wait/result checkpoint `d51956c` and lifecycle
-persistence checkpoint `1e26eb7` and effect/script
-cancellation checkpoint `ac06a58` and running-command
-cancellation checkpoint `ff46ada`, position persistence checkpoint `d70813e`,
-durable Safari checkpoint `19203f2`, Repel checkpoint `adaa047` and FLY
-checkpoint `b785d58`.
-All earlier foundation checkpoints are retained in this
-branch's history. No push or production deployment is authorized by this goal.
+Working branch: `codex/server-foundations`. Latest checkpoint: atomic map-load
+position, Safari transitions and script effects (2026-10-02), following the
+read-only metadata/correlated arrival checkpoint `7d4060c`. Earlier foundation
+checkpoints remain in this branch's history. No push or production deployment
+is authorized by this goal.
 
 Keep Go, PostgreSQL, one deployable server, and the authoritative extractor,
 runtime asset, and scripted-action contracts. Improve runtime safety through
@@ -41,7 +30,7 @@ evidence, including remaining-work notes that subsequent commits may resolve.
 | Area | Implemented | Still required |
 | --- | --- | --- |
 | Request/session boundary | Packet and connection limits, centralized session prerequisites, removal of insecure session takeover, actual transport closure, location/visibility checks for scripted clicks, dialogue choices and direct trainer battles, client destination catalog validation and read-only map metadata, and preserved command deadlines/disconnect cancellation in migrated operations. | Audit remaining interaction/mutation endpoints; propagate cancellation through legacy managers and remaining database/network work. |
-| Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors, Game Corner prizes and bounded coin/slot/hidden-coin operations, atomic Escape Rope/FLY positions, durable Repel counters, Safari entry/turn/capture state and exhaustion destinations, atomic recovery warps, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery of committed results across reconnects. |
+| Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors, Game Corner prizes and bounded coin/slot/hidden-coin operations, atomic Escape Rope/FLY positions, durable Repel counters, Safari entry/turn/capture state and exhaustion destinations, atomic recovery warps and map-load position/Safari/flag/visibility/boulder effects, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery of committed results across reconnects. |
 | Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, and movement ticks coordinated with the owner. | Finish timer/callback/shared-state and legacy position-writer audits; prove remaining concurrent/reconnect behavior across real transports. |
 | Domains and wire contracts | Injected content-query service; typed character/wallet/bind, Pokédex/card, content detail, map-script, map-info/list and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
 | Lifecycle and verification | Owned HTTP/listeners, readiness, listener failure propagation, joined periodic workers, sealed session admissions, fail-closed staged preload, startup cancellation, atomic scripted-event publication, and deadline-aware shutdown waits with returned failure results. | Audit cancellation of remaining legacy work, define durable final-save recovery, and complete transport/rendered integration coverage. Owned HTTP and player transport retirement and isolated active-player shutdown checks have landed. |
@@ -64,7 +53,10 @@ evidence, including remaining-work notes that subsequent commits may resolve.
    before live publication; movement saves retain dirty state on failure and
    release the shared player lock before database work. Audit remaining field
    effects and other mutation paths for the same requirements.
-   Extend the shared transaction/domain operations already in use. Acceptance:
+   Map-load arrival/recovery and script effects now also share one transaction;
+   native-map provenance for overworld effects and post-commit cache recovery
+   remain unfinished. Extend the shared transaction/domain operations already
+   in use. Acceptance:
    a late failure leaves all affected state unchanged; retry and concurrent
    requests cannot duplicate a reward or publish uncommitted success.
 2. **Complete the mutation and interaction audit.** Check every remaining opcode
@@ -95,6 +87,40 @@ evidence, including remaining-work notes that subsequent commits may resolve.
    cancellation/timeouts, failure/retry and shutdown with active players.
    Acceptance: evidence covers the original five milestones, including visible
    behavior where relevant. Only then mark the full goal complete.
+
+## Atomic map-load persistence checkpoint (2026-10-02)
+
+Previously arrival could commit a position or flag before a later visibility or
+boulder update failed. Conditions also read cached flags and helpers used the
+global database. Map-load arrival now locks the character and commits destination
+validation, saved position, Safari transition, durable flag decisions, flag writes,
+object visibility overrides and boulder resets through one injected transaction.
+Runtime and simulator use the same effect implementation. Recovery applies the
+actual recovery map's effects. Live position, movement/presence publication and
+successful acknowledgement follow commit; rolled-back effects never enter the
+flag cache. The existing bounded transaction honors command cancellation.
+
+Race-enabled PostgreSQL suites passed for `internal/world`, `internal/scriptsim`,
+`internal/server` and `internal/protocol`; the additional focused boulder-reset
+test also passed. New PostgreSQL fixtures exercise deferred commit failure across position/Safari/flags,
+compound Daisy visibility/flags using durable eligibility despite a stale cache,
+boulder deletion/flag rollback with unrelated-position preservation, and
+cancellation while an effect query is blocked, followed by successful retry.
+The fixture preloads actor collision residency before disabling the global DB;
+this proves injected persistence, not removal of the actor manager's legacy global
+collision dependency. All five isolated rendered Instant Warp and multiplayer
+visibility checks passed; evidence is retained at
+`/var/tmp/capturequest-rendered.gEqWOt`. `git diff --check` passed. No frontend or
+generated-asset files changed in this checkpoint.
+
+Remaining: Route 20 still uses the existing coordinate rectangle to select its
+native load effect; migrate that selection to authoritative tile provenance.
+Normal warp producers still report positions alongside map-load requests; replace
+that shared client position authority with issued warp grants and explicit Instant
+Warp intent. Flag-cache refresh happens after commit: a refresh failure is logged
+and cannot undo durable work. Define cache/result recovery after cancellation,
+transport loss or reconnect. Other managers still retain global dependencies.
+These limits and the full remaining-work list above keep the goal active.
 
 ## Read-only metadata and correlated map-load commands (2026-10-02)
 

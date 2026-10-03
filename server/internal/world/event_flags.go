@@ -30,11 +30,14 @@ func NewEventFlagManager(db *sql.DB) *EventFlagManager {
 // LoadFlags loads all event flags for a character from the database into the cache.
 // Should be called when a character enters the world.
 func (m *EventFlagManager) LoadFlags(charID int64) error {
+	return m.LoadFlagsContext(context.Background(), charID)
+}
+func (m *EventFlagManager) LoadFlagsContext(ctx context.Context, charID int64) error {
 	// Serialize the read and cache replacement so a slow older read cannot replace
 	// a newer snapshot. Writers refresh from committed storage, not a stale delta.
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	rows, err := m.db.QueryContext(ctx, `SELECT flag_name FROM character_event_flags WHERE character_id=$1`, charID)
 	if err != nil {

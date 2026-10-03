@@ -1,6 +1,8 @@
 package world
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 
 	"capturequest/internal/db"
@@ -19,80 +21,126 @@ func (e MapLoadEffect) Changed() bool {
 }
 
 func ApplyMapLoadScriptEffects(charID int64, mapID int, efm *EventFlagManager) (MapLoadEffect, error) {
-	return applyMapLoadScriptEffects(charID, mapID, mapNameForBoulderMapID(mapID), efm)
+	return commitStandaloneMapLoadEffects(context.Background(), charID, mapID, "", efm)
 }
 
 func ApplyMapLoadScriptEffectsForMapName(charID int64, mapName string, efm *EventFlagManager) (MapLoadEffect, error) {
-	mapID := 0
-	if id, err := mapIDForBoulderMapName(mapName); err == nil {
-		mapID = id
-	}
-	return applyMapLoadScriptEffects(charID, mapID, mapName, efm)
+	return commitStandaloneMapLoadEffects(context.Background(), charID, 0, mapName, efm)
 }
 
+func commitStandaloneMapLoadEffects(ctx context.Context, charID int64, mapID int, mapName string, efm *EventFlagManager) (MapLoadEffect, error) {
+	if charID == 0 || efm == nil {
+		return MapLoadEffect{}, nil
+	}
+	var effect MapLoadEffect
+	err := db.Transaction(ctx, efm.db, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, charID); err != nil {
+			return err
+		}
+		if mapName == "" {
+			if err := tx.QueryRow(`SELECT name FROM phaser_maps WHERE id=$1`, mapID).Scan(&mapName); err != nil {
+				return err
+			}
+		} else {
+			if err := tx.QueryRow(`SELECT id FROM phaser_maps WHERE name=$1`, mapName).Scan(&mapID); err != nil {
+				return err
+			}
+		}
+		var err error
+		effect, err = applyMapLoadScriptEffectsIn(tx, charID, mapID, mapName)
+		return err
+	})
+	if err != nil {
+		return MapLoadEffect{}, err
+	}
+	if err := efm.LoadFlagsContext(ctx, charID); err != nil {
+		return effect, err
+	}
+	return effect, nil
+}
+
+// Retained until arrival uses native tile provenance rather than this legacy
+// geometry policy. No transaction caller may use global DB or cached flags.
 func OverworldMapLoadNameForPosition(x, y int) string {
-	// Route 20 is stored in the unified overworld at local_x + 20, local_y + 108.
 	if x >= 20 && x <= 69 && y >= 108 && y <= 116 {
 		return "ROUTE_20"
 	}
 	return ""
 }
 
-func applyMapLoadScriptEffects(charID int64, mapID int, mapName string, efm *EventFlagManager) (MapLoadEffect, error) {
+func applyMapLoadScriptEffectsIn(tx db.DBTX, charID int64, mapID int, mapName string) (MapLoadEffect, error) {
 	effect := MapLoadEffect{
 		MapID:   mapID,
 		MapName: mapName,
 	}
-	if charID == 0 || efm == nil {
-		return effect, nil
+	if err := db.RequireTransaction(tx); err != nil {
+		return effect, err
+	}
+	flags := make(map[string]bool)
+	rows, err := tx.Query(`SELECT flag_name FROM character_event_flags WHERE character_id=$1`, charID)
+	if err != nil {
+		return effect, err
+	}
+	for rows.Next() {
+		var flag string
+		if err := rows.Scan(&flag); err != nil {
+			rows.Close()
+			return effect, err
+		}
+		flags[flag] = true
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return effect, err
 	}
 
 	switch effect.MapName {
 	case "PALLET_TOWN":
-		if !efm.CheckFlag(charID, "EVENT_DAISY_WALKING") &&
-			efm.CheckFlag(charID, "EVENT_GOT_TOWN_MAP") &&
-			efm.CheckFlag(charID, "EVENT_ENTERED_BLUES_HOUSE") {
-			if err := efm.SetFlag(charID, "EVENT_DAISY_WALKING"); err != nil {
+		if !flags["EVENT_DAISY_WALKING"] &&
+			flags["EVENT_GOT_TOWN_MAP"] &&
+			flags["EVENT_ENTERED_BLUES_HOUSE"] {
+			if err := writeEventFlag(tx, charID, "EVENT_DAISY_WALKING", true); err != nil {
 				return effect, err
 			}
 			effect.SetFlags = append(effect.SetFlags, "EVENT_DAISY_WALKING")
-			if err := SetCharacterObjectVisibilityOverrideByName(charID, "BluesHouse_NPC_1", false, "PalletTownDaisyScript"); err != nil {
+			if err := setCharacterObjectVisibilityOverrideByName(tx, charID, "BluesHouse_NPC_1", false, "PalletTownDaisyScript"); err != nil {
 				return effect, err
 			}
-			if err := SetCharacterObjectVisibilityOverrideByName(charID, "BluesHouse_NPC_2", true, "PalletTownDaisyScript"); err != nil {
+			if err := setCharacterObjectVisibilityOverrideByName(tx, charID, "BluesHouse_NPC_2", true, "PalletTownDaisyScript"); err != nil {
 				return effect, err
 			}
 			effect.AffectedMapNames = appendUniqueStrings(effect.AffectedMapNames, "BLUES_HOUSE")
 		}
-		if efm.CheckFlag(charID, "EVENT_GOT_POKEBALLS_FROM_OAK") &&
-			!efm.CheckFlag(charID, "EVENT_PALLET_AFTER_GETTING_POKEBALLS_2") {
-			if err := efm.SetFlag(charID, "EVENT_PALLET_AFTER_GETTING_POKEBALLS_2"); err != nil {
+		if flags["EVENT_GOT_POKEBALLS_FROM_OAK"] &&
+			!flags["EVENT_PALLET_AFTER_GETTING_POKEBALLS_2"] {
+			if err := writeEventFlag(tx, charID, "EVENT_PALLET_AFTER_GETTING_POKEBALLS_2", true); err != nil {
 				return effect, err
 			}
 			effect.SetFlags = append(effect.SetFlags, "EVENT_PALLET_AFTER_GETTING_POKEBALLS_2")
 		}
 	case "SEAFOAM_ISLANDS_1F":
-		if err := efm.SetFlag(charID, "EVENT_IN_SEAFOAM_ISLANDS"); err != nil {
+		if err := writeEventFlag(tx, charID, "EVENT_IN_SEAFOAM_ISLANDS", true); err != nil {
 			return effect, err
 		}
 		effect.SetFlags = append(effect.SetFlags, "EVENT_IN_SEAFOAM_ISLANDS")
 	case "ROUTE_20":
-		if !efm.CheckFlag(charID, "EVENT_IN_SEAFOAM_ISLANDS") {
+		if !flags["EVENT_IN_SEAFOAM_ISLANDS"] {
 			return effect, nil
 		}
-		if err := resetMapLoadFlags(charID, efm, "EVENT_IN_SEAFOAM_ISLANDS"); err != nil {
+		if err := resetMapLoadFlags(tx, charID, "EVENT_IN_SEAFOAM_ISLANDS"); err != nil {
 			return effect, err
 		}
 		effect.ResetFlags = append(effect.ResetFlags, "EVENT_IN_SEAFOAM_ISLANDS")
-		if efm.CheckFlag(charID, "EVENT_SEAFOAM3_BOULDER1_DOWN_HOLE") &&
-			efm.CheckFlag(charID, "EVENT_SEAFOAM3_BOULDER2_DOWN_HOLE") {
-			if err := setSeafoamRoute20ObjectOverrides(charID, true,
+		if flags["EVENT_SEAFOAM3_BOULDER1_DOWN_HOLE"] &&
+			flags["EVENT_SEAFOAM3_BOULDER2_DOWN_HOLE"] {
+			if err := setSeafoamRoute20ObjectOverrides(tx, charID, true,
 				"SeafoamIslands1F_NPC_1",
 				"SeafoamIslands1F_NPC_2",
 			); err != nil {
 				return effect, err
 			}
-			if err := setSeafoamRoute20ObjectOverrides(charID, false,
+			if err := setSeafoamRoute20ObjectOverrides(tx, charID, false,
 				"SeafoamIslandsB1F_NPC_1",
 				"SeafoamIslandsB1F_NPC_2",
 				"SeafoamIslandsB2F_NPC_1",
@@ -102,7 +150,7 @@ func applyMapLoadScriptEffects(charID int64, mapID int, mapName string, efm *Eve
 			); err != nil {
 				return effect, err
 			}
-			if err := clearBoulderPositionsForMaps(charID, 192, 159, 160, 161); err != nil {
+			if err := clearBoulderPositionsForMaps(tx, charID, 192, 159, 160, 161); err != nil {
 				return effect, err
 			}
 			effect.AffectedMapNames = appendUniqueStrings(effect.AffectedMapNames,
@@ -112,21 +160,21 @@ func applyMapLoadScriptEffects(charID int64, mapID int, mapName string, efm *Eve
 				"SEAFOAM_ISLANDS_B3F",
 			)
 		}
-		if efm.CheckFlag(charID, "EVENT_SEAFOAM4_BOULDER1_DOWN_HOLE") &&
-			efm.CheckFlag(charID, "EVENT_SEAFOAM4_BOULDER2_DOWN_HOLE") {
-			if err := setSeafoamRoute20ObjectOverrides(charID, true,
+		if flags["EVENT_SEAFOAM4_BOULDER1_DOWN_HOLE"] &&
+			flags["EVENT_SEAFOAM4_BOULDER2_DOWN_HOLE"] {
+			if err := setSeafoamRoute20ObjectOverrides(tx, charID, true,
 				"SeafoamIslandsB3F_NPC_1",
 				"SeafoamIslandsB3F_NPC_2",
 			); err != nil {
 				return effect, err
 			}
-			if err := setSeafoamRoute20ObjectOverrides(charID, false,
+			if err := setSeafoamRoute20ObjectOverrides(tx, charID, false,
 				"SeafoamIslandsB4F_NPC_1",
 				"SeafoamIslandsB4F_NPC_2",
 			); err != nil {
 				return effect, err
 			}
-			if err := clearBoulderPositionsForMaps(charID, 161, 162); err != nil {
+			if err := clearBoulderPositionsForMaps(tx, charID, 161, 162); err != nil {
 				return effect, err
 			}
 			effect.AffectedMapNames = appendUniqueStrings(effect.AffectedMapNames,
@@ -135,7 +183,7 @@ func applyMapLoadScriptEffects(charID int64, mapID int, mapName string, efm *Eve
 			)
 		}
 	case "ROUTE_23":
-		if err := resetMapLoadFlags(charID, efm,
+		if err := resetMapLoadFlags(tx, charID,
 			"EVENT_VICTORY_ROAD_2_BOULDER_ON_SWITCH1",
 			"EVENT_VICTORY_ROAD_2_BOULDER_ON_SWITCH2",
 			"EVENT_VICTORY_ROAD_3_BOULDER_ON_SWITCH1",
@@ -149,25 +197,25 @@ func applyMapLoadScriptEffects(charID int64, mapID int, mapName string, efm *Eve
 			"EVENT_VICTORY_ROAD_3_BOULDER_ON_SWITCH1",
 			"EVENT_VICTORY_ROAD_3_BOULDER_ON_SWITCH2",
 		)
-		if err := clearBoulderPositionsForMaps(charID, 194, 198); err != nil {
+		if err := clearBoulderPositionsForMaps(tx, charID, 194, 198); err != nil {
 			return effect, err
 		}
 		effect.AffectedMapNames = append(effect.AffectedMapNames, "VICTORY_ROAD_2F", "VICTORY_ROAD_3F")
 	case "VICTORY_ROAD_2F":
-		if err := resetMapLoadFlags(charID, efm, "EVENT_VICTORY_ROAD_1_BOULDER_ON_SWITCH"); err != nil {
+		if err := resetMapLoadFlags(tx, charID, "EVENT_VICTORY_ROAD_1_BOULDER_ON_SWITCH"); err != nil {
 			return effect, err
 		}
 		effect.ResetFlags = append(effect.ResetFlags, "EVENT_VICTORY_ROAD_1_BOULDER_ON_SWITCH")
-		if err := clearBoulderPositionsForMaps(charID, 108); err != nil {
+		if err := clearBoulderPositionsForMaps(tx, charID, 108); err != nil {
 			return effect, err
 		}
 		effect.AffectedMapNames = append(effect.AffectedMapNames, "VICTORY_ROAD_1F")
 	case "INDIGO_PLATEAU_LOBBY":
-		if err := resetMapLoadFlags(charID, efm, "EVENT_VICTORY_ROAD_1_BOULDER_ON_SWITCH"); err != nil {
+		if err := resetMapLoadFlags(tx, charID, "EVENT_VICTORY_ROAD_1_BOULDER_ON_SWITCH"); err != nil {
 			return effect, err
 		}
 		effect.ResetFlags = append(effect.ResetFlags, "EVENT_VICTORY_ROAD_1_BOULDER_ON_SWITCH")
-		if err := clearBoulderPositionsForMaps(charID, 108); err != nil {
+		if err := clearBoulderPositionsForMaps(tx, charID, 108); err != nil {
 			return effect, err
 		}
 		effect.AffectedMapNames = append(effect.AffectedMapNames, "VICTORY_ROAD_1F")
@@ -175,18 +223,18 @@ func applyMapLoadScriptEffects(charID int64, mapID int, mapName string, efm *Eve
 	return effect, nil
 }
 
-func resetMapLoadFlags(charID int64, efm *EventFlagManager, flags ...string) error {
+func resetMapLoadFlags(tx db.DBTX, charID int64, flags ...string) error {
 	for _, flag := range flags {
-		if err := efm.ResetFlag(charID, flag); err != nil {
+		if err := writeEventFlag(tx, charID, flag, false); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func setSeafoamRoute20ObjectOverrides(charID int64, visible bool, objectNames ...string) error {
+func setSeafoamRoute20ObjectOverrides(tx db.DBTX, charID int64, visible bool, objectNames ...string) error {
 	for _, objectName := range objectNames {
-		if err := SetCharacterObjectVisibilityOverrideByName(charID, objectName, visible, "Route20SeafoamBoulderReset"); err != nil {
+		if err := setCharacterObjectVisibilityOverrideByName(tx, charID, objectName, visible, "Route20SeafoamBoulderReset"); err != nil {
 			return err
 		}
 	}
@@ -208,15 +256,11 @@ func appendUniqueStrings(values []string, additions ...string) []string {
 	return values
 }
 
-func clearBoulderPositionsForMaps(charID int64, mapIDs ...int) error {
+func clearBoulderPositionsForMaps(tx db.DBTX, charID int64, mapIDs ...int) error {
 	for _, mapID := range mapIDs {
-		if _, err := db.GlobalWorldDB.DB.Exec(`
-			DELETE FROM character_object_positions cop
-			USING phaser_objects po
-			WHERE cop.character_id = $1
-			  AND cop.map_id = $2
-			  AND po.id = cop.object_id
-			  AND po.sprite_name = 'SPRITE_BOULDER'`,
+		if _, err := tx.Exec(`DELETE FROM character_object_positions
+   WHERE character_id=$1 AND map_id=$2
+   AND object_id IN(SELECT id FROM phaser_objects WHERE sprite_name='SPRITE_BOULDER')`,
 			charID,
 			mapID,
 		); err != nil {
@@ -224,4 +268,34 @@ func clearBoulderPositionsForMaps(charID int64, mapIDs ...int) error {
 		}
 	}
 	return nil
+}
+
+// Position, Safari transition and all map-load mutations share the same commit.
+func commitMapLoad(ctx context.Context, database *sql.DB, charID int64, mapID, x, y int, writePosition, validateCatalog, applyEffects bool, effectMapID int, effectMapName string) (MapLoadEffect, error) {
+	var effect MapLoadEffect
+	err := db.Transaction(ctx, database, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, charID); err != nil {
+			return err
+		}
+		if writePosition {
+			if validateCatalog {
+				if err := validateClientDestinationIn(tx, mapID, x, y); err != nil {
+					return err
+				}
+			}
+			if err := saveFieldDestinationIn(tx, charID, mapID, x, y); err != nil {
+				return err
+			}
+		}
+		if applyEffects {
+			var err error
+			effect, err = applyMapLoadScriptEffectsIn(tx, charID, effectMapID, effectMapName)
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return MapLoadEffect{}, err
+	}
+	return effect, nil
 }
