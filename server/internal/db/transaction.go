@@ -95,3 +95,26 @@ func LockCharacter(database DBTX, characterID int64) error {
 	}
 	return nil
 }
+
+// Context queries let an owned transaction reuse cancellable read services
+// without escaping to the pool. Both the outer deadline and caller cancellation
+// apply. Query contexts retire when the outer transaction ends, including rows
+// whose consumption outlives QueryContext's return.
+func (q transactionQueries) queryContext(caller context.Context) context.Context {
+	ctx, cancel := context.WithCancel(q.ctx)
+	stopCaller := context.AfterFunc(caller, cancel)
+	context.AfterFunc(ctx, func() { stopCaller() })
+	if caller.Err() != nil {
+		cancel()
+	}
+	return ctx
+}
+func (q transactionQueries) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	return q.tx.QueryContext(q.queryContext(ctx), query, args...)
+}
+func (q transactionQueries) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	return q.tx.QueryRowContext(q.queryContext(ctx), query, args...)
+}
+func (q transactionQueries) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	return q.tx.ExecContext(q.queryContext(ctx), query, args...)
+}

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
-	"math/rand"
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
@@ -186,28 +185,34 @@ func HandleSafariBattleAction(ses *session.Session, payload []byte, wh *WorldHan
 
 // CheckSafariStep is called from the movement tick when a player steps in a safari zone.
 // It decrements the step counter, checks for encounters, and handles expiry.
-func CheckSafariStep(charID int64, x, y, mapID int, ses *session.Session, wh *WorldHandler) bool {
-	if !IsInSafariZone(mapID) {
-		return false
-	}
+type safariStepResult struct {
+	Visit   *SafariSession
+	Expired bool
+}
 
-	var safariSes *SafariSession
-	var expired bool
-	err := wh.Safari.mutate(ses.CommandContext(), charID, func(tx db.DBTX, s *SafariSession) error {
+func prepareSafariStepIn(tx db.DBTX, charID int64, x, y, mapID int, wh *WorldHandler) (safariStepResult, error) {
+	var result safariStepResult
+	s, err := safariSessionIn(tx, charID)
+	if err != nil {
+		return result, err
+	}
+	err = func() error {
 		if s == nil || !s.Active || s.Battle != nil {
 			return nil
 		}
-		safariSes = s
-		expired = advanceSafariStep(s)
-		if expired {
+		result.Visit = s
+		result.Expired = advanceSafariStep(s)
+		if result.Expired {
 			return expireSafariVisitIn(tx, charID)
 		}
 		if wh.WildEncounter == nil {
 			return nil
 		}
-		areaID := wh.WildEncounter.getEncounterAreaID(mapID, x, y)
-		area := wh.WildEncounter.areas[areaID]
-		if area == nil || area.EncounterRate == 0 || len(area.Slots) == 0 || rand.Intn(256) >= area.EncounterRate {
+		area, err := wh.WildEncounter.encounterAreaIn(tx, mapID, x, y)
+		if err != nil {
+			return err
+		}
+		if area == nil || area.EncounterRate == 0 || len(area.Slots) == 0 || wh.WildEncounter.encounterRoll(256) >= area.EncounterRate {
 			return nil
 		}
 		pokemonID, level := wh.WildEncounter.selectEncounterPokemon(area)
@@ -217,25 +222,51 @@ func CheckSafariStep(charID int64, x, y, mapID int, ses *session.Session, wh *Wo
 		}
 		s.Battle = pokebattle.NewSafariBattle(wild, s.BallsLeft, s.StepsLeft)
 		return markPokemonSeen(tx, charID, pokemonID)
+	}()
+	if err != nil {
+		return safariStepResult{}, err
+	}
+	if err := saveSafariSessionIn(tx, charID, s); err != nil {
+		return safariStepResult{}, err
+	}
+	return result, nil
+}
+
+func CheckSafariStep(charID int64, x, y, mapID int, ses *session.Session, wh *WorldHandler) bool {
+	if !IsInSafariZone(mapID) {
+		return false
+	}
+	var result safariStepResult
+	err := db.Transaction(ses.CommandContext(), wh.database, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, charID); err != nil {
+			return err
+		}
+		var err error
+		result, err = prepareSafariStepIn(tx, charID, x, y, mapID, wh)
+		return err
 	})
 	if err != nil {
 		log.Printf("[Safari] Step for %d: %v", charID, err)
 		return true
 	}
-	if safariSes == nil {
+	return publishSafariStep(ses, wh, charID, result)
+}
+
+func publishSafariStep(ses *session.Session, wh *WorldHandler, charID int64, result safariStepResult) bool {
+	if result.Visit == nil {
 		return false
 	}
-	if expired {
+	if result.Expired {
 		publishSafariExpiry(ses, wh, charID)
-		sendCommittedSafariExit(ses, safariSes.BallsLeft)
+		sendCommittedSafariExit(ses, result.Visit.BallsLeft)
 		return true
 	}
-	ses.SendStreamJSON(map[string]interface{}{"stepsLeft": safariSes.StepsLeft, "ballsLeft": safariSes.BallsLeft}, opcodes.SafariZoneStepUpdate)
-	if safariSes.Battle == nil {
+	ses.SendStreamJSON(map[string]interface{}{"stepsLeft": result.Visit.StepsLeft, "ballsLeft": result.Visit.BallsLeft}, opcodes.SafariZoneStepUpdate)
+	if result.Visit.Battle == nil {
 		return false
 	}
-	wild := safariSes.Battle.WildPokemon
-	ses.SendStreamJSON(map[string]interface{}{"pokemon": map[string]interface{}{"id": wild.ID, "name": wild.Name, "level": wild.Level, "hp": wild.CurHP, "maxHp": wild.MaxHP, "spriteId": wild.ID, "catchRate": wild.CatchRate}, "ballsLeft": safariSes.BallsLeft, "stepsLeft": safariSes.StepsLeft}, opcodes.SafariBattleStartNotify)
+	wild := result.Visit.Battle.WildPokemon
+	ses.SendStreamJSON(map[string]interface{}{"pokemon": map[string]interface{}{"id": wild.ID, "name": wild.Name, "level": wild.Level, "hp": wild.CurHP, "maxHp": wild.MaxHP, "spriteId": wild.ID, "catchRate": wild.CatchRate}, "ballsLeft": result.Visit.BallsLeft, "stepsLeft": result.Visit.StepsLeft}, opcodes.SafariBattleStartNotify)
 	return true
 }
 

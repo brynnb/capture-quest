@@ -128,17 +128,27 @@ func advanceRepelStep(ctx context.Context, database *sql.DB, charID int64) (Repe
 			return err
 		}
 		var err error
-		status, err = repelStatusIn(tx, charID)
-		if err != nil || !status.Active {
-			return err
-		}
-		status.StepsLeft--
-		status.Active = status.StepsLeft > 0
-		wore = !status.Active
-		return setRepelStepsIn(tx, charID, status.StepsLeft)
+		status, wore, err = advanceRepelStepIn(tx, charID)
+		return err
 	})
 	if err != nil {
 		return RepelStatus{}, false, err
 	}
 	return status, wore, nil
+}
+
+func advanceRepelStepIn(tx db.DBTX, charID int64) (RepelStatus, bool, error) {
+	if err := db.RequireTransaction(tx); err != nil {
+		return RepelStatus{}, false, err
+	}
+	status, err := repelStatusIn(tx, charID)
+	if err != nil || !status.Active {
+		return status, false, err
+	}
+	status.StepsLeft--
+	status.Active = status.StepsLeft > 0
+	if err := setRepelStepsIn(tx, charID, status.StepsLeft); err != nil {
+		return RepelStatus{}, false, err
+	}
+	return status, !status.Active, nil
 }

@@ -734,6 +734,10 @@ func sendStandaloneBlackout(ses *session.Session, wh *WorldHandler, charID int64
 		SendSystemMessage(ses, "Could not save recovery. Please try again.")
 		return
 	}
+	publishStandaloneBlackout(ses, wh, charID, result, party)
+}
+
+func publishStandaloneBlackout(ses *session.Session, wh *WorldHandler, charID int64, result BlackoutResult, party []*pokebattle.Pokemon) {
 	refreshSafariFlags(wh, charID)
 	publishCommittedPlayerPosition(ses, wh, result.MapID, result.X, result.Y, "DOWN")
 	ses.SendStreamJSON(model.CharacterWallet{CharacterID: uint32(charID), Pokedollars: uint32(result.NewMoney)}, opcodes.CharacterWallet)

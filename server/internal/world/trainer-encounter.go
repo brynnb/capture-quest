@@ -18,7 +18,7 @@ import (
 
 // TrainerEncounterNotifyPayload is sent to the client when a trainer spots the player.
 // The client should show "!" and animate the trainer locally to ApproachToX/Y.
-// The player position remains client-owned and does not get force-walked.
+// The server owns the committed player position; trainer approach is presentation.
 type TrainerEncounterNotifyPayload struct {
 	TrainerActorID int    `json:"trainerActorId"` // Runtime actor ID (from ActorRegistry)
 	TrainerX       int    `json:"trainerX"`       // Trainer's current position
@@ -225,107 +225,126 @@ func (m *TrainerEncounterManager) Load(ctx context.Context) error {
 // CheckPlayerPosition is called on each player movement tick.
 // It checks if the player's new position is in any trainer's line of sight.
 // Returns true if an encounter was triggered (caller should stop player movement).
-func (m *TrainerEncounterManager) CheckPlayerPosition(charID int64, playerX, playerY, mapID int, ses *session.Session) bool {
+// Selection has no publication or cache mutation. The movement transaction
+// stages it, and only its successful commit may reserve/publish the encounter.
+func (m *TrainerEncounterManager) publishPositionEncounter(t *trainerSightData, charID int64, playerX, playerY int, ses *session.Session) {
+	// Player is in this trainer's line of sight!
+	log.Printf("[TrainerEncounter] Trainer %s (obj %d) spotted player %d at (%d,%d)",
+		t.Name, t.ObjectID, charID, playerX, playerY)
+
+	// Mark as spotted so we don't re-trigger
+	m.spottedByMu.Lock()
+	if m.spottedBy[charID] == nil {
+		m.spottedBy[charID] = make(map[int]bool)
+	}
+	m.spottedBy[charID][t.ObjectID] = true
+	m.spottedByMu.Unlock()
+
+	// Calculate where the client should locally walk the trainer to.
+	approachToX, approachToY := m.approachTargetForPlayer(t, playerX, playerY)
+
+	// Store pending encounter
+	m.pendingMu.Lock()
+	m.pending[charID] = &pendingEncounter{
+		TrainerData: t,
+		CharID:      charID,
+		PlayerX:     playerX,
+		PlayerY:     playerY,
+	}
+	m.pendingMu.Unlock()
+
+	// Send notification to client
+	payload := TrainerEncounterNotifyPayload{
+		TrainerActorID: t.RuntimeActorID,
+		TrainerX:       t.X,
+		TrainerY:       t.Y,
+		PlayerX:        playerX,
+		PlayerY:        playerY,
+		ApproachToX:    approachToX,
+		ApproachToY:    approachToY,
+		WalkToX:        playerX,
+		WalkToY:        playerY,
+		TrainerClass:   t.TrainerClass,
+		TrainerName:    t.Name,
+	}
+	ses.SendStreamJSON(StructToMap(payload), opcodes.TrainerEncounterNotify)
+
+	// Stop any queued movement helper state. The player stays put while
+	// the client animates the trainer locally.
+	m.wh.PlayerMovement.StopMovement(int(charID))
+
+}
+
+func (m *TrainerEncounterManager) planPositionEncounter(ctx context.Context, q db.DBTX, charID int64, playerX, playerY, mapID int, flags *EventFlagManager) (*trainerSightData, error) {
 	trainers := m.byMap[mapID]
 	if len(trainers) == 0 {
-		return false
+		return nil, nil
 	}
-
-	// Don't trigger if player is already in a battle
 	if existing := getBattle(charID); existing != nil && !existing.IsOver() {
-		return false
+		return nil, nil
 	}
-
-	// Don't trigger if player already has a pending encounter
 	m.pendingMu.RLock()
-	_, hasPending := m.pending[charID]
+	_, pending := m.pending[charID]
 	m.pendingMu.RUnlock()
-	if hasPending {
-		return false
+	if pending {
+		return nil, nil
 	}
-
 	for _, t := range trainers {
 		if !m.canAutoTriggerBySight(t) {
 			continue
 		}
-		if trainerBattleSuppressedByGymLeaderDefeat(charID, t, m.wh) {
+		if meta, ok := gymLeaderMetadataForMap(t.MapID); ok && gymLeaderDefeatedForCharacter(charID, meta, flags) {
 			continue
 		}
-
-		// Skip if already triggered for this player
 		m.spottedByMu.RLock()
-		alreadySpotted := m.spottedBy[charID] != nil && m.spottedBy[charID][t.ObjectID]
+		spotted := m.spottedBy[charID] != nil && m.spottedBy[charID][t.ObjectID]
 		m.spottedByMu.RUnlock()
-		if alreadySpotted {
+		if spotted {
 			continue
 		}
-
-		// Skip if player has already defeated this trainer
-		if m.IsTrainerDefeated(charID, t.ObjectID) {
-			// Check if re-battles are enabled via player options
-			opts, _ := db_character.LoadOptions(context.Background(), int32(charID))
-			if opts == nil || !opts.AllowTrainerRebattles {
+		var defeated bool
+		if err := q.QueryRow(`SELECT EXISTS(SELECT 1 FROM character_defeated_trainers WHERE character_id=$1 AND trainer_object_id=$2)`, charID, t.ObjectID).Scan(&defeated); err != nil {
+			return nil, err
+		}
+		if defeated {
+			opts := db_character.DefaultOptions()
+			var raw sql.NullString
+			if err := q.QueryRow(`SELECT options FROM character_data WHERE id=$1`, charID).Scan(&raw); err != nil {
+				return nil, err
+			}
+			if raw.Valid && raw.String != "" {
+				if err := json.Unmarshal([]byte(raw.String), opts); err != nil {
+					return nil, fmt.Errorf("trainer options for %d: %w", charID, err)
+				}
+			}
+			if !opts.AllowTrainerRebattles {
 				continue
 			}
 		}
-
-		if trainerSightDebugEnabled() {
-			m.logTrainerSightDebug(charID, t)
-		}
-
-		if !m.hasClearSightLine(charID, t, playerX, playerY) {
+		if !m.isInSightLine(t, playerX, playerY) {
 			continue
 		}
-
-		// Player is in this trainer's line of sight!
-		log.Printf("[TrainerEncounter] Trainer %s (obj %d) spotted player %d at (%d,%d)",
-			t.Name, t.ObjectID, charID, playerX, playerY)
-
-		// Mark as spotted so we don't re-trigger
-		m.spottedByMu.Lock()
-		if m.spottedBy[charID] == nil {
-			m.spottedBy[charID] = make(map[int]bool)
+		dx, dy, _ := trainerSightDirectionDelta(t.Direction)
+		clear := true
+		for x, y := t.X+dx, t.Y+dy; x != playerX || y != playerY; x, y = x+dx, y+dy {
+			if m.isTrainerSightBlockedByTile(t.MapID, x, y) {
+				clear = false
+				break
+			}
+			blocked, err := m.isTrainerSightBlockedByObjectIn(ctx, q, charID, t, x, y, flags)
+			if err != nil {
+				return nil, err
+			}
+			if blocked {
+				clear = false
+				break
+			}
 		}
-		m.spottedBy[charID][t.ObjectID] = true
-		m.spottedByMu.Unlock()
-
-		// Calculate where the client should locally walk the trainer to.
-		approachToX, approachToY := m.approachTargetForPlayer(t, playerX, playerY)
-
-		// Store pending encounter
-		m.pendingMu.Lock()
-		m.pending[charID] = &pendingEncounter{
-			TrainerData: t,
-			CharID:      charID,
-			PlayerX:     playerX,
-			PlayerY:     playerY,
+		if clear {
+			return t, nil
 		}
-		m.pendingMu.Unlock()
-
-		// Send notification to client
-		payload := TrainerEncounterNotifyPayload{
-			TrainerActorID: t.RuntimeActorID,
-			TrainerX:       t.X,
-			TrainerY:       t.Y,
-			PlayerX:        playerX,
-			PlayerY:        playerY,
-			ApproachToX:    approachToX,
-			ApproachToY:    approachToY,
-			WalkToX:        playerX,
-			WalkToY:        playerY,
-			TrainerClass:   t.TrainerClass,
-			TrainerName:    t.Name,
-		}
-		ses.SendStreamJSON(StructToMap(payload), opcodes.TrainerEncounterNotify)
-
-		// Stop any queued movement helper state. The player stays put while
-		// the client animates the trainer locally.
-		m.wh.PlayerMovement.StopMovement(int(charID))
-
-		return true
 	}
-
-	return false
+	return nil, nil
 }
 
 func (m *TrainerEncounterManager) canAutoTriggerBySight(t *trainerSightData) bool {
@@ -440,7 +459,20 @@ func (m *TrainerEncounterManager) isTrainerSightBlockedByObject(charID int64, t 
 	if db.GlobalWorldDB == nil || db.GlobalWorldDB.DB == nil {
 		return false
 	}
-	rows, err := db.GlobalWorldDB.DB.Query(`
+	blocked, err := m.isTrainerSightBlockedByObjectIn(context.Background(), db.GlobalWorldDB.DB, charID, t, x, y, m.eventFlags())
+	return err == nil && blocked
+}
+
+func (m *TrainerEncounterManager) isTrainerSightBlockedByObjectIn(ctx context.Context, q db.DBTX, charID int64, t *trainerSightData, x, y int, flags *EventFlagManager) (bool, error) {
+	rules, err := eventObjectVisibilityForMapContext(ctx, q.(db.ContextDBTX), t.MapID)
+	if err != nil {
+		return false, err
+	}
+	overrides, err := objectVisibilityOverridesForCharacterContext(ctx, q.(db.ContextDBTX), charID)
+	if err != nil {
+		return false, err
+	}
+	rows, err := q.Query(`
 		SELECT po.id, COALESCE(po.name, ''), COALESCE(po.object_type, '')
 		FROM phaser_objects po
 		LEFT JOIN character_object_positions cop
@@ -454,28 +486,26 @@ func (m *TrainerEncounterManager) isTrainerSightBlockedByObject(charID int64, t 
 			AND cci.object_id IS NULL`,
 		charID, charID, t.MapID, t.ObjectID, x, y)
 	if err != nil {
-		return false
+		return false, err
 	}
 	defer rows.Close()
 
-	rules, _ := eventObjectVisibilityForMap(t.MapID)
-	overrides, _ := objectVisibilityOverridesForCharacter(charID)
 	for rows.Next() {
 		var objectID int
 		var name, objectType string
 		if err := rows.Scan(&objectID, &name, &objectType); err != nil {
-			continue
+			return false, err
 		}
 		if !trainerSightObjectTypeBlocks(objectType) {
 			continue
 		}
-		visible, label := currentEventObjectVisibility(charID, m.eventFlags(), name, rules)
+		visible, label := currentEventObjectVisibility(charID, flags, name, rules)
 		visible, _ = applyObjectVisibilityOverride(objectID, visible, label, overrides)
 		if visible {
-			return true
+			return true, nil
 		}
 	}
-	return false
+	return false, rows.Err()
 }
 
 func trainerSightObjectTypeBlocks(objectType string) bool {

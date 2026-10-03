@@ -1,9 +1,9 @@
 package world
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
-	"log"
 
 	"capturequest/internal/db"
 	"capturequest/internal/pokebattle"
@@ -113,19 +113,32 @@ func TryDepositDayCarePokemon(charID int64, partySlot int) DayCareDepositResult 
 }
 
 func AdvanceDayCareSteps(charID int64, steps int) (DayCareStatus, bool, error) {
-	if steps <= 0 {
-		status, err := LoadDayCareStatus(charID)
-		return status, false, err
-	}
-	tx, err := db.GlobalWorldDB.DB.Begin()
+	var status DayCareStatus
+	var changed bool
+	err := db.Transaction(context.Background(), db.GlobalWorldDB.DB, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, charID); err != nil {
+			return err
+		}
+		var err error
+		status, changed, err = advanceDayCareStepsIn(tx, charID, steps)
+		return err
+	})
 	if err != nil {
 		return DayCareStatus{}, false, err
 	}
-	defer tx.Rollback()
-	if err := db.LockCharacter(tx, charID); err != nil {
+	return status, changed, nil
+}
+
+// The caller owns the character lock and commit. Movement must not open a
+// second daycare transaction or publish a status before the outer commit.
+func advanceDayCareStepsIn(tx db.DBTX, charID int64, steps int) (DayCareStatus, bool, error) {
+	if err := db.RequireTransaction(tx); err != nil {
 		return DayCareStatus{}, false, err
 	}
-
+	if steps <= 0 {
+		status, err := loadDayCareStatus(tx, charID)
+		return status, false, err
+	}
 	rowID, _, pokemon, err := loadDayCarePokemon(tx, charID, false)
 	if err == sql.ErrNoRows {
 		return DayCareStatus{}, false, nil
@@ -147,10 +160,8 @@ func AdvanceDayCareSteps(charID int64, steps int) (DayCareStatus, bool, error) {
 	if err := pokebattle.SavePokemonRow(tx, rowID, pokemon); err != nil {
 		return DayCareStatus{}, false, err
 	}
-	if err := tx.Commit(); err != nil {
-		return DayCareStatus{}, false, err
-	}
-	status, err := LoadDayCareStatus(charID)
+
+	status, err := loadDayCareStatus(tx, charID)
 	return status, pokemon.Exp != oldExp, err
 }
 
@@ -251,12 +262,6 @@ func DayCareCost(levelsGrown int) int {
 		levelsGrown = 0
 	}
 	return (levelsGrown + 1) * 100
-}
-
-func TickDayCareStep(charID int64) {
-	if _, _, err := AdvanceDayCareSteps(charID, 1); err != nil {
-		log.Printf("[DayCare] Failed to advance Day Care EXP for char %d: %v", charID, err)
-	}
 }
 
 func dayCareDepositFailure(charID int64, message string) DayCareDepositResult {

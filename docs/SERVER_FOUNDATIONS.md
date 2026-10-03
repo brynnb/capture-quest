@@ -2,8 +2,8 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest checkpoint: retirement of the client coordinate setter
-(2026-10-03), following correlated cutscene completion `6638a63`, issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
+Working branch: `codex/server-foundations`. Latest checkpoint: atomic movement-step effects
+(2026-10-03), following retirement of the client coordinate setter `2df1db0`, correlated cutscene completion `6638a63`, issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
 `0585dde`, committed
 blackout/recovery `2f62595`, teleport notification projection `65a5581`, Instant
 Warp `e1f54a8`, normal warps `3899660`, owned-position loading `64cf970`,
@@ -48,8 +48,9 @@ is now retired at the session boundary, and its handler, request DTO and browser
 send helper are removed. Surf and committed warp exit animations use
 explicit server projection; local teleport events require committed-result provenance.
 Cutscene completion returns a correlated committed
-result and reconciles owned position before unlocking. Step-effect atomicity and durable result recovery remain
-unfinished. Evidence and verification limits appear in the checkpoint sections below.
+result and reconciles owned position before unlocking. Issued ordinary walking,
+forced path points and target-based Surf entry now share one transaction for their
+position and applicable step effects. Durable result recovery remains unfinished. Evidence and verification limits appear in the checkpoint sections below.
 
 There is no reliable overall completion percentage: the remaining endpoint
 and ownership audits can reveal additional work. Use the five-area status
@@ -59,10 +60,72 @@ number of commits or passing tests. All five areas still have outstanding work.
 | Area | Implemented | Still required |
 | --- | --- | --- |
 | Request/session boundary | Packet and connection limits, centralized session prerequisites, removal of insecure session takeover, actual transport closure, location/visibility checks for scripted clicks, dialogue choices and direct trainer battles, client destination catalog validation, server-resolved normal warp activation, explicit Instant Warp commands, committed teleport notification contracts and read-only map metadata, retired coordinate/map setters, and preserved command deadlines/disconnect cancellation in migrated operations. | Audit remaining interaction/mutation endpoints; propagate cancellation through legacy managers and remaining database/network work. |
-| Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors, Game Corner prizes and bounded coin/slot/hidden-coin operations, atomic Escape Rope/FLY positions, durable Repel counters, Safari entry/turn/capture state and exhaustion destinations, atomic blackout/recovery destinations and map-load position/Safari/flag/visibility/boulder effects, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery of committed results across reconnects. |
+| Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors, Game Corner prizes and bounded coin/slot/hidden-coin operations, atomic Escape Rope/FLY positions, durable Repel counters, Safari entry/turn/capture state and exhaustion destinations, atomic blackout/recovery destinations and map-load position/Safari/flag/visibility/boulder effects, atomic movement-step counters, encounters and recovery, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery of committed results across reconnects. |
 | Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, and movement ticks coordinated with the owner. | Finish timer/callback/shared-state and legacy position-writer audits; prove remaining concurrent/reconnect behavior across real transports. |
 | Domains and wire contracts | Injected content-query service; typed character/wallet/bind, Pokédex/card, content detail, map-script, map-info/list and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
 | Lifecycle and verification | Owned HTTP/listeners, readiness, listener failure propagation, joined periodic workers, sealed session admissions, fail-closed staged preload, startup cancellation, atomic scripted-event publication, and deadline-aware shutdown waits with returned failure results. | Audit cancellation of remaining legacy work, define durable final-save recovery, and complete transport/rendered integration coverage. Owned HTTP and player transport retirement and isolated active-player shutdown checks have landed. |
+
+## Atomic movement-step checkpoint (2026-10-03)
+
+The previous completion paths saved `character_data.map_id/x/y` and published
+movement before separately advancing daycare, Repel, Safari or a wild battle.
+A later failure could leave the player at the new tile with only some effects
+saved. Trainer/cutscene selection also changed live state before the complete
+step had succeeded.
+
+`movement_step.go` now coordinates one bounded, character-locked transaction.
+It checks the saved source against the owned candidate and joins daycare EXP,
+Repel counters, battle creation/seen registration, Safari steps/expiry, applicable
+flags and recovery destination/wallet/party healing. Trainer and coordinate
+cutscene selection use the transaction and a private durable flag snapshot;
+publication waits for the outer commit. Forced paths also plan spin/current
+continuation and automatic warp destinations here. Ordinary warps still use the
+explicit warp command. Surf entry retains its existing wild-only step policy and
+revalidates party/badge, adjacency and water inside this transaction.
+
+The transaction adapter exposes context-aware queries without escaping to the
+pool: both the outer deadline and a caller's cancellation apply. Failed steps
+retain their source and publish no committed movement/effects. A consumed issued
+step cannot replay after recovery returns to its own source tile. Forced recovery
+publishes from the previous owned map, preserving departure provenance. Surf
+blackout responses skip water animation and let the committed recovery project
+the final position.
+
+Verification completed:
+
+- Race-enabled PostgreSQL Go checks passed for `internal/db/...`, `internal/world`,
+  `internal/protocol`, `internal/scriptsim` and `cmd/server`. New boundary tests
+  cover deferred failures, retry/duplicate acknowledgement, trainer/cutscene
+  publication, stable daycare row identity, combined battle/Repel rollback,
+  Safari expiry, blackout, Surf and cancellation of a blocked effect query.
+  The recovery-to-source token and forced departure-map regressions passed.
+- All 42 focused frontend tests passed across six files. Tygo regeneration,
+  TypeScript checking, matched runtime asset validation and production build
+  passed. The build retains its existing large-chunk warning.
+- All 26 isolated Chromium checks passed (3.3 minutes): scripted events, normal
+  and Instant Warp, multiplayer visibility, Surf/Cut/Strength, Safari and blackout.
+  The test server log contained no movement-commit failures. Strength and Safari
+  dialogue screenshots were inspected; this is local rendered evidence.
+
+Logs: `/var/tmp/capturequest-atomic-step-go-final.log`,
+`/var/tmp/capturequest-atomic-step-frontend-final.log`,
+`/var/tmp/capturequest-atomic-step-typecheck.log`,
+`/var/tmp/capturequest-atomic-step-build.log`, and
+`/var/tmp/capturequest-atomic-step-rendered.log`. Browser/server evidence is under
+`/var/tmp/capturequest-rendered.IoS5Xu`. These temporary local artifacts do not
+prove production behavior, throughput or abrupt process-loss recovery.
+
+This checkpoint is committed locally on `codex/server-foundations`; nothing was
+pushed or deployed. Recommended next step: durable movement/result recovery
+across transport loss, followed by the remaining mutation/domain audit.
+
+Still required: durable command/result replay and reconnect recovery; durable
+trainer/cutscene issuance; the remaining legacy mutations, callbacks, global
+dependencies and wire families; final-save recovery and remaining lifecycle and
+transport acceptance checks. Automatic warp map-load arrival effects still run
+in the following MapLoad transaction. Legacy no-target Surf and unrelated field
+mechanics have not all moved into this boundary. This checkpoint completes none
+of the five goal areas by itself.
 
 ## Remaining work, in recommended order
 
@@ -79,7 +142,8 @@ number of commits or passing tests. All five areas still have outstanding work.
    transaction, with committed step updates and expiry. Safari payment, visit/battle
    state and captures now share this boundary, as do runtime exhaustion and its
    saved gate destination. Issued ordinary steps and forced teleports now commit
-   before live publication; movement saves retain dirty state on failure and
+   with applicable daycare, Repel, encounter, Safari and recovery effects in one
+   transaction before live publication; movement saves retain dirty state on failure and
    release the shared player lock before database work. Audit remaining field
    effects and other mutation paths for the same requirements.
    Map-load arrival/recovery and script effects now also share one transaction,

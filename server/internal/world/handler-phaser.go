@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"os"
 	"time"
 
 	"capturequest/internal/api/opcodes"
@@ -801,44 +800,6 @@ func broadcastCommittedPlayerStep(ses *session.Session, wh *WorldHandler, x, y, 
 		broadcastPlayerActorVisibleMapChange(ses, wh, previousMapID, &playerActor)
 	} else {
 		wh.ActorManager.broadcastActorUpdate(&playerActor, ses.SessionID)
-	}
-}
-
-func handleClientReportedStepEffects(ses *session.Session, wh *WorldHandler, charID int64, x, y, mapID int, direction string, mapChanged bool, previousMapID int) {
-	if ses == nil || wh == nil {
-		return
-	}
-	state := &PlayerMovementState{
-		SessionID:   ses.SessionID,
-		CharacterID: int(charID),
-		CurrentX:    x,
-		CurrentY:    y,
-		MapID:       mapID,
-		Direction:   direction,
-	}
-
-	if wh.TrainerEncounter != nil && wh.TrainerEncounter.CheckPlayerPosition(charID, x, y, mapID, ses) {
-		return
-	}
-
-	TickDayCareStep(charID)
-
-	if wh.Safari != nil && IsInSafariZone(mapID) {
-		CheckSafariStep(charID, x, y, mapID, ses, wh)
-		return
-	}
-
-	if wh.PlayerMovement != nil && wh.PlayerMovement.tryTriggerCoordinateCutscene(state, charID, ses) {
-		return
-	}
-
-	testModeSuppressesRandomEncounters :=
-		os.Getenv("CAPTUREQUEST_TEST_MODE") == "true" &&
-			os.Getenv("CAPTUREQUEST_TEST_RANDOM_ENCOUNTERS") != "true"
-	if wh.WildEncounter != nil &&
-		!testModeSuppressesRandomEncounters &&
-		(wh.PlayerMovement == nil || !wh.PlayerMovement.isWildEncounterSuppressed(state, charID)) {
-		wh.WildEncounter.CheckPlayerStep(charID, x, y, mapID, ses)
 	}
 }
 

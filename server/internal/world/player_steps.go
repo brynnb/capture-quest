@@ -25,6 +25,8 @@ type issuedPlayerStep struct {
 	direction               string
 	ledgeJump               bool
 	issuedAt, completeAfter time.Time
+	effects                 movementStepResult
+	sourceMapID             int
 }
 
 func decodePlayerMovement(payload []byte, target any) error {
@@ -187,8 +189,8 @@ func HandlePlayerStepCompleteRequest(ses *session.Session, payload []byte, wh *W
 	ses.SendStreamJSON(protocol.PlayerStepCompleteResponse{Success: true, RequestID: req.RequestID, MapID: step.mapID, X: step.x, Y: step.y, Direction: step.direction}, opcodes.PlayerStepCompleteResponse)
 	// Effects run only for a successfully committed issued step. Duplicate/stale
 	// acknowledgements never re-run encounters, Safari counters or script triggers.
-	broadcastCommittedPlayerStep(ses, wh, step.x, step.y, step.mapID, step.direction, step.mapID)
-	handleClientReportedStepEffects(ses, wh, int64(ses.Client.CharData().ID), step.x, step.y, step.mapID, step.direction, false, step.mapID)
+	broadcastCommittedPlayerStep(ses, wh, step.x, step.y, step.mapID, step.direction, step.sourceMapID)
+	publishMovementStepEffects(ses, wh, int64(ses.Client.CharData().ID), step.effects)
 	return false
 }
 
@@ -231,10 +233,18 @@ func (m *PlayerMovementManager) completePlayerStep(ses *session.Session, token s
 	} else if value, exists := collision[tileKey(step.x, step.y)]; !exists || !isPathableCollision(value, pathfindOptions{AllowWater: surfing}) {
 		return nil, fmt.Errorf("step became blocked")
 	}
-	if err := commitClientPlayerPosition(ses.CommandContext(), m.wh.database, int64(charID), step.mapID, step.x, step.y); err != nil {
+	effects, err := commitMovementStep(ses.CommandContext(), m.wh, int64(charID), movementStepCandidate{SourceMap: step.mapID, SourceX: step.sourceX, SourceY: step.sourceY, MapID: step.mapID, X: step.x, Y: step.y, Direction: step.direction})
+	if err != nil {
 		return nil, err
 	}
+	completed := *step
+	completed.effects = effects
+	completed.sourceMapID = step.mapID
+	completed.mapID, completed.x, completed.y, completed.direction = effects.MapID, effects.X, effects.Y, effects.Direction
+	step = &completed
+	// Consume the issued token even when recovery returns to the same source tile.
 	// The owning session gate excludes command/tick position writers across commit.
+	m.rejectPlayerStep(ses, token)
 	m.UpdateReportedPosition(charID, step.x, step.y, step.mapID, step.direction)
 	publishCommittedPlayerLocation(ses, m.wh, step.mapID, step.x, step.y)
 	return step, nil

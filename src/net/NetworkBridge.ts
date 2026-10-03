@@ -636,6 +636,10 @@ export class NetworkBridge {
       console.log("[NetworkBridge] Surfing:", data.message || "No encounter");
     }
 
+    // A committed Surf entry can end in blackout. Its recovery notification
+    // owns presentation; the water-entry animation must not overwrite it.
+    if (data.blackout === true) return;
+
     const x = Number(data.x);
     const y = Number(data.y);
     const mapId = Number(data.mapId);

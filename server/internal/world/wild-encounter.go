@@ -56,16 +56,18 @@ type WildEncounterManager struct {
 	tileCacheMu sync.RWMutex
 	cacheLoaded bool
 
-	database *sql.DB
+	database      *sql.DB
+	encounterRoll func(int) int
 }
 
 // NewWildEncounterManager creates and initializes the wild encounter manager.
 func NewWildEncounterManager(wh *WorldHandler, database *sql.DB) *WildEncounterManager {
 	return &WildEncounterManager{
-		wh:        wh,
-		areas:     make(map[int]*encounterAreaData),
-		tileCache: make(map[[3]int]int),
-		database:  database,
+		wh:            wh,
+		areas:         make(map[int]*encounterAreaData),
+		tileCache:     make(map[[3]int]int),
+		database:      database,
+		encounterRoll: rand.Intn,
 	}
 }
 
@@ -190,56 +192,113 @@ func (m *WildEncounterManager) loadTileCache(ctx context.Context, areas map[int]
 	return tiles, nil
 }
 
-// CheckPlayerStep checks if a wild encounter should trigger when a player steps on a tile.
-// Uses (mapID, x, y) to look up the encounter area for the tile.
-// Returns true if an encounter was triggered (caller should stop player movement).
-func (m *WildEncounterManager) CheckPlayerStep(charID int64, x, y, mapID int, ses *session.Session) bool {
-	// Check if player is already in a battle
-	if existing := getBattle(charID); existing != nil && !existing.IsOver() {
-		return false
-	}
+// A wild step returns private committed-effect candidates for its movement caller.
+type wildStepResult struct {
+	Battle       *pokebattle.BattleState
+	Blackout     *BlackoutResult
+	Party        []*pokebattle.Pokemon
+	RepelWoreOff bool
+}
 
-	// Look up encounter area for this tile by (mapID, x, y)
-	areaID := m.getEncounterAreaID(mapID, x, y)
-	if areaID == 0 {
-		return false // No encounters on this tile
-	}
-
-	area, ok := m.areas[areaID]
-	if !ok || area.EncounterRate == 0 || len(area.Slots) == 0 {
-		return false
-	}
-
-	// Tick repel step counter (even if no encounter triggers)
-	repel, err := m.tickRepel(charID, ses)
-	if err != nil {
-		log.Printf("[Repel] Step failed for character %d: %v", charID, err)
-		return false
-	}
-
-	// Gen 1 encounter rate check: roll rand(256) < encounterRate
-	roll := rand.Intn(256)
-	if roll >= area.EncounterRate {
-		return false // No encounter this step
-	}
-
-	// Select which Pokémon would appear
-	pokemonID, level := m.selectEncounterPokemon(area)
-
-	// Repel check: if repel is active and wild level < lead party level, suppress
-	if repel.Active {
-		leadLevel := m.getLeadPokemonLevel(charID)
-		if level < leadLevel {
-			return false // Repel suppresses this encounter
+func (m *WildEncounterManager) encounterAreaIn(q db.DBTX, mapID, x, y int) (*encounterAreaData, error) {
+	m.tileCacheMu.RLock()
+	id, known := m.tileCache[[3]int{mapID, x, y}]
+	loaded := m.cacheLoaded
+	m.tileCacheMu.RUnlock()
+	if !known && !loaded {
+		var raw sql.NullInt64
+		err := q.QueryRow(`SELECT encounter_area_id FROM phaser_tiles WHERE (($4 AND map_id IS NULL) OR (NOT $4 AND map_id=$1)) AND x=$2 AND y=$3 AND is_tile_erased=0 LIMIT 1`, mapID, x, y, mapID == UnifiedOverworldMapID).Scan(&raw)
+		if err != nil && err != sql.ErrNoRows {
+			return nil, err
+		}
+		if raw.Valid {
+			id = int(raw.Int64)
 		}
 	}
+	if id == 0 {
+		return nil, nil
+	}
+	area := m.areas[id]
+	if area == nil {
+		return nil, fmt.Errorf("encounter tile map %d (%d,%d) references absent area %d", mapID, x, y, id)
+	}
+	if area.EncounterRate == 0 || len(area.Slots) == 0 {
+		return nil, nil
+	}
+	return area, nil
+}
 
-	// Encounter triggered!
-	log.Printf("[WildEncounter] Encounter triggered for char %d at (%d,%d) area=%s rate=%d/256",
-		charID, x, y, area.Name, area.EncounterRate)
+// Prepare durable counter/battle/blackout effects without publishing or mutating
+// the active battle registry. A movement caller supplies its owning transaction.
+func (m *WildEncounterManager) prepareWildStepIn(ctx context.Context, tx db.DBTX, charID int64, x, y, mapID int) (wildStepResult, error) {
+	var result wildStepResult
+	if existing := getBattle(charID); existing != nil && !existing.IsOver() {
+		return result, nil
+	}
+	area, err := m.encounterAreaIn(tx, mapID, x, y)
+	if err != nil || area == nil {
+		return result, err
+	}
+	repel, wore, err := advanceRepelStepIn(tx, charID)
+	if err != nil {
+		return result, err
+	}
+	result.RepelWoreOff = wore
+	if m.encounterRoll(256) >= area.EncounterRate {
+		return result, nil
+	}
+	pokemonID, level := m.selectEncounterPokemon(area)
+	party, err := pokebattle.LoadParty(tx, charID)
+	if err != nil {
+		return wildStepResult{}, err
+	}
+	if repel.Active {
+		for _, p := range party {
+			if p.CurHP > 0 {
+				if level < p.Level {
+					return result, nil
+				}
+				break
+			}
+		}
+	}
+	wild, err := pokebattle.BuildWildPokemon(tx, pokemonID, level)
+	if err != nil {
+		return wildStepResult{}, err
+	}
+	if len(party) == 0 || party[pokebattle.FirstAlivePartyIndex(party)].IsFainted() {
+		blackout, healed, err := CommitStandaloneBlackout(ctx, tx, charID)
+		if err != nil {
+			return wildStepResult{}, err
+		}
+		result.Blackout = &blackout
+		result.Party = healed
+		return result, nil
+	}
+	battle := pokebattle.NewWildBattle(party, wild)
+	result.Battle, err = pokebattle.StartBattleInTransaction(tx, charID, battle, func(q db.DBTX, next *pokebattle.BattleState) error {
+		if err := configureBattleObedienceFromDB(q, next, charID); err != nil {
+			return err
+		}
+		return markPokemonSeen(q, charID, next.GetEnemyPokemon().ID)
+	})
+	if err != nil {
+		return wildStepResult{}, err
+	}
+	return result, nil
+}
 
-	m.startWildBattleWithPokemon(charID, pokemonID, level, ses)
-	return true
+func (m *WildEncounterManager) publishWildStep(ses *session.Session, charID int64, result wildStepResult) {
+	if result.RepelWoreOff {
+		ses.SendStreamJSON(map[string]interface{}{"message": "REPEL's effect wore off!"}, opcodes.RepelWoreOffNotify)
+	}
+	if result.Battle != nil {
+		setBattle(charID, result.Battle)
+		ses.SendStreamJSON(buildBattleStateResponse(result.Battle), opcodes.PokeBattleStartResponse)
+	}
+	if result.Blackout != nil {
+		publishStandaloneBlackout(ses, m.wh, charID, *result.Blackout, result.Party)
+	}
 }
 
 // getEncounterAreaID returns the encounter_area_id for a (mapID, x, y) position.
@@ -319,108 +378,6 @@ func (m *WildEncounterManager) selectEncounterPokemon(area *encounterAreaData) (
 	return last.PokemonID, last.Level
 }
 
-// startWildBattle initiates a wild battle for the player using encounter area data.
-func (m *WildEncounterManager) startWildBattle(charID int64, area *encounterAreaData, ses *session.Session) {
-	myDB := db.GlobalWorldDB.DB
-
-	// Select a wild Pokémon from the area's slots
-	pokemonID, level := m.selectEncounterPokemon(area)
-
-	// Build the wild Pokémon
-	wildPokemon, err := pokebattle.BuildWildPokemon(myDB, pokemonID, level)
-	if err != nil {
-		log.Printf("[WildEncounter] Failed to build wild pokemon %d: %v", pokemonID, err)
-		return
-	}
-
-	// Load player's party from DB. Oak's starter script is the source of truth
-	// for the first Pokémon.
-	playerParty, err := pokebattle.LoadParty(myDB, charID)
-	if err != nil || len(playerParty) == 0 {
-		log.Printf("[WildEncounter] No party for char %d (err: %v), triggering blackout", charID, err)
-		sendStandaloneBlackout(ses, m.wh, charID)
-		return
-	}
-
-	// Check if any party Pokémon can battle
-	hasAlive := false
-	for _, p := range playerParty {
-		if p.CurHP > 0 {
-			hasAlive = true
-			break
-		}
-	}
-	if !hasAlive {
-		log.Printf("[WildEncounter] All pokemon fainted for char %d, triggering blackout", charID)
-		sendStandaloneBlackout(ses, m.wh, charID)
-		return
-	}
-
-	// Create battle
-	battle := pokebattle.NewWildBattle(playerParty, wildPokemon)
-	configureBattleObedience(battle, charID, m.wh.EventFlags)
-	battle, err = startBattle(ses.CommandContext(), m.wh.database, charID, battle)
-	if err != nil {
-		log.Printf("[PokeBattle] Start failed for character %d: %v", charID, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not start battle. Please reconnect."}, opcodes.PokeBattleStartResponse)
-		return
-	}
-
-	log.Printf("[WildEncounter] %s started wild battle: L%d %s vs L%d %s",
-		ses.Client.CharData().Name, playerParty[0].Level, playerParty[0].Name,
-		wildPokemon.Level, wildPokemon.Name)
-
-	resp := buildBattleStateResponse(battle)
-	ses.SendStreamJSON(resp, opcodes.PokeBattleStartResponse)
-}
-
-// startWildBattleWithPokemon initiates a wild battle with a specific pokemonID and level.
-func (m *WildEncounterManager) startWildBattleWithPokemon(charID int64, pokemonID, level int, ses *session.Session) {
-	myDB := db.GlobalWorldDB.DB
-
-	wildPokemon, err := pokebattle.BuildWildPokemon(myDB, pokemonID, level)
-	if err != nil {
-		log.Printf("[WildEncounter] Failed to build wild pokemon %d: %v", pokemonID, err)
-		return
-	}
-
-	playerParty, err := pokebattle.LoadParty(myDB, charID)
-	if err != nil || len(playerParty) == 0 {
-		log.Printf("[WildEncounter] No party for char %d (err: %v), triggering blackout", charID, err)
-		sendStandaloneBlackout(ses, m.wh, charID)
-		return
-	}
-
-	hasAlive := false
-	for _, p := range playerParty {
-		if p.CurHP > 0 {
-			hasAlive = true
-			break
-		}
-	}
-	if !hasAlive {
-		log.Printf("[WildEncounter] All pokemon fainted for char %d, triggering blackout", charID)
-		sendStandaloneBlackout(ses, m.wh, charID)
-		return
-	}
-
-	battle := pokebattle.NewWildBattle(playerParty, wildPokemon)
-	configureBattleObedience(battle, charID, m.wh.EventFlags)
-	battle, err = startBattle(ses.CommandContext(), m.wh.database, charID, battle)
-	if err != nil {
-		log.Printf("[PokeBattle] Start failed for character %d: %v", charID, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not start battle. Please reconnect."}, opcodes.PokeBattleStartResponse)
-		return
-	}
-
-	log.Printf("[WildEncounter] %s started wild battle: L%d %s vs L%d %s",
-		ses.Client.CharData().Name, playerParty[0].Level, playerParty[0].Name,
-		wildPokemon.Level, wildPokemon.Name)
-
-	resp := buildBattleStateResponse(battle)
-	ses.SendStreamJSON(resp, opcodes.PokeBattleStartResponse)
-}
-
 // --- Repel system ---
 
 func RepelStepsForItem(itemID int) (int, bool) {
@@ -458,19 +415,4 @@ func (m *WildEncounterManager) tickRepel(charID int64, ses *session.Session) (Re
 		ses.SendStreamJSON(map[string]interface{}{"message": "REPEL's effect wore off!"}, opcodes.RepelWoreOffNotify)
 	}
 	return status, nil
-}
-
-// getLeadPokemonLevel returns the level of the player's lead (first non-fainted) Pokémon.
-func (m *WildEncounterManager) getLeadPokemonLevel(charID int64) int {
-	myDB := db.GlobalWorldDB.DB
-	party, err := pokebattle.LoadParty(myDB, charID)
-	if err != nil || len(party) == 0 {
-		return 0
-	}
-	for _, p := range party {
-		if p.CurHP > 0 {
-			return p.Level
-		}
-	}
-	return party[0].Level
 }

@@ -61,7 +61,11 @@ points project through notification 193, whose animation completion sends no
 coordinate echo or local warp activation. Surf and warp exit animation use the
 same explicit server projection; local teleport events require a committed-result
 marker before changing presentation. No browser coordinate-setter helper remains.
-Step-effect atomicity and durable result recovery remain separate work.
+Ordinary step completion, forced path points and target-based Surf entry now
+commit position and applicable step effects together. Forced automatic warp
+destinations join this transaction; their map-load arrival effects still run in
+the following MapLoad. Durable result/reconnect recovery and remaining field
+mechanics are unfinished; see `SERVER_FOUNDATIONS.md`.
 
 Frontend and backend must be released together when a deployment is authorized.
 

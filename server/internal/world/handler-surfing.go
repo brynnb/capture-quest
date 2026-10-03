@@ -254,28 +254,25 @@ func handlePokeSurfingTarget(
 	if _, _, _, ok := wh.PlayerMovement.GetPosition(charIDInt); !ok {
 		wh.PlayerMovement.RegisterPlayer(ses, charIDInt, playerX, playerY, currentMapID, direction)
 	}
-	if !wh.PlayerMovement.MovePlayerTo(ses.CommandContext(), charIDInt, targetX, targetY, targetMapID, direction, true) {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "You can't SURF here.",
-		}, opcodes.PokeSurfingResponse)
+	result, err := wh.PlayerMovement.SurfTo(ses.CommandContext(), ses, targetX, targetY, targetMapID, direction)
+	if err != nil {
+		log.Printf("[Surf] Commit for %d: %v", charID, err)
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "You can't SURF here."}, opcodes.PokeSurfingResponse)
 		return false
 	}
-
-	encounter := false
-	if wh.WildEncounter != nil {
-		encounter = wh.WildEncounter.CheckPlayerStep(charID, targetX, targetY, targetMapID, ses)
-	}
+	encounter := result.Wild.Battle != nil || result.Wild.Blackout != nil
 
 	ses.SendStreamJSON(map[string]interface{}{
 		"success":   true,
 		"encounter": encounter,
+		"blackout":  result.Wild.Blackout != nil,
 		"message":   "You're surfing!",
 		"mapId":     targetMapID,
 		"x":         targetX,
 		"y":         targetY,
 		"direction": direction,
 	}, opcodes.PokeSurfingResponse)
+	publishMovementStepEffects(ses, wh, charID, result)
 	return false
 }
 

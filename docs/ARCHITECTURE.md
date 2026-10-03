@@ -151,7 +151,7 @@ We follow a **"Model-First"** architecture. Data is categorized into distinct st
 **The server owns durable gameplay state.**
 
 - **Casing & Naming**: Keep server field names, database columns, and Go struct tags aligned with the runtime model.
-- **Movement**: Ordinary walking requests a server-issued step from its expected owned source and acknowledges its token after animation. Facing uses a direction-only command. Server-controlled path points commit before publication and use a dedicated local projection notification. Legacy script/field coordinate reports and atomic step effects remain migration work.
+- **Movement**: Ordinary walking requests a server-issued step from its expected owned source and acknowledges its token after animation. Facing uses a direction-only command. Server-controlled path points commit before publication and use a dedicated local projection notification. The coordinate setter is retired. Ordinary completion, forced path points and target-based Surf entry share position and applicable step effects in one transaction; durable result recovery remains migration work.
 - **Adaptation**: The client code and Tygo types adapt to the server's structure. Map location state should use `mapId`; `zoneId` only remains where older protocol/data aliases still need compatibility.
 - **Automation**: Explicit JSON tags drive standard Go encoding and Tygo generation. Character state, wallet and bind streams use this contract. Remaining legacy world messages still pass through `StructToMap` while the documented migration proceeds.
 
@@ -749,8 +749,12 @@ release the shared player lock before saving a coordinate snapshot; only a
 matching registration/position is marked clean after commit. A failed save stays
 dirty for later retry. Forced-path ticks now plan detached points and commit each
 point before updating owned state or publishing typed origin movement. Failed
-commits retain the source/path and publish no step. Field mutations and subsequent
-step effects still have separate persistence boundaries. Disconnect final-flush failure policy,
+commits retain the source/path and publish no step. `movement_step.go` joins the
+position with applicable daycare, Repel, battle/seen, Safari, flags and blackout
+effects. Trainer/cutscene plans use transaction reads and a private durable flag
+snapshot, then publish after commit. Surf preserves its wild-only entry policy.
+Forced automatic warp arrival effects still run in the following MapLoad; other
+field mutations remain under audit. Disconnect final-flush failure policy,
 cache refresh failure, durable command/result delivery and throughput remain in
 `SERVER_FOUNDATIONS.md`; fresh-manager recovery and rendered Safari checks do not
 prove abrupt network/process recovery or completion of those wider requirements.

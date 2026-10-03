@@ -904,6 +904,10 @@ export interface PokeCenterHealRequest {
 
 
 //////////
+// source: handler-safari.go
+
+
+//////////
 // source: handler-scripted-event.go
 
 /**
@@ -1002,6 +1006,10 @@ export interface MapScript {
  */
 export interface MapScriptManager {
 }
+
+//////////
+// source: movement_step.go
+
 
 //////////
 // source: npc-manager-phaser.go
@@ -1275,7 +1283,7 @@ export interface SpinTileManager {
 /**
  * TrainerEncounterNotifyPayload is sent to the client when a trainer spots the player.
  * The client should show "!" and animate the trainer locally to ApproachToX/Y.
- * The player position remains client-owned and does not get force-walked.
+ * The server owns the committed player position; trainer approach is presentation.
  */
 export interface TrainerEncounterNotifyPayload {
   trainerActorId: number /* int */; // Runtime actor ID (from ActorRegistry)

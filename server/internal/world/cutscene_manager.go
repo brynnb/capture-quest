@@ -1,6 +1,7 @@
 package world
 
 import (
+	"capturequest/internal/db"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -256,21 +257,36 @@ func (m *CutsceneManager) HasClickCutsceneForTriggerLabel(label string) bool {
 // to a cutscene. Prefer explicit trigger_label mappings, then fall back to
 // legacy direct script_label matches for older data.
 func (m *CutsceneManager) FindEligibleCoordCutsceneForTrigger(trigger CoordinateTrigger, charID int64, efm *EventFlagManager, playerFacing ...string) *CutsceneScript {
+	cs, err := m.findEligibleCoordCutsceneIn(m.db, trigger, charID, efm, playerFacing...)
+	if err != nil {
+		log.Printf("[Cutscene] Coordinate eligibility: %v", err)
+		return nil
+	}
+	return cs
+}
+
+func (m *CutsceneManager) findEligibleCoordCutsceneIn(q db.DBTX, trigger CoordinateTrigger, charID int64, flags *EventFlagManager, playerFacing ...string) (*CutsceneScript, error) {
 	m.mu.RLock()
 	mapped := append([]*CutsceneScript(nil), m.byTriggerLabel[trigger.Label]...)
 	direct := m.byLabel[trigger.Label]
 	m.mu.RUnlock()
-
 	sortCutscenesBySpecificity(mapped)
-	for _, cs := range mapped {
-		if m.checkEligibleCoordinateCutscene(cs, trigger, charID, efm, playerFacing...) {
-			return cs
+	for _, cs := range append(mapped, direct) {
+		if cs == nil || (cs.TriggerType != "coord" && cs.TriggerType != "npc_click") {
+			continue
+		}
+		if trigger.MapName != "" && cs.MapName != "" && !sameMapName(cs.MapName, trigger.MapName) {
+			continue
+		}
+		eligible, err := checkCutsceneEligibleIn(q, cs, charID, flags, playerFacing...)
+		if err != nil {
+			return nil, err
+		}
+		if eligible {
+			return cs, nil
 		}
 	}
-	if m.checkEligibleCoordinateCutscene(direct, trigger, charID, efm, playerFacing...) {
-		return direct
-	}
-	return nil
+	return nil, nil
 }
 
 func (m *CutsceneManager) checkEligibleCoordinateCutscene(cs *CutsceneScript, trigger CoordinateTrigger, charID int64, efm *EventFlagManager, playerFacing ...string) bool {
@@ -390,119 +406,86 @@ func (m *CutsceneManager) GetForMap(mapName string) []*CutsceneScript {
 
 // CheckEligible returns true if the player meets the requirements for this cutscene.
 func (m *CutsceneManager) CheckEligible(cs *CutsceneScript, charID int64, efm *EventFlagManager, playerFacing ...string) bool {
+	eligible, err := checkCutsceneEligibleIn(m.db, cs, charID, efm, playerFacing...)
+	if err != nil {
+		log.Printf("[Cutscene] Eligibility for %s: %v", cs.ScriptLabel, err)
+	}
+	return err == nil && eligible
+}
+
+func checkCutsceneEligibleIn(q db.DBTX, cs *CutsceneScript, charID int64, efm *EventFlagManager, playerFacing ...string) (bool, error) {
 	if efm == nil {
-		return false
+		return false, nil
 	}
 	if cs.RequiresPlayerFacing != nil && *cs.RequiresPlayerFacing != "" {
 		if len(playerFacing) == 0 || normalizeCutsceneFacing(playerFacing[0]) != normalizeCutsceneFacing(*cs.RequiresPlayerFacing) {
-			return false
+			return false, nil
 		}
 	}
 	// Must have requires_flag if specified
 	if cs.RequiresFlag != nil && *cs.RequiresFlag != "" {
 		if !efm.CheckFlag(charID, *cs.RequiresFlag) {
-			return false
+			return false, nil
 		}
 	}
 	for _, flag := range cs.RequiresFlags {
 		if flag != "" && !efm.CheckFlag(charID, flag) {
-			return false
+			return false, nil
 		}
 	}
 	// Must NOT have requires_flag_absent if specified
 	if cs.RequiresFlagAbst != nil && *cs.RequiresFlagAbst != "" {
 		if efm.CheckFlag(charID, *cs.RequiresFlagAbst) {
-			return false
+			return false, nil
 		}
 	}
 	for _, flag := range cs.RequiresFlagsAbst {
 		if flag != "" && efm.CheckFlag(charID, flag) {
-			return false
+			return false, nil
 		}
 	}
-	if cs.RequiresItemID != nil && *cs.RequiresItemID > 0 {
-		if !m.characterHasInventoryItem(charID, *cs.RequiresItemID) {
-			return false
+	for _, condition := range []struct {
+		id     *int
+		absent bool
+	}{{cs.RequiresItemID, false}, {cs.RequiresItemAbst, true}} {
+		if condition.id == nil || *condition.id <= 0 {
+			continue
+		}
+		var quantity int
+		if err := q.QueryRow(`SELECT COALESCE(SUM(ii.quantity),0) FROM cq_character_inventory ci JOIN cq_item_instances ii ON ii.id=ci.item_instance_id WHERE ci.character_id=$1 AND ii.item_id=$2`, charID, *condition.id).Scan(&quantity); err != nil {
+			return false, err
+		}
+		if (quantity > 0) == condition.absent {
+			return false, nil
 		}
 	}
-	if cs.RequiresItemAbst != nil && *cs.RequiresItemAbst > 0 {
-		if m.characterHasInventoryItem(charID, *cs.RequiresItemAbst) {
-			return false
+	for _, condition := range []struct {
+		threshold *int
+		query     string
+		below     bool
+	}{
+		{cs.RequiresCaught, `SELECT COALESCE(SUM(caught),0) FROM character_pokedex WHERE character_id=$1`, false},
+		{cs.RequiresMoney, `SELECT COALESCE(pokedollars,0) FROM character_wallet WHERE character_id=$1`, false},
+		{cs.RequiresMoneyBelow, `SELECT COALESCE(pokedollars,0) FROM character_wallet WHERE character_id=$1`, true},
+		{cs.RequiresCoins, `SELECT COALESCE(coins,0) FROM character_coins WHERE character_id=$1`, false},
+		{cs.RequiresCoinsBelow, `SELECT COALESCE(coins,0) FROM character_coins WHERE character_id=$1`, true},
+	} {
+		if condition.threshold == nil || *condition.threshold <= 0 {
+			continue
+		}
+		var value int
+		if err := q.QueryRow(condition.query, charID).Scan(&value); err != nil && err != sql.ErrNoRows {
+			return false, err
+		}
+		if (value >= *condition.threshold) == condition.below {
+			return false, nil
 		}
 	}
-	if cs.RequiresCaught != nil && *cs.RequiresCaught > 0 {
-		if m.characterPokedexCaughtCount(charID) < *cs.RequiresCaught {
-			return false
-		}
-	}
-	if cs.RequiresMoney != nil && *cs.RequiresMoney > 0 {
-		if m.characterMoney(charID) < *cs.RequiresMoney {
-			return false
-		}
-	}
-	if cs.RequiresMoneyBelow != nil && *cs.RequiresMoneyBelow > 0 {
-		if m.characterMoney(charID) >= *cs.RequiresMoneyBelow {
-			return false
-		}
-	}
-	if cs.RequiresCoins != nil && *cs.RequiresCoins > 0 {
-		if m.characterCoins(charID) < *cs.RequiresCoins {
-			return false
-		}
-	}
-	if cs.RequiresCoinsBelow != nil && *cs.RequiresCoinsBelow > 0 {
-		if m.characterCoins(charID) >= *cs.RequiresCoinsBelow {
-			return false
-		}
-	}
-	return true
+	return true, nil
 }
 
 func normalizeCutsceneFacing(direction string) string {
 	return normalizeWarpDirection(direction)
-}
-
-func (m *CutsceneManager) characterHasInventoryItem(charID int64, itemID int) bool {
-	var quantity int
-	err := m.db.QueryRow(`
-		SELECT COALESCE(SUM(ii.quantity), 0)
-		FROM cq_character_inventory ci
-		JOIN cq_item_instances ii ON ii.id = ci.item_instance_id
-		WHERE ci.character_id = $1 AND ii.item_id = $2`, charID, itemID).Scan(&quantity)
-	return err == nil && quantity > 0
-}
-
-func (m *CutsceneManager) characterPokedexCaughtCount(charID int64) int {
-	var count int
-	if err := m.db.QueryRow(`
-		SELECT COALESCE(SUM(caught), 0)
-		FROM character_pokedex
-		WHERE character_id = $1`, charID).Scan(&count); err != nil {
-		return 0
-	}
-	return count
-}
-
-func (m *CutsceneManager) characterMoney(charID int64) int {
-	var money int
-	if err := m.db.QueryRow(`
-		SELECT COALESCE(pokedollars, 0)
-		FROM character_wallet
-		WHERE character_id = $1`, charID).Scan(&money); err != nil {
-		return 0
-	}
-	return money
-}
-
-func (m *CutsceneManager) characterCoins(charID int64) int {
-	var coins int
-	if err := m.db.QueryRow(`
-		SELECT COALESCE(coins, 0)
-		FROM character_coins
-		WHERE character_id = $1`, charID).Scan(&coins); err != nil {
-		return 0
-	}
-	return coins
 }
 
 // FindEligibleCoordCutscene checks if any coord-triggered cutscene should fire
