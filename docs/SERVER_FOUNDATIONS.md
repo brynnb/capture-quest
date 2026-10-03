@@ -2,7 +2,8 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest implementation checkpoint: durable shop revisions and correlated command recovery, following explicit isolated simulator targeting `74defe0` and committed shop inventory snapshots `5082a39` and coherent inventory/wallet/party/flag recovery `129463c` and ordinary step crash acceptance `e0ecf41`, issued cutscene and creation-only fixtures `8c95d40`, move-choice acceptance `e0da0c4` and terminal Safari acceptance `9bf3630`
+Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+`21fd084` — durable shop revisions and correlated command recovery, following explicit isolated simulator targeting `74defe0` and committed shop inventory snapshots `5082a39` and coherent inventory/wallet/party/flag recovery `129463c` and ordinary step crash acceptance `e0ecf41`, issued cutscene and creation-only fixtures `8c95d40`, move-choice acceptance `e0da0c4` and terminal Safari acceptance `9bf3630`
 (2026-10-03), following rendered capture recovery `fbe744e`, simulator contract migration `9f59dd3`, expiry presentation recovery `54dbef6`, guarded Safari commands `d673aea`, durable capture placement and terminal login retention `58d0b85`, rendered move-choice recovery `7eb3a7e`, move-choice storage/coordinator acceptance `072ad71`, blackout scene ownership `04579dc`, terminal dismissal/post-battle plans `8ce43ff`, current-owned gameplay recovery `c38a74c`, correlated battle recovery `30fa1bb` and network battle command identity `8a5ba4a`, coherent gameplay recovery `c0d31f9` and durable cutscene issuance/completion `e9eb834`, pending trainer encounters `84f2d91` and ordinary-step receipts `80a544c`, following atomic movement-step effects `cfdeb9e`, retirement of the client coordinate setter `2df1db0`, correlated cutscene completion `6638a63`, issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
 `0585dde`, committed
 blackout/recovery `2f62595`, teleport notification projection `65a5581`, Instant
@@ -88,6 +89,16 @@ number of commits or passing tests. All five areas still have outstanding work.
 | Lifecycle and verification | Owned HTTP/listeners, readiness, listener failure propagation, joined periodic workers, sealed session admissions, fail-closed staged preload, startup cancellation, atomic scripted-event publication, and deadline-aware shutdown waits with returned failure results. | Audit cancellation of remaining legacy work, define durable final-save recovery, and complete transport/rendered integration coverage. Owned HTTP and player transport retirement and isolated active-player shutdown checks have landed. |
 
 ### Next work and completion criteria
+
+The immediate next checkpoint is merchant opening. The current handler uses
+global database reads, discards some lookup errors, and accepts merchant/map
+selectors without the shared visible-actor reach check. Audit the source merchant
+and clerk relationships before changing eligibility or department-store offers.
+Then use injected, bounded reads with explicit failures and correlate the reply
+to the requesting character and live scene so a delayed response cannot reopen
+a retired shop. Verify rejected remote/unreachable interactions, read failures,
+cancellation and late replies through focused tests and the rendered interaction
+boundary. This work is planned, not included in `21fd084`.
 
 Continue with recovery integration for the remaining mutation commands and the
 remaining script/trainer plans and their queue/source/catalog ordering. Ordinary
