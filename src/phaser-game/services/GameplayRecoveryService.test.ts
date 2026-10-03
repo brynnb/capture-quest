@@ -12,7 +12,7 @@ vi.mock("./PhaserNetworkService", () => ({
   onGameplayState: (receive: (data: unknown) => void) => { state.listeners.add(receive); return () => state.listeners.delete(receive); },
   requestGameplayState: state.send, dispatchPhaserResponse: state.dispatch,
 }));
-import { recoverGameplayState } from "./GameplayRecoveryService";
+import { recoverGameplayState, readCurrentGameplayState } from "./GameplayRecoveryService";
 const snapshot = (requestId: string): GameplayStateResponse => ({ success: true, requestId, position: { success: true, requestId, mapId: 50, x: 7, y: 8, direction: "UP", serverMovementPending: false }, battle: null, safari: null, trainer: null, cutscene: null });
 const receive = (data: unknown) => state.listeners.forEach(listener => listener(data));
 beforeEach(() => { state.current = { restoreGameplay: state.apply }; });
@@ -71,4 +71,24 @@ test("timeout leaves state untouched and a later explicit read can recover", asy
   expect(state.listeners.size).toBe(0); expect(state.apply).not.toHaveBeenCalled();
   const retry = recoverGameplayState(50); receive(snapshot(state.send.mock.calls[1][0].requestId)); await retry;
   expect(state.apply).toHaveBeenCalledOnce();
+});
+
+test("current-owned read accepts a changed map without applying presentation or independently delivering plans", async () => {
+  const result = readCurrentGameplayState();
+  const request = state.send.mock.calls[0][0];
+  expect(request).toEqual({ current: true, requestId: expect.any(String) });
+  const reply = snapshot(request.requestId); reply.position.mapId = 99;
+  receive(reply);
+  await expect(result).resolves.toEqual(reply);
+  expect(state.apply).not.toHaveBeenCalled(); expect(state.dispatch).not.toHaveBeenCalled(); expect(state.cutscene).not.toHaveBeenCalled();
+  expect(state.listeners.size).toBe(0);
+});
+
+test("current-owned read cancellation removes its listener and ignores late authority", async () => {
+  const abort = new AbortController();
+  const result = readCurrentGameplayState(abort.signal);
+  const request = state.send.mock.calls[0][0];
+  abort.abort(); await expect(result).rejects.toMatchObject({ name: "AbortError" });
+  receive(snapshot(request.requestId));
+  expect(state.listeners.size).toBe(0); expect(state.apply).not.toHaveBeenCalled();
 });

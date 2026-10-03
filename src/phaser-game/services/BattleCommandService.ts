@@ -7,8 +7,7 @@ import AudioManager from "@/services/audio/AudioManager";
 import { victoryMusicTrackForState, sfxPathForConstant } from "@/services/audio/pokemonMusic";
 import { correlatedRequest } from "./CorrelatedRequest";
 import * as PhaserNet from "./PhaserNetworkService";
-import { readOwnedPlayerPosition } from "./PlayerMovementService";
-import { readGameplayState, applyGameplaySnapshot } from "./GameplayRecoveryService";
+import { readCurrentGameplayState, applyGameplaySnapshot } from "./GameplayRecoveryService";
 
 type TurnCommand = Omit<PokeBattleActionRequest, "battle" | "requestId">;
 type SwitchCommand = Omit<PokeBattleSwitchRequest, "battle" | "requestId">;
@@ -90,8 +89,7 @@ async function sendBattleCommand(opcode: number, responseOpcode: number, command
     // A timeout, rejection or failed send does not prove rollback. Read current
     // authority after the command; never resend a mutation with a fresh revision.
     try {
-      const position = await readOwnedPlayerPosition(controller.signal);
-      const snapshot = await readGameplayState(position.mapId, controller.signal);
+      const snapshot = await readCurrentGameplayState(controller.signal);
       if (!current()) return;
       applying = true;
       applyGameplaySnapshot(snapshot);

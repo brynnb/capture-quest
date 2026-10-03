@@ -166,3 +166,39 @@ func TestGameplayRecoveryCutsceneSourceAndCancellationDeadline(t *testing.T) {
 		t.Fatal("recovery exceeded caller cancellation bound")
 	}
 }
+
+func TestCurrentGameplayRecoveryReturnsOnlyOneCoherentPlanAndKeepsSourceValidation(t *testing.T) {
+	wh, ses, messages := setupIssuedStep(t)
+	script := &CutsceneScript{ScriptLabel: "PendingCurrent", MapName: "ROOM", Actions: json.RawMessage(`[{"type":"giveItem","itemId":1}]`)}
+	SendCutsceneToPlayer(ses, script, wh)
+	notify := issuedPlanNotify(t, messages)
+	testdb.Exec(t, wh.database, `CREATE FUNCTION reject_current_recovery_write() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'current recovery attempted write'; END $$; CREATE CONSTRAINT TRIGGER reject_current_recovery_write AFTER UPDATE ON character_data DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_current_recovery_write();`)
+	messages.streams = nil
+	battleDispatch(t, wh, ses, opcodes.GameplayStateRequest, `{"requestId":"current","current":true}`)
+	reply := recoveryReply(t, messages)
+	if reply.Position.MapID != 50 || reply.Position.X != 7 || reply.Cutscene == nil || reply.Cutscene.CompletionToken != notify.CompletionToken {
+		t.Fatalf("current recovery %+v", reply)
+	}
+	for _, payload := range []string{`{"requestId":"conflict","current":true,"mapId":50}`, `{"requestId":"missing"}`, `{"requestId":"stale","mapId":51}`} {
+		messages.streams = nil
+		battleDispatch(t, wh, ses, opcodes.GameplayStateRequest, payload)
+		var denied protocol.PlayerStepError
+		if len(messages.streams) != 1 {
+			t.Fatal("invalid selector published independent plans")
+		}
+		if err := json.Unmarshal(messages.streams[0].payload, &denied); err != nil || denied.Success || denied.Error == "" {
+			t.Fatalf("invalid selector %+v %v", denied, err)
+		}
+	}
+	// Current selects the owned map; it cannot bypass saved/owned agreement.
+	testdb.Exec(t, wh.database, `DROP TRIGGER reject_current_recovery_write ON character_data; UPDATE character_data SET x=99 WHERE id=42`)
+	messages.streams = nil
+	battleDispatch(t, wh, ses, opcodes.GameplayStateRequest, `{"requestId":"source","current":true}`)
+	var denied protocol.PlayerStepError
+	if len(messages.streams) != 1 {
+		t.Fatal("source mismatch published independent plans")
+	}
+	if err := json.Unmarshal(messages.streams[0].payload, &denied); err != nil || denied.Success {
+		t.Fatalf("source mismatch %+v %v", denied, err)
+	}
+}

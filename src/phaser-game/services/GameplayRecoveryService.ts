@@ -12,6 +12,15 @@ export async function readGameplayState(mapId: number, signal?: AbortSignal): Pr
   return snapshot;
 }
 
+// Mutation recovery cannot assume the pre-command map after a committed blackout.
+// This uses the same locked snapshot without the position endpoint's independent
+// pending-plan redelivery. The caller still owns application and cancellation.
+export async function readCurrentGameplayState(signal?: AbortSignal): Promise<GameplayStateResponse> {
+  const snapshot = await correlatedRequest<GameplayStateResponse>(PhaserNet.onGameplayState, requestId => PhaserNet.requestGameplayState({ current: true, requestId }), signal);
+  if (signal?.aborted) throw new DOMException("Scene retired", "AbortError");
+  return snapshot;
+}
+
 export function applyGameplaySnapshot(snapshot: GameplayStateResponse): void {
   usePokeBattleStore.getState().restoreGameplay(snapshot);
   window.dispatchEvent(new CustomEvent("safariZoneEnter", { detail: snapshot.safari

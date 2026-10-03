@@ -962,7 +962,11 @@ and the full remaining-work roadmap are recorded in SERVER_FOUNDATIONS.md.
 ### Coherent gameplay recovery (197/198)
 
 The selected character can request a correlated, current gameplay snapshot bound
-to its owned map. A bounded transaction holds the character row lock while reading
+to its owned map. Scene-bound requests supply `mapId`; mutation recovery supplies
+explicit `current: true` without a nonzero map selector to follow the current
+owned destination after a possible commit. Contradictory selectors reject, and
+missing/stale scene maps never implicitly select current mode. A bounded
+transaction holds the character row lock while reading
 saved position, battle/party/required phase, Safari encounter/counters and durable
 trainer/cutscene plans. It uses SELECT FOR UPDATE rather than the mutation helper's
 no-op UPDATE: a read must not fire write triggers. Invalid/conflicting state fails
@@ -1023,13 +1027,15 @@ Close waits for acknowledgement; quit/warp retirement clears local presentation
 without issuing a close. Async transport rejection enters the same recovery path
 as timeout. A failed command is never automatically resent with a fresh revision.
 
-Current recovery first reads owned position, then a map-bound coherent gameplay
-snapshot, applies it under the captured ownership guard, and reconciles position.
-A second failure leaves an explicit reconnect error with battle input locked.
-This chain still needs consolidation: the owned-position endpoint can redeliver
-pending trainer/cutscene plans before the gameplay snapshot chooses presentation.
-An explicit current-owned query mode on the existing snapshot endpoint is the
-recommended next change, preserving strict source validation for map-bound reads.
+Current battle recovery reads one coherent gameplay snapshot with explicit
+`current: true`, applies it under the captured ownership guard, and reconciles
+position. A second failure leaves an explicit reconnect error with battle input
+locked. It does not call the owned-position endpoint, which can independently
+redeliver pending trainer/cutscene plans. The snapshot's existing presentation
+priority therefore governs the recovery response. Scene-bound map loading retains
+strict map validation. Both modes require saved/owned source agreement and share
+the read-only character-locked transaction; current mode cannot authorize an
+arrival, move or new script.
 Finished-battle absence also needs terminal trainer/post-battle script progression
 acceptance coverage. Safari correlation, other state streams and historical
 outcome replay remain separate unfinished work. See `SERVER_FOUNDATIONS.md` for

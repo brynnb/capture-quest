@@ -420,7 +420,8 @@ export interface GameCornerSlotPlayResult {
  */
 export interface GameplayStateRequest {
   requestId: string;
-  mapId: number /* int */;
+  mapId?: number /* int */;
+  current?: boolean;
 }
 export interface GameplayBattleState {
   battleId: string;

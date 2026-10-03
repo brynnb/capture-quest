@@ -18,7 +18,8 @@ import (
 // Explicit JSON names also drive the generated TypeScript contract.
 type GameplayStateRequest struct {
 	RequestID string `json:"requestId"`
-	MapID     int    `json:"mapId"`
+	MapID     int    `json:"mapId,omitempty"`
+	Current   bool   `json:"current,omitempty"`
 }
 type GameplayBattleState struct {
 	BattleID        string               `json:"battleId"`
@@ -90,7 +91,13 @@ func HandleGameplayStateRequest(ses *session.Session, payload []byte, wh *WorldH
 
 func readGameplayState(ctx context.Context, ses *session.Session, wh *WorldHandler, req GameplayStateRequest) (GameplayStateResponse, *pokebattle.BattleState, error) {
 	result := GameplayStateResponse{Success: true, RequestID: req.RequestID, Position: wh.ownedPlayerSnapshot(ses, req.RequestID)}
-	if req.MapID != result.Position.MapID {
+	// Current recovery follows authority after a possibly committed teleport.
+	// Scene-bound reads retain their expected map; never infer current mode from
+	// an omitted or stale map, and reject contradictory selectors.
+	if req.Current && req.MapID != 0 {
+		return GameplayStateResponse{}, nil, fmt.Errorf("current recovery cannot supply a view map")
+	}
+	if !req.Current && req.MapID != result.Position.MapID {
 		return GameplayStateResponse{}, nil, fmt.Errorf("recovery view map %d differs from owned map %d", req.MapID, result.Position.MapID)
 	}
 	charID := int64(ses.Client.CharData().ID)

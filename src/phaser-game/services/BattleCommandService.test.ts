@@ -43,10 +43,9 @@ afterEach(async () => { retireScene(); await Promise.resolve(); usePokeBattleSto
 
 async function recoverRead(currentBattle: GameplayBattleState | null) {
   await vi.advanceTimersByTimeAsync(0);
-  const positionID = net.positionRequests.mock.calls.at(-1)![0].requestId;
-  net.positions.forEach(receive => receive(position(positionID)));
-  await vi.advanceTimersByTimeAsync(0);
   const request = net.gameplayRequests.mock.calls.at(-1)![0];
+  expect(request).toEqual({ current: true, requestId: expect.any(String) });
+  expect(net.positionRequests).not.toHaveBeenCalled();
   net.gameplay.forEach(receive => receive({ success: true, requestId: request.requestId, position: position(request.requestId), battle: currentBattle, safari: null, trainer: null, cutscene: null }));
 }
 
@@ -81,7 +80,7 @@ test("switch, learning and dismissal use their own correlated response; closing 
 test("a lost reply reads current authority without resending; a delayed original reply cannot overwrite recovery", async () => {
   const work = sendBattleAction({ action: "item", itemId: 1 }); const oldID = sentID();
   await vi.advanceTimersByTimeAsync(10000);
-  expect(net.positions.size).toBe(1); expect(net.commands.get(71)?.size).toBe(0);
+  expect(net.gameplay.size).toBe(1); expect(net.commands.get(71)?.size).toBe(0);
   emit(71, reply(oldID, 3)); expect(usePokeBattleStore.getState().revision).toBe(2);
   await recoverRead({ ...battle(3), phase: "faint_switch" }); await work;
   emit(71, reply(oldID, 4));
@@ -106,16 +105,16 @@ test("a replacement presentation aborts the request even with the same durable b
 
 test("scene retirement during timeout recovery removes its read listener and never projects a late reply", async () => {
   const work = sendBattleAction({ action: "run" });
-  await vi.advanceTimersByTimeAsync(10000); expect(net.positions.size).toBe(1);
+  await vi.advanceTimersByTimeAsync(10000); expect(net.gameplay.size).toBe(1);
   retireScene(); await work;
-  expect(net.positions.size).toBe(0); expect(net.send).toHaveBeenCalledTimes(1); expect(project).not.toHaveBeenCalled();
+  expect(net.gameplay.size).toBe(0); expect(net.send).toHaveBeenCalledTimes(1); expect(project).not.toHaveBeenCalled();
   expect(vi.getTimerCount()).toBe(0);
 });
 
 test("an asynchronous transport rejection is caught and recovered, rather than left as an unhandled promise", async () => {
   net.send.mockRejectedValueOnce(new Error("control stream closed"));
   const work = sendBattleAction({ action: "fight" }); await vi.advanceTimersByTimeAsync(0);
-  expect(net.positionRequests).toHaveBeenCalledTimes(1);
+  expect(net.gameplayRequests).toHaveBeenCalledTimes(1);
   await recoverRead(battle(2)); await work;
   expect(vi.getTimerCount()).toBe(0); expect(net.send).toHaveBeenCalledTimes(1);
 });
@@ -124,7 +123,7 @@ test("if current-state recovery also times out, the panel stays locked with an e
   const work = sendBattleAction({ action: "run" });
   await vi.advanceTimersByTimeAsync(20000); await work;
   expect(usePokeBattleStore.getState()).toMatchObject({ phase: "animating", battleCommandPending: false, commandError: "Could not restore your battle. Please reconnect." });
-  expect(net.positions.size).toBe(0); expect(net.send).toHaveBeenCalledTimes(1);
+  expect(net.gameplay.size).toBe(0); expect(net.send).toHaveBeenCalledTimes(1);
 });
 
 test("missing or malformed identity never sends a mutation", async () => {

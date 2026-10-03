@@ -10,6 +10,7 @@ test("a lost committed turn reply recovers without resending; its late reply can
   test.setTimeout(120000);
   const errors = collectPageErrors(page);
   let actions = 0, closes = 0, endNotifications = 0, recoveredAbsent = false;
+  const recoveryRequests: { current?: boolean; mapId?: number; requestId: string }[] = [];
   let release: (() => void) | undefined;
   await page.routeWebSocket("**/ws", socket => {
     const server = socket.connectToServer();
@@ -18,6 +19,7 @@ test("a lost committed turn reply recovers without resending; its late reply can
         const opcode = message.readUInt16LE(4);
         if (opcode === OpCodes.PokeBattleActionRequest) actions++;
         if (opcode === OpCodes.PokeBattleCloseRequest) closes++;
+        if (opcode === OpCodes.GameplayStateRequest && actions > 0) recoveryRequests.push(JSON.parse(message.subarray(6).toString()));
       }
       server.send(message);
     });
@@ -41,6 +43,7 @@ test("a lost committed turn reply recovers without resending; its late reply can
   await expect.poll(() => recoveredAbsent, { timeout: 20000 }).toBe(true);
   await expect.poll(async () => (await getGameState(page)).battle.isOpen).toBe(false);
   expect(actions).toBe(1); expect(closes).toBe(0); expect(endNotifications).toBe(0);
+  expect(recoveryRequests).toEqual([{ current: true, requestId: expect.any(String) }]);
   const partyAfterCommit = (await getGameState(page)).pokemon.party;
   await quitToCharacterSelect(page); await enterWorld(page, character); await waitForNoMapLoading(page);
   release!();
