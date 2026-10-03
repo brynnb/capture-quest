@@ -416,3 +416,71 @@ func TestCurrentGameplayRecoveryReturnsOnlyOneCoherentPlanAndKeepsSourceValidati
 		t.Fatalf("source mismatch %+v %v", denied, err)
 	}
 }
+
+func TestGameplayRecoveryIncludesOwnedInventoryWalletPartyAndFlags(t *testing.T) {
+	wh, ses, messages := setupIssuedStep(t)
+	var instance int32
+	err := db.Transaction(context.Background(), wh.database, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, 42); err != nil {
+			return err
+		}
+		var err error
+		instance, err = cqitems.NewStore(tx).AddItemToInventory(42, 1, 2)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`UPDATE character_wallet SET pokedollars=321 WHERE character_id=42`); err != nil {
+			return err
+		}
+		return writeEventFlag(tx, 42, "EVENT_BEAT_BROCK", true)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	battleDispatch(t, wh, ses, opcodes.GameplayStateRequest, `{"requestId":"owned","current":true}`)
+	reply := recoveryReply(t, messages)
+	if reply.Wallet.CharacterID != 42 || reply.Wallet.Pokedollars != 321 || len(reply.Inventory) != 1 || reply.Inventory[0].Instance.ID != instance || reply.Inventory[0].Instance.Quantity != 2 || len(reply.Party) != 1 || len(reply.EventFlags) != 1 || reply.EventFlags[0] != "EVENT_BEAT_BROCK" {
+		t.Fatalf("owned state: %+v", reply)
+	}
+	testdb.Exec(t, wh.database, `DELETE FROM cq_character_inventory WHERE character_id=42; DELETE FROM character_pokemon WHERE character_id=42; DELETE FROM character_event_flags WHERE character_id=42`)
+	messages.streams = nil
+	battleDispatch(t, wh, ses, opcodes.GameplayStateRequest, `{"requestId":"empty","current":true}`)
+	reply = recoveryReply(t, messages)
+	if reply.Inventory == nil || len(reply.Inventory) != 0 || reply.Party == nil || len(reply.Party) != 0 || reply.EventFlags == nil || len(reply.EventFlags) != 0 || reply.Wallet.Pokedollars != 321 {
+		t.Fatalf("empty state not explicit: %+v", reply)
+	}
+	// Wallet rows are intentionally lazy: new/zero-balance characters have none.
+	testdb.Exec(t, wh.database, `DELETE FROM character_wallet WHERE character_id=42`)
+	messages.streams = nil
+	battleDispatch(t, wh, ses, opcodes.GameplayStateRequest, `{"requestId":"virtual-zero","current":true}`)
+	zero := recoveryReply(t, messages)
+	if zero.Wallet.CharacterID != 42 || zero.Wallet.Pokedollars != 0 {
+		t.Fatalf("canonical zero wallet: %+v", zero.Wallet)
+	}
+
+}
+
+func TestGameplayRecoveryRejectsOwnedReadFailuresWithoutPartialPublication(t *testing.T) {
+	for _, failure := range []string{"wallet", "inventory", "party", "flags"} {
+		t.Run(failure, func(t *testing.T) {
+			wh, ses, messages := setupIssuedStep(t)
+			current := battleTestStart(t, wh.database, false, nil)
+			switch failure {
+			case "wallet":
+				testdb.Exec(t, wh.database, `DROP TABLE character_wallet`)
+			case "inventory":
+				testdb.Exec(t, wh.database, `DROP TABLE cq_character_inventory`)
+			case "party":
+				testdb.Exec(t, wh.database, `UPDATE character_pokemon SET pokemon_id=999999 WHERE character_id=42`)
+			case "flags":
+				testdb.Exec(t, wh.database, `INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'')`)
+			}
+			messages.streams = nil
+			battleDispatch(t, wh, ses, opcodes.GameplayStateRequest, `{"requestId":"rejected-owned","current":true}`)
+			var denied protocol.PlayerStepError
+			if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &denied) != nil || denied.Success || denied.RequestID != "rejected-owned" || getBattle(42) != current {
+				t.Fatalf("partial recovery on %s: %+v", failure, messages.streams)
+			}
+		})
+	}
+}

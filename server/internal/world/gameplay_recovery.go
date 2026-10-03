@@ -6,9 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sort"
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
+	"capturequest/internal/db/cqitems"
+	model "capturequest/internal/db/models"
 	"capturequest/internal/pokebattle"
 	"capturequest/internal/protocol"
 	"capturequest/internal/session"
@@ -72,13 +75,17 @@ type SafariRecoveryState struct {
 	Pokemon     *SafariRecoveryPokemon `json:"pokemon"`
 }
 type GameplayStateResponse struct {
-	Success   bool                                    `json:"success" tstype:"true"`
-	RequestID string                                  `json:"requestId"`
-	Position  protocol.OwnedPlayerPositionResponse    `json:"position" tstype:"import(\"./protocol\").OwnedPlayerPositionResponse"`
-	Battle    *GameplayBattleState                    `json:"battle" tstype:"GameplayBattleState | null"`
-	Safari    *SafariRecoveryState                    `json:"safari" tstype:"SafariRecoveryState | null"`
-	Trainer   *protocol.TrainerEncounterNotifyPayload `json:"trainer" tstype:"import(\"./protocol\").TrainerEncounterNotifyPayload | null"`
-	Cutscene  *protocol.CutsceneStartNotify           `json:"cutscene" tstype:"import(\"./protocol\").CutsceneStartNotify | null"`
+	Inventory  []cqitems.CQInventoryItem               `json:"inventory" tstype:"import(\"./cqitems\").CQInventoryItem[]"`
+	Wallet     model.CharacterWallet                   `json:"wallet" tstype:"import(\"./models\").CharacterWallet"`
+	Party      []PokemonDTO                            `json:"party"`
+	EventFlags []string                                `json:"eventFlags"`
+	Success    bool                                    `json:"success" tstype:"true"`
+	RequestID  string                                  `json:"requestId"`
+	Position   protocol.OwnedPlayerPositionResponse    `json:"position" tstype:"import(\"./protocol\").OwnedPlayerPositionResponse"`
+	Battle     *GameplayBattleState                    `json:"battle" tstype:"GameplayBattleState | null"`
+	Safari     *SafariRecoveryState                    `json:"safari" tstype:"SafariRecoveryState | null"`
+	Trainer    *protocol.TrainerEncounterNotifyPayload `json:"trainer" tstype:"import(\"./protocol\").TrainerEncounterNotifyPayload | null"`
+	Cutscene   *protocol.CutsceneStartNotify           `json:"cutscene" tstype:"import(\"./protocol\").CutsceneStartNotify | null"`
 }
 
 func HandleGameplayStateRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
@@ -128,7 +135,38 @@ func readGameplayState(ctx context.Context, ses *session.Session, wh *WorldHandl
 		if mapID != result.Position.MapID || x != result.Position.X || y != result.Position.Y {
 			return fmt.Errorf("saved recovery source differs from owned source")
 		}
-		var err error
+		// Every family is read through this transaction, after the same character
+		// row lock. The existing currency repository defines an absent wallet row
+		// as a valid zero balance (including new characters); actual read errors
+		// still fail the whole response, never publish a partial inventory view.
+		store := cqitems.NewStore(tx)
+		money, err := store.GetCharacterMoney(int32(charID))
+		if err != nil {
+			return fmt.Errorf("recovery wallet: %w", err)
+		}
+		if money < 0 || money > int64(^uint32(0)) {
+			return fmt.Errorf("invalid recovery wallet balance %d for character %d", money, charID)
+		}
+		result.Wallet = model.CharacterWallet{CharacterID: uint32(charID), Pokedollars: uint32(money)}
+		result.Inventory, err = store.GetCharacterInventory(int32(charID))
+		if err != nil {
+			return err
+		}
+		if result.Inventory == nil {
+			result.Inventory = []cqitems.CQInventoryItem{}
+		}
+		flags, err := eventFlagSnapshotIn(tx, charID)
+		if err != nil {
+			return err
+		}
+		result.EventFlags = flags.GetAllFlags(charID)
+		for _, flag := range result.EventFlags {
+			if flag == "" {
+				return fmt.Errorf("empty recovery event flag for character %d", charID)
+			}
+		}
+		sort.Strings(result.EventFlags)
+		result.Party = []PokemonDTO{}
 		battle, err = pokebattle.LoadBattleState(tx, charID)
 		if err != nil {
 			return err
@@ -141,8 +179,15 @@ func readGameplayState(ctx context.Context, ses *session.Session, wh *WorldHandl
 				return err
 			}
 			result.Battle = gameplayBattleSnapshot(battle)
+			result.Party = result.Battle.PlayerParty
 		} else {
-			battle = nil
+			party, err := pokebattle.LoadParty(tx, charID)
+			if err != nil {
+				return err
+			}
+			for _, pokemon := range party {
+				result.Party = append(result.Party, pokemonToDTO(pokemon))
+			}
 		}
 		safari, err := safariSessionIn(tx, charID)
 		if err != nil {
@@ -162,13 +207,7 @@ func readGameplayState(ctx context.Context, ses *session.Session, wh *WorldHandl
 				if safari.Capture != nil && safari.Capture.SentToPC {
 					result.Safari.SentToPC, result.Safari.PCBox = true, safari.Capture.PCBox+1
 				}
-				party, err := pokebattle.LoadParty(tx, charID)
-				if err != nil {
-					return err
-				}
-				for _, pokemon := range party {
-					result.Safari.PlayerParty = append(result.Safari.PlayerParty, pokemonToDTO(pokemon))
-				}
+				result.Safari.PlayerParty = result.Party
 				p := safari.Battle.WildPokemon
 				result.Safari.Pokemon = &SafariRecoveryPokemon{ID: p.ID, Name: p.Name, Level: p.Level, HP: p.CurHP, MaxHP: p.MaxHP}
 			}

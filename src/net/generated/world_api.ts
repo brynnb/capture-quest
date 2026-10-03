@@ -474,6 +474,10 @@ export interface SafariRecoveryState {
   pokemon?: SafariRecoveryPokemon;
 }
 export interface GameplayStateResponse {
+  inventory: import("./cqitems").CQInventoryItem[];
+  wallet: import("./models").CharacterWallet;
+  party: PokemonDTO[];
+  eventFlags: string[];
   success: true;
   requestId: string;
   position: import("./protocol").OwnedPlayerPositionResponse;

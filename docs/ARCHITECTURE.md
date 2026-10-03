@@ -977,8 +977,9 @@ same-ID startup actors with fresh server records before movement initialization,
 then restores gameplay after arrival animation and before input admission.
 Restoration reuses the battle store and trainer/cutscene handlers, and never sends
 CloseBattle simply to clear stale local UI. A newer battle event overtaking a read
-causes one fresh read. Legacy command timeout integration and inventory/wallet/flag
-resynchronization remain unfinished; see SERVER_FOUNDATIONS.md for the full scope.
+causes one fresh read. The response now includes typed inventory, wallet, full party and sorted flags
+under the same transaction. Remaining legacy command timeout integration is
+tracked in SERVER_FOUNDATIONS.md.
 Local/test party and inventory fixtures are seeded only for a newly created
 character inside the same creation transaction. World entry never infers missing
 setup from an empty party: pre-starter gameplay legitimately has no Pokémon.
@@ -1141,3 +1142,23 @@ replaces the one retained receipt and the superseded token is rejected. The
 rendered crash test checks this through real walking and Safari counters; crashes
 inside transactions, other movement/plan families and live-page reconnect still
 need separate acceptance.
+
+
+### Owned inventory and progress recovery
+
+The coherent gameplay response reads CQ inventory through its transaction-bound
+repository, returns the tagged character wallet model, full party and sorted
+event flags under the existing character lock. The currency repository defines
+an absent wallet row as a valid zero balance; database errors are not converted
+to zero. Empty collections serialize as arrays. Failed reads do not publish a
+partial response or replace battle ownership.
+
+Scene-owned application validates required collections and wallet identity/value
+before replacing the existing inventory, character-profile and party views.
+Recovered flags belong to the character profile; gameplay eligibility remains
+server-authoritative. Both money views receive the same balance. Delayed recovery
+reads compare the participating data views, not UI-only state such as hover or
+shop presentation; an overtaking notification triggers one fresh read instead of
+rewinding current state. Other command families still need their own correlation,
+deadline, duplicate and timeout-recovery migration. Standalone inventory transport
+and legacy flag-cache writers remain in the full audit.

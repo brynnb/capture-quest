@@ -41,6 +41,7 @@ export default interface CharacterProfile {
     lastPokeCenterY?: number;
   };
   pokedollars?: number;
+  eventFlags?: string[];
 
   // Bind position (Source of truth: CharacterBind model)
   bind?: {

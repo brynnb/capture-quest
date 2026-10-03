@@ -2,20 +2,25 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { GameplayStateResponse } from "@/net/generated/world_api";
 const state = vi.hoisted(() => ({
   listeners: new Set<(data: unknown) => void>(), send: vi.fn(), apply: vi.fn(), dispatch: vi.fn(), cutscene: vi.fn(),
+  wallet: vi.fn(), flags: vi.fn(),
+  character: null as unknown as { handleCharacterWalletData: (wallet: unknown) => void; setEventFlags: (flags: string[]) => void },
   current: null as unknown as { restoreGameplay: (snapshot: unknown) => void },
 }));
 vi.mock("@/net", () => ({ OpCodes: { TrainerEncounterNotify: 75 } }));
 vi.mock("@/stores/PokeBattleStore", () => ({ default: { getState: () => state.current } }));
+vi.mock("@/stores/PlayerCharacterStore", () => ({ default: { getState: () => state.character } }));
 vi.mock("./CutsceneService", () => ({ handleCutsceneStart: state.cutscene }));
 vi.mock("./PhaserNetworkService", () => ({
   isConnected: () => true,
   onGameplayState: (receive: (data: unknown) => void) => { state.listeners.add(receive); return () => state.listeners.delete(receive); },
   requestGameplayState: state.send, dispatchPhaserResponse: state.dispatch,
 }));
-import { recoverGameplayState, readCurrentGameplayState } from "./GameplayRecoveryService";
-const snapshot = (requestId: string): GameplayStateResponse => ({ success: true, requestId, position: { success: true, requestId, mapId: 50, x: 7, y: 8, direction: "UP", serverMovementPending: false }, battle: null, safari: null, trainer: null, cutscene: null });
+import useCQInventoryStore from "@/stores/CQInventoryStore";
+import usePokemonPartyStore from "@/stores/PokemonPartyStore";
+import { applyGameplaySnapshot, recoverGameplayState, readCurrentGameplayState } from "./GameplayRecoveryService";
+const snapshot = (requestId: string): GameplayStateResponse => ({ inventory: [], wallet: { characterId: 42, pokedollars: 0 }, party: [], eventFlags: [], success: true, requestId, position: { success: true, requestId, mapId: 50, x: 7, y: 8, direction: "UP", serverMovementPending: false }, battle: null, safari: null, trainer: null, cutscene: null });
 const receive = (data: unknown) => state.listeners.forEach(listener => listener(data));
-beforeEach(() => { state.current = { restoreGameplay: state.apply }; });
+beforeEach(() => { useCQInventoryStore.getState().setInventory([], 0); usePokemonPartyStore.getState().clearParty(); state.current = { restoreGameplay: state.apply }; state.character = { handleCharacterWalletData: state.wallet, setEventFlags: state.flags }; });
 afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); state.listeners.clear(); });
 
 test("one correlated current snapshot clears stale state and redelivers its issued plans", async () => {
@@ -91,4 +96,37 @@ test("current-owned read cancellation removes its listener and ignores late auth
   abort.abort(); await expect(result).rejects.toMatchObject({ name: "AbortError" });
   receive(snapshot(request.requestId));
   expect(state.listeners.size).toBe(0); expect(state.apply).not.toHaveBeenCalled();
+});
+
+
+test("owned recovery clears consumed inventory and empty party and replaces both money views and flags", () => {
+  useCQInventoryStore.getState().setInventory([{} as never], 999);
+  usePokemonPartyStore.getState().setParty([{} as never]);
+  const reply = snapshot("settled"); reply.wallet.pokedollars = 123; reply.eventFlags = ["EVENT_OAK_ASKED_TO_CHOOSE_MON"];
+  applyGameplaySnapshot(reply);
+  expect(useCQInventoryStore.getState()).toMatchObject({ items: [], money: 123 });
+  expect(usePokemonPartyStore.getState().party).toEqual([]);
+  expect(state.wallet).toHaveBeenCalledWith({ characterId: 42, pokedollars: 123 });
+  expect(state.flags).toHaveBeenCalledWith(reply.eventFlags);
+});
+
+test.each(["scene", "current"])("a newer wallet notification forces a fresh %s read and never publishes the old snapshot", async mode => {
+  const result = mode === "scene" ? recoverGameplayState(50) : readCurrentGameplayState();
+  const first = state.send.mock.calls.at(-1)![0];
+  useCQInventoryStore.getState().setMoney(456);
+  receive(snapshot(first.requestId));
+  await Promise.resolve(); await Promise.resolve();
+  expect(state.send).toHaveBeenCalledTimes(2); expect(state.wallet).not.toHaveBeenCalled();
+  const second = state.send.mock.calls.at(-1)![0];
+  const reply = snapshot(second.requestId); reply.wallet.pokedollars = 456;
+  receive(reply); await expect(result).resolves.toEqual(reply);
+  expect(state.listeners.size).toBe(0);
+  if (mode === "scene") expect(useCQInventoryStore.getState().money).toBe(456);
+});
+
+test("an incomplete success packet rejects before clearing any owned store", () => {
+  useCQInventoryStore.getState().setMoney(99);
+  const reply = snapshot("incomplete"); delete (reply as Partial<GameplayStateResponse>).wallet;
+  expect(() => applyGameplaySnapshot(reply)).toThrow("Incomplete owned gameplay snapshot");
+  expect(useCQInventoryStore.getState().money).toBe(99); expect(state.apply).not.toHaveBeenCalled(); expect(state.flags).not.toHaveBeenCalled();
 });

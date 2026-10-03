@@ -19,6 +19,7 @@ interface PlayerCharacterStore {
   setHoveredItem: (item: Item | null) => void;
   setCharacterMap: (mapId: number) => void;
   handleCharacterData: (data: ProtocolTypes.CharacterData) => void;
+  setEventFlags: (flags: string[]) => void;
   handleCharacterWalletData: (wallet: ModelTypes.CharacterWallet) => void;
   handleCharacterBindData: (bind: ModelTypes.CharacterBind) => void;
 }
@@ -79,6 +80,8 @@ const usePlayerCharacterStore = create<PlayerCharacterStore>()((set, get) => ({
       },
     }));
   },
+
+  setEventFlags: (eventFlags) => set((state) => ({ characterProfile: { ...state.characterProfile, eventFlags } })),
 
   handleCharacterWalletData: (wallet: ModelTypes.CharacterWallet) => {
     if (!wallet) return;

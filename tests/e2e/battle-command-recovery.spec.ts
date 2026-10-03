@@ -23,6 +23,10 @@ for (const partySize of [1, 6]) {
         server.send(message);
       });
       server.onMessage(message => {
+      // Consumption/party recovery must come from the correlated snapshot,
+      // even if the independent state notifications were also lost.
+      if (actions > 0 && Buffer.isBuffer(message) && message.length >= 6
+        && [OpCodes.CQInventoryResponse, OpCodes.CharacterWallet, OpCodes.PokemonPartyResponse].includes(message.readUInt16LE(4))) return;
         if (Buffer.isBuffer(message) && message.length >= 6 && message.readUInt16LE(4) === OpCodes.PokeBattleActionResponse && !release) {
           release = () => socket.send(message); return;
         }
@@ -38,6 +42,7 @@ for (const partySize of [1, 6]) {
     const summary = page.getByText(partySize === 6 ? /MAGIKARP was transferred to\s+Bill's PC \(BOX 1\)\./ : /MAGIKARP's data was added to the POKéDEX!/);
     await expect(summary).toBeVisible({ timeout: 20000 });
     expect(actions).toBe(1); expect(closes).toBe(0);
+    expect((await getGameState(page)).inventory.items.filter(item => item.shortName === "MASTER_BALL")).toHaveLength(0);
     expect((await getGameState(page)).pokemon.party).toHaveLength(partySize === 6 ? 6 : 2);
     // Reentry must preserve the summary, not dismiss a catch as an ordinary win.
     await quitToCharacterSelect(page); await enterWorld(page, character); await waitForNoMapLoading(page);
