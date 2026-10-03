@@ -360,3 +360,43 @@ Store Playwright reports and traces only on failure. Do not commit
   pass.
 - The local dev server is stopped after the run.
 - No deployment happens unless explicitly requested.
+
+
+## Isolated server-process crash recovery
+
+Run the dedicated lane with:
+
+```bash
+CQ_E2E_CRASH_RECOVERY=true bash scripts/testing/run-isolated-e2e.sh
+```
+
+It defaults to `server-process-recovery.spec.ts` and accepts normal Playwright file
+and grep arguments. The runner creates a matched private PostgreSQL runtime under
+`/var/tmp`, records its exact server/client/Playwright PIDs and owns server signals.
+A test writes the expected current server PID atomically to `crash-request`; the
+shell rejects a different PID, kills/reaps only its current child, restarts the same
+binary without reimporting data, waits for readiness and publishes an atomic
+`restart-receipt.json`. The test verifies the receipt and executable identity.
+All task-owned processes and the private cluster are cleaned up when the run ends;
+logs, database files, receipts and `process-recovery-evidence.json` remain for audit.
+Do not run this lane against an existing application or production database.
+
+The current cases verify committed terminal Safari Run and party/PC catches through
+SIGKILL, a fresh server, a fresh page and authenticated character entry. They compare
+actual Pokémon row IDs/content, Pokédex, position and Safari state, and require
+explicit correlated dismissal without replaying the mutation. The shared rendered
+Safari helper uses real capture/flee rolls and independent fixtures after a flee.
+Screenshot artifacts supplement automated state/DOM assertions; test success does
+not depend on manual screenshot interpretation. Automatic live-page reconnect,
+pre-commit crashes and pending learning/script/movement plans need separate cases.
+
+Shutdown mode remains separate:
+
+```bash
+CQ_E2E_SHUTDOWN_MODE=success bash scripts/testing/run-isolated-e2e.sh
+CQ_E2E_SHUTDOWN_MODE=failure bash scripts/testing/run-isolated-e2e.sh
+```
+
+These modes verify orderly shutdown and final-save outcomes; crash and shutdown
+flags cannot be combined. Evidence and remaining scope are in
+[`SERVER_FOUNDATIONS.md`](SERVER_FOUNDATIONS.md).

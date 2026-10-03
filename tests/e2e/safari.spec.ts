@@ -1,3 +1,4 @@
+import { catchSafariInRenderedUI } from "./helpers/battle";
 import { expect, test } from "@playwright/test";
 import type { GameplayStateResponse, SafariBattleActionResponse, SafariBattleActionRequest } from "../../src/net/generated/world_api";
 import * as OpCodes from "../../src/net/generated/opcodes";
@@ -95,26 +96,7 @@ for (const partySize of [1, 6]) {
       });
     });
     const character = await createGuestCharacterAndEnterWorld(page);
-    // Fresh independent fixtures after a flee; no changed capture rolls or
-    // automatic retries. Each ball below is an explicit rendered player action.
-    for (let encounter = 0; encounter < 8 && !captured; encounter++) {
-      await jumpToScenario(page, `safari_capture_recovery_${partySize}`);
-      await waitForMap(page, "SAFARI_ZONE_CENTER"); await waitForNoMapLoading(page);
-      for (let turn = 0; turn < 30 && !captured; turn++) {
-        const before = replies;
-        await page.getByTestId("battle-action-safari-ball").click({ timeout: 10000 });
-        await expect.poll(() => replies > before).toBe(true);
-        if (captured) break;
-        await expect(page.getByText("Waiting for the battle…", { exact: true })).toBeHidden();
-        for (let event = 0; event < 24 && (await getGameState(page)).battle.phase === "animating"; event++) {
-          await pressSpace(page); await page.waitForTimeout(100);
-        }
-        await expect.poll(async () => (await getGameState(page)).battle.phase).toMatch(/^(action_select|battle_end)$/);
-        if ((await getGameState(page)).battle.phase === "battle_end") {
-          await pressSpace(page); await expect.poll(async () => (await getGameState(page)).battle.isOpen).toBe(false); break;
-        }
-      }
-    }
+    await catchSafariInRenderedUI(page, partySize, () => replies, () => !!captured);
     expect(captured).toBeDefined();
     const settledCount = commands.length;
     const captureCommand = commands.at(-1)!;
