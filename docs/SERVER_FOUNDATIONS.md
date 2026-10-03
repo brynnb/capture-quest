@@ -3,7 +3,8 @@
 Status: active. Started 2026-09-25 from `02c51ba`.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-bounded map content queries and explicit map DTOs (2026-10-02), following client
+read-only map metadata and correlated map-load commands (2026-10-02), following
+bounded map-query checkpoint `8e5d65f` and client
 destination checkpoint `42cfa37`, rendered diagnosis `e455b24`, and retired legacy map
 setter `7732412` and active-player shutdown
 checkpoint `c811917` and
@@ -39,7 +40,7 @@ evidence, including remaining-work notes that subsequent commits may resolve.
 
 | Area | Implemented | Still required |
 | --- | --- | --- |
-| Request/session boundary | Packet and connection limits, centralized session prerequisites, removal of insecure session takeover, actual transport closure, location/visibility checks for scripted clicks, dialogue choices and direct trainer battles, client destination catalog validation and remote map metadata presence guards, and preserved command deadlines/disconnect cancellation in migrated operations. | Audit remaining interaction/mutation endpoints; propagate cancellation through legacy managers and remaining database/network work. |
+| Request/session boundary | Packet and connection limits, centralized session prerequisites, removal of insecure session takeover, actual transport closure, location/visibility checks for scripted clicks, dialogue choices and direct trainer battles, client destination catalog validation and read-only map metadata, and preserved command deadlines/disconnect cancellation in migrated operations. | Audit remaining interaction/mutation endpoints; propagate cancellation through legacy managers and remaining database/network work. |
 | Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors, Game Corner prizes and bounded coin/slot/hidden-coin operations, atomic Escape Rope/FLY positions, durable Repel counters, Safari entry/turn/capture state and exhaustion destinations, atomic recovery warps, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery of committed results across reconnects. |
 | Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, and movement ticks coordinated with the owner. | Finish timer/callback/shared-state and legacy position-writer audits; prove remaining concurrent/reconnect behavior across real transports. |
 | Domains and wire contracts | Injected content-query service; typed character/wallet/bind, Pokédex/card, content detail, map-script, map-info/list and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
@@ -94,6 +95,63 @@ evidence, including remaining-work notes that subsequent commits may resolve.
    cancellation/timeouts, failure/retry and shutdown with active players.
    Acceptance: evidence covers the original five milestones, including visible
    behavior where relevant. Only then mark the full goal complete.
+
+## Read-only metadata and correlated map-load commands (2026-10-02)
+
+`PhaserMapInfoRequest` (34) now reads catalog metadata only, including the
+current map. It cannot recover a position, change session coordinates/presence,
+or execute map-load flags. It accepts the typed `mapId`/`requestId` contract and
+rejects legacy destination/unknown fields and trailing JSON. Responses retain
+flat metadata fields and add explicit success and request correlation.
+
+The existing gameplay arrival/recovery/effect body now has one explicit command,
+`PhaserMapLoadRequest` (181), with result opcode 182. Both require a selected
+character through the existing session admission boundary. Loading a saved
+location requires the player's current visible map; a supplied destination
+requires a complete coordinate pair and the existing catalog-validated bounded
+position transaction. Live position, presence and the arrival acknowledgement
+follow a successful destination commit. Late-commit fixtures now target the new
+command and still prove rollback rather than failing early on retired fields.
+This is a migration of the active setter, not a second permanent mutation path.
+
+The shipped loader awaits this command before metadata and actor queries for
+ordinary gameplay loads, even when metadata is cached. An interior-to-overworld
+map overview reads metadata without executing the command. Position recovery and
+existing load effects remain gameplay responsibilities. Normal warp producers
+still also send position reports; issued grants and explicit Instant Warp intent
+must replace that broader shared position authority next.
+
+Map reads and load acknowledgements share one client correlation/settlement
+primitive. IDs are unique across service instances, and only a matching response
+can settle a request. Success, error, timeout, synchronous send failure and local
+abort all remove the response subscription, timer and abort listener. Errors
+reject promptly; timeouts/retries and late responses cannot satisfy a newer
+request for the same map. The map loader aborts its outstanding map requests when
+a newer load supersedes them or scene cleanup runs. A local abort does not undo
+an already committed server command; these IDs do not provide durable command
+retry deduplication or reconnect recovery.
+
+The new flat success/error unions generate from protocol JSON tags, including
+explicit TypeScript extension metadata for the embedded map projection. The
+bridge dispatches the new result opcode. No old destination alias remains on the
+metadata endpoint. A future deployment must coordinate frontend/backend versions;
+old clients sending destination fields or omitting correlation receive rejection
+and require refresh/reconnect. No deployment is authorized or performed here.
+
+Verification: world/server/protocol PostgreSQL race suites and all Go packages
+compile; the final focused destination/metadata/contract checks pass. Frontend
+request/lifecycle tests cover cancellation, supersession, cleanup, timeout, retry,
+concurrent same-map queries, late responses and identity disagreement.
+TypeScript typecheck, runtime asset validation and the production build pass.
+All five isolated warp/multiplayer browser cases pass in
+`/var/tmp/capturequest-rendered.nnVvMk` (45.6 seconds). Canonical `npm run tygo` regeneration is byte-stable.
+
+Remaining: make map-load effects atomic and propagate cancellation through their
+legacy helpers; coordinate input release with exact collision residency; validate
+ordinary movement and issued warp/Instant Warp intent; make committed-result
+recovery durable across disconnect/process failure. Other map-data queries still
+need response correlation and timeout/cancellation cleanup. Preserve the full
+six-item remaining-work roadmap above. The goal remains active.
 
 ## Bounded map content queries and explicit map DTOs (2026-10-02)
 

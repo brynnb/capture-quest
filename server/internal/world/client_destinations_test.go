@@ -55,7 +55,7 @@ func TestMapMetadataAndPartialDestinationCannotClaimPlayerPresence(t *testing.T)
 	ses.MapID = 50
 	wh.PlayerMovement.RegisterPlayer(ses, 42, 7, 8, 50, "UP")
 	testdb.Exec(t, database, `UPDATE character_data SET map_id=50,x=7,y=8 WHERE id=42; INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(60,'VIEW',20,20,0);`)
-	for _, payload := range []string{`{"mapId":60}`, `{"mapId":60,"destX":3}`, `{"mapId":60,"destY":4}`, `{"mapId":60,"destX":3,"destY":4}`} {
+	for _, payload := range []string{`{"mapId":60,"requestId":"query"}`, `{"mapId":60,"destX":3,"requestId":"query"}`, `{"mapId":60,"destY":4,"requestId":"query"}`, `{"mapId":60,"destX":3,"destY":4,"requestId":"query"}`} {
 		battleDispatch(t, wh, ses, opcodes.PhaserMapInfoRequest, payload)
 		if ses.MapID != 50 || char.MapID != 50 || char.X != 7 || char.Y != 8 {
 			t.Fatal("map query claimed player location")
@@ -64,9 +64,16 @@ func TestMapMetadataAndPartialDestinationCannotClaimPlayerPresence(t *testing.T)
 	if len(messages.streams) != 4 {
 		t.Fatalf("map responses=%d", len(messages.streams))
 	}
-	for _, message := range messages.streams {
+	for index, message := range messages.streams {
 		if message.opcode != opcodes.PhaserMapInfoResponse {
 			t.Fatal("query broadcast player state")
+		}
+		var response struct {
+			Success   bool
+			RequestID string
+		}
+		if err := json.Unmarshal(message.payload, &response); err != nil || response.RequestID != "query" || response.Success != (index == 0) {
+			t.Fatalf("legacy destination must reject with correlation: %+v %v", response, err)
 		}
 	}
 	battleDispatch(t, wh, ses, opcodes.PhaserPlayerPositionUpdate, `{"mapId":60,"x":3,"y":4,"direction":"DOWN"}`)
@@ -125,5 +132,71 @@ func TestOverworldMapListCannotClaimPresenceOrUseGlobalDatabase(t *testing.T) {
 	}
 	if ses.MapID != 50 {
 		t.Fatal("failed metadata query changed presence")
+	}
+}
+
+func TestCurrentMapMetadataDoesNotRecoverOrRunMapLoadEffects(t *testing.T) {
+	database, wh, ses, messages := battleTestWorld(t)
+	char := ses.Client.CharData()
+	char.MapID, char.X, char.Y = 192, 0, 0
+	ses.MapID, ses.X, ses.Y = 192, 0, 0
+	testdb.Exec(t, database, `UPDATE character_data SET map_id=192,x=0,y=0 WHERE id=42;
+ INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(192,'SEAFOAM_ISLANDS_1F',20,20,0);`)
+	db.GlobalWorldDB = nil
+	battleDispatch(t, wh, ses, opcodes.PhaserMapInfoRequest, `{"mapId":192,"requestId":"pure"}`)
+	if char.MapID != 192 || char.X != 0 || char.Y != 0 || ses.X != 0 || ses.Y != 0 {
+		t.Fatal("metadata recovered or changed player state")
+	}
+	if wh.EventFlags.CheckFlag(42, "EVENT_IN_SEAFOAM_ISLANDS") {
+		t.Fatal("metadata executed load effects")
+	}
+	var response protocol.PhaserMapInfoResponse
+	if len(messages.streams) != 1 {
+		t.Fatal("metadata emitted gameplay messages")
+	}
+	if err := json.Unmarshal(messages.streams[0].payload, &response); err != nil || !response.Success || response.RequestID != "pure" || response.ID != 192 {
+		t.Fatalf("read response: %+v %v", response, err)
+	}
+	var mapID, x, y int
+	if err := database.QueryRow(`SELECT map_id,x,y FROM character_data WHERE id=42`).Scan(&mapID, &x, &y); err != nil || mapID != 192 || x != 0 || y != 0 {
+		t.Fatal("metadata wrote durable position")
+	}
+}
+
+func TestMapLoadRejectsRemoteSavedLoadAndInvalidDestinations(t *testing.T) {
+	database, wh, ses, messages := battleTestWorld(t)
+	wh.ActorRegistry = NewActorRegistry()
+	wh.ActorManager = NewPhaserActorManager(wh)
+	wh.PlayerMovement = NewPlayerMovementManager(wh, wh.ActorManager)
+	char := ses.Client.CharData()
+	char.MapID, char.X, char.Y = 50, 7, 8
+	ses.MapID = 50
+	wh.PlayerMovement.RegisterPlayer(ses, 42, 7, 8, 50, "UP")
+	testdb.Exec(t, database, `UPDATE character_data SET map_id=50,x=7,y=8 WHERE id=42;
+ INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(60,'REMOTE',20,20,0);`)
+	for _, payload := range []string{`{"mapId":60,"requestId":"remote"}`, `{"mapId":60,"destX":3,"requestId":"partial"}`, `{"mapId":60,"destX":3,"destY":4,"requestId":"missing"}`} {
+		battleDispatch(t, wh, ses, opcodes.PhaserMapLoadRequest, payload)
+		var request protocol.PhaserMapLoadRequest
+		var response protocol.PhaserMapRequestError
+		if err := json.Unmarshal([]byte(payload), &request); err != nil {
+			t.Fatal(err)
+		}
+		last := messages.streams[len(messages.streams)-1]
+		if last.opcode != opcodes.PhaserMapLoadResponse {
+			t.Fatal("load published wrong response")
+		}
+		if err := json.Unmarshal(last.payload, &response); err != nil || response.Success || response.RequestID != request.RequestID || response.Error == "" {
+			t.Fatalf("load rejection=%+v %v", response, err)
+		}
+	}
+	if len(messages.streams) != 3 || char.MapID != 50 || char.X != 7 || char.Y != 8 || ses.MapID != 50 {
+		t.Fatal("invalid load published or changed player state")
+	}
+	x, y, mapID, ok := wh.PlayerMovement.GetPosition(42)
+	if !ok || mapID != 50 || x != 7 || y != 8 {
+		t.Fatal("invalid load changed movement registration")
+	}
+	if err := database.QueryRow(`SELECT map_id,x,y FROM character_data WHERE id=42`).Scan(&mapID, &x, &y); err != nil || mapID != 50 || x != 7 || y != 8 {
+		t.Fatal("invalid load changed stored position")
 	}
 }

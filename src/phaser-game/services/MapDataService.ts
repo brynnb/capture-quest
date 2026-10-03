@@ -1,4 +1,4 @@
-import type { PhaserMapInfo } from "@/net/generated/protocol";
+import type { PhaserMapInfo, PhaserMapInfoResponse, PhaserMapLoadResponse, PhaserMapRequestError } from "@/net/generated/protocol";
 /**
  * MapDataService - Phaser map data fetching via WebTransport
  *
@@ -71,6 +71,48 @@ function normalizeCorrelatedTiles(data: PhaserTilesResponse): PhaserTile[] {
     throw new Error("Invalid tile response: tiles must be an array");
   }
   return tiles as PhaserTile[];
+}
+
+let mapRequestSequence = 0;
+
+// Correlation and one settlement boundary cover both reads and arrival commands.
+// A local cancellation cannot undo a server commit; a later load reads owned state.
+function correlatedMapRequest<T extends { success: true; requestId: string }>(
+  subscribe: (receive: (response: T | PhaserMapRequestError) => void) => () => void,
+  send: (requestId: string) => void,
+  signal?: AbortSignal,
+): Promise<T> {
+  if (!PhaserNet.isConnected()) return Promise.reject(new Error("Not connected to server - please log in first"));
+  if (signal?.aborted) return Promise.reject(new DOMException("Map request cancelled", "AbortError"));
+  const requestId = `map:${Date.now()}:${++mapRequestSequence}`;
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    let unsubscribe = () => {};
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const finish = (error?: Error, response?: T) => {
+      if (settled) return;
+      settled = true;
+      unsubscribe();
+      if (timeout !== undefined) clearTimeout(timeout);
+      signal?.removeEventListener("abort", abort);
+      if (error) reject(error);
+      else resolve(response!);
+    };
+    const abort = () => finish(new DOMException("Map request cancelled", "AbortError"));
+    unsubscribe = subscribe((response) => {
+      if (!response || response.requestId !== requestId) return;
+      if (response.success === false) finish(new Error(response.error));
+      else if (response.success === true) finish(undefined, response);
+      else finish(new Error("Invalid correlated map response"));
+    });
+    // Subscription APIs do not emit on registration, but handle that boundary
+    // explicitly so cleanup also remains correct if a consumer changes them.
+    if (settled) { unsubscribe(); return; }
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) { abort(); return; }
+    timeout = setTimeout(() => finish(new Error("Timeout fetching map response")), REQUEST_TIMEOUT_MS);
+    try { send(requestId); } catch (error) { finish(error instanceof Error ? error : new Error(String(error))); }
+  });
 }
 
 /**
@@ -172,25 +214,22 @@ export class MapDataService {
   /**
    * Fetch map info by ID - returns a Promise that resolves when data arrives
    */
-  async fetchMapInfo(mapId: number, destX?: number, destY?: number): Promise<PhaserMapInfo> {
-    if (!PhaserNet.isConnected()) {
-      throw new Error("Not connected to server - please log in first");
-    }
+  async fetchMapInfo(mapId: number, signal?: AbortSignal): Promise<PhaserMapInfo> {
+    const response = await correlatedMapRequest<PhaserMapInfoResponse>(
+      (receive) => PhaserNet.onMapInfo(receive),
+      (requestId) => PhaserNet.requestMapInfo({ mapId, requestId }),
+      signal,
+    );
+    if (response.id !== mapId) throw new Error("Map response identity disagrees with the request");
+    return response;
+  }
 
-    const dataPromise = new Promise<PhaserMapInfo>((resolve) => {
-      const unsubscribe = PhaserNet.onMapInfo((data) => {
-        if (data.id === mapId) {
-          unsubscribe();
-          resolve(data);
-        }
-      });
-      PhaserNet.requestMapInfo(mapId, destX, destY);
-    });
-
-    return Promise.race([
-      dataPromise,
-      createTimeoutPromise<PhaserMapInfo>(REQUEST_TIMEOUT_MS, `Timeout fetching map info for map ${mapId}`)
-    ]);
+  async prepareMapLoad(mapId: number, destX?: number, destY?: number, signal?: AbortSignal): Promise<void> {
+    await correlatedMapRequest<PhaserMapLoadResponse>(
+      (receive) => PhaserNet.onMapLoad(receive),
+      (requestId) => PhaserNet.requestMapLoad({ mapId, destX, destY, requestId }),
+      signal,
+    );
   }
 
   /**

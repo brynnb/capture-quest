@@ -58,8 +58,8 @@ func TestTeleportCommitFailurePreservesSafariPositionAndPublication(t *testing.T
 	}
 }
 
-func TestReportedPositionAndMapInfoRejectLatePersistenceFailure(t *testing.T) {
-	for _, opcode := range []opcodes.OpCode{opcodes.PhaserPlayerPositionUpdate, opcodes.PhaserMapInfoRequest} {
+func TestReportedPositionAndMapLoadRejectLatePersistenceFailure(t *testing.T) {
+	for _, opcode := range []opcodes.OpCode{opcodes.PhaserPlayerPositionUpdate, opcodes.PhaserMapLoadRequest} {
 		t.Run(string(rune(opcode)), func(t *testing.T) {
 			database, wh, ses, messages := battleTestWorld(t)
 			wh.ActorRegistry = NewActorRegistry()
@@ -76,8 +76,8 @@ func TestReportedPositionAndMapInfoRejectLatePersistenceFailure(t *testing.T) {
  CREATE CONSTRAINT TRIGGER reject_reported_commit AFTER UPDATE ON character_data DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN(NEW.map_id=60) EXECUTE FUNCTION reject_reported_commit();`)
 			db.GlobalWorldDB = nil
 			payload := `{"mapId":60,"x":3,"y":4,"direction":"DOWN"}`
-			if opcode == opcodes.PhaserMapInfoRequest {
-				payload = `{"mapId":60,"destX":3,"destY":4}`
+			if opcode == opcodes.PhaserMapLoadRequest {
+				payload = `{"mapId":60,"destX":3,"destY":4,"requestId":"arrival"}`
 			}
 			battleDispatch(t, wh, ses, opcode, payload)
 			x, y, mapID, ok := wh.PlayerMovement.GetPosition(42)
@@ -87,7 +87,7 @@ func TestReportedPositionAndMapInfoRejectLatePersistenceFailure(t *testing.T) {
 			if len(messages.streams) != 1 {
 				t.Fatalf("failed position published %+v", messages.streams)
 			}
-			if opcode == opcodes.PhaserMapInfoRequest {
+			if opcode == opcodes.PhaserMapLoadRequest {
 				var response struct {
 					Success bool
 					Error   string
@@ -139,7 +139,7 @@ func TestMapDestinationCommitIsNotOverwrittenByInvalidSavedPositionRecovery(t *t
 	ses.Client.CharData().X = 0
 	ses.Client.CharData().Y = 0
 	testdb.Exec(t, database, `INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(60,'EXIT',20,20,0); INSERT INTO phaser_tiles(map_id,x,y,tile_image_id) VALUES(60,3,4,1)`)
-	battleDispatch(t, wh, ses, opcodes.PhaserMapInfoRequest, `{"mapId":60,"destX":3,"destY":4}`)
+	battleDispatch(t, wh, ses, opcodes.PhaserMapLoadRequest, `{"mapId":60,"destX":3,"destY":4,"requestId":"arrival"}`)
 	var x, y, mapID int
 	if err := database.QueryRow(`SELECT x,y,map_id FROM character_data WHERE id=42`).Scan(&x, &y, &mapID); err != nil || x != 3 || y != 4 || mapID != 60 {
 		t.Fatalf("destination overwritten: %d %d %d %v", x, y, mapID, err)

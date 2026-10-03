@@ -349,8 +349,10 @@ field-name conversion or generated-name postprocessor will remain.
    use a generated-field projection instead of pretending to be full responses.
    Native map info, unified bounds and overworld lists also use the service;
    their DTOs generate from protocol JSON tags. Lists cannot assign player
-   presence, are ordered by ID, and honor optional field omission. Map-info
-   retains destination/recovery/load effects until gameplay intent is migrated.
+   presence, are ordered by ID, and honor optional field omission. Metadata
+   reads have no arrival/recovery/load effects. The explicit correlated MapLoad
+   command owns those gameplay responsibilities; movement eligibility and
+   atomic legacy load-effect persistence remain in the active roadmap.
    Map-script and learnset aggregates now also use the service and protocol
    types. They read under one read-only repeatable-read transaction and one
    five-second budget, returning no partial projection on any failure. A shared
@@ -776,38 +778,37 @@ do not replace integrated active-player persistence or rendered browser checks.
 
 Legacy MapChangeRequest (wire number 176) is retired and rejected at session
 admission; its arbitrary setter and registration are removed. Keep the number
-reserved. The supported Phaser position/map requests still require destination
-eligibility migration: metadata reads must not independently claim player
-presence, and movement reports/server warp acknowledgements/Instant Warp intent
-need explicit authoritative decisions. Instant Warp is currently ordinary-player
-functionality, so validation must preserve that policy unless deliberately
-changed. Successful persistence alone is not authorization.
+reserved. Active client position writes validate catalog membership inside a
+bounded character-locked transaction before saving position or ending Safari.
+Interiors require an existing map and non-erased tile; unified map 9999 uses
+NULL-map catalog tiles and supports negative coordinates. Trusted runtime
+destinations retain source-specific eligibility checks with the same persistence
+primitive. Catalog membership and a successful commit do not authorize a move.
+Ordinary reports, issued warp grants and explicit Instant Warp intent still need
+one authoritative eligibility boundary. Instant Warp remains ordinary-player
+functionality unless its policy is deliberately changed.
 
+Native map info, active unified bounds and overworld lists belong to the injected
+content query service, with caller cancellation and five-second budgets. Runtime
+supplies ID 9999 for the synthetic bounds projection. Lists are pure reads,
+ordered by ID, with empty arrays and no partial output on SQL failures. Map DTOs
+generate from explicit protocol JSON tags; list output bypasses StructToMap.
+Metadata opcode 34 rejects destination fields and performs no recovery, presence
+mutation or gameplay effects.
 
-Active client position writes validate catalog membership inside the bounded
-character-locked position transaction before saving position or ending Safari.
-Interior destinations require an existing map and non-erased tile; unified map
-9999 uses NULL-map catalog tiles and supports negative coordinates. Trusted
-runtime destinations use their own eligibility checks with the same persistence
-primitive. Remote metadata-only map requests cannot claim presence or run remote
-load effects, and partial destination coordinates are rejected. Current-map
-metadata recovery/load effects remain coupled. Catalog membership alone does
-not authorize movement; explicit movement/warp intent and issued destination
-validation remain in the active roadmap. Ordinary-player Instant Warp retains
-its current policy. See `SERVER_FOUNDATIONS.md` for checkpoint validation and the
-far-overworld arrival readiness limitation: actor arrival precedes exact
-chunk/collision residency, so ending warp mode alone does not prove readiness
-for the first input. The rendered movement-origin check waits for actual exact
-tile data; coordinating input release with residency remains required.
+Arrival/recovery/load effects use MapLoad (181/182), which the gameplay loader
+awaits before metadata and actors, including loads using cached metadata. Overview
+reads do not issue it. Success/error replies carry request IDs. The shared client
+settlement primitive releases subscriptions, timers and abort listeners on every
+terminal outcome; newer loads and scene cleanup abort local waits. A local abort
+does not reverse a server commit, and correlation is not durable deduplication.
+Legacy load-effect helpers still need atomic/cancellable persistence. Other map
+queries still need correlation, and committed-result reconnect recovery remains
+unfinished. Frontend/backend versions must be coordinated when eventually
+deploying this retirement; there is no destination alias on the read endpoint.
 
-
-Map metadata projections (native info, active unified bounds and overworld list)
-now belong to the injected content query service, with caller cancellation and
-five-second query budgets. Runtime supplies ID 9999 for the synthetic bounds
-projection. Overworld lists are pure reads and cannot assign session presence;
-empty lists are arrays and SQL scan/iteration failures reject partial output.
-Map info/request DTOs now generate from explicit `internal/protocol` JSON tags;
-all frontend consumers use that source and list output bypasses `StructToMap`.
-Destination-bearing map-info recovery/effects remain coupled in the world handler
-until the explicit gameplay-intent migration. Query listener/error correlation
-and arrival residency still need coordinated networking changes.
+Arrival also precedes exact chunk/collision residency during same-map Instant
+Warp from overview. Ending warp mode alone does not prove readiness for the first
+input. The rendered movement-origin check waits for actual exact tile data;
+coordinating input release with residency remains required. Checkpoint evidence
+and the full remaining-work roadmap are recorded in SERVER_FOUNDATIONS.md.

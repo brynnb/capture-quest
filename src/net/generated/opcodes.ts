@@ -218,3 +218,5 @@ export const FieldMoveUseRequest: OpCode = 177;
 export const FieldMoveUseResponse: OpCode = 178;
 export const DebugWarpProbeCasesRequest: OpCode = 179;
 export const DebugWarpProbeCasesResponse: OpCode = 180;
+export const PhaserMapLoadRequest: OpCode = 181;
+export const PhaserMapLoadResponse: OpCode = 182;

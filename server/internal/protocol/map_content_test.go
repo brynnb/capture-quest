@@ -14,14 +14,14 @@ func TestMapStreamsUseExplicitJSONContract(t *testing.T) {
 	ses := session.NewSessionManager().CreateSession(recorder, 1, "map-wire", nil)
 	zero, negative := 0, -20
 	info := protocol.PhaserMapInfo{ID: 9999, Name: "Unified Overworld", Width: 16, Height: 28, IsOverworld: 1, TileMinX: &zero, TileMinY: &negative}
-	if err := ses.SendStreamJSON(info, opcodes.PhaserMapInfoResponse); err != nil {
+	if err := ses.SendStreamJSON(protocol.PhaserMapInfoResponse{PhaserMapInfo: info, Success: true, RequestID: "query"}, opcodes.PhaserMapInfoResponse); err != nil {
 		t.Fatal(err)
 	}
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(recorder.frames[0][6:], &fields); err != nil {
 		t.Fatal(err)
 	}
-	for key, value := range map[string]string{"id": "9999", "isOverworld": "1", "tileMinX": "0", "tileMinY": "-20"} {
+	for key, value := range map[string]string{"id": "9999", "success": "true", "requestId": `"query"`, "isOverworld": "1", "tileMinX": "0", "tileMinY": "-20"} {
 		if string(fields[key]) != value {
 			t.Errorf("%s=%s, want %s", key, fields[key], value)
 		}
@@ -31,8 +31,8 @@ func TestMapStreamsUseExplicitJSONContract(t *testing.T) {
 			t.Errorf("unexpected key %s", key)
 		}
 	}
-	request, err := json.Marshal(protocol.PhaserMapInfoRequest{MapID: 9999, DestX: &zero, DestY: &negative})
-	if err != nil || string(request) != `{"mapId":9999,"destX":0,"destY":-20}` {
+	request, err := json.Marshal(protocol.PhaserMapLoadRequest{MapID: 9999, RequestID: "arrival", DestX: &zero, DestY: &negative})
+	if err != nil || string(request) != `{"mapId":9999,"destX":0,"destY":-20,"requestId":"arrival"}` {
 		t.Fatalf("destination request=%s %v", request, err)
 	}
 }

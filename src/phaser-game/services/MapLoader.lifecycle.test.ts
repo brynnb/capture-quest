@@ -82,6 +82,7 @@ function createFailedOverworldLoader() {
       ensureRuntimeTileCatalogCurrent: vi.fn(async () => undefined),
       getSnapshot: vi.fn(() => undefined),
       setSnapshot: vi.fn(),
+      prepareMapLoad: vi.fn(async () => undefined),
       fetchMapInfo: vi.fn(async () => ({
         id: 9999,
         name: "Unified Overworld",
@@ -167,6 +168,21 @@ describe("MapLoader async lifecycle", () => {
     expect(scene.mapLoadInProgress).toBe(true);
   });
 
+  it("aborts requests owned by superseded loads and by scene cleanup", async () => {
+    const { loader, raw, compatibility, rendererClear } = createPendingLoader();
+    const first = loader.loadOverworldData();
+    const firstSignal = (raw.mapRequestAbort as AbortController).signal;
+    const second = loader.loadOverworldData();
+    const secondSignal = (raw.mapRequestAbort as AbortController).signal;
+    expect(firstSignal.aborted).toBe(true);
+    expect(secondSignal.aborted).toBe(false);
+    loader.cleanup();
+    expect(secondSignal.aborted).toBe(true);
+    compatibility.resolve();
+    await Promise.all([first, second]);
+    expect(rendererClear).not.toHaveBeenCalled();
+  });
+
   it("invalidates pending work and releases stream resources on cleanup", () => {
     const { loader, raw, scene, clear } = createPendingLoader();
     const stop = vi.fn();
@@ -174,8 +190,11 @@ describe("MapLoader async lifecycle", () => {
     raw.overworldChunkStream = { stop };
     scene.mapLoadInProgress = true;
 
+    const requestAbort = new AbortController();
+    raw.mapRequestAbort = requestAbort;
     loader.cleanup();
 
+    expect(requestAbort.signal.aborted).toBe(true);
     expect(raw.mapLoadGeneration).toBe(8);
     expect(stop).toHaveBeenCalledOnce();
     expect(clear).toHaveBeenCalledOnce();

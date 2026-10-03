@@ -1,14 +1,18 @@
 package world
 
 import (
+	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"time"
 
 	"capturequest/internal/api/opcodes"
+	"capturequest/internal/content"
 	"capturequest/internal/db"
 	"capturequest/internal/protocol"
 	"capturequest/internal/session"
@@ -124,41 +128,71 @@ type PhaserWarpsRequest struct {
 	MapID int `json:"mapId"`
 }
 
-// HandlePhaserMapInfoRequest returns info about a specific map
+// HandlePhaserMapInfoRequest only reads catalog metadata. Legacy destination
+// fields are rejected so an old caller cannot mistake a read for an arrival.
 func HandlePhaserMapInfoRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
 	var req protocol.PhaserMapInfoRequest
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.DisallowUnknownFields()
+	err := decoder.Decode(&req)
+	var extra any
+	if err == nil && decoder.Decode(&extra) != io.EOF {
+		err = fmt.Errorf("metadata request must contain one JSON object")
+	}
+	if err != nil || req.RequestID == "" || len(req.RequestID) > 64 {
+		ses.SendStreamJSON(protocol.PhaserMapRequestError{RequestID: req.RequestID, Error: "Invalid map metadata request."}, opcodes.PhaserMapInfoResponse)
+		return false
+	}
+	info, err := loadRuntimeMapInfo(ses.CommandContext(), wh.Content, req.MapID)
+	if err != nil {
+		log.Printf("[Phaser] Error querying map info for %d: %v", req.MapID, err)
+		ses.SendStreamJSON(protocol.PhaserMapRequestError{RequestID: req.RequestID, Error: "Could not load map information."}, opcodes.PhaserMapInfoResponse)
+		return false
+	}
+	ses.SendStreamJSON(protocol.PhaserMapInfoResponse{PhaserMapInfo: info, Success: true, RequestID: req.RequestID}, opcodes.PhaserMapInfoResponse)
+	return false
+}
+
+func loadRuntimeMapInfo(ctx context.Context, service *content.Service, mapID int) (protocol.PhaserMapInfo, error) {
+	if mapID != UnifiedOverworldMapID {
+		return service.MapInfo(ctx, mapID)
+	}
+	info, err := service.OverworldInfo(ctx)
+	info.ID = UnifiedOverworldMapID
+	return info, err
+}
+
+// HandlePhaserMapLoadRequest owns arrival/recovery/load effects separately from metadata.
+func HandlePhaserMapLoadRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
+	var req protocol.PhaserMapLoadRequest
 	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("[Phaser] Invalid MapInfoRequest: %v", err)
+		log.Printf("[Phaser] Invalid MapLoadRequest: %v", err)
 		return false
 	}
 
-	if (req.DestX == nil) != (req.DestY == nil) {
-		ses.SendStreamJSON(protocol.ErrorResponse{Error: "Destination requires both coordinates."}, opcodes.PhaserMapInfoResponse)
+	if req.RequestID == "" || len(req.RequestID) > 64 {
+		ses.SendStreamJSON(protocol.PhaserMapRequestError{RequestID: req.RequestID, Error: "Invalid map request ID."}, opcodes.PhaserMapLoadResponse)
 		return false
 	}
-	var mapInfo protocol.PhaserMapInfo
-	var err error
-	if req.MapID == UnifiedOverworldMapID {
-		mapInfo, err = wh.Content.OverworldInfo(ses.CommandContext())
-		mapInfo.ID = UnifiedOverworldMapID
-	} else {
-		mapInfo, err = wh.Content.MapInfo(ses.CommandContext(), req.MapID)
+	if (req.DestX == nil) != (req.DestY == nil) {
+		ses.SendStreamJSON(protocol.PhaserMapRequestError{RequestID: req.RequestID, Error: "Destination requires both coordinates."}, opcodes.PhaserMapLoadResponse)
+		return false
 	}
+	mapInfo, err := loadRuntimeMapInfo(ses.CommandContext(), wh.Content, req.MapID)
 	if err != nil {
 		log.Printf("[Phaser] Error querying map info for %d: %v", req.MapID, err)
-		ses.SendStreamJSON(protocol.ErrorResponse{Error: "Could not load map information."}, opcodes.PhaserMapInfoResponse)
+		ses.SendStreamJSON(protocol.PhaserMapRequestError{RequestID: req.RequestID, Error: "Could not load map information."}, opcodes.PhaserMapLoadResponse)
 		return false
 	}
 
 	if req.DestX != nil && req.DestY != nil && ses.HasValidClient() {
 		if err := commitClientPlayerPosition(ses.CommandContext(), wh.database, int64(ses.Client.CharData().ID), normalizedVisiblePlayerMapID(wh, mapInfo.ID), *req.DestX, *req.DestY); err != nil {
 			log.Printf("[Phaser] Save map destination: %v", err)
-			ses.SendStreamJSON(protocol.ErrorResponse{Error: "Could not save the destination. Please try again."}, opcodes.PhaserMapInfoResponse)
+			ses.SendStreamJSON(protocol.PhaserMapRequestError{RequestID: req.RequestID, Error: "Could not save the destination. Please try again."}, opcodes.PhaserMapLoadResponse)
 			return false
 		}
 		refreshSafariFlags(wh, int64(ses.Client.CharData().ID))
 	}
-	ses.SendStreamJSON(mapInfo, opcodes.PhaserMapInfoResponse)
 
 	// Normalize overworld maps to the unified ID for session tracking
 	normalizedID := mapInfo.ID
@@ -175,9 +209,9 @@ func HandlePhaserMapInfoRequest(ses *session.Session, payload []byte, wh *WorldH
 		}
 	}
 	if req.DestX == nil {
-		// A metadata fetch for map view cannot claim presence or run another map's
-		// load effects. Current-map loading retains its existing recovery/effects.
+		// Loading a saved location cannot claim another map without a destination.
 		if !ses.HasValidClient() || normalizedID != currentPlayerVisibleMapID(ses, wh, int(ses.Client.CharData().ID)) {
+			ses.SendStreamJSON(protocol.PhaserMapRequestError{RequestID: req.RequestID, Error: "Map loading requires the current player location."}, opcodes.PhaserMapLoadResponse)
 			return false
 		}
 	} else {
@@ -195,6 +229,7 @@ func HandlePhaserMapInfoRequest(ses *session.Session, payload []byte, wh *WorldH
 			if req.DestX == nil || req.DestY == nil {
 				if recovered, err := recoverInvalidCharacterPosition(ses, wh); err != nil {
 					log.Printf("[Phaser] Recover position: %v", err)
+					ses.SendStreamJSON(protocol.PhaserMapRequestError{RequestID: req.RequestID, Error: "Could not recover player position."}, opcodes.PhaserMapLoadResponse)
 					return false
 				} else if recovered {
 					char = ses.Client.CharData()
@@ -202,7 +237,7 @@ func HandlePhaserMapInfoRequest(ses *session.Session, payload []byte, wh *WorldH
 			}
 			if req.DestX != nil && req.DestY != nil {
 				// Warp: update position atomically so fetchActors returns correct position
-				log.Printf("[Phaser] Warp position update via MapInfo: player %d -> map %d (%d,%d)",
+				log.Printf("[Phaser] Warp position update via MapLoad: player %d -> map %d (%d,%d)",
 					char.ID, req.MapID, *req.DestX, *req.DestY)
 				char.X = float64(*req.DestX)
 				char.Y = float64(*req.DestY)
@@ -248,7 +283,8 @@ func HandlePhaserMapInfoRequest(ses *session.Session, payload []byte, wh *WorldH
 		}
 	}
 
-	log.Printf("[Phaser] Sent map info for map %d (%s), updated session map ID", mapInfo.ID, mapInfo.Name)
+	char := ses.Client.CharData()
+	ses.SendStreamJSON(protocol.PhaserMapLoadResponse{Success: true, RequestID: req.RequestID, MapID: int(char.MapID), X: int(char.X), Y: int(char.Y)}, opcodes.PhaserMapLoadResponse)
 	return false
 }
 

@@ -1,4 +1,4 @@
-import type { PhaserMapInfo, PhaserMapInfoRequest } from "@/net/generated/protocol";
+import type { PhaserMapInfo, PhaserMapInfoRequest, PhaserMapInfoResponse, PhaserMapLoadRequest, PhaserMapLoadResponse, PhaserMapRequestError } from "@/net/generated/protocol";
 import type { GameCornerSlotPlayRequest } from "@/net/generated/world_api";
 import type { PhaserMapScriptsRequest } from "@/net/generated/protocol";
 /**
@@ -27,22 +27,13 @@ export function isConnected(): boolean {
   return WorldSocket.isConnected;
 }
 
-/**
- * Request map information for a specific map ID.
- * Optional destX/destY atomically update the player's position on the server
- * when warping to a new map, avoiding race conditions with fetchActors.
- */
-export function requestMapInfo(mapId: number, destX?: number, destY?: number): void {
-  if (!WorldSocket.isConnected) {
-    console.warn("[PhaserNetwork] Not connected - cannot request map info");
-    return;
-  }
-  const payload: PhaserMapInfoRequest = { mapId };
-  if (destX !== undefined && destY !== undefined) {
-    payload.destX = destX;
-    payload.destY = destY;
-  }
-  NetworkBridge.send(payload, OpCodes.PhaserMapInfoRequest);
+/** Read-only metadata; arrivals use the separate map-load command. */
+export function requestMapInfo(request: PhaserMapInfoRequest): void {
+  NetworkBridge.send(request, OpCodes.PhaserMapInfoRequest);
+}
+
+export function requestMapLoad(request: PhaserMapLoadRequest): void {
+  NetworkBridge.send(request, OpCodes.PhaserMapLoadRequest);
 }
 
 /**
@@ -345,7 +336,8 @@ export function buyPrize(prizeId: number): void {
 }
 
 // Response handler registration
-export type PhaserMapInfoHandler = (data: PhaserMapInfo) => void;
+export type PhaserMapInfoHandler = (data: PhaserMapInfoResponse | PhaserMapRequestError) => void;
+export type PhaserMapLoadHandler = (data: PhaserMapLoadResponse | PhaserMapRequestError) => void;
 export type PhaserTilesHandler = (data: PhaserTilesResponse | PhaserTile[]) => void;
 export type PhaserOverworldMapsHandler = (data: PhaserMapInfo[]) => void;
 export type PhaserActorsHandler = (data: PhaserActor[]) => void;
@@ -359,6 +351,7 @@ export type PhaserMapMusicHandler = (data: MapMusicResult) => void;
 
 const handlers = {
   mapInfo: new Set<PhaserMapInfoHandler>(),
+  mapLoad: new Set<PhaserMapLoadHandler>(),
   tiles: new Set<PhaserTilesHandler>(),
   overworldMaps: new Set<PhaserOverworldMapsHandler>(),
   actors: new Set<PhaserActorsHandler>(),
@@ -373,6 +366,11 @@ const handlers = {
 export function onMapInfo(handler: PhaserMapInfoHandler): () => void {
   handlers.mapInfo.add(handler);
   return () => handlers.mapInfo.delete(handler);
+}
+
+export function onMapLoad(handler: PhaserMapLoadHandler): () => void {
+  handlers.mapLoad.add(handler);
+  return () => handlers.mapLoad.delete(handler);
 }
 
 export function onTiles(handler: PhaserTilesHandler): () => void {
@@ -538,7 +536,10 @@ export function normalizePhaserArrayPayload<T>(
 export function dispatchPhaserResponse(opcode: number, data: unknown): void {
   switch (opcode) {
     case OpCodes.PhaserMapInfoResponse:
-      handlers.mapInfo.forEach((h) => h(data as PhaserMapInfo));
+      handlers.mapInfo.forEach((h) => h(data as PhaserMapInfoResponse | PhaserMapRequestError));
+      break;
+    case OpCodes.PhaserMapLoadResponse:
+      handlers.mapLoad.forEach((h) => h(data as PhaserMapLoadResponse | PhaserMapRequestError));
       break;
     case OpCodes.PhaserTilesResponse:
       handlers.tiles.forEach((h) => h(data as PhaserTilesResponse | PhaserTile[]));

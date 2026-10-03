@@ -72,6 +72,7 @@ export class MapLoader {
   private createMapLegend: (maps: PhaserMapInfo[]) => void;
   private prepareActorsForLoadedView: (actors: PhaserActor[]) => PhaserActor[];
   private mapLoadGeneration = 0;
+  private mapRequestAbort: AbortController | null = null;
   private overworldChunkStream: OverworldChunkStream | null = null;
   private readonly overworldOverviewLayer: OverworldOverviewLayer;
   private lastOverworldStreamUpdateAt = 0;
@@ -120,6 +121,9 @@ export class MapLoader {
 
   async loadMapData(mapId: number) {
     const loadGeneration = ++this.mapLoadGeneration;
+    this.mapRequestAbort?.abort();
+    const mapRequestAbort = new AbortController();
+    this.mapRequestAbort = mapRequestAbort;
     this.stopOverworldStreaming();
     (this.scene as any).mapLoadInProgress = true; // eslint-disable-line @typescript-eslint/no-explicit-any
     try {
@@ -162,15 +166,16 @@ export class MapLoader {
       // Set camera to non-overworld mode - this will save the overworld camera state if needed
       this.cameraController.setViewMode(false);
 
-      // Fetch map info — pass warp destination coordinates so the server
-      // atomically updates the player position before we request actors.
+      // Await the explicit arrival command before read-only metadata/actor queries.
       const sceneForDest = this.scene as any; // eslint-disable-line @typescript-eslint/no-explicit-any
       const warpDX = sceneForDest.warpDestX ?? undefined;
       const warpDY = sceneForDest.warpDestY ?? undefined;
       const cached = this.mapDataService.getSnapshot(mapId);
       const hasWarpDestination = warpDX !== undefined && warpDY !== undefined;
+      await this.mapDataService.prepareMapLoad(mapId, warpDX, warpDY, mapRequestAbort.signal);
+      if (!this.isLoadCurrent(loadGeneration)) return;
       const mapInfo = hasWarpDestination || !cached
-        ? await this.mapDataService.fetchMapInfo(mapId, warpDX, warpDY)
+        ? await this.mapDataService.fetchMapInfo(mapId, mapRequestAbort.signal)
         : cached.mapInfo;
       if (!this.isLoadCurrent(loadGeneration)) return;
 
@@ -370,6 +375,9 @@ export class MapLoader {
 
   async loadOverworldData(options: MapLoadOptions = {}) {
     const loadGeneration = ++this.mapLoadGeneration;
+    this.mapRequestAbort?.abort();
+    const mapRequestAbort = new AbortController();
+    this.mapRequestAbort = mapRequestAbort;
     let readyForWorldInput = false;
     this.stopOverworldStreaming();
     (this.scene as any).mapLoadInProgress = true; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -415,15 +423,18 @@ export class MapLoader {
 
       this.uiManager.setLoadingText("Loading unified overworld...");
 
-      // Fetch unified map info. Pass warp destination coordinates so the server
-      // atomically updates the player position before we request actors.
+      // Overview fetches metadata only. Gameplay loads first await arrival.
       const sceneForDest = this.scene as any; // eslint-disable-line @typescript-eslint/no-explicit-any
       const warpDX = sceneForDest.warpDestX ?? undefined;
       const warpDY = sceneForDest.warpDestY ?? undefined;
       const cached = this.mapDataService.getSnapshot(mapId);
       const hasWarpDestination = warpDX !== undefined && warpDY !== undefined;
+      if (!options.viewOnly) {
+        await this.mapDataService.prepareMapLoad(mapId, warpDX, warpDY, mapRequestAbort.signal);
+        if (!this.isLoadCurrent(loadGeneration)) return;
+      }
       const mapInfo = hasWarpDestination || !cached
-        ? await this.mapDataService.fetchMapInfo(mapId, warpDX, warpDY)
+        ? await this.mapDataService.fetchMapInfo(mapId, mapRequestAbort.signal)
         : cached.mapInfo;
       if (!this.isLoadCurrent(loadGeneration)) return;
       this.setState({ mapInfo });
@@ -716,6 +727,8 @@ export class MapLoader {
 
   cleanup(): void {
     this.mapLoadGeneration += 1;
+    this.mapRequestAbort?.abort();
+    this.mapRequestAbort = null;
     this.stopOverworldStreaming();
     (this.scene as any).mapLoadInProgress = false; // eslint-disable-line @typescript-eslint/no-explicit-any
   }

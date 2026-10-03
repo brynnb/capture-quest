@@ -205,4 +205,6 @@ const (
 	FieldMoveUseResponse          OpCode = 178
 	DebugWarpProbeCasesRequest    OpCode = 179
 	DebugWarpProbeCasesResponse   OpCode = 180
+	PhaserMapLoadRequest          OpCode = 181
+	PhaserMapLoadResponse         OpCode = 182
 )

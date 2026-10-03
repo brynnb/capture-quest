@@ -75,9 +75,35 @@ type PhaserMapInfo struct {
 	TileMaxY    *int   `json:"tileMaxY,omitempty"`
 }
 
-// PhaserMapInfoRequest is the request payload
+// PhaserMapInfoRequest only reads metadata; gameplay destinations use MapLoad.
 type PhaserMapInfoRequest struct {
-	MapID int  `json:"mapId"`
-	DestX *int `json:"destX,omitempty"`
-	DestY *int `json:"destY,omitempty"`
+	MapID     int    `json:"mapId"`
+	RequestID string `json:"requestId"`
+}
+
+type PhaserMapInfoResponse struct {
+	PhaserMapInfo `tstype:",extends"`
+	Success       bool   `json:"success" tstype:"true"`
+	RequestID     string `json:"requestId"`
+}
+
+type PhaserMapLoadRequest struct {
+	MapID     int    `json:"mapId"`
+	DestX     *int   `json:"destX,omitempty"`
+	DestY     *int   `json:"destY,omitempty"`
+	RequestID string `json:"requestId"`
+}
+
+type PhaserMapLoadResponse struct {
+	Success   bool   `json:"success" tstype:"true"`
+	RequestID string `json:"requestId"`
+	MapID     int    `json:"mapId"`
+	X         int    `json:"x"`
+	Y         int    `json:"y"`
+}
+
+type PhaserMapRequestError struct {
+	Success   bool   `json:"success" tstype:"false"`
+	RequestID string `json:"requestId"`
+	Error     string `json:"error"`
 }

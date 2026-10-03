@@ -163,12 +163,33 @@ export interface PhaserMapInfo {
   tileMaxY?: number /* int */;
 }
 /**
- * PhaserMapInfoRequest is the request payload
+ * PhaserMapInfoRequest only reads metadata; gameplay destinations use MapLoad.
  */
 export interface PhaserMapInfoRequest {
   mapId: number /* int */;
+  requestId: string;
+}
+export interface PhaserMapInfoResponse extends PhaserMapInfo {
+  success: true;
+  requestId: string;
+}
+export interface PhaserMapLoadRequest {
+  mapId: number /* int */;
   destX?: number /* int */;
   destY?: number /* int */;
+  requestId: string;
+}
+export interface PhaserMapLoadResponse {
+  success: true;
+  requestId: string;
+  mapId: number /* int */;
+  x: number /* int */;
+  y: number /* int */;
+}
+export interface PhaserMapRequestError {
+  success: false;
+  requestId: string;
+  error: string;
 }
 
 //////////
