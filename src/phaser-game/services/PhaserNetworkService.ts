@@ -1,3 +1,4 @@
+import type { TrainerEncounterNotifyPayload } from "@/net/generated/protocol";
 import type { CutsceneEndRequest, CutsceneEndResponse, OwnedPlayerPositionRequest, OwnedPlayerPositionResponse, ServerPlayerMovementNotify, PlayerFacingRequest, PlayerFacingResponse, PlayerStepRequest, PlayerStepResponse, PlayerStepCompleteRequest, PlayerStepCompleteResponse, PlayerStepError, PhaserMapInfo, PhaserMapInfoRequest, PhaserMapInfoResponse, PhaserMapLoadRequest, PhaserMapLoadResponse, PhaserMapRequestError, PhaserWarpActivateRequest, PhaserWarpActivateResponse, PhaserInstantWarpRequest, PhaserInstantWarpResponse } from "@/net/generated/protocol";
 import type { GameCornerSlotPlayRequest } from "@/net/generated/world_api";
 import type { PhaserMapScriptsRequest } from "@/net/generated/protocol";
@@ -17,7 +18,6 @@ import type {
   PhaserTilesResponse,
   PhaserActor,
   PhaserWarp,
-  TrainerEncounterNotifyPayload,
 } from "@/net/generated/world_api";
 
 /**
@@ -469,9 +469,9 @@ export function onMapMusic(handler: PhaserMapMusicHandler): () => void {
 /**
  * Tell the server the local trainer approach animation has finished and battle can start.
  */
-export function sendTrainerEncounterReady(trainerActorId: number): void {
+export function sendTrainerEncounterReady(trainerActorId: number, encounterToken: string): void {
   if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ trainerActorId }, OpCodes.TrainerEncounterReady);
+  NetworkBridge.send({ trainerActorId, encounterToken }, OpCodes.TrainerEncounterReady);
 }
 
 /**

@@ -82,6 +82,11 @@ func HandleOwnedPlayerPositionRequest(ses *session.Session, payload []byte, wh *
 		snapshot.CommittedStep = receipt
 	}
 	ses.SendStreamJSON(snapshot, opcodes.OwnedPlayerPositionResponse)
+	if wh.TrainerEncounter != nil {
+		if _, err := wh.TrainerEncounter.resumePendingEncounter(ses, wh); err != nil {
+			logutil.Debugf("[TrainerEncounter] Recovery: %v", err)
+		}
+	}
 	return false
 }
 
@@ -124,6 +129,13 @@ func (m *PlayerMovementManager) issuePlayerStep(ses *session.Session, req protoc
 	x, y, mapID, surfing, speed := state.CurrentX, state.CurrentY, state.MapID, state.IsSurfing, state.MoveSpeed
 	pending := state.pendingStep
 	m.mu.RUnlock()
+	var trainerPending bool
+	if err := m.wh.database.QueryRowContext(ses.CommandContext(), `SELECT EXISTS(SELECT 1 FROM character_trainer_encounters WHERE character_id=$1 AND resolution='pending')`, charID).Scan(&trainerPending); err != nil {
+		return nil, err
+	}
+	if trainerPending {
+		return nil, fmt.Errorf("trainer encounter is pending")
+	}
 	if m.actorManager == nil {
 		return nil, fmt.Errorf("collision service is unavailable")
 	}

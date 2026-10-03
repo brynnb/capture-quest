@@ -24,7 +24,7 @@ type movementStepCandidate struct {
 type movementStepResult struct {
 	MapID, X, Y                      int
 	Direction                        string
-	Trainer                          *trainerSightData
+	Trainer                          *pendingEncounter
 	Cutscene                         *CutsceneScript
 	Safari                           safariStepResult
 	Wild                             wildStepResult
@@ -61,6 +61,13 @@ func commitMovementStep(ctx context.Context, wh *WorldHandler, charID int64, c m
 	err := db.Transaction(ctx, wh.database, func(tx db.DBTX) (err error) {
 		if err := db.LockCharacter(tx, charID); err != nil {
 			return err
+		}
+		var trainerPending bool
+		if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM character_trainer_encounters WHERE character_id=$1 AND resolution='pending')`, charID).Scan(&trainerPending); err != nil {
+			return err
+		}
+		if trainerPending {
+			return fmt.Errorf("trainer encounter is pending")
 		}
 		var sourceMap, sourceX, sourceY int
 		if err := tx.QueryRow(`SELECT map_id,x,y FROM character_data WHERE id=$1`, charID).Scan(&sourceMap, &sourceX, &sourceY); err != nil {
@@ -120,11 +127,16 @@ func commitMovementStep(ctx context.Context, wh *WorldHandler, charID int64, c m
 		}
 		if !c.SurfEntry {
 			if wh.TrainerEncounter != nil {
-				result.Trainer, err = wh.TrainerEncounter.planPositionEncounter(ctx, tx, charID, c.X, c.Y, c.MapID, flags)
+				var trainer *trainerSightData
+				trainer, err = wh.TrainerEncounter.planPositionEncounter(ctx, tx, charID, c.X, c.Y, c.MapID, flags)
 				if err != nil {
 					return err
 				}
-				if result.Trainer != nil {
+				if trainer != nil {
+					result.Trainer, err = savePendingTrainerIn(tx, charID, c.MapID, c.X, c.Y, trainer)
+					if err != nil {
+						return err
+					}
 					result.StopPath = true
 					return nil
 				}
@@ -253,7 +265,7 @@ func publishMovementStepEffects(ses *session.Session, wh *WorldHandler, charID i
 		SendSystemMessage(ses, "Please check in at the counter first.")
 	}
 	if result.Trainer != nil {
-		wh.TrainerEncounter.publishPositionEncounter(result.Trainer, charID, result.X, result.Y, ses)
+		wh.TrainerEncounter.publishPositionEncounter(result.Trainer, ses)
 		return
 	}
 	if result.Cutscene != nil {

@@ -247,8 +247,14 @@ func TestMovementStepTrainerAndCutscenePlansPublishOnlyAfterCommit(t *testing.T)
 			attempt()
 			assertStepPosition(t, wh, ses, 7)
 			assertNoStepSuccess(t, messages)
-			if kind == "trainer" && (len(wh.TrainerEncounter.pending) != 0 || len(wh.TrainerEncounter.spottedBy) != 0) {
+			if kind == "trainer" && len(wh.TrainerEncounter.spottedBy) != 0 {
 				t.Fatal("rollback published trainer cache")
+			}
+			if kind == "trainer" {
+				var count int
+				if err := wh.database.QueryRow(`SELECT COUNT(*) FROM character_trainer_encounters WHERE character_id=42`).Scan(&count); err != nil || count != 0 {
+					t.Fatalf("rollback retained trainer plan: count=%d err=%v", count, err)
+				}
 			}
 			testdb.Exec(t, wh.database, `DROP TRIGGER reject_step_plan ON character_data`)
 			messages.streams = nil

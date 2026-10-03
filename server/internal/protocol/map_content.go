@@ -284,3 +284,28 @@ type CutsceneStartNotify struct {
 	MapName         string          `json:"mapName"`
 	Actions         json.RawMessage `json:"actions" tstype:"import(\"./scriptedactions\").Action[]"`
 }
+
+// TrainerEncounterNotifyPayload is sent to the client when a trainer spots the player.
+// The client should show "!" and animate the trainer locally to ApproachToX/Y.
+// The server owns the committed player position; trainer approach is presentation.
+type TrainerEncounterNotifyPayload struct {
+	EncounterToken string `json:"encounterToken"`
+	TrainerActorID int    `json:"trainerActorId"` // Runtime actor ID (from ActorRegistry)
+	TrainerX       int    `json:"trainerX"`       // Trainer's current position
+	TrainerY       int    `json:"trainerY"`
+	PlayerX        int    `json:"playerX"`
+	PlayerY        int    `json:"playerY"`
+	ApproachToX    int    `json:"approachToX"` // Client-only trainer destination adjacent to the player
+	ApproachToY    int    `json:"approachToY"`
+	WalkToX        int    `json:"walkToX"` // Legacy: current player tile so old clients do not force-walk
+	WalkToY        int    `json:"walkToY"`
+	TrainerClass   string `json:"trainerClass"`
+	TrainerName    string `json:"trainerName"`
+}
+
+// TrainerEncounterReadyRequest is sent by the client when the local trainer
+// approach animation finishes and the battle can start.
+type TrainerEncounterReadyRequest struct {
+	EncounterToken string `json:"encounterToken"`
+	TrainerActorID int    `json:"trainerActorId"`
+}

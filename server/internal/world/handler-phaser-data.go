@@ -415,6 +415,16 @@ func HandlePhaserMapScriptsRequest(ses *session.Session, payload []byte, wh *Wor
 			return false
 		}
 		charID := int64(ses.Client.CharData().ID)
+		if wh.TrainerEncounter != nil {
+			resumed, err := wh.TrainerEncounter.resumePendingEncounter(ses, wh)
+			if err != nil {
+				log.Printf("[TrainerEncounter] Resume failed for %d: %v", charID, err)
+				return false
+			}
+			if resumed {
+				return false
+			}
+		}
 		playerFacing := ""
 		if wh.PlayerMovement != nil {
 			playerFacing, _ = wh.PlayerMovement.GetDirection(int(charID))

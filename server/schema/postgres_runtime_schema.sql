@@ -150,6 +150,22 @@ CREATE TABLE IF NOT EXISTS character_safari_state (
     updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Retain the latest sight encounter and its resolution across owner replacement.
+CREATE TABLE IF NOT EXISTS character_trainer_encounters (
+    character_id bigint PRIMARY KEY REFERENCES character_data(id) ON DELETE CASCADE,
+    version integer NOT NULL,
+    encounter_token varchar(32) NOT NULL CHECK (encounter_token ~ '^[0-9a-f]{32}$'),
+    trainer_object_id integer NOT NULL,
+    trainer_map_id integer NOT NULL,
+    trainer_class text NOT NULL,
+    party_index integer NOT NULL,
+    map_id integer NOT NULL,
+    x integer NOT NULL,
+    y integer NOT NULL,
+    resolution text NOT NULL CHECK (resolution IN ('pending','battle','blackout','cancelled')),
+    updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 -- One outstanding ordinary step per character: retain the latest commit receipt.
 -- A receipt is replaced only by another successfully committed ordinary step.
 CREATE TABLE IF NOT EXISTS character_movement_receipts (

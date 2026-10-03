@@ -373,6 +373,33 @@ export interface CutsceneStartNotify {
   mapName: string;
   actions: import("./scriptedactions").Action[];
 }
+/**
+ * TrainerEncounterNotifyPayload is sent to the client when a trainer spots the player.
+ * The client should show "!" and animate the trainer locally to ApproachToX/Y.
+ * The server owns the committed player position; trainer approach is presentation.
+ */
+export interface TrainerEncounterNotifyPayload {
+  encounterToken: string;
+  trainerActorId: number /* int */; // Runtime actor ID (from ActorRegistry)
+  trainerX: number /* int */; // Trainer's current position
+  trainerY: number /* int */;
+  playerX: number /* int */;
+  playerY: number /* int */;
+  approachToX: number /* int */; // Client-only trainer destination adjacent to the player
+  approachToY: number /* int */;
+  walkToX: number /* int */; // Legacy: current player tile so old clients do not force-walk
+  walkToY: number /* int */;
+  trainerClass: string;
+  trainerName: string;
+}
+/**
+ * TrainerEncounterReadyRequest is sent by the client when the local trainer
+ * approach animation finishes and the battle can start.
+ */
+export interface TrainerEncounterReadyRequest {
+  encounterToken: string;
+  trainerActorId: number /* int */;
+}
 
 //////////
 // source: pokedex.go

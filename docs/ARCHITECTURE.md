@@ -773,6 +773,20 @@ its old path/arrival callbacks. Receipt recovery does not yet resume every lost
 trainer/cutscene notification; broader durable issuance and gameplay-state
 resynchronization remain in `SERVER_FOUNDATIONS.md`.
 
+Sight-triggered trainer plans also persist in the movement transaction, in
+`character_trainer_encounters`. Its bounded one-row-per-character record stores
+stable catalog identity, issued token, owned source and terminal resolution.
+Disconnect retires presentation tracking without erasing the plan. Map-script and
+owned-position reads redeliver a pending plan, resolving runtime actor IDs from
+current content. Pending plans block movement; readiness validates the source and
+token under the character lock and commits battle creation or blackout together
+with resolution. Shared destination changes cancel incompatible pending sources.
+Duplicate readiness resends only a matching current battle, without replaying
+blackout. Trainer notification/readiness use explicit protocol JSON DTOs generated
+into TypeScript. Presenter retirement cancels delays and ignores stale animation
+completion. Durable cutscene issuance and full current-state resynchronization
+remain unfinished; controller/transaction tests do not prove rendered recovery.
+
 Session commands now retain the original admission deadline through
 `Session.CommandContext()` and cancel it when the connection closes. Migrated
 handlers use it for their context-aware queries/transactions; movement saves

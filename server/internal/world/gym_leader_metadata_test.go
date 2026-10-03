@@ -148,6 +148,13 @@ func TestTrainerDataForObjectIDRejectsScriptedStoryTrainerWithoutHeader(t *testi
 
 func TestTrainerEncounterLoadMatchesHeaderByNormalizedMapName(t *testing.T) {
 	setupMtMoonTrainerAliasDB(t)
+	// This catalog-only SQLite fixture must also expose the required runtime schema.
+	if _, err := db.GlobalWorldDB.DB.Exec(`CREATE TABLE character_trainer_encounters (
+ character_id INTEGER PRIMARY KEY, version INTEGER, encounter_token TEXT,
+ trainer_object_id INTEGER, trainer_map_id INTEGER, trainer_class TEXT, party_index INTEGER,
+ map_id INTEGER, x INTEGER, y INTEGER, resolution TEXT)`); err != nil {
+		t.Fatal(err)
+	}
 
 	wh := &WorldHandler{
 		database:      db.GlobalWorldDB.DB,

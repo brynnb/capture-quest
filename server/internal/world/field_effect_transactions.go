@@ -98,6 +98,9 @@ func saveFieldDestinationIn(tx db.DBTX, charID int64, mapID, x, y int) error {
 	if _, err := endSafariForDestinationIn(tx, charID, mapID); err != nil {
 		return err
 	}
+	if _, err := tx.Exec(`UPDATE character_trainer_encounters SET resolution='cancelled',updated_at=CURRENT_TIMESTAMP WHERE character_id=$1 AND resolution='pending' AND (map_id<>$2 OR x<>$3 OR y<>$4)`, charID, mapID, x, y); err != nil {
+		return err
+	}
 	_, err := tx.Exec(`UPDATE character_data SET map_id=$1,x=$2,y=$3,z=0,heading=0 WHERE id=$4`, mapID, x, y, charID)
 	return err
 }
