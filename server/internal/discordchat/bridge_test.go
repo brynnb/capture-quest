@@ -4,10 +4,12 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -79,5 +81,99 @@ func TestEnvironmentConfigurationIsAllOrNothing(t *testing.T) {
 	bridge, err = NewFromEnvironment(publish)
 	if err != nil || bridge == nil {
 		t.Fatalf("complete configuration = (%#v, %v), want enabled bridge", bridge, err)
+	}
+}
+
+func lifecycleBridge(t *testing.T, endpoint string) *Bridge {
+	t.Helper()
+	t.Setenv("DISCORD_CHAT_SHARED_SECRET", strings.Repeat("s", 32))
+	t.Setenv("DISCORD_CHAT_WEBHOOK_URL", endpoint)
+	b, err := NewFromEnvironment(func(string, string) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(b.Close)
+	return b
+}
+
+func TestCloseBeforeStartAndRepeatedStart(t *testing.T) {
+	b := lifecycleBridge(t, "http://127.0.0.1:1")
+	done := make(chan struct{})
+	go func() { b.Close(); b.Start(); b.Start(); b.Close(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("close before start did not join worker")
+	}
+	b.Enqueue(Message{SenderName: "test", Text: "after close"})
+	if len(b.outbound) != 0 {
+		t.Fatal("closed bridge accepted outbound work")
+	}
+}
+
+func TestCloseCancelsInFlightDeliveryAndJoinsWorker(t *testing.T) {
+	entered, cancelled := make(chan struct{}), make(chan struct{})
+	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.Copy(io.Discard, r.Body)
+		close(entered)
+		<-r.Context().Done()
+		close(cancelled)
+	}))
+	t.Cleanup(endpoint.Close)
+	b := lifecycleBridge(t, endpoint.URL)
+	b.Start()
+	b.Start()
+	b.Enqueue(Message{SenderName: "test", Text: "local fixture"})
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("delivery not started")
+	}
+	done := make(chan struct{})
+	go func() { b.Close(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("close did not cancel delivery")
+	}
+	select {
+	case <-cancelled:
+	case <-time.After(time.Second):
+		t.Fatal("HTTP delivery was not cancelled")
+	}
+}
+
+type testRoundTrip func(*http.Request) (*http.Response, error)
+
+func (f testRoundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+type retryResponseBody struct {
+	io.Reader
+	close func()
+}
+
+func (b retryResponseBody) Close() error { b.close(); return nil }
+
+func TestCloseCancelsRetryDelayWithoutAnotherAttempt(t *testing.T) {
+	b := lifecycleBridge(t, "http://local-fixture.invalid")
+	responseClosed := make(chan struct{})
+	var once sync.Once
+	attempts := 0
+	b.client.Transport = testRoundTrip(func(*http.Request) (*http.Response, error) {
+		attempts++
+		return &http.Response{StatusCode: http.StatusServiceUnavailable, Status: "503 fixture", Body: retryResponseBody{strings.NewReader("retry"), func() { once.Do(func() { close(responseClosed) }) }}}, nil
+	})
+	b.Start()
+	b.Enqueue(Message{SenderName: "test", Text: "retry fixture"})
+	<-responseClosed
+	done := make(chan struct{})
+	go func() { b.Close(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("close waited through retry delay")
+	}
+	if attempts != 1 {
+		t.Fatalf("shutdown retried %d times", attempts)
 	}
 }

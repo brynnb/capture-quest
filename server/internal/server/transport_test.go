@@ -5,10 +5,12 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/binary"
+	"errors"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -32,7 +34,11 @@ func (w *transportTestWorld) RemoveSession(id int) {
 		w.removed <- id
 	}
 }
-func (*transportTestWorld) ShutdownContext(context.Context) error { return nil }
+func (w *transportTestWorld) ShutdownContext(context.Context) error {
+	w.manager.Seal()
+	w.manager.ForEachSession(func(s *session.Session) { s.Close() })
+	return nil
+}
 
 func testWSServer(t *testing.T) (*Server, *transportTestWorld, string) {
 	t.Helper()
@@ -249,5 +255,58 @@ func TestPartialFrameTimeoutClosesSession(t *testing.T) {
 	}
 	if !ses.IsClosed() {
 		t.Fatal("timed-out session still open")
+	}
+}
+
+func TestShutdownClosesWebSocketBeforeBlockedHTTPDrain(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mgr := session.NewSessionManager()
+	world := &transportTestWorld{mgr, make(chan []byte, 4), make(chan int, 4)}
+	srv := &Server{sessionManager: mgr, worldHandler: world}
+	entered, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	t.Cleanup(func() { once.Do(func() { close(release) }); srv.StopServer() })
+	mux := http.NewServeMux()
+	mux.HandleFunc("/ws", srv.makeWSHandler())
+	mux.HandleFunc("/blocked", func(w http.ResponseWriter, r *http.Request) {
+		close(entered)
+		<-release
+		w.WriteHeader(http.StatusNoContent)
+	})
+	srv.serveHTTP(listener, mux)
+	conn := openTestWS(t, "ws://"+listener.Addr().String()+"/ws")
+	clientDone := make(chan error, 1)
+	go func() {
+		resp, err := http.Get("http://" + listener.Addr().String() + "/blocked")
+		if resp != nil {
+			resp.Body.Close()
+		}
+		clientDone <- err
+	}()
+	<-entered
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if err := srv.StopServerContext(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("blocked shutdown=%v", err)
+	}
+	if _, _, err := conn.ReadMessage(); err == nil {
+		t.Fatal("shutdown kept websocket open")
+	} else if e, ok := err.(net.Error); ok && e.Timeout() {
+		t.Fatal("websocket only hit read timeout")
+	}
+	select {
+	case <-world.removed:
+	case <-time.After(time.Second):
+		t.Fatal("websocket reader did not retire session")
+	}
+	once.Do(func() { close(release) })
+	if err := <-clientDone; err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.StopServerContext(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 }

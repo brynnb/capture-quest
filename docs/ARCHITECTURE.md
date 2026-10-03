@@ -742,3 +742,12 @@ standalone process reports shutdown failure with a nonzero exit. The configured
 `gracePeriod` is seconds, with a 30-second default when nonpositive. Underlying
 legacy operations still need cancellation/force-close coverage; a bounded wait
 alone does not prove a bounded successful drain or durable final-save recovery.
+
+At server drain start, world retirement and HTTP request cancellation begin
+before HTTP joins. Ordinary HTTP connections are force-closed after the grace
+period; a sealed handler-admission boundary and handler completion tracking keep
+storage open even after force-close until admitted work returns. Player transports
+are retired by their session owners. The optional chat bridge owns one worker
+with cancellable HTTP deliveries/retry timers and safe close-before-start.
+Legacy uncooperative operations and WebTransport reader/listener joins still
+require coverage; force-close is reported as failed graceful drain.

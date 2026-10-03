@@ -2,6 +2,7 @@ package discordchat
 
 import (
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -33,7 +34,9 @@ type Bridge struct {
 	publish    PublishFunc
 	client     *http.Client
 	outbound   chan Message
-	stop       chan struct{}
+	context    context.Context
+	cancel     context.CancelFunc
+	start      sync.Once
 	done       chan struct{}
 	close      sync.Once
 }
@@ -53,18 +56,21 @@ func NewFromEnvironment(publish PublishFunc) (*Bridge, error) {
 	if publish == nil {
 		return nil, errors.New("Discord chat publisher is required")
 	}
+	ctx, cancel := context.WithCancel(context.Background())
 	return &Bridge{
 		secret: secret, webhookURL: webhookURL, publish: publish,
 		client:   &http.Client{Timeout: 8 * time.Second},
-		outbound: make(chan Message, 256), stop: make(chan struct{}), done: make(chan struct{}),
+		outbound: make(chan Message, 256), context: ctx, cancel: cancel, done: make(chan struct{}),
 	}, nil
 }
 
-func (b *Bridge) Start() { go b.run() }
+func (b *Bridge) Start() { b.start.Do(func() { go b.run() }) }
 
 func (b *Bridge) Close() {
 	b.close.Do(func() {
-		close(b.stop)
+		b.cancel()
+		// Starting the cancelled worker also joins close-before-start safely.
+		b.Start()
 		<-b.done
 	})
 }
@@ -72,7 +78,12 @@ func (b *Bridge) Close() {
 func (b *Bridge) Handler() http.Handler { return http.HandlerFunc(b.handle) }
 
 func (b *Bridge) Enqueue(message Message) {
+	if b.context.Err() != nil {
+		return
+	}
 	select {
+	case <-b.context.Done():
+		return
 	case b.outbound <- message:
 	default:
 		log.Printf("[DiscordChat] outbound queue full; dropped message from %s", message.SenderName)
@@ -128,10 +139,13 @@ func (b *Bridge) run() {
 	defer close(b.done)
 	for {
 		select {
-		case <-b.stop:
+		case <-b.context.Done():
 			return
 		case message := <-b.outbound:
-			if err := b.deliver(message); err != nil {
+			if b.context.Err() != nil {
+				return
+			}
+			if err := b.deliver(message); err != nil && b.context.Err() == nil {
 				log.Printf("[DiscordChat] webhook delivery failed for %s: %v", message.SenderName, err)
 			}
 		}
@@ -152,7 +166,10 @@ func (b *Bridge) deliver(message Message) error {
 	}
 	var lastErr error
 	for attempt := 0; attempt < 3; attempt++ {
-		request, err := http.NewRequest(http.MethodPost, b.webhookURL+"?wait=true", bytes.NewReader(payload))
+		if err := b.context.Err(); err != nil {
+			return err
+		}
+		request, err := http.NewRequestWithContext(b.context, http.MethodPost, b.webhookURL+"?wait=true", bytes.NewReader(payload))
 		if err != nil {
 			return err
 		}
@@ -171,7 +188,13 @@ func (b *Bridge) deliver(message Message) error {
 		if response.StatusCode != http.StatusTooManyRequests && response.StatusCode < 500 {
 			return lastErr
 		}
-		time.Sleep(time.Duration(attempt+1) * 500 * time.Millisecond)
+		delay := time.NewTimer(time.Duration(attempt+1) * 500 * time.Millisecond)
+		select {
+		case <-b.context.Done():
+			delay.Stop()
+			return b.context.Err()
+		case <-delay.C:
+		}
 	}
 	return lastErr
 }

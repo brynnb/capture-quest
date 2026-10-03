@@ -3,7 +3,8 @@
 Status: active. Started 2026-09-25 from `02c51ba`.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-bounded shutdown waits and failure results (2026-10-02), following lifecycle
+shutdown cancellation and HTTP retirement (2026-10-02), following shutdown
+wait/result checkpoint `d51956c` and lifecycle
 persistence checkpoint `1e26eb7` and effect/script
 cancellation checkpoint `ac06a58` and running-command
 cancellation checkpoint `ff46ada`, position persistence checkpoint `d70813e`,
@@ -88,6 +89,47 @@ evidence, including remaining-work notes that subsequent commits may resolve.
    cancellation/timeouts, failure/retry and shutdown with active players.
    Acceptance: evidence covers the original five milestones, including visible
    behavior where relevant. Only then mark the full goal complete.
+
+## Shutdown cancellation and HTTP retirement checkpoint (2026-10-02)
+
+Server shutdown previously waited for ordinary HTTP work before closing player
+transports. A blocked HTTP handler could therefore keep player connections and
+running commands alive throughout the wait. World retirement now starts before
+HTTP joining; its cleanup registration precedes session closure, retaining final
+save failures from racing transport callbacks. HTTP requests inherit a server
+context cancelled at drain start. Gameplay cleanup retains its separate save
+context, and storage joins both world and HTTP completion before closing.
+
+Context cancellation alone does not interrupt a blocked socket/body read. The
+HTTP grace-period deadline now force-closes ordinary connections and returns the
+graceful-drain error. Admitted handlers are tracked through completion. A sealed
+handler-admission boundary prevents new work from being added while shutdown
+joins that set. Force-close does not imply handler completion: an uncooperative
+handler still keeps storage open and causes the caller to report an unfinished
+drain. Hijacked player transports remain owned by session/world retirement.
+
+The optional Discord bridge also had lifecycle gaps: close-before-start waited
+forever, repeated start could create multiple workers, and delivery/retry waits
+ignored shutdown. It now owns one cancellable worker, joins safely before or
+after start, and cancels active HTTP delivery and retry timers on close. Shutdown
+cancels it before waiting for ordinary HTTP completion. Queued chat messages are
+best effort and are discarded on shutdown; no new delivery is started after the
+worker observes cancellation.
+
+Verification: race suites passed for world, server and Discord bridge. Current
+focused PostgreSQL-backed shutdown checks also passed. Tests cover HTTP request
+cancellation, force-close of a partial body read with storage held open beneath
+the returning handler, real WebSocket retirement during blocked HTTP shutdown,
+close-before-start and repeated start, active local delivery cancellation, and
+retry-delay cancellation without another attempt. All Go packages compile.
+Tests use local endpoints and synthetic delivery responses; no external messages
+were sent. No rendered client behavior changed or production deployment occurred.
+
+Remaining: cancellation of legacy gameplay/database callbacks, joined and
+bounded WebTransport shutdown, integrated active-player/slow-client transport
+coverage, and durable recovery when final saves fail. An HTTP force-close and a
+bounded caller wait do not prove those requirements. Next, trace WebTransport
+reader/listener ownership and exercise shutdown with active transport work.
 
 ## Shutdown wait and result checkpoint (2026-10-02)
 

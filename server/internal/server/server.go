@@ -58,6 +58,9 @@ type Server struct {
 	started, stopping bool
 	httpServer        *http.Server
 	httpDone          chan struct{}
+	httpCancel        context.CancelFunc
+	httpHandlerMu     sync.Mutex
+	httpHandlers      sync.WaitGroup
 	database          *sql.DB
 	wtServer          *webtransport.Server
 	worldHandler      worldRuntime
@@ -364,12 +367,16 @@ func (s *Server) handleSessionClose(sessionID int) {
 	s.worldHandler.RemoveSession(sessionID)
 }
 
+func (s *Server) shutdownBudget() time.Duration {
+	if s.gracePeriod > 0 {
+		return s.gracePeriod
+	}
+	return 30 * time.Second
+}
+
 // StopServer uses the configured grace period for the caller's wait.
 func (s *Server) StopServer() {
-	budget := s.gracePeriod
-	if budget <= 0 {
-		budget = 30 * time.Second
-	}
+	budget := s.shutdownBudget()
 	ctx, cancel := context.WithTimeout(context.Background(), budget)
 	defer cancel()
 	if err := s.StopServerContext(ctx); err != nil {
@@ -401,16 +408,40 @@ func (s *Server) drain() {
 	if s.sessionManager != nil {
 		s.sessionManager.Seal()
 	}
-	// Shutdown joins ordinary HTTP handlers. Hijacked WebSockets are owned by
-	// the session manager and are drained by world shutdown below.
-	if s.httpServer != nil {
-		if err := s.httpServer.Shutdown(context.Background()); err != nil {
-			s.stopErr = errors.Join(s.stopErr, fmt.Errorf("HTTP shutdown: %w", err))
+	// Start world retirement before joining HTTP. It registers shutdown cleanup
+	// before closing sessions, so racing transport callbacks retain save failures.
+	worldDone := make(chan error, 1)
+	go func() {
+		var err error
+		if s.worldHandler != nil {
+			err = s.worldHandler.ShutdownContext(context.Background())
 		}
-		<-s.httpDone
+		worldDone <- err
+	}()
+	if s.httpCancel != nil {
+		s.httpCancel()
 	}
 	if s.discordChat != nil {
 		s.discordChat.Close()
+	}
+	// Shutdown joins ordinary HTTP handlers. Hijacked WebSockets are owned by
+	// the session manager and retired by the concurrently draining world.
+	// Persistence cleanup uses its own context and is joined below.
+	if s.httpServer != nil {
+		httpDrain, cancel := context.WithTimeout(context.Background(), s.shutdownBudget())
+		err := s.httpServer.Shutdown(httpDrain)
+		cancel()
+		if err != nil {
+			s.stopErr = errors.Join(s.stopErr, fmt.Errorf("HTTP shutdown: %w", err))
+			// Close interrupts blocked socket/body reads; it does not join handlers.
+			s.stopErr = errors.Join(s.stopErr, s.httpServer.Close())
+		}
+		<-s.httpDone
+		// No handler can register after draining becomes true. Synchronize with
+		// admissions already in progress before waiting on their owned work.
+		s.httpHandlerMu.Lock()
+		s.httpHandlerMu.Unlock()
+		s.httpHandlers.Wait()
 	}
 	if s.wtServer != nil {
 		_ = s.wtServer.Close()
@@ -418,9 +449,7 @@ func (s *Server) drain() {
 	if s.udpConn != nil {
 		_ = s.udpConn.Close()
 	}
-	if s.worldHandler != nil {
-		s.stopErr = errors.Join(s.stopErr, s.worldHandler.ShutdownContext(context.Background()))
-	}
+	s.stopErr = errors.Join(s.stopErr, <-worldDone)
 	if s.database != nil {
 		s.stopErr = errors.Join(s.stopErr, s.database.Close())
 	}
@@ -429,7 +458,23 @@ func (s *Server) drain() {
 // serveHTTP owns the listener and serve completion for the server lifecycle.
 // Startup calls it while holding lifecycleMu, after binding succeeds.
 func (s *Server) serveHTTP(listener net.Listener, handler http.Handler) {
-	s.httpServer = &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
+	httpContext, cancel := context.WithCancel(context.Background())
+	s.httpCancel = cancel
+	s.httpServer = &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			s.httpHandlerMu.Lock()
+			if s.draining.Load() {
+				s.httpHandlerMu.Unlock()
+				http.Error(w, "Server shutting down", http.StatusServiceUnavailable)
+				return
+			}
+			s.httpHandlers.Add(1)
+			s.httpHandlerMu.Unlock()
+			defer s.httpHandlers.Done()
+			handler.ServeHTTP(w, r)
+		}), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second,
+		BaseContext: func(net.Listener) context.Context { return httpContext },
+	}
 	s.httpDone = make(chan struct{})
 	go func() {
 		defer close(s.httpDone)
