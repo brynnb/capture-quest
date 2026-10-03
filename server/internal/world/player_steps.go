@@ -225,3 +225,53 @@ func (m *PlayerMovementManager) rejectPlayerStep(ses *session.Session, token str
 		state.pendingStep = nil
 	}
 }
+
+// Facing shares the character command gate, but never persists client coordinates
+// or runs completed-step effects. The legacy boulder interaction remains attached
+// to a facing attempt until its field-command migration.
+func HandlePlayerFacingRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
+	var req protocol.PlayerFacingRequest
+	if decodePlayerMovement(payload, &req) != nil || req.RequestID == "" || len(req.RequestID) > 64 || req.FromX == nil || req.FromY == nil || wh.PlayerMovement == nil {
+		sendPlayerStepError(ses, wh, req.RequestID, opcodes.PlayerFacingResponse)
+		return false
+	}
+	facing, err := wh.PlayerMovement.facePlayer(ses, req)
+	if err != nil {
+		logutil.Debugf("[PlayerMovement] Reject facing %s: %v", req.RequestID, err)
+		sendPlayerStepError(ses, wh, req.RequestID, opcodes.PlayerFacingResponse)
+		return false
+	}
+	ses.SendStreamJSON(protocol.PlayerFacingResponse{Success: true, RequestID: req.RequestID, MapID: facing.mapID, X: facing.x, Y: facing.y, Direction: facing.direction}, opcodes.PlayerFacingResponse)
+	broadcastCommittedPlayerStep(ses, wh, facing.x, facing.y, facing.mapID, facing.direction, facing.mapID)
+	return false
+}
+
+type ownedPlayerFacing struct {
+	x, y, mapID int
+	direction   string
+}
+
+func (m *PlayerMovementManager) facePlayer(ses *session.Session, req protocol.PlayerFacingRequest) (ownedPlayerFacing, error) {
+	direction := normalizeWarpDirection(req.Direction)
+	if direction == "" || getBattle(int64(ses.Client.CharData().ID)) != nil {
+		return ownedPlayerFacing{}, fmt.Errorf("facing is unavailable")
+	}
+	if err := ses.CommandContext().Err(); err != nil {
+		return ownedPlayerFacing{}, err
+	}
+	charID := int(ses.Client.CharData().ID)
+	m.mu.Lock()
+	state := m.players[charID]
+	if state == nil || state.SessionID != ses.SessionID || state.MapID != req.MapID || state.CurrentX != *req.FromX || state.CurrentY != *req.FromY || len(state.Path) != 0 || (state.pendingStep != nil && time.Since(state.pendingStep.issuedAt) < 10*time.Second) {
+		m.mu.Unlock()
+		return ownedPlayerFacing{}, fmt.Errorf("facing source is stale or moving")
+	}
+	state.pendingStep = nil // Expired acceptance cannot later complete after a turn.
+	state.Direction = direction
+	x, y, mapID := state.CurrentX, state.CurrentY, state.MapID
+	m.mu.Unlock()
+	if result, attempted := m.tryPushBoulderFromFacingAttempt(charID, mapID, x, y, direction); attempted && result.Success {
+		m.queueStepAfterBoulderPush(charID, x, y, mapID, result)
+	}
+	return ownedPlayerFacing{x: x, y: y, mapID: mapID, direction: direction}, nil
+}

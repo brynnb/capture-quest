@@ -228,3 +228,6 @@ export const PlayerStepRequest: OpCode = 187;
 export const PlayerStepResponse: OpCode = 188;
 export const PlayerStepCompleteRequest: OpCode = 189;
 export const PlayerStepCompleteResponse: OpCode = 190;
+export const PlayerFacingRequest: OpCode = 191;
+export const PlayerFacingResponse: OpCode = 192;
+export const ServerPlayerMovementNotify: OpCode = 193;

@@ -220,3 +220,93 @@ func TestIssuedPlayerStepReplacementRetiresOldToken(t *testing.T) {
 	battleDispatch(t, wh, ses, opcodes.PlayerStepCompleteRequest, fmt.Sprintf(`{"stepToken":%q,"requestId":"current"}`, second.StepToken))
 	assertStepPosition(t, wh, ses, 8)
 }
+
+func TestPlayerFacingUsesOwnedSourceWithoutPersistingOrRunningStep(t *testing.T) {
+	wh, ses, messages := setupIssuedStep(t)
+	testdb.Exec(t, wh.database, `CREATE FUNCTION reject_facing_position() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'facing must not write position'; END $$;
+ CREATE TRIGGER reject_facing_position BEFORE UPDATE ON character_data FOR EACH ROW EXECUTE FUNCTION reject_facing_position();`)
+	battleDispatch(t, wh, ses, opcodes.PlayerFacingRequest, `{"mapId":50,"fromX":7,"fromY":8,"direction":"RIGHT","requestId":"face"}`)
+	var result protocol.PlayerFacingResponse
+	if err := json.Unmarshal(messages.streams[len(messages.streams)-1].payload, &result); err != nil || !result.Success || result.Direction != "RIGHT" || result.X != 7 || result.Y != 8 {
+		t.Fatalf("facing=%+v %v", result, err)
+	}
+	assertStepPosition(t, wh, ses, 7)
+	if direction, _ := wh.PlayerMovement.GetDirection(42); direction != "RIGHT" {
+		t.Fatal("owned facing not changed")
+	}
+	for _, payload := range []string{
+		`{"mapId":50,"fromX":7,"fromY":8,"direction":"UP","x":99,"requestId":"target"}`,
+		`{"mapId":51,"fromX":7,"fromY":8,"direction":"UP","requestId":"map"}`,
+		`{"mapId":50,"fromX":8,"fromY":8,"direction":"UP","requestId":"source"}`,
+		`{"mapId":50,"direction":"UP","requestId":"missing"}`,
+		`{"mapId":50,"fromX":7,"fromY":8,"direction":"INVALID","requestId":"dir"}`,
+		`{"mapId":50,"fromX":7,"fromY":8,"direction":"UP","requestId":"trailing"}{}`,
+	} {
+		battleDispatch(t, wh, ses, opcodes.PlayerFacingRequest, payload)
+		var failed protocol.PlayerStepError
+		if err := json.Unmarshal(messages.streams[len(messages.streams)-1].payload, &failed); err != nil || failed.Success || failed.Error == "" {
+			t.Fatalf("rejection=%+v %v", failed, err)
+		}
+		if direction, _ := wh.PlayerMovement.GetDirection(42); direction != "RIGHT" {
+			t.Fatal("invalid facing changed state")
+		}
+		assertStepPosition(t, wh, ses, 7)
+	}
+}
+
+func TestPlayerFacingCannotReplaceIssuedOrServerMovement(t *testing.T) {
+	for _, kind := range []string{"issued step", "server path", "replaced owner"} {
+		t.Run(kind, func(t *testing.T) {
+			wh, ses, messages := setupIssuedStep(t)
+			switch kind {
+			case "issued step":
+				issueStep(t, wh, ses, messages)
+			case "server path":
+				wh.PlayerMovement.players[42].Path = []PathNode{{X: 8, Y: 8}}
+			case "replaced owner":
+				wh.PlayerMovement.players[42].SessionID++
+			}
+			pending := wh.PlayerMovement.players[42].pendingStep
+			battleDispatch(t, wh, ses, opcodes.PlayerFacingRequest, `{"mapId":50,"fromX":7,"fromY":8,"direction":"RIGHT","requestId":"face"}`)
+			var result protocol.PlayerStepError
+			json.Unmarshal(messages.streams[len(messages.streams)-1].payload, &result)
+			if result.Success || result.Error == "" {
+				t.Fatal("busy/stale facing accepted")
+			}
+			if wh.PlayerMovement.players[42].pendingStep != pending {
+				t.Fatal("facing retired outstanding step")
+			}
+			if direction, _ := wh.PlayerMovement.GetDirection(42); direction != "UP" {
+				t.Fatal("busy/stale facing changed direction")
+			}
+		})
+	}
+}
+
+func TestPlayerFacingPreservesAdjacentStrengthBoulderAndQueuedStep(t *testing.T) {
+	wh, ses, messages := setupIssuedStep(t)
+	wh.EventFlags = NewEventFlagManager(wh.database)
+	testdb.Exec(t, wh.database, `INSERT INTO phaser_moves(id,constant_name,name,short_name,effect,power,type,accuracy,pp) VALUES(70,'STRENGTH','STRENGTH','STRENGTH','NO_ADDITIONAL_EFFECT',80,'NORMAL',100,15);
+ UPDATE character_pokemon SET move1_id=70 WHERE character_id=42;
+ INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'EVENT_GOT_RAINBOWBADGE');
+ INSERT INTO phaser_objects(id,map_id,x,y,local_x,local_y,name,sprite_name) VALUES(7001,50,8,8,8,8,'FixtureBoulder','SPRITE_BOULDER');
+ INSERT INTO phaser_tiles(map_id,x,y,tile_image_id,collision_type) VALUES(50,9,8,1,1);`)
+	if err := wh.EventFlags.LoadFlags(42); err != nil {
+		t.Fatal(err)
+	}
+	battleDispatch(t, wh, ses, opcodes.PlayerFacingRequest, `{"mapId":50,"fromX":7,"fromY":8,"direction":"RIGHT","requestId":"push"}`)
+	var result protocol.PlayerFacingResponse
+	json.Unmarshal(messages.streams[len(messages.streams)-1].payload, &result)
+	if !result.Success {
+		t.Fatalf("facing rejected: %+v", result)
+	}
+	var x, y int
+	if err := wh.database.QueryRow(`SELECT x,y FROM character_object_positions WHERE character_id=42 AND object_id=7001`).Scan(&x, &y); err != nil || x != 9 || y != 8 {
+		t.Fatalf("boulder=%d,%d %v", x, y, err)
+	}
+	assertStepPosition(t, wh, ses, 7)
+	path := wh.PlayerMovement.players[42].Path
+	if len(path) != 1 || path[0].X != 8 || path[0].Y != 8 {
+		t.Fatalf("queued step=%+v", path)
+	}
+}

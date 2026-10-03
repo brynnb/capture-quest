@@ -55,8 +55,10 @@ committed recovery locations without echoes; blackout destination, wallet and pa
 healing share the initiating transaction. Test probes await explicit Instant Warp
 commands. MapLoad now rejects supplied coordinates and loads the current owned
 position. Ordinary walking now uses server-issued direction steps and token
-completion before activating a warp. Facing and scripted/field opcode 45
-coordinate reports remain to be retired.
+completion before activating a warp. Facing uses expected-source direction requests (191/192). Committed server-path
+points project through notification 193, whose animation completion sends no
+coordinate echo or local warp activation. Scripted/field opcode 45 coordinate
+reports remain to be retired.
 
 Frontend and backend must be released together when a deployment is authorized.
 

@@ -20,6 +20,7 @@ interface MovementUpdate {
   timestamp: number;
   localPath?: boolean;
   ledgeJump?: boolean;
+  serverControlled?: boolean;
 }
 
 // State for a tracked actor
@@ -50,6 +51,7 @@ export interface ActorTilePosition {
 
 export interface ActorMovementOptions {
   ledgeJump?: boolean;
+  serverControlled?: boolean;
 }
 
 interface PathCompletion {
@@ -68,7 +70,7 @@ export class ActorMovementController {
   private pathCompletions: Map<number, PathCompletion[]> = new Map();
   private idleWaiters: Map<number, Array<() => void>> = new Map();
   private onStepComplete:
-    | ((actorId: number, x: number, y: number, direction: string, kind: "step" | "snap") => void)
+    | ((actorId: number, x: number, y: number, direction: string, kind: "step" | "snap" | "serverStep") => void)
     | null = null;
 
   // Maximum queue depth before we start speeding up
@@ -184,6 +186,7 @@ export class ActorMovementController {
       direction: (direction || "DOWN").toUpperCase(),
       timestamp: Date.now(),
       ledgeJump: options.ledgeJump === true,
+      serverControlled: options.serverControlled === true,
     };
 
     // Add to queue
@@ -454,7 +457,7 @@ export class ActorMovementController {
         // while a genuinely finished path immediately settles on the correct
         // directional standing frame.
         if (this.onStepComplete) {
-          this.onStepComplete(actorId, targetX, targetY, moveDirection, "step");
+          this.onStepComplete(actorId, targetX, targetY, moveDirection, update.serverControlled ? "serverStep" : "step");
         }
         this.processQueue(actorId);
         this.resolvePathCompletions(actorId);
@@ -531,7 +534,7 @@ export class ActorMovementController {
    * Set callback for when an actor completes a step
    */
   setOnStepComplete(
-    callback: (actorId: number, x: number, y: number, direction: string, kind: "step" | "snap") => void,
+    callback: (actorId: number, x: number, y: number, direction: string, kind: "step" | "snap" | "serverStep") => void,
   ): void {
     this.onStepComplete = callback;
   }

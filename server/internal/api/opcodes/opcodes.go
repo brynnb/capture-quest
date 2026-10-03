@@ -215,4 +215,7 @@ const (
 	PlayerStepResponse            OpCode = 188
 	PlayerStepCompleteRequest     OpCode = 189
 	PlayerStepCompleteResponse    OpCode = 190
+	PlayerFacingRequest           OpCode = 191
+	PlayerFacingResponse          OpCode = 192
+	ServerPlayerMovementNotify    OpCode = 193
 )

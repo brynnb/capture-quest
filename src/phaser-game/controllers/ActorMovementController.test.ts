@@ -67,6 +67,18 @@ function actor(overrides: Partial<PhaserActor> = {}): PhaserActor {
 }
 
 describe("ActorMovementController", () => {
+  test("committed server movement completes with its projection kind", () => {
+    const tweens: TweenConfig[] = [];
+    const controller = new ActorMovementController(fakeScene([], tweens));
+    controller.registerActor(actor(), fakeSprite());
+    const completed = vi.fn();
+    controller.setOnStepComplete(completed);
+    controller.handlePositionUpdate(1, 1, 0, "RIGHT", { serverControlled: true });
+    expect(completed).not.toHaveBeenCalled();
+    tweens[0].onComplete?.();
+    expect(completed).toHaveBeenCalledWith(1, 1, 0, "RIGHT", "serverStep");
+  });
+
   test("scales animation duration by tile distance for ledge-style two-tile movement", () => {
     const durations: number[] = [];
     const controller = new ActorMovementController(fakeScene(durations));

@@ -1,5 +1,5 @@
 import type { PlayerStepResponse, PlayerStepError } from "@/net/generated/protocol";
-import { requestPlayerStep, completePlayerStep } from "../services/PlayerMovementService";
+import { requestPlayerFacing, requestPlayerStep, completePlayerStep } from "../services/PlayerMovementService";
 import { CorrelatedResponseError } from "../services/CorrelatedRequest";
 import { Scene } from "phaser";
 import { PhaserActor, PhaserTile, PhaserWarp } from "@/net/generated/world_api";
@@ -111,6 +111,10 @@ export class PlayerMovementController {
 
   // Current path (array of tile coordinates)
   private currentPath: MovementPathStep[] = [];
+  private serverMovementInProgress = false;
+  private serverPathFinished = true;
+  private facingAbort: AbortController | null = null;
+  private facingRequestKey: string | null = null;
   private stepAbort: AbortController | null = null;
   private issuedStep: PlayerStepResponse | null = null;
   private movementGeneration = 0;
@@ -924,17 +928,41 @@ export class PlayerMovementController {
     }
   }
 
+  private requestFacing(direction: MovementDirection): void {
+    if (this.playerId === null || this.stepAbort) return;
+    const request = { mapId: this.currentMapId, fromX: this.currentTileX, fromY: this.currentTileY, direction };
+    const key = [request.mapId, request.fromX, request.fromY, direction].join(":");
+    if (this.facingAbort && key === this.facingRequestKey) return;
+    this.facingAbort?.abort();
+    const abort = new AbortController();
+    this.facingAbort = abort;
+    this.facingRequestKey = key;
+    void requestPlayerFacing(request, abort.signal).catch((error: unknown) => {
+      if (abort.signal.aborted) return;
+      // Facing cannot change position. A rejected/stale turn must not snap the
+      // player or turn a later movement response into a position write.
+      if (error instanceof CorrelatedResponseError && !this.isMoving) {
+        const owned = error.response as PlayerStepError;
+        if (owned.mapId === this.currentMapId && owned.x === this.currentTileX && owned.y === this.currentTileY) {
+          this.syncDirection(owned.direction);
+          if (this.playerId !== null) this.mapRenderer?.getMovementController()?.handleDirectionUpdate(this.playerId, owned.direction);
+        }
+      }
+      console.warn("[PlayerMovement] Facing was not accepted:", error);
+    }).finally(() => {
+      if (this.facingAbort === abort) {
+        this.facingAbort = null;
+        this.facingRequestKey = null;
+      }
+    });
+  }
+
   private faceDirection(direction: MovementDirection): void {
     const movementController = this.mapRenderer?.getMovementController();
     if (movementController && this.playerId !== null) {
       movementController.handleDirectionUpdate(this.playerId, direction);
     }
-    PhaserNet.sendDirectionUpdate(
-      this.currentTileX,
-      this.currentTileY,
-      this.currentMapId,
-      direction,
-    );
+    this.requestFacing(direction);
   }
 
   private directionToAdjacentTile(
@@ -1053,12 +1081,7 @@ export class PlayerMovementController {
     if (movementController && this.playerId !== null) {
       movementController.handleDirectionUpdate(this.playerId, direction);
     }
-    PhaserNet.sendDirectionUpdate(
-      this.currentTileX,
-      this.currentTileY,
-      this.currentMapId,
-      direction,
-    );
+    this.requestFacing(direction);
     return true;
   }
 
@@ -1432,12 +1455,7 @@ export class PlayerMovementController {
         if (movementController && this.playerId !== null) {
           movementController.handleDirectionUpdate(this.playerId, direction);
         }
-        PhaserNet.sendDirectionUpdate(
-          this.currentTileX,
-          this.currentTileY,
-          this.currentMapId,
-          direction,
-        );
+        this.requestFacing(direction);
         this.scene.events.emit(
           "playerFacedDirection",
           direction,
@@ -1486,12 +1504,12 @@ export class PlayerMovementController {
     x: number,
     y: number,
     completedDirection: string,
-    kind: "step" | "snap" = "step",
+    kind: "step" | "snap" | "serverStep" = "step",
   ): void {
     void this.finishVisualStep(actorId, x, y, completedDirection, kind).catch((error: unknown) => this.handleStepFailure(error));
   }
 
-  private async finishVisualStep(actorId: number, x: number, y: number, completedDirection: string, kind: "step" | "snap"): Promise<void> {
+  private async finishVisualStep(actorId: number, x: number, y: number, completedDirection: string, kind: "step" | "snap" | "serverStep"): Promise<void> {
     if (this.playerId === actorId) {
       // ActorMovementController derives this from the actual completed tile
       // delta. Use it as the authoritative facing direction before reporting
@@ -1507,6 +1525,12 @@ export class PlayerMovementController {
       // Keep local context fresh without echoing a write or activating a warp.
       if (kind === "snap") {
         this.stopMovement(true);
+        return;
+      }
+      if (kind === "serverStep") {
+        // The server has already committed this path point. Projection never
+        // acknowledges through the legacy coordinate writer or local warp path.
+        if (this.serverPathFinished) this.stopMovement(true);
         return;
       }
       const issued = this.issuedStep;
@@ -1906,12 +1930,7 @@ export class PlayerMovementController {
         movementController.handleDirectionUpdate(this.playerId, direction);
       }
       // Notify server so other players see the turn
-      PhaserNet.sendDirectionUpdate(
-        this.currentTileX,
-        this.currentTileY,
-        this.currentMapId,
-        direction,
-      );
+      this.requestFacing(direction);
       // Emit event so warp manager can check
       this.scene.events.emit(
         "playerFacedDirection",
@@ -1931,7 +1950,21 @@ export class PlayerMovementController {
     return true;
   }
 
+  beginServerMovement(pathFinished: boolean): void {
+    this.stopMovement(true);
+    this.serverMovementInProgress = true;
+    this.serverPathFinished = pathFinished;
+    this.isMoving = true;
+  }
+
   stopMovement(retireIssued = false): void {
+    if (retireIssued) {
+      this.serverMovementInProgress = false;
+      this.serverPathFinished = true;
+      this.facingAbort?.abort();
+      this.facingAbort = null;
+      this.facingRequestKey = null;
+    }
     // Input focus discards the future path but lets the current issued animation
     // finish and acknowledge. Otherwise its callback could fall back to opcode 45.
     // Scene retirement and authoritative snaps explicitly retire that animation.
@@ -1943,7 +1976,7 @@ export class PlayerMovementController {
     }
     this.currentPath = [];
     // Keep the current issued animation/completion exclusive until its response.
-    this.isMoving = this.issuedStep !== null;
+    this.isMoving = this.issuedStep !== null || this.serverMovementInProgress;
     this.arrivalCallback = null;
     this.activeMoveDestination = null;
   }

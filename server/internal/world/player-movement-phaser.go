@@ -3,6 +3,7 @@ package world
 import (
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/logutil"
+	"capturequest/internal/protocol"
 	"capturequest/internal/session"
 	"context"
 	"log"
@@ -41,20 +42,20 @@ type playerMovementStep struct {
 	state             *PlayerMovementState
 	isPathDestination bool
 	movementSeq       int
-	shouldSave        bool
 }
 
 type playerMovementSnapshot struct {
-	SessionID   int
-	CharacterID int
-	CurrentX    int
-	CurrentY    int
-	MapID       int
-	Direction   string
-	MoveSpeed   time.Duration
-	MovementSeq int
-	Bicycle     bool
-	Surfing     bool
+	SessionID    int
+	CharacterID  int
+	CurrentX     int
+	CurrentY     int
+	MapID        int
+	Direction    string
+	MoveSpeed    time.Duration
+	MovementSeq  int
+	PathFinished bool
+	Bicycle      bool
+	Surfing      bool
 }
 
 type BicycleToggleState struct {
@@ -202,16 +203,17 @@ func (m *PlayerMovementManager) markPositionCommitted(charID, x, y, mapID int) {
 
 func (m *PlayerMovementManager) snapshotForState(state *PlayerMovementState, movementSeq int) playerMovementSnapshot {
 	return playerMovementSnapshot{
-		SessionID:   state.SessionID,
-		CharacterID: state.CharacterID,
-		CurrentX:    state.CurrentX,
-		CurrentY:    state.CurrentY,
-		MapID:       state.MapID,
-		Direction:   state.Direction,
-		MoveSpeed:   state.MoveSpeed,
-		MovementSeq: movementSeq,
-		Bicycle:     m.isBicycleActive(state),
-		Surfing:     state.IsSurfing,
+		SessionID:    state.SessionID,
+		CharacterID:  state.CharacterID,
+		CurrentX:     state.CurrentX,
+		CurrentY:     state.CurrentY,
+		MapID:        state.MapID,
+		Direction:    state.Direction,
+		MoveSpeed:    state.MoveSpeed,
+		MovementSeq:  movementSeq,
+		PathFinished: len(state.Path) == 0,
+		Bicycle:      m.isBicycleActive(state),
+		Surfing:      state.IsSurfing,
 	}
 }
 
@@ -245,7 +247,7 @@ func (m *PlayerMovementManager) ToggleBicycle(charID int) (BicycleToggleState, b
 		snapshot := m.snapshotForState(state, 0)
 		m.mu.Unlock()
 
-		m.broadcastSnapshot(snapshot)
+		m.broadcastSnapshot(snapshot, false)
 		return result, true
 	}
 	state.WantsBicycle = !state.WantsBicycle
@@ -258,7 +260,7 @@ func (m *PlayerMovementManager) ToggleBicycle(charID int) (BicycleToggleState, b
 	snapshot := m.snapshotForState(state, 0)
 	m.mu.Unlock()
 
-	m.broadcastSnapshot(snapshot)
+	m.broadcastSnapshot(snapshot, false)
 	return result, true
 }
 
@@ -492,26 +494,77 @@ func (m *PlayerMovementManager) processCharacterTick(ctx context.Context, charac
 		m.mu.Unlock()
 		return
 	}
-	update, moved := m.advanceCharacterTickLocked(state, time.Now())
-	retry := !moved && state.positionDirty && time.Since(state.lastSaveAttempt) >= 5*time.Second
-	m.mu.Unlock()
-	if (moved && update.shouldSave) || retry {
-		_ = m.FlushPlayerPosition(ctx, characterID)
-	}
-	// A cancelled save must not begin more step-effect transactions using
-	// legacy managers that do not yet accept the owner's context.
-	if ctx.Err() != nil {
+	now := time.Now()
+	if len(state.Path) == 0 || now.Sub(state.LastMoveTime) < state.MoveSpeed {
+		retry := state.positionDirty && now.Sub(state.lastSaveAttempt) >= 5*time.Second
+		m.mu.Unlock()
+		if retry {
+			_ = m.FlushPlayerPosition(ctx, characterID)
+		}
 		return
 	}
+	planned := *state
+	planned.Path = append([]PathNode(nil), state.Path...)
+	m.mu.Unlock()
+
+	// Dynamic reads and persistence cannot hold the shared player lock. The owner
+	// gate prevents another gameplay command from replacing this source/path.
+	if m.actorManager != nil {
+		blockers, err := m.actorManager.npcBlockingPositionsContext(ctx, m.wh.database, int64(characterID), planned.MapID, m.wh.EventFlags)
+		if err != nil {
+			logutil.Debugf("[PlayerMovement] Read forced-step blockers for %d: %v", characterID, err)
+			return
+		}
+		target := planned.Path[0]
+		for _, blocker := range blockers {
+			if blocker.X == target.X && blocker.Y == target.Y {
+				m.mu.Lock()
+				if current := m.players[characterID]; current == state {
+					current.Path = nil
+				}
+				snapshot := m.snapshotForState(state, 0)
+				m.mu.Unlock()
+				m.broadcastSnapshot(snapshot, true)
+				return // A stopped path is not a completed step or a durable step effect.
+			}
+		}
+	}
+	update, moved := m.planCharacterStep(&planned, now)
 	if !moved {
 		return
 	}
-	m.broadcastPosition(update.state, update.movementSeq)
-	m.applyMovementStepEffects(update)
+	if err := commitClientPlayerPosition(ctx, m.wh.database, int64(characterID), planned.MapID, planned.CurrentX, planned.CurrentY); err != nil {
+		logutil.Debugf("[PlayerMovement] Commit forced step for %d: %v", characterID, err)
+		// Retain source/path and retry at the existing movement cadence, without
+		// publishing a position or executing effects after a failed commit.
+		m.mu.Lock()
+		if current := m.players[characterID]; current == state {
+			current.LastMoveTime = now
+		}
+		m.mu.Unlock()
+		return
+	}
+	m.mu.Lock()
+	if m.players[characterID] != state {
+		m.mu.Unlock()
+		return
+	}
+	state.CurrentX, state.CurrentY, state.Direction = planned.CurrentX, planned.CurrentY, planned.Direction
+	state.Path, state.LastMoveTime = planned.Path, planned.LastMoveTime
+	state.IsSurfing, state.ForcedBicycle, state.MoveSpeed = planned.IsSurfing, planned.ForcedBicycle, planned.MoveSpeed
+	state.positionDirty = false
+	state.LastSaveTime, state.lastSaveAttempt = now, now
+	update.state = state
+	m.mu.Unlock()
+	m.broadcastPosition(state, update.movementSeq)
+	if ctx.Err() == nil {
+		m.applyMovementStepEffects(update)
+	}
 }
 
-// advanceCharacterTickLocked requires the movement lock and the session gate.
-func (m *PlayerMovementManager) advanceCharacterTickLocked(state *PlayerMovementState, now time.Time) (playerMovementStep, bool) {
+// planCharacterStep plans a detached candidate under the owner gate.
+// It does not publish or persist the candidate.
+func (m *PlayerMovementManager) planCharacterStep(state *PlayerMovementState, now time.Time) (playerMovementStep, bool) {
 	if len(state.Path) == 0 {
 		return playerMovementStep{}, false
 	}
@@ -523,22 +576,6 @@ func (m *PlayerMovementManager) advanceCharacterTickLocked(state *PlayerMovement
 
 	// Pop next tile from path
 	nextTile := state.Path[0]
-	var efm *EventFlagManager
-	if m.wh != nil {
-		efm = m.wh.EventFlags
-	}
-	if m.actorManager != nil && m.actorManager.IsNPCBlockingTileForCharacter(
-		int64(state.CharacterID),
-		state.MapID,
-		nextTile.X,
-		nextTile.Y,
-		efm,
-	) {
-		log.Printf("[PlayerMovement] Stopping player %d before occupied NPC tile (%d,%d) on map %d",
-			state.CharacterID, nextTile.X, nextTile.Y, state.MapID)
-		state.Path = nil
-		return playerMovementStep{state: state}, true
-	}
 	state.Path = state.Path[1:]
 
 	// Calculate direction
@@ -564,18 +601,11 @@ func (m *PlayerMovementManager) advanceCharacterTickLocked(state *PlayerMovement
 		}
 	}
 
-	// Decide if we should save to DB this tick
-	// 1. We just finished the path
-	// 2. OR it's been more than 5 seconds since last save
-	isFinished := len(state.Path) == 0
 	update := playerMovementStep{
 		state:             state,
-		isPathDestination: isFinished,
+		isPathDestination: len(state.Path) == 0,
 		movementSeq:       nextTile.ClientSeq,
 	}
-	shouldSave := isFinished || now.Sub(state.LastSaveTime) >= 5*time.Second
-
-	update.shouldSave = shouldSave
 	return update, true
 }
 
@@ -868,10 +898,10 @@ func (m *PlayerMovementManager) syncSessionPosition(state *PlayerMovementState) 
 
 // broadcastPosition sends position update to all relevant clients
 func (m *PlayerMovementManager) broadcastPosition(state *PlayerMovementState, movementSeq int) {
-	m.broadcastSnapshot(m.snapshotForState(state, movementSeq))
+	m.broadcastSnapshot(m.snapshotForState(state, movementSeq), true)
 }
 
-func (m *PlayerMovementManager) broadcastSnapshot(snapshot playerMovementSnapshot) {
+func (m *PlayerMovementManager) broadcastSnapshot(snapshot playerMovementSnapshot, serverControlled bool) {
 	if m.wh == nil || m.actorManager == nil {
 		return
 	}
@@ -883,8 +913,14 @@ func (m *PlayerMovementManager) broadcastSnapshot(snapshot playerMovementSnapsho
 	// Broadcast to nearby players.
 	m.actorManager.broadcastActorUpdate(playerActor, ses.SessionID)
 
+	// Cosmetic refreshes must not retire a local issued animation. Only committed
+	// server path points (or a stopped path) carry authoritative projection.
+	if !serverControlled {
+		ses.SendStreamJSON(StructToMap(*playerActor), opcodes.PhaserActorPositionUpdate)
+		return
+	}
 	// Forced server-side movement also updates the origin client.
-	ses.SendStreamJSON(StructToMap(*playerActor), opcodes.PhaserActorPositionUpdate)
+	ses.SendStreamJSON(protocol.ServerPlayerMovementNotify{SpriteName: *playerActor.SpriteName, ActorID: playerActor.ID, MapID: snapshot.MapID, X: snapshot.CurrentX, Y: snapshot.CurrentY, Direction: snapshot.Direction, MoveSpeed: int(snapshot.MoveSpeed.Milliseconds()), PathFinished: snapshot.PathFinished}, opcodes.ServerPlayerMovementNotify)
 }
 
 func (m *PlayerMovementManager) playerActorForSnapshot(snapshot playerMovementSnapshot) (*session.Session, *PhaserActor, bool) {

@@ -3,7 +3,7 @@ import { createGuestCharacterAndEnterWorld, quitToCharacterSelect } from "./help
 import { collectPageErrors } from "./helpers/errors";
 import { clickTile, dismissDialogue, pressMovement, pressSpace } from "./helpers/input";
 import { jumpToScenario } from "./helpers/scenarioDebugger";
-import { getGameState, waitForMap, waitForPlayerTile } from "./helpers/state";
+import { getGameState, waitForMap, waitForPlayerTile, waitForPlayerIdle } from "./helpers/state";
 
 test("surf can be started from a scenario fixture using player input", async ({
   page,
@@ -161,6 +161,32 @@ test("clicking a cut bush triggers cut before the player can walk through it", a
   await pressMovement(page, "up");
   await waitForPlayerTile(page, 189, -170);
 
+  await quitToCharacterSelect(page);
+  errors.assertNoSevereErrors();
+});
+
+
+test("facing an adjacent Strength boulder preserves its server-controlled follow-up step", async ({ page }, testInfo) => {
+  test.setTimeout(120_000);
+  const errors = collectPageErrors(page);
+  await createGuestCharacterAndEnterWorld(page);
+  await jumpToScenario(page, "seafoam_1f_runtime_boulder_push_facing_update");
+  await waitForMap(page, "SEAFOAM_ISLANDS_1F");
+  await waitForPlayerTile(page, 18, 11);
+  await waitForPlayerIdle(page);
+  await expect.poll(async () => {
+    const boulder = (await getGameState(page)).visibleActors.find((actor) => actor.name === "SeafoamIslands1F_NPC_1");
+    return boulder && { x: boulder.x, y: boulder.y };
+  }).toEqual({ x: 18, y: 10 });
+  await page.screenshot({ path: testInfo.outputPath("strength-before.png") });
+  await pressMovement(page, "up");
+  await waitForPlayerTile(page, 18, 10);
+  await waitForPlayerIdle(page);
+  await expect.poll(async () => {
+    const boulder = (await getGameState(page)).visibleActors.find((actor) => actor.name === "SeafoamIslands1F_NPC_1");
+    return boulder && { x: boulder.x, y: boulder.y };
+  }).toEqual({ x: 18, y: 9 });
+  await page.screenshot({ path: testInfo.outputPath("strength-after.png") });
   await quitToCharacterSelect(page);
   errors.assertNoSevereErrors();
 });

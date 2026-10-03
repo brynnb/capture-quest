@@ -1,6 +1,8 @@
 import { afterEach } from "vitest";
+import { CorrelatedResponseError } from "../services/CorrelatedRequest";
 import * as movement from "../services/PlayerMovementService";
 vi.mock("../services/PlayerMovementService", () => ({
+  requestPlayerFacing: vi.fn(async () => ({ success: true, requestId: "face", mapId: 9999, x: 10, y: 0, direction: "LEFT" })),
   requestPlayerStep: vi.fn(async () => ({ success: true, requestId: "accepted", stepToken: "issued", mapId: 9999, x: 10, y: 2, direction: "DOWN", ledgeJump: true })),
   completePlayerStep: vi.fn(async () => ({ success: true, requestId: "complete", mapId: 9999, x: 10, y: 2, direction: "DOWN" })),
 }));
@@ -62,7 +64,7 @@ function buildLedgeController() {
     UNIFIED_OVERWORLD_MAP_ID,
     mapRenderer as unknown as MapRenderer,
   );
-  return { controller, updates };
+  return { controller, updates, visualMovement: movementController };
 }
 
 describe("PlayerMovementController ledges", () => {
@@ -199,4 +201,72 @@ describe("issued movement exclusivity", () => {
     await vi.waitFor(() => expect(controller.getIsMoving()).toBe(false));
     controller.clear();
   });
+});
+
+
+describe("owned-source facing", () => {
+  test("turning sends an expected source through facing without a position report", async () => {
+    const { controller } = buildLedgeController();
+    const legacy = vi.spyOn(PhaserNet, "sendPlayerPosition");
+    expect(controller.faceTile(9, 0)).toBe(true);
+    expect(movement.requestPlayerFacing).toHaveBeenCalledWith({ mapId: 9999, fromX: 10, fromY: 0, direction: "LEFT" }, expect.any(AbortSignal));
+    expect(controller.getCurrentPosition()).toEqual({ x: 10, y: 0 });
+    expect(legacy).not.toHaveBeenCalled();
+    controller.clear();
+    legacy.mockRestore();
+  });
+
+  test("pending repeated facing coalesces and scene retirement cancels its listener", async () => {
+    let settle!: (value: Awaited<ReturnType<typeof movement.requestPlayerFacing>>) => void;
+    vi.mocked(movement.requestPlayerFacing).mockImplementationOnce(() => new Promise((resolve) => { settle = resolve; }));
+    const { controller } = buildLedgeController();
+    controller.faceTile(9, 0);
+    controller.faceTile(9, 0);
+    expect(movement.requestPlayerFacing).toHaveBeenCalledTimes(1);
+    const signal = vi.mocked(movement.requestPlayerFacing).mock.calls[0][1]!;
+    expect(signal.aborted).toBe(false);
+    controller.clear();
+    expect(signal.aborted).toBe(true);
+    settle({ success: true, requestId: "face", mapId: 9999, x: 10, y: 0, direction: "LEFT" });
+    await Promise.resolve();
+    expect(controller.getIsMoving()).toBe(false);
+  });
+});
+
+
+test("a rejected facing reconciles facing only and never snaps or writes position", async () => {
+  const owned = { success: false as const, requestId: "face", error: "rejected", mapId: 9999, x: 10, y: 0, direction: "UP" };
+  vi.mocked(movement.requestPlayerFacing).mockRejectedValueOnce(new CorrelatedResponseError(owned));
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  const legacy = vi.spyOn(PhaserNet, "sendPlayerPosition");
+  const { controller, updates, visualMovement } = buildLedgeController();
+  controller.faceTile(9, 0);
+  await vi.waitFor(() => expect(controller.getCurrentDirection()).toBe("UP"));
+  expect(controller.getCurrentPosition()).toEqual({ x: 10, y: 0 });
+  expect(visualMovement.handleDirectionUpdate).toHaveBeenLastCalledWith(1, "UP");
+  expect(updates).toHaveLength(0);
+  expect(legacy).not.toHaveBeenCalled();
+  controller.clear();
+  legacy.mockRestore();
+  warn.mockRestore();
+});
+
+
+test("committed server path projection stays busy until its final point and never echoes position", () => {
+  const { controller } = buildLedgeController();
+  const legacy = vi.spyOn(PhaserNet, "sendPlayerPosition");
+  controller.beginServerMovement(false);
+  controller.onStepComplete(1, 10, 1, "DOWN", "serverStep");
+  expect(controller.getCurrentPosition()).toEqual({ x: 10, y: 1 });
+  expect(controller.getIsMoving()).toBe(true);
+  expect(controller.handleKeyboardMove("LEFT")).toBe(false);
+  controller.stopMovement();
+  expect(controller.getIsMoving()).toBe(true);
+  controller.beginServerMovement(true);
+  controller.onStepComplete(1, 10, 2, "DOWN", "serverStep");
+  expect(controller.getCurrentPosition()).toEqual({ x: 10, y: 2 });
+  expect(controller.getIsMoving()).toBe(false);
+  expect(legacy).not.toHaveBeenCalled();
+  controller.clear();
+  legacy.mockRestore();
 });

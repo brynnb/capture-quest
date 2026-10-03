@@ -115,6 +115,7 @@ export class TileViewer extends Scene {
   private playerActor: PhaserActor | null = null; // Store player separately so it's never lost
   private warps: PhaserWarp[] = [];
   private tileLookup: Map<string, PhaserTile> = new Map();
+  private serverPlayerMovementUnsubscribe: (() => void) | null = null;
   private actorUpdateUnsubscribe: (() => void) | null = null;
   private actorDespawnUnsubscribe: (() => void) | null = null;
   private actorsUnsubscribe: (() => void) | null = null;
@@ -487,6 +488,11 @@ export class TileViewer extends Scene {
     useGameStatusStore.getState().setCameraFollowEnabled(true);
 
     // Subscribe to real-time actor updates from WebTransport
+    this.serverPlayerMovementUnsubscribe = PhaserNet.onServerPlayerMovement((position) => {
+      const player = this.playerActor;
+      if (!player || player.id !== position.actorId || this.playerMovementController.getCurrentMapId() !== position.mapId) return;
+      this.handleActorUpdate({ actor: { ...player, x: position.x, y: position.y, mapId: position.mapId, actionDirection: position.direction, moveSpeed: position.moveSpeed, spriteName: position.spriteName } }, position.pathFinished);
+    });
     this.actorUpdateUnsubscribe = PhaserNet.onActorUpdate((actor) => {
       this.handleActorUpdate({ actor });
       // If this was our player, we might need to update follow
@@ -1857,7 +1863,9 @@ export class TileViewer extends Scene {
     });
   }
 
-  handleActorUpdate(event: ActorUpdateEvent) {
+  handleActorUpdate(event: ActorUpdateEvent, serverPathFinished?: boolean) {
+    const serverControlled = serverPathFinished !== undefined;
+    const projectedSource = this.playerMovementController.getCurrentPosition();
     const incomingActor = event.actor;
     const isLocalUpdate = this.isLocalPlayerActor(incomingActor);
     if (isLocalUpdate && this.isWarpExitAnimationPending()) {
@@ -1865,7 +1873,7 @@ export class TileViewer extends Scene {
     }
     let actorForCache = incomingActor;
 
-    if (isLocalUpdate && incomingActor.x != null && incomingActor.y != null) {
+    if (isLocalUpdate && !serverControlled && incomingActor.x != null && incomingActor.y != null) {
       const current = this.playerMovementController.getCurrentPosition();
       actorForCache = {
         ...incomingActor,
@@ -1929,6 +1937,17 @@ export class TileViewer extends Scene {
       this.mapRenderer.getMovementController().updateActorMetadata(actor);
 
       if (isLocalUpdate) {
+        if (!serverControlled) return;
+        // Retire ordinary prediction/tweens before projecting a committed server
+        // path. Actor refreshes keep the existing local-position preservation.
+        this.mapRenderer.snapActorPosition(actor.id, projectedSource.x, projectedSource.y, actor.actionDirection ?? "DOWN");
+        if (projectedSource.x === actor.x && projectedSource.y === actor.y) {
+          this.playerMovementController.syncDirection(actor.actionDirection ?? "DOWN");
+          if (!serverPathFinished) this.playerMovementController.beginServerMovement(false);
+          return;
+        }
+        this.playerMovementController.beginServerMovement(serverPathFinished!);
+        this.mapRenderer.updateActorPosition(actor.id, projectedSource.x, projectedSource.y, actor.x ?? 0, actor.y ?? 0, actor.actionDirection, actor, { serverControlled: true });
         return;
       }
 
@@ -2120,6 +2139,8 @@ export class TileViewer extends Scene {
     this.cutsceneController?.cleanup();
 
     // Clean up WebTransport subscriptions
+    this.serverPlayerMovementUnsubscribe?.();
+    this.serverPlayerMovementUnsubscribe = null;
     if (this.actorUpdateUnsubscribe) {
       this.actorUpdateUnsubscribe();
       this.actorUpdateUnsubscribe = null;

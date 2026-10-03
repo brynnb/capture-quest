@@ -295,6 +295,37 @@ export interface PlayerStepError {
   y: number /* int */;
   direction: string;
 }
+/**
+ * Facing validates an expected owned source and cannot supply a destination.
+ */
+export interface PlayerFacingRequest {
+  mapId: number /* int */;
+  fromX: number;
+  fromY: number;
+  direction: string;
+  requestId: string;
+}
+export interface PlayerFacingResponse {
+  success: true;
+  requestId: string;
+  mapId: number /* int */;
+  x: number /* int */;
+  y: number /* int */;
+  direction: string;
+}
+/**
+ * Server-controlled path positions are committed before projection to the owner.
+ */
+export interface ServerPlayerMovementNotify {
+  spriteName: string;
+  actorId: number /* int */;
+  mapId: number /* int */;
+  x: number /* int */;
+  y: number /* int */;
+  direction: string;
+  moveSpeed: number /* int */;
+  pathFinished: boolean;
+}
 
 //////////
 // source: pokedex.go

@@ -207,3 +207,32 @@ type PlayerStepError struct {
 	Y         int    `json:"y"`
 	Direction string `json:"direction"`
 }
+
+// Facing validates an expected owned source and cannot supply a destination.
+type PlayerFacingRequest struct {
+	MapID     int    `json:"mapId"`
+	FromX     *int   `json:"fromX" tstype:"number,required"`
+	FromY     *int   `json:"fromY" tstype:"number,required"`
+	Direction string `json:"direction"`
+	RequestID string `json:"requestId"`
+}
+type PlayerFacingResponse struct {
+	Success   bool   `json:"success" tstype:"true"`
+	RequestID string `json:"requestId"`
+	MapID     int    `json:"mapId"`
+	X         int    `json:"x"`
+	Y         int    `json:"y"`
+	Direction string `json:"direction"`
+}
+
+// Server-controlled path positions are committed before projection to the owner.
+type ServerPlayerMovementNotify struct {
+	SpriteName   string `json:"spriteName"`
+	ActorID      int    `json:"actorId"`
+	MapID        int    `json:"mapId"`
+	X            int    `json:"x"`
+	Y            int    `json:"y"`
+	Direction    string `json:"direction"`
+	MoveSpeed    int    `json:"moveSpeed"`
+	PathFinished bool   `json:"pathFinished"`
+}

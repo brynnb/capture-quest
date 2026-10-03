@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const network = vi.hoisted(() => ({
+  facing: new Set<(data: unknown) => void>(),
+  facingRequests: [] as Array<{ mapId: number; requestId: string }>,
   step: new Set<(data: unknown) => void>(),
   stepRequests: [] as Array<{ mapId: number; requestId: string }>,
   complete: new Set<(data: unknown) => void>(),
@@ -17,6 +19,8 @@ const network = vi.hoisted(() => ({
 
 vi.mock("./PhaserNetworkService", () => ({
   isConnected: () => true,
+  onPlayerFacing: (receive: (data: unknown) => void) => { network.facing.add(receive); return () => network.facing.delete(receive); },
+  requestPlayerFacing: (request: { mapId: number; requestId: string }) => network.facingRequests.push(request),
   onPlayerStep: (receive: (data: unknown) => void) => { network.step.add(receive); return () => network.step.delete(receive); },
   onPlayerStepComplete: (receive: (data: unknown) => void) => { network.complete.add(receive); return () => network.complete.delete(receive); },
   requestPlayerStep: (request: { mapId: number; requestId: string }) => network.stepRequests.push(request),
@@ -47,12 +51,14 @@ vi.mock("./RuntimeAssetCompatibility", () => ({
   ensureRuntimeTileCatalogCurrent: vi.fn(async () => undefined),
 }));
 
-import { requestPlayerStep, completePlayerStep } from "./PlayerMovementService";
+import { requestPlayerFacing, requestPlayerStep, completePlayerStep } from "./PlayerMovementService";
 import { MapDataService } from "./MapDataService";
 
 describe("correlated map read and load requests", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    network.facing.clear();
+    network.facingRequests.length = 0;
     network.step.clear();
     network.stepRequests.length = 0;
     network.complete.clear();
@@ -69,6 +75,8 @@ describe("correlated map read and load requests", () => {
   afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
   const cases = [
+    { name: "facing", handlers: network.facing, requests: network.facingRequests,
+      start: (_service: MapDataService, signal?: AbortSignal) => requestPlayerFacing({ mapId: 38, fromX: 3, fromY: 7, direction: "DOWN" }, signal) },
     { name: "movement intent", handlers: network.step, requests: network.stepRequests,
       start: (_service: MapDataService, signal?: AbortSignal) => requestPlayerStep({ mapId: 38, fromX: 3, fromY: 7, direction: "DOWN" }, signal) },
     { name: "movement completion", handlers: network.complete, requests: network.completeRequests,

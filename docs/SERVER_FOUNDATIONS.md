@@ -2,8 +2,8 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest checkpoint: source collision and issued-step overlap follow-up
-(2026-10-02), following issued ordinary steps `9fd9b84`, owned-only MapLoad
+Working branch: `codex/server-foundations`. Latest checkpoint: owned facing and committed server-path projection
+(2026-10-02), following source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
 `0585dde`, committed
 blackout/recovery `2f62595`, teleport notification projection `65a5581`, Instant
 Warp `e1f54a8`, normal warps `3899660`, owned-position loading `64cf970`,
@@ -39,12 +39,12 @@ from its expected owned source, animates a server-issued step, then acknowledges
 its token before continuing the path. Blackout, Safari and explicit warp commands
 publish server-committed destinations.
 
-The source collision and input-overlap follow-up passed all 23 rendered checks
-and eight targeted repeats. The next migration is legacy opcode 45: scripted/field animation reports and
-facing updates still share its broader coordinate authority. Bind those to issued
-script/field results and owned facing state before retiring that writer. Step
-side effects and durable result recovery also need further work. Evidence and
-verification limits appear in the checkpoint sections below.
+Facing now uses expected-source direction requests (191/192), without saving
+client coordinates. Server-path points commit before owned-state publication and
+project through a dedicated origin notification (193). Legacy opcode 45 still
+accepts scripted/field animation reports; bind those to issued results before
+retiring that writer. Step-effect atomicity and durable result recovery remain
+unfinished. Evidence and verification limits appear in the checkpoint sections below.
 
 There is no reliable overall completion percentage: the remaining endpoint
 and ownership audits can reveal additional work. Use the five-area status
@@ -111,6 +111,66 @@ number of commits or passing tests. All five areas still have outstanding work.
    cancellation/timeouts, failure/retry and shutdown with active players.
    Acceptance: evidence covers the original five milestones, including visible
    behavior where relevant. Only then mark the full goal complete.
+
+## Owned facing and committed server-path projection (2026-10-02)
+
+Facing previously shared opcode 45 with coordinate reports. Requests 191/192 now
+contain expected owned map/source coordinates and a direction, with no destination.
+The character command gate rejects stale sources, replacement sessions, active
+issued steps, queued server paths, battle state, malformed payloads and cancellation.
+A pure turn changes facing only; it neither saves position nor executes step effects.
+The frontend coalesces identical pending turns, retires listeners on scene cleanup,
+and reconciles rejected facing only while still idle at the response's owned source.
+
+The new rendered Strength case exposed another defect: the boulder moved from
+`(18,10)` to `(18,9)` and the server saved the player at `(18,10)`, but TileViewer
+preserved the local player's `(18,11)` for every actor update. Dedicated notification
+193 distinguishes committed server-controlled path points from ordinary actor refreshes.
+Its generated fields include actor/map identity, position, direction, sprite, speed
+and path completion. Local presentation retires prediction, animates the committed
+point and stays busy through unfinished paths. Its completion neither echoes a
+coordinate write nor runs a second local warp activation.
+
+The timer previously advanced live position before saving, ignored save errors,
+and could defer saving intermediate points. It now plans a detached point, reads
+NPC blockers without the shared player lock, commits through the existing bounded
+character transaction, and only then updates/publishes owned state. Failure retains
+source/path for retry and executes no step effects. A blocked path terminates without
+pretending a step completed. Tests inject a late database failure and prove both
+saved and owned sources stay unchanged, then verify a successful retry's typed
+origin notification. Pure-facing tests run with a trigger rejecting all character
+updates, proving turns do not write position.
+
+Verification: 57 focused frontend checks pass across correlated requests,
+player/actor movement, map loading and teleport presentation. Typecheck, production build, runtime asset
+validation and stable protocol regeneration pass. The isolated rendered run
+`/var/tmp/capturequest-rendered.jE6KYf` passes 23 of 24 cases, including Strength,
+Surf/Cut, Safari, blackout, multiplayer visibility and normal warps. Inspected
+Strength before/after screenshots show the boulder moving and the player following.
+The one failure is Instant Warp's immediate click path: it times out waiting for
+`cq:playerPositionChanged`; the server receives intent 187 but no completion 189.
+That evidence does not establish whether acceptance, response handling or animation
+failed. Keep this previously intermittent ordering issue open. This run therefore
+is not an all-green integrated acceptance result.
+
+Final race-enabled world/protocol/simulator tests and server compilation are
+recorded in `/var/tmp/capturequest-facing-projection-go-final.log`.
+Bicycle cosmetic refreshes retain the ordinary actor-update contract so they
+cannot retire local prediction as if they were committed server path points;
+the final server test asserts that opcode boundary.
+
+Limits: adjacent Strength still invokes the legacy field subsystem. Its boulder
+mutation and following player point are separate transactions, and step effects
+(Day Care, encounters, scripts and counters) remain separate from position commit.
+This checkpoint does not establish durable notification recovery after disconnect,
+all delayed/burst notification orderings, server-path changes during scene/warp
+retirement, every callback writer, or movement throughput. Legacy script/field
+coordinate reports, global dependencies, final-save recovery and the other five-area
+acceptance checks above remain open. No push or deployment was performed.
+
+Recommended next step: bind scripted animation reports to the existing issued
+cutscene/action authority and retire that remaining coordinate writer; then finish
+field/step-effect atomicity and reconnect result recovery. Keep the full goal active.
 
 ## Source collision and issued-step overlap follow-up (2026-10-02)
 

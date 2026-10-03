@@ -151,7 +151,7 @@ We follow a **"Model-First"** architecture. Data is categorized into distinct st
 **The server owns durable gameplay state.**
 
 - **Casing & Naming**: Keep server field names, database columns, and Go struct tags aligned with the runtime model.
-- **Movement**: The Phaser client owns ordinary walking/pathing responsiveness and reports its current position to the server. The server persists and relays that position to other players, while still applying durable step effects such as encounters, Safari steps, cut tiles, scripted triggers, and forced movement mechanics.
+- **Movement**: Ordinary walking requests a server-issued step from its expected owned source and acknowledges its token after animation. Facing uses a direction-only command. Server-controlled path points commit before publication and use a dedicated local projection notification. Legacy script/field coordinate reports and atomic step effects remain migration work.
 - **Adaptation**: The client code and Tygo types adapt to the server's structure. Map location state should use `mapId`; `zoneId` only remains where older protocol/data aliases still need compatibility.
 - **Automation**: Explicit JSON tags drive standard Go encoding and Tygo generation. Character state, wallet and bind streams use this contract. Remaining legacy world messages still pass through `StructToMap` while the documented migration proceeds.
 
@@ -361,7 +361,10 @@ field-name conversion or generated-name postprocessor will remain.
    acknowledges its token (189/190). The shared character collision model resolves
    destinations and rechecks dynamic blockers, with injected cancellable queries.
    Completion saves position before publication and effects; legacy opcode 45
-   facing/script/field writers and atomic step-effect recovery remain on the roadmap.
+   script/field writers and atomic step-effect recovery remain on the roadmap.
+   Facing uses expected-source direction requests (191/192), without position writes.
+   Server-path points commit before live mutation/publication and project through
+   typed origin notification 193; animation completion performs no coordinate echo.
    Map-script and learnset aggregates now also use the service and protocol
    types. They read under one read-only repeatable-read transaction and one
    five-second budget, returning no partial projection on any failure. A shared
@@ -723,8 +726,10 @@ second save. Reported positions and forced teleports use the captured database
 and bounded character transaction before live publication. Movement flushes
 release the shared player lock before saving a coordinate snapshot; only a
 matching registration/position is marked clean after commit. A failed save stays
-dirty for later retry. Ordinary forced-path movement and its step effects still
-have separate persistence boundaries. Disconnect final-flush failure policy,
+dirty for later retry. Forced-path ticks now plan detached points and commit each
+point before updating owned state or publishing typed origin movement. Failed
+commits retain the source/path and publish no step. Field mutations and subsequent
+step effects still have separate persistence boundaries. Disconnect final-flush failure policy,
 cache refresh failure, durable command/result delivery and throughput remain in
 `SERVER_FOUNDATIONS.md`; fresh-manager recovery and rendered Safari checks do not
 prove abrupt network/process recovery or completion of those wider requirements.

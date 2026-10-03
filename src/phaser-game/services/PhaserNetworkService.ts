@@ -1,4 +1,4 @@
-import type { PlayerStepRequest, PlayerStepResponse, PlayerStepCompleteRequest, PlayerStepCompleteResponse, PlayerStepError, PhaserMapInfo, PhaserMapInfoRequest, PhaserMapInfoResponse, PhaserMapLoadRequest, PhaserMapLoadResponse, PhaserMapRequestError, PhaserWarpActivateRequest, PhaserWarpActivateResponse, PhaserInstantWarpRequest, PhaserInstantWarpResponse } from "@/net/generated/protocol";
+import type { ServerPlayerMovementNotify, PlayerFacingRequest, PlayerFacingResponse, PlayerStepRequest, PlayerStepResponse, PlayerStepCompleteRequest, PlayerStepCompleteResponse, PlayerStepError, PhaserMapInfo, PhaserMapInfoRequest, PhaserMapInfoResponse, PhaserMapLoadRequest, PhaserMapLoadResponse, PhaserMapRequestError, PhaserWarpActivateRequest, PhaserWarpActivateResponse, PhaserInstantWarpRequest, PhaserInstantWarpResponse } from "@/net/generated/protocol";
 import type { GameCornerSlotPlayRequest } from "@/net/generated/world_api";
 import type { PhaserMapScriptsRequest } from "@/net/generated/protocol";
 /**
@@ -34,6 +34,10 @@ export function requestMapInfo(request: PhaserMapInfoRequest): void {
 
 export function requestMapLoad(request: PhaserMapLoadRequest): void {
   NetworkBridge.send(request, OpCodes.PhaserMapLoadRequest);
+}
+
+export function requestPlayerFacing(request: PlayerFacingRequest): void {
+  NetworkBridge.send(request, OpCodes.PlayerFacingRequest);
 }
 
 export function requestPlayerStep(request: PlayerStepRequest): void {
@@ -223,14 +227,6 @@ export function sendPlayerPosition(
 }
 
 /**
- * Send a direction-only update (player turned but didn't move, e.g. facing a wall)
- */
-export function sendDirectionUpdate(x: number, y: number, mapId: number, direction: string): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ x, y, mapId, direction }, OpCodes.PhaserPlayerPositionUpdate);
-}
-
-/**
  * Request to start surfing onto an adjacent water tile.
  */
 export function requestSurf(
@@ -365,6 +361,8 @@ export type TrainerEncounterHandler = (
 export type PhaserMapMusicHandler = (data: MapMusicResult) => void;
 
 const handlers = {
+  serverPlayerMovement: new Set<(data: ServerPlayerMovementNotify) => void>(),
+  playerFacing: new Set<(data: PlayerFacingResponse | PlayerStepError) => void>(),
   playerStep: new Set<(data: PlayerStepResponse | PlayerStepError) => void>(),
   playerStepComplete: new Set<(data: PlayerStepCompleteResponse | PlayerStepError) => void>(),
   mapInfo: new Set<PhaserMapInfoHandler>(),
@@ -385,6 +383,16 @@ const handlers = {
 export function onMapInfo(handler: PhaserMapInfoHandler): () => void {
   handlers.mapInfo.add(handler);
   return () => handlers.mapInfo.delete(handler);
+}
+
+export function onServerPlayerMovement(handler: (data: ServerPlayerMovementNotify) => void): () => void {
+  handlers.serverPlayerMovement.add(handler);
+  return () => { handlers.serverPlayerMovement.delete(handler); };
+}
+
+export function onPlayerFacing(handler: (data: PlayerFacingResponse | PlayerStepError) => void): () => void {
+  handlers.playerFacing.add(handler);
+  return () => { handlers.playerFacing.delete(handler); };
 }
 
 export function onPlayerStep(handler: (data: PlayerStepResponse | PlayerStepError) => void): () => void {
@@ -576,6 +584,12 @@ export function normalizePhaserArrayPayload<T>(
 // Internal: dispatch incoming Phaser responses
 export function dispatchPhaserResponse(opcode: number, data: unknown): void {
   switch (opcode) {
+    case OpCodes.ServerPlayerMovementNotify:
+      handlers.serverPlayerMovement.forEach((h) => h(data as ServerPlayerMovementNotify));
+      break;
+    case OpCodes.PlayerFacingResponse:
+      handlers.playerFacing.forEach((h) => h(data as PlayerFacingResponse | PlayerStepError));
+      break;
     case OpCodes.PlayerStepResponse:
       handlers.playerStep.forEach((h) => h(data as PlayerStepResponse | PlayerStepError));
       break;
