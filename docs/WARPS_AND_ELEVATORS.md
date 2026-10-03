@@ -53,8 +53,8 @@ step, and retire the source tween immediately. Legacy arrival effects still occu
 in the following MapLoad transaction. Blackout/Safari store paths now project
 committed recovery locations without echoes; blackout destination, wallet and party
 healing share the initiating transaction. Test probes await explicit Instant Warp
-commands. Supplied MapLoad coordinates and walking/scripted position authority
-remain to be retired.
+commands. MapLoad now rejects supplied coordinates and loads the current owned
+position; walking/scripted opcode 45 position authority remains to be retired.
 
 Frontend and backend must be released together when a deployment is authorized.
 

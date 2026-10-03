@@ -42,7 +42,8 @@ test.each([1, 2])("a committed teleport to map %s snaps immediately without a wr
   expect(renderer.snapActorPosition).toHaveBeenCalledOnce();
   expect(renderer.snapActorPosition).toHaveBeenCalledWith(10, 3, 4, "UP", actor);
   if (mapId === 2) {
-    expect(registry.get("destinationServerCommitted")).toBe(true);
+    expect(registry.get("destinationX")).toBe(3);
+    expect(registry.get("destinationY")).toBe(4);
     expect(resetScene).toHaveBeenCalledWith(false);
   } else {
     expect(resetScene).not.toHaveBeenCalled();
@@ -56,7 +57,8 @@ test("blackout store presentation uses the committed path without echoing coordi
   try {
     useGameStatusStore.getState().triggerBlackoutWarp(2, 3, 4);
     expect(network.sendPlayerPosition).not.toHaveBeenCalled();
-    expect(registry.get("destinationServerCommitted")).toBe(true);
+    expect(registry.get("destinationX")).toBe(3);
+    expect(registry.get("destinationY")).toBe(4);
     expect(resetScene).toHaveBeenCalledWith(false);
     expect(useGameStatusStore.getState().pendingBlackoutWarp).toBeNull();
   } finally { handler.cleanup(); }

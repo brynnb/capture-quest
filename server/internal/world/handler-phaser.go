@@ -165,17 +165,15 @@ func loadRuntimeMapInfo(ctx context.Context, service *content.Service, mapID int
 // HandlePhaserMapLoadRequest owns arrival/recovery/load effects separately from metadata.
 func HandlePhaserMapLoadRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
 	var req protocol.PhaserMapLoadRequest
-	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("[Phaser] Invalid MapLoadRequest: %v", err)
-		return false
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.DisallowUnknownFields()
+	err := decoder.Decode(&req)
+	var extra any
+	if err == nil && decoder.Decode(&extra) != io.EOF {
+		err = fmt.Errorf("map load request must contain one JSON object")
 	}
-
-	if req.RequestID == "" || len(req.RequestID) > 64 {
-		ses.SendStreamJSON(protocol.PhaserMapRequestError{RequestID: req.RequestID, Error: "Invalid map request ID."}, opcodes.PhaserMapLoadResponse)
-		return false
-	}
-	if (req.DestX == nil) != (req.DestY == nil) {
-		ses.SendStreamJSON(protocol.PhaserMapRequestError{RequestID: req.RequestID, Error: "Destination requires both coordinates."}, opcodes.PhaserMapLoadResponse)
+	if err != nil || req.RequestID == "" || len(req.RequestID) > 64 {
+		ses.SendStreamJSON(protocol.PhaserMapRequestError{RequestID: req.RequestID, Error: "Invalid map load request."}, opcodes.PhaserMapLoadResponse)
 		return false
 	}
 	mapInfo, err := loadRuntimeMapInfo(ses.CommandContext(), wh.Content, req.MapID)
@@ -190,16 +188,13 @@ func HandlePhaserMapLoadRequest(ses *session.Session, payload []byte, wh *WorldH
 	normalizedID := normalizedVisiblePlayerMapID(wh, mapInfo.ID)
 	x, y, ownedMapID := wh.ownedPlayerPosition(ses)
 	previousMapID := normalizedVisiblePlayerMapID(wh, ownedMapID)
-	supplied := req.DestX != nil
-	if !supplied && normalizedID != previousMapID {
+	if normalizedID != previousMapID {
 		ses.SendStreamJSON(protocol.PhaserMapRequestError{RequestID: req.RequestID, Error: "Map loading requires the current player location."}, opcodes.PhaserMapLoadResponse)
 		return false
 	}
-	teleport := supplied
+	teleport := false
 	direction := "DOWN"
-	if supplied {
-		x, y = *req.DestX, *req.DestY
-	} else if isInvalidZeroPlayerPosition(x, y) {
+	if isInvalidZeroPlayerPosition(x, y) {
 		// Recovery uses the actual recovery map's effects, never those of a stale view.
 		mapInfo, err = loadRuntimeMapInfo(ses.CommandContext(), wh.Content, RecoverySpawnMap)
 		if err != nil {
@@ -213,7 +208,7 @@ func HandlePhaserMapLoadRequest(ses *session.Session, payload []byte, wh *WorldH
 	}
 	effect, err := commitMapLoad(ses.CommandContext(), wh.database, charID, mapLoadArrival{
 		MapID: normalizedID, X: x, Y: y,
-		ValidateCatalog: supplied, ApplyEffects: wh.EventFlags != nil,
+		ApplyEffects: wh.EventFlags != nil,
 	})
 	if err != nil {
 		log.Printf("[Phaser] Commit map load for %d: %v", charID, err)

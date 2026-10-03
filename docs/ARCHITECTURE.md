@@ -351,7 +351,11 @@ field-name conversion or generated-name postprocessor will remain.
    their DTOs generate from protocol JSON tags. Lists cannot assign player
    presence, are ordered by ID, and honor optional field omission. Metadata
    reads have no arrival/recovery/load effects. The explicit correlated MapLoad
-   command owns those gameplay responsibilities. Overworld arrival and script
+   command owns those gameplay responsibilities. Its request contains only mapId
+   and requestId: it uses owned movement, requires the current normalized map,
+   and rejects unknown fields (including destX/destY) and trailing JSON. Only
+   the existing server-selected zero-position recovery can change location.
+   Overworld arrival and script
    issuance share original-tile provenance; arrival resolves effects inside its
    character-locked transaction. Movement eligibility remains in the active roadmap.
    Map-script and learnset aggregates now also use the service and protocol

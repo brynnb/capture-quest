@@ -76,12 +76,15 @@ func TestReportedPositionAndMapLoadRejectLatePersistenceFailure(t *testing.T) {
  CREATE CONSTRAINT TRIGGER reject_reported_commit AFTER UPDATE ON character_data DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN(NEW.map_id=60) EXECUTE FUNCTION reject_reported_commit();`)
 			db.GlobalWorldDB = nil
 			payload := `{"mapId":60,"x":3,"y":4,"direction":"DOWN"}`
+			wantX, wantY, wantMap := 7, 8, 50
 			if opcode == opcodes.PhaserMapLoadRequest {
-				payload = `{"mapId":60,"destX":3,"destY":4,"requestId":"arrival"}`
+				wh.PlayerMovement.UpdatePosition(42, 3, 4, 60, "UP")
+				wantX, wantY, wantMap = 3, 4, 60
+				payload = `{"mapId":60,"requestId":"arrival"}`
 			}
 			battleDispatch(t, wh, ses, opcode, payload)
 			x, y, mapID, ok := wh.PlayerMovement.GetPosition(42)
-			if !ok || x != 7 || y != 8 || mapID != 50 || ses.MapID != 50 || ses.Client.CharData().MapID != 50 {
+			if !ok || x != wantX || y != wantY || mapID != wantMap || ses.MapID != 50 || ses.Client.CharData().MapID != 50 {
 				t.Fatalf("reported failed position %d %d %d", x, y, mapID)
 			}
 			if len(messages.streams) != 1 {
@@ -139,7 +142,8 @@ func TestMapDestinationCommitIsNotOverwrittenByInvalidSavedPositionRecovery(t *t
 	ses.Client.CharData().X = 0
 	ses.Client.CharData().Y = 0
 	testdb.Exec(t, database, `INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(60,'EXIT',20,20,0); INSERT INTO phaser_tiles(map_id,x,y,tile_image_id) VALUES(60,3,4,1)`)
-	battleDispatch(t, wh, ses, opcodes.PhaserMapLoadRequest, `{"mapId":60,"destX":3,"destY":4,"requestId":"arrival"}`)
+	wh.PlayerMovement.RegisterPlayer(ses, 42, 3, 4, 60, "UP")
+	battleDispatch(t, wh, ses, opcodes.PhaserMapLoadRequest, `{"mapId":60,"requestId":"arrival"}`)
 	var x, y, mapID int
 	if err := database.QueryRow(`SELECT x,y,map_id FROM character_data WHERE id=42`).Scan(&x, &y, &mapID); err != nil || x != 3 || y != 4 || mapID != 60 {
 		t.Fatalf("destination overwritten: %d %d %d %v", x, y, mapID, err)

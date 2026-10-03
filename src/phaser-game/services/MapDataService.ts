@@ -224,10 +224,10 @@ export class MapDataService {
     return response;
   }
 
-  async prepareMapLoad(mapId: number, destX?: number, destY?: number, signal?: AbortSignal): Promise<void> {
+  async prepareMapLoad(mapId: number, signal?: AbortSignal): Promise<void> {
     await correlatedMapRequest<PhaserMapLoadResponse>(
       (receive) => PhaserNet.onMapLoad(receive),
-      (requestId) => PhaserNet.requestMapLoad({ mapId, destX, destY, requestId }),
+      (requestId) => PhaserNet.requestMapLoad({ mapId, requestId }),
       signal,
     );
   }

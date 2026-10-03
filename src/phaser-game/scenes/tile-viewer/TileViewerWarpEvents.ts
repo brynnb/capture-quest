@@ -140,7 +140,6 @@ export class TileViewerWarpEvents {
 
     if (mapId !== currentMapId) {
       this.deps.scene.game.registry.set("destinationMapId", mapId);
-      this.deps.scene.game.registry.set("destinationServerCommitted", serverCommitted === true);
       this.deps.scene.game.registry.set("destinationX", x);
       this.deps.scene.game.registry.set("destinationY", y);
       if (direction) {

@@ -2,8 +2,9 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest checkpoint: committed blackout
-recovery, Safari presentation and explicit test warp probes `2f62595` (2026-10-02), following
+Working branch: `codex/server-foundations`. Latest checkpoint: owned-only MapLoad
+requests (2026-10-02), following committed blackout
+recovery, Safari presentation and explicit test warp probes `2f62595`, then
 teleport notification projection `65a5581`, Instant Warp `e1f54a8`, normal warps
 `3899660`, owned-position loading `64cf970`, provenance `057f758` and atomic
 map-load `b8f5ccd`.
@@ -31,19 +32,19 @@ evidence, including remaining-work notes that subsequent commits may resolve.
 
 ### Checkpoint handoff (2026-10-02)
 
-All implementation through `2f62595` is committed locally on
-`codex/server-foundations`. The goal remains active; no push or deployment has
-been performed as part of these checkpoints. The latest change makes blackout
+Implementation checkpoints are committed locally on
+`codex/server-foundations`; the current checkpoint retires supplied MapLoad
+destinations after `2f62595`. The goal remains active; no push or deployment has
+been performed as part of these checkpoints. The preceding change makes blackout
 wallet, healed party, Safari exit and saved destination commit together, then
 publishes the committed position. Safari and test warp presentation also use
 server-committed destinations.
 
-The next implementation checkpoint is to remove supplied `destX`/`destY` from
-MapLoad requests and reject those fields at the server boundary. Teleport
-producers have migrated, but that request compatibility path still exists.
-Afterward, bind walking/facing and scripted animation reports to accepted
-server movement; opcode 45 still permits broader location reporting. Keep
-legitimate movement and map-arrival effects working through both migrations.
+MapLoad now rejects supplied `destX`/`destY` and loads only owned position.
+The next implementation checkpoint is to bind walking/facing and scripted
+animation reports to accepted server movement; opcode 45 still permits broader
+location reporting. Keep legitimate movement and map-arrival effects working
+through that migration.
 
 The latest verification includes PostgreSQL rollback/retry and race checks,
 25 focused frontend tests, typecheck, production build, asset validation,
@@ -117,6 +118,60 @@ number of commits or passing tests. All five areas still have outstanding work.
    cancellation/timeouts, failure/retry and shutdown with active players.
    Acceptance: evidence covers the original five milestones, including visible
    behavior where relevant. Only then mark the full goal complete.
+
+## Owned-only MapLoad requests (2026-10-02)
+
+MapLoad still accepted arbitrary supplied coordinates after the active teleport
+producers had moved to server-committed destinations. That compatibility path
+could overwrite owned location and apply arrival effects selected by a client.
+The generated request now contains only `mapId` and `requestId`. The handler
+rejects unknown fields (including null or partial destination fields) and trailing
+JSON, requires the current normalized map, and obtains coordinates from owned
+movement. Existing server-selected zero-position recovery remains; ordinary
+loads preserve path, facing, surfing and previous-map state.
+
+The client no longer supplies coordinates or carries the `warpServerCommitted` /
+`destinationServerCommitted` registry compatibility state into map loading.
+Destination coordinates remain presentation data for committed teleport snaps.
+Map-load persistence and effects continue through the existing transaction.
+Legacy teleport effects still occur in a subsequent load transaction, rather
+than becoming atomic with the initiating teleport in this checkpoint.
+
+Tests reject remote loads and current-map forged coordinates without changing
+stored/live/movement state, exercise trailing JSON at the handler boundary, and
+assert that client requests contain only map identity and correlation ID.
+Transaction fixtures now begin from owned movement while retaining stale
+published/durable snapshots, so late failure, retry, native provenance and
+recovery assertions continue to test persistence rather than request rejection.
+
+Verification: all 25 focused frontend request/loader/warp-store tests passed,
+including cancellation, timeout and stale-response coverage. Frontend typecheck,
+production build, runtime asset validation (826 tiles, 92 sprites, 561 audio
+files) and stable canonical protocol regeneration passed. Isolated race-enabled
+world/protocol/simulator suites passed (world 27.569 seconds); the server compiled.
+All 19 isolated rendered normal-warp, Instant Warp, multiplayer visibility,
+Safari and blackout cases passed in 2.5 minutes. Evidence is retained at
+`/var/tmp/capturequest-rendered.A8Bjng`.
+
+Initial verification found fixture issues: native coordinates needed float64
+conversion for the character snapshot, movement registration seeded the session
+map before the rollback assertion, and malformed frames were rejected before
+handler dispatch. The corrected fixtures preserve the intended late-failure and
+unchanged-state assertions. Trailing-data handler checks are direct calls;
+valid forged destination fields run through the packet dispatcher. No assertion
+or expected gameplay destination was relaxed.
+The next movement migration needs an accepted intent boundary: current
+`queuePredictedPathMove` starts a local path, `moveToNextTile` queues its visual
+step, and `onStepComplete` reports coordinates through opcode 45. The cutscene
+sync callback also sends that report. Simply comparing every report to owned
+position would stop legitimate walking because these paths do not submit a
+server-accepted ordinary movement command first. Introduce that shared boundary
+and bind animation acknowledgements to it and issued script sequences.
+
+Remaining: opcode 45 walking/scripted location authority, post-commit cache
+recovery, durable replay/reconnect outcomes, delayed/session races and the full
+five-area roadmap above. Next: bind movement reports to accepted movement and
+issued script sequences. No push or deployment is included.
 
 ## Blackout recovery, Safari presentation and explicit test probes (2026-10-02)
 
@@ -333,7 +388,7 @@ The producer audit for the next retirement is:
 | `PlayerMovementController.onStepComplete` and direction updates | Walking animation completion and turning/boulder attempts through opcode 45 | Separate intent from accepted movement results; reject stale location-changing echoes. |
 | TileViewer cutscene movement callback | Reports scripted animation coordinates | Bind acknowledgement to issued script movement instead of accepting coordinates as authority. |
 | Blackout/Safari store events and test warp probes | Committed recovery presentation and explicit Instant Warp probes | Active destination producer migration complete; verify remaining delayed/session races. |
-| `MapLoader.prepareMapLoad` | Ordinary loads read owned position; unmigrated producers still supply coordinates | Retire supplied destinations after the producers above move. |
+| `MapLoader.prepareMapLoad` | Loads current owned position using mapId/requestId only | Destination fields retired; retain failure/retry and stale-session coverage. |
 
 Remaining migration: Instant Warp now uses the explicit command documented above. Walking and scripted
 animation reports still share that position opcode; audit and replace their

@@ -173,10 +173,12 @@ export interface PhaserMapInfoResponse extends PhaserMapInfo {
   success: true;
   requestId: string;
 }
+/**
+ * PhaserMapLoadRequest loads the owned location. Teleport intent belongs to
+ * the explicit warp commands; destination coordinates are never load inputs.
+ */
 export interface PhaserMapLoadRequest {
   mapId: number /* int */;
-  destX?: number /* int */;
-  destY?: number /* int */;
   requestId: string;
 }
 export interface PhaserMapLoadResponse {

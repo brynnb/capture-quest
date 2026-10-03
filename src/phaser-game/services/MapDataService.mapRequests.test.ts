@@ -63,7 +63,7 @@ describe("correlated map read and load requests", () => {
     { name: "warp activation", handlers: network.warp, requests: network.warpRequests,
       start: (service: MapDataService, signal?: AbortSignal) => service.activateWarp(9, "DOWN", "click", signal) },
     { name: "arrival", handlers: network.load, requests: network.loadRequests,
-      start: (service: MapDataService, signal?: AbortSignal) => service.prepareMapLoad(38, 3, 7, signal) },
+      start: (service: MapDataService, signal?: AbortSignal) => service.prepareMapLoad(38, signal) },
   ];
   for (const tc of cases) {
     const reply = (data: unknown) => tc.handlers.forEach((receive) => receive(data));
@@ -74,6 +74,10 @@ describe("correlated map read and load requests", () => {
       const second = tc.start(new MapDataService());
       const [a, b] = tc.requests;
       expect(a.requestId).not.toBe(b.requestId);
+      if (tc.name === "arrival") {
+        expect(a).toEqual({ mapId: 38, requestId: a.requestId });
+        expect(b).toEqual({ mapId: 38, requestId: b.requestId });
+      }
       reply(success(b.requestId));
       await second;
       expect(tc.handlers.size).toBe(1);

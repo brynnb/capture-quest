@@ -132,7 +132,6 @@ export class TileViewer extends Scene {
   private mapOverviewTransitionInProgress = false;
   private viewedMapIds: Set<number> = new Set();
   public mapLoadInProgress: boolean = false;
-  public warpServerCommitted = false;
   public warpDestX: number | null = null;
   public warpDestY: number | null = null;
   public warpAnimationStartX: number | null = null;
@@ -658,7 +657,6 @@ export class TileViewer extends Scene {
     let destinationMapId = null;
     let useOverworldSavedCamera = null;
 
-    this.warpServerCommitted = data?.destinationServerCommitted === true;
     if (data) {
       destinationMapId = data.destinationMapId;
       useOverworldSavedCamera = data.useOverworldSavedCamera;
@@ -917,7 +915,6 @@ export class TileViewer extends Scene {
       // Clear registry flags after loading
       this.game.registry.remove("useOverworldSavedCamera");
       this.game.registry.remove("destinationMapId");
-      this.game.registry.remove("destinationServerCommitted");
       this.game.registry.remove("destinationX");
       this.game.registry.remove("destinationY");
       this.game.registry.remove("warpAnimationStartX");
@@ -2238,7 +2235,6 @@ export class TileViewer extends Scene {
       useOverworldSavedCamera: this.game.registry.get(
         "useOverworldSavedCamera",
       ),
-      destinationServerCommitted: this.game.registry.get("destinationServerCommitted"),
       destinationX: this.game.registry.get("destinationX"),
       destinationY: this.game.registry.get("destinationY"),
       warpAnimationStartX: this.game.registry.get("warpAnimationStartX"),

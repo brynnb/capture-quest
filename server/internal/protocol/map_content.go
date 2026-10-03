@@ -87,10 +87,10 @@ type PhaserMapInfoResponse struct {
 	RequestID     string `json:"requestId"`
 }
 
+// PhaserMapLoadRequest loads the owned location. Teleport intent belongs to
+// the explicit warp commands; destination coordinates are never load inputs.
 type PhaserMapLoadRequest struct {
 	MapID     int    `json:"mapId"`
-	DestX     *int   `json:"destX,omitempty"`
-	DestY     *int   `json:"destY,omitempty"`
 	RequestID string `json:"requestId"`
 }
 

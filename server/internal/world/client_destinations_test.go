@@ -1,6 +1,7 @@
 package world
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"testing"
@@ -173,12 +174,19 @@ func TestMapLoadRejectsRemoteSavedLoadAndInvalidDestinations(t *testing.T) {
 	ses.MapID = 50
 	wh.PlayerMovement.RegisterPlayer(ses, 42, 7, 8, 50, "UP")
 	testdb.Exec(t, database, `UPDATE character_data SET map_id=50,x=7,y=8 WHERE id=42;
- INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(60,'REMOTE',20,20,0);`)
-	for _, payload := range []string{`{"mapId":60,"requestId":"remote"}`, `{"mapId":60,"destX":3,"requestId":"partial"}`, `{"mapId":60,"destX":3,"destY":4,"requestId":"missing"}`} {
-		battleDispatch(t, wh, ses, opcodes.PhaserMapLoadRequest, payload)
+ INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(60,'REMOTE',20,20,0),(50,'CURRENT',20,20,0);`)
+	payloads := []string{`{"mapId":60,"requestId":"remote"}`, `{"mapId":60,"destX":3,"requestId":"partial"}`, `{"mapId":60,"destX":3,"destY":4,"requestId":"missing"}`, `{"mapId":50,"destX":3,"destY":4,"requestId":"forged"}`, `{"mapId":50,"destX":null,"destY":null,"requestId":"null"}`, `{"mapId":50,"requestId":"trailing"} {}`, `{"mapId":50,"requestId":"junk"} garbage`}
+	for _, payload := range payloads {
+		if json.Valid([]byte(payload)) {
+			battleDispatch(t, wh, ses, opcodes.PhaserMapLoadRequest, payload)
+		} else {
+			// The frame gate rejects invalid JSON before dispatch; exercise the
+			// handler defense directly for trailing objects and garbage.
+			HandlePhaserMapLoadRequest(ses, []byte(payload), wh)
+		}
 		var request protocol.PhaserMapLoadRequest
 		var response protocol.PhaserMapRequestError
-		if err := json.Unmarshal([]byte(payload), &request); err != nil {
+		if err := json.NewDecoder(bytes.NewReader([]byte(payload))).Decode(&request); err != nil {
 			t.Fatal(err)
 		}
 		last := messages.streams[len(messages.streams)-1]
@@ -189,7 +197,7 @@ func TestMapLoadRejectsRemoteSavedLoadAndInvalidDestinations(t *testing.T) {
 			t.Fatalf("load rejection=%+v %v", response, err)
 		}
 	}
-	if len(messages.streams) != 3 || char.MapID != 50 || char.X != 7 || char.Y != 8 || ses.MapID != 50 {
+	if len(messages.streams) != len(payloads) || char.MapID != 50 || char.X != 7 || char.Y != 8 || ses.MapID != 50 {
 		t.Fatal("invalid load published or changed player state")
 	}
 	x, y, mapID, ok := wh.PlayerMovement.GetPosition(42)

@@ -25,7 +25,9 @@ func TestMapLoadPositionSafariAndFlagCommitTogether(t *testing.T) {
 	char := ses.Client.CharData()
 	char.MapID, char.X, char.Y = 220, 14, 24
 	ses.MapID = 220
-	wh.PlayerMovement.RegisterPlayer(ses, 42, 14, 24, 220, "UP")
+	wh.PlayerMovement.RegisterPlayer(ses, 42, 3, 4, 192, "UP")
+	// Owned movement has arrived; durable and published snapshots still await commit.
+	ses.MapID, ses.X, ses.Y = 220, 14, 24
 	testdb.Exec(t, database, `UPDATE character_data SET map_id=220,x=14,y=24 WHERE id=42;
  INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(192,'SEAFOAM_ISLANDS_1F',20,20,0);
  INSERT INTO phaser_tiles(map_id,x,y,tile_image_id) VALUES(192,3,4,1);
@@ -44,7 +46,7 @@ func TestMapLoadPositionSafariAndFlagCommitTogether(t *testing.T) {
 		t.Fatal(err)
 	}
 	db.GlobalWorldDB = nil
-	request := `{"mapId":192,"destX":3,"destY":4,"requestId":"atomic"}`
+	request := `{"mapId":192,"requestId":"atomic"}`
 	battleDispatch(t, wh, ses, opcodes.PhaserMapLoadRequest, request)
 	var failure protocol.PhaserMapRequestError
 	if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &failure) != nil || failure.Success || failure.Error == "" || failure.RequestID != "atomic" {
@@ -62,7 +64,7 @@ func TestMapLoadPositionSafariAndFlagCommitTogether(t *testing.T) {
 		t.Fatal("uncommitted cache/live publication")
 	}
 	mx, my, mm, ok := wh.PlayerMovement.GetPosition(42)
-	if !ok || mx != 14 || my != 24 || mm != 220 {
+	if !ok || mx != 3 || my != 4 || mm != 192 {
 		t.Fatal("failed arrival changed movement")
 	}
 	testdb.Exec(t, database, `DROP TRIGGER reject_load_commit ON character_event_flags`)
@@ -209,7 +211,8 @@ func TestMapLoadUsesOriginalNativeProvenanceInsteadOfRectangle(t *testing.T) {
 				t.Fatal(err)
 			}
 			db.GlobalWorldDB = nil
-			payload, _ := json.Marshal(protocol.PhaserMapLoadRequest{MapID: UnifiedOverworldMapID, DestX: &tc.x, DestY: &tc.y, RequestID: "native"})
+			ses.Client.CharData().MapID, ses.Client.CharData().X, ses.Client.CharData().Y = UnifiedOverworldMapID, float64(tc.x), float64(tc.y)
+			payload, _ := json.Marshal(protocol.PhaserMapLoadRequest{MapID: UnifiedOverworldMapID, RequestID: "native"})
 			battleDispatch(t, wh, ses, opcodes.PhaserMapLoadRequest, string(payload))
 			var response protocol.PhaserMapLoadResponse
 			if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &response) != nil || !response.Success || response.X != tc.x || response.Y != tc.y {
@@ -229,7 +232,8 @@ func TestMapLoadNativePalletEffectsRunOutsideLegacyRouteSelection(t *testing.T) 
  INSERT INTO phaser_tiles(x,y,tile_image_id,source_map_id,is_original_tile_location) VALUES(200,300,1,0,1);
  INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'EVENT_GOT_POKEBALLS_FROM_OAK');`)
 	db.GlobalWorldDB = nil
-	battleDispatch(t, wh, ses, opcodes.PhaserMapLoadRequest, `{"mapId":9999,"destX":200,"destY":300,"requestId":"pallet"}`)
+	ses.Client.CharData().MapID, ses.Client.CharData().X, ses.Client.CharData().Y = UnifiedOverworldMapID, 200, 300
+	battleDispatch(t, wh, ses, opcodes.PhaserMapLoadRequest, `{"mapId":9999,"requestId":"pallet"}`)
 	var response protocol.PhaserMapLoadResponse
 	if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &response) != nil || !response.Success || !wh.EventFlags.CheckFlag(42, "EVENT_PALLET_AFTER_GETTING_POKEBALLS_2") {
 		t.Fatalf("Pallet arrival: %+v", response)
@@ -256,7 +260,8 @@ func TestMapLoadBrokenNativeProvenanceRollsBackArrival(t *testing.T) {
 				t.Fatal(err)
 			}
 			db.GlobalWorldDB = nil
-			battleDispatch(t, wh, ses, opcodes.PhaserMapLoadRequest, `{"mapId":9999,"destX":200,"destY":300,"requestId":"broken"}`)
+			ses.Client.CharData().MapID, ses.Client.CharData().X, ses.Client.CharData().Y = UnifiedOverworldMapID, 200, 300
+			battleDispatch(t, wh, ses, opcodes.PhaserMapLoadRequest, `{"mapId":9999,"requestId":"broken"}`)
 			var response protocol.PhaserMapRequestError
 			if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &response) != nil || response.Success || response.Error == "" {
 				t.Fatalf("broken arrival: %+v", response)
@@ -273,7 +278,7 @@ func TestMapLoadBrokenNativeProvenanceRollsBackArrival(t *testing.T) {
 			} else {
 				testdb.Exec(t, database, `UPDATE phaser_tiles SET source_map_id=31`)
 			}
-			battleDispatch(t, wh, ses, opcodes.PhaserMapLoadRequest, `{"mapId":9999,"destX":200,"destY":300,"requestId":"retry"}`)
+			battleDispatch(t, wh, ses, opcodes.PhaserMapLoadRequest, `{"mapId":9999,"requestId":"retry"}`)
 			var success protocol.PhaserMapLoadResponse
 			if json.Unmarshal(messages.streams[len(messages.streams)-1].payload, &success) != nil || !success.Success || wh.EventFlags.CheckFlag(42, "EVENT_IN_SEAFOAM_ISLANDS") {
 				t.Fatal("corrected provenance retry failed")

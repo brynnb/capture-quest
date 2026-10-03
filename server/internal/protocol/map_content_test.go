@@ -31,8 +31,8 @@ func TestMapStreamsUseExplicitJSONContract(t *testing.T) {
 			t.Errorf("unexpected key %s", key)
 		}
 	}
-	request, err := json.Marshal(protocol.PhaserMapLoadRequest{MapID: 9999, RequestID: "arrival", DestX: &zero, DestY: &negative})
-	if err != nil || string(request) != `{"mapId":9999,"destX":0,"destY":-20,"requestId":"arrival"}` {
+	request, err := json.Marshal(protocol.PhaserMapLoadRequest{MapID: 9999, RequestID: "arrival"})
+	if err != nil || string(request) != `{"mapId":9999,"requestId":"arrival"}` {
 		t.Fatalf("destination request=%s %v", request, err)
 	}
 }
