@@ -2,8 +2,8 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest checkpoint: pending move-choice storage/coordinator recovery acceptance
-(2026-10-03), following blackout scene ownership `04579dc`, terminal dismissal/post-battle plans `8ce43ff`, current-owned gameplay recovery `c38a74c`, correlated battle recovery `30fa1bb` and network battle command identity `8a5ba4a`, coherent gameplay recovery `c0d31f9` and durable cutscene issuance/completion `e9eb834`, pending trainer encounters `84f2d91` and ordinary-step receipts `80a544c`, following atomic movement-step effects `cfdeb9e`, retirement of the client coordinate setter `2df1db0`, correlated cutscene completion `6638a63`, issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
+Working branch: `codex/server-foundations`. Latest checkpoint: rendered level-up choice/reentry reply-loss acceptance
+(2026-10-03), following move-choice storage/coordinator acceptance `072ad71`, blackout scene ownership `04579dc`, terminal dismissal/post-battle plans `8ce43ff`, current-owned gameplay recovery `c38a74c`, correlated battle recovery `30fa1bb` and network battle command identity `8a5ba4a`, coherent gameplay recovery `c0d31f9` and durable cutscene issuance/completion `e9eb834`, pending trainer encounters `84f2d91` and ordinary-step receipts `80a544c`, following atomic movement-step effects `cfdeb9e`, retirement of the client coordinate setter `2df1db0`, correlated cutscene completion `6638a63`, issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
 `0585dde`, committed
 blackout/recovery `2f62595`, teleport notification projection `65a5581`, Instant
 Warp `e1f54a8`, normal warps `3899660`, owned-position loading `64cf970`,
@@ -77,6 +77,62 @@ number of commits or passing tests. All five areas still have outstanding work.
 | Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, movement ticks coordinated with the owner, and immediate retirement of battle-scene command admission/subscriptions. | Finish timer/callback/shared-state and legacy position-writer audits; prove remaining concurrent/reconnect behavior across real transports. |
 | Domains and wire contracts | Injected content-query service; typed character/wallet/bind, Pokédex/card, content detail, map-script, map-info/list, sight-trainer notification/readiness, coherent gameplay recovery, ordinary battle replies/shared battle events and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
 | Lifecycle and verification | Owned HTTP/listeners, readiness, listener failure propagation, joined periodic workers, sealed session admissions, fail-closed staged preload, startup cancellation, atomic scripted-event publication, and deadline-aware shutdown waits with returned failure results. | Audit cancellation of remaining legacy work, define durable final-save recovery, and complete transport/rendered integration coverage. Owned HTTP and player transport retirement and isolated active-player shutdown checks have landed. |
+
+## Rendered level-up choice recovery checkpoint (2026-10-03)
+
+The new data-only `active_battle_fixture_learning_recovery` scenario starts a
+level-six Bulbasaur with four explicit fixture moves against level-two Chansey.
+Provenance is the matched local `public/phaser/pokemon.db`: `pokemon_learnset`
+contains Bulbasaur's level-seven `LEECH_SEED` (move 73), and Chansey's
+`base_exp = 255` awards 72 experience through the existing wild-battle formula.
+The four fixture moves are deliberate debug inputs, not a claim about the moves
+a level-six Bulbasaur naturally knows. No pending-state injection, extractor,
+generated game-data or battle-rule edits are used.
+
+Two rendered browser tests use the actual PostgreSQL/WebSocket server. Both
+hold the turn response that naturally creates the pending choice. Timeout
+recovery displays the exact prompt and does not dismiss it. Quit/character
+reentry restores the prompt and full party without another battle action or
+close. One test clicks Tackle to replace it; the other clicks Don't Learn. Both
+hold the committed learning reply, recover settled moves through current state,
+dismiss exactly once, release the late turn/choice packets behind an owned-position
+round-trip delivery barrier, and verify the panel stays closed. Another character
+reentry preserves the complete settled party. Exact experience remains the
+original value plus 72. The command counts are unchanged: one explicit choice,
+one close, and no automatic turn/choice resend.
+
+The initial fixture used Dragon Rage against Magikarp. It spent PP without
+reaching the level-up prompt: the battle engine lacks that move's fixed-damage
+effect. That is an uncovered gameplay-rule gap, not evidence of recovery failure;
+this checkpoint does not repair or assert Dragon Rage fidelity. The final
+fixture uses the existing ordinary Razor Leaf damage path and a low-level Chansey
+to avoid dependence on that unsupported effect and reduce fainting risk. Explicit
+turn capacity allows accuracy misses; terminal/prompt/settlement assertions stay
+required. Intermediate failures also exposed test locators that omitted the
+source's underscore (`LEECH_SEED`) and the buttons' accessible cursor prefix
+(`> TACKLE PP ...`). Locators were corrected against screenshots/DOM and source,
+without modifying product behavior or weakening settlement assertions.
+
+Verification: both final Chromium cases passed in the isolated environment at
+`/var/tmp/capturequest-rendered.CYbX0V`. Log:
+`/var/tmp/capturequest-learning-rendered-final.log`. Typecheck and
+`git diff --check` passed (`/var/tmp/capturequest-learning-rendered-types-final.log`).
+Matched asset validation and PostgreSQL bootstrap checks passed in the runner.
+Failed evidence is retained at `/var/tmp/capturequest-rendered.VJY1Z8`,
+`/var/tmp/capturequest-rendered.LoUzZ8` and
+`/var/tmp/capturequest-rendered.N2yhDL`. These test/fixture/documentation-only
+changes do not require a repeated production build or broad Go suite.
+
+This proves natural prompt generation, rendered learn/skip controls, character
+reentry and reply-loss settlement through the real server. It does not prove
+replacement of the transport connection, process-death recovery, multiple queued
+level-up prompts, capture/PC summaries or other terminal battle variants. All
+five original areas remain open. No push or deployment occurred.
+
+Recommended next step: complete capture settlement recovery for party and full-party
+PC placement, then Safari identity/correlation and full inventory/wallet/flag
+reconciliation. Continue the endpoint/mutation, timer/callback, domain/wire and
+lifecycle audits in the current five-area table.
 
 ## Pending move-choice recovery acceptance checkpoint (2026-10-03)
 

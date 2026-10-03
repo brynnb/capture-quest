@@ -7,6 +7,82 @@ import { getGameState, waitForNoMapLoading } from "./helpers/state";
 import { pressSpace } from "./helpers/input";
 import * as OpCodes from "../../src/net/generated/opcodes";
 
+for (const choice of ["learn", "skip"] as const) {
+  test(`a pending level-up survives reentry and a lost ${choice} reply settles only once`, async ({ page }) => {
+    test.setTimeout(180000);
+    const errors = collectPageErrors(page);
+    let actions = 0, learning = 0, closes = 0, replies = 0;
+    let pending = false;
+    const releases: (() => void)[] = [];
+    await page.routeWebSocket("**/ws", socket => {
+      const server = socket.connectToServer();
+      socket.onMessage(message => {
+        if (Buffer.isBuffer(message) && message.length >= 6) {
+          const opcode = message.readUInt16LE(4);
+          if (opcode === OpCodes.PokeBattleActionRequest) actions++;
+          if (opcode === OpCodes.PokeMoveLearnRequest) learning++;
+          if (opcode === OpCodes.PokeBattleCloseRequest) closes++;
+        }
+        server.send(message);
+      });
+      server.onMessage(message => {
+        if (Buffer.isBuffer(message) && message.length >= 6) {
+          const opcode = message.readUInt16LE(4);
+          if (opcode === OpCodes.PokeBattleActionResponse) {
+            const response = JSON.parse(message.subarray(6).toString()); replies++;
+            if (response.success && response.battle?.pendingMove) {
+              pending = true; releases.push(() => socket.send(message)); return;
+            }
+          }
+          if (opcode === OpCodes.PokeMoveLearnResponse) { releases.push(() => socket.send(message)); return; }
+        }
+        socket.send(message);
+      });
+    });
+    const character = await createGuestCharacterAndEnterWorld(page);
+    await jumpToScenario(page, "active_battle_fixture_learning_recovery");
+    await waitForBattleOpen(page); await advanceBattleTextToPhase(page, "action_select");
+    const initial = (await getGameState(page)).pokemon.party[0];
+    expect(initial.level).toBe(6); expect(initial.moves).toHaveLength(4);
+    for (let turn = 0; turn < 8 && !pending; turn++) {
+      const before = replies;
+      await page.getByTestId("battle-action-fight").click(); await page.getByTestId("battle-move-0").click();
+      await expect.poll(() => replies > before).toBe(true);
+      if (!pending) {
+        await expect(page.getByText("Waiting for the battle…", { exact: true })).toBeHidden();
+        await advanceBattleTextToPhase(page, "action_select");
+      }
+    }
+    expect(pending).toBe(true);
+    await expect(page.getByText("Forget a move?", { exact: true })).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText("Trying to learn LEECH_SEED", { exact: true })).toBeVisible();
+    expect(closes).toBe(0); expect(learning).toBe(0);
+    const pendingParty = (await getGameState(page)).pokemon.party;
+    expect(pendingParty[0].level).toBe(7);
+    expect(pendingParty[0].exp).toBe(initial.exp + 72);
+    const actionCount = actions;
+    await quitToCharacterSelect(page); await enterWorld(page, character); await waitForNoMapLoading(page);
+    await expect(page.getByText("Forget a move?", { exact: true })).toBeVisible();
+    expect((await getGameState(page)).pokemon.party).toEqual(pendingParty);
+    expect(actions).toBe(actionCount); expect(closes).toBe(0);
+    if (choice === "learn") await page.getByRole("button", { name: /^> TACKLE PP / }).click({ timeout: 10000 });
+    else await page.getByRole("button", { name: "> Don't learn LEECH_SEED", exact: true }).click({ timeout: 10000 });
+    await expect.poll(() => learning).toBe(1);
+    await expect.poll(async () => (await getGameState(page)).battle.isOpen, { timeout: 20000 }).toBe(false);
+    expect(closes).toBe(1); expect(actions).toBe(actionCount);
+    const settled = (await getGameState(page)).pokemon.party;
+    expect(settled[0].exp).toBe(pendingParty[0].exp);
+    expect(settled[0].moves.map(move => move.id)).toEqual(choice === "learn" ? [75, 73, 45, 22] : [75, 33, 45, 22]);
+    for (const release of releases) release();
+    await page.evaluate(async () => { const path = "/src/phaser-game/services/PlayerMovementService.ts"; const { readOwnedPlayerPosition } = await import(path); await readOwnedPlayerPosition(); });
+    expect((await getGameState(page)).battle.isOpen).toBe(false);
+    await quitToCharacterSelect(page); await enterWorld(page, character); await waitForNoMapLoading(page);
+    expect((await getGameState(page)).pokemon.party).toEqual(settled);
+    expect(learning).toBe(1); expect(closes).toBe(1); expect(actions).toBe(actionCount);
+    await quitToCharacterSelect(page); errors.assertNoSevereErrors();
+  });
+}
+
 test("a lost committed turn reply recovers without resending; its late reply cannot revive a reentered panel", async ({ page }) => {
   test.setTimeout(120000);
   const errors = collectPageErrors(page);

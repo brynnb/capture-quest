@@ -1,0 +1,20 @@
+{
+  "name": "active_battle_fixture_learning_recovery",
+  "description": "Rendered recovery fixture: level-six Bulbasaur crosses the extracted level-seven Leech Seed threshold after defeating level-two Chansey with Razor Leaf. Chansey's extracted base experience of 255 awards 72 experience through the normal wild battle calculation. Four fixture moves force an explicit learn/skip choice.",
+  "fixture": {
+    "characterName": "ScriptSimLearningRecovery",
+    "mapName": "ROUTE_1",
+    "x": 10,
+    "y": 10,
+    "flags": [],
+    "inventory": [],
+    "party": [{ "speciesId": 1, "level": 6, "moves": ["RAZOR LEAF", "TACKLE", "GROWL", "VINE WHIP"] }],
+    "activeBattle": { "type": "wild", "pokemonId": 113, "level": 2 }
+  },
+  "trigger": { "type": "active_battle_state" },
+  "expect": {
+    "scriptLabel": "ActiveBattleState",
+    "activeBattleType": "wild",
+    "activeBattleEnemySpecies": [113]
+  }
+}
