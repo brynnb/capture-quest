@@ -2,7 +2,7 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest implementation checkpoint: pending move-choice process-death acceptance, following `9bf3630`, terminal Safari process-death recovery acceptance
+Working branch: `codex/server-foundations`. Latest implementation checkpoint: issued cutscene process-death acceptance and creation-only local party setup, following move-choice acceptance `e0da0c4` and terminal Safari acceptance `9bf3630`
 (2026-10-03), following rendered capture recovery `fbe744e`, simulator contract migration `9f59dd3`, expiry presentation recovery `54dbef6`, guarded Safari commands `d673aea`, durable capture placement and terminal login retention `58d0b85`, rendered move-choice recovery `7eb3a7e`, move-choice storage/coordinator acceptance `072ad71`, blackout scene ownership `04579dc`, terminal dismissal/post-battle plans `8ce43ff`, current-owned gameplay recovery `c38a74c`, correlated battle recovery `30fa1bb` and network battle command identity `8a5ba4a`, coherent gameplay recovery `c0d31f9` and durable cutscene issuance/completion `e9eb834`, pending trainer encounters `84f2d91` and ordinary-step receipts `80a544c`, following atomic movement-step effects `cfdeb9e`, retirement of the client coordinate setter `2df1db0`, correlated cutscene completion `6638a63`, issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
 `0585dde`, committed
 blackout/recovery `2f62595`, teleport notification projection `65a5581`, Instant
@@ -65,7 +65,7 @@ presentation is replaced. Capture placement now survives lost replies and
 character reentry, with explicit party/PC summary dismissal. Login retains
 terminal battles for coherent scene recovery and atomic post-battle plan issuance.
 Safari actions and dismissal now share the correlated command coordinator, with
-durable identity/revision guards and terminal catch placement recovery. Terminal Safari Run, party/PC captures and pending move choices now have actual crash/restart acceptance.
+durable identity/revision guards and terminal catch placement recovery. Terminal Safari Run, party/PC captures, pending move choices and one issued Oak's Lab cutscene now have actual crash/restart acceptance. Local/test party and inventory setup both belong to creation; reentry preserves intentionally empty parties.
 Full inventory, wallet and flag resynchronization and remaining process-recovery
 coverage still need work. Evidence and verification limits
 appear in the checkpoint sections below.
@@ -85,9 +85,10 @@ number of commits or passing tests. All five areas still have outstanding work.
 
 ### Next work and completion criteria
 
-Continue with actual process-death acceptance for issued movement and script
-plans. Pending move learning and skipping now have two-crash acceptance as
-documented below; other unfinished decisions still require their own evidence.
+Continue with actual process-death acceptance for issued ordinary movement, then
+remaining script/trainer plans and their queue/source/catalog ordering. Pending
+move choices and one issued cutscene now have two-crash acceptance as documented
+below; that evidence does not cover every issued-plan family.
 
 Next, finish coherent inventory, wallet and flag resynchronization and audit the
 remaining mutation endpoints, timers/callbacks, cancellation and global domain
@@ -101,6 +102,55 @@ legacy behavior and verification limits; a narrow passing checkpoint does not
 close the broad goal. Production validation belongs to a separately authorized
 deployment. Current work is committed locally; nothing has been pushed or
 deployed by this goal.
+
+## Issued cutscene crashes and creation-only local fixtures (2026-10-03)
+
+A new two-crash test uses the existing `oak_lab_choose_starter_intro` scenario.
+It withholds the actual issued notification, compares the saved plan/script,
+source position, flags, visibility and Pokémon rows across SIGKILL and fresh
+readiness, then requires fresh authenticated entry to deliver the same token and
+actions. Real browser dialogue and player animation complete the script. The
+committed completion reply is withheld for a second crash; the resolved plan,
+three completion flags, visibility and final position survive fresh readiness
+and authenticated entry without issuing the script again. After one ordinary
+step, explicitly replaying the completed token returns historical completion
+with the current position and changes none of those database records.
+
+The first run exposed a real local/test reconnect mutation: this scenario's
+intentional empty party (`pokemon: null`) became six rows of species
+`[4,25,7,1,16,39]` on fresh entry. `ensureLocalDevFixtures` called empty-party
+seeding on every login. Empty gameplay state is not evidence of missing setup.
+Party setup now joins inventory setup in the newly created character's existing
+creation transaction; login no longer runs either fixture. The obsolete entry
+wrapper and its global database dependency are removed. The same setup requires
+a transaction, preserves existing battle row IDs and damage, and rolls party and
+inventory back together if the enclosing creation fails. This is a local/test
+fixture fix; production's existing config gate remains in place. The legacy
+character creation/cache boundary remains separately tracked.
+
+The full world PostgreSQL race suite passed (56.426 seconds), including the
+creation transaction and identity tests. All six rendered process-recovery cases
+passed (1.6 minutes) at `/var/tmp/capturequest-rendered.F3KCm1`; the cutscene case
+took 20.4 seconds. Its two receipts record
+`2837978 -> 2838494 -> 2838835`, with exit 137 for each predecessor. Character 6
+retains token `7ca322e3-9450-4041-a769-9d1da2c68abf`, source `(40,5,11)`, completed
+position `(40,5,3)` and later owned position `(40,5,4)`. The party stays empty
+through every boundary. Resolution intentionally refreshes receipt sequence;
+replaying the resolved token leaves it unchanged. The settled screenshot was
+inspected. Typecheck and `git diff --check` pass. Logs:
+`/var/tmp/capturequest-plan-crash-{world,types,rendered-fixed}.log`. The initial
+failing evidence is retained at `/var/tmp/capturequest-rendered.kSns3Q` and
+`/var/tmp/capturequest-plan-crash-rendered.log`. Both private runtimes are stopped.
+The isolated runner built and exercised the changed server binary; no frontend
+asset or production build changes were needed.
+
+This covers one issued cutscene before delivery and after committed completion,
+not crashes during presentation, queued/source/catalog changes, other plan
+families or automatic live-page reconnect. The full five-area goal remains active.
+Recommended next step: verify issued ordinary steps and their durable receipts
+through process death, then continue coherent inventory/wallet/flag recovery and
+the remaining endpoint, callback, dependency/contract and shutdown audits. Local
+checkpoint only; no push or deployment.
 
 ## Pending move-choice process-death acceptance (2026-10-03)
 

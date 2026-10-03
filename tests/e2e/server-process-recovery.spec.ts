@@ -4,13 +4,14 @@ import { readFile, realpath, rename, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import type { BattleCommandResponse, PokeBattleCloseRequest, PokeMoveLearnRequest, GameplayStateResponse, SafariBattleActionRequest, SafariBattleActionResponse } from "../../src/net/generated/world_api";
+import type { CutsceneEndRequest, CutsceneEndResponse, CutsceneStartNotify } from "../../src/net/generated/protocol";
 import * as OpCodes from "../../src/net/generated/opcodes";
 import { createGuestCharacterAndEnterWorld, enterWorld, quitToCharacterSelect } from "./helpers/auth";
 import { advanceBattleTextToPhase, waitForBattleOpen, catchSafariInRenderedUI } from "./helpers/battle";
 import { collectPageErrors } from "./helpers/errors";
-import { pressSpace } from "./helpers/input";
+import { pressMovement, pressSpace } from "./helpers/input";
 import { jumpToScenario } from "./helpers/scenarioDebugger";
-import { getGameState, waitForMap, waitForNoMapLoading } from "./helpers/state";
+import { getGameState, waitForMap, waitForNoMapLoading, waitForPlayerIdle, waitForPlayerTile } from "./helpers/state";
 
 const run = promisify(execFile);
 
@@ -254,3 +255,117 @@ for (const choice of ["learn", "skip"] as const) {
     await record({ outcome: `move-${choice}`, characterId, pendingCrash, settledCrash, identity, original, before, settled, after, actionCount });
   });
 }
+
+test("an issued cutscene and its committed completion survive SIGKILL without replaying effects", async ({ page, context }) => {
+  test.skip(process.env.CQ_E2E_CRASH_RECOVERY !== "true", "Requires the isolated runner crash recovery mode");
+  test.setTimeout(240000);
+  const { sql, crash, record } = await isolatedCrashRuntime();
+  const errors = collectPageErrors(page);
+  const label = "OaksLabChooseStarterIntro";
+  const starts: CutsceneStartNotify[] = [];
+  const completions: CutsceneEndRequest[] = [];
+  const replies: CutsceneEndResponse[] = [];
+  let held: CutsceneEndResponse | undefined;
+  await context.routeWebSocket("**/ws", socket => {
+    const server = socket.connectToServer();
+    socket.onMessage(message => {
+      if (Buffer.isBuffer(message) && message.length >= 6 && message.readUInt16LE(4) === OpCodes.CutsceneEndRequest) {
+        const request: CutsceneEndRequest = JSON.parse(message.subarray(6).toString());
+        if (request.scriptLabel === label) completions.push(request);
+      }
+      server.send(message);
+    });
+    server.onMessage(message => {
+      if (Buffer.isBuffer(message) && message.length >= 6) {
+        const opcode = message.readUInt16LE(4);
+        if (opcode === OpCodes.CutsceneStartNotify) {
+          const start: CutsceneStartNotify = JSON.parse(message.subarray(6).toString());
+          if (start.scriptLabel === label) {
+            starts.push(start);
+            if (starts.length === 1) return;
+          }
+        }
+        if (opcode === OpCodes.CutsceneEndResponse) {
+          const reply: CutsceneEndResponse = JSON.parse(message.subarray(6).toString());
+          if (completions.some(request => request.requestId === reply.requestId)) {
+            if (reply.success && !held) { held = reply; return; }
+            replies.push(reply);
+          }
+        }
+      }
+      socket.send(message);
+    });
+  });
+  const character = await createGuestCharacterAndEnterWorld(page);
+  await jumpToScenario(page, "oak_lab_choose_starter_intro");
+  await waitForMap(page, "OAKS_LAB"); await waitForNoMapLoading(page);
+  await expect.poll(() => starts.length).toBe(1);
+  const characterId = (await getGameState(page)).player.internalId;
+  expect(Number.isSafeInteger(characterId) && characterId! > 0).toBe(true);
+  const readDurable = async () => JSON.parse(await sql(`SELECT json_build_object(
+    'position',(SELECT json_build_object('mapId',map_id,'x',x,'y',y,'heading',heading) FROM character_data WHERE id=${characterId}),
+    'plans',(SELECT json_agg(p ORDER BY p.sequence) FROM character_cutscene_plans p WHERE character_id=${characterId}),
+    'flags',(SELECT json_agg(f ORDER BY f.flag_name) FROM character_event_flags f WHERE character_id=${characterId}),
+    'visibility',(SELECT json_agg(v ORDER BY v.object_id) FROM character_object_visibility_overrides v WHERE character_id=${characterId}),
+    'pokemon',(SELECT json_agg(p ORDER BY p.id) FROM character_pokemon p WHERE character_id=${characterId}))`));
+  const before = await readDurable();
+  const token = starts[0].completionToken;
+  const plan = before.plans.find((p: { completion_token: string }) => p.completion_token === token);
+  expect(plan).toMatchObject({ script_label: label, resolution: "pending", completed: false, x: 5, y: 11 });
+  expect(JSON.parse(plan.script_json)).toMatchObject({ ScriptLabel: label });
+  expect(before.position).toMatchObject({ x: 5, y: 11 }); expect(completions).toHaveLength(0);
+  errors.assertNoSevereErrors();
+  const issuedCrash = await crash();
+  expect(await readDurable()).toEqual(before);
+  await page.close();
+  const fresh = await context.newPage();
+  const freshErrors = collectPageErrors(fresh);
+  await fresh.goto("/"); await fresh.getByRole("button", { name: "PLAY AS GUEST" }).click();
+  await expect(fresh.getByRole("heading", { name: "SELECT A CHARACTER" })).toBeVisible({ timeout: 30000 });
+  await enterWorld(fresh, character); await waitForMap(fresh, "OAKS_LAB"); await waitForNoMapLoading(fresh);
+  await expect.poll(() => starts.length).toBeGreaterThanOrEqual(2);
+  expect(starts[1]).toEqual(starts[0]);
+  // Stop at the actual committed response, before the lost-ack timeout can
+  // replay completion or unlock the original page. The next process is authority.
+  for (let i = 0; i < 90 && !held; i++) {
+    const state = await getGameState(fresh);
+    if (state.dialogue.isOpen || state.dialogue.isChoicePending) await pressSpace(fresh);
+    else await fresh.waitForTimeout(200);
+  }
+  await expect.poll(() => !!held).toBe(true);
+  expect(held).toMatchObject({ success: true, completed: true, replayed: false, x: 5, y: 3 });
+  expect(completions).toHaveLength(1); expect(completions[0]).toMatchObject({ scriptLabel: label, completionToken: token });
+  const settled = await readDurable();
+  expect(settled.position).toMatchObject({ x: 5, y: 3 });
+  expect(settled.plans.find((p: { completion_token: string }) => p.completion_token === token)).toMatchObject({ resolution: "resolved", completed: true });
+  const flags = settled.flags.map((f: { flag_name: string }) => f.flag_name);
+  for (const flag of ["EVENT_FOLLOWED_OAK_INTO_LAB", "EVENT_FOLLOWED_OAK_INTO_LAB_2", "EVENT_OAK_ASKED_TO_CHOOSE_MON"]) expect(flags).toContain(flag);
+  expect(settled.pokemon).toEqual(before.pokemon); freshErrors.assertNoSevereErrors();
+  const completedCrash = await crash();
+  expect(await readDurable()).toEqual(settled);
+  await fresh.close();
+  const final = await context.newPage();
+  const finalErrors = collectPageErrors(final);
+  const startCount = starts.length;
+  await final.goto("/"); await final.getByRole("button", { name: "PLAY AS GUEST" }).click();
+  await expect(final.getByRole("heading", { name: "SELECT A CHARACTER" })).toBeVisible({ timeout: 30000 });
+  await enterWorld(final, character); await waitForMap(final, "OAKS_LAB"); await waitForNoMapLoading(final);
+  await waitForPlayerIdle(final); await waitForPlayerTile(final, 5, 3);
+  expect(starts).toHaveLength(startCount); expect(completions).toHaveLength(1);
+  expect(await readDurable()).toEqual(settled);
+  await pressMovement(final, "down"); await waitForPlayerIdle(final); await waitForPlayerTile(final, 5, 4);
+  const moved = await readDurable();
+  await final.evaluate(async ({ completionToken, scriptLabel }) => {
+    const bridgePath = "/src/net/NetworkBridge.ts", opcodePath = "/src/net/generated/opcodes.ts";
+    const { NetworkBridge } = await import(bridgePath);
+    const opcodes = await import(opcodePath);
+    NetworkBridge.send({ completionToken, scriptLabel, requestId: "after-process-death" }, opcodes.CutsceneEndRequest);
+  }, { completionToken: token, scriptLabel: label });
+  await expect.poll(() => replies.find(reply => reply.requestId === "after-process-death")?.replayed).toBe(true);
+  expect(replies.find(reply => reply.requestId === "after-process-death")).toMatchObject({ completed: true, x: 5, y: 4 });
+  await waitForPlayerTile(final, 5, 4); expect(await readDurable()).toEqual(moved);
+  expect(completions).toHaveLength(2); expect(starts).toHaveLength(startCount);
+  await final.screenshot({ path: test.info().outputPath("process-cutscene-settled.png") });
+  finalErrors.assertNoSevereErrors(); await quitToCharacterSelect(final); await final.close();
+  await record({ outcome: "issued-cutscene", characterId, token, issuedCrash, completedCrash, before, settled, moved, startCount, completions });
+});

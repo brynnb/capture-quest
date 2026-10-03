@@ -398,6 +398,15 @@ IDs, EXP, move slots and action/choice/close counts prove settlement without rep
 The same crash helper reads `current-server.pid` for each generation, so a second
 crash never targets the original retired PID.
 
+The issued-cutscene case crashes before first delivery and again after real
+browser completion commits while its acknowledgement is held. Fresh entry must
+resume the original token/actions, then retain the resolved outcome without
+reissuing the script. A completed-token replay after an ordinary step must leave
+current position, flags, visibility and saved party unchanged. The scenario has
+an intentionally empty party, so this also guards against login fixture seeding.
+Queued plans, source/catalog changes and crashes during presentation need their
+own acceptance cases.
+
 Shutdown mode remains separate:
 
 ```bash

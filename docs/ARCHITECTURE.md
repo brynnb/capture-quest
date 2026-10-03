@@ -979,11 +979,12 @@ Restoration reuses the battle store and trainer/cutscene handlers, and never sen
 CloseBattle simply to clear stale local UI. A newer battle event overtaking a read
 causes one fresh read. Legacy command timeout integration and inventory/wallet/flag
 resynchronization remain unfinished; see SERVER_FOUNDATIONS.md for the full scope.
-Local world-entry party fixtures seed only an empty party, preserving identities
-referenced by saved battles across reconnects. Local/test starter inventory is
-seeded only for a newly created character inside the creation transaction. World
-entry never tops up consumed items or replaces earned quantities. Existing
-character-creation storage/cache dependencies remain part of the legacy audit.
+Local/test party and inventory fixtures are seeded only for a newly created
+character inside the same creation transaction. World entry never infers missing
+setup from an empty party: pre-starter gameplay legitimately has no Pokémon.
+Reconnect preserves empty or populated parties, saved battle identities and
+consumed inventory. Existing character-creation storage/cache dependencies remain
+part of the legacy audit.
 
 
 ### Ordinary battle command identity
@@ -1113,6 +1114,16 @@ no test-specific gameplay recovery implementation is added.
 
 This evidence covers committed boundaries and fresh authenticated entry. It does
 not establish automatic reconnect of a live page, recovery before transaction
-commit, or issued movement/script-plan crash behavior. Commands, raw database
+commit, or all issued movement/script-plan crash behavior. Commands, raw database
 records, exact owned PID receipts and rendered screenshots are retained by the
 isolated runner. See `SERVER_FOUNDATIONS.md` for evidence and remaining scope.
+
+
+The Oak's Lab issued-cutscene acceptance additionally checks the saved token and
+script across a crash before notification delivery, and the resolved receipt,
+flags, visibility and position across a crash after completion commits. Fresh
+entry resumes pending work and does not reissue resolved work. Replaying that
+receipt after a subsequent ordinary step returns current owned position without
+reapplying the script. Resolution refreshes receipt sequence for bounded outcome
+retention; replay does not. Queue ordering, source/catalog changes and crashes
+during presentation still require separate evidence.

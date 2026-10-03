@@ -1,13 +1,9 @@
 package world
 
 import (
-	"context"
-	"database/sql"
 	"fmt"
-	"log"
 	"os"
 
-	"capturequest/internal/config"
 	"capturequest/internal/db"
 	"capturequest/internal/pokebattle"
 )
@@ -23,22 +19,6 @@ type localDevPokemonSpec struct {
 	setup     func(*pokebattle.Pokemon)
 }
 
-func ensureLocalDevFixtures(charID int64) {
-	cfg, err := config.Get()
-	if err != nil {
-		log.Printf("[LocalDevFixtures] Failed to read config: %v", err)
-		return
-	}
-	if !cfg.Local || !localDevFixturesEnabled() {
-		return
-	}
-
-	if err := ensureLocalDevPokemonParty(db.GlobalWorldDB.DB, charID); err != nil {
-		log.Printf("[LocalDevFixtures] Failed to seed test party for char %d: %v", charID, err)
-	}
-
-}
-
 func localDevFixturesEnabled() bool {
 	return captureQuestTestModeEnabled() ||
 		os.Getenv("CAPTUREQUEST_LOCAL_FIXTURES") == "true"
@@ -48,7 +28,20 @@ func captureQuestTestModeEnabled() bool {
 	return os.Getenv("CAPTUREQUEST_TEST_MODE") == "true"
 }
 
-func ensureLocalDevPokemonParty(myDB *sql.DB, charID int64) error {
+// Local party and inventory are creation fixtures. Never infer missing setup
+// from empty gameplay state on login: pre-starter scenarios legitimately have
+// no party, and reconnect must preserve that state just like consumed inventory.
+func seedLocalDevCreationFixturesIn(tx db.DBTX, charID int64) error {
+	if err := seedLocalDevPokemonPartyIn(tx, charID); err != nil {
+		return err
+	}
+	return seedLocalDevInventoryIn(tx, charID)
+}
+
+func seedLocalDevPokemonPartyIn(tx db.DBTX, charID int64) error {
+	if err := db.RequireTransaction(tx); err != nil {
+		return err
+	}
 	specs := []localDevPokemonSpec{
 		{speciesID: 4, level: 5}, // Charmander starter, healthy.
 		{speciesID: 25, level: 12, setup: func(p *pokebattle.Pokemon) {
@@ -76,38 +69,31 @@ func ensureLocalDevPokemonParty(myDB *sql.DB, charID int64) error {
 		}},
 	}
 
-	// Seed only an empty party. World reentry must preserve stable row identities,
-	// damage and scenario state, especially when a durable battle references them.
-	if err := db.Transaction(context.Background(), myDB, func(tx db.DBTX) error {
-		if err := db.LockCharacter(tx, charID); err != nil {
-			return err
-		}
-		var exists bool
-		if err := tx.QueryRow(`SELECT EXISTS (SELECT 1 FROM character_pokemon WHERE character_id=$1 AND box=$2)`, charID, pokebattle.BoxParty).Scan(&exists); err != nil {
-			return err
-		}
-		if exists {
-			return nil
-		}
-		party := make([]*pokebattle.Pokemon, 0, len(specs))
-		for _, spec := range specs {
-			p, err := pokebattle.BuildWildPokemon(tx, spec.speciesID, spec.level)
-			if err != nil {
-				return fmt.Errorf("build species %d L%d: %w", spec.speciesID, spec.level, err)
-			}
-			p.IsWild = false
-			if spec.setup != nil {
-				spec.setup(p)
-			}
-			party = append(party, p)
-		}
-
-		_, err := pokebattle.SavePartyInTransaction(tx, charID, party)
+	// Preserve an already populated creation record if setup is invoked again.
+	if err := db.LockCharacter(tx, charID); err != nil {
 		return err
-	}); err != nil {
-		return fmt.Errorf("save local dev party: %w", err)
 	}
-	return nil
+	var exists bool
+	if err := tx.QueryRow(`SELECT EXISTS (SELECT 1 FROM character_pokemon WHERE character_id=$1 AND box=$2)`, charID, pokebattle.BoxParty).Scan(&exists); err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	party := make([]*pokebattle.Pokemon, 0, len(specs))
+	for _, spec := range specs {
+		p, err := pokebattle.BuildWildPokemon(tx, spec.speciesID, spec.level)
+		if err != nil {
+			return fmt.Errorf("build species %d L%d: %w", spec.speciesID, spec.level, err)
+		}
+		p.IsWild = false
+		if spec.setup != nil {
+			spec.setup(p)
+		}
+		party = append(party, p)
+	}
+	_, err := pokebattle.SavePartyInTransaction(tx, charID, party)
+	return err
 }
 
 // Local inventory is a creation fixture, never a reconnect replenishment rule.

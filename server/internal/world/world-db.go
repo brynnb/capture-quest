@@ -530,8 +530,8 @@ func SaveCharacterCreate(ctx context.Context, accountID int64, profile *Characte
 		}
 	}
 
-	// Test/local starter inventory belongs to creation. Reentry must preserve
-	// earned items and consumption, including an intentionally empty inventory.
+	// Test/local party and inventory belong to creation. Reentry must preserve
+	// earned state, including an intentionally empty party or inventory.
 	if created {
 		cfg, err := config.Get()
 		if err != nil {
@@ -539,8 +539,8 @@ func SaveCharacterCreate(ctx context.Context, accountID int64, profile *Characte
 			return false
 		}
 		if cfg.Local && localDevFixturesEnabled() {
-			if err := db.Transaction(ctx, tx, func(q db.DBTX) error { return seedLocalDevInventoryIn(q, charID) }); err != nil {
-				log.Printf("[DB] Seed local creation inventory: %v", err)
+			if err := db.Transaction(ctx, tx, func(q db.DBTX) error { return seedLocalDevCreationFixturesIn(q, charID) }); err != nil {
+				log.Printf("[DB] Seed local creation fixtures: %v", err)
 				return false
 			}
 		}

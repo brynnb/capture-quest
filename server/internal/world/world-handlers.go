@@ -209,8 +209,6 @@ func sendCharacterStateFromDB(ses *session.Session, wh *WorldHandler, characterN
 	}
 	applyLocalCharacterPrivileges(charData)
 
-	ensureLocalDevFixtures(int64(charData.ID))
-
 	// Create client for this character (loads inventory, etc.)
 	ses.Client, err = client.NewClient(charData, func(text string) {
 		SendSystemMessage(ses, text)
