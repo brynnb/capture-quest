@@ -22,21 +22,27 @@ type GameplayStateRequest struct {
 	Current   bool   `json:"current,omitempty"`
 }
 type GameplayBattleState struct {
-	NeedsDismissal  bool                 `json:"needsDismissal,omitempty"`
-	BattleID        string               `json:"battleId"`
-	Revision        int64                `json:"revision"`
-	Phase           string               `json:"phase"`
-	TurnNumber      int                  `json:"turnNumber"`
-	PlayerPokemon   PokemonDTO           `json:"playerPokemon"`
-	EnemyPokemon    PokemonDTO           `json:"enemyPokemon"`
-	PlayerParty     []PokemonDTO         `json:"playerParty"`
-	PlayerActive    int                  `json:"playerActive"`
-	BattleType      string               `json:"battleType"`
-	AllowedActions  []string             `json:"allowedActions"`
-	GuaranteedCatch bool                 `json:"guaranteedCatch"`
-	TrainerClass    string               `json:"trainerClass"`
-	TrainerName     string               `json:"trainerName"`
-	PendingMove     *GameplayPendingMove `json:"pendingMove"`
+	Caught          bool                      `json:"caught,omitempty"`
+	Capture         *GameplayCapturePlacement `json:"capture,omitempty"`
+	NeedsDismissal  bool                      `json:"needsDismissal,omitempty"`
+	BattleID        string                    `json:"battleId"`
+	Revision        int64                     `json:"revision"`
+	Phase           string                    `json:"phase"`
+	TurnNumber      int                       `json:"turnNumber"`
+	PlayerPokemon   PokemonDTO                `json:"playerPokemon"`
+	EnemyPokemon    PokemonDTO                `json:"enemyPokemon"`
+	PlayerParty     []PokemonDTO              `json:"playerParty"`
+	PlayerActive    int                       `json:"playerActive"`
+	BattleType      string                    `json:"battleType"`
+	AllowedActions  []string                  `json:"allowedActions"`
+	GuaranteedCatch bool                      `json:"guaranteedCatch"`
+	TrainerClass    string                    `json:"trainerClass"`
+	TrainerName     string                    `json:"trainerName"`
+	PendingMove     *GameplayPendingMove      `json:"pendingMove"`
+}
+type GameplayCapturePlacement struct {
+	SentToPC bool `json:"sentToPC"`
+	PCBox    int  `json:"pcBox"` // One-based presentation box, matching BattleEndOutcome.
 }
 type GameplayPendingMove struct {
 	MoveID       int    `json:"moveId"`
@@ -204,6 +210,13 @@ func readGameplayState(ctx context.Context, ses *session.Session, wh *WorldHandl
 
 func gameplayBattleSnapshot(b *pokebattle.BattleState) *GameplayBattleState {
 	result := &GameplayBattleState{NeedsDismissal: b.IsOver() && b.PendingMoveLearn == nil, BattleID: b.BattleID, Revision: b.Revision, Phase: phaseToString(b.Phase), TurnNumber: b.TurnNumber, PlayerPokemon: pokemonToDTO(b.GetPlayerPokemon()), EnemyPokemon: pokemonToDTO(b.GetEnemyPokemon()), PlayerParty: battlePartyDTOs(b), PlayerActive: b.PlayerActive, BattleType: battleTypeToString(b.BattleType), GuaranteedCatch: b.GuaranteedCatch, AllowedActions: []string{}}
+	result.Caught = b.PlayerCaught
+	if b.Capture != nil {
+		result.Capture = &GameplayCapturePlacement{SentToPC: b.Capture.SentToPC}
+		if b.Capture.SentToPC {
+			result.Capture.PCBox = b.Capture.PCBox + 1
+		}
+	}
 	for _, action := range b.AllowedActions {
 		result.AllowedActions = append(result.AllowedActions, string(action))
 	}

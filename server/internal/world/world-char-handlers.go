@@ -59,15 +59,11 @@ func HandleEnterWorld(ses *session.Session, payload []byte, wh *WorldHandler) bo
 			return false
 		}
 		if battle != nil {
-			// If the battle is already over and there's no pending move learn,
-			// the results (XP, party) were already saved — just clean up silently.
+			// A terminal record still owns dismissal and any post-battle plan.
+			// Let the scene's coherent gameplay read restore it; login must not
+			// delete it or bypass the atomic close/plan transaction.
 			if battle.IsOver() && battle.PendingMoveLearn == nil {
-				log.Printf("[PokeBattle] Restored battle for char %d is already over with no pending action — cleaning up", charID)
-				if err := pokebattle.CloseBattle(ses.CommandContext(), wh.database, charID, battle); err != nil {
-					log.Printf("[PokeBattle] Close restored battle for character %d: %v", charID, err)
-				} else {
-					forgetBattle(charID, battle)
-				}
+				log.Printf("[PokeBattle] Retained terminal battle for character %d pending scene recovery", charID)
 			} else {
 				// Preserve the committed phase, including a required faint switch.
 				// Pending move choices use the existing move-learn presentation.

@@ -1,0 +1,40 @@
+{
+  "name": "active_battle_fixture_capture_recovery_1",
+  "description": "Rendered reply-loss capture fixture using the original Magikarp, one Master Ball and an accessible Pokemon Center PC.",
+  "fixture": {
+    "characterName": "ScriptSimCaptureRecovery",
+    "mapName": "VIRIDIAN_POKECENTER",
+    "x": 12,
+    "y": 4,
+    "direction": "RIGHT",
+    "flags": [],
+    "inventory": [
+      {
+        "itemName": "MASTER_BALL",
+        "quantity": 1
+      }
+    ],
+    "party": [
+      {
+        "speciesId": 25,
+        "level": 50
+      }
+    ],
+    "activeBattle": {
+      "type": "wild",
+      "pokemonId": 129,
+      "level": 5,
+      "guaranteedCatch": true
+    }
+  },
+  "trigger": {
+    "type": "active_battle_state"
+  },
+  "expect": {
+    "scriptLabel": "ActiveBattleState",
+    "activeBattleType": "wild",
+    "activeBattleEnemySpecies": [
+      129
+    ]
+  }
+}

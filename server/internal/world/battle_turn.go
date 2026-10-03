@@ -206,6 +206,7 @@ func settleBattleTurn(tx db.DBTX, charID int64, battle *pokebattle.BattleState, 
 		}
 	}
 	if battle.PlayerCaught {
+		battle.Capture = &pokebattle.CapturePlacement{}
 		caught := battle.GetEnemyPokemon()
 		caught.IsWild = false
 		if err := pokedex.MarkCaught(tx, charID, caught.ID); err != nil {
@@ -220,6 +221,8 @@ func settleBattleTurn(tx db.DBTX, charID int64, battle *pokebattle.BattleState, 
 			}
 			result.SentToPC = true
 			result.PCBox = box
+			battle.Capture.SentToPC = true
+			battle.Capture.PCBox = box
 		}
 	}
 	if battle.BattleType == pokebattle.BattleWild && (battle.PlayerWon() || battle.PlayerCaught) {

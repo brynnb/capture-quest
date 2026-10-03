@@ -1043,8 +1043,16 @@ strict map validation. Both modes require saved/owned source agreement and share
 the read-only character-locked transaction; current mode cannot authorize an
 arrival, move or new script.
 Finished battles remain in recovery with `needsDismissal` when no learning choice
-remains. Restored presentation sends the normal correlated close without replaying
-turn events or inventing a terminal result. Applying a recovered battle also
+remains. Login retains them for the scene's coherent read rather than deleting
+them or bypassing post-battle plan issuance. Restored ordinary terminal presentation
+sends the normal correlated close without replaying turn events. Captures retain
+`PlayerCaught` and an optional durable `CapturePlacement` in battle JSON, committed
+with ball consumption, caught party/PC row and Pokédex changes. Storage boxes are
+zero-based; the generated recovery DTO converts the PC box to one-based display.
+Recovery restores the actual catch summary and waits for explicit dismissal.
+It never infers PC placement from party size. Older captures without placement
+metadata retain the factual Pokédex summary but cannot recover their original PC
+destination. Applying a recovered battle also
 refreshes the shared party view from its authoritative party; a missing battle
 carries no party snapshot and cannot clear that view. Recovery keeps command admission
 pending through position projection so dismissal cannot race the prior

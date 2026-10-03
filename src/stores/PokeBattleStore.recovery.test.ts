@@ -7,6 +7,16 @@ const pokemon: PokemonDTO = { id: 25, name: "PIKACHU", level: 5, type1: "ELECTRI
 const empty = (): GameplayStateResponse => ({ success: true, requestId: "read", position: { success: true, requestId: "read", mapId: 50, x: 7, y: 8, direction: "UP", serverMovementPending: false }, battle: null, safari: null, trainer: null, cutscene: null });
 beforeEach(() => { usePokeBattleStore.getState().restoreGameplay(empty()); transport.send.mockClear(); });
 
+test.each([false, true])("capture recovery restores authoritative placement without replaying events (PC=%s)", sentToPC => {
+  const snapshot = empty();
+  snapshot.battle = { caught: true, capture: { sentToPC, pcBox: sentToPC ? 4 : 0 }, needsDismissal: true, battleId: "capture", revision: 2, phase: "battle_end", turnNumber: 1, playerPokemon: pokemon, enemyPokemon: { ...pokemon, id: 129, name: "MAGIKARP" }, playerParty: [pokemon], playerActive: 0, battleType: "wild", allowedActions: [], guaranteedCatch: true, trainerClass: "", trainerName: "" };
+  usePokeBattleStore.getState().restoreGameplay(snapshot);
+  expect(usePokeBattleStore.getState()).toMatchObject({ battleResult: "caught", phase: "battle_end", sentToPC, sentToPCBox: sentToPC ? 4 : null, eventQueue: [], recoveredDismissal: true });
+  expect(transport.send).not.toHaveBeenCalled();
+  usePokeBattleStore.getState().restoreGameplay(empty());
+  expect(usePokeBattleStore.getState()).toMatchObject({ isInBattle: false, battleResult: null, sentToPC: false, sentToPCBox: null });
+});
+
 test("ordinary recovery replaces stale Safari and preserves faint-switch authority", () => {
   const safari = empty(); safari.safari = { active: true, ballsLeft: 7, stepsLeft: 93, pokemon: { id: 129, name: "MAGIKARP", level: 5, hp: 10, maxHp: 10 } };
   usePokeBattleStore.getState().restoreGameplay(safari); expect(usePokeBattleStore.getState().isSafari).toBe(true);

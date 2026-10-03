@@ -9,6 +9,7 @@ import (
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
+	"capturequest/internal/db/cqitems"
 	"capturequest/internal/pokebattle"
 	"capturequest/internal/protocol"
 	"capturequest/internal/testdb"
@@ -24,6 +25,81 @@ func recoveryReply(t *testing.T, messages *recordingMessenger) GameplayStateResp
 		t.Fatalf("recovery %+v %v", reply, err)
 	}
 	return reply
+}
+
+func TestCapturePlacementRecoversAfterLostReplyWithoutAnotherCatch(t *testing.T) {
+	for _, partySize := range []int{1, 6} {
+		t.Run(fmt.Sprintf("party_%d", partySize), func(t *testing.T) {
+			wh, ses, messages := setupIssuedStep(t)
+			if partySize == 6 {
+				testdb.Exec(t, wh.database, `INSERT INTO character_pokemon(character_id,party_slot,box_slot,pokemon_id,level,exp,cur_hp,max_hp) SELECT 42,s,s,25,50,125000,1,95 FROM generate_series(1,5) s; INSERT INTO character_pc_state(character_id,current_box) VALUES(42,3)`)
+			}
+			var originalIDs int64
+			if err := wh.database.QueryRow(`SELECT sum(id) FROM character_pokemon WHERE character_id=42`).Scan(&originalIDs); err != nil {
+				t.Fatal(err)
+			}
+			current := battleTestStart(t, wh.database, false, func(b *pokebattle.BattleState) { b.GuaranteedCatch = true })
+			instance, err := cqitems.NewStore(wh.database).AddItemToInventory(42, 2, 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request := fmt.Sprintf(`{"requestId":"capture","action":"item","instanceId":%d,"itemId":2,"battle":{"battleId":%q,"revision":%d}}`, instance, current.BattleID, current.Revision)
+			// Fail after party/PC insertion and item consumption, at battle save.
+			testdb.Exec(t, wh.database, `ALTER TABLE character_battle_state ADD CONSTRAINT reject_capture_placement CHECK(battle_json::json->'capture' IS NULL)`)
+			battleDispatch(t, wh, ses, opcodes.PokeBattleActionRequest, request)
+			if getBattle(42) != current || current.Capture != nil {
+				t.Fatal("failed capture published placement")
+			}
+			var count, quantity int
+			if err := wh.database.QueryRow(`SELECT count(*) FROM character_pokemon WHERE character_id=42 AND pokemon_id=129`).Scan(&count); err != nil || count != 0 {
+				t.Fatal("failed capture inserted pokemon", err)
+			}
+			if err := wh.database.QueryRow(`SELECT quantity FROM cq_item_instances WHERE id=$1`, instance).Scan(&quantity); err != nil || quantity != 1 {
+				t.Fatal("failed capture spent ball", err)
+			}
+			testdb.Exec(t, wh.database, `ALTER TABLE character_battle_state DROP CONSTRAINT reject_capture_placement`)
+			messages.streams = nil
+			battleDispatch(t, wh, ses, opcodes.PokeBattleActionRequest, request)
+			finished := getBattle(42)
+			if finished == nil || !finished.PlayerCaught || finished.Capture == nil || finished.Capture.SentToPC != (partySize == 6) {
+				t.Fatal("capture omitted committed placement")
+			}
+			forgetBattle(42, finished)
+			messages.streams = nil // Model lost delivery; recover from durable state.
+			battleDispatch(t, wh, ses, opcodes.GameplayStateRequest, `{"requestId":"caught","current":true}`)
+			snapshot := recoveryReply(t, messages).Battle
+			if snapshot == nil || !snapshot.Caught || !snapshot.NeedsDismissal || snapshot.Capture == nil || snapshot.Capture.SentToPC != (partySize == 6) || snapshot.Revision != current.Revision+1 {
+				t.Fatalf("capture recovery=%+v", snapshot)
+			}
+			if partySize == 6 && (snapshot.Capture.PCBox != 4 || len(snapshot.PlayerParty) != 6) {
+				t.Fatal("recovery guessed PC box or changed full party")
+			}
+			if partySize == 1 && (len(snapshot.PlayerParty) != 2 || snapshot.PlayerParty[1].ID != 129) {
+				t.Fatal("recovery omitted caught party member")
+			}
+			var caughtID int64
+			var storedBox int
+			if err := wh.database.QueryRow(`SELECT id,box FROM character_pokemon WHERE character_id=42 AND pokemon_id=129`).Scan(&caughtID, &storedBox); err != nil {
+				t.Fatal(err)
+			}
+			if (partySize == 6 && storedBox != 3) || (partySize == 1 && storedBox != pokebattle.BoxParty) {
+				t.Fatalf("capture placement differs from stored row: box=%d", storedBox)
+			}
+			messages.streams = nil
+			battleDispatch(t, wh, ses, opcodes.PokeBattleActionRequest, request)
+			var rejected BattleCommandError
+			if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &rejected) != nil || rejected.Success {
+				t.Fatal("duplicate capture accepted")
+			}
+			var allIDs int64
+			if err := wh.database.QueryRow(`SELECT count(*),sum(id) FROM character_pokemon WHERE character_id=42`).Scan(&count, &allIDs); err != nil || count != partySize+1 || allIDs != originalIDs+caughtID {
+				t.Fatal("duplicate changed pokemon identities", err)
+			}
+			if err := wh.database.QueryRow(`SELECT count(*) FROM cq_item_instances WHERE id=$1`, instance).Scan(&count); err != nil || count != 0 {
+				t.Fatal("ball consumption did not remain settled", err)
+			}
+		})
+	}
 }
 
 func TestMoveChoiceRecoveryAfterLostReplyDoesNotRepeatSettlement(t *testing.T) {

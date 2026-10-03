@@ -2,8 +2,8 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest checkpoint: rendered level-up choice/reentry reply-loss acceptance
-(2026-10-03), following move-choice storage/coordinator acceptance `072ad71`, blackout scene ownership `04579dc`, terminal dismissal/post-battle plans `8ce43ff`, current-owned gameplay recovery `c38a74c`, correlated battle recovery `30fa1bb` and network battle command identity `8a5ba4a`, coherent gameplay recovery `c0d31f9` and durable cutscene issuance/completion `e9eb834`, pending trainer encounters `84f2d91` and ordinary-step receipts `80a544c`, following atomic movement-step effects `cfdeb9e`, retirement of the client coordinate setter `2df1db0`, correlated cutscene completion `6638a63`, issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
+Working branch: `codex/server-foundations`. Latest checkpoint: durable capture placement and terminal login retention
+(2026-10-03), following rendered move-choice recovery `7eb3a7e`, move-choice storage/coordinator acceptance `072ad71`, blackout scene ownership `04579dc`, terminal dismissal/post-battle plans `8ce43ff`, current-owned gameplay recovery `c38a74c`, correlated battle recovery `30fa1bb` and network battle command identity `8a5ba4a`, coherent gameplay recovery `c0d31f9` and durable cutscene issuance/completion `e9eb834`, pending trainer encounters `84f2d91` and ordinary-step receipts `80a544c`, following atomic movement-step effects `cfdeb9e`, retirement of the client coordinate setter `2df1db0`, correlated cutscene completion `6638a63`, issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
 `0585dde`, committed
 blackout/recovery `2f62595`, teleport notification projection `65a5581`, Instant
 Warp `e1f54a8`, normal warps `3899660`, owned-position loading `64cf970`,
@@ -61,7 +61,10 @@ Cutscene snapshots and completion outcomes now survive owner replacement;
 coordinate issuance joins movement commits and retries return current ownership.
 Ordinary battle commands now await correlated replies, recover current state after
 a timeout without resending mutations, and retire replies when their scene or
-presentation is replaced. Safari command timeout recovery and full inventory,
+presentation is replaced. Capture placement now survives lost replies and
+character reentry, with explicit party/PC summary dismissal. Login retains
+terminal battles for coherent scene recovery and atomic post-battle plan issuance.
+Safari command timeout recovery and full inventory,
 wallet and flag resynchronization remain unfinished. Evidence and verification limits
 appear in the checkpoint sections below.
 
@@ -77,6 +80,85 @@ number of commits or passing tests. All five areas still have outstanding work.
 | Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, movement ticks coordinated with the owner, and immediate retirement of battle-scene command admission/subscriptions. | Finish timer/callback/shared-state and legacy position-writer audits; prove remaining concurrent/reconnect behavior across real transports. |
 | Domains and wire contracts | Injected content-query service; typed character/wallet/bind, Pokédex/card, content detail, map-script, map-info/list, sight-trainer notification/readiness, coherent gameplay recovery, ordinary battle replies/shared battle events and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
 | Lifecycle and verification | Owned HTTP/listeners, readiness, listener failure propagation, joined periodic workers, sealed session admissions, fail-closed staged preload, startup cancellation, atomic scripted-event publication, and deadline-aware shutdown waits with returned failure results. | Audit cancellation of remaining legacy work, define durable final-save recovery, and complete transport/rendered integration coverage. Owned HTTP and player transport retirement and isolated active-player shutdown checks have landed. |
+
+## Durable capture placement and terminal login retention (2026-10-03)
+
+Capture previously persisted `PlayerCaught`, the Pokémon row and Pokédex state,
+but PC placement lived only in `battleTurnResult.SentToPC/PCBox`. A lost reply
+therefore recovered a finished battle without its capture summary. The capture
+settlement now saves `CapturePlacement` in the same battle JSON transaction as
+ball consumption and party/PC insertion. Private battle clones copy the placement;
+recovery rejects contradictory capture metadata and out-of-range PC boxes.
+Storage uses zero-based boxes; the generated gameplay DTO presents one-based
+boxes, matching the existing ordinary end response. Recovery never guesses PC
+placement from party size.
+
+The browser restores the factual caught state and party/PC summary without
+replaying turn events, and keeps it visible until explicit dismissal. Ordinary
+terminal recovery still auto-dismisses as before. Old saved captures without
+placement metadata can show their factual Pokédex summary; their original PC
+destination is unavailable and is not invented. This is an optional additive
+field within the supported save format, with no schema/import or asset change.
+
+The first rendered checks then found a second producing cause: login still
+silently deleted finished battles without pending learning choices. That erased
+capture summaries during character reentry and bypassed the atomic post-battle
+plan path. Login now retains the terminal record/cache for the scene's coherent
+read. Normal correlated dismissal owns deletion and any eligible plan issuance.
+
+The PostgreSQL dispatcher test covers party and full-party captures, including
+late battle-save failure after consumption/insertion. Failure rolls back the
+ball, caught row and placement without publishing the private battle. Success
+survives discarded reply delivery/cache and restores the placement. A non-default
+PC preference stores box 3 and exposes BOX 4; the test checks the actual caught
+row's box. Duplicate original command identity rejects, row count and existing
+Pokémon identities remain unchanged, and exactly one ball remains spent. Storage
+tests cover placement round-trip, private clone isolation, invalid boxes and
+placement without a catch. Browser store tests cover party/PC restoration without
+event replay.
+
+Rendered fixtures use one Master Ball and the original Magikarp at the existing
+Viridian Pokémon Center PC location. Both hold the actual capture reply, restore
+the summary after timeout and character reentry, require explicit dismissal,
+release the late reply behind a read-only delivery barrier, and preserve the
+settled party after another reentry with no ball left. The full-party case opens
+the real PC UI and checks exactly one caught Magikarp. Initial reentry failures
+at `/var/tmp/capturequest-rendered.7iP19u` demonstrated the login deletion. After
+that fix, the PC case reached every capture assertion but its cleanup tried Quit
+while the PC overlay was open; cleanup now closes that overlay normally.
+
+Verification completed locally:
+
+- PostgreSQL race suites for world, battle, server and session passed:
+  `/var/tmp/capturequest-capture-go-final.log`. The stronger stored-row box check
+  then passed in both focused capture cases:
+  `/var/tmp/capturequest-capture-row-check.log`. Placement serialization/validation
+  tests passed at `/var/tmp/capturequest-capture-persistence.log`.
+- All 27 focused browser coordinator/recovery-store tests passed:
+  `/var/tmp/capturequest-capture-front.log`. Canonical `npm run tygo`, typecheck,
+  production build/runtime-asset validation (existing large-chunk warning) and
+  `git diff --check` passed. Logs:
+  `/var/tmp/capturequest-capture-contract.log`,
+  `/var/tmp/capturequest-capture-types-final.log`,
+  `/var/tmp/capturequest-capture-build.log`.
+- The combined rendered run passed 9 of 10 cases: party capture, learn/skip,
+  turn, close, Brock reward, blackout, trainer and Safari snapshot recovery.
+  Only PC test cleanup failed after all its capture assertions passed. That
+  exact case then passed with ordinary overlay cleanup on the final source.
+  All ten cases thus have passing evidence, across the combined run and focused
+  rerun; this is not a claim of one green combined run. Evidence:
+  `/var/tmp/capturequest-rendered.1Ete6b` and
+  `/var/tmp/capturequest-rendered.jd1hg7`; logs:
+  `/var/tmp/capturequest-capture-rendered-final.log` and
+  `/var/tmp/capturequest-capture-pc-rendered-final.log`.
+
+Remaining: complete Safari encounter identity/correlated mutation recovery and
+full inventory/wallet/flag reconciliation; process-death and real connection
+replacement coverage; remaining terminal/queued-plan variants; and every open
+endpoint/mutation, callback/ownership, domain/wire and lifecycle item in the
+five-area table. This does not complete the full goal. Recommended next step:
+audit and migrate Safari commands through the existing identity/correlation and
+coherent recovery mechanisms. Changes are local only; no push or deployment.
 
 ## Rendered level-up choice recovery checkpoint (2026-10-03)
 

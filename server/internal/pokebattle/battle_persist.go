@@ -15,17 +15,18 @@ type persistedBattle struct {
 	Revision       int64                 `json:"revision,omitempty"`
 	PlayerVolatile []playerVolatileState `json:"playerVolatile,omitempty"`
 
-	Phase                int      `json:"phase"`
-	BattleType           int      `json:"battleType"`
-	TurnNumber           int      `json:"turnNumber"`
-	PlayerActive         int      `json:"playerActive"`
-	EnemyActive          int      `json:"enemyActive"`
-	RunAttempts          int      `json:"runAttempts"`
-	PlayerCaught         bool     `json:"playerCaught"`
-	PlayerTrainerID      int64    `json:"playerTrainerId,omitempty"`
-	PlayerObedienceLevel int      `json:"playerObedienceLevel,omitempty"`
-	AllowedActions       []string `json:"allowedActions,omitempty"`
-	GuaranteedCatch      bool     `json:"guaranteedCatch,omitempty"`
+	Phase                int               `json:"phase"`
+	BattleType           int               `json:"battleType"`
+	TurnNumber           int               `json:"turnNumber"`
+	PlayerActive         int               `json:"playerActive"`
+	EnemyActive          int               `json:"enemyActive"`
+	RunAttempts          int               `json:"runAttempts"`
+	PlayerCaught         bool              `json:"playerCaught"`
+	Capture              *CapturePlacement `json:"capture,omitempty"`
+	PlayerTrainerID      int64             `json:"playerTrainerId,omitempty"`
+	PlayerObedienceLevel int               `json:"playerObedienceLevel,omitempty"`
+	AllowedActions       []string          `json:"allowedActions,omitempty"`
+	GuaranteedCatch      bool              `json:"guaranteedCatch,omitempty"`
 	// Player party is NOT stored here — it's persisted in character_pokemon
 	// and reloaded via LoadParty on restore to avoid sync issues.
 	EnemyParty          []persistedPokemon `json:"enemyParty"`
@@ -138,6 +139,7 @@ func MarshalBattleState(b *BattleState) ([]byte, error) {
 		EnemyActive:          b.EnemyActive,
 		RunAttempts:          b.RunAttempts,
 		PlayerCaught:         b.PlayerCaught,
+		Capture:              b.Capture,
 		PlayerTrainerID:      b.PlayerTrainerID,
 		PlayerObedienceLevel: b.PlayerObedienceLevel,
 		AllowedActions:       b.AllowedActions,
@@ -203,6 +205,9 @@ func UnmarshalBattleState(data []byte) (*BattleState, error) {
 	if pb.Version != 0 && pb.Version != 2 {
 		return nil, fmt.Errorf("unsupported saved battle version %d", pb.Version)
 	}
+	if p := pb.Capture; p != nil && (!pb.PlayerCaught || pb.Phase != int(PhaseBattleEnd) || (p.SentToPC && (p.PCBox < 0 || p.PCBox >= 12))) {
+		return nil, fmt.Errorf("invalid saved capture placement")
+	}
 	b := &BattleState{
 		BattleID:             pb.BattleID,
 		Revision:             pb.Revision,
@@ -215,6 +220,7 @@ func UnmarshalBattleState(data []byte) (*BattleState, error) {
 		EnemyActive:          pb.EnemyActive,
 		RunAttempts:          pb.RunAttempts,
 		PlayerCaught:         pb.PlayerCaught,
+		Capture:              pb.Capture,
 		PlayerTrainerID:      pb.PlayerTrainerID,
 		PlayerObedienceLevel: pb.PlayerObedienceLevel,
 		AllowedActions:       pb.AllowedActions,

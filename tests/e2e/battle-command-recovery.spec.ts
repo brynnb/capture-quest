@@ -4,8 +4,65 @@ import { advanceBattleTextToPhase, waitForBattleOpen, endWildBattleIfOpen } from
 import { collectPageErrors } from "./helpers/errors";
 import { jumpToScenario } from "./helpers/scenarioDebugger";
 import { getGameState, waitForNoMapLoading } from "./helpers/state";
-import { pressSpace } from "./helpers/input";
+import { clickTile, pressSpace } from "./helpers/input";
 import * as OpCodes from "../../src/net/generated/opcodes";
+
+for (const partySize of [1, 6]) {
+  test(`lost capture reply restores the summary and one caught row with party size ${partySize}`, async ({ page }) => {
+    test.setTimeout(150000);
+    const errors = collectPageErrors(page);
+    let actions = 0, closes = 0;
+    let release: (() => void) | undefined;
+    await page.routeWebSocket("**/ws", socket => {
+      const server = socket.connectToServer();
+      socket.onMessage(message => {
+        if (Buffer.isBuffer(message) && message.length >= 6) {
+          if (message.readUInt16LE(4) === OpCodes.PokeBattleActionRequest) actions++;
+          if (message.readUInt16LE(4) === OpCodes.PokeBattleCloseRequest) closes++;
+        }
+        server.send(message);
+      });
+      server.onMessage(message => {
+        if (Buffer.isBuffer(message) && message.length >= 6 && message.readUInt16LE(4) === OpCodes.PokeBattleActionResponse && !release) {
+          release = () => socket.send(message); return;
+        }
+        socket.send(message);
+      });
+    });
+    const character = await createGuestCharacterAndEnterWorld(page);
+    await jumpToScenario(page, `active_battle_fixture_capture_recovery_${partySize}`);
+    await waitForBattleOpen(page); await advanceBattleTextToPhase(page, "action_select");
+    await page.getByTestId("battle-action-item").click({ timeout: 10000 });
+    await page.getByTestId("battle-item-0").click({ timeout: 10000 });
+    await expect.poll(() => !!release).toBe(true);
+    const summary = page.getByText(partySize === 6 ? /MAGIKARP was transferred to\s+Bill's PC \(BOX 1\)\./ : /MAGIKARP's data was added to the POKéDEX!/);
+    await expect(summary).toBeVisible({ timeout: 20000 });
+    expect(actions).toBe(1); expect(closes).toBe(0);
+    expect((await getGameState(page)).pokemon.party).toHaveLength(partySize === 6 ? 6 : 2);
+    // Reentry must preserve the summary, not dismiss a catch as an ordinary win.
+    await quitToCharacterSelect(page); await enterWorld(page, character); await waitForNoMapLoading(page);
+    await expect(summary).toBeVisible(); expect(closes).toBe(0);
+    await pressSpace(page);
+    await expect.poll(async () => (await getGameState(page)).battle.isOpen).toBe(false);
+    expect(closes).toBe(1);
+    const settled = (await getGameState(page)).pokemon.party;
+    release!();
+    await page.evaluate(async () => { const path = "/src/phaser-game/services/PlayerMovementService.ts"; const { readOwnedPlayerPosition } = await import(path); await readOwnedPlayerPosition(); });
+    expect((await getGameState(page)).battle.isOpen).toBe(false);
+    await quitToCharacterSelect(page); await enterWorld(page, character); await waitForNoMapLoading(page);
+    expect((await getGameState(page)).pokemon.party).toEqual(settled);
+    expect((await getGameState(page)).inventory.items.filter(item => item.shortName === "MASTER_BALL")).toHaveLength(0);
+    if (partySize === 6) {
+      await clickTile(page, 13, 4);
+      await expect(page.getByTestId("pokemon-pc-main-menu")).toBeVisible({ timeout: 15000 });
+      await page.getByTestId("pokemon-pc-bills-pc").click();
+      await expect.poll(async () => (await getGameState(page)).pokemon.pc.boxPokemon.filter(pokemon => pokemon.id === 129).length).toBe(1);
+      await page.getByTestId("pokemon-pc-close").click({ timeout: 10000 });
+    } else expect(settled.filter(pokemon => pokemon.id === 129)).toHaveLength(1);
+    expect(actions).toBe(1); expect(closes).toBe(1);
+    await quitToCharacterSelect(page); errors.assertNoSevereErrors();
+  });
+}
 
 for (const choice of ["learn", "skip"] as const) {
   test(`a pending level-up survives reentry and a lost ${choice} reply settles only once`, async ({ page }) => {

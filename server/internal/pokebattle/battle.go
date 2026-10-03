@@ -101,6 +101,9 @@ type BattleState struct {
 
 	// Catch state
 	PlayerCaught bool // True if the player caught the wild Pokémon
+	// Capture placement commits with the caught row and battle, so reply loss
+	// cannot erase the PC destination. Nil predates placement persistence.
+	Capture *CapturePlacement
 
 	// Scripted battle rules.
 	AllowedActions  []string // Optional allowed action names: fight, item, switch, run
@@ -120,6 +123,11 @@ type BattleState struct {
 	// PostMoveLearnEvents holds events that should be shown after the move learn
 	// prompt is resolved (e.g. other pokemon XP, trainer dialogue, prize money).
 	PostMoveLearnEvents []BattleEvent
+}
+
+type CapturePlacement struct {
+	SentToPC bool `json:"sentToPC"`
+	PCBox    int  `json:"pcBox"` // Zero-based storage box; relevant only for PC placement.
 }
 
 // NewWildBattle creates a new battle state for a wild encounter.

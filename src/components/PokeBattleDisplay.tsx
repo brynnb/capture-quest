@@ -1026,7 +1026,7 @@ const PokeBattleDisplay: React.FC = () => {
   // A recovered terminal snapshot needs dismissal without replaying its text.
   // Wait for the preceding coordinator to finish projection before taking its slot.
   useEffect(() => {
-    if (phase === "battle_end" && !battleCommandPending && !commandError && (battleResult === "win" || recoveredDismissal)) {
+    if (phase === "battle_end" && !battleCommandPending && !commandError && (battleResult === "win" || (recoveredDismissal && battleResult !== "caught"))) {
       closeBattle();
     }
   }, [phase, battleResult, recoveredDismissal, battleCommandPending, commandError, closeBattle]);

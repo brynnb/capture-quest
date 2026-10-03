@@ -200,6 +200,10 @@ func (b *BattleState) Clone() *BattleState {
 		return nil
 	}
 	next := *b
+	if b.Capture != nil {
+		placement := *b.Capture
+		next.Capture = &placement
+	}
 	pokemon := make(map[*Pokemon]*Pokemon)
 	copyParty := func(party []*Pokemon) []*Pokemon {
 		cloned := make([]*Pokemon, len(party))

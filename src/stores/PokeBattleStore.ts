@@ -146,6 +146,9 @@ const usePokeBattleStore = create<PokeBattleState>((set, get) => ({
       const battle = snapshot.battle;
       get().startBattle({ ...battle, events: [] });
       set({ recoveredDismissal: battle.needsDismissal === true });
+      if (battle.caught) {
+        set({ battleResult: "caught", sentToPC: battle.capture?.sentToPC === true, sentToPCBox: battle.capture?.sentToPC ? battle.capture.pcBox : null });
+      }
       if (battle.pendingMove) {
         set({ pendingMoveLearn: { moveId: battle.pendingMove.moveId, moveName: battle.pendingMove.moveName } });
       }

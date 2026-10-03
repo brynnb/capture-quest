@@ -424,6 +424,8 @@ export interface GameplayStateRequest {
   current?: boolean;
 }
 export interface GameplayBattleState {
+  caught?: boolean;
+  capture?: GameplayCapturePlacement;
   needsDismissal?: boolean;
   battleId: string;
   revision: number /* int64 */;
@@ -439,6 +441,10 @@ export interface GameplayBattleState {
   trainerClass: string;
   trainerName: string;
   pendingMove?: GameplayPendingMove;
+}
+export interface GameplayCapturePlacement {
+  sentToPC: boolean;
+  pcBox: number /* int */; // One-based presentation box, matching BattleEndOutcome.
 }
 export interface GameplayPendingMove {
   moveId: number /* int */;
