@@ -1024,7 +1024,10 @@ browser event contract through `server/tygo.yaml`.
 `BattleCommandService` owns one in-flight command over the reliable stream. Its
 captured scene projection and monotonic store presentation generation define who
 may apply a reply. Replacement, including the same durable battle ID, or scene
-retirement aborts the operation and unregisters listeners/timers. Command replies
+retirement aborts the operation and unregisters listeners/timers. Scene retirement also immediately
+releases the command slot and store subscription even if its old projection is
+still settling. Controller identity guards final cleanup so it cannot retire a
+new scene's command, and scene-binding identity guards stale cleanup. Command replies
 are dispatched to correlated subscribers rather than globally mutating the store.
 Close waits for acknowledgement; quit/warp retirement clears local presentation
 without issuing a close. Async transport rejection enters the same recovery path

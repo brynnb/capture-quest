@@ -40,7 +40,7 @@ beforeEach(() => {
   usePokeBattleStore.getState().startBattle(battle());
   retireScene = bindBattleScene(project);
 });
-afterEach(async () => { retireScene(); await Promise.resolve(); usePokeBattleStore.getState().retireBattle(); vi.useRealTimers(); });
+afterEach(async () => { vi.restoreAllMocks(); retireScene(); await Promise.resolve(); usePokeBattleStore.getState().retireBattle(); vi.useRealTimers(); });
 
 async function recoverRead(currentBattle: GameplayBattleState | null) {
   await vi.advanceTimersByTimeAsync(0);
@@ -167,4 +167,35 @@ test("current-state battle recovery refreshes the shared party view with the sam
   await recoverRead({ ...battle(3), playerPokemon: fresh, playerParty: [fresh] }); await work;
   expect(usePokemonPartyStore.getState().party).toEqual([fresh]);
   expect(usePokeBattleStore.getState().faintSwitchParty).toEqual([fresh]);
+});
+
+test("a replacement scene can dismiss a recovered terminal battle before the retired projection resolves", async () => {
+  const releases: ReturnType<typeof vi.fn>[] = [];
+  const subscribe = usePokeBattleStore.subscribe;
+  const subscribed = vi.spyOn(usePokeBattleStore, "subscribe").mockImplementation(listener => {
+    const release = vi.fn(subscribe(listener)); releases.push(release); return release;
+  });
+  let release!: () => void;
+  project.mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; }));
+  const oldWork = sendBattleAction({ action: "fight" });
+  await vi.advanceTimersByTimeAsync(10000);
+  const terminal = { ...battle(3), phase: "battle_end", needsDismissal: true };
+  await recoverRead(terminal); await vi.advanceTimersByTimeAsync(0);
+  const cleanupOld = retireScene;
+  cleanupOld();
+  expect(releases[0]).toHaveBeenCalledTimes(1);
+  const destinationProject = vi.fn(async () => {});
+  retireScene = bindBattleScene(destinationProject);
+  usePokeBattleStore.getState().restoreGameplay({ success: true, requestId: "destination", position: position("destination"), battle: terminal, safari: null, trainer: null, cutscene: null });
+  cleanupOld(); // A second old cleanup cannot retire the destination binding.
+  const close = closeOrdinaryBattle();
+  expect(net.send).toHaveBeenCalledTimes(2);
+  expect(net.send.mock.calls.at(-1)![0]).toBe(89);
+  release(); await oldWork;
+  expect(usePokeBattleStore.getState().battleCommandPending).toBe(true);
+  emit(199, { ...reply(sentID()), battle: null }); await close;
+  expect(destinationProject).toHaveBeenCalledTimes(1);
+  subscribed.mockRestore();
+  expect(usePokeBattleStore.getState()).toMatchObject({ isInBattle: false, battleCommandPending: false });
+  expect(vi.getTimerCount()).toBe(0);
 });

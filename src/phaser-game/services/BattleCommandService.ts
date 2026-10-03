@@ -20,11 +20,15 @@ let active: AbortController | null = null;
 // clear a newer binding or let a late command reply revive a retired panel.
 export function bindBattleScene(reconcile: Projection): () => void {
   active?.abort();
+  // Scene retirement releases admission immediately. The old projection may
+  // still be settling; its identity-guarded finally cannot retire a newer slot.
+  active = null;
   sceneProjection = reconcile;
   return () => {
     if (sceneProjection !== reconcile) return;
     sceneProjection = null;
     active?.abort();
+    active = null;
   };
 }
 
@@ -57,6 +61,8 @@ async function sendBattleCommand(opcode: number, responseOpcode: number, command
   const unsubscribe = usePokeBattleStore.subscribe(state => {
     if (!applying && (state.presentationGeneration !== presentationGeneration || !state.isInBattle || state.battleId !== battleId)) controller.abort();
   });
+  // Do not retain a retired scene's store callback while its projection settles.
+  controller.signal.addEventListener("abort", unsubscribe, { once: true });
   usePokeBattleStore.setState({ battleCommandPending: true, commandError: null, phase: "animating", eventQueue: [], currentEventIndex: 0 });
   try {
     const response = await correlatedRequest<BattleCommandResponse>(
@@ -109,6 +115,7 @@ async function sendBattleCommand(opcode: number, responseOpcode: number, command
       usePokeBattleStore.setState({ commandError: "Could not restore your battle. Please reconnect." });
     }
   } finally {
+    controller.signal.removeEventListener("abort", unsubscribe);
     unsubscribe();
     if (active === controller) {
       active = null;

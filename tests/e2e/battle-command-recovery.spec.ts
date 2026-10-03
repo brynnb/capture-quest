@@ -144,3 +144,63 @@ test("a lost terminal trainer reply dismisses once and continues the original Br
   expect(actions).toBe(actionCount); expect(closes).toBe(1);
   await quitToCharacterSelect(page); errors.assertNoSevereErrors();
 });
+
+test("a lost blackout reply changes maps, heals once and dismisses through the destination scene", async ({ page }) => {
+  test.setTimeout(240000);
+  const errors = collectPageErrors(page);
+  let actions = 0, closes = 0, replies = 0;
+  let blackout: { mapId: number; x: number; y: number; money: number } | undefined;
+  let release: (() => void) | undefined;
+  await page.routeWebSocket("**/ws", socket => {
+    const server = socket.connectToServer();
+    socket.onMessage(message => {
+      if (Buffer.isBuffer(message) && message.length >= 6) {
+        const opcode = message.readUInt16LE(4);
+        if (opcode === OpCodes.PokeBattleActionRequest) actions++;
+        if (opcode === OpCodes.PokeBattleCloseRequest) closes++;
+      }
+      server.send(message);
+    });
+    server.onMessage(message => {
+      if (Buffer.isBuffer(message) && message.length >= 6 && message.readUInt16LE(4) === OpCodes.PokeBattleActionResponse) {
+        const response = JSON.parse(message.subarray(6).toString()); replies++;
+        if (response.success && response.end?.blackout) {
+          blackout = { mapId: response.position.mapId, x: response.position.x, y: response.position.y, money: response.end.money };
+          release = () => socket.send(message); return;
+        }
+      }
+      socket.send(message);
+    });
+  });
+  const character = await createGuestCharacterAndEnterWorld(page);
+  await jumpToScenario(page, "active_battle_fixture_blackout_recovery");
+  const sourceMap = (await getGameState(page)).map.id;
+  await waitForBattleOpen(page); await advanceBattleTextToPhase(page, "action_select");
+  for (let turn = 0; turn < 8 && !blackout; turn++) {
+    const before = replies;
+    await page.getByTestId("battle-action-fight").click(); await page.getByTestId("battle-move-0").click();
+    await expect.poll(() => replies > before).toBe(true);
+    if (!blackout) {
+      await expect(page.getByText("Waiting for the battle…", { exact: true })).toBeHidden();
+      await advanceBattleTextToPhase(page, "action_select");
+    }
+  }
+  expect(blackout).toBeDefined(); expect(blackout!.mapId).not.toBe(sourceMap); expect(blackout!.money).toBe(499);
+  const actionCount = actions;
+  await expect.poll(async () => (await getGameState(page)).map.id, { timeout: 30000 }).toBe(blackout!.mapId);
+  await waitForNoMapLoading(page);
+  await expect.poll(async () => (await getGameState(page)).battle.isOpen, { timeout: 20000 }).toBe(false);
+  expect(closes).toBe(1); expect(actions).toBe(actionCount);
+  const settled = await getGameState(page);
+  expect(settled.player).toMatchObject({ x: blackout!.x, y: blackout!.y });
+  expect(settled.inventory.money).toBe(499);
+  expect(settled.pokemon.party.every(pokemon => pokemon.curHp === pokemon.maxHp)).toBe(true);
+  release!();
+  await page.evaluate(async () => { const path = "/src/phaser-game/services/PlayerMovementService.ts"; const { readOwnedPlayerPosition } = await import(path); await readOwnedPlayerPosition(); });
+  expect((await getGameState(page)).battle.isOpen).toBe(false);
+  await quitToCharacterSelect(page); await enterWorld(page, character); await waitForNoMapLoading(page);
+  const reentered = await getGameState(page);
+  expect(reentered.inventory.money).toBe(499); expect(reentered.pokemon.party).toEqual(settled.pokemon.party);
+  expect(reentered.map.id).toBe(blackout!.mapId); expect(actions).toBe(actionCount); expect(closes).toBe(1);
+  await quitToCharacterSelect(page); errors.assertNoSevereErrors();
+});

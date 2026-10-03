@@ -2,8 +2,8 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest checkpoint: recoverable terminal battle dismissal and atomic post-battle plans
-(2026-10-03), following current-owned gameplay recovery `c38a74c`, correlated battle recovery `30fa1bb` and network battle command identity `8a5ba4a`, coherent gameplay recovery `c0d31f9` and durable cutscene issuance/completion `e9eb834`, pending trainer encounters `84f2d91` and ordinary-step receipts `80a544c`, following atomic movement-step effects `cfdeb9e`, retirement of the client coordinate setter `2df1db0`, correlated cutscene completion `6638a63`, issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
+Working branch: `codex/server-foundations`. Latest checkpoint: battle command ownership across blackout scene replacement
+(2026-10-03), following terminal dismissal/post-battle plans `8ce43ff`, current-owned gameplay recovery `c38a74c`, correlated battle recovery `30fa1bb` and network battle command identity `8a5ba4a`, coherent gameplay recovery `c0d31f9` and durable cutscene issuance/completion `e9eb834`, pending trainer encounters `84f2d91` and ordinary-step receipts `80a544c`, following atomic movement-step effects `cfdeb9e`, retirement of the client coordinate setter `2df1db0`, correlated cutscene completion `6638a63`, issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
 `0585dde`, committed
 blackout/recovery `2f62595`, teleport notification projection `65a5581`, Instant
 Warp `e1f54a8`, normal warps `3899660`, owned-position loading `64cf970`,
@@ -74,9 +74,71 @@ number of commits or passing tests. All five areas still have outstanding work.
 | --- | --- | --- |
 | Request/session boundary | Packet and connection limits, centralized session prerequisites, removal of insecure session takeover, actual transport closure, location/visibility checks for scripted clicks, dialogue choices and direct trainer battles, client destination catalog validation, server-resolved normal warp activation, explicit Instant Warp commands, committed teleport notification contracts and read-only map metadata, retired coordinate/map setters, and preserved command deadlines/disconnect cancellation in migrated operations. | Audit remaining interaction/mutation endpoints; propagate cancellation through legacy managers and remaining database/network work. |
 | Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors, Game Corner prizes and bounded coin/slot/hidden-coin operations, atomic Escape Rope/FLY positions, durable Repel counters, Safari entry/turn/capture state and exhaustion destinations, atomic blackout/recovery destinations and map-load position/Safari/flag/visibility/boulder effects, atomic movement-step counters, encounters and recovery, durable latest ordinary-step receipts, durable sight-trainer plans/resumption and atomic readiness resolution, durable cutscene snapshots/completion receipts/cancellation, coherent battle/Safari/pending-plan recovery, mandatory ordinary-battle command identity, correlated ordinary-battle timeout recovery, recoverable terminal dismissal and atomic post-battle plans, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery for remaining mutations across reconnects; finish current-state recovery for inventory/wallet/flags and remaining presentation, and integrate recovery into Safari command timeout paths; finish queued-plan/source/catalog ordering acceptance coverage and remaining command recovery. |
-| Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, and movement ticks coordinated with the owner. | Finish timer/callback/shared-state and legacy position-writer audits; prove remaining concurrent/reconnect behavior across real transports. |
+| Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, movement ticks coordinated with the owner, and immediate retirement of battle-scene command admission/subscriptions. | Finish timer/callback/shared-state and legacy position-writer audits; prove remaining concurrent/reconnect behavior across real transports. |
 | Domains and wire contracts | Injected content-query service; typed character/wallet/bind, Pokédex/card, content detail, map-script, map-info/list, sight-trainer notification/readiness, coherent gameplay recovery, ordinary battle replies/shared battle events and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
 | Lifecycle and verification | Owned HTTP/listeners, readiness, listener failure propagation, joined periodic workers, sealed session admissions, fail-closed staged preload, startup cancellation, atomic scripted-event publication, and deadline-aware shutdown waits with returned failure results. | Audit cancellation of remaining legacy work, define durable final-save recovery, and complete transport/rendered integration coverage. Owned HTTP and player transport retirement and isolated active-player shutdown checks have landed. |
+
+## Blackout scene ownership checkpoint (2026-10-03)
+
+A battle timeout can recover a committed blackout destination in a different map.
+The old scene then retires while its position projection is still settling. The
+coordinator previously aborted that operation but retained its single-flight slot
+until the projection finished. A destination scene could restore the finished
+battle and attempt dismissal while that old slot still rejected commands.
+
+Scene retirement/rebinding now aborts and immediately releases command admission.
+The old operation's controller identity still guards its final cleanup, so late
+completion cannot clear a destination command's pending state. Stale scene cleanup
+cannot remove a newer scene binding. Abort also removes the old store subscription
+immediately rather than retaining the scene through an unresolved projection.
+The existing correlation and durable battle identity remain the transport and
+mutation boundaries; cancellation does not imply server rollback or resend.
+
+A focused regression first failed on the old implementation because the new close
+was never sent. It now holds the old projection unresolved, retires/rebinds the
+scene, restores a terminal snapshot and sends its close. It verifies immediate
+old subscription retirement, stale cleanup isolation, protection of the new
+pending state when the old promise resolves, dismissal through the destination projection and
+listener/timer retirement.
+
+The new data-only blackout fixture uses the extracted Bruno party and a weak
+Magikarp with Splash at Pewter Gym. The browser proxy drops the actual terminal
+reply, captures the server's committed destination/money, then verifies map
+replacement, healed party, exactly one dismissal and no turn resend. Delivering
+the old reply afterward cannot revive the panel. Character reentry preserves
+¥499 from the original ¥999 and the full settled party. Destination coordinates
+come from the actual response, not a test-only teleport or supplied MapLoad fields.
+
+Verification completed locally:
+
+- The focused ownership regression failed before both fixes: first the destination
+  close was suppressed, then the old store subscription remained attached.
+  All 79 focused frontend tests pass with immediate retirement and protected
+  destination admission.
+- Six isolated rendered tests passed: lost turn and late reply, lost close,
+  terminal Brock reward progression, cross-map blackout recovery, pending trainer/
+  battle-start recovery and Safari snapshot recovery. After the subscription
+  cleanup change, the targeted blackout test passed again on the final source.
+  Evidence: `/var/tmp/capturequest-rendered.vhxkDg` and
+  `/var/tmp/capturequest-rendered.wORj04`.
+- Typecheck, production build (existing large-chunk warning), runtime-asset
+  validation through the build/bootstrap and `git diff --check` passed.
+  Final logs: `/var/tmp/capturequest-crossmap-battle-front-final.log`,
+  `/var/tmp/capturequest-crossmap-battle-types-final.log`,
+  `/var/tmp/capturequest-crossmap-battle-build-final.log`,
+  `/var/tmp/capturequest-crossmap-battle-rendered-final.log`.
+- No Go implementation or generated wire contract changed. The rendered runner
+  built the current server and exercised its real PostgreSQL/WebSocket boundary;
+  no redundant broad Go suite was needed for this browser ownership change.
+Pending move-learning/capture-summary and other queued-plan reply-loss acceptance,
+Safari identity/correlation, full inventory/wallet/flag recovery and all unfinished
+endpoint, mutation, callback, dependency/wire and lifecycle work remain required.
+This proves a normal blackout loss across map replacement, not every terminal
+battle variant. The five-area goal remains active. No server schema, generated
+asset-family, push or deployment changes are included.
+
+Recommended next step: cover pending battle choices/capture settlement after lost
+replies, then migrate Safari encounter identity and correlated command recovery.
 
 ## Terminal battle dismissal and post-battle plans checkpoint (2026-10-03)
 
