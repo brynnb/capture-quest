@@ -3,7 +3,8 @@
 Status: active. Started 2026-09-25 from `02c51ba`.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-retired legacy map setter (2026-10-02), following active-player shutdown
+client destination catalog boundary (2026-10-02), following retired legacy map
+setter `7732412` and active-player shutdown
 checkpoint `c811917` and
 owned transport checkpoint `fea2a16` and HTTP retirement checkpoint
 `5160707`, shutdown
@@ -37,11 +38,11 @@ evidence, including remaining-work notes that subsequent commits may resolve.
 
 | Area | Implemented | Still required |
 | --- | --- | --- |
-| Request/session boundary | Packet and connection limits, centralized session prerequisites, removal of insecure session takeover, actual transport closure, location/visibility checks for scripted clicks, dialogue choices and direct trainer battles, and preserved command deadlines/disconnect cancellation in migrated operations. | Audit remaining interaction/mutation endpoints; propagate cancellation through legacy managers and remaining database/network work. |
+| Request/session boundary | Packet and connection limits, centralized session prerequisites, removal of insecure session takeover, actual transport closure, location/visibility checks for scripted clicks, dialogue choices and direct trainer battles, client destination catalog validation and remote map metadata presence guards, and preserved command deadlines/disconnect cancellation in migrated operations. | Audit remaining interaction/mutation endpoints; propagate cancellation through legacy managers and remaining database/network work. |
 | Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors, Game Corner prizes and bounded coin/slot/hidden-coin operations, atomic Escape Rope/FLY positions, durable Repel counters, Safari entry/turn/capture state and exhaustion destinations, atomic recovery warps, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery of committed results across reconnects. |
 | Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, and movement ticks coordinated with the owner. | Finish timer/callback/shared-state and legacy position-writer audits; prove remaining concurrent/reconnect behavior across real transports. |
 | Domains and wire contracts | Injected content-query service; typed character/wallet/bind, Pokédex/card, content detail, map-script and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
-| Lifecycle and verification | Owned HTTP/listeners, readiness, listener failure propagation, joined periodic workers, sealed session admissions, fail-closed staged preload, startup cancellation, atomic scripted-event publication, and deadline-aware shutdown waits with returned failure results. | Finish cancellation of remaining running work and forced transport retirement, durable final-save recovery, and complete transport/rendered integration coverage. |
+| Lifecycle and verification | Owned HTTP/listeners, readiness, listener failure propagation, joined periodic workers, sealed session admissions, fail-closed staged preload, startup cancellation, atomic scripted-event publication, and deadline-aware shutdown waits with returned failure results. | Audit cancellation of remaining legacy work, define durable final-save recovery, and complete transport/rendered integration coverage. Owned HTTP and player transport retirement and isolated active-player shutdown checks have landed. |
 
 ## Remaining work, in recommended order
 
@@ -92,6 +93,53 @@ evidence, including remaining-work notes that subsequent commits may resolve.
    cancellation/timeouts, failure/retry and shutdown with active players.
    Acceptance: evidence covers the original five milestones, including visible
    behavior where relevant. Only then mark the full goal complete.
+
+## Client destination catalog boundary (2026-10-02)
+
+The active client position writers now validate destination catalog membership
+inside the existing bounded, character-locked position transaction. Interiors
+require an existing `phaser_maps.id` and a non-erased `phaser_tiles` coordinate.
+The synthetic `UnifiedOverworldMapID` is **9999**; its tiles have `map_id IS NULL`,
+and negative coordinates are valid. Map ID 0 is not an overworld alias. A missing
+or erased destination fails before position or Safari state changes. Trusted
+runtime destinations retain their existing source-specific checks and share the
+same persistence primitive.
+
+`PhaserMapInfoRequest` rejects a partial `destX`/`destY` pair. A metadata-only
+request for another map can return its description but cannot change session
+presence or execute that map's load effects. Current-map metadata still runs its
+existing recovery and load effects; fully separating reads from gameplay
+commands remains required. Neither catalog membership nor a successful commit
+proves movement eligibility. Ordinary movement, issued warp acknowledgements and
+Instant Warp still share the client position contract. This checkpoint adds no
+collision restriction or GM gate to ordinary-player Instant Warp.
+
+PostgreSQL tests cover erased/missing tiles, unknown maps, the rejected ID-0
+alias, valid negative overworld coordinates, Safari rollback/end, remote
+metadata and partial destinations through packet dispatch, and unchanged live,
+movement and saved state on rejection. Late-commit fixtures now include valid
+catalog tiles so they continue reaching their injected commit failure. Existing
+visibility assertions are retained with the catalog fields their fixture needs.
+The final world/server PostgreSQL race suites pass, all Go packages compile,
+and `git diff --check` passes.
+
+Rendered verification is **partial**. In the isolated run at
+`/var/tmp/capturequest-rendered.F3D2cM`, interior keyboard movement, interior click
+movement, indoor overview-to-overworld Instant Warp and multiplayer checks
+passed. The far-overworld case arrived at `(190,-81)` but timed out waiting for
+the next ArrowLeft position event. A focused repeat at
+`/var/tmp/capturequest-rendered.d8pdl7` reproduced it: input was unfrozen, the
+player was idle and warp mode had ended before the key press. No destination
+rejection appeared in that server log. The cause is unresolved, and a comparison
+against the previous checkpoint has not established whether this is a regression.
+Temporary diagnostic logging was removed; no assertion was weakened.
+
+Next: diagnose the far-overworld keyboard failure and compare it with the prior
+checkpoint before changing movement or test timing. Then separate metadata,
+movement reports and explicit warp intent at the shared authoritative boundary,
+including state restrictions and server-issued destination recovery. Continue
+all six remaining-work items above. The goal remains active; this checkpoint is
+local only, with no push or deployment.
 
 ## Retired legacy map setter (2026-10-02)
 

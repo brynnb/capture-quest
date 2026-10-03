@@ -153,6 +153,10 @@ func HandlePhaserMapInfoRequest(ses *session.Session, payload []byte, wh *WorldH
 		return false
 	}
 
+	if (req.DestX == nil) != (req.DestY == nil) {
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Destination requires both coordinates."}, opcodes.PhaserMapInfoResponse)
+		return false
+	}
 	ctx, cancel := context.WithTimeout(ses.CommandContext(), 5*time.Second)
 	defer cancel()
 	var mapInfo PhaserMapInfo
@@ -192,7 +196,7 @@ func HandlePhaserMapInfoRequest(ses *session.Session, payload []byte, wh *WorldH
 	}
 
 	if req.DestX != nil && req.DestY != nil && ses.HasValidClient() {
-		if err := commitPlayerPosition(ses.CommandContext(), wh.database, int64(ses.Client.CharData().ID), normalizedVisiblePlayerMapID(wh, mapInfo.ID), *req.DestX, *req.DestY); err != nil {
+		if err := commitClientPlayerPosition(ses.CommandContext(), wh.database, int64(ses.Client.CharData().ID), normalizedVisiblePlayerMapID(wh, mapInfo.ID), *req.DestX, *req.DestY); err != nil {
 			log.Printf("[Phaser] Save map destination: %v", err)
 			ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not save the destination. Please try again."}, opcodes.PhaserMapInfoResponse)
 			return false
@@ -215,7 +219,15 @@ func HandlePhaserMapInfoRequest(ses *session.Session, payload []byte, wh *WorldH
 			}
 		}
 	}
-	ses.MapID = normalizedID
+	if req.DestX == nil {
+		// A metadata fetch for map view cannot claim presence or run another map's
+		// load effects. Current-map loading retains its existing recovery/effects.
+		if !ses.HasValidClient() || normalizedID != currentPlayerVisibleMapID(ses, wh, int(ses.Client.CharData().ID)) {
+			return false
+		}
+	} else {
+		ses.MapID = normalizedID
+	}
 
 	// Keep char.MapID in sync so the server always knows the player's current map.
 	// This prevents stale interior map IDs from being used for auto-registration
@@ -904,7 +916,7 @@ func HandlePhaserPlayerPositionUpdate(ses *session.Session, payload []byte, wh *
 			(prevMapID != mapID || prevX != req.X || prevY != req.Y)
 	mapChanged := prevMapID != 0 && prevMapID != mapID
 
-	if err := commitPlayerPosition(ses.CommandContext(), wh.database, int64(char.ID), mapID, req.X, req.Y); err != nil {
+	if err := commitClientPlayerPosition(ses.CommandContext(), wh.database, int64(char.ID), mapID, req.X, req.Y); err != nil {
 		log.Printf("[Phaser] Save reported position for %d: %v", char.ID, err)
 		SendSystemMessage(ses, "Could not save your position. Please try again.")
 		return false

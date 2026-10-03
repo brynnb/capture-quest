@@ -778,3 +778,17 @@ presence, and movement reports/server warp acknowledgements/Instant Warp intent
 need explicit authoritative decisions. Instant Warp is currently ordinary-player
 functionality, so validation must preserve that policy unless deliberately
 changed. Successful persistence alone is not authorization.
+
+
+Active client position writes validate catalog membership inside the bounded
+character-locked position transaction before saving position or ending Safari.
+Interior destinations require an existing map and non-erased tile; unified map
+9999 uses NULL-map catalog tiles and supports negative coordinates. Trusted
+runtime destinations use their own eligibility checks with the same persistence
+primitive. Remote metadata-only map requests cannot claim presence or run remote
+load effects, and partial destination coordinates are rejected. Current-map
+metadata recovery/load effects remain coupled. Catalog membership alone does
+not authorize movement; explicit movement/warp intent and issued destination
+validation remain in the active roadmap. Ordinary-player Instant Warp retains
+its current policy. See `SERVER_FOUNDATIONS.md` for checkpoint validation and the
+unresolved far-overworld rendered keyboard test.

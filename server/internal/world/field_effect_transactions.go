@@ -105,9 +105,31 @@ func saveFieldDestinationIn(tx db.DBTX, charID int64, mapID, x, y int) error {
 // Position writers share one bounded character transaction. The caller owns
 // the session gate; publication must follow successful return.
 func commitPlayerPosition(ctx context.Context, database *sql.DB, charID int64, mapID, x, y int) error {
+	return commitPosition(ctx, database, charID, mapID, x, y, false)
+}
+
+// Client coordinates must name a visible catalog tile. Trusted runtime destinations
+// retain their own source-specific validation before calling commitPlayerPosition.
+func commitClientPlayerPosition(ctx context.Context, database *sql.DB, charID int64, mapID, x, y int) error {
+	return commitPosition(ctx, database, charID, mapID, x, y, true)
+}
+
+func commitPosition(ctx context.Context, database *sql.DB, charID int64, mapID, x, y int, validateCatalog bool) error {
 	return db.Transaction(ctx, database, func(tx db.DBTX) error {
 		if err := db.LockCharacter(tx, charID); err != nil {
 			return err
+		}
+		if validateCatalog {
+			// UnifiedOverworldMapID is synthetic; its catalog rows use NULL map_id.
+			var valid bool
+			if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM phaser_tiles
+    WHERE (($4 AND map_id IS NULL) OR (NOT $4 AND map_id=$1)) AND x=$2 AND y=$3 AND is_tile_erased=0)
+    AND ($4 OR EXISTS(SELECT 1 FROM phaser_maps WHERE id=$1))`, mapID, x, y, mapID == UnifiedOverworldMapID).Scan(&valid); err != nil {
+				return err
+			}
+			if !valid {
+				return fmt.Errorf("destination map %d tile (%d,%d) is absent or erased", mapID, x, y)
+			}
 		}
 		return saveFieldDestinationIn(tx, charID, mapID, x, y)
 	})

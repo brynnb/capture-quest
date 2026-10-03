@@ -71,6 +71,7 @@ func TestReportedPositionAndMapInfoRejectLatePersistenceFailure(t *testing.T) {
 			wh.PlayerMovement.RegisterPlayer(ses, 42, 7, 8, 50, "UP")
 			testdb.Exec(t, database, `UPDATE character_data SET map_id=50,x=7,y=8 WHERE id=42;
  INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(60,'EXIT',20,20,0);
+ INSERT INTO phaser_tiles(map_id,x,y,tile_image_id) VALUES(60,3,4,1);
  CREATE FUNCTION reject_reported_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'late reported failure'; END $$;
  CREATE CONSTRAINT TRIGGER reject_reported_commit AFTER UPDATE ON character_data DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN(NEW.map_id=60) EXECUTE FUNCTION reject_reported_commit();`)
 			db.GlobalWorldDB = nil
@@ -137,7 +138,7 @@ func TestMapDestinationCommitIsNotOverwrittenByInvalidSavedPositionRecovery(t *t
 	wh.EventFlags = nil // This test isolates destination persistence from map-load scripts.
 	ses.Client.CharData().X = 0
 	ses.Client.CharData().Y = 0
-	testdb.Exec(t, database, `INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(60,'EXIT',20,20,0)`)
+	testdb.Exec(t, database, `INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(60,'EXIT',20,20,0); INSERT INTO phaser_tiles(map_id,x,y,tile_image_id) VALUES(60,3,4,1)`)
 	battleDispatch(t, wh, ses, opcodes.PhaserMapInfoRequest, `{"mapId":60,"destX":3,"destY":4}`)
 	var x, y, mapID int
 	if err := database.QueryRow(`SELECT x,y,map_id FROM character_data WHERE id=42`).Scan(&x, &y, &mapID); err != nil || x != 3 || y != 4 || mapID != 60 {

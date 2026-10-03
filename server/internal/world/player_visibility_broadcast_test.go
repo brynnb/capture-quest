@@ -118,6 +118,10 @@ func setupPlayerVisibilityTestDB(t *testing.T) {
 			z REAL NOT NULL DEFAULT 0,
 			heading REAL NOT NULL DEFAULT 0
 		);
+		CREATE TABLE phaser_maps(id INTEGER PRIMARY KEY);
+		CREATE TABLE phaser_tiles(map_id INTEGER,x INTEGER,y INTEGER,collision_type INTEGER DEFAULT 0,raw_foot_tile_id INTEGER,is_tile_erased INTEGER DEFAULT 0);
+		INSERT INTO phaser_maps(id) VALUES(63);
+		INSERT INTO phaser_tiles(map_id,x,y) VALUES(63,2,7);
 		CREATE TABLE character_safari_state(character_id INTEGER PRIMARY KEY,state_json TEXT NOT NULL,updated_at TEXT);
 		CREATE TABLE character_event_flags(character_id INTEGER,flag_name TEXT,PRIMARY KEY(character_id,flag_name));
 		CREATE TABLE character_daycare (
