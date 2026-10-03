@@ -1,10 +1,12 @@
 # Server foundations goal
 
-Status: broader roadmap incomplete. Started 2026-09-25 from `02c51ba`.
-The earlier goal was recorded as paused; the latest goal-tool check on 2026-10-03
-reports no attached goal. Current authorization is the bounded Repel migration below.
+Status: **active; broader roadmap incomplete**. Originally started 2026-09-25
+from `02c51ba`. On 2026-10-03 the user authorized a new tracked goal to continue
+the full roadmap from local implementation checkpoint `3a6d68d`. The goal tool
+confirmed it is active. Earlier paused states and bounded stopping rules below
+describe historical checkpoints; they do not limit this renewed authorization.
 
-Working branch: `codex/server-foundations`. Current bounded checkpoint: Repel
+Working branch: `codex/server-foundations`. Latest completed checkpoint: Repel
 activation through the shared inventory command boundary (2026-10-03), following
 `a96eaa7` (commit/presentation review fixes), `5c8da47` (shop/party consolidation), the
 owned-item dispatch checkpoint and committed shop crash/restart acceptance. The shop runtime
@@ -20,11 +22,55 @@ using the existing infrastructure before migrating another endpoint family.
 Nakama's managed transactions would require a player-data migration; an RPC-only
 integration would retain our SQL and recovery work. This is an evaluated
 recommendation. The user subsequently authorized the bounded two-consumer
-consolidation below; a framework migration remains outside scope.
+consolidation below, which is complete along with its shared-boundary review
+fixes and the Repel migration. A framework migration remains outside scope.
 
 Keep Go, PostgreSQL, one deployable server, and the authoritative extractor,
 runtime asset, and scripted-action contracts. Improve runtime safety through
 small verified changes. No production deployment or push is part of this goal.
+
+## Active execution plan (2026-10-03)
+
+Complete all five roadmap areas through shared authoritative transaction,
+ownership, command identity and recovery primitives, with explicit domain rules.
+Keep the reviewed shop/party-item/Repel boundary as the baseline. Remove replaced
+paths as families migrate; do not accumulate independent recovery engines or
+force movement and battle ownership into the inventory coordinator.
+
+1. Investigate the unresolved five-second `restoreBattleOnLogin` timeout from
+   Repel reentry. Use bounded reproduction and query, lock, connection-pool and
+   session-lifecycle evidence to establish the cause. Add a focused regression
+   with the fix. The later successful rerun does not close this issue.
+2. Audit remaining command families and owners against the implementation and
+   tests, producing a finite coverage matrix for the five-area table below.
+   Distinguish completed behavior from unaudited paths and missing acceptance
+   evidence rather than estimating progress from commit or test counts.
+3. Choose and finish one coherent family at each checkpoint. Reuse the appropriate
+   existing boundaries, retire the old route, and review changes to shared
+   primitives before expanding to another family. Continue beyond an individual
+   family until the full completion criteria below are satisfied.
+4. Verify success, rejection, rollback, duplicates, timeout, cancellation,
+   stale/late responses and scene/session/reconnect races, plus process-death
+   recovery where relevant. Start with focused checks and use existing isolated
+   transport/browser harnesses in proportion to risk. Distinguish headless,
+   rendered and production evidence.
+5. Make coherent local checkpoint commits and update this document with evidence,
+   unresolved issues, remaining scope and the next step. Reassess the architecture
+   or workflow when progress slows unexpectedly or repeated orchestration and
+   test scaffolding begin accumulating across families.
+
+No replacement framework, broker, event-sourcing architecture, push, deployment
+or production mutation is authorized by this goal. Preserve unrelated work and
+the canonical generated-data contracts. Production validation remains a separate
+deployment task; the local goal must record that verification limit explicitly.
+
+Initial investigation: source tracing confirms login calls `ResumeBattle`, which
+uses `db.Transaction` and locks `character_data` before reading the saved battle,
+including when no battle exists. The shared transaction starts its five-second
+deadline before `BeginTx`; an earlier session deadline can shorten it. Thus the
+observed error alone cannot distinguish connection acquisition, the character
+lock, later queries or commit. The next diagnostic must identify the failing
+stage and any blocking owner before changing deadlines or recovery policy.
 
 ## Repel command migration (2026-10-03)
 
@@ -277,7 +323,7 @@ evidence, including remaining-work notes that subsequent commits may resolve.
 ### Checkpoint handoff (2026-10-03)
 
 Implementation checkpoints are committed locally on `codex/server-foundations`.
-The broad goal remains incomplete and paused; no push or deployment is part of these checkpoints.
+The broad goal is active and incomplete; no push or deployment is part of these checkpoints.
 MapLoad now rejects supplied destinations. Ordinary walking requests a direction
 from its expected owned source, animates a server-issued step, then acknowledges
 its token before continuing the path. Blackout, Safari and explicit warp commands
@@ -333,25 +379,25 @@ number of commits or passing tests. All five areas still have outstanding work.
 
 ### Next work and completion criteria
 
-Merchant opening and every buy/sell command now require a reachable visible
-source clerk and current script eligibility. The client retains the acknowledged
-menu's actor ID; an earlier open is not a reusable server permission. Source sale
-policy and real-transport delivered/lost sale acknowledgement checks have landed.
-Committed shop buy/sale commands now also have two actual process crashes with
-stale-revision rejection, stable item identities and verified late-reply delivery.
-The shared item-instance reader now rejects inventory links whose instance has a
-different `owner_id`, non-character `owner_type`, or zero quantity. Item dispatch
-uses a cancellable bounded read and distinguishes missing ownership from database
-failure. The next implementation milestone is the two-consumer consolidation in
-[NAKAMA_FEASIBILITY.md](NAKAMA_FEASIBILITY.md#finite-next-milestone-and-stop-condition):
-one common command lifecycle for purchase and party-item use, with a measured
-reduction in repeated orchestration. Do not build another independent item
-coordinator. Field effects and other families remain in the broad backlog until
-that boundary is reviewed. The sale browser check exercises the existing coordinator
-and rendered balance; the product still has no Sell button.
+The two-consumer consolidation recommended by
+[NAKAMA_FEASIBILITY.md](NAKAMA_FEASIBILITY.md#finite-next-milestone-and-stop-condition)
+has landed. Shop, party-item and Repel commands now share server transaction and
+revision ownership and client admission, correlation and recovery. The reviewed
+boundary rejects execution inside a caller-owned transaction and keeps committed
+state reconciliation alive when its presentation closes. Repel now has duplicate,
+lost-reply, reentry and actual crash/restart acceptance. The unresolved login
+restore timeout from that acceptance run is the first investigation in the active
+plan above; its cause is still unknown.
 
-After that milestone, remaining work includes recovery integration for other
-mutation commands and script/trainer plans and their queue/source/catalog ordering. Ordinary
+The next migration is selected from the remaining-family audit after that
+investigation. PC transfers require box-state recovery; Escape Rope, Bicycle and
+fishing involve movement or battle ownership. These are candidates to assess,
+not instructions to build separate command coordinators or repeat completed
+atomicity work. The sale browser check exercises the existing coordinator and
+rendered balance; the product still has no Sell button.
+
+Remaining work includes recovery integration for other mutation commands and
+script/trainer plans and their queue/source/catalog ordering. Ordinary
 walking, pending move choices and one issued cutscene now have two-crash
 acceptance as documented below; that evidence does not cover every movement or
 issued-plan family.
