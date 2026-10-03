@@ -283,5 +283,5 @@ func refreshSafariFlags(wh *WorldHandler, charID int64) {
 
 func publishSafariExpiry(ses *session.Session, wh *WorldHandler, charID int64) {
 	refreshSafariFlags(wh, charID)
-	applyServerTeleportedPlayerPosition(ses, wh, SafariZoneGateMapID, SafariZoneGateReturnX, SafariZoneGateReturnY, "DOWN", false)
+	publishCommittedPlayerPosition(ses, wh, SafariZoneGateMapID, SafariZoneGateReturnX, SafariZoneGateReturnY, "DOWN")
 }

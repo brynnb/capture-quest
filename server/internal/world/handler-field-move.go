@@ -218,7 +218,11 @@ func handleEscapeFieldMove(ses *session.Session, req FieldMoveUseRequestPayload,
 		sendFieldMoveUseError(ses, err.Error())
 		return false
 	}
-	teleportPlayerTo(ses, wh, destMapID, destX, destY)
+	if err := teleportPlayerTo(ses, wh, destMapID, destX, destY); err != nil {
+		log.Printf("[FieldMove] Teleport for %d: %v", charData.ID, err)
+		sendFieldMoveUseError(ses, "Could not save the destination. Please try again.")
+		return false
+	}
 
 	message := "Dug out of the dungeon."
 	if permission.KnownByName != "" {
@@ -252,7 +256,11 @@ func handleTeleportFieldMove(ses *session.Session, req FieldMoveUseRequestPayloa
 		sendFieldMoveUseError(ses, "TELEPORT can't be used here.")
 		return false
 	}
-	teleportPlayerTo(ses, wh, destMapID, destX, destY)
+	if err := teleportPlayerTo(ses, wh, destMapID, destX, destY); err != nil {
+		log.Printf("[FieldMove] Teleport for %d: %v", charData.ID, err)
+		sendFieldMoveUseError(ses, "Could not save the destination. Please try again.")
+		return false
+	}
 
 	message := "Teleported to safety."
 	if permission.KnownByName != "" {

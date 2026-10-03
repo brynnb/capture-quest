@@ -695,7 +695,12 @@ new visit. Startup requires the schema, and fixtures use the same storage API.
 Field destinations and scripted moves end Safari outside the zones/gate inside
 their position transaction. Recovery warp commits ordinary battle deletion,
 Safari cleanup and destination together. Script movement publication performs no
-second save. Legacy movement/client-reported position ordering, cache refresh
-failure, durable command/result delivery, cancellation and throughput remain in
+second save. Reported positions and forced teleports use the captured database
+and bounded character transaction before live publication. Movement flushes
+release the shared player lock before saving a coordinate snapshot; only a
+matching registration/position is marked clean after commit. A failed save stays
+dirty for later retry. Ordinary forced-path movement and its step effects still
+have separate persistence boundaries. Disconnect final-flush failure policy,
+cache refresh failure, durable command/result delivery, cancellation and throughput remain in
 `SERVER_FOUNDATIONS.md`; fresh-manager recovery and rendered Safari checks do not
 prove abrupt network/process recovery or completion of those wider requirements.

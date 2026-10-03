@@ -46,7 +46,7 @@ func HandleWarpHomeRequest(ses *session.Session, _ []byte, wh *WorldHandler) boo
 	}
 	forgetBattle(charID, previousBattle)
 	refreshSafariFlags(wh, charID)
-	applyServerTeleportedPlayerPosition(ses, wh, mapID, x, y, direction, false)
+	publishCommittedPlayerPosition(ses, wh, mapID, x, y, direction)
 
 	ses.SendStreamJSON(map[string]interface{}{
 		"mapId": mapID,

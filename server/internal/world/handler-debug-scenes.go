@@ -273,7 +273,10 @@ func HandleDebugSceneJumpRequest(ses *session.Session, payload []byte, wh *World
 			return false
 		}
 
-		sendDebugSceneTeleport(ses, wh, charID, mapID, x, y, DefaultSpawnDirection)
+		if err := sendDebugSceneTeleport(ses, wh, charID, mapID, x, y, DefaultSpawnDirection); err != nil {
+			ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.DebugSceneJumpResponse)
+			return false
+		}
 		sendDebugFreshStartHiddenActorDespawns(ses, wh, "REDS_HOUSE_2F")
 		sendDebugFixtureSnapshots(ses, charID)
 		ses.SendStreamJSON(map[string]interface{}{
@@ -307,7 +310,10 @@ func HandleDebugSceneJumpRequest(ses *session.Session, payload []byte, wh *World
 		return false
 	}
 
-	sendDebugSceneTeleport(ses, wh, charID, mapID, x, y, scenario.Scenario.Fixture.Direction)
+	if err := sendDebugSceneTeleport(ses, wh, charID, mapID, x, y, scenario.Scenario.Fixture.Direction); err != nil {
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.DebugSceneJumpResponse)
+		return false
+	}
 	sendDebugFixtureSnapshots(ses, charID)
 	sendDebugSafariState(ses, charID, wh, mapID)
 
@@ -835,11 +841,13 @@ func debugPowerPokemonMessage(name string, level int, addedToParty bool, box, sl
 	return fmt.Sprintf("Party full; sent %s L%d to PC box %d slot %d.", name, level, box+1, slot+1)
 }
 
-func sendDebugSceneTeleport(ses *session.Session, wh *WorldHandler, charID int64, mapID, x, y int, direction string) {
+func sendDebugSceneTeleport(ses *session.Session, wh *WorldHandler, charID int64, mapID, x, y int, direction string) error {
 	if direction == "" {
 		direction = "DOWN"
 	}
-	setServerTeleportedPlayerPosition(ses, wh, mapID, x, y, direction)
+	if _, err := setServerTeleportedPlayerPosition(ses, wh, mapID, x, y, direction); err != nil {
+		return err
+	}
 
 	ses.SendStreamJSON(map[string]interface{}{
 		"mapId":     mapID,
@@ -847,6 +855,7 @@ func sendDebugSceneTeleport(ses *session.Session, wh *WorldHandler, charID int64
 		"y":         y,
 		"direction": direction,
 	}, opcodes.WarpTileTeleportNotify)
+	return nil
 }
 
 func sendDebugFreshStartHiddenActorDespawns(ses *session.Session, wh *WorldHandler, mapName string) {

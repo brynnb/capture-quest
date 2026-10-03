@@ -212,15 +212,18 @@ func currentTilePosition(ses *session.Session, wh *WorldHandler) (int, int, int)
 	return int(math.Round(float64(ses.X))), int(math.Round(float64(ses.Y))), ses.MapID
 }
 
-func teleportPlayerTo(ses *session.Session, wh *WorldHandler, mapID int, x int, y int) {
+func teleportPlayerTo(ses *session.Session, wh *WorldHandler, mapID int, x int, y int) error {
 	if ses != nil && ses.HasValidClient() {
-		setServerTeleportedPlayerPosition(ses, wh, mapID, x, y, "DOWN")
+		if _, err := setServerTeleportedPlayerPosition(ses, wh, mapID, x, y, "DOWN"); err != nil {
+			return err
+		}
 	}
 	ses.SendStreamJSON(map[string]interface{}{
 		"mapId": mapID,
 		"x":     x,
 		"y":     y,
 	}, opcodes.WarpTileTeleportNotify)
+	return nil
 }
 
 func publishCommittedTeleport(ses *session.Session, wh *WorldHandler, mapID, x, y int) {
@@ -228,7 +231,7 @@ func publishCommittedTeleport(ses *session.Session, wh *WorldHandler, mapID, x, 
 	if ses != nil && ses.HasValidClient() {
 		refreshSafariFlags(wh, int64(ses.Client.CharData().ID))
 	}
-	applyServerTeleportedPlayerPosition(ses, wh, mapID, x, y, "DOWN", false)
+	publishCommittedPlayerPosition(ses, wh, mapID, x, y, "DOWN")
 	ses.SendStreamJSON(map[string]interface{}{"mapId": mapID, "x": x, "y": y}, opcodes.WarpTileTeleportNotify)
 }
 

@@ -101,3 +101,14 @@ func saveFieldDestinationIn(tx db.DBTX, charID int64, mapID, x, y int) error {
 	_, err := tx.Exec(`UPDATE character_data SET map_id=$1,x=$2,y=$3,z=0,heading=0 WHERE id=$4`, mapID, x, y, charID)
 	return err
 }
+
+// Position writers share one bounded character transaction. The caller owns
+// the session gate; publication must follow successful return.
+func commitPlayerPosition(ctx context.Context, database *sql.DB, charID int64, mapID, x, y int) error {
+	return db.Transaction(ctx, database, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, charID); err != nil {
+			return err
+		}
+		return saveFieldDestinationIn(tx, charID, mapID, x, y)
+	})
+}

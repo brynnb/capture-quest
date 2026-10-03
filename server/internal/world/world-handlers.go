@@ -252,16 +252,10 @@ func sendCharacterStateFromDB(ses *session.Session, wh *WorldHandler, characterN
 		charData.X = RecoverySpawnX
 		charData.Y = RecoverySpawnY
 		charData.Z = RecoverySpawnZ
-		if err := db_character.UpdateCharacterPosition(
-			int32(charData.ID),
-			uint32(RecoverySpawnMap),
-			RecoverySpawnX,
-			RecoverySpawnY,
-			RecoverySpawnZ,
-			0,
-		); err != nil {
-			log.Printf("sendCharacterStateFromDB: failed to persist recovered position for %s: %v", characterName, err)
+		if err := commitPlayerPosition(ctx, wh.database, int64(charData.ID), RecoverySpawnMap, int(RecoverySpawnX), int(RecoverySpawnY)); err != nil {
+			return err
 		}
+
 	}
 
 	// Initialize session map from character data

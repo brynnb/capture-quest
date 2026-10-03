@@ -2,9 +2,9 @@ package world
 
 import (
 	"capturequest/internal/api/opcodes"
-	db_character "capturequest/internal/db/character"
 	"capturequest/internal/logutil"
 	"capturequest/internal/session"
+	"context"
 	"log"
 	"strings"
 	"sync"
@@ -18,26 +18,29 @@ const bicyclePlayerMoveSpeed = 100 * time.Millisecond
 
 // PlayerMovementState tracks a player's current movement
 type PlayerMovementState struct {
-	SessionID     int           `json:"sessionId"`
-	CharacterID   int           `json:"characterId"`
-	CurrentX      int           `json:"currentX"`
-	CurrentY      int           `json:"currentY"`
-	MapID         int           `json:"mapId"`
-	PreviousMapID int           `json:"previousMapId,omitempty"`
-	Direction     string        `json:"direction"`
-	Path          []PathNode    `json:"path"` // Remaining path to destination
-	IsSurfing     bool          `json:"isSurfing,omitempty"`
-	WantsBicycle  bool          `json:"wantsBicycle,omitempty"`
-	ForcedBicycle bool          `json:"forcedBicycle,omitempty"`
-	LastMoveTime  time.Time     `json:"lastMoveTime"`
-	LastSaveTime  time.Time     `json:"lastSaveTime"` // Last time we persisted to DB
-	MoveSpeed     time.Duration `json:"moveSpeed"`    // Time per tile, including runtime movement effects
+	SessionID       int        `json:"sessionId"`
+	CharacterID     int        `json:"characterId"`
+	CurrentX        int        `json:"currentX"`
+	CurrentY        int        `json:"currentY"`
+	MapID           int        `json:"mapId"`
+	PreviousMapID   int        `json:"previousMapId,omitempty"`
+	Direction       string     `json:"direction"`
+	Path            []PathNode `json:"path"` // Remaining path to destination
+	IsSurfing       bool       `json:"isSurfing,omitempty"`
+	WantsBicycle    bool       `json:"wantsBicycle,omitempty"`
+	ForcedBicycle   bool       `json:"forcedBicycle,omitempty"`
+	LastMoveTime    time.Time  `json:"lastMoveTime"`
+	LastSaveTime    time.Time  `json:"lastSaveTime"` // Last time we persisted to DB
+	positionDirty   bool
+	lastSaveAttempt time.Time
+	MoveSpeed       time.Duration `json:"moveSpeed"` // Time per tile, including runtime movement effects
 }
 
 type playerMovementStep struct {
 	state             *PlayerMovementState
 	isPathDestination bool
 	movementSeq       int
+	shouldSave        bool
 }
 
 type playerMovementSnapshot struct {
@@ -165,13 +168,34 @@ func (m *PlayerMovementManager) applyBicycleMapRules(state *PlayerMovementState)
 
 // FlushPlayerPosition immediately saves a player's current position to the database
 // Useful when a player disconnects or warp/teleport happens
-func (m *PlayerMovementManager) FlushPlayerPosition(charID int) {
-	m.mu.RLock()
-	state, ok := m.players[charID]
-	m.mu.RUnlock()
-
-	if ok {
-		m.savePosition(state)
+func (m *PlayerMovementManager) FlushPlayerPosition(charID int) error {
+	m.mu.Lock()
+	state := m.players[charID]
+	if state == nil {
+		m.mu.Unlock()
+		return nil
+	}
+	snapshot := *state
+	state.lastSaveAttempt = time.Now()
+	m.mu.Unlock()
+	if err := commitPlayerPosition(context.Background(), m.wh.database, int64(charID), snapshot.MapID, snapshot.CurrentX, snapshot.CurrentY); err != nil {
+		log.Printf("[PlayerMovement] Save position for %d: %v", charID, err)
+		return err
+	}
+	m.mu.Lock()
+	if current := m.players[charID]; current == state && current.CurrentX == snapshot.CurrentX && current.CurrentY == snapshot.CurrentY && current.MapID == snapshot.MapID {
+		current.LastSaveTime = time.Now()
+		current.positionDirty = false
+	}
+	m.mu.Unlock()
+	return nil
+}
+func (m *PlayerMovementManager) markPositionCommitted(charID, x, y, mapID int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if state := m.players[charID]; state != nil && state.CurrentX == x && state.CurrentY == y && state.MapID == mapID {
+		state.LastSaveTime = time.Now()
+		state.positionDirty = false
 	}
 }
 
@@ -326,6 +350,7 @@ func (m *PlayerMovementManager) UpdatePosition(charID int, x, y, mapID int, dire
 			}
 		}
 	}
+	state.positionDirty = true
 	state.CurrentX = x
 	state.CurrentY = y
 	state.MapID = mapID
@@ -371,6 +396,7 @@ func (m *PlayerMovementManager) UpdateReportedPosition(charID int, x, y, mapID i
 		}
 	}
 
+	state.positionDirty = true
 	state.CurrentX = x
 	state.CurrentY = y
 	state.MapID = mapID
@@ -415,7 +441,7 @@ func (m *PlayerMovementManager) processTick() {
 	m.mu.RLock()
 	candidates := make([]candidate, 0, len(m.players))
 	for id, state := range m.players {
-		if len(state.Path) != 0 {
+		if len(state.Path) != 0 || state.positionDirty {
 			candidates = append(candidates, candidate{id, state.SessionID, state})
 		}
 	}
@@ -446,7 +472,11 @@ func (m *PlayerMovementManager) processCharacterTick(characterID int, expected *
 		return
 	}
 	update, moved := m.advanceCharacterTickLocked(state, time.Now())
+	retry := !moved && state.positionDirty && time.Since(state.lastSaveAttempt) >= 5*time.Second
 	m.mu.Unlock()
+	if (moved && update.shouldSave) || retry {
+		_ = m.FlushPlayerPosition(characterID)
+	}
 	if !moved {
 		return
 	}
@@ -500,6 +530,7 @@ func (m *PlayerMovementManager) advanceCharacterTickLocked(state *PlayerMovement
 	state.CurrentX = nextTile.X
 	state.CurrentY = nextTile.Y
 	state.LastMoveTime = now
+	state.positionDirty = true
 	m.applyBicycleMapRules(state)
 	if state.IsSurfing && m.actorManager != nil {
 		if collisionType, exists := m.actorManager.CollisionTypeAt(state.MapID, state.CurrentX, state.CurrentY); exists && collisionType != collisionWater {
@@ -518,10 +549,7 @@ func (m *PlayerMovementManager) advanceCharacterTickLocked(state *PlayerMovement
 	}
 	shouldSave := isFinished || now.Sub(state.LastSaveTime) >= 5*time.Second
 
-	if shouldSave {
-		m.savePosition(state)
-		state.LastSaveTime = now
-	}
+	update.shouldSave = shouldSave
 	return update, true
 }
 
@@ -646,51 +674,15 @@ func (m *PlayerMovementManager) applyMovementStepEffects(update playerMovementSt
 				return
 			}
 
-			if _, err := endSafariSessionIfLeavingMap(int64(state.CharacterID), state.MapID, wt.DestMapID, m.wh); err != nil {
-				log.Printf("[Safari] Warp exit for %d: %v", state.CharacterID, err)
-				m.StopMovement(state.CharacterID)
-				return
-			}
-
-			m.mu.Lock()
-			previousMapID := state.MapID
-			state.PreviousMapID = previousMapID
-
-			// Update the server-visible position for this forced warp tile.
-			state.CurrentX = wt.DestX
-			state.CurrentY = wt.DestY
-			state.MapID = wt.DestMapID
-			state.Path = nil
-			m.applyBicycleMapRules(state)
-			m.mu.Unlock()
-
-			// Send teleport notification to client
 			if ok && ses.HasValidClient() {
-				ses.PreviousMapID = previousMapID
-				ses.X = float32(wt.DestX)
-				ses.Y = float32(wt.DestY)
-				if m.wh.ActorManager.IsOverworld(wt.DestMapID) {
-					ses.MapID = UnifiedOverworldMapID
-				} else {
-					ses.MapID = wt.DestMapID
+				if _, err := setServerTeleportedPlayerPosition(ses, m.wh, wt.DestMapID, wt.DestX, wt.DestY, "DOWN"); err != nil {
+					log.Printf("[PlayerMovement] Save warp for %d: %v", state.CharacterID, err)
+					m.StopMovement(state.CharacterID)
+					return
 				}
-
-				if char := ses.Client.CharData(); char != nil {
-					char.X = float64(wt.DestX)
-					char.Y = float64(wt.DestY)
-					char.MapID = uint32(ses.MapID) // Use normalized ID (9999 for overworld)
-				}
-
-				broadcastPlayerVisibleMapChange(ses, m.wh, previousMapID)
-
-				ses.SendStreamJSON(map[string]interface{}{
-					"mapId": wt.DestMapID,
-					"x":     wt.DestX,
-					"y":     wt.DestY,
-				}, opcodes.WarpTileTeleportNotify)
-
-				m.savePosition(state)
+				ses.SendStreamJSON(map[string]interface{}{"mapId": wt.DestMapID, "x": wt.DestX, "y": wt.DestY}, opcodes.WarpTileTeleportNotify)
 			}
+
 		}
 	}
 }
@@ -801,6 +793,17 @@ func (m *PlayerMovementManager) MovePlayerTo(charID int, x, y, mapID int, direct
 		m.mu.Unlock()
 		return false
 	}
+	m.mu.Unlock()
+	if err := commitPlayerPosition(context.Background(), m.wh.database, int64(charID), mapID, x, y); err != nil {
+		log.Printf("[PlayerMovement] Save forced move for %d: %v", charID, err)
+		return false
+	}
+	m.mu.Lock()
+	if m.players[charID] != state {
+		m.mu.Unlock()
+		return false
+	}
+	state.positionDirty = true
 	state.CurrentX = x
 	state.CurrentY = y
 	state.MapID = mapID
@@ -812,7 +815,7 @@ func (m *PlayerMovementManager) MovePlayerTo(charID int, x, y, mapID int, direct
 
 	m.syncSessionPosition(state)
 
-	m.savePosition(state)
+	m.markPositionCommitted(charID, x, y, mapID)
 	m.broadcastPosition(state, 0)
 	return true
 }
@@ -905,21 +908,6 @@ func (m *PlayerMovementManager) playerActorForSnapshot(snapshot playerMovementSn
 		MovementSeq:     movementSeq,
 	}
 	return ses, &playerActor, true
-}
-
-// savePosition persists position to database
-func (m *PlayerMovementManager) savePosition(state *PlayerMovementState) {
-	err := db_character.UpdateCharacterPosition(
-		int32(state.CharacterID),
-		uint32(state.MapID),
-		float64(state.CurrentX),
-		float64(state.CurrentY),
-		0, // Z
-		0, // Heading
-	)
-	if err != nil {
-		log.Printf("[PlayerMovement] Failed to save position for player %d: %v", state.CharacterID, err)
-	}
 }
 
 // findPath delegates to the shared A* implementation on PhaserActorManager.

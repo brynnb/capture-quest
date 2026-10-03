@@ -44,8 +44,8 @@ func TestServerTeleportedPlayerDespawnsOldMapAndUpdatesNewMap(t *testing.T) {
 	wh, origin, oldMapMessenger, newMapMessenger, originMessenger := setupPlayerVisibilityWorld(t, 40, 63)
 	wh.PlayerMovement.RegisterPlayer(origin, 7, 4, 4, 40, "DOWN")
 
-	gotMapID := setServerTeleportedPlayerPosition(origin, wh, 63, 2, 7, "UP")
-	if gotMapID != 63 {
+	gotMapID, err := setServerTeleportedPlayerPosition(origin, wh, 63, 2, 7, "UP")
+	if err != nil || gotMapID != 63 {
 		t.Fatalf("setServerTeleportedPlayerPosition mapID = %d, want 63", gotMapID)
 	}
 
@@ -88,6 +88,7 @@ func setupPlayerVisibilityWorld(t *testing.T, oldMapID, newMapID int) (*WorldHan
 	sessionManager.ForEachSession(func(s *session.Session) { s.PublishPresence() })
 	wh := &WorldHandler{
 		sessionManager: sessionManager,
+		database:       db.GlobalWorldDB.DB,
 		ActorRegistry:  NewActorRegistry(),
 		CutTiles:       NewCutTileManager(),
 	}
@@ -117,6 +118,8 @@ func setupPlayerVisibilityTestDB(t *testing.T) {
 			z REAL NOT NULL DEFAULT 0,
 			heading REAL NOT NULL DEFAULT 0
 		);
+		CREATE TABLE character_safari_state(character_id INTEGER PRIMARY KEY,state_json TEXT NOT NULL,updated_at TEXT);
+		CREATE TABLE character_event_flags(character_id INTEGER,flag_name TEXT,PRIMARY KEY(character_id,flag_name));
 		CREATE TABLE character_daycare (
 			character_id INTEGER PRIMARY KEY,
 			pokemon_row_id INTEGER NOT NULL,

@@ -3,8 +3,9 @@
 Status: active. Started 2026-09-25 from `02c51ba`.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-durable Safari visits, battles and captures (2026-10-02), following durable
-Repel checkpoint `adaa047` and FLY checkpoint `b785d58`.
+shared position persistence and committed teleport publication (2026-10-02),
+following durable Safari checkpoint `19203f2`, Repel checkpoint `adaa047` and
+FLY checkpoint `b785d58`.
 All earlier foundation checkpoints are retained in this
 branch's history. No push or production deployment is authorized by this goal.
 
@@ -49,7 +50,9 @@ evidence, including remaining-work notes that subsequent commits may resolve.
    its position transaction. Repel consumption and activation now share a durable
    transaction, with committed step updates and expiry. Safari payment, visit/battle
    state and captures now share this boundary, as do runtime exhaustion and its
-   saved gate destination. Audit remaining field
+   saved gate destination. Reported positions and forced teleports now commit
+   before live publication; movement saves retain dirty state on failure and
+   release the shared player lock before database work. Audit remaining field
    effects and other mutation paths for the same requirements.
    Extend the shared transaction/domain operations already in use. Acceptance:
    a late failure leaves all affected state unchanged; retry and concurrent
@@ -65,8 +68,9 @@ evidence, including remaining-work notes that subsequent commits may resolve.
    failure. Acceptance: replay does not duplicate effects, and reconnect can
    recover the committed outcome without relying on an old session token.
 4. **Finish ownership and bounded shutdown.** Audit remaining NPC callbacks,
-   timers and shared world writers, including legacy map-exit position ordering; propagate cancellation into running
-   work. Replace unbounded shutdown waits with a documented drain deadline and
+   timers and shared world writers; define disconnect behavior when the final
+   position flush fails and propagate cancellation into running work.
+   Replace unbounded shutdown waits with a documented drain deadline and
    failure policy that preserves persistence ordering. Acceptance: shutdown
    during gameplay terminates predictably, persists accepted work as specified,
    and does not close the database while owned work still uses it.
@@ -81,6 +85,50 @@ evidence, including remaining-work notes that subsequent commits may resolve.
    cancellation/timeouts, failure/retry and shutdown with active players.
    Acceptance: evidence covers the original five milestones, including visible
    behavior where relevant. Only then mark the full goal complete.
+
+## Position persistence checkpoint (2026-10-02)
+
+The old movement saver used the global database while holding the shared player
+lock. It could record `LastSaveTime` despite a failed save. Several teleport
+callers changed session/movement state or sent a destination before persistence.
+
+Position writers now use the world's captured database and the existing bounded
+character-locked transaction. Destination changes and Safari exit cleanup commit
+together. `publishCommittedPlayerPosition` only publishes a previously committed
+position; it performs no second write. DIG, TELEPORT, elevator travel, forced warp
+tiles, local debug jumps and invalid-position recovery propagate save failures
+before publishing destination success. Client position reports and map requests
+with destination coordinates also save before changing live state.
+
+Movement flushes snapshot coordinates under the shared lock, release it for
+database work, and mark only the same registration and matching coordinates as
+saved after commit. Failed saves retain dirty state for a later tick retry.
+Ordinary forced-path movement remains responsive before its periodic save;
+walking, encounters and other step effects are not one atomic transaction.
+
+Verification and limits are recorded here with this checkpoint. PostgreSQL
+failure tests cover deferred commit rejection, Safari exit rollback, rejected
+position/map requests through the opcode dispatcher, destination preservation
+when the old saved position is invalid, failed-flush retry, blocked
+database writes releasing the movement lock, stale-snapshot bookkeeping and
+caller cancellation while waiting for the character row lock. These are runtime
+state/database checks. Separately, all seven rendered field-move/Safari tests
+passed (43.0 seconds), covering Surf input, Cut interaction, Safari entry,
+battle run and step exhaustion. Evidence is retained at
+`/var/tmp/capturequest-rendered.iSHhFr`. These checks do not establish throughput
+or complete transport recovery.
+
+Remaining work includes transactional eligibility/catalog reads for legacy
+field moves, validation of client-authorized map/position changes, durable command
+identity and result recovery, and end-to-end cancellation. Disconnect cleanup
+still logs a failed final flush and continues releasing ownership; its failure
+policy needs to be defined with bounded active-player shutdown. The other full
+goal requirements in the roadmap above remain active.
+
+Recommended next step: define the final-flush failure policy and implement
+bounded shutdown with cancellation and database-close ordering, then prove it
+through active-player integration tests. This checkpoint is local only; it does
+not push or deploy the branch.
 
 ## Pre-Safari branch handoff (2026-10-02)
 
@@ -120,11 +168,13 @@ in the full roadmap above.
 
 ## Verification and release boundary
 
-At `a6a8392`, the disposable PostgreSQL runner passed race-enabled suites for
-`internal/world`, `internal/pokebattle`, `internal/scriptsim`, `internal/server`
-and `internal/session`. All Go packages compiled; `npm run typecheck` passed;
+For the position checkpoint, the disposable PostgreSQL runner passed the new
+failure/cancellation tests and the race-enabled `internal/world`,
+`internal/scriptsim` and `internal/session` suites. All Go packages compiled;
+`npm run typecheck` passed, and seven isolated rendered field-move/Safari checks
+passed. Runtime assets passed the isolated runner's preflight validation;
 canonical `npm run tygo` left generated contracts unchanged. Earlier checkpoints
-record their relevant production-build and runtime-asset checks below.
+record their relevant build, asset and rendered checks below.
 
 These checks establish the tested local behavior. They do **not** establish a
 complete rendered gameplay flow, production deployment, or completion of the
@@ -133,7 +183,8 @@ Reproducible PostgreSQL commands are at the end of this document. Read
 [`DEPLOYMENT.md`](DEPLOYMENT.md) immediately before any separately requested
 deployment, and complete its applicable workflow and live checks.
 
-Continue with item 1 above. Keep this current summary synchronized with coherent
+Continue with the position checkpoint's recommended shutdown/final-flush work.
+Keep this current summary synchronized with coherent
 checkpoint commits; retain the original milestone acceptance criteria below.
 
 ## Durable Safari checkpoint (2026-10-02)

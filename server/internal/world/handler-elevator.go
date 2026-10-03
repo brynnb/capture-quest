@@ -85,7 +85,11 @@ func HandleElevatorSelectRequest(ses *session.Session, payload []byte, wh *World
 	}
 
 	// Teleport the player to the selected floor
-	setServerTeleportedPlayerPosition(ses, wh, req.FloorMapID, floor.DestX, floor.DestY, "DOWN")
+	if _, err := setServerTeleportedPlayerPosition(ses, wh, req.FloorMapID, floor.DestX, floor.DestY, "DOWN"); err != nil {
+		log.Printf("[Elevator] Save destination for %d: %v", char.ID, err)
+		SendSystemMessage(ses, "Could not save the destination. Please try again.")
+		return false
+	}
 
 	// Send teleport notification to client
 	ses.SendStreamJSON(map[string]interface{}{

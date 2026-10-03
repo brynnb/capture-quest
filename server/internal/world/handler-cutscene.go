@@ -490,7 +490,7 @@ func setCutscenePlayerPosition(ses *session.Session, wh *WorldHandler, charID in
 		return
 	}
 
-	applyServerTeleportedPlayerPosition(ses, wh, mapID, x, y, direction, false)
+	publishCommittedPlayerPosition(ses, wh, mapID, x, y, direction)
 }
 
 func sendCutsceneSystemMessage(ses *session.Session, message string) {

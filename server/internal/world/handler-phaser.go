@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -10,7 +11,6 @@ import (
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
-	db_character "capturequest/internal/db/character"
 	"capturequest/internal/session"
 )
 
@@ -153,10 +153,12 @@ func HandlePhaserMapInfoRequest(ses *session.Session, payload []byte, wh *WorldH
 		return false
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	var mapInfo PhaserMapInfo
 	if req.MapID == UnifiedOverworldMapID {
 		var minX, minY, maxX, maxY sql.NullInt64
-		if err := db.GlobalWorldDB.DB.QueryRow(`
+		if err := wh.database.QueryRowContext(ctx, `
 			SELECT MIN(x), MIN(y), MAX(x), MAX(y)
 			FROM phaser_tiles
 			WHERE map_id IS NULL AND is_tile_erased = 0`).Scan(&minX, &minY, &maxX, &maxY); err != nil {
@@ -178,7 +180,7 @@ func HandlePhaserMapInfoRequest(ses *session.Session, payload []byte, wh *WorldH
 			mapInfo.Height = maxYV - minYV + 1
 		}
 	} else {
-		err := db.GlobalWorldDB.DB.QueryRow(`
+		err := wh.database.QueryRowContext(ctx, `
 			SELECT id, name, width, height, tileset_id, is_overworld
 			FROM phaser_maps WHERE id = $1`, req.MapID).Scan(
 			&mapInfo.ID, &mapInfo.Name, &mapInfo.Width, &mapInfo.Height, &mapInfo.TilesetID, &mapInfo.IsOverworld)
@@ -189,6 +191,14 @@ func HandlePhaserMapInfoRequest(ses *session.Session, payload []byte, wh *WorldH
 		}
 	}
 
+	if req.DestX != nil && req.DestY != nil && ses.HasValidClient() {
+		if err := commitPlayerPosition(context.Background(), wh.database, int64(ses.Client.CharData().ID), normalizedVisiblePlayerMapID(wh, mapInfo.ID), *req.DestX, *req.DestY); err != nil {
+			log.Printf("[Phaser] Save map destination: %v", err)
+			ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not save the destination. Please try again."}, opcodes.PhaserMapInfoResponse)
+			return false
+		}
+		refreshSafariFlags(wh, int64(ses.Client.CharData().ID))
+	}
 	ses.SendStreamJSON(mapInfo, opcodes.PhaserMapInfoResponse)
 
 	// Normalize overworld maps to the unified ID for session tracking
@@ -213,8 +223,15 @@ func HandlePhaserMapInfoRequest(ses *session.Session, payload []byte, wh *WorldH
 	if ses.HasValidClient() {
 		char := ses.Client.CharData()
 		if char != nil {
-			if recoverInvalidCharacterPosition(ses, wh) {
-				char = ses.Client.CharData()
+			// A supplied destination has already committed. Recover only when
+			// loading the saved position, or recovery would overwrite that commit.
+			if req.DestX == nil || req.DestY == nil {
+				if recovered, err := recoverInvalidCharacterPosition(ses, wh); err != nil {
+					log.Printf("[Phaser] Recover position: %v", err)
+					return false
+				} else if recovered {
+					char = ses.Client.CharData()
+				}
 			}
 			if req.DestX != nil && req.DestY != nil {
 				// Warp: update position atomically so fetchActors returns correct position
@@ -228,7 +245,7 @@ func HandlePhaserMapInfoRequest(ses *session.Session, payload []byte, wh *WorldH
 
 				// Sync with movement manager
 				wh.PlayerMovement.UpdatePosition(int(char.ID), *req.DestX, *req.DestY, normalizedID, "DOWN")
-				wh.PlayerMovement.FlushPlayerPosition(int(char.ID))
+				wh.PlayerMovement.markPositionCommitted(int(char.ID), *req.DestX, *req.DestY, normalizedID)
 				broadcastPlayerVisibleMapChange(ses, wh, previousVisibleMapID)
 			} else {
 				charMapID := int(char.MapID)
@@ -316,13 +333,21 @@ func currentPlayerVisibleMapID(ses *session.Session, wh *WorldHandler, charID in
 	return 0
 }
 
-func setServerTeleportedPlayerPosition(ses *session.Session, wh *WorldHandler, mapID, x, y int, direction string) int {
-	return applyServerTeleportedPlayerPosition(ses, wh, mapID, x, y, direction, true)
+func setServerTeleportedPlayerPosition(ses *session.Session, wh *WorldHandler, mapID, x, y int, direction string) (int, error) {
+	if ses == nil || !ses.HasValidClient() {
+		return 0, fmt.Errorf("teleport requires a character")
+	}
+	normalizedMapID := normalizedVisiblePlayerMapID(wh, mapID)
+	if err := commitPlayerPosition(context.Background(), wh.database, int64(ses.Client.CharData().ID), normalizedMapID, x, y); err != nil {
+		return 0, err
+	}
+	refreshSafariFlags(wh, int64(ses.Client.CharData().ID))
+	return publishCommittedPlayerPosition(ses, wh, mapID, x, y, direction), nil
 }
 
-// persist=false publishes a position already saved by the caller's successful
-// transaction. Never issue a second independent write for that durable effect.
-func applyServerTeleportedPlayerPosition(ses *session.Session, wh *WorldHandler, mapID, x, y int, direction string, persist bool) int {
+// Publication accepts only a position saved by the caller's successful commit.
+// It never writes storage or independently clears gameplay state.
+func publishCommittedPlayerPosition(ses *session.Session, wh *WorldHandler, mapID, x, y int, direction string) int {
 	normalizedDirection := normalizeWarpDirection(direction)
 	if normalizedDirection == "" {
 		normalizedDirection = "DOWN"
@@ -339,13 +364,6 @@ func applyServerTeleportedPlayerPosition(ses *session.Session, wh *WorldHandler,
 
 	charID := int(char.ID)
 	previousMapID := currentPlayerVisibleMapID(ses, wh, charID)
-	if persist && previousMapID != 0 {
-		if _, err := endSafariSessionIfLeavingMap(int64(char.ID), previousMapID, normalizedMapID, wh); err != nil {
-			log.Printf("[Safari] Teleport exit for %d: %v", char.ID, err)
-			return previousMapID
-		}
-	}
-
 	ses.X = float32(x)
 	ses.Y = float32(y)
 	ses.MapID = normalizedMapID
@@ -358,25 +376,9 @@ func applyServerTeleportedPlayerPosition(ses *session.Session, wh *WorldHandler,
 			wh.PlayerMovement.RegisterPlayer(ses, charID, x, y, normalizedMapID, normalizedDirection)
 		}
 		wh.PlayerMovement.UpdatePosition(charID, x, y, normalizedMapID, normalizedDirection)
-		if persist {
-			wh.PlayerMovement.FlushPlayerPosition(charID)
-		}
-	} else if persist && db.GlobalWorldDB != nil && db.GlobalWorldDB.DB != nil {
-		if err := db_character.UpdateCharacterPosition(
-			int32(char.ID),
-			uint32(normalizedMapID),
-			float64(x),
-			float64(y),
-			0,
-			0,
-		); err != nil {
-			log.Printf("[Phaser] Failed to save teleported player %d at map %d (%d,%d): %v",
-				char.ID, normalizedMapID, x, y, err)
-		}
-	} else if persist {
-		log.Printf("[Phaser] Skipped saving teleported player %d at map %d (%d,%d): database unavailable",
-			int32(char.ID),
-			normalizedMapID, x, y)
+	}
+	if wh != nil && wh.PlayerMovement != nil {
+		wh.PlayerMovement.markPositionCommitted(charID, x, y, normalizedMapID)
 	}
 
 	if wh == nil || wh.ActorManager == nil {
@@ -902,6 +904,14 @@ func HandlePhaserPlayerPositionUpdate(ses *session.Session, payload []byte, wh *
 			(prevMapID != mapID || prevX != req.X || prevY != req.Y)
 	mapChanged := prevMapID != 0 && prevMapID != mapID
 
+	if err := commitPlayerPosition(context.Background(), wh.database, int64(char.ID), mapID, req.X, req.Y); err != nil {
+		log.Printf("[Phaser] Save reported position for %d: %v", char.ID, err)
+		SendSystemMessage(ses, "Could not save your position. Please try again.")
+		return false
+	}
+	if mapChanged {
+		refreshSafariFlags(wh, int64(char.ID))
+	}
 	ses.X = float32(req.X)
 	ses.Y = float32(req.Y)
 	ses.MapID = mapID
@@ -915,7 +925,7 @@ func HandlePhaserPlayerPositionUpdate(ses *session.Session, payload []byte, wh *
 			wh.PlayerMovement.RegisterPlayer(ses, int(char.ID), req.X, req.Y, mapID, direction)
 		}
 		wh.PlayerMovement.UpdateReportedPosition(int(char.ID), req.X, req.Y, mapID, direction)
-		wh.PlayerMovement.FlushPlayerPosition(int(char.ID))
+		wh.PlayerMovement.markPositionCommitted(int(char.ID), req.X, req.Y, mapID)
 	}
 
 	if sameTileFacing && wh.PlayerMovement != nil {
@@ -968,13 +978,6 @@ func handleClientReportedStepEffects(ses *session.Session, wh *WorldHandler, cha
 	if ses == nil || wh == nil {
 		return
 	}
-	if mapChanged {
-		if _, err := endSafariSessionIfLeavingMap(charID, previousMapID, mapID, wh); err != nil {
-			log.Printf("[Safari] Reported map exit for %d: %v", charID, err)
-			SendSystemMessage(ses, "Safari state is unavailable. Please try again.")
-			return
-		}
-	}
 	state := &PlayerMovementState{
 		SessionID:   ses.SessionID,
 		CharacterID: int(charID),
@@ -1019,7 +1022,10 @@ func SendPlayerSpawn(ses *session.Session, wh *WorldHandler) {
 	if char == nil {
 		return
 	}
-	recoverInvalidCharacterPosition(ses, wh)
+	if _, err := recoverInvalidCharacterPosition(ses, wh); err != nil {
+		log.Printf("[Phaser] Recover position: %v", err)
+		return
+	}
 	char = ses.Client.CharData()
 	if char == nil {
 		return
@@ -1116,13 +1122,13 @@ func isInvalidZeroPlayerPosition(x, y int) bool {
 	return x == 0 && y == 0
 }
 
-func recoverInvalidCharacterPosition(ses *session.Session, wh *WorldHandler) bool {
+func recoverInvalidCharacterPosition(ses *session.Session, wh *WorldHandler) (bool, error) {
 	if ses == nil || !ses.HasValidClient() {
-		return false
+		return false, nil
 	}
 	char := ses.Client.CharData()
 	if char == nil || !isInvalidZeroPlayerPosition(int(char.X), int(char.Y)) {
-		return false
+		return false, nil
 	}
 
 	mapID := RecoverySpawnMap
@@ -1133,33 +1139,11 @@ func recoverInvalidCharacterPosition(ses *session.Session, wh *WorldHandler) boo
 		sessionMapID = UnifiedOverworldMapID
 	}
 
-	log.Printf("[Phaser] Recovered invalid saved position for player %d to map %d (%d,%d)",
-		char.ID, mapID, x, y)
-	char.X = RecoverySpawnX
-	char.Y = RecoverySpawnY
-	char.Z = RecoverySpawnZ
-	char.MapID = uint32(sessionMapID)
-	ses.X = float32(x)
-	ses.Y = float32(y)
-	ses.MapID = sessionMapID
-
-	if db.GlobalWorldDB != nil && db.GlobalWorldDB.DB != nil {
-		if err := db_character.UpdateCharacterPosition(
-			int32(char.ID),
-			uint32(mapID),
-			RecoverySpawnX,
-			RecoverySpawnY,
-			RecoverySpawnZ,
-			0,
-		); err != nil {
-			log.Printf("[Phaser] Failed to persist recovered position for player %d: %v", char.ID, err)
-		}
+	if _, err := setServerTeleportedPlayerPosition(ses, wh, mapID, x, y, RecoverySpawnDirection); err != nil {
+		return false, err
 	}
-
-	if wh != nil && wh.PlayerMovement != nil {
-		wh.PlayerMovement.UpdatePosition(int(char.ID), x, y, sessionMapID, RecoverySpawnDirection)
-	}
-	return true
+	log.Printf("[Phaser] Recovered invalid saved position for player %d to map %d (%d,%d)", char.ID, sessionMapID, x, y)
+	return true, nil
 }
 
 // RegisterPlayerForMovement registers a player with the movement manager when they spawn
