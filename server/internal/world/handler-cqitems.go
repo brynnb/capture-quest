@@ -3,11 +3,9 @@ package world
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 
 	"capturequest/internal/api/opcodes"
-	"capturequest/internal/db"
 	"capturequest/internal/db/cqitems"
 	"capturequest/internal/itemuse"
 	"capturequest/internal/session"
@@ -90,62 +88,28 @@ func HandleCQMerchantOpenRequest(ses *session.Session, payload []byte, wh *World
 		MerchantID int32 `json:"merchantId"`
 		MapID      int32 `json:"mapId"`
 	}
-	if err := json.Unmarshal(payload, &req); err != nil {
+	if err := decodePlayerMovement(payload, &req); err != nil {
 		log.Printf("[CQItems] Failed to unmarshal merchant open request: %v", err)
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Invalid shop request"}, opcodes.CQMerchantOpenResponse)
 		return false
 	}
 
-	var merchant *cqitems.CQMerchant
-	var err error
-
-	if req.MerchantID > 0 {
-		merchant, err = cqitems.NewStore(db.GlobalWorldDB.DB).GetMerchantByID(req.MerchantID)
-	} else if req.MapID > 0 {
-		// Look up merchant(s) by map ID — use the first one found
-		merchants, merr := cqitems.NewStore(db.GlobalWorldDB.DB).GetMerchantsByMapID(req.MapID)
-		if merr != nil || len(merchants) == 0 {
-			log.Printf("[CQItems] No merchant on map %d: %v", req.MapID, merr)
-			ses.SendStreamJSON(map[string]interface{}{
-				"success": false,
-				"error":   "No shop on this map",
-			}, opcodes.CQMerchantOpenResponse)
-			return false
-		}
-		merchant = &merchants[0]
-		err = nil
-	} else {
-		err = fmt.Errorf("no merchantId or mapId provided")
-	}
-
-	if err != nil || merchant == nil {
-		log.Printf("[CQItems] Merchant not found: %v", err)
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "Merchant not found",
-		}, opcodes.CQMerchantOpenResponse)
+	// The selector can narrow a shop on the owned map, never move authority
+	// to a client-provided map. Clerk reach/eligibility is a separate migration.
+	if req.MerchantID < 0 || req.MapID < 0 || (req.MerchantID == 0 && req.MapID == 0) ||
+		(req.MapID > 0 && req.MapID != int32(ses.MapID)) || wh.Economy == nil {
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Shop unavailable here"}, opcodes.CQMerchantOpenResponse)
 		return false
 	}
-
-	// Collect items from all merchants on this map (for dept stores with multiple clerks)
-	var allItems []cqitems.CQMerchantItem
-	if req.MapID > 0 {
-		merchants, _ := cqitems.NewStore(db.GlobalWorldDB.DB).GetMerchantsByMapID(req.MapID)
-		for _, m := range merchants {
-			items, _ := cqitems.NewStore(db.GlobalWorldDB.DB).GetMerchantItems(m.ID)
-			allItems = append(allItems, items...)
-		}
-	} else {
-		allItems, _ = cqitems.NewStore(db.GlobalWorldDB.DB).GetMerchantItems(merchant.ID)
+	menu, err := wh.Economy.Open(ses.CommandContext(), int32(ses.Client.CharData().ID), int32(ses.MapID), req.MerchantID)
+	if err != nil {
+		log.Printf("[CQItems] Merchant read failed: %v", err)
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not read this shop"}, opcodes.CQMerchantOpenResponse)
+		return false
 	}
-
-	money, _ := cqitems.NewStore(db.GlobalWorldDB.DB).GetCharacterMoney(int32(ses.Client.CharData().ID))
-
 	ses.SendStreamJSON(map[string]interface{}{
-		"success":    true,
-		"merchantId": merchant.ID,
-		"name":       merchant.Name,
-		"items":      allItems,
-		"money":      money,
+		"success": true, "merchantId": menu.MerchantID, "name": menu.Name,
+		"items": menu.Items, "money": menu.Money,
 	}, opcodes.CQMerchantOpenResponse)
 	return false
 }

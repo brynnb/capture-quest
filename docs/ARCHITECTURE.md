@@ -179,6 +179,14 @@ We follow a **"Model-First"** architecture. Data is categorized into distinct st
   before reading mutable balances/quantities and publish success only after commit.
 - **Offers**: Each shop offer includes its merchant ID. A department store can show
   several clerks' offers, but a purchase must identify the selected offer's owner.
+  Merchant opening uses `internal/economy.Service.Open` with the server-owned map
+  and injected database. The canonical importer resolves `cq_merchants.map_id`;
+  display-name similarity is not runtime authorization. One bounded transaction
+  takes a read-only character row lock, reads all selected offers and the wallet,
+  and returns nothing on any read/commit failure. Empty offers are an explicit
+  array. This reader does not yet establish clerk reach or script eligibility;
+  the remaining interaction and correlated scene-response migration is tracked
+  in `SERVER_FOUNDATIONS.md`.
 - **Wire types**: Generate inventory types from `internal/db/cqitems/types.go`;
   do not duplicate those interfaces in client stores.
 - **Party item use**: `internal/itemuse.Service` owns outside-battle party item

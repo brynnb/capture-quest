@@ -13,6 +13,49 @@ import (
 	"capturequest/internal/testdb"
 )
 
+func TestMerchantOpenDispatchUsesInjectedOwnedMapAndRejectsReadFailures(t *testing.T) {
+	database := testdb.Postgres(t)
+	previous := db.GlobalWorldDB
+	db.GlobalWorldDB = nil
+	t.Cleanup(func() { db.GlobalWorldDB = previous })
+	testdb.Exec(t, database, `INSERT INTO character_data(id,name) VALUES(1,'one');
+		INSERT INTO character_wallet VALUES(1,100);
+		INSERT INTO cq_items(id,name,short_name,price) VALUES(1,'Potion','POTION',10);
+		INSERT INTO cq_merchants(id,name,map_id) VALUES(1,'Shop',38),(2,'Remote',39);
+		INSERT INTO cq_merchant_items(merchant_id,item_id) VALUES(1,1),(2,1);`)
+	messages := &recordingMessenger{}
+	ses := &session.Session{Authenticated: true, MapID: 38, Client: &testSessionClient{char: &model.CharacterData{ID: 1}}, Messenger: messages}
+	registry := NewWorldOpCodeRegistry()
+	registry.WH = &WorldHandler{Economy: economy.New(database)}
+	check := func(payload string, wantSuccess bool) {
+		t.Helper()
+		messages.streams = nil
+		registry.HandleWorldPacket(ses, clientPacket(opcodes.CQMerchantOpenRequest, payload))
+		var result struct {
+			Success bool
+			Money   int64
+			Items   []cqitems.CQMerchantItem
+			Error   string
+		}
+		if len(messages.streams) != 1 || messages.streams[0].opcode != opcodes.CQMerchantOpenResponse || json.Unmarshal(messages.streams[0].payload, &result) != nil || result.Success != wantSuccess {
+			t.Fatalf("request=%s response=%+v", payload, messages.streams)
+		}
+		if wantSuccess && (result.Money != 100 || len(result.Items) != 1) {
+			t.Fatalf("incomplete menu=%+v", result)
+		}
+		if !wantSuccess && (result.Error == "" || result.Items != nil) {
+			t.Fatalf("partial failure=%+v", result)
+		}
+	}
+	check(`{"mapId":38}`, true)
+	check(`{"merchantId":1}`, true)
+	for _, payload := range []string{`{"mapId":39}`, `{"merchantId":2}`, `{"merchantId":1,"mapId":39}`, `{}`, `{"mapId":38,"unexpected":1}`, `{"mapId":-1}`} {
+		check(payload, false)
+	}
+	testdb.Exec(t, database, `DROP TABLE character_wallet`)
+	check(`{"mapId":38}`, false)
+}
+
 func TestMerchantDispatchPublishesOnlyCommittedResults(t *testing.T) {
 	database := testdb.Postgres(t)
 	previous := db.GlobalWorldDB

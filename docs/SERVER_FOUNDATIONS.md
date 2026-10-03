@@ -3,7 +3,7 @@
 Status: active. Started 2026-09-25 from `02c51ba`.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-`21fd084` — durable shop revisions and correlated command recovery, following explicit isolated simulator targeting `74defe0` and committed shop inventory snapshots `5082a39` and coherent inventory/wallet/party/flag recovery `129463c` and ordinary step crash acceptance `e0ecf41`, issued cutscene and creation-only fixtures `8c95d40`, move-choice acceptance `e0da0c4` and terminal Safari acceptance `9bf3630`
+injected merchant reads and owned-map selection, following `21fd084` — durable shop revisions and correlated command recovery, explicit isolated simulator targeting `74defe0` and committed shop inventory snapshots `5082a39` and coherent inventory/wallet/party/flag recovery `129463c` and ordinary step crash acceptance `e0ecf41`, issued cutscene and creation-only fixtures `8c95d40`, move-choice acceptance `e0da0c4` and terminal Safari acceptance `9bf3630`
 (2026-10-03), following rendered capture recovery `fbe744e`, simulator contract migration `9f59dd3`, expiry presentation recovery `54dbef6`, guarded Safari commands `d673aea`, durable capture placement and terminal login retention `58d0b85`, rendered move-choice recovery `7eb3a7e`, move-choice storage/coordinator acceptance `072ad71`, blackout scene ownership `04579dc`, terminal dismissal/post-battle plans `8ce43ff`, current-owned gameplay recovery `c38a74c`, correlated battle recovery `30fa1bb` and network battle command identity `8a5ba4a`, coherent gameplay recovery `c0d31f9` and durable cutscene issuance/completion `e9eb834`, pending trainer encounters `84f2d91` and ordinary-step receipts `80a544c`, following atomic movement-step effects `cfdeb9e`, retirement of the client coordinate setter `2df1db0`, correlated cutscene completion `6638a63`, issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
 `0585dde`, committed
 blackout/recovery `2f62595`, teleport notification projection `65a5581`, Instant
@@ -90,15 +90,15 @@ number of commits or passing tests. All five areas still have outstanding work.
 
 ### Next work and completion criteria
 
-The immediate next checkpoint is merchant opening. The current handler uses
-global database reads, discards some lookup errors, and accepts merchant/map
-selectors without the shared visible-actor reach check. Audit the source merchant
-and clerk relationships before changing eligibility or department-store offers.
-Then use injected, bounded reads with explicit failures and correlate the reply
+The immediate next checkpoint is merchant interaction authority. Opening now
+uses injected, bounded reads with explicit failures and rejects remote maps and
+merchant IDs, as documented below. It still accepts same-map selectors without
+the shared visible-actor reach check. Finish the source script-eligibility audit
+before changing clerk eligibility or department-store offers. Correlate the reply
 to the requesting character and live scene so a delayed response cannot reopen
 a retired shop. Verify rejected remote/unreachable interactions, read failures,
 cancellation and late replies through focused tests and the rendered interaction
-boundary. This work is planned, not included in `21fd084`.
+boundary. Reach, eligibility and response retirement remain planned work.
 
 Continue with recovery integration for the remaining mutation commands and the
 remaining script/trainer plans and their queue/source/catalog ordering. Ordinary
@@ -118,6 +118,50 @@ legacy behavior and verification limits; a narrow passing checkpoint does not
 close the broad goal. Production validation belongs to a separately authorized
 deployment. Current work is committed locally; nothing has been pushed or
 deployed by this goal.
+
+## Injected merchant reads and owned-map selection (2026-10-03)
+
+Merchant opening now calls `economy.Service.Open` using the authenticated
+character, server-owned map and injected database. It no longer reads the global
+database or ignores merchant-item/wallet errors. Strict decoding rejects unknown
+fields; invalid selectors and remote maps receive an explicit failure. A selected
+merchant must belong to the owned map. The shared repository uses resolved
+`cq_merchants.map_id`, matching purchase authorization, rather than granting
+access through a similar display name.
+
+Provenance: `server/cmd/import-phaser/runtime_seed.go` defines fourteen merchant
+seeds and resolves their map names to IDs during import. The local extractor
+SQLite's `objects.sprite_name`, `text`, `map_id`, `x` and `y` show eighteen
+`SPRITE_CLERK` actors, including two each on Celadon Mart 2F and 5F. Not every
+clerk sprite is a shopkeeper: that corpus also includes Game Corner clerks and
+the mansion graphic artist. No source or generated assets were changed. The
+reader preserves combined same-map department-store offers and merchant-specific
+selection; clerk/script eligibility cannot be inferred from sprite alone.
+
+One bounded transaction takes a `SELECT ... FOR UPDATE` character lock, loads
+the selected menu and wallet, and returns only after commit. It never writes the
+character or creates a wallet. The existing absent-wallet policy yields zero;
+query errors and invalid balances fail the complete read. Empty offers encode
+as `[]`. Failure returns an empty result instead of publishing a partial menu.
+
+Focused isolated PostgreSQL race checks passed for merchant reads and shop
+transactions: economy (2.186 seconds) and world (1.180 seconds). Packet tests
+keep the global database nil and prove injected success, rejected remote map/ID,
+invalid/unknown selectors and wallet failure. Domain tests cover combined offers,
+specific merchants, stale display names, missing characters, offer/wallet failures,
+deadline cancellation while waiting for the character lock, explicit empty offers
+and zero absent wallets, and a trigger that rejects any character write.
+The complete economy and inventory repository race suites also passed
+(2.568 and 1.543 seconds respectively), and `git diff --check` passed.
+These checks prove database/transport behavior, not rendered clerk interactions.
+
+Remaining: same-map selectors still bypass clerk reach and active script
+eligibility. The merchant-open wire remains uncorrelated and its global client
+handler can reopen a retired shop. Migrate this boundary into the existing
+scene-owned coordinator with typed replies, then verify actual clerk interaction,
+cancellation and late responses. Sale policy, rendered sale/process-crash checks,
+party/field command recovery and the other five-area gaps remain open. No push
+or deployment was performed.
 
 ## Durable shop revisions and correlated recovery (2026-10-03)
 

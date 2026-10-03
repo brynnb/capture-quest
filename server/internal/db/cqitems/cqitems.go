@@ -144,18 +144,13 @@ func (s *Store) GetMerchantByID(merchantID int32) (*CQMerchant, error) {
 	return m, nil
 }
 
-// GetMerchantsByMapID finds all merchants on a given map
+// GetMerchantsByMapID uses the canonical importer's resolved map_id, matching
+// purchase authorization. Display-name similarity must not grant map access.
 func (s *Store) GetMerchantsByMapID(mapID int32) ([]CQMerchant, error) {
 	rows, err := s.database.Query(`
 		SELECT cm.id, cm.name, COALESCE(cm.map_name, '')
 		FROM cq_merchants cm
-		LEFT JOIN phaser_maps pm ON pm.id = $1
 		WHERE cm.map_id = $1
-		   OR (
-				pm.name IS NOT NULL
-				AND regexp_replace(lower(COALESCE(cm.map_name, '')), '[^a-z0-9]', '', 'g')
-					= regexp_replace(lower(pm.name), '[^a-z0-9]', '', 'g')
-		   )
 		ORDER BY cm.id
 	`, mapID)
 	if err != nil {
