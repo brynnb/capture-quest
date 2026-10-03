@@ -751,3 +751,12 @@ are retired by their session owners. The optional chat bridge owns one worker
 with cancellable HTTP deliveries/retry timers and safe close-before-start.
 Legacy uncooperative operations and WebTransport reader/listener joins still
 require coverage; force-close is reported as failed graceful drain.
+
+Transport lifecycle ownership is shared by WebSocket and WebTransport upgrade
+handlers/readers. Admissions seal at drain start; the listener and admitted tasks
+join before storage closes. HTTP/3 ConnContext owns accepted QUIC connections,
+which close before UDP is released so peers receive termination and blocked
+stream operations wake. quic-go v0.44.0 fixes the observed datagram error race
+and includes the earlier ConnContext fix; webtransport-go remains v0.8.0.
+Real Go transport checks cover idle/partial control streams and datagrams; they
+do not replace integrated active-player persistence or rendered browser checks.

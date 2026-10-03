@@ -63,6 +63,10 @@ type Server struct {
 	httpHandlers      sync.WaitGroup
 	database          *sql.DB
 	wtServer          *webtransport.Server
+	wtDone            chan struct{}
+	transportMu       sync.Mutex
+	transportTasks    sync.WaitGroup
+	quicConnections   map[quic.Connection]struct{}
 	worldHandler      worldRuntime
 	sessionManager    *session.SessionManager
 	sessions          map[int]*webtransport.Session
@@ -195,13 +199,7 @@ func (s *Server) StartServer() error {
 		return err
 	}
 
-	// Serve WebTransport on the pre-bound UDP socket
-	go func() {
-		log.Printf("Starting WebTransport server on UDP port %d (HTTP/3)", port)
-		if err := s.wtServer.Serve(udpConn); err != nil {
-			s.reportServeFailure(fmt.Errorf("WebTransport serve: %w", err))
-		}
-	}()
+	s.serveWebTransport(udpConn)
 	s.ready.Store(true)
 	return nil
 }
@@ -221,6 +219,12 @@ func envPort(name string, fallback int) int {
 // makeCaptureQuestHandler upgrades HTTP to WebTransport and manages session lifecycles.
 func (s *Server) makeCaptureQuestHandler() http.HandlerFunc {
 	return func(rw http.ResponseWriter, r *http.Request) {
+		done, admitted := s.ownTransportTask()
+		if !admitted {
+			http.Error(rw, "Server shutting down", http.StatusServiceUnavailable)
+			return
+		}
+		defer done()
 		// The shipped browser reconnects by authenticating a fresh connection.
 		// Never attach an existing authenticated session using its ID or IP.
 		if r.URL.Query().Get("sid") != "" && r.URL.Query().Get("sid") != "0" {
@@ -245,7 +249,9 @@ func (s *Server) makeCaptureQuestHandler() http.HandlerFunc {
 			_ = s.CloseSession(sessObj.SessionID)
 			return
 		}
-		go s.acceptClientControlStream(sessObj, sess)
+		if !s.startTransportTask(func() { s.acceptClientControlStream(sessObj, sess) }) {
+			s.handleSessionClose(sessObj.SessionID)
+		}
 	}
 }
 
@@ -268,7 +274,7 @@ func (s *Server) acceptClientControlStream(sessObj *session.Session, sess *webtr
 	}
 	// Exactly one control stream owns reliable commands and responses. Extra
 	// streams must never replace it or execute concurrent commands.
-	go func() {
+	if !s.startTransportTask(func() {
 		extra, err := sess.AcceptStream(sess.Context())
 		if err != nil {
 			return
@@ -276,8 +282,12 @@ func (s *Server) acceptClientControlStream(sessObj *session.Session, sess *webtr
 		extra.CancelRead(0)
 		extra.CancelWrite(0)
 		s.handleSessionClose(sessObj.SessionID)
-	}()
-	go s.handleDatagrams(sessObj, sess)
+	}) {
+		return
+	}
+	if !s.startTransportTask(func() { s.handleDatagrams(sessObj, sess) }) {
+		return
+	}
 	s.handleControlStream(sessObj, ctrl)
 }
 
@@ -418,6 +428,15 @@ func (s *Server) drain() {
 		}
 		worldDone <- err
 	}()
+	wtClosed := make(chan error, 1)
+	go func() {
+		var err error
+		s.closeQUICConnections()
+		if s.wtServer != nil {
+			err = s.wtServer.Close()
+		}
+		wtClosed <- err
+	}()
 	if s.httpCancel != nil {
 		s.httpCancel()
 	}
@@ -443,12 +462,16 @@ func (s *Server) drain() {
 		s.httpHandlerMu.Unlock()
 		s.httpHandlers.Wait()
 	}
-	if s.wtServer != nil {
-		_ = s.wtServer.Close()
-	}
+	s.stopErr = errors.Join(s.stopErr, <-wtClosed)
 	if s.udpConn != nil {
 		_ = s.udpConn.Close()
 	}
+	if s.wtDone != nil {
+		<-s.wtDone
+	}
+	s.transportMu.Lock()
+	s.transportMu.Unlock()
+	s.transportTasks.Wait()
 	s.stopErr = errors.Join(s.stopErr, <-worldDone)
 	if s.database != nil {
 		s.stopErr = errors.Join(s.stopErr, s.database.Close())

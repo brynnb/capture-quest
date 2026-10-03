@@ -196,3 +196,40 @@ func TestHTTPForceCloseInterruptsBodyReadButJoinsHandlerBeforeStorageClose(t *te
 		t.Fatal("joined storage remained open")
 	}
 }
+
+func TestShutdownJoinsOwnedTransportWorkBeforeClosingStorage(t *testing.T) {
+	database, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	s := &Server{database: database}
+	entered, release := make(chan struct{}), make(chan struct{})
+	queried := make(chan error, 1)
+	var once sync.Once
+	t.Cleanup(func() { once.Do(func() { close(release) }); s.StopServer() })
+	if !s.startTransportTask(func() { close(entered); <-release; queried <- database.Ping() }) {
+		t.Fatal("transport task not admitted")
+	}
+	<-entered
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if err := s.StopServerContext(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("unfinished reader shutdown=%v", err)
+	}
+	if err := database.Ping(); err != nil {
+		t.Fatal("storage closed under transport work")
+	}
+	once.Do(func() { close(release) })
+	if err := <-queried; err != nil {
+		t.Fatal(err)
+	}
+	join, cancelJoin := context.WithTimeout(context.Background(), time.Second)
+	defer cancelJoin()
+	if err := s.StopServerContext(join); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Ping(); err == nil {
+		t.Fatal("joined storage remained open")
+	}
+}

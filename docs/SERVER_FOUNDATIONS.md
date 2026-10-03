@@ -3,7 +3,8 @@
 Status: active. Started 2026-09-25 from `02c51ba`.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-shutdown cancellation and HTTP retirement (2026-10-02), following shutdown
+owned transport shutdown (2026-10-02), following HTTP retirement checkpoint
+`5160707`, shutdown
 wait/result checkpoint `d51956c` and lifecycle
 persistence checkpoint `1e26eb7` and effect/script
 cancellation checkpoint `ac06a58` and running-command
@@ -89,6 +90,50 @@ evidence, including remaining-work notes that subsequent commits may resolve.
    cancellation/timeouts, failure/retry and shutdown with active players.
    Acceptance: evidence covers the original five milestones, including visible
    behavior where relevant. Only then mark the full goal complete.
+
+## Owned transport shutdown checkpoint (2026-10-02)
+
+The server now owns completion of the WebTransport listener and a sealed set of
+transport upgrade handlers and reader tasks. WebSocket control readers and
+WebTransport control acceptance, reliable reading, extra-stream detection and
+datagram reading register before launch. Once draining starts, no new transport
+work is admitted. Shutdown joins admitted readers and upgrade handlers before
+closing storage, even if a callback is still returning from world work. The
+listener uses the same failure reporting and explicit completion ownership as
+HTTP. WebTransport closure begins alongside world retirement instead of waiting
+for ordinary HTTP completion.
+
+Initial real-transport tests proved that joining local readers did not close the
+client session. Inspection of pinned `webtransport-go v0.8.0` and quic-go HTTP/3
+showed that server close cancelled local session management and closed listeners;
+accepted QUIC connections also needed an explicit owner. `ConnContext` now
+registers those connections, removes terminated connections, and rejects late
+connections during drain. Shutdown closes owned QUIC connections before releasing
+UDP, interrupting blocked close-capsule/stream operations and notifying peers.
+The client-closure assertions remain unchanged.
+
+A later race run exposed `http3.datagrammer.receiveErr` being read after unlocking
+while `SetReceiveError` wrote it. quic-go is upgraded from `v0.43.0` to `v0.44.0`:
+source comparison verifies the receive error is copied under the mutex in that
+version. This also includes the `ConnContext` regression fix documented in
+[upstream v0.43.1](https://github.com/quic-go/quic-go/releases/tag/v0.43.1).
+webtransport-go stays at `v0.8.0`; the existing stream/JSON contracts are unchanged.
+No race detection or client closure assertion was weakened.
+
+Verification: PostgreSQL-backed world/server race suites passed after the
+upgrade; all Go packages compiled. Twenty repeated race runs of WebTransport and
+owned-transport storage-ordering tests passed. Real QUIC tests cover no control
+stream, idle reliable reading, partial frames, active datagrams, extra-stream
+rejection, client closure, listener completion, sealed reader admission and
+unexpected listener failure reporting. A blocked owned task proves caller
+expiry leaves storage open until a later join. These are Go transport and
+headless persistence checks; browser rendering and simultaneous real-player
+persistence over transport are not proven by this checkpoint.
+
+Next: verify integrated active-player shutdown over the real transport with
+accepted gameplay and final-save failure, then finish cancellation of remaining
+legacy callbacks and durable reconnect/result recovery. The full five-part goal
+and remaining roadmap stay active. Nothing is pushed or deployed.
 
 ## Shutdown cancellation and HTTP retirement checkpoint (2026-10-02)
 

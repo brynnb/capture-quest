@@ -131,6 +131,12 @@ func (s *Server) makeWSHandler() http.HandlerFunc {
 	messenger := newWSMessenger()
 
 	return func(w http.ResponseWriter, r *http.Request) {
+		done, admitted := s.ownTransportTask()
+		if !admitted {
+			http.Error(w, "Server shutting down", http.StatusServiceUnavailable)
+			return
+		}
+		defer done()
 		if r.URL.Query().Get("sid") != "" && r.URL.Query().Get("sid") != "0" {
 			http.Error(w, "Reconnect requires authentication on a new connection", http.StatusBadRequest)
 			return
@@ -162,7 +168,9 @@ func (s *Server) makeWSHandler() http.HandlerFunc {
 			s.handleSessionClose(sessObj.SessionID)
 			return
 		}
-		go s.handleControlStream(sessObj, wsc)
+		if !s.startTransportTask(func() { s.handleControlStream(sessObj, wsc) }) {
+			s.handleSessionClose(sessObj.SessionID)
+		}
 	}
 }
 

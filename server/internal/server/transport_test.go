@@ -151,7 +151,8 @@ func TestTransportsRejectSessionIDTakeoverBeforeUpgrade(t *testing.T) {
 	}
 }
 
-func TestWebTransportSingleControlStreamAndCleanup(t *testing.T) {
+func testWebTransportServer(t *testing.T) (*Server, *transportTestWorld, *webtransport.Session, context.Context) {
+	t.Helper()
 	// Reuse Go's test certificate without starting application certificate
 	// rotation or loading any local/production secrets.
 	certificateServer := httptest.NewTLSServer(http.NotFoundHandler())
@@ -164,30 +165,28 @@ func TestWebTransportSingleControlStreamAndCleanup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer udp.Close()
+	t.Cleanup(func() { udp.Close() })
 	mgr := session.NewSessionManager()
 	world := &transportTestWorld{mgr, make(chan []byte, 4), make(chan int, 4)}
 	srv := &Server{sessionManager: mgr, worldHandler: world, sessions: make(map[int]*webtransport.Session)}
+	srv.udpConn = udp.(*net.UDPConn)
 	srv.wtServer = &webtransport.Server{H3: http3.Server{TLSConfig: tlsConfig, QUICConfig: &quic.Config{EnableDatagrams: true}, Handler: srv.makeCaptureQuestHandler()}}
-	serveDone := make(chan error, 1)
-	go func() { serveDone <- srv.wtServer.Serve(udp) }()
-	t.Cleanup(func() {
-		srv.wtServer.Close()
-		select {
-		case <-serveDone:
-		case <-time.After(2 * time.Second):
-			t.Error("WebTransport listener did not stop")
-		}
-	})
+	srv.serveWebTransport(udp)
 	dialer := &webtransport.Dialer{TLSClientConfig: &tls.Config{RootCAs: pool}}
-	defer dialer.Close()
+	t.Cleanup(func() { dialer.Close() })
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
+	t.Cleanup(cancel)
 	_, conn, err := dialer.Dial(ctx, "https://"+udp.LocalAddr().String()+"/cq", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.CloseWithError(0, "test done")
+	t.Cleanup(func() { conn.CloseWithError(0, "test done") })
+	t.Cleanup(srv.StopServer)
+	return srv, world, conn, ctx
+}
+
+func TestWebTransportSingleControlStreamAndCleanup(t *testing.T) {
+	_, world, conn, ctx := testWebTransportServer(t)
 	stream, err := conn.OpenStreamSync(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -308,5 +307,90 @@ func TestShutdownClosesWebSocketBeforeBlockedHTTPDrain(t *testing.T) {
 	}
 	if err := srv.StopServerContext(context.Background()); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestWebTransportShutdownJoinsListenerAndReaders(t *testing.T) {
+	for _, mode := range []string{"no-control-stream", "idle-control-stream", "partial-frame", "datagram-reader"} {
+		t.Run(mode, func(t *testing.T) {
+			srv, world, conn, ctx := testWebTransportServer(t)
+			if mode != "no-control-stream" {
+				stream, err := conn.OpenStreamSync(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := stream.Write([]byte{4, 0, 0, 0, 11, 0, '{', '}'}); err != nil {
+					t.Fatal(err)
+				}
+				select {
+				case <-world.packets:
+				case <-ctx.Done():
+					t.Fatal("control reader not started")
+				}
+				if mode == "partial-frame" {
+					if _, err := stream.Write([]byte{10, 0, 0, 0, 11}); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if mode == "datagram-reader" {
+					if err := conn.SendDatagram([]byte{11, 0, '{', '}'}); err != nil {
+						t.Fatal(err)
+					}
+					select {
+					case <-world.packets:
+					case <-ctx.Done():
+						t.Fatal("datagram reader not started")
+					}
+				}
+			}
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			if err := srv.StopServerContext(shutdownCtx); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case <-srv.wtDone:
+			default:
+				t.Fatal("shutdown left listener running")
+			}
+			select {
+			case <-conn.Context().Done():
+			case <-shutdownCtx.Done():
+				t.Fatal("client transport remained open")
+			}
+			world.manager.ForEachSession(func(*session.Session) { t.Error("reader did not retire session") })
+			if srv.startTransportTask(func() { t.Error("late reader ran") }) {
+				t.Fatal("draining transport accepted work")
+			}
+			select {
+			case err := <-srv.Errors():
+				t.Fatalf("normal transport shutdown reported listener failure: %v", err)
+			default:
+			}
+		})
+	}
+}
+
+func TestUnexpectedWebTransportListenerFailureReachesOwner(t *testing.T) {
+	srv, _, _, _ := testWebTransportServer(t)
+	srv.ready.Store(true)
+	if err := srv.udpConn.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-srv.Errors():
+		if err == nil {
+			t.Fatal("listener failure missing")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("listener failure did not reach owner")
+	}
+	if !srv.failed.Load() || srv.ready.Load() {
+		t.Fatal("listener failure left readiness healthy")
+	}
+	select {
+	case <-srv.wtDone:
+	case <-time.After(time.Second):
+		t.Fatal("failed listener did not finish")
 	}
 }
