@@ -23,7 +23,7 @@ type characterOwners struct {
 	entries map[int64]*characterOwner
 }
 
-func (o *characterOwners) acquire(ctx context.Context, id int64, next *session.Session, cleanup func(*session.Session)) error {
+func (o *characterOwners) acquire(ctx context.Context, id int64, next *session.Session, cleanup func(context.Context, *session.Session) error) error {
 	o.mu.Lock()
 	if o.entries == nil {
 		o.entries = make(map[int64]*characterOwner)
@@ -48,7 +48,11 @@ func (o *characterOwners) acquire(ctx context.Context, id int64, next *session.S
 	var err error
 	if previous != nil {
 		previous.Close()
-		err = previous.DrainCommandsContext(ctx, func() { cleanup(previous) })
+		var cleanupErr error
+		err = previous.DrainCommandsContext(ctx, func() { cleanupErr = cleanup(ctx, previous) })
+		if err == nil {
+			err = cleanupErr
+		}
 	}
 	if err == nil {
 		err = ctx.Err()

@@ -91,11 +91,15 @@ func GetCharacterByID(id int32) (*model.CharacterData, error) {
 }
 
 // UpdateCharacter saves character data to the database.
-func UpdateCharacter(charData *model.CharacterData, accountID int64) error {
-	charSelectCacheKey := fmt.Sprintf("account:characters:%d", accountID)
-	cache.GetCache().Delete(charSelectCacheKey)
+func UpdateCharacter(ctx context.Context, database *sql.DB, charData *model.CharacterData, accountID int64) error {
+	if database == nil {
+		return fmt.Errorf("character database is required")
+	}
 
-	if _, err := db.GlobalWorldDB.DB.Exec(`
+	// Cancellation of a waiting autocommit update can return before the
+	// backend finishes. A cancelled blocked statement must have no implicit commit.
+	err := db.Transaction(ctx, database, func(tx db.DBTX) error {
+		result, err := tx.Exec(`
 		UPDATE character_data
 		SET map_id = $1,
 		    x = $2,
@@ -104,46 +108,63 @@ func UpdateCharacter(charData *model.CharacterData, accountID int64) error {
 		    heading = $5,
 		    last_login = $6
 		WHERE id = $7`,
-		charData.MapID,
-		charData.X,
-		charData.Y,
-		charData.Z,
-		charData.Heading,
-		charData.LastLogin,
-		charData.ID,
-	); err != nil {
-		return fmt.Errorf("failed to update character: %v", err)
+			charData.MapID,
+			charData.X,
+			charData.Y,
+			charData.Z,
+			charData.Heading,
+			charData.LastLogin,
+			charData.ID,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to update character: %w", err)
+		}
+		rows, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if rows != 1 {
+			return fmt.Errorf("character %d: updated %d rows", charData.ID, rows)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
-	return nil
-}
-
-// UpdateCharacterPosition updates only the position-related fields of a character.
-func UpdateCharacterPosition(charID int32, mapID uint32, x, y, z, heading float64) error {
-	if _, err := db.GlobalWorldDB.DB.Exec(`
-		UPDATE character_data
-		SET map_id = $1,
-		    x = $2,
-		    y = $3,
-		    z = $4,
-		    heading = $5
-		WHERE id = $6`,
-		mapID, x, y, z, heading, charID); err != nil {
-		return fmt.Errorf("failed to update character position: %v", err)
-	}
+	cache.GetCache().Delete(fmt.Sprintf("account:characters:%d", accountID))
 	return nil
 }
 
 // AddCharacterPlaytime atomically persists active play seconds without
 // overwriting position or another session's increment.
-func AddCharacterPlaytime(charID int32, accountID int64, seconds uint32) error {
+func AddCharacterPlaytime(ctx context.Context, database *sql.DB, charID int32, accountID int64, seconds uint32) error {
 	if seconds == 0 {
 		return nil
 	}
-	if _, err := db.GlobalWorldDB.DB.Exec(`
+	if database == nil {
+		return fmt.Errorf("playtime database is required")
+	}
+	// Cancellation of a waiting autocommit update can return before the
+	// backend finishes. A cancelled blocked statement must have no implicit commit.
+	err := db.Transaction(ctx, database, func(tx db.DBTX) error {
+		result, err := tx.Exec(`
 		UPDATE character_data
 		SET time_played = time_played + $1
-		WHERE id = $2`, seconds, charID); err != nil {
-		return fmt.Errorf("add character playtime: %w", err)
+		WHERE id = $2`, seconds, charID)
+		if err != nil {
+			return fmt.Errorf("add character playtime: %w", err)
+		}
+		rows, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if rows != 1 {
+			return fmt.Errorf("playtime character %d: updated %d rows", charID, rows)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 	cache.GetCache().Delete(fmt.Sprintf("account:characters:%d", accountID))
 	return nil

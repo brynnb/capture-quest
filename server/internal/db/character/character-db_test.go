@@ -1,6 +1,7 @@
 package db_character
 
 import (
+	"context"
 	"database/sql"
 	"testing"
 
@@ -36,10 +37,10 @@ func TestPlaytimeIncrementSurvivesGeneralCharacterSave(t *testing.T) {
 	db.GlobalWorldDB = &db.WorldDB{DB: database}
 	t.Cleanup(func() { db.GlobalWorldDB = previous })
 
-	if err := AddCharacterPlaytime(9, 7, 5); err != nil {
+	if err := AddCharacterPlaytime(context.Background(), database, 9, 7, 5); err != nil {
 		t.Fatal(err)
 	}
-	if err := UpdateCharacter(&model.CharacterData{
+	if err := UpdateCharacter(context.Background(), database, &model.CharacterData{
 		ID:         9,
 		MapID:      2,
 		X:          4,
@@ -56,5 +57,11 @@ func TestPlaytimeIncrementSurvivesGeneralCharacterSave(t *testing.T) {
 	}
 	if seconds != 15 {
 		t.Fatalf("time_played = %d, want 15", seconds)
+	}
+	if err := AddCharacterPlaytime(context.Background(), database, 404, 7, 5); err == nil {
+		t.Fatal("missing character accepted a playtime increment")
+	}
+	if err := UpdateCharacter(context.Background(), database, &model.CharacterData{ID: 404}, 7); err == nil {
+		t.Fatal("missing character accepted a general save")
 	}
 }

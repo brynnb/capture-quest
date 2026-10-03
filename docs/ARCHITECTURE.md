@@ -724,3 +724,13 @@ standalone Safari map-exit cleanup is retired: destination persistence owns that
 cleanup in its existing transaction. Legacy reads, post-commit flag refresh and
 other lifecycle operations still require migration before end-to-end shutdown
 bounds can be established.
+
+General character saves and playtime increments now use explicit database/context
+arguments and own bounded transactions. A cancelled autocommit statement can
+return before its backend finishes; owning the transaction prevents a blocked
+cancelled write from later committing and being counted again on retry. Cache
+invalidation follows commit, and zero affected rows are an error. Cleanup shares
+one five-second persistence budget and returns final-position/playtime errors;
+handoff propagates them before admitting a replacement. Disconnect still retires
+failed session state and logs errors, without a durable recovery queue. Lifecycle
+joins and shutdown failure reporting remain unfinished.

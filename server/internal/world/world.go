@@ -3,6 +3,7 @@ package world
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"sync"
@@ -141,14 +142,20 @@ func (wh *WorldHandler) RemoveSession(sessionID int) {
 	}
 	defer wh.cleanupWG.Done()
 	log.Printf("[WORLD] Removing session %d", sessionID)
-	ses.DrainCommands(func() { wh.cleanupCharacterSession(ses) })
+	ses.DrainCommands(func() {
+		if err := wh.cleanupCharacterSession(context.Background(), ses); err != nil {
+			log.Printf("[WORLD] Session %d cleanup persistence failed: %v", ses.SessionID, err)
+		}
+	})
 }
 
-func (wh *WorldHandler) cleanupCharacterSession(ses *session.Session) {
+func (wh *WorldHandler) cleanupCharacterSession(ctx context.Context, ses *session.Session) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	ses.IssuedCutscenes.Clear()
 	ses.GameCorner.Clear()
 	if !ses.HasValidClient() {
-		return
+		return nil
 	}
 	char := ses.Client.CharData()
 	charID := int(char.ID)
@@ -163,29 +170,34 @@ func (wh *WorldHandler) cleanupCharacterSession(ses *session.Session) {
 		wh.characterOwners.release(int64(charID), ses)
 	}()
 	if !wh.characterOwners.owns(int64(charID), ses) {
-		return
+		return nil
 	}
 	log.Printf("[WORLD] Flushing position for character %d (%s) from session %d", charID, char.Name, ses.SessionID)
-	wh.PlayerMovement.FlushPlayerPosition(context.Background(), charID)
+	positionErr := wh.PlayerMovement.FlushPlayerPosition(ctx, charID)
 	wh.PlayerMovement.UnregisterPlayer(charID)
 	wh.TrainerEncounter.ClearPlayer(int64(charID))
 	wh.EventFlags.UnloadFlags(int64(charID))
 	saveBattleOnDisconnect(int64(charID))
-	wh.persistSessionPlaytime(ses, time.Now())
+	playtimeErr := wh.persistSessionPlaytime(ctx, ses, time.Now())
 
 	// Notify other Phaser clients to remove this actor.
 	phaserID := wh.ActorRegistry.GetPhaserID(ActorTypePlayer, charID)
 	log.Printf("[WORLD] Despawning Phaser actor %d for character %s", phaserID, char.Name)
 	wh.ActorManager.broadcastActorDespawn(phaserID, ses.MapID)
+	if positionErr != nil {
+		positionErr = fmt.Errorf("final position: %w", positionErr)
+	}
+	if playtimeErr != nil {
+		playtimeErr = fmt.Errorf("final playtime: %w", playtimeErr)
+	}
+	return errors.Join(positionErr, playtimeErr)
 }
 
-func (wh *WorldHandler) persistSessionPlaytime(ses *session.Session, now time.Time) {
+func (wh *WorldHandler) persistSessionPlaytime(ctx context.Context, ses *session.Session, now time.Time) error {
 	_, err := ses.PersistPlaytime(now, func(characterID int32, seconds uint32) error {
-		return db_character.AddCharacterPlaytime(characterID, ses.AccountID, seconds)
+		return db_character.AddCharacterPlaytime(ctx, wh.database, characterID, ses.AccountID, seconds)
 	})
-	if err != nil {
-		log.Printf("[WORLD] Failed to persist playtime for session %d: %v", ses.SessionID, err)
-	}
+	return err
 }
 
 // Shutdown flushes active playtime before the database connection closes.
@@ -232,7 +244,11 @@ func (wh *WorldHandler) StartSessionTimeoutChecker() {
 			wh.sessionManager.ForEachSession(func(ses *session.Session) {
 				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
-				_ = ses.ExecuteCommand(ctx, func() { wh.persistSessionPlaytime(ses, now) })
+				_ = ses.ExecuteCommand(ctx, func() {
+					if err := wh.persistSessionPlaytime(ses.CommandContext(), ses, now); err != nil && !ses.IsClosed() {
+						log.Printf("[WORLD] Playtime for session %d: %v", ses.SessionID, err)
+					}
+				})
 			})
 			nextPlaytimeFlush = now.Add(playtimeFlushInterval)
 		}

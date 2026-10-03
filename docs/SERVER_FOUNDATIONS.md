@@ -3,7 +3,8 @@
 Status: active. Started 2026-09-25 from `02c51ba`.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-effect/script transaction cancellation (2026-10-02), following running-command
+context-aware lifecycle persistence (2026-10-02), following effect/script
+cancellation checkpoint `ac06a58` and running-command
 cancellation checkpoint `ff46ada`, position persistence checkpoint `d70813e`,
 durable Safari checkpoint `19203f2`, Repel checkpoint `adaa047` and FLY
 checkpoint `b785d58`.
@@ -86,6 +87,67 @@ evidence, including remaining-work notes that subsequent commits may resolve.
    cancellation/timeouts, failure/retry and shutdown with active players.
    Acceptance: evidence covers the original five milestones, including visible
    behavior where relevant. Only then mark the full goal complete.
+
+## Lifecycle persistence checkpoint (2026-10-02)
+
+Periodic playtime increments and general character saves previously used the
+global database without caller cancellation. Cleanup ignored its final position
+save error and could wait indefinitely in the playtime write. These saves now
+receive the world's captured database and the caller's context, require exactly
+one affected character row, and invalidate character-select cache only after a
+successful commit.
+The unused global `UpdateCharacterPosition` writer is retired; runtime position
+transactions remain the authoritative position boundary.
+
+A PostgreSQL test exposed an additional cancellation failure: an autocommit
+playtime update returned an error while blocked on a row lock, but committed
+after the lock was released. Retrying counted a three-second interval twice.
+Both general character saves and playtime increments now own the existing
+bounded transaction wrapper. The cancellation test verifies a blocked write
+rolls back, retains the interval for retry, and two retries save it once through
+the captured database even when the global database is absent. This does not
+prove recovery from an ambiguous result lost during commit; durable command/result
+recovery remains required.
+
+Persistence cleanup now shares a five-second context across final position and
+playtime saves and returns stage-labelled errors. Disconnect starts cleanup
+after draining the command owner with a separate context, so closing the
+connection does not cancel its final saves. Character handoff carries its caller
+budget into cleanup and propagates persistence failure instead of admitting the
+replacement as if cleanup succeeded. Periodic playtime saves carry the active
+command context.
+
+The current retirement policy remains best effort: failed final saves are
+reported, the old movement/client state is retired, and a later login reloads
+the last durable state. Unsaved position/playtime from that retired session is
+not retained in a recovery queue. A failed handoff rejects that attempt; it does
+not permanently bar a fresh retry. Tests inject late failures into both saves
+and verify aggregate errors, rejected replacement, and removal of the retired
+movement writer. This policy and its limits are explicit; the full goal's durable
+recovery requirements are not complete.
+
+World/HTTP shutdown and command/timer joins still have unbounded waits.
+The persistence context does not bound waiting on unrelated mutexes or transport
+closure. Shutdown currently logs cleanup failures; it does not return an
+aggregate failure to the server caller. Next: implement a context-aware shutdown
+result and drain policy that joins owned work or reports a deadline while keeping
+storage open beneath unfinished work, then verify active-player shutdown.
+The full remaining roadmap above stays active. No push or deployment is included.
+The opcode audit also found that legacy `PerformMapChange` mutates live map and
+coordinates before its general save succeeds. Its failure ordering and client
+destination authorization still need migration to the shared position boundary;
+this checkpoint does not claim every position writer publishes after commit.
+
+Verification: PostgreSQL-backed race tests passed for world, character
+persistence, sessions and server; the character suite also passed after adding
+missing-row assertions. All Go packages compiled, TypeScript typecheck passed,
+and canonical protocol regeneration produced no contract changes. The rendered
+multiplayer visibility case passed in 15.1 seconds using an isolated database
+and local services (evidence: `/var/tmp/capturequest-rendered.vnCLdc`). Its
+original return-step setup clicked the door tile already occupied by the player
+and timed out. The test now uses the existing shared warp helper to move onto
+adjacent floor and enter the stair, and asserts the exact return map. Visibility
+assertions remain intact. This is local verification, not production evidence.
 
 ## Effect and script cancellation checkpoint (2026-10-02)
 

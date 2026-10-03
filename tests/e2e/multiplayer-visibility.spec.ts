@@ -2,12 +2,15 @@ import { expect, test, type Browser, type Page } from "@playwright/test";
 import { createGuestCharacterAndEnterWorld, quitToCharacterSelect } from "./helpers/auth";
 import { collectPageErrors, type PageErrorCollector } from "./helpers/errors";
 import { clickTile } from "./helpers/input";
+import { activateWarpWithClick, tileBeforeWarp } from "./helpers/warps";
 import {
   getGameState,
   waitForActorAbsent,
   waitForActorVisible,
   waitForMapChange,
+  waitForMap,
   waitForNoMapLoading,
+  waitForPlayerIdle,
   waitForWarps,
 } from "./helpers/state";
 
@@ -54,6 +57,7 @@ test("players are removed from old map visibility when another player warps", as
     );
 
     const sharedMap = (await getGameState(playerA.page)).map.id;
+    if (sharedMap === null) throw new Error("Players have no shared map");
     await waitForWarps(playerA.page);
     const warp = (await getGameState(playerA.page)).warps[0];
     await clickTile(playerA.page, warp.x, warp.y);
@@ -78,9 +82,16 @@ test("players are removed from old map visibility when another player warps", as
       (candidate) => candidate.destinationMapId === sharedMap,
     );
     expect(returnWarp, "return warp to Player B's map").toBeTruthy();
-    const playerAInteriorMap = (await getGameState(playerA.page)).map.id;
-    await clickTile(playerA.page, returnWarp!.x, returnWarp!.y);
-    await waitForMapChange(playerA.page, playerAInteriorMap);
+    await waitForNoMapLoading(playerA.page);
+    await waitForPlayerIdle(playerA.page);
+    // Arrival is on this door warp. Click onto the adjacent floor first,
+    // then enter the stair without holding a key across the map transition.
+    await activateWarpWithClick(
+      playerA.page,
+      returnWarp!,
+      tileBeforeWarp(returnWarp!, "up"),
+    );
+    await waitForMap(playerA.page, sharedMap);
 
     await waitForActorVisible(
       playerB.page,

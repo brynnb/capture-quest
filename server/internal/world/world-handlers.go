@@ -69,10 +69,12 @@ func HandleCharacterQuitRequest(ses *session.Session, payload []byte, wh *WorldH
 
 	charData := ses.Client.CharData()
 
-	if err := db_character.UpdateCharacter(charData, ses.AccountID); err != nil {
+	if err := db_character.UpdateCharacter(ses.CommandContext(), wh.database, charData, ses.AccountID); err != nil {
 		log.Printf("failed to save player data on camp: %v", err)
 	}
-	wh.cleanupCharacterSession(ses)
+	if err := wh.cleanupCharacterSession(ses.CommandContext(), ses); err != nil {
+		log.Printf("[WORLD] Camp cleanup: %v", err)
+	}
 	sendCharInfo(ses, ses.AccountID)
 	return false
 }
@@ -155,7 +157,7 @@ func (wh *WorldHandler) PerformMapChange(ses *session.Session, mapID, instanceID
 	charData.Heading = heading
 
 	// Persist change to database so it stays across logins
-	if err := db_character.UpdateCharacter(charData, ses.AccountID); err != nil {
+	if err := db_character.UpdateCharacter(ses.CommandContext(), wh.database, charData, ses.AccountID); err != nil {
 		log.Printf("Failed to update character map in DB: %v", err)
 	}
 
@@ -267,7 +269,7 @@ func sendCharacterStateFromDB(ses *session.Session, wh *WorldHandler, characterN
 	// Update last login and begin the active play interval from the same instant.
 	playStartedAt := time.Now()
 	charData.LastLogin = uint32(playStartedAt.Unix())
-	if err := db_character.UpdateCharacter(charData, ses.AccountID); err != nil {
+	if err := db_character.UpdateCharacter(ses.CommandContext(), wh.database, charData, ses.AccountID); err != nil {
 		log.Printf("sendCharacterStateFromDB: failed to update last login for %s: %v", characterName, err)
 	}
 	applyLocalCharacterPrivileges(charData)

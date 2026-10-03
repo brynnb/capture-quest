@@ -25,11 +25,12 @@ func TestCharacterHandoffDrainsCommandsBeforeReplacement(t *testing.T) {
 	<-entered
 	done := make(chan error, 1)
 	go func() {
-		done <- owners.acquire(context.Background(), 42, next, func(s *session.Session) {
+		done <- owners.acquire(context.Background(), 42, next, func(ctx context.Context, s *session.Session) error {
 			if value != 7 {
 				t.Error("cleanup ran before command completed")
 			}
 			owners.release(42, s)
+			return nil
 		})
 	}()
 	deadline := time.Now().Add(time.Second)
@@ -76,7 +77,7 @@ func TestCharacterHandoffCancellationRetainsOldOwnerUntilCleanup(t *testing.T) {
 	<-entered
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err := owners.acquire(ctx, 42, next, func(*session.Session) { t.Error("cancelled cleanup ran") })
+	err := owners.acquire(ctx, 42, next, func(context.Context, *session.Session) error { t.Error("cancelled cleanup ran"); return nil })
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancel=%v", err)
 	}
@@ -100,7 +101,7 @@ func TestLateCharacterCleanupCannotEvictReplacementState(t *testing.T) {
 	old := &session.Session{Client: &testSessionClient{char: &model.CharacterData{ID: 42}}, CharacterName: "old", MapID: 1}
 	// Managers are deliberately absent: a stale cleanup must not touch any of
 	// the global character caches, position writers, actors or battle registry.
-	wh.cleanupCharacterSession(old)
+	wh.cleanupCharacterSession(context.Background(), old)
 	if old.Client != nil || old.CharacterName != "" || old.MapID != -1 {
 		t.Fatal("stale local client not retired")
 	}
@@ -154,10 +155,10 @@ func TestEnterWorldHandoffReloadsAfterOldCommandCommits(t *testing.T) {
 		t.Fatal("handoff did not retire previous owner")
 	}
 	// The transport's eventual disconnect callback cannot clear the new owner.
-	old.DrainCommands(func() { wh.cleanupCharacterSession(old) })
+	old.DrainCommands(func() { wh.cleanupCharacterSession(context.Background(), old) })
 	if !wh.characterOwners.owns(42, next) {
 		t.Fatal("late disconnect removed new owner")
 	}
 	next.Close()
-	next.DrainCommands(func() { wh.cleanupCharacterSession(next) })
+	next.DrainCommands(func() { wh.cleanupCharacterSession(context.Background(), next) })
 }
