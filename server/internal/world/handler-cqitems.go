@@ -1,9 +1,11 @@
 package world
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log"
+	"time"
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db/cqitems"
@@ -78,39 +80,77 @@ func HandleCQInventoryRequest(ses *session.Session, payload []byte, wh *WorldHan
 	return false
 }
 
-// HandleCQMerchantOpenRequest opens a merchant shop for the player.
-// Supports opening by merchantId or mapId (for clicking clerk NPCs).
+type CQMerchantOpenRequest struct {
+	RequestID   string `json:"requestId"`
+	CharacterID int64  `json:"characterId"`
+	ActorID     int    `json:"actorId"`
+}
+type CQMerchantOpenResponse struct {
+	Success     bool                     `json:"success" tstype:"true"`
+	RequestID   string                   `json:"requestId"`
+	CharacterID int64                    `json:"characterId"`
+	MerchantID  int32                    `json:"merchantId"`
+	Name        string                   `json:"name"`
+	Items       []cqitems.CQMerchantItem `json:"items" tstype:"import(\"./cqitems\").CQMerchantItem[]"`
+	Money       int64                    `json:"money"`
+}
+
+// Merchant opening is the fallback after source scripted interaction, not an
+// alternate way to skip an eligible clerk script or select a remote map.
 func HandleCQMerchantOpenRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
 	if !ses.HasValidClient() {
 		return false
 	}
-	var req struct {
-		MerchantID int32 `json:"merchantId"`
-		MapID      int32 `json:"mapId"`
+	var req CQMerchantOpenRequest
+	fail := func(message string) {
+		sendShopCommandError(ses, req.RequestID, opcodes.CQMerchantOpenResponse, message)
 	}
-	if err := decodePlayerMovement(payload, &req); err != nil {
-		log.Printf("[CQItems] Failed to unmarshal merchant open request: %v", err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Invalid shop request"}, opcodes.CQMerchantOpenResponse)
+	if err := decodePlayerMovement(payload, &req); err != nil || req.RequestID == "" || len(req.RequestID) > 64 || req.CharacterID != int64(ses.Client.CharData().ID) || req.ActorID <= 0 {
+		fail("Invalid shop interaction")
 		return false
 	}
-
-	// The selector can narrow a shop on the owned map, never move authority
-	// to a client-provided map. Clerk reach/eligibility is a separate migration.
-	if req.MerchantID < 0 || req.MapID < 0 || (req.MerchantID == 0 && req.MapID == 0) ||
-		(req.MapID > 0 && req.MapID != int32(ses.MapID)) || wh.Economy == nil {
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Shop unavailable here"}, opcodes.CQMerchantOpenResponse)
+	if wh.Economy == nil || wh.database == nil || wh.ActorRegistry == nil || wh.Cutscenes == nil {
+		fail("Shop unavailable")
 		return false
 	}
-	menu, err := wh.Economy.Open(ses.CommandContext(), int32(ses.Client.CharData().ID), int32(ses.MapID), req.MerchantID)
+	ctx, cancel := context.WithTimeout(ses.CommandContext(), 5*time.Second)
+	defer cancel()
+	flags := NewEventFlagManager(wh.database)
+	if err := flags.LoadFlagsContext(ctx, req.CharacterID); err != nil {
+		fail("Shop eligibility unavailable")
+		return false
+	}
+	objectID := wh.ActorRegistry.GetOriginalID(ActorTypeNPC, req.ActorID)
+	if objectID == 0 {
+		fail("Unknown shop actor")
+		return false
+	}
+	actor, mapName, err := wh.scriptInteractionTargetWithFlags(ctx, ses, objectID, flags)
+	if err != nil || actor.SpriteName == nil || *actor.SpriteName != "SPRITE_CLERK" {
+		fail("Shop actor unavailable or out of reach")
+		return false
+	}
+	facing := ""
+	if wh.PlayerMovement != nil {
+		facing, _ = wh.PlayerMovement.GetDirection(int(req.CharacterID))
+	}
+	script, err := wh.Cutscenes.FindEligibleClickCutsceneContext(ctx, mapName, scriptedEventTriggerKeys(actor), req.CharacterID, flags, facing)
+	if err != nil {
+		fail("Shop eligibility unavailable")
+		return false
+	}
+	if script != nil {
+		fail("Complete the clerk interaction first")
+		return false
+	}
+	menu, err := wh.Economy.Open(ctx, int32(req.CharacterID), int32(actor.MapID), 0)
 	if err != nil {
 		log.Printf("[CQItems] Merchant read failed: %v", err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not read this shop"}, opcodes.CQMerchantOpenResponse)
+		fail("Could not read this shop")
 		return false
 	}
-	ses.SendStreamJSON(map[string]interface{}{
-		"success": true, "merchantId": menu.MerchantID, "name": menu.Name,
-		"items": menu.Items, "money": menu.Money,
-	}, opcodes.CQMerchantOpenResponse)
+	ses.SendStreamJSON(CQMerchantOpenResponse{Success: true, RequestID: req.RequestID, CharacterID: req.CharacterID,
+		MerchantID: menu.MerchantID, Name: menu.Name, Items: menu.Items, Money: menu.Money}, opcodes.CQMerchantOpenResponse)
 	return false
 }
 

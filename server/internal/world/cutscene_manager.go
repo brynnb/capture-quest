@@ -320,39 +320,56 @@ func normalizeCutsceneMapName(name string) string {
 // Click triggers are keyed by extracted text constants, object names, or
 // explicit labels such as object:<phaser_objects.id>.
 func (m *CutsceneManager) FindEligibleClickCutscene(mapName string, triggerKeys []string, charID int64, efm *EventFlagManager, playerFacing ...string) *CutsceneScript {
+	result, err := m.findEligibleClickCutsceneIn(m.db, mapName, triggerKeys, charID, efm, playerFacing...)
+	if err != nil {
+		log.Printf("[Cutscene] Click eligibility: %v", err)
+	}
+	return result
+}
+
+// The merchant fallback must distinguish an ineligible script from a failed
+// eligibility query; otherwise a database error could bypass that script.
+func (m *CutsceneManager) FindEligibleClickCutsceneContext(ctx context.Context, mapName string, triggerKeys []string, charID int64, efm *EventFlagManager, playerFacing ...string) (*CutsceneScript, error) {
+	var result *CutsceneScript
+	err := db.Transaction(ctx, m.db, func(q db.DBTX) error {
+		var err error
+		result, err = m.findEligibleClickCutsceneIn(q, mapName, triggerKeys, charID, efm, playerFacing...)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+func (m *CutsceneManager) findEligibleClickCutsceneIn(q db.DBTX, mapName string, triggerKeys []string, charID int64, efm *EventFlagManager, playerFacing ...string) (*CutsceneScript, error) {
 	seen := make(map[string]bool)
 	for _, key := range triggerKeys {
 		if key == "" || seen[key] {
 			continue
 		}
 		seen[key] = true
-
 		m.mu.RLock()
 		mapped := append([]*CutsceneScript(nil), m.byTriggerLabel[key]...)
 		direct := m.byLabel[key]
 		m.mu.RUnlock()
-
 		sortCutscenesBySpecificity(mapped)
+		if direct != nil {
+			mapped = append(mapped, direct)
+		}
 		for _, cs := range mapped {
-			if m.checkEligibleClickCutscene(cs, mapName, charID, efm, playerFacing...) {
-				return cs
+			if cs.TriggerType != "npc_click" || (mapName != "" && cs.MapName != mapName) {
+				continue
+			}
+			eligible, err := checkCutsceneEligibleIn(q, cs, charID, efm, playerFacing...)
+			if err != nil {
+				return nil, err
+			}
+			if eligible {
+				return cs, nil
 			}
 		}
-		if direct != nil && m.checkEligibleClickCutscene(direct, mapName, charID, efm, playerFacing...) {
-			return direct
-		}
 	}
-	return nil
-}
-
-func (m *CutsceneManager) checkEligibleClickCutscene(cs *CutsceneScript, mapName string, charID int64, efm *EventFlagManager, playerFacing ...string) bool {
-	if cs.TriggerType != "npc_click" {
-		return false
-	}
-	if mapName != "" && cs.MapName != mapName {
-		return false
-	}
-	return m.CheckEligible(cs, charID, efm, playerFacing...)
+	return nil, nil
 }
 
 func sortCutscenesBySpecificity(cutscenes []*CutsceneScript) {

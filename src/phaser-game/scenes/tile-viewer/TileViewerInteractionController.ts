@@ -534,7 +534,7 @@ export class TileViewerInteractionController {
       if (startedScript) return;
 
       console.log(`[TileViewer] Clerk clicked on map ${actor.mapId}, opening shop`);
-      PhaserNet.sendCQMerchantOpenByMap(actor.mapId);
+      await PhaserNet.sendCQMerchantOpen(actor.id);
       return;
     }
 

@@ -543,6 +543,20 @@ export interface CQMerchantSellResponse {
   money: number /* int64 */;
   inventory: import("./cqitems").CQInventorySnapshot;
 }
+export interface CQMerchantOpenRequest {
+  requestId: string;
+  characterId: number /* int64 */;
+  actorId: number /* int */;
+}
+export interface CQMerchantOpenResponse {
+  success: true;
+  requestId: string;
+  characterId: number /* int64 */;
+  merchantId: number /* int32 */;
+  name: string;
+  items: import("./cqitems").CQMerchantItem[];
+  money: number /* int64 */;
+}
 
 //////////
 // source: handler-cutscene.go

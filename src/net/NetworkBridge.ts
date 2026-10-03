@@ -94,6 +94,7 @@ export class NetworkBridge {
       case OpCodes.PhaserMapInfoResponse:
       case OpCodes.CutsceneEndResponse:
       case OpCodes.GameplayStateResponse:
+      case OpCodes.CQMerchantOpenResponse:
       case OpCodes.CQMerchantBuyResponse:
       case OpCodes.CQMerchantSellResponse:
       case OpCodes.SafariBattleActionResponse:
@@ -158,9 +159,6 @@ export class NetworkBridge {
       // CQ Inventory & Merchant (Phase 7)
       case OpCodes.CQInventoryResponse:
         this.handleCQInventoryResponse(data as Record<string, unknown>);
-        break;
-      case OpCodes.CQMerchantOpenResponse:
-        this.handleCQMerchantOpenResponse(data as Record<string, unknown>);
         break;
       case OpCodes.CQItemUseResponse:
         this.handleCQItemUseResponse(data as Record<string, unknown>);
@@ -435,20 +433,6 @@ export class NetworkBridge {
       usePlayerCharacterStore.getState().handleCharacterWalletData({ characterId, pokedollars: snapshot.money });
     }
     return true;
-  }
-
-  private handleCQMerchantOpenResponse(data: Record<string, unknown>) {
-    if (!data.success) {
-      console.warn("[NetworkBridge] Merchant open failed:", data.error);
-      return;
-    }
-    const merchantId = data.merchantId as number;
-    const name = data.name as string;
-    const items = (data.items || []) as Parameters<
-      ReturnType<typeof useCQInventoryStore.getState>["openShop"]
-    >[2];
-    const money = (data.money || 0) as number;
-    useCQInventoryStore.getState().openShop(merchantId, name, items, money);
   }
 
   private handleCQItemUseResponse(data: Record<string, unknown>) {

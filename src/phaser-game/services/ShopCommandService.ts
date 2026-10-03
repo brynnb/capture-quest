@@ -1,5 +1,5 @@
 import { OpCodes, WorldSocket } from "@/net";
-import type { CQMerchantBuyRequest, CQMerchantSellRequest, CQMerchantBuyResponse, CQMerchantSellResponse } from "@/net/generated/world_api";
+import type { CQMerchantOpenResponse, CQMerchantBuyRequest, CQMerchantSellRequest, CQMerchantBuyResponse, CQMerchantSellResponse } from "@/net/generated/world_api";
 import useCQInventoryStore from "@/stores/CQInventoryStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import useChatStore, { MessageType } from "@/stores/ChatStore";
@@ -82,4 +82,46 @@ export function buyShopItem(merchantId: number,itemId: number,quantity: number):
 }
 export function sellShopItem(instanceId: number): Promise<void> {
   return sendShopCommand(OpCodes.CQMerchantSellRequest,OpCodes.CQMerchantSellResponse,{instanceId});
+}
+
+// Opening shares scene admission with purchases. An unsolicited or late menu
+// cannot reopen another scene, and failures preserve the existing wallet/bag.
+export async function openShopForActor(actorId: number): Promise<void> {
+  if (active || !scene) return;
+  const owner = scene;
+  const characterId = usePlayerCharacterStore.getState().characterProfile.id;
+  if (!characterId || !Number.isSafeInteger(actorId) || actorId <= 0) return;
+  useCQInventoryStore.getState().closeShop();
+  const profile = usePlayerCharacterStore.getState().characterProfile;
+  const initialBag = useCQInventoryStore.getState();
+  const controller = new AbortController(); active = controller;
+  const current = () => !controller.signal.aborted && scene === owner && usePlayerCharacterStore.getState().characterProfile.id === characterId;
+  const stopProfile = usePlayerCharacterStore.subscribe(state => { if (state.characterProfile.id !== characterId) { controller.abort(); if (scene === owner) useCQInventoryStore.getState().closeShop(); } });
+  const stopShop = useCQInventoryStore.subscribe((state, previous) => { if (!state.shopOpen && (previous.shopOpen || previous.shopItems !== state.shopItems)) controller.abort(); });
+  useCQInventoryStore.setState({ shopCommandPending: true, shopCommandError: null });
+  try {
+    const reply = await correlatedRequest<CQMerchantOpenResponse>(
+      receive => PhaserNet.onShopCommand(OpCodes.CQMerchantOpenResponse, receive),
+      requestId => WorldSocket.sendStreamJsonMessage(OpCodes.CQMerchantOpenRequest, { requestId, characterId, actorId }),
+      controller.signal,
+    );
+    if (!current()) return;
+    const bag = useCQInventoryStore.getState();
+    if (reply.characterId !== characterId || !Number.isSafeInteger(reply.merchantId) || reply.merchantId <= 0
+      || typeof reply.name !== "string" || !Array.isArray(reply.items)
+      || !Number.isSafeInteger(reply.money) || reply.money < 0 || reply.money > 0xffffffff
+      || bag.items !== initialBag.items || bag.money !== initialBag.money || bag.shopRevision !== initialBag.shopRevision
+      || usePlayerCharacterStore.getState().characterProfile !== profile) throw new Error("Invalid or overtaken merchant menu");
+    useCQInventoryStore.getState().openShop(reply.merchantId, reply.name, reply.items, reply.money);
+    usePlayerCharacterStore.getState().handleCharacterWalletData({ characterId, pokedollars: reply.money });
+  } catch {
+    if (current()) {
+      const message = "Could not open this shop. Please interact with the clerk again.";
+      useCQInventoryStore.setState({ shopCommandError: message });
+      useChatStore.getState().addMessage(message, MessageType.SYSTEM);
+    }
+  } finally {
+    stopProfile(); stopShop();
+    if (active === controller) { active = null; useCQInventoryStore.setState({ shopCommandPending: false }); }
+  }
 }

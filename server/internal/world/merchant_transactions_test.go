@@ -2,6 +2,7 @@ package world
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"capturequest/internal/api/opcodes"
@@ -13,47 +14,78 @@ import (
 	"capturequest/internal/testdb"
 )
 
-func TestMerchantOpenDispatchUsesInjectedOwnedMapAndRejectsReadFailures(t *testing.T) {
-	database := testdb.Postgres(t)
-	previous := db.GlobalWorldDB
+func TestMerchantOpenDispatchUsesSourceReachEligibilityAndCorrelation(t *testing.T) {
+	database, wh, ses, messages := battleTestWorld(t)
+	wh.Economy = economy.New(database)
+	wh.ActorRegistry = NewActorRegistry()
+	wh.ActorManager = NewPhaserActorManager(wh)
+	wh.Cutscenes = NewCutsceneManager(database)
+	testdb.Exec(t, database, `INSERT INTO phaser_maps(id,name,width,height) VALUES(1,'ROOM',10,10),(2,'REMOTE',10,10);
+ INSERT INTO phaser_objects(id,map_id,x,y,object_type,name,text,sprite_name) VALUES(10,1,1,0,'npc','CLERK','CLERK','SPRITE_CLERK'),(11,2,1,0,'npc','REMOTE','REMOTE','SPRITE_CLERK');
+ INSERT INTO cq_merchants(id,name,map_id) VALUES(1,'Shop',1),(2,'Remote',2);
+ INSERT INTO cq_merchant_items(merchant_id,item_id) VALUES(1,1),(2,1)`)
+	ses.Client.CharData().MapID = 1
+	ses.MapID = 1
 	db.GlobalWorldDB = nil
-	t.Cleanup(func() { db.GlobalWorldDB = previous })
-	testdb.Exec(t, database, `INSERT INTO character_data(id,name) VALUES(1,'one');
-		INSERT INTO character_wallet VALUES(1,100);
-		INSERT INTO cq_items(id,name,short_name,price) VALUES(1,'Potion','POTION',10);
-		INSERT INTO cq_merchants(id,name,map_id) VALUES(1,'Shop',38),(2,'Remote',39);
-		INSERT INTO cq_merchant_items(merchant_id,item_id) VALUES(1,1),(2,1);`)
-	messages := &recordingMessenger{}
-	ses := &session.Session{Authenticated: true, MapID: 38, Client: &testSessionClient{char: &model.CharacterData{ID: 1}}, Messenger: messages}
-	registry := NewWorldOpCodeRegistry()
-	registry.WH = &WorldHandler{Economy: economy.New(database)}
-	check := func(payload string, wantSuccess bool) {
+	actorID := wh.ActorRegistry.GetPhaserID(ActorTypeNPC, 10)
+	remoteID := wh.ActorRegistry.GetPhaserID(ActorTypeNPC, 11)
+	request := func(id int, want bool) {
 		t.Helper()
 		messages.streams = nil
-		registry.HandleWorldPacket(ses, clientPacket(opcodes.CQMerchantOpenRequest, payload))
-		var result struct {
-			Success bool
-			Money   int64
-			Items   []cqitems.CQMerchantItem
-			Error   string
+		battleDispatch(t, wh, ses, opcodes.CQMerchantOpenRequest, fmt.Sprintf(`{"requestId":"open","characterId":42,"actorId":%d}`, id))
+		var response struct {
+			Success     bool
+			RequestID   string
+			CharacterID int64
+			Money       int64
+			Items       []cqitems.CQMerchantItem
+			Error       string
 		}
-		if len(messages.streams) != 1 || messages.streams[0].opcode != opcodes.CQMerchantOpenResponse || json.Unmarshal(messages.streams[0].payload, &result) != nil || result.Success != wantSuccess {
-			t.Fatalf("request=%s response=%+v", payload, messages.streams)
+		if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &response) != nil || response.Success != want || response.RequestID != "open" {
+			t.Fatalf("response=%+v", messages.streams)
 		}
-		if wantSuccess && (result.Money != 100 || len(result.Items) != 1) {
-			t.Fatalf("incomplete menu=%+v", result)
+		if want && (response.CharacterID != 42 || response.Money != 100 || len(response.Items) != 1) {
+			t.Fatalf("menu=%+v", response)
 		}
-		if !wantSuccess && (result.Error == "" || result.Items != nil) {
-			t.Fatalf("partial failure=%+v", result)
+		if !want && (response.Error == "" || response.Items != nil) {
+			t.Fatalf("failure=%+v", response)
 		}
 	}
-	check(`{"mapId":38}`, true)
-	check(`{"merchantId":1}`, true)
-	for _, payload := range []string{`{"mapId":39}`, `{"merchantId":2}`, `{"merchantId":1,"mapId":39}`, `{}`, `{"mapId":38,"unexpected":1}`, `{"mapId":-1}`} {
-		check(payload, false)
+	request(actorID, true)
+	request(10, false)
+	request(remoteID, false)
+	ses.Client.CharData().X = 8
+	request(actorID, false)
+	ses.Client.CharData().X = 0
+	testdb.Exec(t, database, `INSERT INTO phaser_event_object_visibility(map_id,map_name,object_name,visible) VALUES(1,'ROOM','CLERK',false)`)
+	request(actorID, false)
+	testdb.Exec(t, database, `DELETE FROM phaser_event_object_visibility`)
+	flag := "SCRIPT_REQUIRED"
+	wh.Cutscenes.byLabel["CLERK"] = &CutsceneScript{ScriptLabel: "CLERK", MapName: "ROOM", TriggerType: "npc_click", RequiresFlag: &flag, Actions: json.RawMessage(`[]`)}
+	wh.EventFlags.flags[42] = map[string]bool{flag: true} // Stale cache must not determine eligibility.
+	request(actorID, true)
+	testdb.Exec(t, database, `INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'SCRIPT_REQUIRED')`)
+	wh.EventFlags.flags[42] = map[string]bool{}
+	request(actorID, false)
+	delete(wh.Cutscenes.byLabel, "CLERK")
+	for _, payload := range []string{`{"requestId":"open","characterId":99,"actorId":1}`, `{"requestId":"open","characterId":42,"mapId":1}`, `{"requestId":"open","characterId":42,"actorId":1,"mapId":1}`} {
+		messages.streams = nil
+		battleDispatch(t, wh, ses, opcodes.CQMerchantOpenRequest, payload)
+		var result ShopCommandError
+		if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &result) != nil || result.Success || result.RequestID != "open" {
+			t.Fatalf("invalid request=%s reply=%+v", payload, messages.streams)
+		}
 	}
 	testdb.Exec(t, database, `DROP TABLE character_wallet`)
-	check(`{"mapId":38}`, false)
+	request(actorID, false)
+	requiredMoney := 1
+	wh.Cutscenes.byLabel["CLERK"] = &CutsceneScript{ScriptLabel: "CLERK", MapName: "ROOM", TriggerType: "npc_click", RequiresMoney: &requiredMoney}
+	request(actorID, false)
+	var failedEligibility ShopCommandError
+	if err := json.Unmarshal(messages.streams[0].payload, &failedEligibility); err != nil || failedEligibility.Error != "Shop eligibility unavailable" {
+		t.Fatalf("eligibility failure bypassed script: %+v %v", failedEligibility, err)
+	}
+
 }
 
 func TestMerchantDispatchPublishesOnlyCommittedResults(t *testing.T) {

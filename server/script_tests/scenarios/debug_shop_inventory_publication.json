@@ -4,9 +4,9 @@
   "fixture": {
     "characterName": "ScriptSimShopInventoryPublication",
     "mapName": "VIRIDIAN_MART",
-    "x": 3,
-    "y": 6,
-    "direction": "UP",
+    "x": 2,
+    "y": 5,
+    "direction": "LEFT",
     "flags": [
       "EVENT_OAK_ASKED_TO_CHOOSE_MON",
       "EVENT_GOT_STARTER",

@@ -22,6 +22,15 @@ func (wh *WorldHandler) scriptInteractionTarget(ses *session.Session, objectID i
 }
 
 func (wh *WorldHandler) scriptInteractionTargetContext(ctx context.Context, ses *session.Session, objectID int) (PhaserActor, string, error) {
+	if wh == nil {
+		return PhaserActor{}, "", fmt.Errorf("interaction state unavailable")
+	}
+	return wh.scriptInteractionTargetWithFlags(ctx, ses, objectID, wh.EventFlags)
+}
+
+// Callers making eligibility decisions may supply a freshly loaded flag view
+// without replacing the shared session cache or changing other interactions.
+func (wh *WorldHandler) scriptInteractionTargetWithFlags(ctx context.Context, ses *session.Session, objectID int, flags *EventFlagManager) (PhaserActor, string, error) {
 	if wh == nil || wh.database == nil || wh.ActorManager == nil || ses == nil || !ses.HasValidClient() || ses.IsClosed() {
 		return PhaserActor{}, "", fmt.Errorf("interaction state unavailable")
 	}
@@ -49,7 +58,7 @@ func (wh *WorldHandler) scriptInteractionTargetContext(ctx context.Context, ses 
 	if actor.Name != nil {
 		name = *actor.Name
 	}
-	visible, label := currentEventObjectVisibility(charID, wh.EventFlags, name, rules)
+	visible, label := currentEventObjectVisibility(charID, flags, name, rules)
 	visible, _ = applyObjectVisibilityOverride(objectID, visible, label, overrides)
 	if !visible || actor.X == nil || actor.Y == nil {
 		return PhaserActor{}, "", errScriptInteractionDenied
@@ -99,7 +108,7 @@ func (wh *WorldHandler) scriptInteractionTargetContext(ctx context.Context, ses 
 		}
 		// Presentation applies the last eligible override at each coordinate.
 		for _, override := range tileOverrides {
-			if override.X != x+dx/2 || override.Y != y+dy/2 || !override.eventTileEligible(charID, wh.EventFlags) {
+			if override.X != x+dx/2 || override.Y != y+dy/2 || !override.eventTileEligible(charID, flags) {
 				continue
 			}
 			props, err := tileRuntimePropertiesForTileImageContext(ctx, wh.database, override.TileImageID)
