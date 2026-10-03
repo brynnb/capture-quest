@@ -1,3 +1,4 @@
+import { recoverGameplayState } from "./GameplayRecoveryService";
 import type { PhaserMapInfo } from "@/net/generated/protocol";
 import { Scene } from "phaser";
 import {
@@ -253,11 +254,11 @@ export class MapLoader {
           if (!this.isLoadCurrent(loadGeneration)) return;
         }
 
-        // Add to our actor list (preserving players)
+        // Fresh server actors replace startup snapshots with the same identity.
         allActors.forEach((actor) => {
-          if (!actors.find((a) => a.id === actor.id)) {
-            actors.push(actor);
-          }
+          const index = actors.findIndex((a) => a.id === actor.id);
+          if (index < 0) actors.push(actor);
+          else actors[index] = actor;
         });
       } catch (actorError) {
         console.error("Error loading actors:", actorError);
@@ -350,6 +351,8 @@ export class MapLoader {
       // Hide loading text
       this.uiManager.hideLoadingText();
       await (this.scene as any).playPendingWarpExitAnimation?.(200); // eslint-disable-line @typescript-eslint/no-explicit-any
+      if (!this.isLoadCurrent(loadGeneration)) return;
+      await recoverGameplayState(this.playerMovementController.getCurrentMapId(), mapRequestAbort.signal);
       if (!this.isLoadCurrent(loadGeneration)) return;
       if (mapInfo.name) {
         PhaserNet.requestMapScripts(mapInfo.name);
@@ -472,12 +475,12 @@ export class MapLoader {
         if (!this.isLoadCurrent(loadGeneration)) return;
       }
 
-      // Add to our actor list (preserving players)
+      // Fresh server actors replace startup snapshots with the same identity.
       let actors = [...playerActors];
       allActors.forEach((actor) => {
-        if (!actors.find((a) => a.id === actor.id)) {
-          actors.push(actor);
-        }
+        const index = actors.findIndex((a) => a.id === actor.id);
+        if (index < 0) actors.push(actor);
+        else actors[index] = actor;
       });
 
       // Apply warp destination coordinates to the player actor (same as loadMapData)
@@ -655,6 +658,10 @@ export class MapLoader {
       this.uiManager.hideLoadingText();
       await (this.scene as any).playPendingWarpExitAnimation?.(200); // eslint-disable-line @typescript-eslint/no-explicit-any
       if (!this.isLoadCurrent(loadGeneration)) return;
+      if (!options.viewOnly) {
+        await recoverGameplayState(this.playerMovementController.getCurrentMapId(), mapRequestAbort.signal);
+        if (!this.isLoadCurrent(loadGeneration)) return;
+      }
       readyForWorldInput = true;
     } catch (error: unknown) {
       if (!this.isLoadCurrent(loadGeneration)) return;

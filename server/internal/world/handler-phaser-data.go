@@ -415,6 +415,9 @@ func HandlePhaserMapScriptsRequest(ses *session.Session, payload []byte, wh *Wor
 			return false
 		}
 		charID := int64(ses.Client.CharData().ID)
+		if battle := getBattle(charID); battle != nil && (!battle.IsOver() || battle.PendingMoveLearn != nil) {
+			return false
+		}
 		if wh.TrainerEncounter != nil {
 			resumed, err := wh.TrainerEncounter.resumePendingEncounter(ses, wh)
 			if err != nil {
@@ -426,8 +429,13 @@ func HandlePhaserMapScriptsRequest(ses *session.Session, payload []byte, wh *Wor
 			}
 		}
 		resumed, err := resumePendingCutscene(ses, wh)
-		if err != nil { log.Printf("[Cutscene] Resume character %d: %v",charID,err); return false }
-		if resumed { return false }
+		if err != nil {
+			log.Printf("[Cutscene] Resume character %d: %v", charID, err)
+			return false
+		}
+		if resumed {
+			return false
+		}
 		playerFacing := ""
 		if wh.PlayerMovement != nil {
 			playerFacing, _ = wh.PlayerMovement.GetDirection(int(charID))

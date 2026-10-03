@@ -221,4 +221,6 @@ const (
 	CutsceneEndResponse           OpCode = 194
 	OwnedPlayerPositionRequest    OpCode = 195
 	OwnedPlayerPositionResponse   OpCode = 196
+	GameplayStateRequest          OpCode = 197
+	GameplayStateResponse         OpCode = 198
 )

@@ -78,28 +78,32 @@ func ensureLocalDevPokemonParty(myDB *sql.DB, charID int64) error {
 		}},
 	}
 
-	party := make([]*pokebattle.Pokemon, 0, len(specs))
-	for _, spec := range specs {
-		p, err := pokebattle.BuildWildPokemon(myDB, spec.speciesID, spec.level)
-		if err != nil {
-			return fmt.Errorf("build species %d L%d: %w", spec.speciesID, spec.level, err)
-		}
-		p.IsWild = false
-		if spec.setup != nil {
-			spec.setup(p)
-		}
-		party = append(party, p)
-	}
-
-	// This local-only fixture deliberately replaces the party. Ordinary saves
-	// reject missing identities so gameplay can never silently discard a row.
+	// Seed only an empty party. World reentry must preserve stable row identities,
+	// damage and scenario state, especially when a durable battle references them.
 	if err := db.Transaction(context.Background(), myDB, func(tx db.DBTX) error {
 		if err := db.LockCharacter(tx, charID); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(`DELETE FROM character_pokemon WHERE character_id=$1 AND box=$2`, charID, pokebattle.BoxParty); err != nil {
+		var exists bool
+		if err := tx.QueryRow(`SELECT EXISTS (SELECT 1 FROM character_pokemon WHERE character_id=$1 AND box=$2)`, charID, pokebattle.BoxParty).Scan(&exists); err != nil {
 			return err
 		}
+		if exists {
+			return nil
+		}
+		party := make([]*pokebattle.Pokemon, 0, len(specs))
+		for _, spec := range specs {
+			p, err := pokebattle.BuildWildPokemon(tx, spec.speciesID, spec.level)
+			if err != nil {
+				return fmt.Errorf("build species %d L%d: %w", spec.speciesID, spec.level, err)
+			}
+			p.IsWild = false
+			if spec.setup != nil {
+				spec.setup(p)
+			}
+			party = append(party, p)
+		}
+
 		_, err := pokebattle.SavePartyInTransaction(tx, charID, party)
 		return err
 	}); err != nil {

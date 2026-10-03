@@ -957,3 +957,23 @@ Warp from overview. Ending warp mode alone does not prove readiness for the firs
 input. The rendered movement-origin check waits for actual exact tile data;
 coordinating input release with residency remains required. Checkpoint evidence
 and the full remaining-work roadmap are recorded in SERVER_FOUNDATIONS.md.
+
+
+### Coherent gameplay recovery (197/198)
+
+The selected character can request a correlated, current gameplay snapshot bound
+to its owned map. A bounded transaction holds the character row lock while reading
+saved position, battle/party/required phase, Safari encounter/counters and durable
+trainer/cutscene plans. It uses SELECT FOR UPDATE rather than the mutation helper's
+no-op UPDATE: a read must not fire write triggers. Invalid/conflicting state fails
+as one response; no partial cache or presentation publication is permitted.
+
+The scene owns application and cancellation of this response. Map loading replaces
+same-ID startup actors with fresh server records before movement initialization,
+then restores gameplay after arrival animation and before input admission.
+Restoration reuses the battle store and trainer/cutscene handlers, and never sends
+CloseBattle simply to clear stale local UI. A newer battle event overtaking a read
+causes one fresh read. Legacy command timeout integration and inventory/wallet/flag
+resynchronization remain unfinished; see SERVER_FOUNDATIONS.md for the full scope.
+Local world-entry party fixtures seed only an empty party, preserving identities
+referenced by saved battles across reconnects.

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { PokemonDTO } from "@/net/generated/world_api";
+import type { GameplayStateResponse, PokemonDTO } from "@/net/generated/world_api";
 import { WorldSocket, OpCodes } from "@/net";
 import useAudioActivityStore from "@/stores/AudioActivityStore";
 
@@ -42,6 +42,7 @@ export interface BattleEvent {
 }
 
 interface PokeBattleState {
+  restoreGameplay: (snapshot: GameplayStateResponse) => void;
   isInBattle: boolean;
   phase: BattlePhase;
   pendingPhase: BattlePhase;
@@ -112,7 +113,10 @@ interface PokeBattleState {
   updateSafariState: (data: { events: BattleEvent[]; ballsLeft: number; stepsLeft: number; isOver: boolean; caught: boolean; fled: boolean; caughtPokemon?: { name: string }; sentToPC?: boolean; pcBox?: number }) => void;
 }
 
-const usePokeBattleStore = create<PokeBattleState>((set, get) => ({
+type BattlePresentationState = Omit<PokeBattleState,
+  "restoreGameplay" | "startBattle" | "updateBattleState" | "endBattle" | "closeBattle" | "setPhase" | "advanceEvent" | "startSafariBattle" | "updateSafariState">;
+
+const initialBattleState: BattlePresentationState = {
   isInBattle: false,
   phase: "none",
   pendingPhase: "none",
@@ -139,10 +143,31 @@ const usePokeBattleStore = create<PokeBattleState>((set, get) => ({
   safariBallsLeft: 0,
   sentToPC: false,
   sentToPCBox: null,
+};
+
+const usePokeBattleStore = create<PokeBattleState>((set, get) => ({
+  ...initialBattleState,
+
+  restoreGameplay: (snapshot) => {
+    useAudioActivityStore.getState().setBattleVictoryTrack(null);
+    if (snapshot.battle) {
+      const battle = snapshot.battle;
+      get().startBattle({ ...battle, events: [] });
+      if (battle.pendingMove) {
+        set({ pendingMoveLearn: { moveId: battle.pendingMove.moveId, moveName: battle.pendingMove.moveName } });
+      }
+    } else if (snapshot.safari?.pokemon) {
+      get().startSafariBattle({ pokemon: snapshot.safari.pokemon, ballsLeft: snapshot.safari.ballsLeft, stepsLeft: snapshot.safari.stepsLeft });
+    } else {
+      // Absence retires local presentation without sending a CloseBattle command.
+      set(initialBattleState);
+    }
+  },
 
   startBattle: (data) => {
     const hasEvents = data.events && data.events.length > 0;
     set({
+      ...initialBattleState,
       isInBattle: true,
       phase: hasEvents ? "animating" : (data.phase as BattlePhase),
       pendingPhase: data.phase as BattlePhase,
@@ -241,33 +266,7 @@ const usePokeBattleStore = create<PokeBattleState>((set, get) => ({
       WorldSocket.sendJsonMessage(OpCodes.PokeBattleCloseRequest, {});
     }
     useAudioActivityStore.getState().setBattleVictoryTrack(null);
-    set({
-      isInBattle: false,
-      phase: "none",
-      pendingPhase: "none",
-      turnNumber: 0,
-      playerPokemon: null,
-      enemyPokemon: null,
-      pendingPlayerPokemon: null,
-      pendingEnemyPokemon: null,
-      events: [],
-      eventQueue: [],
-      currentEventIndex: 0,
-      battleResult: null,
-      pendingBattleEnd: null,
-      lossMessage: null,
-      trainerClass: null,
-      blackoutWarp: null,
-      faintSwitchParty: [],
-      faintSwitchActive: 0,
-      battleType: null,
-      allowedActions: [],
-      guaranteedCatch: false,
-      isSafari: false,
-      safariBallsLeft: 0,
-      sentToPC: false,
-      sentToPCBox: null,
-    });
+    set(initialBattleState);
   },
 
   setPhase: (phase) => set({ phase }),
@@ -314,6 +313,7 @@ const usePokeBattleStore = create<PokeBattleState>((set, get) => ({
       moves: [],
     };
     set({
+      ...initialBattleState,
       isInBattle: true,
       isSafari: true,
       safariBallsLeft: data.ballsLeft,

@@ -903,16 +903,6 @@ export class TileViewer extends Scene {
         this.isOverworldMode = false;
         this.cameraController.setViewMode(false);
         this.mapLoader.loadMapData(mapId);
-
-        // Safari Zone: check for existing session when warping into a safari zone map
-        const safariZoneMapIds = [217, 218, 219, 220];
-        if (safariZoneMapIds.includes(mapId)) {
-          import("@/phaser-game/services/PhaserNetworkService").then(
-            (PhaserNet) => {
-              PhaserNet.requestSafariZoneStatus();
-            },
-          );
-        }
       }
 
       // Clear registry flags after loading
@@ -945,16 +935,6 @@ export class TileViewer extends Scene {
         this.isOverworldMode = false;
         this.cameraController.setViewMode(false);
         this.mapLoader.loadMapData(charMapId);
-
-        // Safari Zone: check for existing session if reconnecting on a safari zone map
-        const safariReconnectIds = [217, 218, 219, 220];
-        if (safariReconnectIds.includes(charMapId)) {
-          import("@/phaser-game/services/PhaserNetworkService").then(
-            (PhaserNet) => {
-              PhaserNet.requestSafariZoneStatus();
-            },
-          );
-        }
       }
 
       // Clear registry flags after loading
@@ -1830,7 +1810,10 @@ export class TileViewer extends Scene {
       }
     }
 
-    actors.forEach((actor) => this.cacheActor(actor));
+    actors.forEach((actor) => {
+      const cached = this.cacheActor(actor);
+      if (this.isLocalPlayerActor(cached)) this.playerActor = cached;
+    });
     return Array.from(this.actorCache.values()).filter((actor) =>
       this.shouldRenderActorInCurrentView(actor),
     );

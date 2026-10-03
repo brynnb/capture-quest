@@ -91,6 +91,7 @@ export class NetworkBridge {
       // Phaser 2D game opcodes
       case OpCodes.PhaserMapInfoResponse:
       case OpCodes.CutsceneEndResponse:
+      case OpCodes.GameplayStateResponse:
       case OpCodes.OwnedPlayerPositionResponse:
       case OpCodes.ServerPlayerMovementNotify:
       case OpCodes.PlayerFacingResponse:

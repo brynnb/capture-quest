@@ -218,11 +218,22 @@ func (m *TrainerEncounterManager) publishPositionEncounter(enc *pendingEncounter
 	m.spottedBy[charID][t.ObjectID] = true
 	m.spottedByMu.Unlock()
 
+	payload := m.encounterPayload(enc)
+	ses.SendStreamJSON(payload, opcodes.TrainerEncounterNotify)
+
+	// Stop any queued movement helper state. The player stays put while
+	// the client animates the trainer locally.
+	m.wh.PlayerMovement.StopMovement(int(charID))
+
+}
+
+func (m *TrainerEncounterManager) encounterPayload(enc *pendingEncounter) protocol.TrainerEncounterNotifyPayload {
+	t, playerX, playerY := enc.TrainerData, enc.PlayerX, enc.PlayerY
 	// Calculate where the client should locally walk the trainer to.
 	approachToX, approachToY := m.approachTargetForPlayer(t, playerX, playerY)
 
 	// Send notification to client
-	payload := protocol.TrainerEncounterNotifyPayload{
+	return protocol.TrainerEncounterNotifyPayload{
 		EncounterToken: enc.Token,
 		TrainerActorID: t.RuntimeActorID,
 		TrainerX:       t.X,
@@ -236,12 +247,6 @@ func (m *TrainerEncounterManager) publishPositionEncounter(enc *pendingEncounter
 		TrainerClass:   t.TrainerClass,
 		TrainerName:    t.Name,
 	}
-	ses.SendStreamJSON(payload, opcodes.TrainerEncounterNotify)
-
-	// Stop any queued movement helper state. The player stays put while
-	// the client animates the trainer locally.
-	m.wh.PlayerMovement.StopMovement(int(charID))
-
 }
 
 func (m *TrainerEncounterManager) planPositionEncounter(ctx context.Context, q db.DBTX, charID int64, playerX, playerY, mapID int, flags *EventFlagManager) (*trainerSightData, error) {

@@ -373,6 +373,61 @@ export interface GameCornerSlotPlayResult {
 }
 
 //////////
+// source: gameplay_recovery.go
+
+/**
+ * Gameplay recovery reads current authority, never a historical notification.
+ * Explicit JSON names also drive the generated TypeScript contract.
+ */
+export interface GameplayStateRequest {
+  requestId: string;
+  mapId: number /* int */;
+}
+export interface GameplayBattleState {
+  battleId: string;
+  revision: number /* int64 */;
+  phase: string;
+  turnNumber: number /* int */;
+  playerPokemon: PokemonDTO;
+  enemyPokemon: PokemonDTO;
+  playerParty: PokemonDTO[];
+  playerActive: number /* int */;
+  battleType: string;
+  allowedActions: string[];
+  guaranteedCatch: boolean;
+  trainerClass: string;
+  trainerName: string;
+  pendingMove?: GameplayPendingMove;
+}
+export interface GameplayPendingMove {
+  moveId: number /* int */;
+  moveName: string;
+  pokemonIndex: number /* int */;
+}
+export interface SafariRecoveryPokemon {
+  id: number /* int */;
+  name: string;
+  level: number /* int */;
+  hp: number /* int */;
+  maxHp: number /* int */;
+}
+export interface SafariRecoveryState {
+  active: boolean;
+  ballsLeft: number /* int */;
+  stepsLeft: number /* int */;
+  pokemon?: SafariRecoveryPokemon;
+}
+export interface GameplayStateResponse {
+  success: true;
+  requestId: string;
+  position: import("./protocol").OwnedPlayerPositionResponse;
+  battle?: GameplayBattleState | null;
+  safari?: SafariRecoveryState | null;
+  trainer?: import("./protocol").TrainerEncounterNotifyPayload | null;
+  cutscene?: import("./protocol").CutsceneStartNotify | null;
+}
+
+//////////
 // source: gym_leader_metadata.go
 
 

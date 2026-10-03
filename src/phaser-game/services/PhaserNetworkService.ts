@@ -1,3 +1,4 @@
+import type { GameplayStateRequest, GameplayStateResponse } from "@/net/generated/world_api";
 import type { TrainerEncounterNotifyPayload } from "@/net/generated/protocol";
 import type { CutsceneEndRequest, CutsceneEndResponse, OwnedPlayerPositionRequest, OwnedPlayerPositionResponse, ServerPlayerMovementNotify, PlayerFacingRequest, PlayerFacingResponse, PlayerStepRequest, PlayerStepResponse, PlayerStepCompleteRequest, PlayerStepCompleteResponse, PlayerStepError, PhaserMapInfo, PhaserMapInfoRequest, PhaserMapInfoResponse, PhaserMapLoadRequest, PhaserMapLoadResponse, PhaserMapRequestError, PhaserWarpActivateRequest, PhaserWarpActivateResponse, PhaserInstantWarpRequest, PhaserInstantWarpResponse } from "@/net/generated/protocol";
 import type { GameCornerSlotPlayRequest } from "@/net/generated/world_api";
@@ -39,6 +40,10 @@ export function requestMapLoad(request: PhaserMapLoadRequest): void {
 export function completeCutscene(request: CutsceneEndRequest): void {
   NetworkBridge.send(request, OpCodes.CutsceneEndRequest);
 }
+export function requestGameplayState(request: GameplayStateRequest): void {
+  NetworkBridge.send(request, OpCodes.GameplayStateRequest);
+}
+
 export function requestOwnedPlayerPosition(request: OwnedPlayerPositionRequest): void {
   NetworkBridge.send(request, OpCodes.OwnedPlayerPositionRequest);
 }
@@ -353,6 +358,7 @@ export type TrainerEncounterHandler = (
 export type PhaserMapMusicHandler = (data: MapMusicResult) => void;
 
 const handlers = {
+  gameplayState: new Set<(data: GameplayStateResponse | PlayerStepError) => void>(),
   cutsceneEnd: new Set<(data: CutsceneEndResponse | PlayerStepError) => void>(),
   ownedPlayerPosition: new Set<(data: OwnedPlayerPositionResponse | PlayerStepError) => void>(),
   serverPlayerMovement: new Set<(data: ServerPlayerMovementNotify) => void>(),
@@ -372,6 +378,10 @@ const handlers = {
   trainerEncounter: new Set<TrainerEncounterHandler>(),
   mapMusic: new Set<PhaserMapMusicHandler>(),
 };
+
+export function onGameplayState(handler: (data: GameplayStateResponse | PlayerStepError) => void): () => void {
+  handlers.gameplayState.add(handler); return () => handlers.gameplayState.delete(handler);
+}
 
 // Subscribe to response events
 export function onMapInfo(handler: PhaserMapInfoHandler): () => void {
@@ -587,6 +597,9 @@ export function normalizePhaserArrayPayload<T>(
 // Internal: dispatch incoming Phaser responses
 export function dispatchPhaserResponse(opcode: number, data: unknown): void {
   switch (opcode) {
+    case OpCodes.GameplayStateResponse:
+      handlers.gameplayState.forEach(h => h(data as GameplayStateResponse | PlayerStepError));
+      break;
     case OpCodes.CutsceneEndResponse:
       handlers.cutsceneEnd.forEach((h) => h(data as CutsceneEndResponse | PlayerStepError));
       break;
