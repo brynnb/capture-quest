@@ -2,7 +2,7 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest checkpoint: correlated cutscene completion and position recovery
+Working branch: `codex/server-foundations`. Latest implementation checkpoint: `6638a63`, correlated cutscene completion and position recovery
 (2026-10-02), following issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
 `0585dde`, committed
 blackout/recovery `2f62595`, teleport notification projection `65a5581`, Instant
@@ -34,6 +34,13 @@ evidence, including remaining-work notes that subsequent commits may resolve.
 
 Implementation checkpoints are committed locally on `codex/server-foundations`.
 The goal remains active; no push or deployment is part of these checkpoints.
+The latest implementation commit is `6638a63` (`Acknowledge cutscene commits and
+preserve owned movement phases`). It includes the server/client changes, generated
+wire types, focused regression tests and architecture updates described below.
+The working tree was clean when this documentation handoff was prepared.
+The documented Go integration and 26-case rendered acceptance logs were checked
+again for their successful terminal results; no implementation changed during
+this handoff, so those suites were not rerun.
 MapLoad now rejects supplied destinations. Ordinary walking requests a direction
 from its expected owned source, animates a server-issued step, then acknowledges
 its token before continuing the path. Blackout, Safari and explicit warp commands
