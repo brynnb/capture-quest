@@ -37,7 +37,9 @@
     "safariBallsLeft": 0,
     "safariStepsLeft": 499,
     "safariBattle": {
-      "active": false
+      "active": false,
+      "pokemonId": 111,
+      "level": 25
     },
     "messages": [
       {
@@ -53,6 +55,12 @@
     "actionTypesContains": [
       "safariBattleAction"
     ],
-    "activeBattleAbsent": true
+    "activeBattleAbsent": true,
+    "finalMapName": "SAFARI_ZONE_GATE",
+    "finalX": 3,
+    "finalY": 4,
+    "flagsPresent": [
+      "EVENT_SAFARI_GAME_OVER"
+    ]
   }
 }

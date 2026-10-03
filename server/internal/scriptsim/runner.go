@@ -1277,7 +1277,11 @@ func runSafariBattleAction(scenario *Scenario, applied *AppliedFixture, initial 
 		initial.X,
 		initial.Y,
 	)
-	payload, err := json.Marshal(map[string]string{"action": scenario.Trigger.Action})
+	if saved == nil || saved.Battle == nil {
+		return nil, fmt.Errorf("safari_battle_action requires a persisted encounter")
+	}
+	request := world.SafariBattleActionRequest{RequestID: "scriptsim-safari-action", Action: scenario.Trigger.Action, Battle: world.BattleCommandIdentity{BattleID: saved.Battle.BattleID, Revision: saved.Battle.Revision}}
+	payload, err := json.Marshal(request)
 	if err != nil {
 		return nil, err
 	}
@@ -1286,9 +1290,12 @@ func runSafariBattleAction(scenario *Scenario, applied *AppliedFixture, initial 
 	if message == nil {
 		return nil, fmt.Errorf("safari_battle_action did not emit SafariBattleActionResponse")
 	}
-	action, err := parseSafariBattleActionResponse(message.Payload)
-	if err != nil {
-		return nil, err
+	var action world.SafariBattleActionResponse
+	if err := json.Unmarshal(message.Payload, &action); err != nil {
+		return nil, fmt.Errorf("parse SafariBattleActionResponse: %w", err)
+	}
+	if !action.Success || action.RequestID != request.RequestID || action.BattleID != request.Battle.BattleID || action.Revision != request.Battle.Revision+1 || !action.Position.Success || action.Position.RequestID != request.RequestID {
+		return nil, fmt.Errorf("Safari action did not acknowledge requested identity: %s", message.Payload)
 	}
 	saved, err = wh.Safari.GetSession(context.Background(), applied.CharacterID)
 	if err != nil {
@@ -1300,14 +1307,15 @@ func runSafariBattleAction(scenario *Scenario, applied *AppliedFixture, initial 
 	if err != nil {
 		return nil, err
 	}
+	if action.Position.MapID != final.MapID || action.Position.X != final.X || action.Position.Y != final.Y {
+		return nil, fmt.Errorf("Safari response position differs from committed character position")
+	}
 	detail := fmt.Sprintf("action=%s success=%t active=%t balls=%d steps=%d isOver=%t caught=%t fled=%t",
 		scenario.Trigger.Action, action.Success, summary.Active, summary.BallsLeft, summary.StepsLeft, action.IsOver, action.Caught, action.Fled)
 	if before.Battle != nil {
 		detail = fmt.Sprintf("%s battleBefore=#%d L%d", detail, before.Battle.PokemonID, before.Battle.Level)
 	}
-	if action.Message != "" {
-		detail = fmt.Sprintf("%s message=%q", detail, action.Message)
-	}
+	detail = fmt.Sprintf("%s message=%q", detail, "ok")
 	result := &Result{
 		Scenario:    scenario,
 		CharacterID: applied.CharacterID,
@@ -1332,38 +1340,6 @@ func runSafariBattleAction(scenario *Scenario, applied *AppliedFixture, initial 
 	return result, nil
 }
 
-type safariBattleActionResponse struct {
-	Success bool
-	Message string
-	IsOver  bool
-	Caught  bool
-	Fled    bool
-}
-
-func parseSafariBattleActionResponse(payload []byte) (safariBattleActionResponse, error) {
-	var response struct {
-		Success bool   `json:"success"`
-		Error   string `json:"error"`
-		IsOver  bool   `json:"isOver"`
-		Caught  bool   `json:"caught"`
-		Fled    bool   `json:"fled"`
-	}
-	if err := json.Unmarshal(payload, &response); err != nil {
-		return safariBattleActionResponse{}, fmt.Errorf("parse SafariBattleActionResponse: %w", err)
-	}
-	message := response.Error
-	if message == "" && response.Success {
-		message = "ok"
-	}
-	return safariBattleActionResponse{
-		Success: response.Success,
-		Message: message,
-		IsOver:  response.IsOver,
-		Caught:  response.Caught,
-		Fled:    response.Fled,
-	}, nil
-}
-
 func newSafariScenarioWorld(scenario *Scenario, charID int64) (*world.WorldHandler, error) {
 	safari := world.NewSafariZoneManager(db.GlobalWorldDB.DB)
 	if fixture := scenario.Fixture.Safari; fixture != nil {
@@ -1381,6 +1357,9 @@ func newSafariScenarioWorld(scenario *Scenario, charID int64) (*world.WorldHandl
 				return nil, fmt.Errorf("build safari battle pokemon #%d L%d: %w", fixture.Battle.PokemonID, fixture.Battle.Level, err)
 			}
 			session.Battle = pokebattle.NewSafariBattle(wild, fixture.BallsLeft, fixture.StepsLeft)
+			// A freshly replaced simulator fixture has a stable identity for golden
+			// output. Commands still read and submit the actual persisted identity.
+			session.Battle.BattleID = "scriptsim:" + scenario.Name
 		}
 		if err := safari.SetSession(context.Background(), charID, session); err != nil {
 			return nil, err
@@ -2325,7 +2304,7 @@ func validateSafariBattleExpectation(summary *SafariSummary, expected SafariBatt
 		battle = summary.Battle
 	}
 	if expected.Active != nil {
-		active := battle != nil
+		active := battle != nil && !battle.IsOver
 		if active != *expected.Active {
 			return fmt.Errorf("expected safari battle active %t, got %t", *expected.Active, active)
 		}

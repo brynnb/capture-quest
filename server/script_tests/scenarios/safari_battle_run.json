@@ -8,7 +8,12 @@
     "y": 24,
     "direction": "DOWN",
     "flags": [],
-    "party": [{ "speciesId": 25, "level": 30 }],
+    "party": [
+      {
+        "speciesId": 25,
+        "level": 30
+      }
+    ],
     "inventory": [],
     "hiddenObjects": [],
     "safari": {
@@ -32,16 +37,26 @@
     "safariBallsLeft": 30,
     "safariStepsLeft": 499,
     "safariBattle": {
-      "active": false
+      "active": false,
+      "pokemonId": 111,
+      "level": 25,
+      "caught": false,
+      "fled": false
     },
     "messages": [
       {
         "channel": "stream",
         "opcode": 130,
-        "payloadContains": ["\"success\":true", "\"isOver\":true", "\"type\":\"run\""]
+        "payloadContains": [
+          "\"success\":true",
+          "\"isOver\":true",
+          "\"type\":\"run\""
+        ]
       }
     ],
-    "actionTypesContains": ["safariBattleAction"],
+    "actionTypesContains": [
+      "safariBattleAction"
+    ],
     "activeBattleAbsent": true
   }
 }

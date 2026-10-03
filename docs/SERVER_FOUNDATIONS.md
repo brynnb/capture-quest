@@ -2,8 +2,8 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest checkpoint: Safari last-ball expiry presentation recovery
-(2026-10-03), following guarded Safari commands `d673aea`, durable capture placement and terminal login retention `58d0b85`, rendered move-choice recovery `7eb3a7e`, move-choice storage/coordinator acceptance `072ad71`, blackout scene ownership `04579dc`, terminal dismissal/post-battle plans `8ce43ff`, current-owned gameplay recovery `c38a74c`, correlated battle recovery `30fa1bb` and network battle command identity `8a5ba4a`, coherent gameplay recovery `c0d31f9` and durable cutscene issuance/completion `e9eb834`, pending trainer encounters `84f2d91` and ordinary-step receipts `80a544c`, following atomic movement-step effects `cfdeb9e`, retirement of the client coordinate setter `2df1db0`, correlated cutscene completion `6638a63`, issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
+Working branch: `codex/server-foundations`. Latest checkpoint: shared Safari simulator command contract
+(2026-10-03), following expiry presentation recovery `54dbef6`, guarded Safari commands `d673aea`, durable capture placement and terminal login retention `58d0b85`, rendered move-choice recovery `7eb3a7e`, move-choice storage/coordinator acceptance `072ad71`, blackout scene ownership `04579dc`, terminal dismissal/post-battle plans `8ce43ff`, current-owned gameplay recovery `c38a74c`, correlated battle recovery `30fa1bb` and network battle command identity `8a5ba4a`, coherent gameplay recovery `c0d31f9` and durable cutscene issuance/completion `e9eb834`, pending trainer encounters `84f2d91` and ordinary-step receipts `80a544c`, following atomic movement-step effects `cfdeb9e`, retirement of the client coordinate setter `2df1db0`, correlated cutscene completion `6638a63`, issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
 `0585dde`, committed
 blackout/recovery `2f62595`, teleport notification projection `65a5581`, Instant
 Warp `e1f54a8`, normal warps `3899660`, owned-position loading `64cf970`,
@@ -81,6 +81,46 @@ number of commits or passing tests. All five areas still have outstanding work.
 | Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, movement ticks coordinated with the owner, and immediate retirement of battle-scene command admission/subscriptions. | Finish timer/callback/shared-state and legacy position-writer audits; prove remaining concurrent/reconnect behavior across real transports. |
 | Domains and wire contracts | Injected content-query service; typed character/wallet/bind, Pokédex/card, content detail, map-script, map-info/list, sight-trainer notification/readiness, coherent gameplay recovery, ordinary/Safari battle command replies, shared battle events and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
 | Lifecycle and verification | Owned HTTP/listeners, readiness, listener failure propagation, joined periodic workers, sealed session admissions, fail-closed staged preload, startup cancellation, atomic scripted-event publication, and deadline-aware shutdown waits with returned failure results. | Audit cancellation of remaining legacy work, define durable final-save recovery, and complete transport/rendered integration coverage. Owned HTTP and player transport retirement and isolated active-player shutdown checks have landed. |
+
+## Shared Safari simulator command contract (2026-10-03)
+
+The simulator's `runSafariBattleAction` still sent only `action` after the runtime
+made encounter identity and request correlation mandatory. It now builds the
+shared Go request from the actual saved encounter and reads the shared response,
+retiring its duplicate partial response parser. Success requires matching request
+ID, encounter ID, next revision and position correlation; the response destination
+must also match the committed character snapshot.
+
+Fresh simulator fixtures use a stable `scriptsim:<scenario name>` identity for
+repeatable golden output. That value is persisted before the real handler reads
+it; production/browser-debugger identity generation is unchanged. Safari summary
+assertions now distinguish playable encounters from retained terminal records.
+Both action fixtures require the expected species/level even when `active:false`,
+so disappearance cannot masquerade as terminal retention. Formatting also shows
+a retained encounter on an inactive visit instead of hiding it.
+
+Verification: the script-simulator race suite passes, all 11 existing deterministic
+Safari goldens pass on a canonically bootstrapped private PostgreSQL cluster, and
+Run passes again with identical golden output on the next fresh fixture. Only the
+Run golden needed regeneration: its reviewed differences are correlated typed
+response/position and retained terminal summary. Twelve independent last-ball
+runtime-expectation runs cover one catch, one flee and ten non-flee exhaustion
+outcomes. After adding response/durable-position agreement checks, all 11 goldens
+and another last-ball run pass against the final executable. Evidence is retained
+at `/var/tmp/capturequest-safari-sim.wZ02cK`; unit output is
+`/var/tmp/capturequest-safari-simulator-unit-verified.log`. The private cluster is
+stopped and no application/production database was used.
+
+The random last-ball case is checked through invariant expectations, without a
+fixed text golden, changed random mechanics or suppressed outcome fields. The
+CLI guide documents that distinction; this checkpoint does not claim blanket
+`--all --check` acceptance. Frontend/runtime code did not change, so rendered
+checks from the preceding checkpoint were not rerun. `git diff --check` passes.
+
+The five-area goal remains active. Next: rendered Safari party/PC capture and
+process-death recovery acceptance, then inventory/wallet/flag resynchronization and
+the remaining endpoint, callback, contract/dependency and shutdown audits. Local
+checkpoint only; no push or deployment.
 
 ## Safari last-ball expiry presentation recovery (2026-10-03)
 

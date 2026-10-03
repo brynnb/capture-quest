@@ -216,6 +216,23 @@ Useful trigger types:
 
 Use `partyState` expectations when a scenario needs exact party HP, status, EXP, IV/EV, or move PP validation. The golden output only prints non-default HP/status/EXP/PP details so existing full-health party snapshots remain readable.
 
+Safari action simulation uses the shared `world.SafariBattleActionRequest` and
+`SafariBattleActionResponse`, including persisted encounter identity, revision and
+request correlation. Fresh simulator fixtures use `scriptsim:<scenario name>` as
+their saved encounter identity so golden output is repeatable; production and the
+browser debugger still create normal UUID identities. `safariBattle.active` means
+an unfinished playable encounter. Add `pokemonId`/`level` expectations when a
+finished encounter must remain saved for recovery; inactivity alone permits absence.
+
+The `safari_last_ball_recovery` scenario uses real random catch/flee rolls. Run it
+with `go run ./cmd/script-sim --scenario safari_last_ball_recovery` to check its
+runtime expectations (terminal encounter, zero balls, gate position and game-over
+flag). Its full text has no fixed golden because the actual outcome, events and
+caught party stats can vary. Do not make a golden pass by suppressing those fields
+or changing the runtime random mechanics. This scenario is not accepted by a
+blanket `--all --check`; the existing deterministic Safari scenarios have their
+own checked goldens.
+
 Use `finalDirection` when a scenario needs to prove the fixture's facing direction. The simulator persists fixture direction through `character_data.heading` for deterministic CLI validation; Phaser runtime movement still carries live facing direction through actor updates.
 
 Scenarios can also assert server messages emitted through the fake session recorder:

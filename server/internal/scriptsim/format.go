@@ -171,9 +171,9 @@ func writeSafariSummary(b *strings.Builder, safari *SafariSummary) {
 	fmt.Fprintf(b, "\nSafari session\n")
 	if !safari.Active {
 		fmt.Fprintf(b, "  inactive\n")
-		return
+	} else {
+		fmt.Fprintf(b, "  active: balls=%d steps=%d\n", safari.BallsLeft, safari.StepsLeft)
 	}
-	fmt.Fprintf(b, "  active: balls=%d steps=%d\n", safari.BallsLeft, safari.StepsLeft)
 	if safari.Battle != nil {
 		fmt.Fprintf(b, "  battle: #%d %s L%d caught=%t fled=%t over=%t\n",
 			safari.Battle.PokemonID,
