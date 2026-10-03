@@ -22,6 +22,7 @@ interface PokeBattleState extends BattleCommandIdentity {
   presentationGeneration: number;
   battleCommandPending: boolean;
   commandError: string | null;
+  recoveredDismissal: boolean;
   restoreGameplay: (snapshot: GameplayStateResponse) => void;
   isInBattle: boolean;
   phase: BattlePhase;
@@ -100,6 +101,7 @@ const initialBattleState: BattlePresentationState = {
   presentationGeneration: 0,
   battleCommandPending: false,
   commandError: null,
+  recoveredDismissal: false,
   battleId: "",
   revision: 0,
   isInBattle: false,
@@ -143,6 +145,7 @@ const usePokeBattleStore = create<PokeBattleState>((set, get) => ({
     if (snapshot.battle) {
       const battle = snapshot.battle;
       get().startBattle({ ...battle, events: [] });
+      set({ recoveredDismissal: battle.needsDismissal === true });
       if (battle.pendingMove) {
         set({ pendingMoveLearn: { moveId: battle.pendingMove.moveId, moveName: battle.pendingMove.moveName } });
       }

@@ -61,7 +61,7 @@ type CharacterCreateProfile struct {
 
 // CharacterCreate creates the character in the database
 func CharacterCreate(ses *session.Session, accountId int64, cc CharCreateRequest) bool {
-	ctx := context.Background()
+	ctx := ses.CommandContext()
 	if !CheckCharCreateInfo(cc) {
 		log.Println("CheckCharCreateInfo failed")
 		return false

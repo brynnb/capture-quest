@@ -424,6 +424,7 @@ export interface GameplayStateRequest {
   current?: boolean;
 }
 export interface GameplayBattleState {
+  needsDismissal?: boolean;
   battleId: string;
   revision: number /* int64 */;
   phase: string;

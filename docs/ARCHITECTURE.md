@@ -980,7 +980,10 @@ CloseBattle simply to clear stale local UI. A newer battle event overtaking a re
 causes one fresh read. Legacy command timeout integration and inventory/wallet/flag
 resynchronization remain unfinished; see SERVER_FOUNDATIONS.md for the full scope.
 Local world-entry party fixtures seed only an empty party, preserving identities
-referenced by saved battles across reconnects.
+referenced by saved battles across reconnects. Local/test starter inventory is
+seeded only for a newly created character inside the creation transaction. World
+entry never tops up consumed items or replaces earned quantities. Existing
+character-creation storage/cache dependencies remain part of the legacy audit.
 
 
 ### Ordinary battle command identity
@@ -1036,7 +1039,17 @@ priority therefore governs the recovery response. Scene-bound map loading retain
 strict map validation. Both modes require saved/owned source agreement and share
 the read-only character-locked transaction; current mode cannot authorize an
 arrival, move or new script.
-Finished-battle absence also needs terminal trainer/post-battle script progression
-acceptance coverage. Safari correlation, other state streams and historical
+Finished battles remain in recovery with `needsDismissal` when no learning choice
+remains. Restored presentation sends the normal correlated close without replaying
+turn events or inventing a terminal result. Applying a recovered battle also
+refreshes the shared party view from its authoritative party; a missing battle
+carries no party snapshot and cannot clear that view. Recovery keeps command admission
+pending through position projection so dismissal cannot race the prior
+coordinator. The dismissal domain joins durable deletion and
+eligible map-script plan issuance under the same character transaction, using
+durable eligibility and the shared native-location query; publication follows
+commit. Failed issuance retains the terminal battle. A failed close whose recovery
+still finds that battle shows a reconnect error rather than automatically retrying.
+Lost close acknowledgement restores absence and the durable follow-up plan. Safari correlation, other state streams and historical
 outcome replay remain separate unfinished work. See `SERVER_FOUNDATIONS.md` for
 validation evidence and the full five-area scope.

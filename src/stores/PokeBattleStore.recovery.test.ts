@@ -26,3 +26,12 @@ test("move-learn recovery restores the exact pending choice; absence clears it w
   expect(current.isInBattle).toBe(false); expect(current.pendingMoveLearn).toBeNull(); expect(current.phase).toBe("none"); expect(current.enemyPokemon).toBeNull();
   expect(transport.send).not.toHaveBeenCalled();
 });
+
+test("terminal recovery preserves identity for dismissal without replaying battle events or inventing a result", () => {
+  const terminal = empty(); terminal.battle = { needsDismissal: true, battleId: "finished", revision: 8, phase: "battle_end", turnNumber: 7, playerPokemon: pokemon, enemyPokemon: pokemon, playerParty: [pokemon], playerActive: 0, battleType: "trainer", allowedActions: [], guaranteedCatch: false, trainerClass: "BROCK", trainerName: "Brock" };
+  usePokeBattleStore.getState().restoreGameplay(terminal);
+  expect(usePokeBattleStore.getState()).toMatchObject({ isInBattle: true, battleId: "finished", revision: 8, phase: "battle_end", recoveredDismissal: true, battleResult: null, eventQueue: [] });
+  usePokeBattleStore.getState().restoreGameplay(empty());
+  expect(usePokeBattleStore.getState().recoveredDismissal).toBe(false);
+  expect(transport.send).not.toHaveBeenCalled();
+});

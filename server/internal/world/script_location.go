@@ -19,19 +19,22 @@ func (wh *WorldHandler) nativeScriptMap(ses *session.Session) (string, error) {
 	x, y, mapID := wh.ownedPlayerPosition(ses)
 	ctx, cancel := context.WithTimeout(ses.CommandContext(), 5*time.Second)
 	defer cancel()
+	return nativeScriptMapAt(func(query string, args ...any) *sql.Row { return wh.database.QueryRowContext(ctx, query, args...) }, mapID, x, y)
+}
+
+// The same provenance query serves ordinary reads and transactional issuance.
+func nativeScriptMapAt(queryRow func(string, ...any) *sql.Row, mapID, x, y int) (string, error) {
 	if mapID != UnifiedOverworldMapID {
 		var name string
 		var overworld int
-		if err := wh.database.QueryRowContext(ctx, `SELECT name, is_overworld FROM phaser_maps WHERE id = $1`, mapID).Scan(&name, &overworld); err != nil {
+		if err := queryRow(`SELECT name, is_overworld FROM phaser_maps WHERE id = $1`, mapID).Scan(&name, &overworld); err != nil {
 			return "", err
 		}
 		if overworld == 0 {
 			return name, nil
 		}
 	}
-	_, name, err := nativeOverworldMapAt(func(query string, args ...any) *sql.Row {
-		return wh.database.QueryRowContext(ctx, query, args...)
-	}, x, y)
+	_, name, err := nativeOverworldMapAt(queryRow, x, y)
 	if err != nil {
 		return "", err
 	}

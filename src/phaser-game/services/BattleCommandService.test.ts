@@ -23,6 +23,7 @@ vi.mock("./PhaserNetworkService", () => ({
 vi.mock("./CutsceneService", () => ({ handleCutsceneStart: vi.fn() }));
 vi.mock("@/services/audio/AudioManager", () => ({ default: { playMusic: vi.fn(), playSFX: vi.fn() } }));
 import usePokeBattleStore from "@/stores/PokeBattleStore";
+import usePokemonPartyStore from "@/stores/PokemonPartyStore";
 import { bindBattleScene, sendBattleAction, sendBattleSwitch, sendMoveLearningChoice, closeOrdinaryBattle } from "./BattleCommandService";
 
 const pokemon: PokemonDTO = { id: 25, name: "PIKACHU", level: 5, type1: "ELECTRIC", type2: "", curHp: 1, maxHp: 20, attack: 10, defense: 10, speed: 10, special: 10, exp: 125, expToNextLevel: 91, status: "", isWild: false, boxSlot: 0, moves: [] };
@@ -131,4 +132,39 @@ test("missing or malformed identity never sends a mutation", async () => {
     usePokeBattleStore.setState(identity); await sendBattleAction({ action: "run" });
   }
   expect(net.send).not.toHaveBeenCalled(); expect(vi.getTimerCount()).toBe(0);
+});
+
+test("a failed terminal dismissal recovers authority without starting an automatic close retry", async () => {
+  const work = closeOrdinaryBattle();
+  emit(199, { success: false, requestId: sentID(), error: "plan issuance failed" });
+  await recoverRead({ ...battle(2), phase: "battle_end", needsDismissal: true }); await work;
+  await vi.advanceTimersByTimeAsync(30000);
+  expect(net.send).toHaveBeenCalledTimes(1);
+  expect(usePokeBattleStore.getState()).toMatchObject({ commandError: "Could not restore your battle. Please reconnect.", battleCommandPending: false, phase: "animating" });
+});
+
+test("restored terminal presentation stays pending until the old command releases scene projection", async () => {
+  let release!: () => void;
+  project.mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; }));
+  const work = sendBattleAction({ action: "fight" });
+  await vi.advanceTimersByTimeAsync(10000);
+  await recoverRead({ ...battle(3), phase: "battle_end", needsDismissal: true });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(usePokeBattleStore.getState()).toMatchObject({ recoveredDismissal: true, phase: "battle_end", battleCommandPending: true });
+  release(); await work;
+  expect(usePokeBattleStore.getState().battleCommandPending).toBe(false);
+  const close = closeOrdinaryBattle();
+  expect(net.send).toHaveBeenCalledTimes(2);
+  emit(199, { ...reply(sentID()), battle: null }); await close;
+  expect(usePokeBattleStore.getState().isInBattle).toBe(false);
+});
+
+test("current-state battle recovery refreshes the shared party view with the same authoritative party", async () => {
+  usePokemonPartyStore.getState().setParty([pokemon]);
+  const work = sendBattleAction({ action: "fight" });
+  await vi.advanceTimersByTimeAsync(10000);
+  const fresh = { ...pokemon, maxHp: 21, defense: 12, exp: 130, moves: [{ id: 150, name: "Splash", pp: 39, maxPp: 40, type: "NORMAL", power: 0, accuracy: 0 }] };
+  await recoverRead({ ...battle(3), playerPokemon: fresh, playerParty: [fresh] }); await work;
+  expect(usePokemonPartyStore.getState().party).toEqual([fresh]);
+  expect(usePokeBattleStore.getState().faintSwitchParty).toEqual([fresh]);
 });

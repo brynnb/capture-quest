@@ -966,6 +966,7 @@ const PokeBattleDisplay: React.FC = () => {
   const {
     isInBattle,
     battleCommandPending,
+    recoveredDismissal,
     commandError,
     phase,
     playerPokemon,
@@ -1022,12 +1023,13 @@ const PokeBattleDisplay: React.FC = () => {
     (canRunFromFaintSwitch ? 1 : 0) +
     (hasPokemonMenuBack ? 1 : 0);
 
-  // Auto-close battle on win (prize money message was the last thing shown)
+  // A recovered terminal snapshot needs dismissal without replaying its text.
+  // Wait for the preceding coordinator to finish projection before taking its slot.
   useEffect(() => {
-    if (phase === "battle_end" && battleResult === "win") {
+    if (phase === "battle_end" && !battleCommandPending && !commandError && (battleResult === "win" || recoveredDismissal)) {
       closeBattle();
     }
-  }, [phase, battleResult, closeBattle]);
+  }, [phase, battleResult, recoveredDismissal, battleCommandPending, commandError, closeBattle]);
 
   useEffect(() => {
     if (!isInBattle) return;

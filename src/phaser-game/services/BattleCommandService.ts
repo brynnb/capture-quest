@@ -91,8 +91,17 @@ async function sendBattleCommand(opcode: number, responseOpcode: number, command
     try {
       const snapshot = await readCurrentGameplayState(controller.signal);
       if (!current()) return;
+      // A failed dismissal must not turn recovery into an automatic retry loop.
+      // Preserve the durable terminal battle for a later reconnect instead.
+      if (opcode === OpCodes.PokeBattleCloseRequest && snapshot.battle?.needsDismissal) {
+        throw new Error("Battle dismissal did not commit");
+      }
       applying = true;
       applyGameplaySnapshot(snapshot);
+      // Restoration resets presentation state. Keep this operation pending until
+      // projection and coordinator retirement finish, so terminal auto-dismissal
+      // cannot run while the preceding command still owns the single-flight slot.
+      usePokeBattleStore.setState({ battleCommandPending: true });
       await project(snapshot.position);
     } catch (recoveryError) {
       if (controller.signal.aborted || sceneProjection !== project) return;

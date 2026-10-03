@@ -36,9 +36,7 @@ func ensureLocalDevFixtures(charID int64) {
 	if err := ensureLocalDevPokemonParty(db.GlobalWorldDB.DB, charID); err != nil {
 		log.Printf("[LocalDevFixtures] Failed to seed test party for char %d: %v", charID, err)
 	}
-	if err := ensureLocalDevInventory(db.GlobalWorldDB.DB, charID); err != nil {
-		log.Printf("[LocalDevFixtures] Failed to seed test inventory for char %d: %v", charID, err)
-	}
+
 }
 
 func localDevFixturesEnabled() bool {
@@ -112,13 +110,12 @@ func ensureLocalDevPokemonParty(myDB *sql.DB, charID int64) error {
 	return nil
 }
 
-func ensureLocalDevInventory(myDB *sql.DB, charID int64) error {
-	tx, err := myDB.Begin()
-	if err != nil {
+// Local inventory is a creation fixture, never a reconnect replenishment rule.
+// The caller owns the character creation transaction and publishes after commit.
+func seedLocalDevInventoryIn(tx db.DBTX, charID int64) error {
+	if err := db.RequireTransaction(tx); err != nil {
 		return err
 	}
-	defer tx.Rollback()
-
 	templates, err := loadLocalDevItemTemplates(tx)
 	if err != nil {
 		return err
@@ -148,7 +145,7 @@ func ensureLocalDevInventory(myDB *sql.DB, charID int64) error {
 		}
 	}
 
-	return tx.Commit()
+	return nil
 }
 
 type localDevItemTemplate struct {
@@ -161,7 +158,7 @@ type localDevItemTotals struct {
 	quantity  int
 }
 
-func loadLocalDevItemTemplates(tx *sql.Tx) ([]localDevItemTemplate, error) {
+func loadLocalDevItemTemplates(tx db.DBTX) ([]localDevItemTemplate, error) {
 	rows, err := tx.Query(`SELECT id, stackable FROM cq_items ORDER BY id`)
 	if err != nil {
 		return nil, fmt.Errorf("query cq_items: %w", err)
@@ -179,7 +176,7 @@ func loadLocalDevItemTemplates(tx *sql.Tx) ([]localDevItemTemplate, error) {
 	return items, rows.Err()
 }
 
-func loadLocalDevItemCounts(tx *sql.Tx, charID int64) (map[int32]localDevItemTotals, error) {
+func loadLocalDevItemCounts(tx db.DBTX, charID int64) (map[int32]localDevItemTotals, error) {
 	rows, err := tx.Query(`
 		SELECT ii.item_id, COUNT(*), COALESCE(SUM(ii.quantity), 0)
 		FROM cq_character_inventory ci
@@ -204,7 +201,7 @@ func loadLocalDevItemCounts(tx *sql.Tx, charID int64) (map[int32]localDevItemTot
 	return counts, rows.Err()
 }
 
-func createLocalDevInventoryItem(tx *sql.Tx, charID int64, itemID int32, quantity int) error {
+func createLocalDevInventoryItem(tx db.DBTX, charID int64, itemID int32, quantity int) error {
 	if quantity < 1 {
 		quantity = 1
 	}

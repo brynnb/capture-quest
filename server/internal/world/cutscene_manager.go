@@ -518,17 +518,29 @@ func (m *CutsceneManager) MapNameForID(mapID int) string {
 
 // FindEligibleMapScriptCutscene checks if any map_script-triggered cutscene should fire.
 func (m *CutsceneManager) FindEligibleMapScriptCutscene(mapName string, charID int64, efm *EventFlagManager, playerFacing ...string) *CutsceneScript {
+	script, err := m.findEligibleMapScriptCutsceneIn(m.db, mapName, charID, efm, playerFacing...)
+	if err != nil {
+		log.Printf("[Cutscene] Map eligibility: %v", err)
+	}
+	return script
+}
+
+func (m *CutsceneManager) findEligibleMapScriptCutsceneIn(q db.DBTX, mapName string, charID int64, efm *EventFlagManager, playerFacing ...string) (*CutsceneScript, error) {
 	m.mu.RLock()
-	scripts := m.byMap[mapName]
+	scripts := append([]*CutsceneScript(nil), m.byMap[mapName]...)
 	m.mu.RUnlock()
 
 	for _, cs := range scripts {
 		if cs.TriggerType != "map_script" {
 			continue
 		}
-		if m.CheckEligible(cs, charID, efm, playerFacing...) {
-			return cs
+		eligible, err := checkCutsceneEligibleIn(q, cs, charID, efm, playerFacing...)
+		if err != nil {
+			return nil, err
+		}
+		if eligible {
+			return cs, nil
 		}
 	}
-	return nil
+	return nil, nil
 }

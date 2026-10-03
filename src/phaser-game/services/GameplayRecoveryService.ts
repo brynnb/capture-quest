@@ -1,6 +1,7 @@
 import type { GameplayStateResponse } from "@/net/generated/world_api";
 import { OpCodes } from "@/net";
 import usePokeBattleStore from "@/stores/PokeBattleStore";
+import usePokemonPartyStore from "@/stores/PokemonPartyStore";
 import { correlatedRequest } from "./CorrelatedRequest";
 import * as PhaserNet from "./PhaserNetworkService";
 import { handleCutsceneStart } from "./CutsceneService";
@@ -22,6 +23,10 @@ export async function readCurrentGameplayState(signal?: AbortSignal): Promise<Ga
 }
 
 export function applyGameplaySnapshot(snapshot: GameplayStateResponse): void {
+  // The recovered battle already contains the current durable party. Refresh
+  // the ordinary party view too; retaining its earlier notification would leave
+  // derived stats, HP or PP stale until reentry. Absence carries no party data.
+  if (snapshot.battle) usePokemonPartyStore.getState().setParty(snapshot.battle.playerParty);
   usePokeBattleStore.getState().restoreGameplay(snapshot);
   window.dispatchEvent(new CustomEvent("safariZoneEnter", { detail: snapshot.safari
     ? { success: true, ballsLeft: snapshot.safari.ballsLeft, stepsLeft: snapshot.safari.stepsLeft }

@@ -730,7 +730,7 @@ func HandlePokeMoveLearn(ses *session.Session, payload []byte, wh *WorldHandler)
 }
 
 // HandlePokeBattleClose is called by the client when the player dismisses the battle screen.
-// This is the only place where the battle is cleaned up from memory.
+// Dismissal and any eligible map-script plan commit together before publication.
 func HandlePokeBattleClose(ses *session.Session, payload []byte, wh *WorldHandler) bool {
 	var req PokeBattleCloseRequest
 	if err := decodePlayerMovement(payload, &req); err != nil || !validBattleRequestID(req.RequestID) {
@@ -746,45 +746,17 @@ func HandlePokeBattleClose(ses *session.Session, payload []byte, wh *WorldHandle
 		sendBattleCommandError(ses, req.RequestID, opcodes.PokeBattleCloseResponse, "Battle changed. Recover its current state.")
 		return false
 	}
-	shouldSendPostBattleScript := battleShouldSendPostBattleMapScript(battle)
-	if err := pokebattle.CloseBattle(ses.CommandContext(), wh.database, charID, battle); err != nil {
+	plan, err := commitBattleDismissal(ses.CommandContext(), wh, charID, battle, wh.ownedPlayerSnapshot(ses, req.RequestID))
+	if err != nil {
 		sendBattleCommitError(ses, wh, req.RequestID, charID, nil, err, opcodes.PokeBattleCloseResponse)
 		return false
 	}
 	forgetBattle(charID, battle)
 	ses.SendStreamJSON(BattleCommandResponse{Success: true, RequestID: req.RequestID, Position: wh.ownedPlayerSnapshot(ses, req.RequestID), Events: []pokebattle.BattleEvent{}}, opcodes.PokeBattleCloseResponse)
-	if shouldSendPostBattleScript {
-		sendEligibleMapScriptAfterBattleClose(ses, charID, wh)
+	if plan != nil {
+		publishCutscenePlan(ses, plan, wh)
 	}
 	return false
-}
-
-func battleShouldSendPostBattleMapScript(battle *pokebattle.BattleState) bool {
-	if battle == nil || !battle.IsOver() || battle.Trainer == nil {
-		return false
-	}
-	if battle.PlayerWon() {
-		return battle.Trainer.WinFlag != ""
-	}
-	return battle.Trainer.NoBlackoutOnLoss && battle.Trainer.LoseFlag != ""
-}
-
-func sendEligibleMapScriptAfterBattleClose(ses *session.Session, charID int64, wh *WorldHandler) {
-	if wh == nil || wh.Cutscenes == nil || wh.EventFlags == nil {
-		return
-	}
-	mapName, err := wh.nativeScriptMap(ses)
-	if err != nil {
-		log.Printf("[Cutscene] Resolve post-battle location: %v", err)
-		return
-	}
-	playerFacing := ""
-	if wh.PlayerMovement != nil {
-		playerFacing, _ = wh.PlayerMovement.GetDirection(int(charID))
-	}
-	if cs := wh.Cutscenes.FindEligibleMapScriptCutscene(mapName, charID, wh.EventFlags, playerFacing); cs != nil {
-		SendCutsceneToPlayer(ses, cs, wh)
-	}
 }
 
 func battleEndedByRunSuccess(events []pokebattle.BattleEvent) bool {

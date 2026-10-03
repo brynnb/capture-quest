@@ -13,6 +13,7 @@ import (
 	"capturequest/internal/session"
 
 	"capturequest/internal/cache"
+	"capturequest/internal/config"
 	"capturequest/internal/db"
 
 	model "capturequest/internal/db/models"
@@ -446,7 +447,7 @@ func GetOrCreateCharacterID(ctx context.Context, accountId int64, profile *Chara
 // SaveCharacterCreate saves the character creation data to the database
 func SaveCharacterCreate(ctx context.Context, accountID int64, profile *CharacterCreateProfile) bool {
 	// Get or create character ID
-	charID, _, err := GetOrCreateCharacterID(ctx, accountID, profile)
+	charID, created, err := GetOrCreateCharacterID(ctx, accountID, profile)
 	if err != nil {
 		log.Printf("Failed to get or create character ID for %d: %v", accountID, err)
 		return false
@@ -526,6 +527,22 @@ func SaveCharacterCreate(ctx context.Context, accountID int64, profile *Characte
 		); err != nil {
 			log.Printf("[DB] Character creation FAILED at Bind point %d for %s: %v", i, name, err)
 			return false
+		}
+	}
+
+	// Test/local starter inventory belongs to creation. Reentry must preserve
+	// earned items and consumption, including an intentionally empty inventory.
+	if created {
+		cfg, err := config.Get()
+		if err != nil {
+			log.Printf("[DB] Read local fixture config: %v", err)
+			return false
+		}
+		if cfg.Local && localDevFixturesEnabled() {
+			if err := db.Transaction(ctx, tx, func(q db.DBTX) error { return seedLocalDevInventoryIn(q, charID) }); err != nil {
+				log.Printf("[DB] Seed local creation inventory: %v", err)
+				return false
+			}
 		}
 	}
 

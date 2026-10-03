@@ -55,11 +55,6 @@ func TestMapScriptIssuanceUsesOwnedNativeLocation(t *testing.T) {
 	wh.PlayerMovement.players[42] = &PlayerMovementState{CharacterID: 42, CurrentX: 100, CurrentY: 200, MapID: UnifiedOverworldMapID}
 	request("ROOM", false)
 	request("ROUTE", true) // Erased/edited art retains original native map identity.
-	messages.streams = nil
-	sendEligibleMapScriptAfterBattleClose(ses, 42, wh)
-	if len(messages.streams) != 1 || messages.streams[0].opcode != opcodes.CutsceneStartNotify {
-		t.Fatal("post-battle overworld script not issued")
-	}
 	// A user tile cannot manufacture native script identity.
 	testdb.Exec(t, database, `INSERT INTO phaser_tiles(x,y,tile_image_id,source_map_id) VALUES(101,200,1,3)`)
 	wh.PlayerMovement.players[42].CurrentX = 101

@@ -22,6 +22,7 @@ type GameplayStateRequest struct {
 	Current   bool   `json:"current,omitempty"`
 }
 type GameplayBattleState struct {
+	NeedsDismissal  bool                 `json:"needsDismissal,omitempty"`
 	BattleID        string               `json:"battleId"`
 	Revision        int64                `json:"revision"`
 	Phase           string               `json:"phase"`
@@ -117,7 +118,7 @@ func readGameplayState(ctx context.Context, ses *session.Session, wh *WorldHandl
 		if err != nil {
 			return err
 		}
-		if battle != nil && (!battle.IsOver() || battle.PendingMoveLearn != nil) {
+		if battle != nil {
 			if err := battle.RestoreParty(tx, charID); err != nil {
 				return err
 			}
@@ -202,7 +203,7 @@ func readGameplayState(ctx context.Context, ses *session.Session, wh *WorldHandl
 }
 
 func gameplayBattleSnapshot(b *pokebattle.BattleState) *GameplayBattleState {
-	result := &GameplayBattleState{BattleID: b.BattleID, Revision: b.Revision, Phase: phaseToString(b.Phase), TurnNumber: b.TurnNumber, PlayerPokemon: pokemonToDTO(b.GetPlayerPokemon()), EnemyPokemon: pokemonToDTO(b.GetEnemyPokemon()), PlayerParty: battlePartyDTOs(b), PlayerActive: b.PlayerActive, BattleType: battleTypeToString(b.BattleType), GuaranteedCatch: b.GuaranteedCatch, AllowedActions: []string{}}
+	result := &GameplayBattleState{NeedsDismissal: b.IsOver() && b.PendingMoveLearn == nil, BattleID: b.BattleID, Revision: b.Revision, Phase: phaseToString(b.Phase), TurnNumber: b.TurnNumber, PlayerPokemon: pokemonToDTO(b.GetPlayerPokemon()), EnemyPokemon: pokemonToDTO(b.GetEnemyPokemon()), PlayerParty: battlePartyDTOs(b), PlayerActive: b.PlayerActive, BattleType: battleTypeToString(b.BattleType), GuaranteedCatch: b.GuaranteedCatch, AllowedActions: []string{}}
 	for _, action := range b.AllowedActions {
 		result.AllowedActions = append(result.AllowedActions, string(action))
 	}

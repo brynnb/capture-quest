@@ -165,18 +165,32 @@ func CloseBattle(ctx context.Context, database *sql.DB, charID int64, current *B
 		if err := db.LockCharacter(tx, charID); err != nil {
 			return err
 		}
-		stored, err := LoadBattleState(tx, charID)
-		if err != nil {
-			return err
-		}
-		if stored == nil {
-			return nil
-		}
-		if stored.BattleID != current.BattleID || stored.Revision != current.Revision {
-			return ErrBattleConflict
-		}
-		return DeleteBattleState(tx, charID)
+		return CloseBattleIn(tx, charID, current)
 	})
+}
+
+// CloseBattleIn joins dismissal to a caller-owned character transaction, so
+// post-battle plan issuance cannot fail after the resumable battle is deleted.
+// Caller must hold the character lock; durable identity and terminal eligibility
+// are rechecked here, independently of the transport's cached battle.
+func CloseBattleIn(tx db.DBTX, charID int64, current *BattleState) error {
+	if err := db.RequireTransaction(tx); err != nil {
+		return err
+	}
+	if current == nil || !current.IsOver() || current.PendingMoveLearn != nil {
+		return ErrBattleConflict
+	}
+	stored, err := LoadBattleState(tx, charID)
+	if err != nil {
+		return err
+	}
+	if stored == nil {
+		return nil
+	}
+	if stored.BattleID != current.BattleID || stored.Revision != current.Revision || !stored.IsOver() || stored.PendingMoveLearn != nil {
+		return ErrBattleConflict
+	}
+	return DeleteBattleState(tx, charID)
 }
 
 // Clone separates every mutable battle object, including parties, action lists,
