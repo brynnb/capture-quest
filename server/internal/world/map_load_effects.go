@@ -59,15 +59,6 @@ func commitStandaloneMapLoadEffects(ctx context.Context, charID int64, mapID int
 	return effect, nil
 }
 
-// Retained until arrival uses native tile provenance rather than this legacy
-// geometry policy. No transaction caller may use global DB or cached flags.
-func OverworldMapLoadNameForPosition(x, y int) string {
-	if x >= 20 && x <= 69 && y >= 108 && y <= 116 {
-		return "ROUTE_20"
-	}
-	return ""
-}
-
 func applyMapLoadScriptEffectsIn(tx db.DBTX, charID int64, mapID int, mapName string) (MapLoadEffect, error) {
 	effect := MapLoadEffect{
 		MapID:   mapID,
@@ -270,29 +261,51 @@ func clearBoulderPositionsForMaps(tx db.DBTX, charID int64, mapIDs ...int) error
 	return nil
 }
 
+// mapLoadArrival is an accepted destination, not a client-provided effect identity.
+type mapLoadArrival struct {
+	MapID, X, Y                                  int
+	WritePosition, ValidateCatalog, ApplyEffects bool
+}
+
 // Position, Safari transition and all map-load mutations share the same commit.
-func commitMapLoad(ctx context.Context, database *sql.DB, charID int64, mapID, x, y int, writePosition, validateCatalog, applyEffects bool, effectMapID int, effectMapName string) (MapLoadEffect, error) {
+func commitMapLoad(ctx context.Context, database *sql.DB, charID int64, arrival mapLoadArrival) (MapLoadEffect, error) {
 	var effect MapLoadEffect
 	err := db.Transaction(ctx, database, func(tx db.DBTX) error {
 		if err := db.LockCharacter(tx, charID); err != nil {
 			return err
 		}
-		if writePosition {
-			if validateCatalog {
-				if err := validateClientDestinationIn(tx, mapID, x, y); err != nil {
+		if arrival.WritePosition {
+			if arrival.ValidateCatalog {
+				if err := validateClientDestinationIn(tx, arrival.MapID, arrival.X, arrival.Y); err != nil {
 					return err
 				}
 			}
-			if err := saveFieldDestinationIn(tx, charID, mapID, x, y); err != nil {
+			if err := saveFieldDestinationIn(tx, charID, arrival.MapID, arrival.X, arrival.Y); err != nil {
 				return err
 			}
 		}
-		if applyEffects {
-			var err error
-			effect, err = applyMapLoadScriptEffectsIn(tx, charID, effectMapID, effectMapName)
-			return err
+		if !arrival.ApplyEffects {
+			return nil
 		}
-		return nil
+		effectMapID := arrival.MapID
+		var effectMapName string
+		if arrival.MapID == UnifiedOverworldMapID {
+			var err error
+			effectMapID, effectMapName, err = nativeOverworldMapAt(tx.QueryRow, arrival.X, arrival.Y)
+			if err != nil {
+				return err
+			}
+			if effectMapName == "" {
+				return nil
+			}
+		} else {
+			if err := tx.QueryRow(`SELECT name FROM phaser_maps WHERE id=$1`, arrival.MapID).Scan(&effectMapName); err != nil {
+				return err
+			}
+		}
+		var err error
+		effect, err = applyMapLoadScriptEffectsIn(tx, charID, effectMapID, effectMapName)
+		return err
 	})
 	if err != nil {
 		return MapLoadEffect{}, err

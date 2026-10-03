@@ -2,9 +2,9 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest checkpoint: atomic map-load
-position, Safari transitions and script effects (2026-10-02), following the
-read-only metadata/correlated arrival checkpoint `7d4060c`. Earlier foundation
+Working branch: `codex/server-foundations`. Latest checkpoint: native provenance for map-load effects
+(2026-10-02), following atomic map-load checkpoint `b8f5ccd` and read-only
+metadata/correlated arrival checkpoint `7d4060c`. Earlier foundation
 checkpoints remain in this branch's history. No push or production deployment
 is authorized by this goal.
 
@@ -54,8 +54,7 @@ evidence, including remaining-work notes that subsequent commits may resolve.
    release the shared player lock before database work. Audit remaining field
    effects and other mutation paths for the same requirements.
    Map-load arrival/recovery and script effects now also share one transaction;
-   native-map provenance for overworld effects and post-commit cache recovery
-   remain unfinished. Extend the shared transaction/domain operations already
+   post-commit cache recovery remains unfinished. Extend the shared transaction/domain operations already
    in use. Acceptance:
    a late failure leaves all affected state unchanged; retry and concurrent
    requests cannot duplicate a reward or publish uncommitted success.
@@ -87,6 +86,40 @@ evidence, including remaining-work notes that subsequent commits may resolve.
    cancellation/timeouts, failure/retry and shutdown with active players.
    Acceptance: evidence covers the original five milestones, including visible
    behavior where relevant. Only then mark the full goal complete.
+
+## Native provenance for map-load effects (2026-10-02)
+
+Arrival no longer identifies Route 20 with a coordinate rectangle. Runtime arrival
+and script issuance now share an original-tile provenance resolver. Arrival resolves
+that native map inside its character-locked transaction, including the existing
+Pallet Town effects that the old overworld selector skipped. The native map's ID
+and name come from the catalog rather than caller-supplied effect metadata.
+`original_source_map_id` takes precedence over edited `source_map_id`; erased
+original tiles retain script identity. A pure user-added location has no native
+load effects and cannot manufacture them by setting a source map ID. Script
+issuance still requires a native identity. Missing, empty, non-overworld or
+conflicting original identities fail closed; arrival position/effect writes roll
+back together. The unused map-entry display lookup and its global SQL shim were
+removed; display-name formatting remains unchanged.
+
+The inspected local SQLite source contains 43,380 overworld tiles, all linked to
+an overworld map; Pallet Town has 360 and Route 20 has 1,800 tiles. This is source
+artifact evidence, not production verification. Focused PostgreSQL boundary tests
+cover Route 20 outside the old rectangle, an edited neighbor inside it, user-only
+tiles, Pallet Town effects, missing/conflicting provenance rollback and corrected
+retry. Existing script-location checks cover edited/erased originals, ambiguity,
+cancellation and retry. Race-enabled suites passed for `internal/world`,
+`internal/scriptsim`, `internal/server` and `internal/protocol`.
+`git diff --check` passed. All five isolated rendered Instant Warp and
+multiplayer visibility checks passed, with evidence retained at
+`/var/tmp/capturequest-rendered.T587LI`.
+
+Remaining: audit no-destination arrival against the owned movement snapshot;
+replace broad client destination authority with issued warp grants and explicit
+Instant Warp intent; define post-commit flag-cache and result recovery; migrate
+remaining global dependencies and wire families. The full roadmap above remains
+active. No source schema, generated assets, import pipeline or production state
+changed in this checkpoint.
 
 ## Atomic map-load persistence checkpoint (2026-10-02)
 

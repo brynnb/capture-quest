@@ -351,8 +351,9 @@ field-name conversion or generated-name postprocessor will remain.
    their DTOs generate from protocol JSON tags. Lists cannot assign player
    presence, are ordered by ID, and honor optional field omission. Metadata
    reads have no arrival/recovery/load effects. The explicit correlated MapLoad
-   command owns those gameplay responsibilities; movement eligibility and
-   native-map provenance for overworld effects remain in the active roadmap.
+   command owns those gameplay responsibilities. Overworld arrival and script
+   issuance share original-tile provenance; arrival resolves effects inside its
+   character-locked transaction. Movement eligibility remains in the active roadmap.
    Map-script and learnset aggregates now also use the service and protocol
    types. They read under one read-only repeatable-read transaction and one
    five-second budget, returning no partial projection on any failure. A shared
@@ -807,8 +808,12 @@ Safari transitions and all load-effect flag/visibility/boulder mutations. Condit
 read durable flags; runtime and simulator share the transaction implementation.
 Cache and live position publication follow commit. A post-commit flag refresh
 failure is logged and cannot roll back the durable result; cache recovery remains
-unfinished. Overworld Route 20 selection still uses legacy geometry pending native
-tile provenance. Actor collision loading still has a global database dependency.
+unfinished. Overworld arrival and script issuance share native identity from
+original tile provenance, preserving identity across edited/erased art. Arrival
+resolves it inside the position/effect transaction. User-only locations have no
+native effects; malformed or conflicting original provenance rejects the arrival
+without committing writes. The Route 20 rectangle selector is retired. Actor
+collision loading still has a global database dependency.
 Other map queries still need correlation, and committed-result reconnect recovery remains
 unfinished. Frontend/backend versions must be coordinated when eventually
 deploying this retirement; there is no destination alias on the read endpoint.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -130,7 +131,7 @@ func TestMapLoadCancellationRollsBackPositionAndRetries(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 75*time.Millisecond)
 	defer cancel()
-	_, err = commitMapLoad(ctx, database, 42, 192, 3, 4, true, true, true, 192, "SEAFOAM_ISLANDS_1F")
+	_, err = commitMapLoad(ctx, database, 42, mapLoadArrival{MapID: 192, X: 3, Y: 4, WritePosition: true, ValidateCatalog: true, ApplyEffects: true})
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("deadline: %v", err)
 	}
@@ -141,7 +142,7 @@ func TestMapLoadCancellationRollsBackPositionAndRetries(t *testing.T) {
 	if err := lock.Rollback(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := commitMapLoad(context.Background(), database, 42, 192, 3, 4, true, true, true, 192, "SEAFOAM_ISLANDS_1F"); err != nil {
+	if _, err := commitMapLoad(context.Background(), database, 42, mapLoadArrival{MapID: 192, X: 3, Y: 4, WritePosition: true, ValidateCatalog: true, ApplyEffects: true}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -183,5 +184,100 @@ func TestMapLoadBoulderResetRollsBackWithFlagsAndPreservesOtherPositions(t *test
 	}
 	if err := database.QueryRow(`SELECT COUNT(*) FROM character_object_positions WHERE character_id=42 AND object_id=11`).Scan(&count); err != nil || count != 0 {
 		t.Fatal("committed boulder reset absent")
+	}
+}
+
+func TestMapLoadUsesOriginalNativeProvenanceInsteadOfRectangle(t *testing.T) {
+	for _, tc := range []struct {
+		name                   string
+		x, y, source, original int
+		native, reset          bool
+	}{
+		{"route outside old rectangle", 200, 300, 31, 31, true, true},
+		{"edited neighbor inside old rectangle", 25, 110, 31, 32, true, false},
+		{"user tile cannot manufacture route", 25, 110, 31, 31, false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			database, wh, ses, messages := battleTestWorld(t)
+			testdb.Exec(t, database, `INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(31,'ROUTE_20',50,10,1),(32,'NEIGHBOR',10,10,1);
+    INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'EVENT_IN_SEAFOAM_ISLANDS');`)
+			native := 0
+			if tc.native {
+				native = 1
+			}
+			if _, err := database.Exec(`INSERT INTO phaser_tiles(x,y,tile_image_id,source_map_id,original_source_map_id,is_original_tile_location) VALUES($1,$2,1,$3,$4,$5)`, tc.x, tc.y, tc.source, tc.original, native); err != nil {
+				t.Fatal(err)
+			}
+			db.GlobalWorldDB = nil
+			payload, _ := json.Marshal(protocol.PhaserMapLoadRequest{MapID: UnifiedOverworldMapID, DestX: &tc.x, DestY: &tc.y, RequestID: "native"})
+			battleDispatch(t, wh, ses, opcodes.PhaserMapLoadRequest, string(payload))
+			var response protocol.PhaserMapLoadResponse
+			if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &response) != nil || !response.Success || response.X != tc.x || response.Y != tc.y {
+				t.Fatalf("arrival: %+v", response)
+			}
+			on, err := queryEventFlag(database, 42, "EVENT_IN_SEAFOAM_ISLANDS")
+			if err != nil || on == tc.reset || wh.EventFlags.CheckFlag(42, "EVENT_IN_SEAFOAM_ISLANDS") != on {
+				t.Fatalf("route reset=%v flag=%v error=%v", tc.reset, on, err)
+			}
+		})
+	}
+}
+
+func TestMapLoadNativePalletEffectsRunOutsideLegacyRouteSelection(t *testing.T) {
+	database, wh, ses, messages := battleTestWorld(t)
+	testdb.Exec(t, database, `INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(0,'PALLET_TOWN',20,18,1);
+ INSERT INTO phaser_tiles(x,y,tile_image_id,source_map_id,is_original_tile_location) VALUES(200,300,1,0,1);
+ INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'EVENT_GOT_POKEBALLS_FROM_OAK');`)
+	db.GlobalWorldDB = nil
+	battleDispatch(t, wh, ses, opcodes.PhaserMapLoadRequest, `{"mapId":9999,"destX":200,"destY":300,"requestId":"pallet"}`)
+	var response protocol.PhaserMapLoadResponse
+	if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &response) != nil || !response.Success || !wh.EventFlags.CheckFlag(42, "EVENT_PALLET_AFTER_GETTING_POKEBALLS_2") {
+		t.Fatalf("Pallet arrival: %+v", response)
+	}
+}
+
+func TestMapLoadBrokenNativeProvenanceRollsBackArrival(t *testing.T) {
+	for _, ambiguous := range []bool{false, true} {
+		t.Run(fmt.Sprintf("ambiguous=%v", ambiguous), func(t *testing.T) {
+			database, wh, ses, messages := battleTestWorld(t)
+			testdb.Exec(t, database, `INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(31,'ROUTE_20',50,10,1),(32,'NEIGHBOR',10,10,1);
+    INSERT INTO phaser_tiles(x,y,tile_image_id,source_map_id,is_original_tile_location) VALUES(200,300,1,31,1);
+    INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'EVENT_IN_SEAFOAM_ISLANDS');`)
+			if ambiguous {
+				testdb.Exec(t, database, `DROP INDEX phaser_tiles_coord_unique_idx; INSERT INTO phaser_tiles(x,y,tile_image_id,source_map_id,is_original_tile_location) VALUES(200,300,1,32,1)`)
+			} else {
+				testdb.Exec(t, database, `UPDATE phaser_tiles SET source_map_id=NULL`)
+			}
+			var beforeMap, beforeX, beforeY int
+			if err := database.QueryRow(`SELECT map_id,x,y FROM character_data WHERE id=42`).Scan(&beforeMap, &beforeX, &beforeY); err != nil {
+				t.Fatal(err)
+			}
+			if err := wh.EventFlags.LoadFlags(42); err != nil {
+				t.Fatal(err)
+			}
+			db.GlobalWorldDB = nil
+			battleDispatch(t, wh, ses, opcodes.PhaserMapLoadRequest, `{"mapId":9999,"destX":200,"destY":300,"requestId":"broken"}`)
+			var response protocol.PhaserMapRequestError
+			if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &response) != nil || response.Success || response.Error == "" {
+				t.Fatalf("broken arrival: %+v", response)
+			}
+			var mapID, x, y int
+			if err := database.QueryRow(`SELECT map_id,x,y FROM character_data WHERE id=42`).Scan(&mapID, &x, &y); err != nil || mapID != beforeMap || x != beforeX || y != beforeY {
+				t.Fatal("broken provenance committed destination")
+			}
+			if ses.MapID == 9999 || !wh.EventFlags.CheckFlag(42, "EVENT_IN_SEAFOAM_ISLANDS") {
+				t.Fatal("broken provenance published state")
+			}
+			if ambiguous {
+				testdb.Exec(t, database, `DELETE FROM phaser_tiles WHERE source_map_id=32`)
+			} else {
+				testdb.Exec(t, database, `UPDATE phaser_tiles SET source_map_id=31`)
+			}
+			battleDispatch(t, wh, ses, opcodes.PhaserMapLoadRequest, `{"mapId":9999,"destX":200,"destY":300,"requestId":"retry"}`)
+			var success protocol.PhaserMapLoadResponse
+			if json.Unmarshal(messages.streams[len(messages.streams)-1].payload, &success) != nil || !success.Success || wh.EventFlags.CheckFlag(42, "EVENT_IN_SEAFOAM_ISLANDS") {
+				t.Fatal("corrected provenance retry failed")
+			}
+		})
 	}
 }

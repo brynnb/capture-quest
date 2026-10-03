@@ -211,11 +211,10 @@ func HandlePhaserMapLoadRequest(ses *session.Session, payload []byte, wh *WorldH
 		direction = RecoverySpawnDirection
 		writePosition = true
 	}
-	effectMapID, effectMapName := mapInfo.ID, mapInfo.Name
-	if normalizedID == UnifiedOverworldMapID {
-		effectMapName = OverworldMapLoadNameForPosition(x, y)
-	}
-	effect, err := commitMapLoad(ses.CommandContext(), wh.database, charID, normalizedID, x, y, writePosition, supplied, wh.EventFlags != nil, effectMapID, effectMapName)
+	effect, err := commitMapLoad(ses.CommandContext(), wh.database, charID, mapLoadArrival{
+		MapID: normalizedID, X: x, Y: y, WritePosition: writePosition,
+		ValidateCatalog: supplied, ApplyEffects: wh.EventFlags != nil,
+	})
 	if err != nil {
 		log.Printf("[Phaser] Commit map load for %d: %v", charID, err)
 		ses.SendStreamJSON(protocol.PhaserMapRequestError{RequestID: req.RequestID, Error: "Could not finish map loading. Please try again."}, opcodes.PhaserMapLoadResponse)

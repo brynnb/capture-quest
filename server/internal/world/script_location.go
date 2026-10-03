@@ -2,6 +2,7 @@ package world
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -28,22 +29,38 @@ func (wh *WorldHandler) nativeScriptMap(ses *session.Session) (string, error) {
 			return name, nil
 		}
 	}
-	var name string
-	var count int
-	err := wh.database.QueryRowContext(ctx, `
-		SELECT COALESCE(MIN(pm.name), ''), COUNT(DISTINCT pm.id)
-		FROM phaser_tiles pt
-		JOIN phaser_maps pm ON pm.id = COALESCE(pt.original_source_map_id, pt.source_map_id)
-		WHERE pt.map_id IS NULL AND pt.x = $1 AND pt.y = $2
-		  AND pt.is_original_tile_location = 1 AND pm.is_overworld = 1`, x, y).Scan(&name, &count)
+	_, name, err := nativeOverworldMapAt(func(query string, args ...any) *sql.Row {
+		return wh.database.QueryRowContext(ctx, query, args...)
+	}, x, y)
 	if err != nil {
 		return "", err
 	}
-	// Never choose an arbitrary map when the source identity is missing or ambiguous.
-	if count != 1 {
-		return "", fmt.Errorf("script location at %d,%d has %d native maps", x, y, count)
+	if name == "" {
+		return "", fmt.Errorf("script location at %d,%d has no native map", x, y)
 	}
 	return name, nil
+}
+
+// Original source identity survives edited/erased art. Pure user-added locations
+// have no native effects; broken or ambiguous original identity must fail closed.
+func nativeOverworldMapAt(queryRow func(string, ...any) *sql.Row, x, y int) (int, string, error) {
+	var id, originals, matched, maps int
+	var name string
+	err := queryRow(`SELECT COALESCE(MIN(pm.id),0), COALESCE(MIN(pm.name),''),
+        COUNT(*), COUNT(pm.id), COUNT(DISTINCT pm.id)
+        FROM phaser_tiles pt
+        LEFT JOIN phaser_maps pm ON pm.id=COALESCE(pt.original_source_map_id,pt.source_map_id) AND pm.is_overworld=1
+        WHERE pt.map_id IS NULL AND pt.x=$1 AND pt.y=$2 AND pt.is_original_tile_location=1`, x, y).Scan(&id, &name, &originals, &matched, &maps)
+	if err != nil {
+		return 0, "", err
+	}
+	if originals == 0 {
+		return 0, "", nil
+	}
+	if matched != originals || maps != 1 || name == "" {
+		return 0, "", fmt.Errorf("native map at %d,%d: %d original tiles, %d matched tiles, %d maps", x, y, originals, matched, maps)
+	}
+	return id, name, nil
 }
 
 func (wh *WorldHandler) scriptPlayerPosition(ses *session.Session) (x, y, mapID int) {
