@@ -3,6 +3,7 @@ package world
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -23,6 +24,96 @@ func recoveryReply(t *testing.T, messages *recordingMessenger) GameplayStateResp
 		t.Fatalf("recovery %+v %v", reply, err)
 	}
 	return reply
+}
+
+func TestMoveChoiceRecoveryAfterLostReplyDoesNotRepeatSettlement(t *testing.T) {
+	for _, slot := range []int{0, -1} {
+		t.Run(fmt.Sprintf("slot_%d", slot), func(t *testing.T) {
+			wh, ses, messages := setupIssuedStep(t)
+			current := battleTestStart(t, wh.database, false, nil)
+			pending, err := pokebattle.CommitBattle(context.Background(), wh.database, 42, current, func(_ db.DBTX, b *pokebattle.BattleState) error {
+				b.Phase = pokebattle.PhaseBattleEnd
+				b.PendingMoveLearn = &pokebattle.PendingMove{PokemonIndex: 0, MoveID: 150, MoveName: "SPLASH"}
+				b.PostMoveLearnEvents = []pokebattle.BattleEvent{{Type: pokebattle.EventMessage, Message: "Settled reward"}}
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var rowID, exp, money int
+			if err := wh.database.QueryRow(`SELECT p.id,p.exp,w.pokedollars FROM character_pokemon p JOIN character_wallet w ON w.character_id=p.character_id WHERE p.character_id=42`).Scan(&rowID, &exp, &money); err != nil {
+				t.Fatal(err)
+			}
+			// Retire the cache as owner replacement does. The read must recover the
+			// exact pending choice, without making a finished battle dismissible.
+			forgetBattle(42, getBattle(42))
+			messages.streams = nil
+			battleDispatch(t, wh, ses, opcodes.GameplayStateRequest, `{"requestId":"pending","current":true}`)
+			before := recoveryReply(t, messages).Battle
+			if before == nil || before.NeedsDismissal || before.Phase != "move_learn_prompt" || before.PendingMove == nil || before.PendingMove.MoveID != 150 || before.PendingMove.PokemonIndex != 0 || before.Revision != pending.Revision {
+				t.Fatalf("pending recovery=%+v", before)
+			}
+			messages.streams = nil
+			battleDispatch(t, wh, ses, opcodes.PokeBattleCloseRequest, `{}`)
+			var rejected BattleCommandError
+			if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &rejected) != nil || rejected.Success {
+				t.Fatal("dismissed unresolved learning choice")
+			}
+			// Keep the original identity rather than letting battleDispatch bind a
+			// later duplicate to the new revision.
+			choice := fmt.Sprintf(`{"requestId":"choice","forgetSlot":%d,"battle":{"battleId":%q,"revision":%d}}`, slot, pending.BattleID, pending.Revision)
+			messages.streams = nil
+			battleDispatch(t, wh, ses, opcodes.PokeMoveLearnRequest, choice)
+			var committed BattleCommandResponse
+			if len(messages.streams) != 2 || json.Unmarshal(messages.streams[0].payload, &committed) != nil || !committed.Success || committed.Learning == nil || committed.Learning.Skipped != (slot == -1) {
+				t.Fatalf("learning reply=%+v", committed)
+			}
+			// Discard delivery and cache. Recovery must come from durable rows,
+			// not from the successful reply or a previous owner's battle pointer.
+			forgetBattle(42, getBattle(42))
+			messages.streams = nil
+			battleDispatch(t, wh, ses, opcodes.GameplayStateRequest, `{"requestId":"settled","current":true}`)
+			after := recoveryReply(t, messages).Battle
+			if after == nil || !after.NeedsDismissal || after.PendingMove != nil || after.Phase != "battle_end" || after.BattleID != pending.BattleID || after.Revision != pending.Revision+1 {
+				t.Fatalf("settled recovery=%+v", after)
+			}
+			wantMove := 0
+			if slot == 0 {
+				wantMove = 150
+				if len(after.PlayerParty) != 1 || len(after.PlayerParty[0].Moves) == 0 || after.PlayerParty[0].Moves[0].ID != wantMove {
+					t.Fatal("recovery omitted committed learned move")
+				}
+			}
+			saved, err := pokebattle.ResumeBattle(context.Background(), wh.database, 42)
+			if err != nil || saved == nil || saved.PlayerParty[0].Moves[0].ID != wantMove || saved.PendingMoveLearn != nil || len(saved.PostMoveLearnEvents) != 0 {
+				t.Fatalf("settled save=%+v err=%v", saved, err)
+			}
+			messages.streams = nil
+			battleDispatch(t, wh, ses, opcodes.PokeMoveLearnRequest, choice)
+			if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &rejected) != nil || rejected.Success {
+				t.Fatal("accepted delayed duplicate choice")
+			}
+			var gotID, gotExp, gotMoney, gotMove int
+			if err := wh.database.QueryRow(`SELECT p.id,p.exp,w.pokedollars,p.move1_id FROM character_pokemon p JOIN character_wallet w ON w.character_id=p.character_id WHERE p.character_id=42`).Scan(&gotID, &gotExp, &gotMoney, &gotMove); err != nil || gotID != rowID || gotExp != exp || gotMoney != money || gotMove != wantMove {
+				t.Fatalf("settlement changed: id=%d exp=%d money=%d move=%d err=%v", gotID, gotExp, gotMoney, gotMove, err)
+			}
+			saved, err = pokebattle.ResumeBattle(context.Background(), wh.database, 42)
+			if err != nil || saved == nil || saved.Revision != after.Revision {
+				t.Fatal("duplicate advanced durable revision", err)
+			}
+			messages.streams = nil
+			battleDispatch(t, wh, ses, opcodes.PokeBattleCloseRequest, `{}`)
+			var closed BattleCommandResponse
+			if len(messages.streams) != 1 || messages.streams[0].opcode != opcodes.PokeBattleCloseResponse || json.Unmarshal(messages.streams[0].payload, &closed) != nil || !closed.Success || closed.Battle != nil {
+				t.Fatal("settled battle did not dismiss")
+			}
+			messages.streams = nil
+			battleDispatch(t, wh, ses, opcodes.GameplayStateRequest, `{"requestId":"closed","current":true}`)
+			if recoveryReply(t, messages).Battle != nil {
+				t.Fatal("dismissed learning battle revived")
+			}
+		})
+	}
 }
 
 func TestGameplayRecoveryRefreshesBattleFromStorageAndNeverWritesCharacter(t *testing.T) {

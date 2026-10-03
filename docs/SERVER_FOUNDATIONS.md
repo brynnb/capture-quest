@@ -2,8 +2,8 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest checkpoint: battle command ownership across blackout scene replacement
-(2026-10-03), following terminal dismissal/post-battle plans `8ce43ff`, current-owned gameplay recovery `c38a74c`, correlated battle recovery `30fa1bb` and network battle command identity `8a5ba4a`, coherent gameplay recovery `c0d31f9` and durable cutscene issuance/completion `e9eb834`, pending trainer encounters `84f2d91` and ordinary-step receipts `80a544c`, following atomic movement-step effects `cfdeb9e`, retirement of the client coordinate setter `2df1db0`, correlated cutscene completion `6638a63`, issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
+Working branch: `codex/server-foundations`. Latest checkpoint: pending move-choice storage/coordinator recovery acceptance
+(2026-10-03), following blackout scene ownership `04579dc`, terminal dismissal/post-battle plans `8ce43ff`, current-owned gameplay recovery `c38a74c`, correlated battle recovery `30fa1bb` and network battle command identity `8a5ba4a`, coherent gameplay recovery `c0d31f9` and durable cutscene issuance/completion `e9eb834`, pending trainer encounters `84f2d91` and ordinary-step receipts `80a544c`, following atomic movement-step effects `cfdeb9e`, retirement of the client coordinate setter `2df1db0`, correlated cutscene completion `6638a63`, issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
 `0585dde`, committed
 blackout/recovery `2f62595`, teleport notification projection `65a5581`, Instant
 Warp `e1f54a8`, normal warps `3899660`, owned-position loading `64cf970`,
@@ -77,6 +77,52 @@ number of commits or passing tests. All five areas still have outstanding work.
 | Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, movement ticks coordinated with the owner, and immediate retirement of battle-scene command admission/subscriptions. | Finish timer/callback/shared-state and legacy position-writer audits; prove remaining concurrent/reconnect behavior across real transports. |
 | Domains and wire contracts | Injected content-query service; typed character/wallet/bind, Pokédex/card, content detail, map-script, map-info/list, sight-trainer notification/readiness, coherent gameplay recovery, ordinary battle replies/shared battle events and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
 | Lifecycle and verification | Owned HTTP/listeners, readiness, listener failure propagation, joined periodic workers, sealed session admissions, fail-closed staged preload, startup cancellation, atomic scripted-event publication, and deadline-aware shutdown waits with returned failure results. | Audit cancellation of remaining legacy work, define durable final-save recovery, and complete transport/rendered integration coverage. Owned HTTP and player transport retirement and isolated active-player shutdown checks have landed. |
+
+## Pending move-choice recovery acceptance checkpoint (2026-10-03)
+
+The existing move-learning transaction already clears the pending choice and its
+deferred presentation events atomically with party persistence. This checkpoint
+adds missing acceptance evidence; it does not change runtime behavior or claim
+the remaining recovery work is finished.
+
+The PostgreSQL dispatcher test covers both learning a move and skipping it. It
+retires the battle cache before recovery, reads the exact pending move and index,
+rejects dismissal while the choice is unresolved, commits the choice, discards
+reply delivery and retires the cache again. Recovery then reads the terminal
+revision, learned move (or unchanged skipped move), cleared pending state and
+`needsDismissal` from durable storage. A duplicate with the original battle ID
+and revision rejects without changing experience, wallet, Pokémon row identity,
+move or durable revision. Ordinary dismissal succeeds and a final read confirms
+the battle is absent.
+
+The browser coordinator tests lose both the turn reply that produced a pending
+prompt and the subsequent learning reply. For learn and skip, current-state
+recovery restores the prompt first, then the settled party and dismissible state.
+Late turn/learning replies cannot restore a prompt or replay learning/reward text.
+Only one turn, one explicit choice and one close are sent; listeners and timers
+retire. The recovered presentation uses current authority rather than inventing
+a lost outcome message.
+
+Verification: focused PostgreSQL race tests passed, including existing learning
+rollback/publication and read-only recovery regressions. All 25 tests in the
+battle coordinator, gameplay recovery service and recovery store files passed.
+Typecheck and `git diff --check` passed. Logs:
+`/var/tmp/capturequest-learning-recovery-go-final.log`,
+`/var/tmp/capturequest-learning-recovery-front.log`, and
+`/var/tmp/capturequest-learning-recovery-types.log`.
+
+These checks seed a pending state through the actual transaction primitive and
+exercise the dispatcher/storage boundary, plus the browser coordinator with
+mocked transport. They do not prove natural level-up prompt generation, rendered
+choice controls, real reconnect/owner handoff, process death, or capture-to-party/
+PC summary recovery. No production build or rendered suite was repeated for
+test/documentation-only changes. All five original goal areas remain open.
+
+Recommended next step: add a data-driven rendered level-up/choice reply-loss
+scenario, then complete capture settlement recovery (including full-party PC
+placement) and Safari command identity/correlation. Inventory/wallet/flag recovery
+and the endpoint, ownership, dependency/wire and lifecycle audits remain required.
+This checkpoint is local only; nothing is pushed or deployed.
 
 ## Blackout scene ownership checkpoint (2026-10-03)
 

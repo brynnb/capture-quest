@@ -96,6 +96,38 @@ test("explicit rejection restores a rolled-back phase without another mutation",
   expect(net.send).toHaveBeenCalledTimes(1); expect(usePokeBattleStore.getState()).toMatchObject({ revision: 2, phase: "action_select" });
 });
 
+test.each([0, -1])("lost pending-choice and learning replies recover without resending slot %s", async (forgetSlot) => {
+  const turn = sendBattleAction({ action: "fight", moveSlot: 0 });
+  const turnID = sentID();
+  await vi.advanceTimersByTimeAsync(10000);
+  const pending = { ...battle(3), phase: "move_learn_prompt", pendingMove: { moveId: 150, moveName: "SPLASH", pokemonIndex: 0 } };
+  await recoverRead(pending); await turn;
+  expect(usePokeBattleStore.getState()).toMatchObject({ phase: "move_learn_prompt", pendingMoveLearn: { moveId: 150, moveName: "SPLASH" }, recoveredDismissal: false, battleCommandPending: false });
+  expect(net.send).toHaveBeenCalledTimes(1);
+
+  const learning = sendMoveLearningChoice({ forgetSlot });
+  const choiceID = sentID();
+  expect(net.send.mock.calls.at(-1)).toEqual([87, { forgetSlot, battle: { battleId: "battle", revision: 3 }, requestId: choiceID }]);
+  await vi.advanceTimersByTimeAsync(10000);
+  const settledPokemon = forgetSlot === -1 ? pokemon : { ...pokemon, moves: [{ id: 150, name: "SPLASH", pp: 40, maxPp: 40, type: "NORMAL", power: 0, accuracy: 0 }] };
+  const settled = { ...battle(4), phase: "battle_end", needsDismissal: true, playerPokemon: settledPokemon, playerParty: [settledPokemon] };
+  await recoverRead(settled); await learning;
+  expect(usePokeBattleStore.getState()).toMatchObject({ phase: "battle_end", revision: 4, pendingMoveLearn: null, recoveredDismissal: true, battleCommandPending: false, eventQueue: [] });
+  expect(usePokemonPartyStore.getState().party).toEqual([settledPokemon]);
+
+  // Retired correlation listeners cannot replay the prompt or learning/reward
+  // text. Recovery displays current authority without inventing a lost outcome.
+  emit(71, { ...reply(turnID), battle: pending });
+  emit(88, { ...reply(choiceID, 4), battle: settled, learning: { skipped: forgetSlot === -1, message: "Old choice result", postEvents: [{ type: "message", message: "Old reward", targetHp: 0, targetMaxHp: 0 }] } });
+  expect(usePokeBattleStore.getState()).toMatchObject({ revision: 4, pendingMoveLearn: null, eventQueue: [] });
+  expect(net.send).toHaveBeenCalledTimes(2);
+  const close = closeOrdinaryBattle();
+  emit(199, { ...reply(sentID(), 4), battle: null }); await close;
+  expect(usePokeBattleStore.getState().isInBattle).toBe(false);
+  expect(net.send.mock.calls.map(call => call[0])).toEqual([70, 87, 89]);
+  expect(net.gameplay.size).toBe(0); expect(net.commands.get(88)?.size).toBe(0); expect(vi.getTimerCount()).toBe(0);
+});
+
 test("a replacement presentation aborts the request even with the same durable battle ID", async () => {
   const work = sendBattleAction({ action: "fight" }); const oldID = sentID();
   usePokeBattleStore.getState().startBattle(battle(6)); await work;
