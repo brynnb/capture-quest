@@ -1,4 +1,4 @@
-import type { PhaserMapInfo, PhaserMapInfoRequest, PhaserMapInfoResponse, PhaserMapLoadRequest, PhaserMapLoadResponse, PhaserMapRequestError } from "@/net/generated/protocol";
+import type { PhaserMapInfo, PhaserMapInfoRequest, PhaserMapInfoResponse, PhaserMapLoadRequest, PhaserMapLoadResponse, PhaserMapRequestError, PhaserWarpActivateRequest, PhaserWarpActivateResponse } from "@/net/generated/protocol";
 import type { GameCornerSlotPlayRequest } from "@/net/generated/world_api";
 import type { PhaserMapScriptsRequest } from "@/net/generated/protocol";
 /**
@@ -34,6 +34,10 @@ export function requestMapInfo(request: PhaserMapInfoRequest): void {
 
 export function requestMapLoad(request: PhaserMapLoadRequest): void {
   NetworkBridge.send(request, OpCodes.PhaserMapLoadRequest);
+}
+
+export function requestWarpActivation(request: PhaserWarpActivateRequest): void {
+  NetworkBridge.send(request, OpCodes.PhaserWarpActivateRequest);
 }
 
 /**
@@ -352,6 +356,7 @@ export type PhaserMapMusicHandler = (data: MapMusicResult) => void;
 const handlers = {
   mapInfo: new Set<PhaserMapInfoHandler>(),
   mapLoad: new Set<PhaserMapLoadHandler>(),
+  warpActivation: new Set<(data: PhaserWarpActivateResponse | PhaserMapRequestError) => void>(),
   tiles: new Set<PhaserTilesHandler>(),
   overworldMaps: new Set<PhaserOverworldMapsHandler>(),
   actors: new Set<PhaserActorsHandler>(),
@@ -366,6 +371,11 @@ const handlers = {
 export function onMapInfo(handler: PhaserMapInfoHandler): () => void {
   handlers.mapInfo.add(handler);
   return () => handlers.mapInfo.delete(handler);
+}
+
+export function onWarpActivation(handler: (data: PhaserWarpActivateResponse | PhaserMapRequestError) => void): () => void {
+  handlers.warpActivation.add(handler);
+  return () => { handlers.warpActivation.delete(handler); };
 }
 
 export function onMapLoad(handler: PhaserMapLoadHandler): () => void {
@@ -502,6 +512,8 @@ export function sendCQBattleItemUse(itemId: number): void {
  */
 export function clearAllHandlers(): void {
   handlers.mapInfo.clear();
+  handlers.mapLoad.clear();
+  handlers.warpActivation.clear();
   handlers.tiles.clear();
   handlers.overworldMaps.clear();
   handlers.actors.clear();
@@ -537,6 +549,9 @@ export function dispatchPhaserResponse(opcode: number, data: unknown): void {
   switch (opcode) {
     case OpCodes.PhaserMapInfoResponse:
       handlers.mapInfo.forEach((h) => h(data as PhaserMapInfoResponse | PhaserMapRequestError));
+      break;
+    case OpCodes.PhaserWarpActivateResponse:
+      handlers.warpActivation.forEach((h) => h(data as PhaserWarpActivateResponse | PhaserMapRequestError));
       break;
     case OpCodes.PhaserMapLoadResponse:
       handlers.mapLoad.forEach((h) => h(data as PhaserMapLoadResponse | PhaserMapRequestError));

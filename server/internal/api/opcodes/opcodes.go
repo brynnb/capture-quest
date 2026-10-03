@@ -207,4 +207,6 @@ const (
 	DebugWarpProbeCasesResponse   OpCode = 180
 	PhaserMapLoadRequest          OpCode = 181
 	PhaserMapLoadResponse         OpCode = 182
+	PhaserWarpActivateRequest     OpCode = 183
+	PhaserWarpActivateResponse    OpCode = 184
 )

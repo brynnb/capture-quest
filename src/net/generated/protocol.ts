@@ -191,6 +191,27 @@ export interface PhaserMapRequestError {
   requestId: string;
   error: string;
 }
+/**
+ * Ordinary map warps are server-resolved; this request cannot name a destination.
+ */
+export interface PhaserWarpActivateRequest {
+  warpId: number /* int */;
+  direction: string;
+  inputSource: "click" | "keyboard";
+  requestId: string;
+}
+export interface PhaserWarpActivateResponse {
+  success: true;
+  requestId: string;
+  mapId: number /* int */;
+  playerMapId: number /* int */;
+  x: number /* int */;
+  y: number /* int */;
+  direction: string;
+  animateExitStep?: boolean;
+  animationStartX?: number /* int */;
+  animationStartY?: number /* int */;
+}
 
 //////////
 // source: pokedex.go

@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const network = vi.hoisted(() => ({
   info: new Set<(data: unknown) => void>(),
+  warp: new Set<(data: unknown) => void>(),
+  warpRequests: [] as Array<{ warpId: number; requestId: string }>,
   load: new Set<(data: unknown) => void>(),
   infoRequests: [] as Array<{ mapId: number; requestId: string }>,
   loadRequests: [] as Array<{ mapId: number; requestId: string }>,
@@ -17,6 +19,11 @@ vi.mock("./PhaserNetworkService", () => ({
     network.load.add(receive);
     return () => network.load.delete(receive);
   },
+  onWarpActivation: (receive: (data: unknown) => void) => {
+    network.warp.add(receive);
+    return () => network.warp.delete(receive);
+  },
+  requestWarpActivation: (request: { warpId: number; requestId: string }) => network.warpRequests.push(request),
   requestMapInfo: (request: { mapId: number; requestId: string }) => network.infoRequests.push(request),
   requestMapLoad: (request: { mapId: number; requestId: string }) => network.loadRequests.push(request),
 }));
@@ -30,6 +37,8 @@ import { MapDataService } from "./MapDataService";
 describe("correlated map read and load requests", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    network.warp.clear();
+    network.warpRequests.length = 0;
     network.info.clear();
     network.load.clear();
     network.infoRequests.length = 0;
@@ -40,6 +49,8 @@ describe("correlated map read and load requests", () => {
   const cases = [
     { name: "metadata", handlers: network.info, requests: network.infoRequests,
       start: (service: MapDataService, signal?: AbortSignal) => service.fetchMapInfo(38, signal) },
+    { name: "warp activation", handlers: network.warp, requests: network.warpRequests,
+      start: (service: MapDataService, signal?: AbortSignal) => service.activateWarp(9, "DOWN", "click", signal) },
     { name: "arrival", handlers: network.load, requests: network.loadRequests,
       start: (service: MapDataService, signal?: AbortSignal) => service.prepareMapLoad(38, 3, 7, signal) },
   ];

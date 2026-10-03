@@ -737,7 +737,7 @@ func shouldResolveLastMapForPlayer(w PhaserWarp) bool {
 		(w.DestinationMapID == nil || w.DestinationX == nil || w.DestinationY == nil)
 }
 
-func resolvePhaserWarpForPlayer(database *sql.DB, previousMapID int, w PhaserWarp) (PhaserWarp, error) {
+func resolvePhaserWarpForPlayer(database db.DBTX, previousMapID int, w PhaserWarp) (PhaserWarp, error) {
 	if !shouldResolveLastMapForPlayer(w) {
 		return w, nil
 	}
@@ -755,7 +755,7 @@ func resolvePhaserWarpForPlayer(database *sql.DB, previousMapID int, w PhaserWar
 }
 
 func resolveLastMapWarpForPlayer(
-	database *sql.DB, previousMapID, destinationWarpIndex int,
+	database db.DBTX, previousMapID, destinationWarpIndex int,
 ) (int, string, int, int, error) {
 	if previousMapID < 0 {
 		return 0, "", 0, 0, fmt.Errorf("player has no previous-map context")

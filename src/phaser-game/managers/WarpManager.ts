@@ -15,6 +15,8 @@ export class WarpManager {
   private playerMovementController: PlayerMovementController;
   private uiManager: UiManager;
 
+  private pendingActivation: AbortController | null = null;
+
   // Pending warp state
   private pendingWarpX: number | null = null;
   private pendingWarpY: number | null = null;
@@ -22,27 +24,19 @@ export class WarpManager {
   // Warp lookup by tile position: "x,y" -> warp data
   private warpLookup: Map<string, PhaserWarp> = new Map();
 
-  // Callbacks
-  private getPlayerActor: () => PhaserActor | null;
-
   constructor(
     scene: Scene,
     mapDataService: MapDataService,
     _cameraController: CameraController,
     playerMovementController: PlayerMovementController,
     uiManager: UiManager,
-    callbacks: {
-      onResetScene: (resetCamera: boolean) => void;
-      getPlayerActor: () => PhaserActor | null;
-      setPlayerActor: (actor: PhaserActor) => void;
-      getIsOverworldMode: () => boolean;
-    },
+    private readonly callbacks: { waitForPlayerIdle: () => Promise<void> },
   ) {
     this.scene = scene;
     this.mapDataService = mapDataService;
     this.playerMovementController = playerMovementController;
     this.uiManager = uiManager;
-    this.getPlayerActor = callbacks.getPlayerActor;
+    this.scene.events.once("shutdown", () => this.pendingActivation?.abort());
   }
 
   getPendingWarpX(): number | null {
@@ -58,8 +52,10 @@ export class WarpManager {
     this.pendingWarpY = y;
   }
 
+  isActivationPending(): boolean { return this.pendingActivation !== null; }
+
   cancelPendingWarp(): void {
-    // Normal warps are activated immediately from loaded client warp data.
+    this.pendingActivation?.abort();
   }
 
   private isWorldInputFrozen(): boolean {
@@ -103,8 +99,7 @@ export class WarpManager {
   }
 
   /**
-   * Normal warp activation is client-owned. The client already has the loaded
-   * warp data, so it transitions immediately and reports the final position.
+   * Normal warp activation awaits a server-resolved, committed destination.
    */
   setupKeyboardWarpHandlers() {
     this.scene.events.on(
@@ -129,7 +124,7 @@ export class WarpManager {
         const normalizedDirection = direction.trim().toUpperCase();
         const warpDirection = warp.warpDirection?.trim().toUpperCase();
         if (inputSource === "click") {
-          this.activateWarp(warp, warpDirection || normalizedDirection);
+          void this.activateWarp(warp, warpDirection || normalizedDirection, "click");
           return;
         }
 
@@ -137,7 +132,7 @@ export class WarpManager {
 
         if (warpDirection && warpDirection !== normalizedDirection) return;
 
-        this.activateWarp(warp, normalizedDirection);
+        void this.activateWarp(warp, normalizedDirection, "keyboard");
       },
     );
   }
@@ -286,70 +281,40 @@ export class WarpManager {
     return warp.warpDirection?.trim().toUpperCase() || undefined;
   }
 
-  activateWarp(warp: PhaserWarp, direction?: string): void {
-    if (
-      !warp ||
-      warp.destinationMapId === undefined ||
-      warp.destinationMapId === null ||
-      warp.destinationX === undefined ||
-      warp.destinationY === undefined
-    ) {
-      return;
+  async activateWarp(warp: PhaserWarp, direction?: string, inputSource: "click" | "keyboard" = "click"): Promise<void> {
+    if (!warp || this.pendingActivation || this.isWorldInputFrozen()) return;
+    const normalizedDirection = direction?.trim().toUpperCase()
+      || this.directionFromPositionToWarp(warp, this.playerMovementController.getCurrentPosition()) || "DOWN";
+    const abort = new AbortController();
+    this.pendingActivation = abort;
+    this.playerMovementController.stopMovement();
+    try {
+      // Finish the source animation/report before the server can commit the warp;
+      // a delayed source report must not arrive after the committed destination.
+      let idleTimer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          this.callbacks.waitForPlayerIdle(),
+          new Promise<never>((_, reject) => { idleTimer = setTimeout(() => reject(new Error("Warp source movement did not settle")), 1200); }),
+        ]);
+      } finally { if (idleTimer !== undefined) clearTimeout(idleTimer); }
+      if (abort.signal.aborted || !this.scene.sys.isActive()) return;
+      const committed = await this.mapDataService.activateWarp(warp.id, normalizedDirection, inputSource, abort.signal);
+      if (abort.signal.aborted || !this.scene.sys.isActive()) return;
+      const detail: Record<string, unknown> = { ...committed, serverCommitted: true };
+      const warpSfx = sfxPathForConstant(
+        this.mapDataService.isOverworld(committed.mapId) ? "SFX_GO_OUTSIDE" : "SFX_GO_INSIDE",
+      );
+      if (warpSfx) { void AudioManager.playSFX(warpSfx, 0.85); detail.sfxAlreadyPlayed = true; }
+      window.dispatchEvent(new CustomEvent("warpTileTeleport", { detail }));
+    } catch (error) {
+      if (!abort.signal.aborted) {
+        const message = error instanceof Error ? error.message : "Could not activate warp";
+        useChatStore.getState().addMessage(message, MessageType.SYSTEM_ERROR);
+      }
+    } finally {
+      if (this.pendingActivation === abort) this.pendingActivation = null;
     }
-
-    const playerActor = this.getPlayerActor();
-    const currentMapId = this.scene.game.registry.get("currentMapId");
-    const sourceMapId =
-      typeof currentMapId === "number" ? currentMapId : playerActor?.mapId;
-    const normalizedDirection =
-      direction?.trim().toUpperCase() ||
-      this.directionFromPositionToWarp(
-        warp,
-        this.playerMovementController.getCurrentPosition(),
-      ) ||
-      "DOWN";
-
-    const destinationIsOverworld = this.mapDataService.isOverworld(
-      warp.destinationMapId,
-    );
-    const sourceIsOverworld =
-      typeof sourceMapId === "number" && this.mapDataService.isOverworld(sourceMapId);
-
-    const destinationX = warp.destinationX;
-    let destinationY = warp.destinationY;
-    const detail: Record<string, unknown> = {
-      mapId: warp.destinationMapId,
-      x: destinationX,
-      y: destinationY,
-      direction: normalizedDirection,
-    };
-
-    const warpSfx = sfxPathForConstant(
-      destinationIsOverworld ? "SFX_GO_OUTSIDE" : "SFX_GO_INSIDE",
-    );
-    if (warpSfx) {
-      void AudioManager.playSFX(warpSfx, 0.85);
-      detail.sfxAlreadyPlayed = true;
-    }
-
-    if (
-      destinationIsOverworld &&
-      !sourceIsOverworld &&
-      normalizedDirection === "DOWN"
-    ) {
-      destinationY += 1;
-      detail.x = destinationX;
-      detail.y = destinationY;
-      detail.animateExitStep = true;
-      detail.animationStartX = warp.destinationX;
-      detail.animationStartY = warp.destinationY;
-    }
-
-    window.dispatchEvent(
-      new CustomEvent("warpTileTeleport", {
-        detail,
-      }),
-    );
   }
 
   setupWarpClickHandler() {
@@ -378,7 +343,7 @@ export class WarpManager {
       const playerPos = this.playerMovementController.getCurrentPosition();
       if (this.canActivateWarpFromPosition(warp, playerPos.x, playerPos.y)) {
         console.log(
-          `[WarpManager] Player already near warp, activating locally`,
+          `[WarpManager] Player already near warp, requesting server activation`,
         );
         this.activateWarp(warp, this.directionFromPositionToWarp(warp, playerPos));
         return;
@@ -393,7 +358,7 @@ export class WarpManager {
       }
 
       console.log(
-        `[WarpManager] Pathing locally to tile (${walkTarget.x}, ${walkTarget.y}) near warp (${warp.x}, ${warp.y})`,
+        `[WarpManager] Pathing to tile (${walkTarget.x}, ${walkTarget.y}) near warp (${warp.x}, ${warp.y})`,
       );
       if (!this.playerMovementController.requestMoveTo(
         walkTarget.x,

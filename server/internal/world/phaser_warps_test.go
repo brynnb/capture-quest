@@ -22,6 +22,9 @@ func TestPhaserMapWarpActivationRules(t *testing.T) {
 		t.Fatalf("door warp should not activate from two tiles away")
 	}
 
+	if !door.canActivateByDirection(40, 4, 10, "DOWN", nil) || door.canActivateByDirection(40, 4, 10, "UP", nil) {
+		t.Fatal("adjacent door must activate only in its facing direction")
+	}
 	carpet := &phaserMapWarp{
 		SourceMapID:   40,
 		X:             4,

@@ -2,7 +2,6 @@ package world
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 
 	"capturequest/internal/db"
@@ -268,7 +267,7 @@ type mapLoadArrival struct {
 }
 
 // Position, Safari transition and all map-load mutations share the same commit.
-func commitMapLoad(ctx context.Context, database *sql.DB, charID int64, arrival mapLoadArrival) (MapLoadEffect, error) {
+func commitMapLoad(ctx context.Context, database db.DBTX, charID int64, arrival mapLoadArrival) (MapLoadEffect, error) {
 	var effect MapLoadEffect
 	err := db.Transaction(ctx, database, func(tx db.DBTX) error {
 		if err := db.LockCharacter(tx, charID); err != nil {

@@ -172,7 +172,7 @@ export class MapLoader {
       const warpDY = sceneForDest.warpDestY ?? undefined;
       const cached = this.mapDataService.getSnapshot(mapId);
       const hasWarpDestination = warpDX !== undefined && warpDY !== undefined;
-      await this.mapDataService.prepareMapLoad(mapId, warpDX, warpDY, mapRequestAbort.signal);
+      await this.mapDataService.prepareMapLoad(mapId, sceneForDest.warpServerCommitted ? undefined : warpDX, sceneForDest.warpServerCommitted ? undefined : warpDY, mapRequestAbort.signal);
       if (!this.isLoadCurrent(loadGeneration)) return;
       const mapInfo = hasWarpDestination || !cached
         ? await this.mapDataService.fetchMapInfo(mapId, mapRequestAbort.signal)
@@ -430,7 +430,7 @@ export class MapLoader {
       const cached = this.mapDataService.getSnapshot(mapId);
       const hasWarpDestination = warpDX !== undefined && warpDY !== undefined;
       if (!options.viewOnly) {
-        await this.mapDataService.prepareMapLoad(mapId, warpDX, warpDY, mapRequestAbort.signal);
+        await this.mapDataService.prepareMapLoad(mapId, sceneForDest.warpServerCommitted ? undefined : warpDX, sceneForDest.warpServerCommitted ? undefined : warpDY, mapRequestAbort.signal);
         if (!this.isLoadCurrent(loadGeneration)) return;
       }
       const mapInfo = hasWarpDestination || !cached

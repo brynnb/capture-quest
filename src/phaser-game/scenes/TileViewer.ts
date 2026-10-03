@@ -131,6 +131,7 @@ export class TileViewer extends Scene {
   private mapOverviewTransitionInProgress = false;
   private viewedMapIds: Set<number> = new Set();
   public mapLoadInProgress: boolean = false;
+  public warpServerCommitted = false;
   public warpDestX: number | null = null;
   public warpDestY: number | null = null;
   public warpAnimationStartX: number | null = null;
@@ -665,6 +666,7 @@ export class TileViewer extends Scene {
     let destinationMapId = null;
     let useOverworldSavedCamera = null;
 
+    this.warpServerCommitted = data?.destinationServerCommitted === true;
     if (data) {
       destinationMapId = data.destinationMapId;
       useOverworldSavedCamera = data.useOverworldSavedCamera;
@@ -719,12 +721,8 @@ export class TileViewer extends Scene {
       this.playerMovementController,
       this.uiManager,
       {
-        onResetScene: (resetCamera: boolean) => this.resetScene(resetCamera),
-        getPlayerActor: () => this.playerActor,
-        setPlayerActor: (actor: PhaserActor) => {
-          this.playerActor = actor;
-        },
-        getIsOverworldMode: () => this.isOverworldMode,
+        waitForPlayerIdle: () => this.playerActor?.id == null
+          ? Promise.resolve() : this.mapRenderer.waitForActorIdle(this.playerActor.id),
       },
     );
     this.playerMovementController.setWarpTileChecker((x, y) =>
@@ -734,7 +732,7 @@ export class TileViewer extends Scene {
       this.warpManager?.getWarpAt(x, y) ?? null,
     );
     this.playerMovementController.setWarpActivator((warp, direction) =>
-      this.warpManager?.activateWarp(warp, direction),
+      this.warpManager?.activateWarp(warp, direction, "keyboard"),
     );
     this.debugOverlay = new TileViewerDebugOverlay({
       scene: this,
@@ -926,6 +924,7 @@ export class TileViewer extends Scene {
       // Clear registry flags after loading
       this.game.registry.remove("useOverworldSavedCamera");
       this.game.registry.remove("destinationMapId");
+      this.game.registry.remove("destinationServerCommitted");
       this.game.registry.remove("destinationX");
       this.game.registry.remove("destinationY");
       this.game.registry.remove("warpAnimationStartX");
@@ -2011,7 +2010,7 @@ export class TileViewer extends Scene {
   }
 
   public isWorldInputFrozen(): boolean {
-    return this.getWorldInputFreezeReason() !== null;
+    return this.warpManager?.isActivationPending() === true || this.getWorldInputFreezeReason() !== null;
   }
 
   private setCutsceneInputLocked(locked: boolean): void {
@@ -2246,6 +2245,7 @@ export class TileViewer extends Scene {
       useOverworldSavedCamera: this.game.registry.get(
         "useOverworldSavedCamera",
       ),
+      destinationServerCommitted: this.game.registry.get("destinationServerCommitted"),
       destinationX: this.game.registry.get("destinationX"),
       destinationY: this.game.registry.get("destinationY"),
       warpAnimationStartX: this.game.registry.get("warpAnimationStartX"),

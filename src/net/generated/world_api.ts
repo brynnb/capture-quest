@@ -987,10 +987,6 @@ export interface TrainerBattleStartRequest {
 
 
 //////////
-// source: map_display_names.go
-
-
-//////////
 // source: map_load_effects.go
 
 export interface MapLoadEffect {

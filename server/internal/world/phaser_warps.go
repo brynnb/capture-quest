@@ -186,7 +186,9 @@ func (w *phaserMapWarp) canActivateByDirection(playerMapID, playerX, playerY int
 	return ok &&
 		w.X == playerX+dx &&
 		w.Y == playerY+dy &&
-		w.blockedWarpHasWalkableEntry(playerMapID, playerX, playerY, actorManager)
+		// Normal doors activate from the adjacent facing tile even when their tile
+		// is walkable. Carpets retain the blocked-entry collision rule.
+		(w.isDoor() || w.blockedWarpHasWalkableEntry(playerMapID, playerX, playerY, actorManager))
 }
 
 func (w *phaserMapWarp) canActivateOnPathDestination(playerMapID int, actorManager *PhaserActorManager) bool {

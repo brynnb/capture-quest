@@ -18,6 +18,19 @@ export async function jumpToScenario(page: Page, scenarioName: string) {
     .filter({ hasText: scenarioName })
     .first();
   await expect(sceneButton).toBeVisible({ timeout: 15_000 });
+  // Same-map jumps briefly expose the old ready scene before its replacement
+  // loads. Observe new scene metadata before checking loading completion.
+  await page.evaluate(() => {
+    const target = window as typeof window & { scenarioMapChanged?: boolean };
+    target.scenarioMapChanged = false;
+    window.addEventListener(
+      "cq:mapChanged",
+      () => {
+        target.scenarioMapChanged = true;
+      },
+      { once: true },
+    );
+  });
   await sceneButton.click();
 
   await expect(page.getByText("Scenario Debugger")).toBeHidden({
@@ -28,5 +41,14 @@ export async function jumpToScenario(page: Page, scenarioName: string) {
       document.activeElement.blur();
     }
   });
+  await expect
+    .poll(
+      () => page.evaluate(() =>
+        (window as typeof window & { scenarioMapChanged?: boolean })
+          .scenarioMapChanged,
+      ),
+      { timeout: 30_000 },
+    )
+    .toBe(true);
   await waitForNoMapLoading(page);
 }

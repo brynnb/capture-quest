@@ -803,6 +803,20 @@ reads do not issue it. Success/error replies carry request IDs. The shared clien
 settlement primitive releases subscriptions, timers and abort listeners on every
 terminal outcome; newer loads and scene cleanup abort local waits. A local abort
 does not reverse a server commit, and correlation is not durable deduplication.
+Normal warp activation uses an explicit correlated command (183/184). The client
+names a warp ID and click/keyboard intent; the server uses the owned position and
+catalog source rules to authorize it, resolves per-player LAST_MAP through the
+transaction handle, validates durable Safari entry and rejects battle activation.
+Position, Safari transition and load effects share the arrival transaction. The
+existing building-exit step is committed by the server and described for animation
+in the response. WarpManager waits for source animation/report settlement and
+freezes input during the request; scene shutdown aborts the local wait. Only a
+matching success transitions the scene. This normal-warp flow skips destination
+reports and supplies no destination to its subsequent map load. Instant Warp,
+walking/scripted reports and other teleport producers still require migration;
+the legacy position authority remains until that retirement is complete. Request
+correlation does not provide durable replay or reconnect recovery.
+
 Current-map loading reads the movement registration first, falling back to the
 selected character before registration. It uses one owned snapshot for map
 permission, zero-position recovery, effects and acknowledgement. Every accepted

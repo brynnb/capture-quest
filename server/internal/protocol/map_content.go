@@ -107,3 +107,24 @@ type PhaserMapRequestError struct {
 	RequestID string `json:"requestId"`
 	Error     string `json:"error"`
 }
+
+// Ordinary map warps are server-resolved; this request cannot name a destination.
+type PhaserWarpActivateRequest struct {
+	WarpID      int    `json:"warpId"`
+	Direction   string `json:"direction"`
+	InputSource string `json:"inputSource" tstype:"\"click\" | \"keyboard\""`
+	RequestID   string `json:"requestId"`
+}
+
+type PhaserWarpActivateResponse struct {
+	Success         bool   `json:"success" tstype:"true"`
+	RequestID       string `json:"requestId"`
+	MapID           int    `json:"mapId"`
+	PlayerMapID     int    `json:"playerMapId"`
+	X               int    `json:"x"`
+	Y               int    `json:"y"`
+	Direction       string `json:"direction"`
+	AnimateExitStep bool   `json:"animateExitStep,omitempty"`
+	AnimationStartX *int   `json:"animationStartX,omitempty"`
+	AnimationStartY *int   `json:"animationStartY,omitempty"`
+}

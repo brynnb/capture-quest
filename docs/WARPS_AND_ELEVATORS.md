@@ -28,6 +28,23 @@ Do not invent fallback destinations for incomplete warp rows. Fix the source/imp
 
 `elevator` and `inactive` rows are intentionally allowed to have incomplete destination coordinates. Smoke tests fail if any other warp type is incomplete.
 
+## Runtime normal warp boundary
+
+Normal click and keyboard warps use `PhaserWarpActivateRequest` (183) and result
+184. The browser sends the source warp ID and activation intent, waits for a
+correlated committed result, then renders the returned destination/exit animation.
+The server uses owned player coordinates and existing door/carpet activation rules;
+client metadata cannot supply the destination. Catalog resolution, dynamic LAST_MAP,
+Safari eligibility, destination validation, saved position and load effects share
+one character-locked transaction. Normal warps are unavailable during battle.
+
+The building-exit step formerly added in WarpManager is now saved before success.
+Its native exit coordinate is returned only as animation-start metadata. Normal
+warp transitions neither report the destination through opcode 45 nor resubmit it
+as map-load destination fields. Instant Warp and other position-report producers
+remain separate migration work; this change does not retire those old endpoints.
+Frontend and backend must be released together when a deployment is authorized.
+
 ## Import Order
 
 The relevant Postgres import order in `server/cmd/import-phaser/postgres.go` is:

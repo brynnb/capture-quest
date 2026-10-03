@@ -220,3 +220,5 @@ export const DebugWarpProbeCasesRequest: OpCode = 179;
 export const DebugWarpProbeCasesResponse: OpCode = 180;
 export const PhaserMapLoadRequest: OpCode = 181;
 export const PhaserMapLoadResponse: OpCode = 182;
+export const PhaserWarpActivateRequest: OpCode = 183;
+export const PhaserWarpActivateResponse: OpCode = 184;

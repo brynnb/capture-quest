@@ -18,6 +18,7 @@ interface WarpTileTeleportDetail {
   animationStartX?: number;
   animationStartY?: number;
   sfxAlreadyPlayed?: boolean;
+  serverCommitted?: boolean;
 }
 
 interface TileViewerWarpEventsDeps {
@@ -102,6 +103,7 @@ export class TileViewerWarpEvents {
       animationStartX,
       animationStartY,
       sfxAlreadyPlayed,
+      serverCommitted,
     } = event.detail;
     console.log(`[WarpTile] Teleporting to map ${mapId} (${x}, ${y})`);
     const normalizedPlayerMapId = this.deps.mapDataService.isOverworld(mapId)
@@ -119,7 +121,7 @@ export class TileViewerWarpEvents {
       }
     }
 
-    PhaserNet.sendPlayerPosition(
+    if (!serverCommitted) PhaserNet.sendPlayerPosition(
       x,
       y,
       normalizedPlayerMapId,
@@ -147,6 +149,7 @@ export class TileViewerWarpEvents {
 
     if (mapId !== currentMapId) {
       this.deps.scene.game.registry.set("destinationMapId", mapId);
+      this.deps.scene.game.registry.set("destinationServerCommitted", serverCommitted === true);
       this.deps.scene.game.registry.set("destinationX", x);
       this.deps.scene.game.registry.set("destinationY", y);
       if (direction) {
