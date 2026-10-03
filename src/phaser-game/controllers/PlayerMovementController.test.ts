@@ -4,6 +4,7 @@ import { TILE_SIZE, UNIFIED_OVERWORLD_MAP_ID } from "../constants";
 import type { PhaserTile } from "@/net/generated/world_api";
 import type { Scene } from "phaser";
 import type { MapRenderer } from "../renderers/MapRenderer";
+import * as PhaserNet from "../services/PhaserNetworkService";
 
 function tile(
   id: number,
@@ -58,6 +59,17 @@ function buildLedgeController() {
 }
 
 describe("PlayerMovementController ledges", () => {
+  test("a server snap updates movement context without echoing a position write", () => {
+    const send = vi.spyOn(PhaserNet, "sendPlayerPosition");
+    const { controller } = buildLedgeController();
+    controller.handleKeyboardMove("DOWN");
+    controller.onStepComplete(1, 8, 9, "UP", "snap");
+    expect(controller.getCurrentPosition()).toEqual({ x: 8, y: 9 });
+    expect(controller.getCurrentDirection()).toBe("UP");
+    expect(controller.getIsMoving()).toBe(false);
+    expect(send).not.toHaveBeenCalled();
+    send.mockRestore();
+  });
   test("WASD jumps directly over a valid ledge instead of pathing around to the landing tile", () => {
     const { controller, updates } = buildLedgeController();
 

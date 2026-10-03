@@ -210,17 +210,7 @@ export class NetworkBridge {
 
       // Warp tile teleport (Phase 9.7)
       case OpCodes.WarpTileTeleportNotify:
-        this.handleWarpTileTeleport(
-          data as {
-            mapId: number;
-            x: number;
-            y: number;
-            direction?: string;
-            animateExitStep?: boolean;
-            animationStartX?: number;
-            animationStartY?: number;
-          },
-        );
+        this.handleWarpTileTeleport(data as ProtocolTypes.WarpTileTeleportNotify);
         break;
       case OpCodes.WarpHomeResponse:
         this.handleWarpHomeResponse(data as Record<string, unknown>);
@@ -904,19 +894,11 @@ export class NetworkBridge {
     });
   }
 
-  private handleWarpTileTeleport(data: {
-    mapId: number;
-    x: number;
-    y: number;
-    direction?: string;
-    animateExitStep?: boolean;
-    animationStartX?: number;
-    animationStartY?: number;
-  }) {
-    console.log("[NetworkBridge] Warp tile teleport:", data);
-    // Dispatch a custom event that TileViewer listens for
+  private handleWarpTileTeleport(data: ProtocolTypes.WarpTileTeleportNotify) {
+    // This opcode follows a committed server destination. Scene loading reads
+    // that owned location; it must not submit another destination write.
     window.dispatchEvent(
-      new CustomEvent("warpTileTeleport", { detail: data })
+      new CustomEvent("warpTileTeleport", { detail: { ...data, serverCommitted: true } })
     );
   }
 

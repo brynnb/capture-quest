@@ -92,11 +92,7 @@ func HandleElevatorSelectRequest(ses *session.Session, payload []byte, wh *World
 	}
 
 	// Send teleport notification to client
-	ses.SendStreamJSON(map[string]interface{}{
-		"mapId": req.FloorMapID,
-		"x":     floor.DestX,
-		"y":     floor.DestY,
-	}, opcodes.WarpTileTeleportNotify)
+	sendCommittedWarpNotification(ses, req.FloorMapID, floor.DestX, floor.DestY, "DOWN")
 
 	log.Printf("[Elevator] Player %d teleported to floor %d (%d,%d)", char.ID, req.FloorMapID, floor.DestX, floor.DestY)
 	return false

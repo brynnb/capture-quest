@@ -146,3 +146,12 @@ type PhaserInstantWarpResponse struct {
 	Y         int    `json:"y"`
 	Direction string `json:"direction"`
 }
+
+// WarpTileTeleportNotify describes a destination already committed by the server.
+// Arrival effects for legacy producers still run during the following MapLoad.
+type WarpTileTeleportNotify struct {
+	MapID     int    `json:"mapId"`
+	X         int    `json:"x"`
+	Y         int    `json:"y"`
+	Direction string `json:"direction"`
+}

@@ -14,6 +14,15 @@ import (
 	"capturequest/internal/session"
 )
 
+// Call only after the producer has committed and published its destination.
+// The notification carries presentation data; the browser must not echo a write.
+func sendCommittedWarpNotification(ses *session.Session, mapID, x, y int, direction string) {
+	if ses == nil {
+		return
+	}
+	ses.SendStreamJSON(protocol.WarpTileTeleportNotify{MapID: mapID, X: x, Y: y, Direction: direction}, opcodes.WarpTileTeleportNotify)
+}
+
 // Normal warps accept source identity and activation intent, never destinations.
 func HandlePhaserWarpActivateRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
 	var req protocol.PhaserWarpActivateRequest

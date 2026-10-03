@@ -823,6 +823,17 @@ teleport producers still require migration;
 the legacy position authority remains until that retirement is complete. Request
 correlation does not provide durable replay or reconnect recovery.
 
+The committed teleport notification (existing WarpTileTeleportNotify opcode)
+uses one explicit protocol DTO and shared sender across movement pads, elevators,
+field moves/items, cutscene transaction publication, recovery and scenario jumps.
+Each producer commits before notifying. The bridge marks its presentation as
+committed, so scene transitions read owned location without an echoed position
+write or supplied MapLoad coordinates. Shared movement callbacks distinguish
+walking steps from snaps: snaps refresh context without sending position reports.
+Committed presentation snaps immediately to retire source tweens and queues.
+Legacy arrival effects remain a subsequent MapLoad transaction for these producers;
+blackout/Safari store responses and test warp probes still require migration.
+
 Current-map loading reads the movement registration first, falling back to the
 selected character before registration. It uses one owned snapshot for map
 permission, zero-position recovery, effects and acknowledgement. Every accepted

@@ -1477,6 +1477,7 @@ export class PlayerMovementController {
     x: number,
     y: number,
     completedDirection: string,
+    kind: "step" | "snap" = "step",
   ): void {
     if (this.playerId === actorId) {
       // ActorMovementController derives this from the actual completed tile
@@ -1489,6 +1490,12 @@ export class PlayerMovementController {
       this.updateSurfingStateForTile(x, y);
       this.updateTravelMapForTile(x, y);
       this.emitPlayerPositionChanged();
+      // A snap projects a server position; it is not a new completed move.
+      // Keep local context fresh without echoing a write or activating a warp.
+      if (kind === "snap") {
+        this.stopMovement();
+        return;
+      }
       PhaserNet.sendPlayerPosition(
         x,
         y,

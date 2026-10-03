@@ -518,8 +518,8 @@ export class TileViewer extends Scene {
 
     // Connect movement controller callbacks
     const movementController = this.mapRenderer.getMovementController();
-    movementController.setOnStepComplete((actorId, x, y, direction) => {
-      this.playerMovementController.onStepComplete(actorId, x, y, direction);
+    movementController.setOnStepComplete((actorId, x, y, direction, kind) => {
+      this.playerMovementController.onStepComplete(actorId, x, y, direction, kind);
     });
 
     // Subscribe to game status changes (for camera follow toggle)

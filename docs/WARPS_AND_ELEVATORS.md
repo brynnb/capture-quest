@@ -45,6 +45,14 @@ as map-load destination fields. Instant Warp now uses its own correlated
 ordinary-player catalog command (185/186), committing destination and arrival
 effects before shared warp presentation. Walking, cutscene and other position-report producers
 remain separate migration work; this change does not retire those old endpoints.
+The committed teleport opcode now shares an explicit generated destination DTO
+across server movement pads, elevators, field moves/items, cutscene publication,
+recovery and scenario jumps. Its presentation skips position echoes and supplied
+MapLoad coordinates. Actor snaps refresh local context without reporting a walking
+step, and retire the source tween immediately. Legacy arrival effects still occur
+in the following MapLoad transaction; blackout/Safari store paths and test probes
+remain separate migrations.
+
 Frontend and backend must be released together when a deployment is authorized.
 
 ## Import Order

@@ -230,6 +230,16 @@ export interface PhaserInstantWarpResponse {
   y: number /* int */;
   direction: string;
 }
+/**
+ * WarpTileTeleportNotify describes a destination already committed by the server.
+ * Arrival effects for legacy producers still run during the following MapLoad.
+ */
+export interface WarpTileTeleportNotify {
+  mapId: number /* int */;
+  x: number /* int */;
+  y: number /* int */;
+  direction: string;
+}
 
 //////////
 // source: pokedex.go

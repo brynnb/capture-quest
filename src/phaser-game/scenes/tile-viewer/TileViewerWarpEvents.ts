@@ -128,7 +128,7 @@ export class TileViewerWarpEvents {
       direction ?? "DOWN",
     );
     const playerActor = this.deps.getPlayerActor();
-    if (playerActor?.id != null) {
+    if (!serverCommitted && playerActor?.id != null) {
       await Promise.race([
         this.deps.mapRenderer().waitForActorIdle(playerActor.id),
         new Promise<void>((resolve) => setTimeout(resolve, 1200)),
@@ -145,6 +145,18 @@ export class TileViewerWarpEvents {
       playerActor.y = y;
       playerActor.mapId = normalizedPlayerMapId;
       this.deps.setPlayerActor(playerActor);
+    }
+
+    if (serverCommitted) {
+      // Retire the old tween immediately. Waiting for its step callback would
+      // let a source-position report overwrite the already committed arrival.
+      movement.syncPosition(x, y);
+      if (direction) movement.syncDirection(direction);
+      if (playerActor?.id != null) {
+        this.deps.mapRenderer().snapActorPosition(
+          playerActor.id, x, y, direction ?? "DOWN", playerActor,
+        );
+      }
     }
 
     if (mapId !== currentMapId) {
@@ -205,7 +217,7 @@ export class TileViewerWarpEvents {
     if (direction) {
       movement.syncDirection(direction);
     }
-    if (playerActor?.id != null) {
+    if (!serverCommitted && playerActor?.id != null) {
       this.deps.mapRenderer().snapActorPosition(
         playerActor.id,
         x,

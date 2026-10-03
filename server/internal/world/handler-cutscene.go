@@ -742,18 +742,6 @@ func sendSafariManualExit(ses *session.Session) {
 	}, opcodes.SafariZoneEnterResponse)
 }
 
-func sendCutsceneWarp(ses *session.Session, mapID, x, y int, direction string) {
-	if ses == nil {
-		return
-	}
-	ses.SendStreamJSON(map[string]interface{}{
-		"mapId":     mapID,
-		"x":         x,
-		"y":         y,
-		"direction": direction,
-	}, opcodes.WarpTileTeleportNotify)
-}
-
 func resolveCutsceneItem(database db.DBTX, action CutsceneAction) (int, string, error) {
 	if action.ItemID > 0 {
 		var name string

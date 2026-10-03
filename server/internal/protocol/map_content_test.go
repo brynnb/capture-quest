@@ -36,3 +36,14 @@ func TestMapStreamsUseExplicitJSONContract(t *testing.T) {
 		t.Fatalf("destination request=%s %v", request, err)
 	}
 }
+
+func TestCommittedWarpNotificationUsesExplicitJSONContract(t *testing.T) {
+	recorder := &frameRecorder{}
+	ses := session.NewSessionManager().CreateSession(recorder, 1, "warp-wire", nil)
+	if err := ses.SendStreamJSON(protocol.WarpTileTeleportNotify{MapID: 9999, X: -2, Y: 0, Direction: "UP"}, opcodes.WarpTileTeleportNotify); err != nil {
+		t.Fatal(err)
+	}
+	if len(recorder.frames) != 1 || string(recorder.frames[0][6:]) != `{"mapId":9999,"x":-2,"y":0,"direction":"UP"}` {
+		t.Fatalf("unexpected committed warp wire: %q", recorder.frames)
+	}
+}

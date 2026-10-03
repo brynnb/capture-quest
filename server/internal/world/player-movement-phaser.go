@@ -701,7 +701,7 @@ func (m *PlayerMovementManager) applyMovementStepEffects(update playerMovementSt
 					m.StopMovement(state.CharacterID)
 					return
 				}
-				ses.SendStreamJSON(map[string]interface{}{"mapId": wt.DestMapID, "x": wt.DestX, "y": wt.DestY}, opcodes.WarpTileTeleportNotify)
+				sendCommittedWarpNotification(ses, wt.DestMapID, wt.DestX, wt.DestY, "DOWN")
 			}
 
 		}

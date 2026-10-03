@@ -47,11 +47,7 @@ func HandleWarpHomeRequest(ses *session.Session, _ []byte, wh *WorldHandler) boo
 	refreshSafariFlags(wh, charID)
 	publishCommittedPlayerPosition(ses, wh, mapID, x, y, direction)
 
-	ses.SendStreamJSON(map[string]interface{}{
-		"mapId": mapID,
-		"x":     x,
-		"y":     y,
-	}, opcodes.WarpTileTeleportNotify)
+	sendCommittedWarpNotification(ses, mapID, x, y, direction)
 
 	ses.SendStreamJSON(map[string]interface{}{
 		"success": true,

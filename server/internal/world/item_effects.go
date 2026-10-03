@@ -212,16 +212,10 @@ func currentTilePosition(ses *session.Session, wh *WorldHandler) (int, int, int)
 }
 
 func teleportPlayerTo(ses *session.Session, wh *WorldHandler, mapID int, x int, y int) error {
-	if ses != nil && ses.HasValidClient() {
-		if _, err := setServerTeleportedPlayerPosition(ses, wh, mapID, x, y, "DOWN"); err != nil {
-			return err
-		}
+	if _, err := setServerTeleportedPlayerPosition(ses, wh, mapID, x, y, "DOWN"); err != nil {
+		return err
 	}
-	ses.SendStreamJSON(map[string]interface{}{
-		"mapId": mapID,
-		"x":     x,
-		"y":     y,
-	}, opcodes.WarpTileTeleportNotify)
+	sendCommittedWarpNotification(ses, mapID, x, y, "DOWN")
 	return nil
 }
 
@@ -231,7 +225,7 @@ func publishCommittedTeleport(ses *session.Session, wh *WorldHandler, mapID, x, 
 		refreshSafariFlags(wh, int64(ses.Client.CharData().ID))
 	}
 	publishCommittedPlayerPosition(ses, wh, mapID, x, y, "DOWN")
-	ses.SendStreamJSON(map[string]interface{}{"mapId": mapID, "x": x, "y": y}, opcodes.WarpTileTeleportNotify)
+	sendCommittedWarpNotification(ses, mapID, x, y, "DOWN")
 }
 
 func sendCQItemUseSuccess(ses *session.Session, found *cqitems.CQInventoryItem, message string, newQty uint16, extra ...map[string]interface{}) {

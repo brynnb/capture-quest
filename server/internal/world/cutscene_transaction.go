@@ -289,7 +289,7 @@ func (m *cutsceneMutation) movePlayer(ctx CutsceneActionContext, mapID, x, y int
 		// position has committed. Publication never issues another database write.
 		setCutscenePlayerPosition(p.Session, p.WorldHandler, m.characterID, mapID, x, y, direction)
 		if warp {
-			sendCutsceneWarp(p.Session, mapID, x, y, direction)
+			sendCommittedWarpNotification(p.Session, mapID, x, y, direction)
 		}
 		return nil
 	})

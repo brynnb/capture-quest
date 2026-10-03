@@ -850,12 +850,7 @@ func sendDebugSceneTeleport(ses *session.Session, wh *WorldHandler, charID int64
 		return err
 	}
 
-	ses.SendStreamJSON(map[string]interface{}{
-		"mapId":     mapID,
-		"x":         x,
-		"y":         y,
-		"direction": direction,
-	}, opcodes.WarpTileTeleportNotify)
+	sendCommittedWarpNotification(ses, mapID, x, y, direction)
 	return nil
 }
 
