@@ -459,6 +459,14 @@ export interface SafariRecoveryPokemon {
   maxHp: number /* int */;
 }
 export interface SafariRecoveryState {
+  isOver?: boolean;
+  caught?: boolean;
+  fled?: boolean;
+  sentToPC?: boolean;
+  pcBox?: number /* int */;
+  playerParty?: PokemonDTO[];
+  battleId?: string;
+  revision?: number /* int64 */;
   active: boolean;
   ballsLeft: number /* int */;
   stepsLeft: number /* int */;
@@ -1031,6 +1039,33 @@ export interface PokeCenterHealRequest {
 //////////
 // source: handler-safari.go
 
+/**
+ * HandleSafariBattleAction processes a safari battle action (ball, bait, rock, run).
+ */
+export interface SafariBattleActionRequest {
+  requestId: string;
+  battle: BattleCommandIdentity;
+  action: string;
+}
+export interface SafariBattleActionResponse {
+  exitMessage?: string;
+  playerParty?: PokemonDTO[];
+  success: true;
+  requestId: string;
+  battleId: string;
+  revision: number /* int64 */;
+  position: import("./protocol").OwnedPlayerPositionResponse;
+  events: import("./battle_events").SafariBattleEvent[];
+  ballsLeft: number /* int */;
+  stepsLeft: number /* int */;
+  isOver: boolean;
+  caught: boolean;
+  fled: boolean;
+  closed?: boolean;
+  sentToPC?: boolean;
+  pcBox?: number /* int */;
+  safariOver?: boolean;
+}
 
 //////////
 // source: handler-scripted-event.go
@@ -1252,6 +1287,7 @@ export const SafariZoneGateReturnX = 3;
 export const SafariZoneGateReturnY = 4;
 export const EventInSafariZone = "EVENT_IN_SAFARI_ZONE";
 export const EventSafariGameOver = "EVENT_SAFARI_GAME_OVER";
+export const SafariExpiryMessage = "PA: Ding-dong! Your SAFARI GAME is over!";
 /**
  * SafariSession tracks a player's current Safari Zone visit.
  */
@@ -1260,6 +1296,7 @@ export interface SafariSession {
   stepsLeft: number /* int */;
   active: boolean;
   battle?: any /* pokebattle.SafariBattleState */; // Non-nil if in a safari battle
+  capture?: any /* pokebattle.CapturePlacement */;
 }
 export interface SafariEntryResult {
   success: boolean;

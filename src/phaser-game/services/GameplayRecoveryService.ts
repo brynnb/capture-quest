@@ -27,8 +27,9 @@ export function applyGameplaySnapshot(snapshot: GameplayStateResponse): void {
   // the ordinary party view too; retaining its earlier notification would leave
   // derived stats, HP or PP stale until reentry. Absence carries no party data.
   if (snapshot.battle) usePokemonPartyStore.getState().setParty(snapshot.battle.playerParty);
+  if (snapshot.safari?.playerParty) usePokemonPartyStore.getState().setParty(snapshot.safari.playerParty);
   usePokeBattleStore.getState().restoreGameplay(snapshot);
-  window.dispatchEvent(new CustomEvent("safariZoneEnter", { detail: snapshot.safari
+  window.dispatchEvent(new CustomEvent("safariZoneEnter", { detail: snapshot.safari?.active
     ? { success: true, ballsLeft: snapshot.safari.ballsLeft, stepsLeft: snapshot.safari.stepsLeft }
     : { success: false } }));
   if (snapshot.trainer) PhaserNet.dispatchPhaserResponse(OpCodes.TrainerEncounterNotify, snapshot.trainer);

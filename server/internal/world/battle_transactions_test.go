@@ -69,15 +69,27 @@ func battleDispatch(t *testing.T, wh *WorldHandler, ses *session.Session, opcode
 	// their current durable identity; tests of missing/stale identity dispatch raw
 	// packets or supply an explicit battle field, which is never rewritten here.
 	switch opcode {
-	case opcodes.PokeBattleActionRequest, opcodes.PokeBattleSwitchRequest, opcodes.CQBattleItemUseRequest, opcodes.PokeMoveLearnRequest, opcodes.PokeBattleCloseRequest:
+	case opcodes.PokeBattleActionRequest, opcodes.PokeBattleSwitchRequest, opcodes.CQBattleItemUseRequest, opcodes.PokeMoveLearnRequest, opcodes.PokeBattleCloseRequest, opcodes.SafariBattleActionRequest:
 		var request map[string]json.RawMessage
 		if json.Unmarshal([]byte(payload), &request) == nil && request != nil {
 			if _, explicit := request["requestId"]; !explicit {
 				request["requestId"] = json.RawMessage(`"test-battle"`)
 			}
 			if _, explicit := request["battle"]; !explicit {
-				if battle := getBattle(int64(ses.Client.CharData().ID)); battle != nil {
-					identity, err := json.Marshal(BattleCommandIdentity{BattleID: battle.BattleID, Revision: battle.Revision})
+				identityValue := BattleCommandIdentity{}
+				if opcode == opcodes.SafariBattleActionRequest && wh.Safari != nil {
+					visit, err := wh.Safari.GetSession(context.Background(), int64(ses.Client.CharData().ID))
+					if err != nil {
+						t.Fatal(err)
+					}
+					if visit != nil && visit.Battle != nil {
+						identityValue = BattleCommandIdentity{BattleID: visit.Battle.BattleID, Revision: visit.Battle.Revision}
+					}
+				} else if battle := getBattle(int64(ses.Client.CharData().ID)); battle != nil {
+					identityValue = BattleCommandIdentity{BattleID: battle.BattleID, Revision: battle.Revision}
+				}
+				if identityValue.BattleID != "" {
+					identity, err := json.Marshal(identityValue)
 					if err != nil {
 						t.Fatal(err)
 					}

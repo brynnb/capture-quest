@@ -71,3 +71,10 @@ const (
 	EventMoveLearnPrompt BattleEventType = "move_learn_prompt" // All slots full, player must choose
 	EventEvolution       BattleEventType = "evolution"         // Pokémon evolved into a new form
 )
+
+// SafariBattleEvent represents something that happened during a safari turn.
+type SafariBattleEvent struct {
+	Type    string `json:"type"`
+	Message string `json:"message"`
+	Shakes  int    `json:"shakes,omitempty"`
+}

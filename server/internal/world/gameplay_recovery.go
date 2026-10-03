@@ -57,10 +57,18 @@ type SafariRecoveryPokemon struct {
 	MaxHP int    `json:"maxHp"`
 }
 type SafariRecoveryState struct {
-	Active    bool                   `json:"active"`
-	BallsLeft int                    `json:"ballsLeft"`
-	StepsLeft int                    `json:"stepsLeft"`
-	Pokemon   *SafariRecoveryPokemon `json:"pokemon"`
+	IsOver      bool                   `json:"isOver,omitempty"`
+	Caught      bool                   `json:"caught,omitempty"`
+	Fled        bool                   `json:"fled,omitempty"`
+	SentToPC    bool                   `json:"sentToPC,omitempty"`
+	PCBox       int                    `json:"pcBox,omitempty"`
+	PlayerParty []PokemonDTO           `json:"playerParty,omitempty"`
+	BattleID    string                 `json:"battleId,omitempty"`
+	Revision    int64                  `json:"revision,omitempty"`
+	Active      bool                   `json:"active"`
+	BallsLeft   int                    `json:"ballsLeft"`
+	StepsLeft   int                    `json:"stepsLeft"`
+	Pokemon     *SafariRecoveryPokemon `json:"pokemon"`
 }
 type GameplayStateResponse struct {
 	Success   bool                                    `json:"success" tstype:"true"`
@@ -139,9 +147,24 @@ func readGameplayState(ctx context.Context, ses *session.Session, wh *WorldHandl
 		if err != nil {
 			return err
 		}
-		if safari != nil && safari.Active {
-			result.Safari = &SafariRecoveryState{Active: true, BallsLeft: safari.BallsLeft, StepsLeft: safari.StepsLeft}
+		if safari != nil && (safari.Active || safari.Battle != nil) {
+			result.Safari = &SafariRecoveryState{Active: safari.Active, BallsLeft: safari.BallsLeft, StepsLeft: safari.StepsLeft}
 			if safari.Battle != nil {
+				if safari.Battle.BattleID == "" || safari.Battle.Revision < 1 {
+					return fmt.Errorf("Safari encounter requires identity upgrade before recovery")
+				}
+				result.Safari.BattleID, result.Safari.Revision = safari.Battle.BattleID, safari.Battle.Revision
+				result.Safari.IsOver, result.Safari.Caught, result.Safari.Fled = safari.Battle.IsOver(), safari.Battle.Caught, safari.Battle.Fled
+				if safari.Capture != nil && safari.Capture.SentToPC {
+					result.Safari.SentToPC, result.Safari.PCBox = true, safari.Capture.PCBox+1
+				}
+				party, err := pokebattle.LoadParty(tx, charID)
+				if err != nil {
+					return err
+				}
+				for _, pokemon := range party {
+					result.Safari.PlayerParty = append(result.Safari.PlayerParty, pokemonToDTO(pokemon))
+				}
 				p := safari.Battle.WildPokemon
 				result.Safari.Pokemon = &SafariRecoveryPokemon{ID: p.ID, Name: p.Name, Level: p.Level, HP: p.CurHP, MaxHP: p.MaxHP}
 			}

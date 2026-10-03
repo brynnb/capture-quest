@@ -1,4 +1,4 @@
-import type { BattleCommandResponse, BattleCommandError } from "@/net/generated/world_api";
+import type { BattleCommandResponse, SafariBattleActionResponse, BattleCommandError } from "@/net/generated/world_api";
 import type { GameplayStateRequest, GameplayStateResponse } from "@/net/generated/world_api";
 import type { TrainerEncounterNotifyPayload } from "@/net/generated/protocol";
 import type { CutsceneEndRequest, CutsceneEndResponse, OwnedPlayerPositionRequest, OwnedPlayerPositionResponse, ServerPlayerMovementNotify, PlayerFacingRequest, PlayerFacingResponse, PlayerStepRequest, PlayerStepResponse, PlayerStepCompleteRequest, PlayerStepCompleteResponse, PlayerStepError, PhaserMapInfo, PhaserMapInfoRequest, PhaserMapInfoResponse, PhaserMapLoadRequest, PhaserMapLoadResponse, PhaserMapRequestError, PhaserWarpActivateRequest, PhaserWarpActivateResponse, PhaserInstantWarpRequest, PhaserInstantWarpResponse } from "@/net/generated/protocol";
@@ -296,14 +296,6 @@ export function requestSafariZoneStatus(): void {
 }
 
 /**
- * Send a Safari Zone battle action (ball, bait, rock, run)
- */
-export function sendSafariAction(action: string): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ action }, OpCodes.SafariBattleActionRequest);
-}
-
-/**
  * Request current coin balance
  */
 export function requestCoinBalance(): void {
@@ -358,9 +350,9 @@ export type TrainerEncounterHandler = (
 ) => void;
 export type PhaserMapMusicHandler = (data: MapMusicResult) => void;
 
-type BattleCommandHandler = (data: BattleCommandResponse | BattleCommandError) => void;
+type BattleCommandHandler = (data: BattleCommandResponse | SafariBattleActionResponse | BattleCommandError) => void;
 const battleCommandHandlers = new Map<number, Set<BattleCommandHandler>>([
-  OpCodes.PokeBattleActionResponse, OpCodes.PokeBattleSwitchResponse,
+  OpCodes.SafariBattleActionResponse, OpCodes.PokeBattleActionResponse, OpCodes.PokeBattleSwitchResponse,
   OpCodes.CQBattleItemUseResponse, OpCodes.PokeMoveLearnResponse, OpCodes.PokeBattleCloseResponse,
 ].map(opcode => [opcode, new Set<BattleCommandHandler>()]));
 
@@ -593,12 +585,13 @@ export function normalizePhaserArrayPayload<T>(
 // Internal: dispatch incoming Phaser responses
 export function dispatchPhaserResponse(opcode: number, data: unknown): void {
   switch (opcode) {
+    case OpCodes.SafariBattleActionResponse:
     case OpCodes.PokeBattleActionResponse:
     case OpCodes.PokeBattleSwitchResponse:
     case OpCodes.CQBattleItemUseResponse:
     case OpCodes.PokeMoveLearnResponse:
     case OpCodes.PokeBattleCloseResponse:
-      battleCommandHandlers.get(opcode)?.forEach(receive => receive(data as BattleCommandResponse | BattleCommandError));
+      battleCommandHandlers.get(opcode)?.forEach(receive => receive(data as BattleCommandResponse | SafariBattleActionResponse | BattleCommandError));
       break;
 
     case OpCodes.GameplayStateResponse:

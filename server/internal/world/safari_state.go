@@ -10,6 +10,7 @@ import (
 	"capturequest/internal/db/pokedex"
 	"capturequest/internal/itemuse"
 	"capturequest/internal/pokebattle"
+	"github.com/google/uuid"
 )
 
 const (
@@ -26,6 +27,7 @@ const (
 
 	EventInSafariZone   = "EVENT_IN_SAFARI_ZONE"
 	EventSafariGameOver = "EVENT_SAFARI_GAME_OVER"
+	SafariExpiryMessage = "PA: Ding-dong! Your SAFARI GAME is over!"
 )
 
 // Safari Zone map IDs (the 4 zones where encounters happen)
@@ -42,6 +44,7 @@ type SafariSession struct {
 	StepsLeft int                           `json:"stepsLeft"`
 	Active    bool                          `json:"active"`
 	Battle    *pokebattle.SafariBattleState `json:"battle,omitempty"` // Non-nil if in a safari battle
+	Capture   *pokebattle.CapturePlacement  `json:"capture,omitempty"`
 }
 
 type SafariEntryResult struct {
@@ -67,14 +70,14 @@ func NewSafariZoneManager(database *sql.DB) *SafariZoneManager {
 }
 
 // Bump this version and define a migration before changing persisted meaning.
-const safariStateVersion = 1
+const safariStateVersion = 2
 
 type storedSafariState struct {
 	Version int            `json:"version"`
 	Visit   *SafariSession `json:"visit"`
 }
 
-func validateSafariState(s *SafariSession) error {
+func validateSafariState(s *SafariSession, legacy bool) error {
 	if s.BallsLeft < 0 || s.BallsLeft > SafariZoneMaxBalls || s.StepsLeft < 0 || s.StepsLeft > SafariZoneMaxSteps {
 		return fmt.Errorf("invalid safari counters balls=%d steps=%d", s.BallsLeft, s.StepsLeft)
 	}
@@ -82,9 +85,15 @@ func validateSafariState(s *SafariSession) error {
 		return fmt.Errorf("active safari requires balls and steps")
 	}
 	if b := s.Battle; b != nil {
-		if !s.Active || b.WildPokemon == nil || b.WildPokemon.ID < 1 || b.WildPokemon.ID > 151 || b.WildPokemon.RowID != 0 || b.IsOver() || b.Phase != pokebattle.SafariPhaseAction || b.Caught || b.Fled || b.BallsLeft != s.BallsLeft || b.StepsLeft != s.StepsLeft {
+		if (!legacy || b.BattleID != "" || b.Revision != 0) && (b.BattleID == "" || b.Revision < 1) {
+			return fmt.Errorf("invalid safari encounter command identity")
+		}
+		if b.WildPokemon == nil || b.WildPokemon.ID < 1 || b.WildPokemon.ID > 151 || b.WildPokemon.RowID != 0 || (!b.IsOver() && (!s.Active || b.Phase != pokebattle.SafariPhaseAction || b.Caught || b.Fled)) || b.BallsLeft != s.BallsLeft || b.StepsLeft != s.StepsLeft {
 			return fmt.Errorf("invalid safari battle identity/phase/counters")
 		}
+	}
+	if p := s.Capture; p != nil && (s.Battle == nil || !s.Battle.Caught || !s.Battle.IsOver() || (p.SentToPC && (p.PCBox < 0 || p.PCBox >= 12))) {
+		return fmt.Errorf("invalid safari capture placement")
 	}
 	return nil
 }
@@ -102,13 +111,13 @@ func safariSessionIn(database db.DBTX, charID int64) (*SafariSession, error) {
 	if err := json.Unmarshal([]byte(encoded), &saved); err != nil {
 		return nil, fmt.Errorf("safari character %d: %w", charID, err)
 	}
-	if saved.Version != safariStateVersion {
+	if saved.Version != 1 && saved.Version != safariStateVersion {
 		return nil, fmt.Errorf("safari character %d unsupported state version %d", charID, saved.Version)
 	}
 	if saved.Visit == nil {
 		return nil, fmt.Errorf("safari character %d missing visit", charID)
 	}
-	if err := validateSafariState(saved.Visit); err != nil {
+	if err := validateSafariState(saved.Visit, saved.Version == 1); err != nil {
 		return nil, fmt.Errorf("safari character %d: %w", charID, err)
 	}
 	return saved.Visit, nil
@@ -122,7 +131,7 @@ func saveSafariSessionIn(tx db.DBTX, charID int64, s *SafariSession) error {
 		_, err := tx.Exec(`DELETE FROM character_safari_state WHERE character_id=$1`, charID)
 		return err
 	}
-	if err := validateSafariState(s); err != nil {
+	if err := validateSafariState(s, false); err != nil {
 		return err
 	}
 	encoded, err := json.Marshal(storedSafariState{Version: safariStateVersion, Visit: s})
@@ -142,7 +151,23 @@ func (m *SafariZoneManager) Load(ctx context.Context) error {
 }
 func (m *SafariZoneManager) GetSession(ctx context.Context, charID int64) (*SafariSession, error) {
 	var s *SafariSession
-	err := db.Transaction(ctx, m.database, func(tx db.DBTX) error { var err error; s, err = safariSessionIn(tx, charID); return err })
+	err := db.Transaction(ctx, m.database, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, charID); err != nil {
+			return err
+		}
+		var err error
+		s, err = safariSessionIn(tx, charID)
+		if err != nil {
+			return err
+		}
+		// Upgrade only the supported ID-less v1 encounter, under its owner lock,
+		// before any notification can advertise a playable command identity.
+		if s != nil && s.Battle != nil && s.Battle.BattleID == "" {
+			s.Battle.BattleID, s.Battle.Revision = uuid.NewString(), 1
+			return saveSafariSessionIn(tx, charID, s)
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -224,6 +249,9 @@ func startSafariVisitIn(tx db.DBTX, charID int64) (SafariEntryResult, error) {
 	if err != nil {
 		return SafariEntryResult{}, err
 	}
+	if s != nil && s.Battle != nil && !s.Active {
+		return SafariEntryResult{Message: "Finish your previous Safari encounter first."}, nil
+	}
 	if _, err := tx.Exec(`INSERT INTO character_wallet(character_id,pokedollars) VALUES($1,0) ON CONFLICT(character_id) DO NOTHING`, charID); err != nil {
 		return SafariEntryResult{}, err
 	}
@@ -278,19 +306,36 @@ func TryStartSafariZoneVisit(ctx context.Context, charID int64, m *SafariZoneMan
 }
 
 type safariActionResult struct {
+	Party    []*pokebattle.Pokemon
+	Closed   bool
 	Visit    *SafariSession
 	Battle   *pokebattle.SafariBattleState
 	SentToPC bool
 	PCBox    int
 }
 
-func (m *SafariZoneManager) act(ctx context.Context, charID int64, action string) (safariActionResult, error) {
+func (m *SafariZoneManager) act(ctx context.Context, charID int64, action string, identity BattleCommandIdentity) (safariActionResult, error) {
 	var result safariActionResult
 	err := m.mutate(ctx, charID, func(tx db.DBTX, s *SafariSession) error {
-		if s == nil || !s.Active || s.Battle == nil {
+		if s == nil || s.Battle == nil {
 			return &itemuse.Rejection{Message: "not in safari battle"}
 		}
 		b := s.Battle
+		if identity.BattleID == "" || identity.Revision < 1 || b.BattleID != identity.BattleID || b.Revision != identity.Revision {
+			return &itemuse.Rejection{Message: "Safari encounter changed. Reconnect to recover its current state."}
+		}
+		if action == "close" {
+			if !b.IsOver() {
+				return &itemuse.Rejection{Message: "Safari encounter is not finished"}
+			}
+			b.Revision++
+			result.Visit, result.Battle, result.Closed = s, b, true
+			s.Battle, s.Capture = nil, nil
+			return nil
+		}
+		if !s.Active || b.IsOver() {
+			return &itemuse.Rejection{Message: "Safari encounter is finished"}
+		}
 		switch action {
 		case "ball":
 			b.ThrowBall()
@@ -304,6 +349,7 @@ func (m *SafariZoneManager) act(ctx context.Context, charID int64, action string
 		default:
 			return &itemuse.Rejection{Message: "invalid action"}
 		}
+		b.Revision++
 		result.Visit = s
 		result.Battle = b
 		if b.Caught {
@@ -314,13 +360,17 @@ func (m *SafariZoneManager) act(ctx context.Context, charID int64, action string
 			}
 			result.SentToPC = !party
 			result.PCBox = box
+			s.Capture = &pokebattle.CapturePlacement{SentToPC: !party, PCBox: box}
 			if err := pokedex.MarkCaught(tx, charID, b.WildPokemon.ID); err != nil {
 				return err
 			}
+			result.Party, err = pokebattle.LoadParty(tx, charID)
+			if err != nil {
+				return err
+			}
 		}
-		if b.IsOver() {
-			s.Battle = nil
-		}
+		// Keep the terminal encounter until identity-bound dismissal. Reply loss
+		// must not erase a catch summary or permit another encounter to overwrite it.
 		// Exhaustion ends the visit even when its last ball catches a Pokémon.
 		if s.BallsLeft == 0 {
 			s.Active = false

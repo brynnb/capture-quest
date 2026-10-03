@@ -1002,7 +1002,7 @@ at send time, including while response events animate. Close requests retain
 it before clearing the store, preventing delayed dismissal of a later battle.
 Old identity-free requests reject; a release must update server and client
 together. Rejected duplicates do not replay a historical outcome. Ordinary command correlation, timeout recovery and stale response retirement
-are implemented as described below. Safari command identity remains unfinished; see SERVER_FOUNDATIONS.md for the full five-area roadmap.
+are implemented as described below. Safari now uses the identity and coordinator described below; see SERVER_FOUNDATIONS.md for the full five-area roadmap.
 
 Supported version-zero battle saves receive a one-time version-two upgrade under
 the resume transaction before commands are admitted. Identity and current party
@@ -1061,6 +1061,35 @@ eligible map-script plan issuance under the same character transaction, using
 durable eligibility and the shared native-location query; publication follows
 commit. Failed issuance retains the terminal battle. A failed close whose recovery
 still finds that battle shows a reconnect error rather than automatically retrying.
-Lost close acknowledgement restores absence and the durable follow-up plan. Safari correlation, other state streams and historical
-outcome replay remain separate unfinished work. See `SERVER_FOUNDATIONS.md` for
+Lost close acknowledgement restores absence and the durable follow-up plan. Other
+state streams and historical outcome replay remain unfinished work. See `SERVER_FOUNDATIONS.md` for
 validation evidence and the full five-area scope.
+
+
+### Safari command identity and retained outcomes
+
+Safari actions and terminal dismissal share `BattleCommandService` with ordinary
+battles. Opcode 129 requires `requestId`, `battle: { battleId, revision }` and
+`action`; opcode 130 returns the correlated generated response with owned position.
+The existing character-locked Safari transaction rejects stale identity before
+effects and saves the next revision with counters, caught row/Pokédex and optional
+capture placement. No mutation is automatically resent after reply loss.
+
+Terminal Safari encounters remain in `character_safari_state` until an explicit
+identity-bound `close`. Recovery presents their factual caught/run/fled result and
+party/PC placement without event replay, including an inactive exhausted visit at
+the committed gate. Catch recovery refreshes the shared party store. An unresolved
+expired encounter blocks a new payment; dismissal clears its encounter and capture
+metadata. A failed close whose recovery still finds the encounter reports a
+reconnect error instead of retrying dismissal. Normal expiry acknowledgement
+projects the committed position; the subsequent acknowledged close presents the
+PA dialogue without initiating another warp. Expired close-reply-loss dialogue and
+last-ball scene replacement still require rendered acceptance.
+
+Save version 2 requires nonempty identity and a positive revision. The supported
+ID-less version-1 encounter is upgraded once under the character lock in
+`GetSession`, including during login, before advertising commands. The coherent
+gameplay snapshot remains read-only and rejects an unupgraded encounter rather
+than inventing an ephemeral identity. Unsupported versions and malformed current
+records fail closed. See `SERVER_FOUNDATIONS.md` for checkpoint evidence and the
+remaining full-goal work.

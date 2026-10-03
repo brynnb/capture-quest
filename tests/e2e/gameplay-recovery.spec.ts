@@ -87,3 +87,49 @@ test("Safari battle and counters recover through the current-state read when leg
   expect([...snapshots].reverse().find(snapshot => snapshot.safari)?.safari).toMatchObject({ ballsLeft: 30, stepsLeft: 499, pokemon: { id: 111 } });
   await quitToCharacterSelect(page); errors.assertNoSevereErrors();
 });
+
+test("lost Safari run and dismissal replies recover without resending or reviving a closed encounter", async ({ page }) => {
+  test.setTimeout(150000);
+  const errors = collectPageErrors(page);
+  const commands: Array<{ action: string; battle: { battleId: string; revision: number } }> = [];
+  const snapshots: GameplayStateResponse[] = [];
+  const releases: Array<() => void> = [];
+  await page.routeWebSocket("**/ws", socket => {
+    const server = socket.connectToServer();
+    socket.onMessage(message => {
+      if (Buffer.isBuffer(message) && message.length >= 6 && message.readUInt16LE(4) === OpCodes.SafariBattleActionRequest) commands.push(JSON.parse(message.subarray(6).toString()));
+      server.send(message);
+    });
+    server.onMessage(message => {
+      if (Buffer.isBuffer(message) && message.length >= 6) {
+        const opcode = message.readUInt16LE(4);
+        if (opcode === OpCodes.SafariBattleActionResponse) { releases.push(() => socket.send(message)); return; }
+        if (opcode === OpCodes.GameplayStateResponse) snapshots.push(JSON.parse(message.subarray(6).toString()));
+      }
+      socket.send(message);
+    });
+  });
+  const character = await createGuestCharacterAndEnterWorld(page);
+  await jumpToScenario(page, "safari_battle_run"); await waitForMap(page, "SAFARI_ZONE_CENTER"); await waitForNoMapLoading(page);
+  await page.getByTestId("battle-action-run").click({ timeout: 10000 });
+  await expect(page.getByText(/^Got away safely!\s*▼?$/)).toBeVisible({ timeout: 20000 });
+  expect(commands.map(command => command.action)).toEqual(["run"]);
+  const terminal = [...snapshots].reverse().find(snapshot => snapshot.safari?.isOver)?.safari;
+  expect(terminal).toMatchObject({ active: true, ballsLeft: 30, stepsLeft: 499, revision: 2 });
+  // These optional JSON flags omit false; Run is terminal without a wild flee.
+  expect(Boolean(terminal?.caught)).toBe(false); expect(Boolean(terminal?.fled)).toBe(false);
+  expect(terminal?.battleId).toBe(commands[0].battle.battleId);
+  await quitToCharacterSelect(page); await enterWorld(page, character); await waitForNoMapLoading(page);
+  await expect(page.getByText(/^Got away safely!\s*▼?$/)).toBeVisible();
+  await page.keyboard.press("Space");
+  await expect.poll(async () => (await getGameState(page)).battle.isOpen, { timeout: 20000 }).toBe(false);
+  expect(commands.map(command => command.action)).toEqual(["run", "close"]);
+  expect(commands[1].battle).toEqual({ battleId: terminal?.battleId, revision: 2 });
+  for (const release of releases) release();
+  await page.evaluate(async () => { const path = "/src/phaser-game/services/PlayerMovementService.ts"; const { readOwnedPlayerPosition } = await import(path); await readOwnedPlayerPosition(); });
+  expect((await getGameState(page)).battle.isOpen).toBe(false);
+  await quitToCharacterSelect(page); await enterWorld(page, character); await waitForNoMapLoading(page);
+  expect((await getGameState(page)).battle.isOpen).toBe(false);
+  expect(commands).toHaveLength(2);
+  await quitToCharacterSelect(page); errors.assertNoSevereErrors();
+});

@@ -93,6 +93,7 @@ export class NetworkBridge {
       case OpCodes.PhaserMapInfoResponse:
       case OpCodes.CutsceneEndResponse:
       case OpCodes.GameplayStateResponse:
+      case OpCodes.SafariBattleActionResponse:
       case OpCodes.PokeBattleActionResponse:
       case OpCodes.PokeBattleSwitchResponse:
       case OpCodes.CQBattleItemUseResponse:
@@ -249,9 +250,6 @@ export class NetworkBridge {
         break;
       case OpCodes.SafariBattleStartNotify:
         this.handleSafariBattleStart(data as Record<string, unknown>);
-        break;
-      case OpCodes.SafariBattleActionResponse:
-        this.handleSafariBattleAction(data as Record<string, unknown>);
         break;
       case OpCodes.SafariZoneStepUpdate:
         this.handleSafariEvent("safariStepUpdate", data);
@@ -822,23 +820,9 @@ export class NetworkBridge {
     const pokemon = data.pokemon as { id: number; name: string; level: number; hp: number; maxHp: number };
     usePokeBattleStore.getState().startSafariBattle({
       pokemon,
+      battleId: data.battleId as string, revision: data.revision as number,
       ballsLeft: data.ballsLeft as number,
       stepsLeft: data.stepsLeft as number,
-    });
-  }
-
-  private handleSafariBattleAction(data: Record<string, unknown>) {
-    console.log("[NetworkBridge] Safari battle action:", data);
-    usePokeBattleStore.getState().updateSafariState({
-      events: (data.events || []) as BattleEventDTO[],
-      ballsLeft: data.ballsLeft as number,
-      stepsLeft: data.stepsLeft as number,
-      isOver: data.isOver as boolean,
-      caught: data.caught as boolean,
-      fled: data.fled as boolean,
-      caughtPokemon: data.caughtPokemon as { name: string } | undefined,
-      sentToPC: data.sentToPC as boolean | undefined,
-      pcBox: data.pcBox as number | undefined,
     });
   }
 

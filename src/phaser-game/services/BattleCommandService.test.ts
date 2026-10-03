@@ -1,16 +1,16 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import type { BattleCommandResponse, BattleCommandError, GameplayBattleState, GameplayStateResponse, PokemonDTO } from "@/net/generated/world_api";
+import type { BattleCommandResponse, SafariBattleActionResponse, SafariRecoveryState, BattleCommandError, GameplayBattleState, GameplayStateResponse, PokemonDTO } from "@/net/generated/world_api";
 import type { OwnedPlayerPositionResponse } from "@/net/generated/protocol";
 const net = vi.hoisted(() => ({
-  commands: new Map<number, Set<(data: BattleCommandResponse | BattleCommandError) => void>>(),
+  commands: new Map<number, Set<(data: BattleCommandResponse | SafariBattleActionResponse | BattleCommandError) => void>>(),
   positions: new Set<(data: OwnedPlayerPositionResponse) => void>(),
   gameplay: new Set<(data: GameplayStateResponse) => void>(),
   send: vi.fn(), positionRequests: vi.fn(), gameplayRequests: vi.fn(),
 }));
-vi.mock("@/net", () => ({ WorldSocket: { sendStreamJsonMessage: net.send }, OpCodes: { PokeBattleActionRequest: 70, PokeBattleActionResponse: 71, PokeBattleSwitchRequest: 72, PokeBattleSwitchResponse: 73, PokeMoveLearnRequest: 87, PokeMoveLearnResponse: 88, PokeBattleCloseRequest: 89, PokeBattleCloseResponse: 199 } }));
+vi.mock("@/net", () => ({ WorldSocket: { sendStreamJsonMessage: net.send }, OpCodes: { SafariBattleActionRequest: 129, SafariBattleActionResponse: 130, PokeBattleActionRequest: 70, PokeBattleActionResponse: 71, PokeBattleSwitchRequest: 72, PokeBattleSwitchResponse: 73, PokeMoveLearnRequest: 87, PokeMoveLearnResponse: 88, PokeBattleCloseRequest: 89, PokeBattleCloseResponse: 199 } }));
 vi.mock("./PhaserNetworkService", () => ({
   isConnected: () => true,
-  onBattleCommand: (opcode: number, receive: (data: BattleCommandResponse | BattleCommandError) => void) => {
+  onBattleCommand: (opcode: number, receive: (data: BattleCommandResponse | SafariBattleActionResponse | BattleCommandError) => void) => {
     if (!net.commands.has(opcode)) net.commands.set(opcode, new Set());
     const listeners = net.commands.get(opcode)!; listeners.add(receive); return () => listeners.delete(receive);
   },
@@ -24,15 +24,17 @@ vi.mock("./CutsceneService", () => ({ handleCutsceneStart: vi.fn() }));
 vi.mock("@/services/audio/AudioManager", () => ({ default: { playMusic: vi.fn(), playSFX: vi.fn() } }));
 import usePokeBattleStore from "@/stores/PokeBattleStore";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
-import { bindBattleScene, sendBattleAction, sendBattleSwitch, sendMoveLearningChoice, closeOrdinaryBattle } from "./BattleCommandService";
+import { bindBattleScene, sendBattleAction, sendBattleSwitch, sendMoveLearningChoice, closeOrdinaryBattle, sendSafariAction, closeSafariBattle } from "./BattleCommandService";
 
 const pokemon: PokemonDTO = { id: 25, name: "PIKACHU", level: 5, type1: "ELECTRIC", type2: "", curHp: 1, maxHp: 20, attack: 10, defense: 10, speed: 10, special: 10, exp: 125, expToNextLevel: 91, status: "", isWild: false, boxSlot: 0, moves: [] };
 const battle = (revision = 2): GameplayBattleState => ({ battleId: "battle", revision, phase: "action_select", turnNumber: revision - 1, playerPokemon: pokemon, enemyPokemon: pokemon, playerParty: [pokemon], playerActive: 0, battleType: "wild", allowedActions: [], guaranteedCatch: false, trainerClass: "", trainerName: "" });
 const position = (requestId: string): OwnedPlayerPositionResponse => ({ success: true, requestId, mapId: 50, x: 7, y: 8, direction: "UP", serverMovementPending: false });
 const reply = (requestId: string, revision = 3): BattleCommandResponse => ({ success: true, requestId, position: position(requestId), battle: battle(revision), events: [] });
-const emit = (opcode: number, data: BattleCommandResponse | BattleCommandError) => net.commands.get(opcode)?.forEach(receive => receive(data));
+const emit = (opcode: number, data: BattleCommandResponse | SafariBattleActionResponse | BattleCommandError) => net.commands.get(opcode)?.forEach(receive => receive(data));
 const sentID = () => net.send.mock.calls.at(-1)![1].requestId as string;
 const project = vi.fn(async () => {});
+const safari = (revision = 1): SafariRecoveryState => ({ active: true, ballsLeft: 30, stepsLeft: 499, battleId: "safari", revision, pokemon: { id: 129, name: "MAGIKARP", level: 5, hp: 20, maxHp: 20 }, playerParty: [pokemon] });
+const safariReply = (requestId: string, revision = 2): SafariBattleActionResponse => ({ success: true, requestId, battleId: "safari", revision, position: position(requestId), events: [], ballsLeft: 29, stepsLeft: 499, isOver: false, caught: false, fled: false });
 let retireScene: () => void;
 beforeEach(() => {
   vi.useFakeTimers(); net.commands.clear(); net.positions.clear(); net.gameplay.clear();
@@ -42,13 +44,53 @@ beforeEach(() => {
 });
 afterEach(async () => { vi.restoreAllMocks(); retireScene(); await Promise.resolve(); usePokeBattleStore.getState().retireBattle(); vi.useRealTimers(); });
 
-async function recoverRead(currentBattle: GameplayBattleState | null) {
+async function recoverRead(currentBattle: GameplayBattleState | null, safari: SafariRecoveryState | null = null) {
   await vi.advanceTimersByTimeAsync(0);
   const request = net.gameplayRequests.mock.calls.at(-1)![0];
   expect(request).toEqual({ current: true, requestId: expect.any(String) });
   expect(net.positionRequests).not.toHaveBeenCalled();
-  net.gameplay.forEach(receive => receive({ success: true, requestId: request.requestId, position: position(request.requestId), battle: currentBattle, safari: null, trainer: null, cutscene: null }));
+  net.gameplay.forEach(receive => receive({ success: true, requestId: request.requestId, position: position(request.requestId), battle: currentBattle, safari, trainer: null, cutscene: null }));
 }
+
+test("Safari uses the same single-flight coordinator and correlated durable revision", async () => {
+  usePokeBattleStore.getState().restoreGameplay({ success: true, requestId: "start", position: position("start"), battle: null, safari: safari(), trainer: null, cutscene: null });
+  const action = sendSafariAction("ball");
+  await sendSafariAction("ball"); await sendBattleAction({ action: "fight" });
+  expect(net.send).toHaveBeenCalledTimes(1);
+  expect(net.send.mock.calls[0]).toEqual([129, { action: "ball", battle: { battleId: "safari", revision: 1 }, requestId: expect.any(String) }]);
+  emit(130, safariReply("unrelated", 8));
+  expect(usePokeBattleStore.getState().revision).toBe(1);
+  const id = sentID(); emit(130, safariReply(id)); await action;
+  emit(130, safariReply(id, 3));
+  expect(usePokeBattleStore.getState()).toMatchObject({ isSafari: true, revision: 2, safariBallsLeft: 29, phase: "action_select", battleCommandPending: false });
+  expect(net.commands.get(130)?.size).toBe(0); expect(vi.getTimerCount()).toBe(0);
+});
+
+test("lost Safari catch reply recovers its PC summary and party; dismissal waits for acknowledgement", async () => {
+  usePokeBattleStore.getState().startSafariBattle({ ...safari(), pokemon: safari().pokemon! });
+  const action = sendSafariAction("ball"); const oldID = sentID();
+  await vi.advanceTimersByTimeAsync(10000);
+  const party = [{ ...pokemon, curHp: 20 }];
+  await recoverRead(null, { ...safari(2), ballsLeft: 29, isOver: true, caught: true, sentToPC: true, pcBox: 4, playerParty: party }); await action;
+  expect(usePokeBattleStore.getState()).toMatchObject({ phase: "battle_end", battleResult: "caught", sentToPCBox: 4, eventQueue: [], battleCommandPending: false });
+  expect(usePokemonPartyStore.getState().party).toEqual(party);
+  emit(130, { ...safariReply(oldID), events: [{ type: "catch_success", message: "Old catch" }] });
+  expect(usePokeBattleStore.getState().eventQueue).toEqual([]);
+  const closing = closeSafariBattle();
+  expect(usePokeBattleStore.getState().isInBattle).toBe(true);
+  emit(130, { ...safariReply(sentID(), 3), closed: true, isOver: true, caught: true }); await closing;
+  expect(usePokeBattleStore.getState().isInBattle).toBe(false);
+  expect(net.send.mock.calls.map(call => call[1].action)).toEqual(["ball", "close"]);
+});
+
+test("lost Safari close acknowledgement restores absence without resending dismissal", async () => {
+  usePokeBattleStore.getState().startSafariBattle({ ...safari(2), pokemon: safari().pokemon! });
+  const closing = closeSafariBattle();
+  await vi.advanceTimersByTimeAsync(10000);
+  await recoverRead(null, { active: true, ballsLeft: 29, stepsLeft: 499 }); await closing;
+  expect(usePokeBattleStore.getState().isInBattle).toBe(false);
+  expect(net.send).toHaveBeenCalledTimes(1); expect(net.commands.get(130)?.size).toBe(0); expect(vi.getTimerCount()).toBe(0);
+});
 
 test("a correlated turn has one in-flight mutation; unrelated and late duplicate replies cannot apply", async () => {
   const work = sendBattleAction({ action: "fight", moveSlot: 0 });

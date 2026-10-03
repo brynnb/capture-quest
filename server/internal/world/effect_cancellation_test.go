@@ -24,6 +24,14 @@ func TestDurableEffectsRespectCallerCancellationWhileCharacterLocked(t *testing.
 			if name == "SafariTurn" {
 				seedSafariBattle(t, wh.Safari, 30)
 			}
+			var safariIdentity BattleCommandIdentity
+			if name == "SafariTurn" {
+				visit, err := wh.Safari.GetSession(context.Background(), 42)
+				if err != nil {
+					t.Fatal(err)
+				}
+				safariIdentity = BattleCommandIdentity{BattleID: visit.Battle.BattleID, Revision: visit.Battle.Revision}
+			}
 			lock, err := database.Begin()
 			if err != nil {
 				t.Fatal(err)
@@ -41,7 +49,7 @@ func TestDurableEffectsRespectCallerCancellationWhileCharacterLocked(t *testing.
 				case "SafariEntry":
 					_, err = TryStartSafariZoneVisit(ctx, 42, wh.Safari)
 				case "SafariTurn":
-					_, err = wh.Safari.act(ctx, 42, "ball")
+					_, err = wh.Safari.act(ctx, 42, "ball", safariIdentity)
 				case "RepelActivation":
 					_, err = UseRepelInventoryItem(ctx, wh, 42, 30, nil)
 				case "CutsceneCompletion":

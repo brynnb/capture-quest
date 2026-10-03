@@ -82,3 +82,11 @@ export const EventCatchFail: BattleEventType = "catch_fail";
 export const EventMoveLearned: BattleEventType = "move_learned"; // Auto-learned into empty slot
 export const EventMoveLearnPrompt: BattleEventType = "move_learn_prompt"; // All slots full, player must choose
 export const EventEvolution: BattleEventType = "evolution"; // Pokémon evolved into a new form
+/**
+ * SafariBattleEvent represents something that happened during a safari turn.
+ */
+export interface SafariBattleEvent {
+  type: string;
+  message: string;
+  shakes?: number /* int */;
+}

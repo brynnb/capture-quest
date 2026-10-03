@@ -52,6 +52,7 @@ func HandleSafariZoneEnter(ses *session.Session, payload []byte, wh *WorldHandle
 		if existing.Battle != nil && !existing.Battle.IsOver() {
 			wild := existing.Battle.WildPokemon
 			ses.SendStreamJSON(map[string]interface{}{
+				"battleId": existing.Battle.BattleID, "revision": existing.Battle.Revision,
 				"pokemon": map[string]interface{}{
 					"id":    wild.ID,
 					"name":  wild.Name,
@@ -111,12 +112,35 @@ func HandleSafariZoneEnter(ses *session.Session, payload []byte, wh *WorldHandle
 }
 
 // HandleSafariBattleAction processes a safari battle action (ball, bait, rock, run).
+type SafariBattleActionRequest struct {
+	RequestID string                `json:"requestId"`
+	Battle    BattleCommandIdentity `json:"battle"`
+	Action    string                `json:"action"`
+}
+type SafariBattleActionResponse struct {
+	ExitMessage string                               `json:"exitMessage,omitempty"`
+	PlayerParty []PokemonDTO                         `json:"playerParty,omitempty"`
+	Success     bool                                 `json:"success" tstype:"true"`
+	RequestID   string                               `json:"requestId"`
+	BattleID    string                               `json:"battleId"`
+	Revision    int64                                `json:"revision"`
+	Position    protocol.OwnedPlayerPositionResponse `json:"position" tstype:"import(\"./protocol\").OwnedPlayerPositionResponse"`
+	Events      []pokebattle.SafariBattleEvent       `json:"events" tstype:"import(\"./battle_events\").SafariBattleEvent[]"`
+	BallsLeft   int                                  `json:"ballsLeft"`
+	StepsLeft   int                                  `json:"stepsLeft"`
+	IsOver      bool                                 `json:"isOver"`
+	Caught      bool                                 `json:"caught"`
+	Fled        bool                                 `json:"fled"`
+	Closed      bool                                 `json:"closed,omitempty"`
+	SentToPC    bool                                 `json:"sentToPC,omitempty"`
+	PCBox       int                                  `json:"pcBox,omitempty"`
+	SafariOver  bool                                 `json:"safariOver,omitempty"`
+}
+
 func HandleSafariBattleAction(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	var req struct {
-		Action string `json:"action"` // "ball", "bait", "rock", "run"
-	}
-	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("[Safari] Invalid action request: %v", err)
+	var req SafariBattleActionRequest
+	if err := decodePlayerMovement(payload, &req); err != nil || !validBattleRequestID(req.RequestID) {
+		sendBattleCommandError(ses, req.RequestID, opcodes.SafariBattleActionResponse, "Invalid Safari action request")
 		return false
 	}
 
@@ -127,58 +151,49 @@ func HandleSafariBattleAction(ses *session.Session, payload []byte, wh *WorldHan
 	charID := int64(char.ID)
 
 	_, _, mapID := wh.ownedPlayerPosition(ses)
-	if !IsInSafariZone(mapID) || getBattle(charID) != nil {
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "not in safari battle"}, opcodes.SafariBattleActionResponse)
+	if (!IsInSafariZone(mapID) && !(req.Action == "close" && mapID == SafariZoneGateMapID)) || getBattle(charID) != nil {
+		sendBattleCommandError(ses, req.RequestID, opcodes.SafariBattleActionResponse, "not in safari battle")
 		return false
 	}
 
-	result, err := wh.Safari.act(ses.CommandContext(), charID, req.Action)
+	result, err := wh.Safari.act(ses.CommandContext(), charID, req.Action, req.Battle)
 	if err != nil {
 		var rejection *itemuse.Rejection
 		if errors.As(err, &rejection) {
-			ses.SendStreamJSON(map[string]interface{}{"success": false, "error": rejection.Message}, opcodes.SafariBattleActionResponse)
+			sendBattleCommandError(ses, req.RequestID, opcodes.SafariBattleActionResponse, rejection.Message)
 		} else {
-			safariStorageError(ses, charID, err, opcodes.SafariBattleActionResponse)
+			log.Printf("[Safari] Character %d action commit: %v", charID, err)
+			sendBattleCommandError(ses, req.RequestID, opcodes.SafariBattleActionResponse, "Could not save Safari action. Reconnect to recover its current state.")
 		}
 		return false
 	}
 	safariSes, battle := result.Visit, result.Battle
 	// Build response
-	resp := map[string]interface{}{
-		"success":   true,
-		"events":    battle.Events,
-		"ballsLeft": safariSes.BallsLeft,
-		"stepsLeft": safariSes.StepsLeft,
-		"isOver":    battle.IsOver(),
-		"caught":    battle.Caught,
-		"fled":      battle.Fled,
+	// Project exhaustion before taking the committed response's owned position.
+	if !safariSes.Active && !result.Closed {
+		publishSafariExpiry(ses, wh, charID)
+	}
+	resp := SafariBattleActionResponse{Success: true, RequestID: req.RequestID, BattleID: battle.BattleID, Revision: battle.Revision, Position: wh.ownedPlayerSnapshot(ses, req.RequestID), Events: battle.Events, BallsLeft: safariSes.BallsLeft, StepsLeft: safariSes.StepsLeft, IsOver: battle.IsOver(), Caught: battle.Caught, Fled: battle.Fled, Closed: result.Closed, SafariOver: !safariSes.Active}
+	if result.Closed || resp.Events == nil {
+		resp.Events = []pokebattle.SafariBattleEvent{}
+	}
+	for _, p := range result.Party {
+		resp.PlayerParty = append(resp.PlayerParty, pokemonToDTO(p))
+	}
+	if resp.SafariOver {
+		resp.ExitMessage = SafariExpiryMessage
 	}
 
 	if battle.Caught {
 		caughtPoke := battle.WildPokemon
-		resp["caughtPokemon"] = map[string]interface{}{
-			"id":    caughtPoke.ID,
-			"name":  caughtPoke.Name,
-			"level": caughtPoke.Level,
-		}
-		resp["sentToPC"] = result.SentToPC
+		resp.SentToPC = result.SentToPC
 		if result.SentToPC {
-			resp["pcBox"] = result.PCBox + 1 // 1-indexed for display
+			resp.PCBox = result.PCBox + 1 // 1-indexed for display
 		}
 		log.Printf("[Safari] Player %d caught L%d %s", charID, caughtPoke.Level, caughtPoke.Name)
 	}
 
-	if !safariSes.Active {
-		resp["safariOver"] = true
-	}
-
 	ses.SendStreamJSON(resp, opcodes.SafariBattleActionResponse)
-
-	// If safari visit is over (out of balls), send exit notification to warp player back
-	if !safariSes.Active {
-		publishSafariExpiry(ses, wh, charID)
-		sendCommittedSafariExit(ses, 0)
-	}
 
 	return false
 }
@@ -266,7 +281,7 @@ func publishSafariStep(ses *session.Session, wh *WorldHandler, charID int64, res
 		return false
 	}
 	wild := result.Visit.Battle.WildPokemon
-	ses.SendStreamJSON(map[string]interface{}{"pokemon": map[string]interface{}{"id": wild.ID, "name": wild.Name, "level": wild.Level, "hp": wild.CurHP, "maxHp": wild.MaxHP, "spriteId": wild.ID, "catchRate": wild.CatchRate}, "ballsLeft": result.Visit.BallsLeft, "stepsLeft": result.Visit.StepsLeft}, opcodes.SafariBattleStartNotify)
+	ses.SendStreamJSON(map[string]interface{}{"battleId": result.Visit.Battle.BattleID, "revision": result.Visit.Battle.Revision, "pokemon": map[string]interface{}{"id": wild.ID, "name": wild.Name, "level": wild.Level, "hp": wild.CurHP, "maxHp": wild.MaxHP, "spriteId": wild.ID, "catchRate": wild.CatchRate}, "ballsLeft": result.Visit.BallsLeft, "stepsLeft": result.Visit.StepsLeft}, opcodes.SafariBattleStartNotify)
 	return true
 }
 
@@ -290,6 +305,6 @@ func publishSafariExpiry(ses *session.Session, wh *WorldHandler, charID int64) {
 func sendCommittedSafariExit(ses *session.Session, ballsLeft int) {
 	ses.SendStreamJSON(protocol.SafariZoneExitNotify{
 		WarpTileTeleportNotify: protocol.WarpTileTeleportNotify{MapID: SafariZoneGateMapID, X: SafariZoneGateReturnX, Y: SafariZoneGateReturnY, Direction: "DOWN"},
-		StepsLeft:              0, BallsLeft: ballsLeft, Message: "PA: Ding-dong! Your SAFARI GAME is over!",
+		StepsLeft:              0, BallsLeft: ballsLeft, Message: SafariExpiryMessage,
 	}, opcodes.SafariZoneExitNotify)
 }

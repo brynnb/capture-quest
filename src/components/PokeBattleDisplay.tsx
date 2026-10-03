@@ -8,7 +8,8 @@ import useCQInventoryStore, {
   ITEM_TYPE_MEDICINE,
 } from "@stores/CQInventoryStore";
 import type { PokemonDTO } from "@/net/generated/world_api";
-import { sendCQInventoryRequest, sendSafariAction } from "@/phaser-game/services/PhaserNetworkService";
+import { sendSafariAction } from "@/phaser-game/services/BattleCommandService";
+import { sendCQInventoryRequest } from "@/phaser-game/services/PhaserNetworkService";
 import { sendBattleAction, sendBattleSwitch, sendMoveLearningChoice } from "@/phaser-game/services/BattleCommandService";
 import AudioManager from "@/services/audio/AudioManager";
 import { sfxPathForConstant } from "@/services/audio/pokemonMusic";
@@ -1310,24 +1311,20 @@ const PokeBattleDisplay: React.FC = () => {
 
   // Safari Zone action handlers
   const handleSafariBall = useCallback(() => {
-    sendSafariAction("ball");
-    setPhase("animating");
-  }, [setPhase]);
+    void sendSafariAction("ball");
+  }, []);
 
   const handleSafariBait = useCallback(() => {
-    sendSafariAction("bait");
-    setPhase("animating");
-  }, [setPhase]);
+    void sendSafariAction("bait");
+  }, []);
 
   const handleSafariRock = useCallback(() => {
-    sendSafariAction("rock");
-    setPhase("animating");
-  }, [setPhase]);
+    void sendSafariAction("rock");
+  }, []);
 
   const handleSafariRun = useCallback(() => {
-    sendSafariAction("run");
-    setPhase("animating");
-  }, [setPhase]);
+    void sendSafariAction("run");
+  }, []);
 
   const navigateBattleMenu = useCallback(
     (direction: MenuDirection) => {

@@ -40,6 +40,14 @@ func HandleEnterWorld(ses *session.Session, payload []byte, wh *WorldHandler) bo
 		return false
 	}
 
+	// Resume/upgrade legacy Safari identity before the scene's read-only recovery.
+	if wh.Safari != nil && ses.HasValidClient() {
+		if _, err := wh.Safari.GetSession(ses.CommandContext(), int64(ses.Client.CharData().ID)); err != nil {
+			log.Printf("[Safari] Character resume: %v", err)
+			ses.Close()
+			return false
+		}
+	}
 	// Load event flags for this character
 	if ses.HasValidClient() {
 		charID := int64(ses.Client.CharData().ID)

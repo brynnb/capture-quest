@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { BattleCommandIdentity, GameplayStateResponse, PokemonDTO } from "@/net/generated/world_api";
-import { closeOrdinaryBattle } from "@/phaser-game/services/BattleCommandService";
+import { closeOrdinaryBattle, closeSafariBattle } from "@/phaser-game/services/BattleCommandService";
 import useAudioActivityStore from "@/stores/AudioActivityStore";
 
 export type BattlePhase =
@@ -90,7 +90,7 @@ interface PokeBattleState extends BattleCommandIdentity {
   closeBattle: () => void;
   setPhase: (phase: BattlePhase) => void;
   advanceEvent: () => void;
-  startSafariBattle: (data: { pokemon: { id: number; name: string; level: number; hp: number; maxHp: number }; ballsLeft: number; stepsLeft: number }) => void;
+  startSafariBattle: (data: { battleId?: string; revision?: number; pokemon: { id: number; name: string; level: number; hp: number; maxHp: number }; ballsLeft: number; stepsLeft: number }) => void;
   updateSafariState: (data: { events: BattleEvent[]; ballsLeft: number; stepsLeft: number; isOver: boolean; caught: boolean; fled: boolean; caughtPokemon?: { name: string }; sentToPC?: boolean; pcBox?: number }) => void;
 }
 
@@ -153,7 +153,8 @@ const usePokeBattleStore = create<PokeBattleState>((set, get) => ({
         set({ pendingMoveLearn: { moveId: battle.pendingMove.moveId, moveName: battle.pendingMove.moveName } });
       }
     } else if (snapshot.safari?.pokemon) {
-      get().startSafariBattle({ pokemon: snapshot.safari.pokemon, ballsLeft: snapshot.safari.ballsLeft, stepsLeft: snapshot.safari.stepsLeft });
+      get().startSafariBattle({ ...snapshot.safari, pokemon: snapshot.safari.pokemon });
+      if (snapshot.safari.isOver) get().updateSafariState({ ...snapshot.safari, isOver: true, caught: snapshot.safari.caught === true, fled: snapshot.safari.fled === true, events: [] });
     } else {
       // Absence retires local presentation without sending a CloseBattle command.
       get().retireBattle();
@@ -259,7 +260,7 @@ const usePokeBattleStore = create<PokeBattleState>((set, get) => ({
   },
 
   closeBattle: () => {
-    if (get().isSafari) get().retireBattle();
+    if (get().isSafari) void closeSafariBattle();
     else void closeOrdinaryBattle();
   },
 
@@ -311,6 +312,7 @@ const usePokeBattleStore = create<PokeBattleState>((set, get) => ({
       presentationGeneration: get().presentationGeneration + 1,
       isInBattle: true,
       isSafari: true,
+      battleId: data.battleId ?? "", revision: data.revision ?? 0,
       safariBallsLeft: data.ballsLeft,
       phase: "action_select",
       pendingPhase: "action_select",

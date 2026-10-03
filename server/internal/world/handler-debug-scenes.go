@@ -1247,6 +1247,7 @@ func sendDebugSafariState(ses *session.Session, charID int64, wh *WorldHandler, 
 	}
 	wild := session.Battle.WildPokemon
 	ses.SendStreamJSON(map[string]interface{}{
+		"battleId": session.Battle.BattleID, "revision": session.Battle.Revision,
 		"pokemon": map[string]interface{}{
 			"id":        wild.ID,
 			"name":      wild.Name,

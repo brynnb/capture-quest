@@ -104,6 +104,100 @@ func seedSafariBattle(t *testing.T, m *SafariZoneManager, balls int) {
 		t.Fatal(err)
 	}
 }
+
+func safariFixtureAction(t *testing.T, m *SafariZoneManager, action string) (safariActionResult, error) {
+	t.Helper()
+	s, err := m.GetSession(context.Background(), 42)
+	if err != nil {
+		return safariActionResult{}, err
+	}
+	if s == nil || s.Battle == nil {
+		t.Fatal("fixture has no Safari encounter")
+	}
+	return m.act(context.Background(), 42, action, BattleCommandIdentity{BattleID: s.Battle.BattleID, Revision: s.Battle.Revision})
+}
+
+func TestSafariIdentitySerializesDuplicatesAndProtectsReplacement(t *testing.T) {
+	_, m := safariTestWorld(t)
+	seedSafariBattle(t, m, 30)
+	before, err := m.GetSession(context.Background(), 42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := BattleCommandIdentity{BattleID: before.Battle.BattleID, Revision: before.Battle.Revision}
+	results := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		go func() { _, err := m.act(context.Background(), 42, "bait", identity); results <- err }()
+	}
+	successes := 0
+	for i := 0; i < 2; i++ {
+		if <-results == nil {
+			successes++
+		}
+	}
+	if successes != 1 {
+		t.Fatalf("duplicate commits=%d", successes)
+	}
+	after, err := m.GetSession(context.Background(), 42)
+	if err != nil || after.Battle.Revision != identity.Revision+1 || after.Battle.TurnNum != 1 || after.BallsLeft != 30 {
+		t.Fatal("duplicate advanced encounter more than once", err)
+	}
+	current := BattleCommandIdentity{BattleID: after.Battle.BattleID, Revision: after.Battle.Revision}
+	if _, err := m.act(context.Background(), 42, "close", current); err == nil {
+		t.Fatal("dismissed live encounter")
+	}
+	if _, err := m.act(context.Background(), 42, "run", current); err != nil {
+		t.Fatal(err)
+	}
+	terminal, err := m.GetSession(context.Background(), 42)
+	if err != nil || terminal.Battle == nil || !terminal.Battle.IsOver() || len(terminal.Battle.Events) != 1 || terminal.Battle.Events[0].Type != "run" {
+		t.Fatal("terminal encounter not retained", err)
+	}
+	closing := BattleCommandIdentity{BattleID: terminal.Battle.BattleID, Revision: terminal.Battle.Revision}
+	if _, err := m.act(context.Background(), 42, "close", closing); err != nil {
+		t.Fatal(err)
+	}
+	seedSafariBattle(t, m, 30)
+	if _, err := m.act(context.Background(), 42, "close", closing); err == nil {
+		t.Fatal("old dismissal affected replacement encounter")
+	}
+	replacement, err := m.GetSession(context.Background(), 42)
+	if err != nil || replacement.Battle.BattleID == identity.BattleID || replacement.Battle.Revision != 1 || replacement.Battle.TurnNum != 0 {
+		t.Fatal("replacement changed after stale close", err)
+	}
+}
+
+func TestLegacySafariIdentityUpgradeCommitsBeforeAdvertisement(t *testing.T) {
+	wh, m := safariTestWorld(t)
+	seedSafariBattle(t, m, 30)
+	s, err := m.GetSession(context.Background(), 42)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Battle.BattleID, s.Battle.Revision = "", 0
+	encoded, err := json.Marshal(storedSafariState{Version: 1, Visit: s})
+	if err != nil {
+		t.Fatal(err)
+	}
+	testdb.Exec(t, wh.database, `UPDATE character_safari_state SET state_json=$1 WHERE character_id=42`, string(encoded))
+	testdb.Exec(t, wh.database, `CREATE FUNCTION reject_safari_upgrade() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'late upgrade failure'; END $$; CREATE CONSTRAINT TRIGGER reject_safari_upgrade AFTER UPDATE ON character_safari_state DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_safari_upgrade();`)
+	if got, err := m.GetSession(context.Background(), 42); err == nil || got != nil {
+		t.Fatal("advertised uncommitted legacy identity")
+	}
+	testdb.Exec(t, wh.database, `DROP TRIGGER reject_safari_upgrade ON character_safari_state`)
+	upgraded, err := m.GetSession(context.Background(), 42)
+	if err != nil || upgraded.Battle.BattleID == "" || upgraded.Battle.Revision != 1 || upgraded.Battle.TurnNum != 0 || upgraded.BallsLeft != 30 || upgraded.StepsLeft != 499 {
+		t.Fatal("legacy upgrade changed gameplay", err)
+	}
+	again, err := NewSafariZoneManager(wh.database).GetSession(context.Background(), 42)
+	if err != nil || again.Battle.BattleID != upgraded.Battle.BattleID {
+		t.Fatal("identity was not durable", err)
+	}
+	var version int
+	if err := wh.database.QueryRow(`SELECT (state_json::json->>'version')::int FROM character_safari_state WHERE character_id=42`).Scan(&version); err != nil || version != 2 {
+		t.Fatal("legacy state not migrated", err)
+	}
+}
 func TestSafariTurnCommitFailureDoesNotPublishOrMutateSnapshot(t *testing.T) {
 	database, wh, ses, messages := battleTestWorld(t)
 	wh.Safari = NewSafariZoneManager(database)
@@ -131,8 +225,13 @@ func TestSafariTurnCommitFailureDoesNotPublishOrMutateSnapshot(t *testing.T) {
 	messages.streams = nil
 	battleDispatch(t, wh, ses, opcodes.SafariBattleActionRequest, `{"action":"run"}`)
 	saved, err = wh.Safari.GetSession(context.Background(), 42)
-	if err != nil || saved.Battle != nil || !saved.Active {
+	if err != nil || saved.Battle == nil || !saved.Battle.IsOver() || len(saved.Battle.Events) != 1 || saved.Battle.Events[0].Type != "run" || !saved.Active {
 		t.Fatalf("retry=%+v %v", saved, err)
+	}
+	battleDispatch(t, wh, ses, opcodes.SafariBattleActionRequest, `{"action":"close"}`)
+	saved, err = wh.Safari.GetSession(context.Background(), 42)
+	if err != nil || saved.Battle != nil {
+		t.Fatal("committed dismissal retained terminal encounter", err)
 	}
 }
 func TestSafariCaptureCommitFailurePreservesPokemonAndDex(t *testing.T) {
@@ -144,7 +243,7 @@ func TestSafariCaptureCommitFailurePreservesPokemonAndDex(t *testing.T) {
 	failedCatch := false
 	for i := 0; i < 128; i++ {
 		seedSafariBattle(t, m, 1)
-		_, err := m.act(context.Background(), 42, "ball")
+		_, err := safariFixtureAction(t, m, "ball")
 		if err != nil {
 			failedCatch = true
 			break
@@ -171,7 +270,7 @@ func TestSafariCaptureCommitFailurePreservesPokemonAndDex(t *testing.T) {
 	caught := false
 	for i := 0; i < 128; i++ {
 		seedSafariBattle(t, m, 1)
-		r, err := m.act(context.Background(), 42, "ball")
+		r, err := safariFixtureAction(t, m, "ball")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -184,7 +283,7 @@ func TestSafariCaptureCommitFailurePreservesPokemonAndDex(t *testing.T) {
 		t.Fatal("no committed catch")
 	}
 	s, err = m.GetSession(context.Background(), 42)
-	if err != nil || s.Active || s.Battle != nil || s.BallsLeft != 0 {
+	if err != nil || s.Active || s.Battle == nil || !s.Battle.Caught || !s.Battle.IsOver() || s.Capture == nil || s.BallsLeft != 0 {
 		t.Fatalf("last ball state=%+v %v", s, err)
 	}
 	if err := wh.database.QueryRow(`SELECT COUNT(*) FROM character_pokemon WHERE character_id=42`).Scan(&count); err != nil {
@@ -196,7 +295,7 @@ func TestSafariCaptureCommitFailurePreservesPokemonAndDex(t *testing.T) {
 	if count != 2 || dex != 1 {
 		t.Fatalf("committed capture pokemon=%d dex=%d", count, dex)
 	}
-	if _, err := m.act(context.Background(), 42, "ball"); err == nil {
+	if _, err := safariFixtureAction(t, m, "ball"); err == nil {
 		t.Fatal("replayed capture accepted")
 	}
 }
@@ -314,7 +413,7 @@ func TestSafariFullPartyCaptureUsesPCAndRetainsExistingIdentities(t *testing.T) 
 	var result safariActionResult
 	for i := 0; i < 128; i++ {
 		seedSafariBattle(t, m, 30)
-		r, err := m.act(context.Background(), 42, "ball")
+		r, err := safariFixtureAction(t, m, "ball")
 		if err != nil {
 			t.Fatal(err)
 		}
