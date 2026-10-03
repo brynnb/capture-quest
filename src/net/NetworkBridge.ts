@@ -1,5 +1,5 @@
 import type { CQInventorySnapshot } from "@/net/generated/cqitems";
-import type { CQInventoryResponse, CQMerchantBuyResponse, CQMerchantSellResponse, BattleEndOutcome } from "@/net/generated/world_api";
+import type { CQInventoryResponse, BattleEndOutcome } from "@/net/generated/world_api";
 import { presentBattleEnd } from "@/phaser-game/services/BattleCommandService";
 import { WorldSocket } from "./index";
 import * as OpCodes from "./generated/opcodes";
@@ -94,6 +94,8 @@ export class NetworkBridge {
       case OpCodes.PhaserMapInfoResponse:
       case OpCodes.CutsceneEndResponse:
       case OpCodes.GameplayStateResponse:
+      case OpCodes.CQMerchantBuyResponse:
+      case OpCodes.CQMerchantSellResponse:
       case OpCodes.SafariBattleActionResponse:
       case OpCodes.PokeBattleActionResponse:
       case OpCodes.PokeBattleSwitchResponse:
@@ -159,12 +161,6 @@ export class NetworkBridge {
         break;
       case OpCodes.CQMerchantOpenResponse:
         this.handleCQMerchantOpenResponse(data as Record<string, unknown>);
-        break;
-      case OpCodes.CQMerchantBuyResponse:
-        this.handleCQMerchantBuyResponse(data as Record<string, unknown>);
-        break;
-      case OpCodes.CQMerchantSellResponse:
-        this.handleCQMerchantSellResponse(data as Record<string, unknown>);
         break;
       case OpCodes.CQItemUseResponse:
         this.handleCQItemUseResponse(data as Record<string, unknown>);
@@ -427,11 +423,13 @@ export class NetworkBridge {
   private applyInventorySnapshot(snapshot: CQInventorySnapshot): boolean {
     // A malformed success must not clear a real bag or replace money with zero.
     if (!snapshot || !Array.isArray(snapshot.items)
-      || !Number.isSafeInteger(snapshot.money) || snapshot.money < 0 || snapshot.money > 0xffffffff) {
+      || !Number.isSafeInteger(snapshot.money) || snapshot.money < 0 || snapshot.money > 0xffffffff
+      || !Number.isSafeInteger(snapshot.shopRevision) || snapshot.shopRevision < 0) {
       console.warn("[NetworkBridge] Invalid inventory snapshot");
       return false;
     }
-    useCQInventoryStore.getState().setInventory(snapshot.items, snapshot.money);
+    if (snapshot.shopRevision < useCQInventoryStore.getState().shopRevision) return false;
+    useCQInventoryStore.getState().setInventory(snapshot.items, snapshot.money, snapshot.shopRevision);
     const characterId = usePlayerCharacterStore.getState().characterProfile?.id;
     if (characterId !== undefined) {
       usePlayerCharacterStore.getState().handleCharacterWalletData({ characterId, pokedollars: snapshot.money });
@@ -451,26 +449,6 @@ export class NetworkBridge {
     >[2];
     const money = (data.money || 0) as number;
     useCQInventoryStore.getState().openShop(merchantId, name, items, money);
-  }
-
-  private handleCQMerchantBuyResponse(data: Record<string, unknown>) {
-    if (!data.success) {
-      console.warn("[NetworkBridge] Buy failed:", data.error);
-      return;
-    }
-    const reply = data as unknown as CQMerchantBuyResponse;
-    if (!this.applyInventorySnapshot(reply.inventory)) return;
-    this.playSourceSFX("SFX_PURCHASE", 0.8);
-  }
-
-  private handleCQMerchantSellResponse(data: Record<string, unknown>) {
-    if (!data.success) {
-      console.warn("[NetworkBridge] Sell failed:", data.error);
-      return;
-    }
-    const reply = data as unknown as CQMerchantSellResponse;
-    if (!this.applyInventorySnapshot(reply.inventory)) return;
-    this.playSourceSFX("SFX_PURCHASE", 0.8);
   }
 
   private handleCQItemUseResponse(data: Record<string, unknown>) {

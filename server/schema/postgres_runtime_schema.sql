@@ -192,6 +192,12 @@ CREATE TABLE IF NOT EXISTS character_movement_receipts (
     committed_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- One durable revision serializes shop mutations across replies and reconnects.
+CREATE TABLE IF NOT EXISTS character_shop_state (
+    character_id bigint PRIMARY KEY REFERENCES character_data(id) ON DELETE CASCADE,
+    revision bigint NOT NULL CHECK (revision BETWEEN 0 AND 9007199254740991)
+);
+
 CREATE TABLE IF NOT EXISTS character_repels (
     character_id bigint PRIMARY KEY REFERENCES character_data(id) ON DELETE CASCADE,
     steps_left integer NOT NULL CHECK (steps_left > 0),

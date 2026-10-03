@@ -278,5 +278,5 @@ func publishCQInventorySnapshot(ses *session.Session, database db.DBTX, charID i
 }
 
 func sendCommittedCQInventory(ses *session.Session, snapshot cqitems.CQInventorySnapshot) {
-	ses.SendStreamJSON(CQInventoryResponse{Success: true, Items: snapshot.Items, Money: snapshot.Money}, opcodes.CQInventoryResponse)
+	ses.SendStreamJSON(CQInventoryResponse{ShopRevision: snapshot.ShopRevision, Success: true, Items: snapshot.Items, Money: snapshot.Money}, opcodes.CQInventoryResponse)
 }

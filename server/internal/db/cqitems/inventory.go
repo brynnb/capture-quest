@@ -21,6 +21,9 @@ func (s *Store) GetCharacterSnapshot(ctx context.Context, charID int32) (CQInven
 		}
 		store := NewStore(tx)
 		var err error
+		if err := tx.QueryRow(`SELECT COALESCE((SELECT revision FROM character_shop_state WHERE character_id=$1),0)`, charID).Scan(&result.ShopRevision); err != nil {
+			return err
+		}
 		result.Money, err = store.GetCharacterMoney(charID)
 		if err != nil {
 			return fmt.Errorf("inventory wallet: %w", err)

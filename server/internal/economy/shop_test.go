@@ -41,7 +41,7 @@ func TestPurchaseUsesOfferAndPreservesOverflow(t *testing.T) {
 	if _, err := cqitems.NewStore(database).AddItemToInventory(1, 1, 95); err != nil {
 		t.Fatal(err)
 	}
-	result, err := service.Buy(context.Background(), 1, 38, 1, 1, 10)
+	result, err := service.Buy(context.Background(), 1, 38, 1, 1, 10, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,12 +82,12 @@ func TestPurchaseRejectsInvalidOfferQuantityAndInsufficientBalance(t *testing.T)
 	}{
 		{39, 1, 1, 1}, {38, 2, 1, 1}, {38, 1, 2, 1}, {38, 1, 1, 0}, {38, 1, 1, 100},
 	} {
-		if _, err := service.Buy(context.Background(), 1, tc.mapID, tc.merchantID, tc.itemID, tc.quantity); err == nil {
+		if _, err := service.Buy(context.Background(), 1, tc.mapID, tc.merchantID, tc.itemID, tc.quantity, 0); err == nil {
 			t.Fatalf("accepted invalid purchase %+v", tc)
 		}
 	}
 	testdb.Exec(t, database, `UPDATE character_wallet SET pokedollars=5 WHERE character_id=1`)
-	if _, err := service.Buy(context.Background(), 1, 38, 1, 1, 1); err == nil {
+	if _, err := service.Buy(context.Background(), 1, 38, 1, 1, 1, 0); err == nil {
 		t.Fatal("accepted insufficient balance")
 	}
 	assertWalletAndItems(t, database, 1, 5, 0)
@@ -97,7 +97,7 @@ func TestPurchaseRollsBackPaymentAndGrantOnDatabaseFailure(t *testing.T) {
 	database, service := shopDatabase(t)
 	// Fail after payment and instance creation, at inventory link insertion.
 	testdb.Exec(t, database, `ALTER TABLE cq_character_inventory ADD CONSTRAINT reject_grant CHECK(character_id <> 1)`)
-	if result, err := service.Buy(context.Background(), 1, 38, 1, 1, 1); err == nil || result.InstanceID != 0 {
+	if result, err := service.Buy(context.Background(), 1, 38, 1, 1, 1, 0); err == nil || result.InstanceID != 0 {
 		t.Fatalf("result=%+v error=%v", result, err)
 	}
 	assertWalletAndItems(t, database, 1, 1000, 0)
@@ -122,7 +122,7 @@ func TestConcurrentPurchasesCannotOverspendOrOversell(t *testing.T) {
 		workers.Add(1)
 		go func(charID int32) {
 			defer workers.Done()
-			_, err := service.Buy(context.Background(), charID, 38, 1, 1, 1)
+			_, err := service.Buy(context.Background(), charID, 38, 1, 1, 1, 0)
 			results <- err
 		}(int32(i%2 + 1))
 	}
@@ -156,7 +156,7 @@ func TestSaleOwnershipDuplicateAndRollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Sell(context.Background(), 2, id); err == nil {
+	if _, err := service.Sell(context.Background(), 2, id, 0); err == nil {
 		t.Fatal("sold another character's stack")
 	}
 	if err := store.RemoveItemFromInventory(2, id); err == nil {
@@ -166,12 +166,12 @@ func TestSaleOwnershipDuplicateAndRollback(t *testing.T) {
 		t.Fatal("consumed another character's stack")
 	}
 	testdb.Exec(t, database, `ALTER TABLE character_wallet ADD CONSTRAINT reject_credit CHECK(pokedollars<=1000)`)
-	if _, err := service.Sell(context.Background(), 1, id); err == nil {
+	if _, err := service.Sell(context.Background(), 1, id, 0); err == nil {
 		t.Fatal("sale ignored failed credit")
 	}
 	assertWalletAndItems(t, database, 1, 1000, 3)
 	testdb.Exec(t, database, `ALTER TABLE character_wallet DROP CONSTRAINT reject_credit`)
-	result, err := service.Sell(context.Background(), 1, id)
+	result, err := service.Sell(context.Background(), 1, id, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +181,7 @@ func TestSaleOwnershipDuplicateAndRollback(t *testing.T) {
 	if result.Inventory.Money != 1150 || result.Inventory.Items == nil || len(result.Inventory.Items) != 0 {
 		t.Fatalf("sale did not return authoritative empty bag: %+v", result.Inventory)
 	}
-	if _, err := service.Sell(context.Background(), 1, id); err == nil {
+	if _, err := service.Sell(context.Background(), 1, id, 0); err == nil {
 		t.Fatal("sold same stack twice")
 	}
 	assertWalletAndItems(t, database, 1, 1150, 0)
@@ -199,12 +199,12 @@ func TestPurchaseCancellationReleasesLocks(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
-	if _, err := service.Buy(ctx, 1, 38, 1, 1, 1); err == nil {
+	if _, err := service.Buy(ctx, 1, 38, 1, 1, 1, 0); err == nil {
 		t.Fatal("purchase did not cancel waiting for lock")
 	}
 	tx.Rollback()
 	assertWalletAndItems(t, database, 1, 1000, 0)
-	if _, err := service.Buy(context.Background(), 1, 38, 1, 1, 1); err != nil {
+	if _, err := service.Buy(context.Background(), 1, 38, 1, 1, 1, 0); err != nil {
 		t.Fatalf("purchase after cancellation: %v", err)
 	}
 }
@@ -226,12 +226,12 @@ func TestShopSnapshotFailureRollsBackMutation(t *testing.T) {
 			// persisted data in another stack. It must roll back the whole action.
 			testdb.Exec(t, database, `UPDATE cq_item_instances SET charges=256 WHERE id=$1`, other)
 			if action == "buy" {
-				result, err := service.Buy(context.Background(), 1, 38, 1, 1, 1)
+				result, err := service.Buy(context.Background(), 1, 38, 1, 1, 1, 0)
 				if err == nil || result.InstanceID != 0 || result.Inventory.Items != nil {
 					t.Fatalf("partial purchase=%+v %v", result, err)
 				}
 			} else {
-				result, err := service.Sell(context.Background(), 1, id)
+				result, err := service.Sell(context.Background(), 1, id, 0)
 				if err == nil || result.InstanceID != 0 || result.Inventory.Items != nil {
 					t.Fatalf("partial sale=%+v %v", result, err)
 				}
@@ -242,5 +242,82 @@ func TestShopSnapshotFailureRollsBackMutation(t *testing.T) {
 				t.Fatalf("failed snapshot changed stock=%d %v", stock, err)
 			}
 		})
+	}
+}
+
+func TestShopRevisionRejectsConcurrentDuplicatesAndSurvivesNewService(t *testing.T) {
+	database, service := shopDatabase(t)
+	var workers sync.WaitGroup
+	results := make(chan error, 4)
+	for i := 0; i < 4; i++ {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			_, err := service.Buy(context.Background(), 1, 38, 1, 1, 2, 0)
+			results <- err
+		}()
+	}
+	workers.Wait()
+	close(results)
+	succeeded := 0
+	for err := range results {
+		if err == nil {
+			succeeded++
+		}
+	}
+	if succeeded != 1 {
+		t.Fatalf("duplicate successes=%d", succeeded)
+	}
+	assertWalletAndItems(t, database, 1, 980, 2)
+	service = New(database) // The guard belongs to durable state, not this process.
+	if _, err := service.Buy(context.Background(), 1, 38, 1, 1, 2, 0); err == nil {
+		t.Fatal("reconnected duplicate purchased twice")
+	}
+	snapshot, err := cqitems.NewStore(database).GetCharacterSnapshot(context.Background(), 1)
+	if err != nil || snapshot.ShopRevision != 1 {
+		t.Fatalf("current revision=%+v %v", snapshot, err)
+	}
+	id := snapshot.Items[0].Instance.ID
+	if _, err := service.Sell(context.Background(), 1, id, 0); err == nil {
+		t.Fatal("sale reused stale purchase revision")
+	}
+	sale, err := service.Sell(context.Background(), 1, id, 1)
+	if err != nil || sale.Inventory.ShopRevision != 2 {
+		t.Fatalf("new sale=%+v %v", sale, err)
+	}
+	assertWalletAndItems(t, database, 1, 1080, 0)
+	if _, err := service.Sell(context.Background(), 1, id, 1); err == nil {
+		t.Fatal("duplicate sale accepted")
+	}
+}
+
+func TestShopRevisionLateCommitFailureRollsBackGuardAndEffects(t *testing.T) {
+	database, service := shopDatabase(t)
+	testdb.Exec(t, database, `CREATE FUNCTION reject_shop_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'late shop commit failure'; END $$;
+ CREATE CONSTRAINT TRIGGER reject_shop_commit AFTER UPDATE ON character_shop_state DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_shop_commit();`)
+	result, err := service.Buy(context.Background(), 1, 38, 1, 1, 1, 0)
+	if err == nil || result.Inventory.Items != nil || result.InstanceID != 0 {
+		t.Fatalf("failed commit published result=%+v %v", result, err)
+	}
+	assertWalletAndItems(t, database, 1, 1000, 0)
+	var count int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM character_shop_state`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("failed commit advanced guard=%d %v", count, err)
+	}
+	testdb.Exec(t, database, `DROP TRIGGER reject_shop_commit ON character_shop_state`)
+	result, err = service.Buy(context.Background(), 1, 38, 1, 1, 1, 0)
+	if err != nil || result.Inventory.ShopRevision != 1 {
+		t.Fatalf("retry after rollback=%+v %v", result, err)
+	}
+}
+
+func TestShopSchemaValidationRejectsMissingCommandState(t *testing.T) {
+	database, service := shopDatabase(t)
+	if err := service.ValidateSchema(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	testdb.Exec(t, database, `DROP TABLE character_shop_state`)
+	if err := service.ValidateSchema(context.Background()); err == nil {
+		t.Fatal("missing shop schema passed readiness")
 	}
 }

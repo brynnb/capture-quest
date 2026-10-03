@@ -2,7 +2,7 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest implementation checkpoint: explicit isolated simulator targeting, following committed shop inventory snapshots `5082a39` and coherent inventory/wallet/party/flag recovery `129463c` and ordinary step crash acceptance `e0ecf41`, issued cutscene and creation-only fixtures `8c95d40`, move-choice acceptance `e0da0c4` and terminal Safari acceptance `9bf3630`
+Working branch: `codex/server-foundations`. Latest implementation checkpoint: durable shop revisions and correlated command recovery, following explicit isolated simulator targeting `74defe0` and committed shop inventory snapshots `5082a39` and coherent inventory/wallet/party/flag recovery `129463c` and ordinary step crash acceptance `e0ecf41`, issued cutscene and creation-only fixtures `8c95d40`, move-choice acceptance `e0da0c4` and terminal Safari acceptance `9bf3630`
 (2026-10-03), following rendered capture recovery `fbe744e`, simulator contract migration `9f59dd3`, expiry presentation recovery `54dbef6`, guarded Safari commands `d673aea`, durable capture placement and terminal login retention `58d0b85`, rendered move-choice recovery `7eb3a7e`, move-choice storage/coordinator acceptance `072ad71`, blackout scene ownership `04579dc`, terminal dismissal/post-battle plans `8ce43ff`, current-owned gameplay recovery `c38a74c`, correlated battle recovery `30fa1bb` and network battle command identity `8a5ba4a`, coherent gameplay recovery `c0d31f9` and durable cutscene issuance/completion `e9eb834`, pending trainer encounters `84f2d91` and ordinary-step receipts `80a544c`, following atomic movement-step effects `cfdeb9e`, retirement of the client coordinate setter `2df1db0`, correlated cutscene completion `6638a63`, issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
 `0585dde`, committed
 blackout/recovery `2f62595`, teleport notification projection `65a5581`, Instant
@@ -68,7 +68,9 @@ Safari actions and dismissal now share the correlated command coordinator, with
 durable identity/revision guards and terminal catch placement recovery. Terminal Safari Run, party/PC captures, pending move choices and one issued Oak's Lab cutscene now have actual crash/restart acceptance. Ordinary walking now has acceptance for abandoning uncompleted tokens and recovering committed receipts without repeating Safari counters. Local/test party and inventory setup both belong to creation; reentry preserves intentionally empty parties.
 The coherent recovery response now includes inventory, wallet, the full party and
 sorted flags. Inventory reads share one bounded transactional reader, and shop
-buy/sell replies include their complete committed bag without client stack guessing. Integration with remaining legacy mutation timeouts and remaining
+buy/sell replies include their complete committed bag without client stack guessing.
+Shop mutations now require character-bound durable revisions and correlated replies;
+the client waits for acknowledgement or current-state recovery without resending. Integration with remaining legacy mutation timeouts and remaining
 process-recovery coverage still need work. Evidence and verification limits
 appear in the checkpoint sections below.
 
@@ -105,6 +107,86 @@ legacy behavior and verification limits; a narrow passing checkpoint does not
 close the broad goal. Production validation belongs to a separately authorized
 deployment. Current work is committed locally; nothing has been pushed or
 deployed by this goal.
+
+## Durable shop revisions and correlated recovery (2026-10-03)
+
+Buy/sell requests now require `requestId` and `shop: {characterId, revision}`.
+The tagged Go request, success and error models drive generated TypeScript.
+Missing revision is distinct from the valid initial zero; wrong character,
+unknown request fields and missing/oversized correlation are rejected. The
+transport uses the authenticated selected character and server-owned map for
+purchase validation.
+
+`character_shop_state` retains one revision per character. Inventory and coherent
+gameplay snapshots include `shopRevision`, with zero for a character that has not
+committed a shop mutation. Under the existing character lock, buy/sell compare
+and advance the revision in the same transaction as payment, whole-stack sale,
+stock, grant and complete inventory snapshot. A failed effect, final read or
+commit rolls back the revision. A committed revision stays stale across service
+replacement, reconnect or process restart, and cannot be reused for either a
+buy or sale. This is a rejection guard rather than a historical receipt replay;
+clients read current authority after ambiguous outcomes.
+
+Startup validates the shop-state schema before gameplay preload/readiness. The
+schema path selects the canonical full-data deployment lane automatically; do
+not deploy this as frontend/backend fast-lane code. Schema, frontend and backend
+must move together. No deployment is authorized or performed here.
+
+The client shop coordinator owns one pending command per scene. It uses the
+shared correlated request helper, carries the current selected-character/revision,
+validates the next committed revision, and applies the complete bag and both money
+views. Buy stays pending until acknowledgement or recovery, replacing the 300 ms
+unlock timer. Shop close, character change and scene replacement cancel listeners;
+scene retirement also closes its shop presentation, and a new scene starts closed;
+late replies cannot apply globally or retire a newer scene's admission. A timeout,
+rejection, failed send, malformed success or overtaken result triggers a current
+read without resending the mutation. Failed recovery preserves existing views and
+reports a reconnect error. Success replies are the only shop mutation publication;
+the obsolete independent shop inventory notification is retired. Standalone bag
+reads remain for other consumers and reject older shop revisions.
+
+Unit fixtures now carry the required recovery revision. Existing global shop
+reply application assertions were replaced because these packets intentionally
+require a live correlated caller; unsolicited buy/sell replies are ignored.
+The new coordinator tests cover their success/application behavior and retirement.
+The browser test sends each real purchase packet twice with the same identity and
+covers delivered and lost acknowledgement. A lost acknowledgement also drops the
+duplicate rejection so recovery must exercise the timeout. It verifies the one
+committed 95-to-99/6 split, money 10,000-to-8,000, revision 1, disabled pending Buy,
+late delivery and authenticated reentry without a second client mutation.
+
+Verification: final isolated PostgreSQL race suites passed for `world`
+(39.153 seconds), `economy` (2.044 seconds) and `cqitems` (1.556 seconds).
+They cover four concurrent identical revision-zero buys with one commit,
+stale buy/sale rejection after creating a new service, valid cross-family revision
+advancement, rollback of revision/effects on deferred commit failure, required
+network identity/correlation, and startup rejection of a missing shop-state table.
+The focused frontend suite passed 58 tests across five files, including obsolete
+scene cleanup versus a new command and lower-revision standalone packets.
+Type generation, typecheck, runtime asset validation, production build and ten
+deployment-classification tests passed; the schema selects `full` mode.
+
+Four rendered cases passed in 57.1 seconds at
+`/var/tmp/capturequest-rendered.YVLIlr`: delivered/lost shop replies with duplicate
+requests and party/PC capture recovery. That private runtime and PostgreSQL were
+stopped. After tightening scene cleanup to close the old shop presentation, both
+shop cases passed again on final code in 23.2 seconds at
+`/var/tmp/capturequest-rendered.DvVJ5K`; that exact private runtime/PostgreSQL also
+stopped. The final production build passed in 3.57 seconds. These are local
+transport/rendered checks, not live deployment evidence.
+The shop service replacement test is not an actual server crash; shop process-death
+and rendered sale acceptance remain separate coverage.
+
+Remaining: merchant open still uses legacy/global reads and ignores some lookup
+errors; clerk reach/eligibility and sale policy need their source audit. Party/field
+item use still needs typed command outcomes and durable identity/recovery. Shop
+revision advances only for shop mutations, so it does not fence every unrelated
+wallet/item notification. Those families and cross-character standalone stream
+retirement remain in the full goal, together with remaining callbacks, wire/domain
+migration, plan ordering and lifecycle acceptance. Recommended next step: finish
+merchant-open authority/error handling and acceptance, then migrate party/field item
+commands through the same ownership and timeout boundaries. Local checkpoint
+only; no push or deployment.
 
 ## Explicit simulator database boundary (2026-10-03)
 

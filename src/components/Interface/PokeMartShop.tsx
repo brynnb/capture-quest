@@ -161,11 +161,11 @@ const QtyDisplay = styled.span`
 `;
 
 const PokeMartShop: React.FC = () => {
-  const { shopOpen, shopName, shopMerchantId, shopItems, money, closeShop } =
+  const { shopOpen, shopName, shopMerchantId, shopItems, money, closeShop, shopCommandPending } =
     useCQInventoryStore();
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [quantity, setQuantity] = useState(1);
-  const [buying, setBuying] = useState(false);
+  const buying = shopCommandPending;
 
   useEffect(() => {
     if (!shopOpen) return;
@@ -192,9 +192,7 @@ const PokeMartShop: React.FC = () => {
 
   const handleBuy = () => {
     if (!selectedItem || !canAfford || !shopMerchantId || buying) return;
-    setBuying(true);
-    PhaserNet.sendCQMerchantBuy(selectedItem.merchantId, selectedItem.itemId, quantity);
-    setTimeout(() => setBuying(false), 300);
+    void PhaserNet.sendCQMerchantBuy(selectedItem.merchantId, selectedItem.itemId, quantity);
     setQuantity(1);
   };
 

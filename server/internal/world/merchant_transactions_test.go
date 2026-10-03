@@ -28,7 +28,7 @@ func TestMerchantDispatchPublishesOnlyCommittedResults(t *testing.T) {
 	ses := &session.Session{Authenticated: true, MapID: 38, Client: &testSessionClient{char: &model.CharacterData{ID: 1}}, Messenger: messenger}
 	registry := NewWorldOpCodeRegistry()
 	registry.WH = &WorldHandler{Economy: economy.New(database)}
-	request := clientPacket(opcodes.CQMerchantBuyRequest, `{"merchantId":1,"itemId":1,"quantity":1}`)
+	request := clientPacket(opcodes.CQMerchantBuyRequest, `{"requestId":"buy","shop":{"characterId":1,"revision":0},"merchantId":1,"itemId":1,"quantity":1}`)
 	registry.HandleWorldPacket(ses, request)
 	if len(messenger.streams) != 1 || messenger.streams[0].opcode != opcodes.CQMerchantBuyResponse {
 		t.Fatalf("failure messages=%+v", messenger.streams)
@@ -43,7 +43,7 @@ func TestMerchantDispatchPublishesOnlyCommittedResults(t *testing.T) {
 	testdb.Exec(t, database, `ALTER TABLE cq_character_inventory DROP CONSTRAINT fail_grant`)
 	messenger.streams = nil
 	registry.HandleWorldPacket(ses, request)
-	if len(messenger.streams) != 2 || messenger.streams[1].opcode != opcodes.CQInventoryResponse {
+	if len(messenger.streams) != 1 || messenger.streams[0].opcode != opcodes.CQMerchantBuyResponse {
 		t.Fatalf("success messages=%+v", messenger.streams)
 	}
 	var bought CQMerchantBuyResponse
@@ -56,10 +56,30 @@ func TestMerchantDispatchPublishesOnlyCommittedResults(t *testing.T) {
 	if bought.Inventory.Money != 90 || len(bought.Inventory.Items) != 1 || bought.Inventory.Items[0].Instance.Quantity != 1 {
 		t.Fatalf("mutation reply omitted committed bag: %+v", bought)
 	}
-	var snapshot CQInventoryResponse
-	if err := json.Unmarshal(messenger.streams[1].payload, &snapshot); err != nil || snapshot.Money != bought.Inventory.Money || len(snapshot.Items) != 1 || snapshot.Items[0].Instance.ID != bought.Inventory.Items[0].Instance.ID {
-		t.Fatalf("compatibility stream differs from commit: %+v %v", snapshot, err)
+	if bought.RequestID != "buy" || bought.Inventory.ShopRevision != 1 {
+		t.Fatalf("purchase lost command identity=%+v", bought)
 	}
+	for _, invalid := range []string{
+		`{"merchantId":1,"itemId":1,"quantity":1}`,
+		`{"requestId":"missing-revision","shop":{"characterId":1},"merchantId":1,"itemId":1,"quantity":1}`,
+		`{"requestId":"wrong-owner","shop":{"characterId":2,"revision":1},"merchantId":1,"itemId":1,"quantity":1}`,
+		`{"requestId":"duplicate","shop":{"characterId":1,"revision":0},"merchantId":1,"itemId":1,"quantity":1}`,
+	} {
+		messenger.streams = nil
+		registry.HandleWorldPacket(ses, clientPacket(opcodes.CQMerchantBuyRequest, invalid))
+		var rejection ShopCommandError
+		if len(messenger.streams) != 1 || json.Unmarshal(messenger.streams[0].payload, &rejection) != nil || rejection.Success || rejection.Error == "" {
+			t.Fatalf("invalid command=%s publication=%+v", invalid, messenger.streams)
+		}
+	}
+	var money, quantity int
+	if err := database.QueryRow(`SELECT pokedollars FROM character_wallet WHERE character_id=1`).Scan(&money); err != nil || money != 90 {
+		t.Fatalf("duplicate changed money=%d %v", money, err)
+	}
+	if err := database.QueryRow(`SELECT SUM(quantity) FROM cq_item_instances`).Scan(&quantity); err != nil || quantity != 1 {
+		t.Fatalf("duplicate granted quantity=%d %v", quantity, err)
+	}
+
 }
 
 func TestInventoryDispatchFailsWholeReadOnWalletError(t *testing.T) {

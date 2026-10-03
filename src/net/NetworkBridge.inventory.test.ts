@@ -14,34 +14,30 @@ const stack = (id: number, quantity: number): CQInventoryItem => ({
 
 beforeEach(() => {
   NetworkBridge.initialize();
-  useCQInventoryStore.getState().setInventory([stack(1, 95)], 1000);
+  useCQInventoryStore.getState().setInventory([stack(1, 95)], 1000,0);
   usePlayerCharacterStore.getState().setCharacterProfile({ id: 42, pokedollars: 1000 });
   vi.spyOn(AudioManager, "playSFX").mockResolvedValue(undefined);
 });
 
-test("purchase uses the full committed split-stack bag even if the independent snapshot is lost", () => {
-  const inventory = { items: [stack(1, 99), stack(2, 6)], money: 900 };
-  const reply = { success: true, itemId: 1, instanceId: 1, quantity: 10, money: 900, inventory };
-  WorldSocket.onJson?.(CQMerchantBuyResponse, reply);
-  expect(useCQInventoryStore.getState().items).toEqual(inventory.items);
-  expect(useCQInventoryStore.getState().money).toBe(900);
-  expect(usePlayerCharacterStore.getState().characterProfile.pokedollars).toBe(900);
-  // Duplicate delivery and the compatibility stream cannot increment a stack.
-  WorldSocket.onJson?.(CQMerchantBuyResponse, reply);
-  WorldSocket.onJson?.(CQInventoryResponse, { success: true, ...inventory });
-  expect(useCQInventoryStore.getState().items).toEqual(inventory.items);
+test.each([CQMerchantBuyResponse,CQMerchantSellResponse])("unsolicited shop reply %d cannot apply a historical bag", async opcode => {
+  WorldSocket.onJson?.(opcode,{success:true,requestId:"retired",inventory:{items:[],money:0,shopRevision:1}});
+  await Promise.resolve();
+  expect(useCQInventoryStore.getState().items).toEqual([stack(1,95)]);
+  expect(useCQInventoryStore.getState().money).toBe(1000);
 });
 
-test("sale and empty bag reads replace the whole bag and synchronize both money views", () => {
-  WorldSocket.onJson?.(CQMerchantSellResponse, {
-    success: true, instanceId: 1, itemName: "Potion", sellPrice: 4750,
-    money: 5750, inventory: { items: [], money: 5750 },
-  });
+test("empty bag reads replace the whole bag and synchronize both money views", () => {
+  WorldSocket.onJson?.(CQInventoryResponse,{success:true,items:[],money:0,shopRevision:0});
   expect(useCQInventoryStore.getState().items).toEqual([]);
-  expect(usePlayerCharacterStore.getState().characterProfile.pokedollars).toBe(5750);
-  WorldSocket.onJson?.(CQInventoryResponse, { success: true, items: [], money: 0 });
   expect(useCQInventoryStore.getState().money).toBe(0);
   expect(usePlayerCharacterStore.getState().characterProfile.pokedollars).toBe(0);
+});
+
+test("an older shop revision cannot rewind the standalone inventory view",()=>{
+  useCQInventoryStore.getState().setInventory([stack(1,95)],1000,3);
+  WorldSocket.onJson?.(CQInventoryResponse,{success:true,items:[],money:0,shopRevision:2});
+  expect(useCQInventoryStore.getState()).toMatchObject({money:1000,shopRevision:3});
+  expect(useCQInventoryStore.getState().items).toEqual([stack(1,95)]);
 });
 
 test.each([

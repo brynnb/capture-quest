@@ -27,7 +27,7 @@ type Purchase struct {
 
 // Buy checks the authoritative offer and stock. mapID comes from the server's
 // selected character, never the purchase payload. The UI supports 1..99 items.
-func (s *Service) Buy(ctx context.Context, charID, mapID, merchantID, itemID int32, quantity uint16) (Purchase, error) {
+func (s *Service) Buy(ctx context.Context, charID, mapID, merchantID, itemID int32, quantity uint16, expectedRevision int64) (Purchase, error) {
 	var result Purchase
 	if quantity < 1 || quantity > 99 {
 		return result, fmt.Errorf("choose between 1 and 99 items")
@@ -37,6 +37,9 @@ func (s *Service) Buy(ctx context.Context, charID, mapID, merchantID, itemID int
 			return err
 		}
 		var price int64
+		if err := advanceShopRevision(tx, charID, expectedRevision); err != nil {
+			return err
+		}
 		var stock int
 		err := tx.QueryRow(`SELECT COALESCE(mi.price_override, i.price), mi.quantity
 			FROM cq_merchant_items mi JOIN cq_items i ON i.id = mi.item_id
@@ -100,10 +103,13 @@ type Sale struct {
 
 // Sell sells the selected whole stack. The previous handler removed the entire
 // stack but credited only one unit; credit and removal now commit together.
-func (s *Service) Sell(ctx context.Context, charID, instanceID int32) (Sale, error) {
+func (s *Service) Sell(ctx context.Context, charID, instanceID int32, expectedRevision int64) (Sale, error) {
 	var result Sale
 	err := db.Transaction(ctx, s.database, func(tx db.DBTX) error {
 		if err := db.LockCharacter(tx, int64(charID)); err != nil {
+			return err
+		}
+		if err := advanceShopRevision(tx, charID, expectedRevision); err != nil {
 			return err
 		}
 		items := cqitems.NewStore(tx)

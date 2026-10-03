@@ -1,3 +1,5 @@
+import type { CQMerchantBuyResponse, CQMerchantSellResponse, ShopCommandError } from "@/net/generated/world_api";
+import { buyShopItem, sellShopItem } from "./ShopCommandService";
 import type { BattleCommandResponse, SafariBattleActionResponse, BattleCommandError } from "@/net/generated/world_api";
 import type { GameplayStateRequest, GameplayStateResponse } from "@/net/generated/world_api";
 import type { TrainerEncounterNotifyPayload } from "@/net/generated/protocol";
@@ -362,6 +364,16 @@ export function onBattleCommand(opcode: number, receive: BattleCommandHandler): 
   listeners.add(receive); return () => listeners.delete(receive);
 }
 
+type ShopReply = CQMerchantBuyResponse | CQMerchantSellResponse | ShopCommandError;
+const shopCommandHandlers = new Map<number, Set<(reply: ShopReply) => void>>([
+ [OpCodes.CQMerchantBuyResponse,new Set()], [OpCodes.CQMerchantSellResponse,new Set()],
+]);
+export function onShopCommand(opcode: number, receive: (reply: ShopReply) => void): () => void {
+ const listeners = shopCommandHandlers.get(opcode);
+ if (!listeners) throw new Error("Unsupported shop response opcode");
+ listeners.add(receive); return () => listeners.delete(receive);
+}
+
 const handlers = {
   gameplayState: new Set<(data: GameplayStateResponse | PlayerStepError) => void>(),
   cutsceneEnd: new Set<(data: CutsceneEndResponse | PlayerStepError) => void>(),
@@ -532,25 +544,8 @@ export function sendCQMerchantOpenByMap(mapId: number): void {
 /**
  * Buy an item from a merchant.
  */
-export function sendCQMerchantBuy(
-  merchantId: number,
-  itemId: number,
-  quantity: number,
-): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send(
-    { merchantId, itemId, quantity },
-    OpCodes.CQMerchantBuyRequest,
-  );
-}
-
-/**
- * Sell an item to a merchant.
- */
-export function sendCQMerchantSell(instanceId: number): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ instanceId }, OpCodes.CQMerchantSellRequest);
-}
+export const sendCQMerchantBuy = buyShopItem;
+export const sendCQMerchantSell = sellShopItem;
 
 /**
  * Clear all registered handlers
@@ -559,6 +554,7 @@ export function sendCQMerchantSell(instanceId: number): void {
 export function clearAllHandlers(): void {
   for (const listeners of Object.values(handlers)) listeners.clear();
   for (const listeners of battleCommandHandlers.values()) listeners.clear();
+  for (const listeners of shopCommandHandlers.values()) listeners.clear();
 }
 
 
@@ -585,6 +581,10 @@ export function normalizePhaserArrayPayload<T>(
 // Internal: dispatch incoming Phaser responses
 export function dispatchPhaserResponse(opcode: number, data: unknown): void {
   switch (opcode) {
+    case OpCodes.CQMerchantBuyResponse:
+    case OpCodes.CQMerchantSellResponse:
+      shopCommandHandlers.get(opcode)?.forEach(receive => receive(data as ShopReply));
+      break;
     case OpCodes.SafariBattleActionResponse:
     case OpCodes.PokeBattleActionResponse:
     case OpCodes.PokeBattleSwitchResponse:

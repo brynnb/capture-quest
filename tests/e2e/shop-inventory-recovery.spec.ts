@@ -5,16 +5,21 @@ import { jumpToScenario } from "./helpers/scenarioDebugger";
 import { getGameState, waitForNoMapLoading } from "./helpers/state";
 import * as OpCodes from "../../src/net/generated/opcodes";
 
-test("a shop purchase restores its committed bag without an independent inventory notification", async ({ page }) => {
+for (const loseReply of [false, true]) {
+test(`a duplicated shop request with lost reply=${loseReply} settles once and recovers its committed bag`, async ({ page }) => {
   test.setTimeout(120000);
   const errors = collectPageErrors(page);
-  let purchases = 0;
+  let purchases = 0, successes = 0, rejections = 0;
   let duplicate: (() => void) | undefined;
-  let committed: { inventory: { items: Array<{ instance: { id: number; quantity: number } }>; money: number } } | undefined;
+  let committed: { inventory: { items: Array<{ instance: { id: number; quantity: number } }>; money: number; shopRevision: number } } | undefined;
   await page.routeWebSocket("**/ws", socket => {
     const server = socket.connectToServer();
     socket.onMessage(message => {
-      if (Buffer.isBuffer(message) && message.length >= 6 && message.readUInt16LE(4) === OpCodes.CQMerchantBuyRequest) purchases++;
+      if (Buffer.isBuffer(message) && message.length >= 6 && message.readUInt16LE(4) === OpCodes.CQMerchantBuyRequest) {
+        purchases++;
+        // Deliver the same authenticated command twice, preserving its identity.
+        server.send(message);
+      }
       server.send(message);
     });
     server.onMessage(message => {
@@ -23,7 +28,10 @@ test("a shop purchase restores its committed bag without an independent inventor
         if (opcode === OpCodes.CQInventoryResponse) return;
         if (opcode === OpCodes.CQMerchantBuyResponse) {
           const reply = JSON.parse(message.subarray(6).toString());
-          if (reply.success) { committed = reply; duplicate = () => socket.send(message); }
+          if (reply.success) {
+            successes++; committed = reply; duplicate = () => socket.send(message);
+            if (loseReply) return;
+          } else { rejections++; return; }
         }
       }
       socket.send(message);
@@ -46,11 +54,13 @@ test("a shop purchase restores its committed bag without an independent inventor
   for (let i = 0; i < 9; i++) await page.getByRole("button", { name: "+", exact: true }).click();
   await page.getByRole("button", { name: "BUY", exact: true }).click();
   await expect.poll(() => !!committed).toBe(true);
+  if (loseReply) await expect(page.getByRole("button", { name: "BUY", exact: true })).toBeDisabled();
   const expected = committed!.inventory;
+  expect(expected.shopRevision).toBe(1);
   expect(expected.money).toBe(before.inventory.money - 2000);
   expect(expected.items.map(item => item.instance.quantity).sort((a, b) => a - b)).toEqual([6, 99]);
   const bag = expected.items.map(item => ({ id: item.instance.id, quantity: item.instance.quantity }));
-  await expect.poll(async () => (await getGameState(page)).inventory.items.map(item => ({ id: item.instanceId, quantity: item.quantity }))).toEqual(bag);
+  await expect.poll(async () => (await getGameState(page)).inventory.items.map(item => ({ id: item.instanceId, quantity: item.quantity })),{timeout:20000}).toEqual(bag);
   await expect.poll(async () => (await getGameState(page)).inventory.money).toBe(expected.money);
   await expect(page.getByText(`¥${expected.money.toLocaleString()}`, { exact: true }).first()).toBeVisible();
   duplicate!();
@@ -60,7 +70,8 @@ test("a shop purchase restores its committed bag without an independent inventor
   await waitForNoMapLoading(page);
   expect((await getGameState(page)).inventory.items.map(item => ({ id: item.instanceId, quantity: item.quantity }))).toEqual(bag);
   expect((await getGameState(page)).inventory.money).toBe(expected.money);
-  expect(purchases).toBe(1);
+  expect(purchases).toBe(1); expect(successes).toBe(1); expect(rejections).toBe(1);
   await quitToCharacterSelect(page);
   errors.assertNoSevereErrors();
 });
+}

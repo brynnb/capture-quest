@@ -75,17 +75,18 @@ type SafariRecoveryState struct {
 	Pokemon     *SafariRecoveryPokemon `json:"pokemon"`
 }
 type GameplayStateResponse struct {
-	Inventory  []cqitems.CQInventoryItem               `json:"inventory" tstype:"import(\"./cqitems\").CQInventoryItem[]"`
-	Wallet     model.CharacterWallet                   `json:"wallet" tstype:"import(\"./models\").CharacterWallet"`
-	Party      []PokemonDTO                            `json:"party"`
-	EventFlags []string                                `json:"eventFlags"`
-	Success    bool                                    `json:"success" tstype:"true"`
-	RequestID  string                                  `json:"requestId"`
-	Position   protocol.OwnedPlayerPositionResponse    `json:"position" tstype:"import(\"./protocol\").OwnedPlayerPositionResponse"`
-	Battle     *GameplayBattleState                    `json:"battle" tstype:"GameplayBattleState | null"`
-	Safari     *SafariRecoveryState                    `json:"safari" tstype:"SafariRecoveryState | null"`
-	Trainer    *protocol.TrainerEncounterNotifyPayload `json:"trainer" tstype:"import(\"./protocol\").TrainerEncounterNotifyPayload | null"`
-	Cutscene   *protocol.CutsceneStartNotify           `json:"cutscene" tstype:"import(\"./protocol\").CutsceneStartNotify | null"`
+	ShopRevision int64                                   `json:"shopRevision"`
+	Inventory    []cqitems.CQInventoryItem               `json:"inventory" tstype:"import(\"./cqitems\").CQInventoryItem[]"`
+	Wallet       model.CharacterWallet                   `json:"wallet" tstype:"import(\"./models\").CharacterWallet"`
+	Party        []PokemonDTO                            `json:"party"`
+	EventFlags   []string                                `json:"eventFlags"`
+	Success      bool                                    `json:"success" tstype:"true"`
+	RequestID    string                                  `json:"requestId"`
+	Position     protocol.OwnedPlayerPositionResponse    `json:"position" tstype:"import(\"./protocol\").OwnedPlayerPositionResponse"`
+	Battle       *GameplayBattleState                    `json:"battle" tstype:"GameplayBattleState | null"`
+	Safari       *SafariRecoveryState                    `json:"safari" tstype:"SafariRecoveryState | null"`
+	Trainer      *protocol.TrainerEncounterNotifyPayload `json:"trainer" tstype:"import(\"./protocol\").TrainerEncounterNotifyPayload | null"`
+	Cutscene     *protocol.CutsceneStartNotify           `json:"cutscene" tstype:"import(\"./protocol\").CutsceneStartNotify | null"`
 }
 
 func HandleGameplayStateRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
@@ -141,6 +142,7 @@ func readGameplayState(ctx context.Context, ses *session.Session, wh *WorldHandl
 		}
 		result.Wallet = model.CharacterWallet{CharacterID: uint32(charID), Pokedollars: uint32(inventory.Money)}
 		result.Inventory = inventory.Items
+		result.ShopRevision = inventory.ShopRevision
 		flags, err := eventFlagSnapshotIn(tx, charID)
 		if err != nil {
 			return err

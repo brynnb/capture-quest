@@ -474,6 +474,7 @@ export interface SafariRecoveryState {
   pokemon?: SafariRecoveryPokemon;
 }
 export interface GameplayStateResponse {
+  shopRevision: number /* int64 */;
   inventory: import("./cqitems").CQInventoryItem[];
   wallet: import("./models").CharacterWallet;
   party: PokemonDTO[];
@@ -494,15 +495,38 @@ export interface GameplayStateResponse {
 //////////
 // source: handler-cqitems.go
 
+export interface ShopCommandIdentity {
+  characterId: number /* int64 */;
+  revision?: number;
+}
+export interface CQMerchantBuyRequest {
+  requestId: string;
+  shop?: ShopCommandIdentity;
+  merchantId: number /* int32 */;
+  itemId: number /* int32 */;
+  quantity: number /* uint16 */;
+}
+export interface CQMerchantSellRequest {
+  requestId: string;
+  shop?: ShopCommandIdentity;
+  instanceId: number /* int32 */;
+}
+export interface ShopCommandError {
+  success: false;
+  requestId: string;
+  error: string;
+}
 /**
  * These tagged contracts replace map-shaped bag and shop mutation successes.
  */
 export interface CQInventoryResponse {
+  shopRevision: number /* int64 */;
   success: true;
   items: import("./cqitems").CQInventoryItem[];
   money: number /* int64 */;
 }
 export interface CQMerchantBuyResponse {
+  requestId: string;
   success: true;
   itemId: number /* int32 */;
   quantity: number /* uint16 */;
@@ -511,6 +535,7 @@ export interface CQMerchantBuyResponse {
   inventory: import("./cqitems").CQInventorySnapshot;
 }
 export interface CQMerchantSellResponse {
+  requestId: string;
   success: true;
   instanceId: number /* int32 */;
   itemName: string;

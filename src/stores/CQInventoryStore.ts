@@ -31,6 +31,9 @@ export interface PendingTMHM {
 interface CQInventoryState {
   items: CQInventoryItem[];
   money: number;
+  shopRevision: number;
+  shopCommandPending: boolean;
+  shopCommandError: string | null;
 
   // Merchant/shop state
   shopOpen: boolean;
@@ -42,7 +45,7 @@ interface CQInventoryState {
   pendingTMHM: PendingTMHM | null;
 
   // Actions
-  setInventory: (items: CQInventoryItem[], money: number) => void;
+  setInventory: (items: CQInventoryItem[], money: number, shopRevision?: number) => void;
   setMoney: (money: number) => void;
   setPendingTMHM: (pending: PendingTMHM | null) => void;
   openShop: (
@@ -57,13 +60,16 @@ interface CQInventoryState {
 const useCQInventoryStore = create<CQInventoryState>((set) => ({
   items: [],
   money: 0,
+  shopRevision: 0,
+  shopCommandPending: false,
+  shopCommandError: null,
   shopOpen: false,
   shopName: "",
   shopMerchantId: null,
   shopItems: [],
   pendingTMHM: null,
 
-  setInventory: (items, money) => set({ items, money }),
+  setInventory: (items, money, shopRevision) => set({ items, money, ...(shopRevision === undefined ? {} : {shopRevision}) }),
 
   setMoney: (money) => set({ money }),
 

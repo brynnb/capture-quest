@@ -13,13 +13,47 @@ import (
 	"capturequest/internal/session"
 )
 
+type ShopCommandIdentity struct {
+	CharacterID int64  `json:"characterId"`
+	Revision    *int64 `json:"revision" tstype:"number"`
+}
+type CQMerchantBuyRequest struct {
+	RequestID  string               `json:"requestId"`
+	Shop       *ShopCommandIdentity `json:"shop" tstype:"ShopCommandIdentity"`
+	MerchantID int32                `json:"merchantId"`
+	ItemID     int32                `json:"itemId"`
+	Quantity   uint16               `json:"quantity"`
+}
+type CQMerchantSellRequest struct {
+	RequestID  string               `json:"requestId"`
+	Shop       *ShopCommandIdentity `json:"shop" tstype:"ShopCommandIdentity"`
+	InstanceID int32                `json:"instanceId"`
+}
+type ShopCommandError struct {
+	Success   bool   `json:"success" tstype:"false"`
+	RequestID string `json:"requestId"`
+	Error     string `json:"error"`
+}
+
+func validShopCommand(ses *session.Session, requestID string, identity *ShopCommandIdentity) bool {
+	return requestID != "" && len(requestID) <= 64 && identity != nil && identity.Revision != nil && *identity.Revision >= 0 && identity.CharacterID == int64(ses.Client.CharData().ID)
+}
+func sendShopCommandError(ses *session.Session, requestID string, opcode opcodes.OpCode, message string) {
+	if len(requestID) > 64 {
+		requestID = ""
+	}
+	ses.SendStreamJSON(ShopCommandError{RequestID: requestID, Error: message}, opcode)
+}
+
 // These tagged contracts replace map-shaped bag and shop mutation successes.
 type CQInventoryResponse struct {
-	Success bool                      `json:"success" tstype:"true"`
-	Items   []cqitems.CQInventoryItem `json:"items" tstype:"import(\"./cqitems\").CQInventoryItem[]"`
-	Money   int64                     `json:"money"`
+	ShopRevision int64                     `json:"shopRevision"`
+	Success      bool                      `json:"success" tstype:"true"`
+	Items        []cqitems.CQInventoryItem `json:"items" tstype:"import(\"./cqitems\").CQInventoryItem[]"`
+	Money        int64                     `json:"money"`
 }
 type CQMerchantBuyResponse struct {
+	RequestID  string                      `json:"requestId"`
 	Success    bool                        `json:"success" tstype:"true"`
 	ItemID     int32                       `json:"itemId"`
 	Quantity   uint16                      `json:"quantity"`
@@ -28,6 +62,7 @@ type CQMerchantBuyResponse struct {
 	Inventory  cqitems.CQInventorySnapshot `json:"inventory" tstype:"import(\"./cqitems\").CQInventorySnapshot"`
 }
 type CQMerchantSellResponse struct {
+	RequestID  string                      `json:"requestId"`
 	Success    bool                        `json:"success" tstype:"true"`
 	InstanceID int32                       `json:"instanceId"`
 	ItemName   string                      `json:"itemName"`
@@ -120,29 +155,22 @@ func HandleCQMerchantBuyRequest(ses *session.Session, payload []byte, wh *WorldH
 	if !ses.HasValidClient() {
 		return false
 	}
-	var req struct {
-		MerchantID int32  `json:"merchantId"`
-		ItemID     int32  `json:"itemId"`
-		Quantity   uint16 `json:"quantity"`
-	}
-	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("[CQItems] Failed to unmarshal buy request: %v", err)
+	var req CQMerchantBuyRequest
+	if err := decodePlayerMovement(payload, &req); err != nil || !validShopCommand(ses, req.RequestID, req.Shop) {
+		sendShopCommandError(ses, req.RequestID, opcodes.CQMerchantBuyResponse, "Invalid shop command identity.")
 		return false
 	}
 
 	charID := int32(ses.Client.CharData().ID)
-	purchase, err := wh.Economy.Buy(ses.CommandContext(), charID, int32(ses.MapID), req.MerchantID, req.ItemID, req.Quantity)
+	purchase, err := wh.Economy.Buy(ses.CommandContext(), charID, int32(ses.MapID), req.MerchantID, req.ItemID, req.Quantity, *req.Shop.Revision)
 	if err != nil {
 		log.Printf("[CQItems] Purchase failed for character %d: %v", charID, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not buy this item. Check the shop, quantity, and balance."}, opcodes.CQMerchantBuyResponse)
+		sendShopCommandError(ses, req.RequestID, opcodes.CQMerchantBuyResponse, "Could not buy this item. Read current inventory before trying again.")
 		return false
 	}
-	ses.SendStreamJSON(CQMerchantBuyResponse{Success: true, ItemID: purchase.ItemID,
+	ses.SendStreamJSON(CQMerchantBuyResponse{RequestID: req.RequestID, Success: true, ItemID: purchase.ItemID,
 		Quantity: purchase.Quantity, InstanceID: purchase.InstanceID, Money: purchase.Money,
 		Inventory: purchase.Inventory}, opcodes.CQMerchantBuyResponse)
-	// Compatibility publication is the same committed view; never reread after
-	// commit or ask the browser to reconstruct a grant that may span stacks.
-	sendCommittedCQInventory(ses, purchase.Inventory)
 	return false
 }
 
@@ -206,24 +234,21 @@ func HandleCQMerchantSellRequest(ses *session.Session, payload []byte, wh *World
 	if !ses.HasValidClient() {
 		return false
 	}
-	var req struct {
-		InstanceID int32 `json:"instanceId"`
-	}
-	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("[CQItems] Failed to unmarshal sell request: %v", err)
+	var req CQMerchantSellRequest
+	if err := decodePlayerMovement(payload, &req); err != nil || !validShopCommand(ses, req.RequestID, req.Shop) {
+		sendShopCommandError(ses, req.RequestID, opcodes.CQMerchantSellResponse, "Invalid shop command identity.")
 		return false
 	}
 
 	charID := int32(ses.Client.CharData().ID)
-	sale, err := wh.Economy.Sell(ses.CommandContext(), charID, req.InstanceID)
+	sale, err := wh.Economy.Sell(ses.CommandContext(), charID, req.InstanceID, *req.Shop.Revision)
 	if err != nil {
 		log.Printf("[CQItems] Sale failed for character %d: %v", charID, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not sell this item."}, opcodes.CQMerchantSellResponse)
+		sendShopCommandError(ses, req.RequestID, opcodes.CQMerchantSellResponse, "Could not sell this item. Read current inventory before trying again.")
 		return false
 	}
-	ses.SendStreamJSON(CQMerchantSellResponse{Success: true, InstanceID: sale.InstanceID,
+	ses.SendStreamJSON(CQMerchantSellResponse{RequestID: req.RequestID, Success: true, InstanceID: sale.InstanceID,
 		ItemName: sale.ItemName, SellPrice: sale.SellPrice, Money: sale.Money,
 		Inventory: sale.Inventory}, opcodes.CQMerchantSellResponse)
-	sendCommittedCQInventory(ses, sale.Inventory)
 	return false
 }

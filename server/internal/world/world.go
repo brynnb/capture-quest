@@ -72,6 +72,9 @@ func NewWorldHandler(ctx context.Context, sessionManager *session.SessionManager
 		CutTiles:       NewCutTileManager(),
 	}
 	registry.WH = wh
+	if err := wh.Economy.ValidateSchema(ctx); err != nil {
+		return nil, err
+	}
 	wh.ActorManager = NewPhaserActorManager(wh)
 	if err := wh.ActorManager.Load(ctx); err != nil {
 		return nil, fmt.Errorf("preload actors: %w", err)

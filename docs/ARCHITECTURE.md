@@ -1179,3 +1179,22 @@ request deduplication. Shop request identity, acknowledgement/timeout recovery,
 merchant eligibility, standalone packet revision fences and field-item outcome
 migration remain in SERVER_FOUNDATIONS.md. Updated frontend and backend shop
 contracts must be activated together.
+
+### Durable shop command identity
+
+Buy/sell requests carry correlated request IDs and the owned character's current
+shop revision. One `character_shop_state` row retains the durable revision;
+transactional comparison/advance joins the character lock, payment, stock,
+inventory mutation and final bag read. Failure rolls everything back. Repeated
+old revisions are rejected across connection/service replacement, including
+cross-family reuse. Inventory and gameplay recovery expose the current revision.
+Startup rejects a missing shop schema before readiness. The schema change selects
+the full-data lane and requires frontend/backend activation together.
+
+Shop acknowledgement is scene-owned and single-flight, with cancellation on
+shop close, character change and scene retirement. The UI waits for a correlated
+reply or current-state recovery; a timeout never resends a mutation. The obsolete
+independent shop inventory publication and global buy/sell handlers are removed.
+Standalone inventory readers remain and filter lower shop revisions. Same-revision
+legacy notifications, merchant-open authority and party/field commands still need
+migration; shop revision is not a universal inventory version.
