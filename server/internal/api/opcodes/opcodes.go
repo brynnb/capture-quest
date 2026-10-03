@@ -54,7 +54,7 @@ const (
 	PhaserWarpsRequest           OpCode = 42
 	PhaserWarpsResponse          OpCode = 43
 	PhaserActorPositionUpdate    OpCode = 44
-	PhaserPlayerPositionUpdate   OpCode = 45
+	PhaserPlayerPositionUpdate   OpCode = 45 // Retired client coordinate setter; reserved and rejected.
 	PhaserActorDespawn           OpCode = 47
 	PhaserDialogueRequest        OpCode = 48
 	PhaserDialogueResponse       OpCode = 49

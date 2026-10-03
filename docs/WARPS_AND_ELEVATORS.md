@@ -43,8 +43,9 @@ Its native exit coordinate is returned only as animation-start metadata. Normal
 warp transitions neither report the destination through opcode 45 nor resubmit it
 as map-load destination fields. Instant Warp now uses its own correlated
 ordinary-player catalog command (185/186), committing destination and arrival
-effects before shared warp presentation. Walking, cutscene and other position-report producers
-remain separate migration work; this change does not retire those old endpoints.
+effects before shared warp presentation. Walking and cutscene completion now use
+authoritative issued commands, and the remaining animation coordinate reports
+have been removed. The server rejects retired opcode 45 in every session stage.
 The committed teleport opcode now shares an explicit generated destination DTO
 across server movement pads, elevators, field moves/items, cutscene publication,
 recovery and scenario jumps. Its presentation skips position echoes and supplied
@@ -57,8 +58,10 @@ commands. MapLoad now rejects supplied coordinates and loads the current owned
 position. Ordinary walking now uses server-issued direction steps and token
 completion before activating a warp. Facing uses expected-source direction requests (191/192). Committed server-path
 points project through notification 193, whose animation completion sends no
-coordinate echo or local warp activation. Scripted/field opcode 45 coordinate
-reports remain to be retired.
+coordinate echo or local warp activation. Surf and warp exit animation use the
+same explicit server projection; local teleport events require a committed-result
+marker before changing presentation. No browser coordinate-setter helper remains.
+Step-effect atomicity and durable result recovery remain separate work.
 
 Frontend and backend must be released together when a deployment is authorized.
 

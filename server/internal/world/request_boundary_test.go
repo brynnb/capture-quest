@@ -34,6 +34,9 @@ func TestDispatcherSessionStagesAndMalformedCommands(t *testing.T) {
 	for op := range registry.handlers {
 		registry.handlers[op] = func(*session.Session, []byte, *WorldHandler) bool { called++; return false }
 	}
+	// Deliberately register retired numbers: stage validation must still deny them.
+	registry.handlers[opcodes.PhaserPlayerPositionUpdate] = func(*session.Session, []byte, *WorldHandler) bool { called++; return false }
+	registry.handlers[opcodes.MapChangeRequest] = registry.handlers[opcodes.PhaserPlayerPositionUpdate]
 	guest := &session.Session{}
 	account := &session.Session{Authenticated: true}
 	playing := &session.Session{Authenticated: true, Client: &testSessionClient{char: &model.CharacterData{ID: 1}}}
@@ -47,6 +50,8 @@ func TestDispatcherSessionStagesAndMalformedCommands(t *testing.T) {
 		{account, opcodes.EnterWorld, true}, {account, opcodes.CQMerchantBuyRequest, false},
 		{playing, opcodes.EnterWorld, false}, {playing, opcodes.JWTLogin, false},
 		{playing, opcodes.CQMerchantBuyRequest, true},
+		{guest, opcodes.PhaserPlayerPositionUpdate, false}, {account, opcodes.PhaserPlayerPositionUpdate, false}, {playing, opcodes.PhaserPlayerPositionUpdate, false},
+		{guest, opcodes.MapChangeRequest, false}, {account, opcodes.MapChangeRequest, false}, {playing, opcodes.MapChangeRequest, false},
 		{guest, opcodes.OwnedPlayerPositionRequest, false}, {account, opcodes.OwnedPlayerPositionRequest, false},
 		{playing, opcodes.OwnedPlayerPositionRequest, true},
 		{guest, opcodes.CutsceneEndRequest, false}, {account, opcodes.CutsceneEndRequest, false},

@@ -78,8 +78,8 @@ func TestMapMetadataAndPartialDestinationCannotClaimPlayerPresence(t *testing.T)
 		}
 	}
 	battleDispatch(t, wh, ses, opcodes.PhaserPlayerPositionUpdate, `{"mapId":60,"x":3,"y":4,"direction":"DOWN"}`)
-	if len(messages.streams) != 5 || messages.streams[4].opcode != opcodes.ChatMessageBroadcast {
-		t.Fatal("invalid position report published state instead of a failure")
+	if len(messages.streams) != 4 {
+		t.Fatal("retired position report reached gameplay or published state")
 	}
 	if ses.MapID != 50 || char.MapID != 50 || char.X != 7 || char.Y != 8 {
 		t.Fatal("invalid position report changed live state")

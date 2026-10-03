@@ -219,21 +219,6 @@ export function requestWarps(mapId: number): void {
 }
 
 /**
- * Send player position update to server.
- */
-export function sendPlayerPosition(
-  x: number,
-  y: number,
-  mapId: number,
-  direction?: string,
-): void {
-  if (!WorldSocket.isConnected) {
-    return; // Silent fail for position updates
-  }
-  NetworkBridge.send({ x, y, mapId, direction }, OpCodes.PhaserPlayerPositionUpdate);
-}
-
-/**
  * Request to start surfing onto an adjacent water tile.
  */
 export function requestSurf(

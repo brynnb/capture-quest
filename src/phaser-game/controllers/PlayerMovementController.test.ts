@@ -13,7 +13,8 @@ import { TILE_SIZE, UNIFIED_OVERWORLD_MAP_ID } from "../constants";
 import type { PhaserTile } from "@/net/generated/world_api";
 import type { Scene } from "phaser";
 import type { MapRenderer } from "../renderers/MapRenderer";
-import * as PhaserNet from "../services/PhaserNetworkService";
+import { NetworkBridge } from "@/net/NetworkBridge";
+import * as OpCodes from "@/net/generated/opcodes";
 
 function tile(
   id: number,
@@ -65,19 +66,19 @@ function buildLedgeController() {
     UNIFIED_OVERWORLD_MAP_ID,
     mapRenderer as unknown as MapRenderer,
   );
-  return { controller, updates, visualMovement: movementController };
+  return { controller, updates, visualMovement: movementController, mapRenderer };
 }
 
 describe("PlayerMovementController ledges", () => {
   test("a server snap updates movement context without echoing a position write", () => {
-    const send = vi.spyOn(PhaserNet, "sendPlayerPosition");
+    const send = vi.spyOn(NetworkBridge, "send");
     const { controller } = buildLedgeController();
     controller.handleKeyboardMove("DOWN");
     controller.onStepComplete(1, 8, 9, "UP", "snap");
     expect(controller.getCurrentPosition()).toEqual({ x: 8, y: 9 });
     expect(controller.getCurrentDirection()).toBe("UP");
     expect(controller.getIsMoving()).toBe(false);
-    expect(send).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalledWith(expect.anything(), OpCodes.PhaserPlayerPositionUpdate);
     send.mockRestore();
   });
   test("WASD jumps directly over a valid ledge instead of pathing around to the landing tile", async () => {
@@ -122,7 +123,7 @@ describe("PlayerMovementController completed facing", () => {
     const movementController = { handleDirectionUpdate: vi.fn() };
     const mapRenderer = {
       getMovementController: () => movementController,
-    snapActorPosition: vi.fn(),
+      snapActorPosition: vi.fn(),
     };
     const scene = { events: { emit: vi.fn() } } as unknown as Scene;
     const controller = new PlayerMovementController(scene);
@@ -135,7 +136,7 @@ describe("PlayerMovementController completed facing", () => {
     );
 
     expect(controller.getCurrentDirection()).toBe("DOWN");
-    controller.onStepComplete(1, 1, 0, "RIGHT");
+    controller.onStepComplete(1, 1, 0, "RIGHT", "serverStep");
 
     expect(controller.getCurrentDirection()).toBe("RIGHT");
   });
@@ -144,14 +145,14 @@ describe("PlayerMovementController completed facing", () => {
 describe("issued player movement lifecycle", () => {
   test("animation waits for acceptance and completion sends only the issued token", async () => {
     const { controller, updates } = buildLedgeController();
-    const legacy = vi.spyOn(PhaserNet, "sendPlayerPosition");
+    const legacy = vi.spyOn(NetworkBridge, "send");
     controller.handleKeyboardMove("DOWN");
     expect(updates).toHaveLength(0);
     await vi.waitFor(() => expect(updates).toHaveLength(1));
     expect(movement.requestPlayerStep).toHaveBeenCalledWith({ mapId: 9999, fromX: 10, fromY: 0, direction: "DOWN" }, expect.any(AbortSignal));
     controller.onStepComplete(1, 10, 2, "DOWN");
     await vi.waitFor(() => expect(movement.completePlayerStep).toHaveBeenCalledWith("issued", expect.any(AbortSignal)));
-    expect(legacy).not.toHaveBeenCalled();
+    expect(legacy).not.toHaveBeenCalledWith(expect.anything(), OpCodes.PhaserPlayerPositionUpdate);
     legacy.mockRestore();
     controller.clear();
   });
@@ -169,18 +170,18 @@ describe("issued player movement lifecycle", () => {
   });
 });
 
- test("discarding a path lets its current issued animation acknowledge without a legacy report", async () => {
-    const { controller, updates } = buildLedgeController();
-    const legacy = vi.spyOn(PhaserNet, "sendPlayerPosition");
-    controller.handleKeyboardMove("DOWN");
-    await vi.waitFor(() => expect(updates).toHaveLength(1));
-    controller.stopMovement();
-    controller.onStepComplete(1, 10, 2, "DOWN");
-    await vi.waitFor(() => expect(movement.completePlayerStep).toHaveBeenCalledWith("issued", expect.any(AbortSignal)));
-    expect(legacy).not.toHaveBeenCalled();
-    legacy.mockRestore();
-    controller.clear();
- });
+test("discarding a path lets its current issued animation acknowledge without a legacy report", async () => {
+  const { controller, updates } = buildLedgeController();
+  const legacy = vi.spyOn(NetworkBridge, "send");
+  controller.handleKeyboardMove("DOWN");
+  await vi.waitFor(() => expect(updates).toHaveLength(1));
+  controller.stopMovement();
+  controller.onStepComplete(1, 10, 2, "DOWN");
+  await vi.waitFor(() => expect(movement.completePlayerStep).toHaveBeenCalledWith("issued", expect.any(AbortSignal)));
+  expect(legacy).not.toHaveBeenCalledWith(expect.anything(), OpCodes.PhaserPlayerPositionUpdate);
+  legacy.mockRestore();
+  controller.clear();
+});
 
 describe("issued movement exclusivity", () => {
   test("discarded future input cannot replace an issued animation or pending completion", async () => {
@@ -209,11 +210,11 @@ describe("issued movement exclusivity", () => {
 describe("owned-source facing", () => {
   test("turning sends an expected source through facing without a position report", async () => {
     const { controller } = buildLedgeController();
-    const legacy = vi.spyOn(PhaserNet, "sendPlayerPosition");
+    const legacy = vi.spyOn(NetworkBridge, "send");
     expect(controller.faceTile(9, 0)).toBe(true);
     expect(movement.requestPlayerFacing).toHaveBeenCalledWith({ mapId: 9999, fromX: 10, fromY: 0, direction: "LEFT" }, expect.any(AbortSignal));
     expect(controller.getCurrentPosition()).toEqual({ x: 10, y: 0 });
-    expect(legacy).not.toHaveBeenCalled();
+    expect(legacy).not.toHaveBeenCalledWith(expect.anything(), OpCodes.PhaserPlayerPositionUpdate);
     controller.clear();
     legacy.mockRestore();
   });
@@ -240,14 +241,14 @@ test("a rejected facing reconciles facing only and never snaps or writes positio
   const owned = { success: false as const, requestId: "face", error: "rejected", mapId: 9999, x: 10, y: 0, direction: "UP" };
   vi.mocked(movement.requestPlayerFacing).mockRejectedValueOnce(new CorrelatedResponseError(owned));
   const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-  const legacy = vi.spyOn(PhaserNet, "sendPlayerPosition");
+  const legacy = vi.spyOn(NetworkBridge, "send");
   const { controller, updates, visualMovement } = buildLedgeController();
   controller.faceTile(9, 0);
   await vi.waitFor(() => expect(controller.getCurrentDirection()).toBe("UP"));
   expect(controller.getCurrentPosition()).toEqual({ x: 10, y: 0 });
   expect(visualMovement.handleDirectionUpdate).toHaveBeenLastCalledWith(1, "UP");
   expect(updates).toHaveLength(0);
-  expect(legacy).not.toHaveBeenCalled();
+  expect(legacy).not.toHaveBeenCalledWith(expect.anything(), OpCodes.PhaserPlayerPositionUpdate);
   controller.clear();
   legacy.mockRestore();
   warn.mockRestore();
@@ -256,7 +257,7 @@ test("a rejected facing reconciles facing only and never snaps or writes positio
 
 test("committed server path projection stays busy until its final point and never echoes position", () => {
   const { controller } = buildLedgeController();
-  const legacy = vi.spyOn(PhaserNet, "sendPlayerPosition");
+  const legacy = vi.spyOn(NetworkBridge, "send");
   controller.beginServerMovement(false);
   controller.onStepComplete(1, 10, 1, "DOWN", "serverStep");
   expect(controller.getCurrentPosition()).toEqual({ x: 10, y: 1 });
@@ -268,7 +269,7 @@ test("committed server path projection stays busy until its final point and neve
   controller.onStepComplete(1, 10, 2, "DOWN", "serverStep");
   expect(controller.getCurrentPosition()).toEqual({ x: 10, y: 2 });
   expect(controller.getIsMoving()).toBe(false);
-  expect(legacy).not.toHaveBeenCalled();
+  expect(legacy).not.toHaveBeenCalledWith(expect.anything(), OpCodes.PhaserPlayerPositionUpdate);
   controller.clear();
   legacy.mockRestore();
 });
@@ -296,14 +297,56 @@ test("facing acceptance reserves queued server movement before its first publish
 
 
 test("a rejected ordinary step preserves an owned unfinished server path", async () => {
-  const error = {success:false as const,requestId:"busy",error:"server path busy",mapId:9999,x:10,y:0,direction:"DOWN",serverMovementPending:true};
+  const error = { success: false as const, requestId: "busy", error: "server path busy", mapId: 9999, x: 10, y: 0, direction: "DOWN", serverMovementPending: true };
   vi.mocked(movement.requestPlayerStep).mockRejectedValueOnce(new CorrelatedResponseError(error));
-  const log = vi.spyOn(console,"error").mockImplementation(() => undefined);
-  const {controller}=buildLedgeController();
+  const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  const { controller } = buildLedgeController();
   controller.handleKeyboardMove("DOWN");
-  await vi.waitFor(()=>expect(log).toHaveBeenCalled());
+  await vi.waitFor(() => expect(log).toHaveBeenCalled());
   expect(controller.getIsMoving()).toBe(true);
   expect(controller.handleKeyboardMove("LEFT")).toBe(false);
-  expect(controller.requestMoveTo(9,0)).toBe(false);
-  controller.clear();log.mockRestore();
+  expect(controller.requestMoveTo(9, 0)).toBe(false);
+  controller.clear(); log.mockRestore();
+});
+
+
+test("an unissued ordinary animation cannot acknowledge or trigger arrival effects", async () => {
+  const { controller } = buildLedgeController();
+  const arrived = vi.fn(); controller.setArrivalCallback(arrived);
+  const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  const send = vi.spyOn(NetworkBridge, "send");
+  controller.onStepComplete(1, 10, 2, "DOWN");
+  await vi.waitFor(() => expect(error).toHaveBeenCalledWith("[PlayerMovement] Movement request failed", expect.any(Error)));
+  expect(movement.completePlayerStep).not.toHaveBeenCalled();
+  expect(send).not.toHaveBeenCalledWith(expect.anything(), OpCodes.PhaserPlayerPositionUpdate);
+  expect(arrived).not.toHaveBeenCalled();
+  expect(controller.getIsMoving()).toBe(false);
+  controller.clear(); error.mockRestore(); send.mockRestore();
+});
+
+test("Surf success projects a committed step and releases input only at completion", () => {
+  const { controller, updates } = buildLedgeController();
+  controller.applySurfingSuccess(9, 0, 9999, "LEFT");
+  expect(updates).toEqual([[1, 10, 0, 9, 0, "LEFT", undefined, { serverControlled: true }]]);
+  expect(controller.handleKeyboardMove("DOWN")).toBe(false);
+  controller.onStepComplete(1, 9, 0, "LEFT", "serverStep");
+  expect(controller.getCurrentPosition()).toEqual({ x: 9, y: 0 });
+  expect(controller.getIsMoving()).toBe(false);
+  expect(movement.completePlayerStep).not.toHaveBeenCalled();
+  controller.clear();
+});
+
+test("committed warp exit is a server projection and retirement ignores late completion", async () => {
+  const { controller, updates, mapRenderer, visualMovement } = buildLedgeController();
+  let idle!: () => void;
+  Object.assign(visualMovement, { getActorState: () => ({}) });
+  Object.assign(mapRenderer, { getActorSprite: () => ({}), waitForActorIdle: () => new Promise<void>(resolve => { idle = resolve; }) });
+  const done = controller.animateCommittedStepToward(9, 0, "LEFT");
+  expect(updates).toEqual([[1, 10, 0, 9, 0, "LEFT", undefined, { serverControlled: true }]]);
+  expect(controller.getIsMoving()).toBe(true);
+  controller.clear();
+  controller.syncPosition(20, 20);
+  idle(); await done;
+  expect(controller.getCurrentPosition()).toEqual({ x: 20, y: 20 });
+  expect(movement.completePlayerStep).not.toHaveBeenCalled();
 });

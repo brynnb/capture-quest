@@ -827,15 +827,6 @@ export interface PhaserActorsRequest {
 export interface PhaserWarpsRequest {
   mapId: number /* int */;
 }
-/**
- * PhaserPlayerPositionUpdateRequest is the request payload from client.
- */
-export interface PhaserPlayerPositionUpdateRequest {
-  x: number /* int */;
-  y: number /* int */;
-  mapId: number /* int */;
-  direction: string;
-}
 
 //////////
 // source: handler-pokebattle.go

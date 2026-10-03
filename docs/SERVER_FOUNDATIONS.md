@@ -2,8 +2,8 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest implementation checkpoint: `6638a63`, correlated cutscene completion and position recovery
-(2026-10-02), following issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
+Working branch: `codex/server-foundations`. Latest checkpoint: retirement of the client coordinate setter
+(2026-10-03), following correlated cutscene completion `6638a63`, issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
 `0585dde`, committed
 blackout/recovery `2f62595`, teleport notification projection `65a5581`, Instant
 Warp `e1f54a8`, normal warps `3899660`, owned-position loading `64cf970`,
@@ -30,17 +30,10 @@ behavior; it does not prove that every gameplay path has migrated. The summary
 below is the current handoff. Later checkpoint entries preserve historical
 evidence, including remaining-work notes that subsequent commits may resolve.
 
-### Checkpoint handoff (2026-10-02)
+### Checkpoint handoff (2026-10-03)
 
 Implementation checkpoints are committed locally on `codex/server-foundations`.
 The goal remains active; no push or deployment is part of these checkpoints.
-The latest implementation commit is `6638a63` (`Acknowledge cutscene commits and
-preserve owned movement phases`). It includes the server/client changes, generated
-wire types, focused regression tests and architecture updates described below.
-The working tree was clean when this documentation handoff was prepared.
-The documented Go integration and 26-case rendered acceptance logs were checked
-again for their successful terminal results; no implementation changed during
-this handoff, so those suites were not rerun.
 MapLoad now rejects supplied destinations. Ordinary walking requests a direction
 from its expected owned source, animates a server-issued step, then acknowledges
 its token before continuing the path. Blackout, Safari and explicit warp commands
@@ -50,9 +43,11 @@ Facing now uses expected-source direction requests (191/192), without saving
 client coordinates. Server-path points commit before owned-state publication and
 project through a dedicated origin notification (193). CutsceneSpriteController
 no longer reports animation tiles through opcode 45;
-completion applies the captured script from its issued owned source. The remaining
-generic field/animation and uncommitted teleport producers still require audit
-before retiring opcode 45. Cutscene completion now returns a correlated committed
+completion applies the captured script from its issued owned source. Opcode 45
+is now retired at the session boundary, and its handler, request DTO and browser
+send helper are removed. Surf and committed warp exit animations use
+explicit server projection; local teleport events require committed-result provenance.
+Cutscene completion returns a correlated committed
 result and reconciles owned position before unlocking. Step-effect atomicity and durable result recovery remain
 unfinished. Evidence and verification limits appear in the checkpoint sections below.
 
@@ -63,7 +58,7 @@ number of commits or passing tests. All five areas still have outstanding work.
 
 | Area | Implemented | Still required |
 | --- | --- | --- |
-| Request/session boundary | Packet and connection limits, centralized session prerequisites, removal of insecure session takeover, actual transport closure, location/visibility checks for scripted clicks, dialogue choices and direct trainer battles, client destination catalog validation, server-resolved normal warp activation, explicit Instant Warp commands, committed teleport notification contracts and read-only map metadata, and preserved command deadlines/disconnect cancellation in migrated operations. | Audit remaining interaction/mutation endpoints; propagate cancellation through legacy managers and remaining database/network work. |
+| Request/session boundary | Packet and connection limits, centralized session prerequisites, removal of insecure session takeover, actual transport closure, location/visibility checks for scripted clicks, dialogue choices and direct trainer battles, client destination catalog validation, server-resolved normal warp activation, explicit Instant Warp commands, committed teleport notification contracts and read-only map metadata, retired coordinate/map setters, and preserved command deadlines/disconnect cancellation in migrated operations. | Audit remaining interaction/mutation endpoints; propagate cancellation through legacy managers and remaining database/network work. |
 | Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors, Game Corner prizes and bounded coin/slot/hidden-coin operations, atomic Escape Rope/FLY positions, durable Repel counters, Safari entry/turn/capture state and exhaustion destinations, atomic blackout/recovery destinations and map-load position/Safari/flag/visibility/boulder effects, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery of committed results across reconnects. |
 | Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, and movement ticks coordinated with the owner. | Finish timer/callback/shared-state and legacy position-writer audits; prove remaining concurrent/reconnect behavior across real transports. |
 | Domains and wire contracts | Injected content-query service; typed character/wallet/bind, Pokédex/card, content detail, map-script, map-info/list and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
@@ -83,7 +78,7 @@ number of commits or passing tests. All five areas still have outstanding work.
    its position transaction. Repel consumption and activation now share a durable
    transaction, with committed step updates and expiry. Safari payment, visit/battle
    state and captures now share this boundary, as do runtime exhaustion and its
-   saved gate destination. Reported positions and forced teleports now commit
+   saved gate destination. Issued ordinary steps and forced teleports now commit
    before live publication; movement saves retain dirty state on failure and
    release the shared player lock before database work. Audit remaining field
    effects and other mutation paths for the same requirements.
@@ -121,6 +116,72 @@ number of commits or passing tests. All five areas still have outstanding work.
    cancellation/timeouts, failure/retry and shutdown with active players.
    Acceptance: evidence covers the original five milestones, including visible
    behavior where relevant. Only then mark the full goal complete.
+
+## Retirement of the client coordinate setter (2026-10-03)
+
+Opcode 45 accepted client map/X/Y values after only catalog validation, then saved
+and published them and applied facing/step effects. Catalog existence did not prove
+that the character could move there. Ordinary movement, facing, cutscene completion
+and explicit teleport commands already have authoritative owned-source boundaries;
+the remaining coordinate reports came from a generic animation fallback, Surf
+presentation and an uncommitted local teleport-event branch. The previous rendered
+server log recorded opcode 45 during normal warp exit animations.
+
+The server now rejects opcode 45 in every session stage, even if a handler is
+accidentally registered. Its handler and request DTO are removed; wire number 45
+remains reserved. The browser coordinate-send helper is removed. A completed
+ordinary animation without an issued step stops with an observable error and cannot
+acknowledge, activate local arrival effects or write coordinates. Surf and committed
+warp exit animations explicitly use the existing server-controlled actor projection.
+Warp exit completion/timeout callbacks check the movement generation before updating
+presentation, so a retired animation cannot move a newer scene's controller.
+Local teleport events reject missing committed-result provenance before sound or
+scene changes. This marker is a presentation contract; server admission supplies
+the security boundary.
+
+The old setter's success test is replaced by dispatcher denial tests for valid
+cross-map coordinates, same-map movement, facing and malformed packets. They verify
+unchanged saved/owned/session position, direction, queued movement, dirty state and
+multiplayer publication. Session-stage tests deliberately register a dummy legacy
+handler to prove it remains unreachable. MapLoad's late-commit failure coverage is
+retained; the blocked-transaction disconnect test now uses real issued-step completion.
+Existing issued-step rollback/retry/duplicate checks continue to cover accepted moves.
+
+Verification: race-enabled world/protocol/simulator suites and server compilation
+pass in `/var/tmp/capturequest-retired-position-go-final.log`. 82 frontend tests pass
+across seven movement, cutscene, map-request and map-loader files. Typecheck,
+production build, runtime asset validation and stable protocol regeneration pass.
+The rendered suite additionally observes outgoing binary WebSocket frames, decodes
+the existing length/opcode layout and rejects any opcode 45 emission. A normal warp
+case requires observed issued-step completion traffic to verify the observer.
+Rendered acceptance: all 26 checks pass in
+`/var/tmp/capturequest-rendered.Fp5O24`, with terminal output in
+`/var/tmp/capturequest-retired-position-rendered.log`. They cover ordinary/Instant
+Warp, Surf/Cut/Strength, scripted events/Oak movement, multiplayer visibility,
+Safari and blackout. All packet-denial assertions pass; the observer also sees
+actual issued-step completion traffic. The server log contains no opcode 45
+requests, rejected movement intents/completions or failed cutscene applications
+for this run. Strength before/after screenshots were inspected and retain the
+visible player/boulder follow-up movement. This verifies the migrated local
+flows, not every interaction or recovery requirement of the full goal.
+
+Limits: coordinate setter retirement does not make step effects atomic with the
+position commit. Ordinary completion still publishes its committed position before
+separate daycare, encounter, Safari and script-trigger work. Durable result recovery,
+remaining timer/callback ownership, endpoint/domain/contract migration and the full
+five-area integration acceptance remain unfinished. Older clients relying on opcode
+45 can no longer establish position; frontend and backend changes must be released
+together when deployment is authorized. No push or deployment was performed.
+
+Recommended next step: consolidate issued and timer-driven step effects around
+one authoritative transaction/result boundary. Both `HandlePlayerStepCompleteRequest`
+and `PlayerMovementManager.applyMovementStepEffects` call separate effect operations
+after saving the point. `AdvanceDayCareSteps` starts an uncancelled global-database
+transaction; `CheckSafariStep` and `tickRepel` start their own transactions. Reuse the
+existing character-locked operations with an injected transaction/context, preserving
+trainer/Safari/script/encounter ordering and publishing only after the combined
+commit. Verify late effect failure, duplicate acknowledgement, cancellation and
+Safari exhaustion before extending durable retry/reconnect recovery.
 
 ## Correlated cutscene completion and position recovery (2026-10-02)
 

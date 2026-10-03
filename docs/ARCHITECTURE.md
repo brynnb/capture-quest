@@ -360,8 +360,11 @@ field-name conversion or generated-name postprocessor will remain.
    character-locked transaction. Ordinary movement now requests an issued direction step (187/188) and
    acknowledges its token (189/190). The shared character collision model resolves
    destinations and rechecks dynamic blockers, with injected cancellable queries.
-   Completion saves position before publication and effects; legacy opcode 45
-   script/field writers and atomic step-effect recovery remain on the roadmap.
+   Completion saves position before publication and effects. Opcode 45 is retired:
+   the session boundary rejects it and its handler/DTO/client send helper are removed.
+   Surf and committed warp exit animation explicitly project server movement;
+   unissued ordinary animation cannot acknowledge or trigger arrival effects.
+   Atomic step-effect/result recovery remains on the roadmap.
    Facing uses expected-source direction requests (191/192), without position writes.
    Server-path points commit before live mutation/publication and project through
    typed origin notification 193; animation completion performs no coordinate echo.

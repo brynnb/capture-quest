@@ -3,6 +3,7 @@ package world
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"runtime"
 	"testing"
 	"time"
@@ -58,48 +59,37 @@ func TestTeleportCommitFailurePreservesSafariPositionAndPublication(t *testing.T
 	}
 }
 
-func TestReportedPositionAndMapLoadRejectLatePersistenceFailure(t *testing.T) {
-	for _, opcode := range []opcodes.OpCode{opcodes.PhaserPlayerPositionUpdate, opcodes.PhaserMapLoadRequest} {
-		t.Run(string(rune(opcode)), func(t *testing.T) {
-			database, wh, ses, messages := battleTestWorld(t)
-			wh.ActorRegistry = NewActorRegistry()
-			wh.ActorManager = NewPhaserActorManager(wh)
-			wh.PlayerMovement = NewPlayerMovementManager(wh, wh.ActorManager)
-			ses.Client.CharData().MapID = 50
-			ses.Client.CharData().X = 7
-			ses.Client.CharData().Y = 8
-			wh.PlayerMovement.RegisterPlayer(ses, 42, 7, 8, 50, "UP")
-			testdb.Exec(t, database, `UPDATE character_data SET map_id=50,x=7,y=8 WHERE id=42;
+func TestMapLoadRejectsLatePersistenceFailure(t *testing.T) {
+	database, wh, ses, messages := battleTestWorld(t)
+	wh.ActorRegistry = NewActorRegistry()
+	wh.ActorManager = NewPhaserActorManager(wh)
+	wh.PlayerMovement = NewPlayerMovementManager(wh, wh.ActorManager)
+	ses.Client.CharData().MapID, ses.Client.CharData().X, ses.Client.CharData().Y = 50, 7, 8
+	wh.PlayerMovement.RegisterPlayer(ses, 42, 7, 8, 50, "UP")
+	testdb.Exec(t, database, `UPDATE character_data SET map_id=50,x=7,y=8 WHERE id=42;
  INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(60,'EXIT',20,20,0);
  INSERT INTO phaser_tiles(map_id,x,y,tile_image_id) VALUES(60,3,4,1);
- CREATE FUNCTION reject_reported_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'late reported failure'; END $$;
- CREATE CONSTRAINT TRIGGER reject_reported_commit AFTER UPDATE ON character_data DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN(NEW.map_id=60) EXECUTE FUNCTION reject_reported_commit();`)
-			db.GlobalWorldDB = nil
-			payload := `{"mapId":60,"x":3,"y":4,"direction":"DOWN"}`
-			wantX, wantY, wantMap := 7, 8, 50
-			if opcode == opcodes.PhaserMapLoadRequest {
-				wh.PlayerMovement.UpdatePosition(42, 3, 4, 60, "UP")
-				wantX, wantY, wantMap = 3, 4, 60
-				payload = `{"mapId":60,"requestId":"arrival"}`
-			}
-			battleDispatch(t, wh, ses, opcode, payload)
-			x, y, mapID, ok := wh.PlayerMovement.GetPosition(42)
-			if !ok || x != wantX || y != wantY || mapID != wantMap || ses.MapID != 50 || ses.Client.CharData().MapID != 50 {
-				t.Fatalf("reported failed position %d %d %d", x, y, mapID)
-			}
-			if len(messages.streams) != 1 {
-				t.Fatalf("failed position published %+v", messages.streams)
-			}
-			if opcode == opcodes.PhaserMapLoadRequest {
-				var response struct {
-					Success bool
-					Error   string
-				}
-				if err := json.Unmarshal(messages.streams[0].payload, &response); err != nil || response.Success || response.Error == "" {
-					t.Fatalf("map response=%+v %v", response, err)
-				}
-			}
-		})
+ CREATE FUNCTION reject_arrival_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'late arrival failure'; END $$;
+ CREATE CONSTRAINT TRIGGER reject_arrival_commit AFTER UPDATE ON character_data DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN(NEW.map_id=60) EXECUTE FUNCTION reject_arrival_commit();`)
+	db.GlobalWorldDB = nil
+	wh.PlayerMovement.UpdatePosition(42, 3, 4, 60, "UP")
+	battleDispatch(t, wh, ses, opcodes.PhaserMapLoadRequest, `{"mapId":60,"requestId":"arrival"}`)
+	x, y, mapID, ok := wh.PlayerMovement.GetPosition(42)
+	if !ok || x != 3 || y != 4 || mapID != 60 || ses.MapID != 50 || ses.Client.CharData().MapID != 50 {
+		t.Fatalf("failed arrival changed live position: %d %d %d", x, y, mapID)
+	}
+	if len(messages.streams) != 1 || messages.streams[0].opcode != opcodes.PhaserMapLoadResponse {
+		t.Fatalf("failed arrival published %+v", messages.streams)
+	}
+	var response struct {
+		Success bool
+		Error   string
+	}
+	if err := json.Unmarshal(messages.streams[0].payload, &response); err != nil || response.Success || response.Error == "" {
+		t.Fatalf("map response=%+v %v", response, err)
+	}
+	if err := database.QueryRow(`SELECT x,y,map_id FROM character_data WHERE id=42`).Scan(&x, &y, &mapID); err != nil || x != 7 || y != 8 || mapID != 50 {
+		t.Fatalf("failed arrival changed durable position: %d %d %d %v", x, y, mapID, err)
 	}
 }
 
@@ -226,13 +216,10 @@ func TestPositionTransactionCancellationWhileCharacterLocked(t *testing.T) {
 	}
 }
 
-func TestDisconnectCancelsReportedPositionTransactionBeforeCleanup(t *testing.T) {
-	database, wh, ses, _ := battleTestWorld(t)
-	wh.ActorManager = NewPhaserActorManager(wh)
-	ses.Client.CharData().MapID = 50
-	ses.Client.CharData().X = 7
-	ses.Client.CharData().Y = 8
-	testdb.Exec(t, database, `UPDATE character_data SET map_id=50,x=7,y=8 WHERE id=42`)
+func TestDisconnectCancelsIssuedStepTransactionBeforeCleanup(t *testing.T) {
+	wh, ses, messages := setupIssuedStep(t)
+	step := issueStep(t, wh, ses, messages)
+	database := wh.database
 	lock, err := database.Begin()
 	if err != nil {
 		t.Fatal(err)
@@ -246,12 +233,12 @@ func TestDisconnectCancelsReportedPositionTransactionBeforeCleanup(t *testing.T)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		registry.HandleWorldPacket(ses, clientPacket(opcodes.PhaserPlayerPositionUpdate, `{"mapId":60,"x":3,"y":4,"direction":"DOWN"}`))
+		registry.HandleWorldPacket(ses, clientPacket(opcodes.PlayerStepCompleteRequest, fmt.Sprintf(`{"stepToken":%q,"requestId":"blocked"}`, step.StepToken)))
 	}()
 	deadline := time.Now().Add(time.Second)
 	for database.Stats().InUse < 2 {
 		if time.Now().After(deadline) {
-			t.Fatal("reported position did not start its transaction")
+			t.Fatal("issued step did not start its transaction")
 		}
 		runtime.Gosched()
 	}

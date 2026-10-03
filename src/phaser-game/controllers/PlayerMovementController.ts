@@ -1519,10 +1519,8 @@ export class PlayerMovementController {
 
   private async finishVisualStep(actorId: number, x: number, y: number, completedDirection: string, kind: "step" | "snap" | "serverStep"): Promise<void> {
     if (this.playerId === actorId) {
-      // ActorMovementController derives this from the actual completed tile
-      // delta. Use it as the authoritative facing direction before reporting
-      // the position; this controller's cache can still contain the spawn
-      // default during scripted/server-driven movement.
+      // ActorMovementController derives visual facing from the completed tile
+      // delta; the cache can still contain the spawn default.
       this.currentDirection = completedDirection;
       this.currentTileX = x;
       this.currentTileY = y;
@@ -1553,9 +1551,9 @@ export class PlayerMovementController {
         this.issuedStep = null;
         this.stepAbort = null;
       } else {
-        // Server-driven field/script animations retain the legacy report until
-        // their issued-sequence migration. Ordinary walking never uses it.
-        PhaserNet.sendPlayerPosition(x, y, this.currentMapId, this.currentDirection);
+        // Only an issued step may trigger acknowledgement and local arrival
+        // effects. Server animations must explicitly use serverStep.
+        throw new Error("Movement animation completed without an issued step");
       }
 
       // Finish the current visual step, then discard any queued user path as
@@ -1975,7 +1973,7 @@ export class PlayerMovementController {
       this.facingRequestKey = null;
     }
     // Input focus discards the future path but lets the current issued animation
-    // finish and acknowledge. Otherwise its callback could fall back to opcode 45.
+    // finish and acknowledge through its issued token.
     // Scene retirement and authoritative snaps explicitly retire that animation.
     if (retireIssued || !this.issuedStep) {
       this.movementGeneration++;
@@ -2047,15 +2045,15 @@ export class PlayerMovementController {
       this.currentDirection = normalizedDirection;
     }
 
-    this.currentPath = [];
-    this.activeMoveDestination = { x, y, mapId };
+    // Surf success follows a committed MovePlayerTo result. Retire prediction
+    // and project it through the same path as other server movement.
+    this.beginServerMovement(true);
     this.currentMapId = mapId;
     this.setSurfingActive(true);
     this.updateTravelMapForTile(x, y);
 
     if (this.currentTileX === x && this.currentTileY === y) {
-      this.isMoving = false;
-      this.activeMoveDestination = null;
+      this.stopMovement(true);
       this.emitPlayerPositionChanged();
       return;
     }
@@ -2072,11 +2070,13 @@ export class PlayerMovementController {
         x,
         y,
         this.currentDirection,
+        undefined,
+        { serverControlled: true },
       );
       return;
     }
 
-    this.isMoving = false;
+    this.stopMovement(true);
     this.currentTileX = x;
     this.currentTileY = y;
     this.mapRenderer.snapActorPosition(
@@ -2102,12 +2102,11 @@ export class PlayerMovementController {
   }
 
   /**
-   * Animate a visual-only step toward a target tile, bypassing collision checks
-   * and server updates. Used by WarpManager to show the player stepping into
-   * a door before the warp transition.
+   * Project a step toward an already committed warp destination. The native
+   * entrance tile is animation metadata, never a new position command.
    * Returns a promise that resolves when the step animation completes.
    */
-  animateStepToward(targetX: number, targetY: number, overrideDirection?: string): Promise<void> {
+  animateCommittedStepToward(targetX: number, targetY: number, overrideDirection?: string): Promise<void> {
     return new Promise<void>((resolve) => {
       if (this.playerId === null || !this.mapRenderer) {
         resolve();
@@ -2136,7 +2135,7 @@ export class PlayerMovementController {
       // If already on the target, resolve immediately
       if (stepX === this.currentTileX && stepY === this.currentTileY) {
         debugPlayerMovement(
-          `[PlayerMovement] animateStepToward: already at target, resolving`,
+          `[PlayerMovement] animateCommittedStepToward: already at target, resolving`,
         );
         resolve();
         return;
@@ -2146,30 +2145,32 @@ export class PlayerMovementController {
       const sprite = this.mapRenderer.getActorSprite(this.playerId);
       if (!sprite) {
         debugPlayerMovement(
-          `[PlayerMovement] animateStepToward: no sprite found, resolving`,
+          `[PlayerMovement] animateCommittedStepToward: no sprite found, resolving`,
         );
         resolve();
         return;
       }
 
       debugPlayerMovement(
-        `[PlayerMovement] animateStepToward: tweening from (${this.currentTileX},${this.currentTileY}) to (${stepX},${stepY}), direction=${direction}`,
+        `[PlayerMovement] animateCommittedStepToward: tweening from (${this.currentTileX},${this.currentTileY}) to (${stepX},${stepY}), direction=${direction}`,
       );
 
-      // Stop any existing movement
-      this.stopMovement();
+      this.beginServerMovement(true);
+      const generation = this.movementGeneration;
 
       // Safety timeout — if the tween doesn't complete in 1s, resolve anyway
       let resolved = false;
       const timeout = setTimeout(() => {
         if (!resolved) {
           console.warn(
-            `[PlayerMovement] animateStepToward: tween timed out, resolving`,
+            `[PlayerMovement] animateCommittedStepToward: tween timed out, resolving`,
           );
           resolved = true;
-          this.currentTileX = stepX;
-          this.currentTileY = stepY;
-          this.emitPlayerPositionChanged();
+          if (generation === this.movementGeneration) {
+            this.syncPosition(stepX, stepY);
+            this.mapRenderer?.snapActorPosition(this.playerId!, stepX, stepY, direction);
+            this.stopMovement(true);
+          }
           resolve();
         }
       }, 1000);
@@ -2183,17 +2184,20 @@ export class PlayerMovementController {
           stepX,
           stepY,
           direction,
+          undefined,
+          { serverControlled: true },
         );
         void this.mapRenderer.waitForActorIdle(this.playerId).then(() => {
           if (!resolved) {
             resolved = true;
             clearTimeout(timeout);
             debugPlayerMovement(
-              `[PlayerMovement] animateStepToward: tween complete at (${stepX},${stepY})`,
+              `[PlayerMovement] animateCommittedStepToward: tween complete at (${stepX},${stepY})`,
             );
-            this.currentTileX = stepX;
-            this.currentTileY = stepY;
-            this.emitPlayerPositionChanged();
+            if (generation === this.movementGeneration) {
+              this.syncPosition(stepX, stepY);
+              this.stopMovement(true);
+            }
             resolve();
           }
         });
@@ -2214,11 +2218,12 @@ export class PlayerMovementController {
             resolved = true;
             clearTimeout(timeout);
             debugPlayerMovement(
-              `[PlayerMovement] animateStepToward: fallback tween complete at (${stepX},${stepY})`,
+              `[PlayerMovement] animateCommittedStepToward: fallback tween complete at (${stepX},${stepY})`,
             );
-            this.currentTileX = stepX;
-            this.currentTileY = stepY;
-            this.emitPlayerPositionChanged();
+            if (generation === this.movementGeneration) {
+              this.syncPosition(stepX, stepY);
+              this.stopMovement(true);
+            }
             resolve();
           }
         },

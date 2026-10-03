@@ -53,8 +53,7 @@ func NewWorldOpCodeRegistry() *HandlerRegistry {
 		opcodes.PhaserOverworldMapsRequest: HandlePhaserOverworldMapsRequest,
 		opcodes.PhaserActorsRequest:        HandlePhaserActorsRequest,
 
-		opcodes.PhaserWarpsRequest:         HandlePhaserWarpsRequest,
-		opcodes.PhaserPlayerPositionUpdate: HandlePhaserPlayerPositionUpdate,
+		opcodes.PhaserWarpsRequest: HandlePhaserWarpsRequest,
 		// Phaser data endpoints (Phase 2.4)
 		opcodes.PhaserDialogueRequest:       HandlePhaserDialogueRequest,
 		opcodes.PhaserWildEncountersRequest: HandlePhaserWildEncountersRequest,
@@ -211,9 +210,10 @@ func (r *HandlerRegistry) handleWorldPacket(ses *session.Session, data []byte) b
 // connection/account operations may run before selection. Battle-specific
 // rules and GM authorization remain in their authoritative gameplay handlers.
 func sessionAllowsOpcode(ses *session.Session, op opcodes.OpCode) bool {
-	// Opcode 176 was an unrestricted legacy map setter. The shipped client
-	// uses Phaser commands; keep the wire number reserved and never admit it.
-	if op == opcodes.MapChangeRequest {
+	// Retired coordinate/map setters bypass owned-source movement and teleport
+	// commands. Keep their wire numbers reserved and never admit them, even
+	// after character selection or if a handler is accidentally registered.
+	if op == opcodes.MapChangeRequest || op == opcodes.PhaserPlayerPositionUpdate {
 		return false
 	}
 	if op == opcodes.Heartbeat {

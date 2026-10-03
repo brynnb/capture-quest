@@ -2082,7 +2082,7 @@ export class TileViewer extends Scene {
         this.playerActor,
       );
 
-      await this.playerMovementController.animateStepToward(
+      await this.playerMovementController.animateCommittedStepToward(
         destX,
         destY,
         direction,
