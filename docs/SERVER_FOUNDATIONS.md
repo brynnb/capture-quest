@@ -2,7 +2,7 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest checkpoint: terminal Safari process-death recovery acceptance
+Working branch: `codex/server-foundations`. Latest implementation checkpoint: `9bf3630`, terminal Safari process-death recovery acceptance
 (2026-10-03), following rendered capture recovery `fbe744e`, simulator contract migration `9f59dd3`, expiry presentation recovery `54dbef6`, guarded Safari commands `d673aea`, durable capture placement and terminal login retention `58d0b85`, rendered move-choice recovery `7eb3a7e`, move-choice storage/coordinator acceptance `072ad71`, blackout scene ownership `04579dc`, terminal dismissal/post-battle plans `8ce43ff`, current-owned gameplay recovery `c38a74c`, correlated battle recovery `30fa1bb` and network battle command identity `8a5ba4a`, coherent gameplay recovery `c0d31f9` and durable cutscene issuance/completion `e9eb834`, pending trainer encounters `84f2d91` and ordinary-step receipts `80a544c`, following atomic movement-step effects `cfdeb9e`, retirement of the client coordinate setter `2df1db0`, correlated cutscene completion `6638a63`, issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
 `0585dde`, committed
 blackout/recovery `2f62595`, teleport notification projection `65a5581`, Instant
@@ -82,6 +82,26 @@ number of commits or passing tests. All five areas still have outstanding work.
 | Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, movement ticks coordinated with the owner, and immediate retirement of battle-scene command admission/subscriptions. | Finish timer/callback/shared-state and legacy position-writer audits; prove remaining concurrent/reconnect behavior across real transports. |
 | Domains and wire contracts | Injected content-query service; typed character/wallet/bind, Pokédex/card, content detail, map-script, map-info/list, sight-trainer notification/readiness, coherent gameplay recovery, ordinary/Safari battle command replies, shared battle events and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
 | Lifecycle and verification | Owned HTTP/listeners, readiness, listener failure propagation, joined periodic workers, sealed session admissions, fail-closed staged preload, startup cancellation, atomic scripted-event publication, and deadline-aware shutdown waits with returned failure results. | Audit cancellation of remaining legacy work, define durable final-save recovery, and complete transport/rendered integration coverage. Owned HTTP and player transport retirement and isolated active-player shutdown checks have landed. |
+
+### Next work and completion criteria
+
+Continue with actual process-death acceptance for pending move learning, then
+issued movement and script plans. Verify unfinished decisions after fresh
+authenticated entry, settlement exactly once, unchanged earned experience and
+stable Pokémon row identities. These are planned checks, not completed coverage.
+
+Next, finish coherent inventory, wallet and flag resynchronization and audit the
+remaining mutation endpoints, timers/callbacks, cancellation and global domain
+dependencies. Migrate each remaining wire family before removing `StructToMap`
+and the casing postprocessor. Keep the five-area table current as those audits
+identify or resolve gaps.
+
+The goal can close only when every area has an explicit resolved audit and its
+applicable observable acceptance evidence. Record any intentionally retained
+legacy behavior and verification limits; a narrow passing checkpoint does not
+close the broad goal. Production validation belongs to a separately authorized
+deployment. Current work is committed locally; nothing has been pushed or
+deployed by this goal.
 
 ## Terminal Safari process-death recovery acceptance (2026-10-03)
 
