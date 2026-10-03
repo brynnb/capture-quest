@@ -2,8 +2,8 @@
 
 Status: paused (confirmed in the goal tool on 2026-10-03). Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Current bounded checkpoint: shared
-purchase/party-item command execution and recovery (2026-10-03), following the
+Working branch: `codex/server-foundations`. Current bounded checkpoint: review
+fixes to shared purchase/party-item execution and recovery (2026-10-03), following the
 owned-item dispatch checkpoint and committed shop crash/restart acceptance. The shop runtime
 implementation is `f118916` (per-command clerk authorization and source sale
 policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected menu
@@ -46,7 +46,7 @@ Implemented:
   publications are retired. Unmigrated field-item effects remain explicitly
   separate on their existing protocol; correlated party commands cannot enter it.
 
-Before/after review: the shop client module falls from 128 to 50 lines, containing
+Before/after review at `5c8da47`: the shop client module falls from 128 to 50 lines, containing
 only its policy and presentation. Its scene/request/recovery ownership moves into
 one 130-line coordinator that also supplies party use. This is not a net reduction
 in those two files (180 versus 128 lines): party commands gain protections they
@@ -96,14 +96,65 @@ Verification completed:
 The finite milestone is complete. No additional command family is authorized by
 this checkpoint.
 
-Remaining after this bounded milestone: assess the shared boundary before
-selecting the next family. Field effects, battle/movement coordinators, legacy
+The subsequent review found two central lifecycle gaps, fixed in the follow-up
+below. Remaining after that follow-up: select the next bounded family with user
+authorization. Field effects, battle/movement coordinators, legacy
 standalone notifications and the five-area ownership/recovery audit below have
 not been folded into this executor. The revision is scoped to migrated commands,
 not every writer of inventory or party state. Browser acceptance uses Potion as
 the representative party item; TM/HM/evolution/Flute retain service-level tests.
 Frontend/backend wire changes require coordinated activation and refreshed clients.
 No push or production deployment is authorized or performed.
+
+### Shared boundary review follow-up (2026-10-03)
+
+Scope: fix the two reviewed boundaries and add regression checks before any
+further family migration. The broader goal remains paused and incomplete.
+
+- Shop closure previously aborted a sent purchase/sale request and any recovery
+  read. A server commit could therefore leave the browser's bag and revision
+  stale; reopening the merchant refreshed only money. The shared coordinator now
+  separates presentation retirement from mutation ownership: closure suppresses
+  presentation, while reply handling or timeout recovery reconciles current state
+  and holds admission until finished. Domain projection application is separate
+  from presentation. Read-only menu closure and character/scene cancellation
+  retain their existing behavior.
+- The command executor previously accepted `DBTX` parent transactions through the
+  repository's joining helper. It could return success before the parent's commit
+  or rollback. It now requires a database pool, rejecting raw and wrapped parent
+  transactions before effects or revision writes. Repository helpers inside the
+  owned callback continue to join its transaction.
+
+Regression evidence: the new tests first failed against the reviewed code for
+both raw/wrapped parent handles and all five client closure cases. After the fix,
+PostgreSQL race suites for cqitems, economy and itemuse passed, as did 73 focused
+client tests across InventoryCommandService, GameplayRecoveryService and
+NetworkBridge.inventory, plus TypeScript checking. Tests cover delayed/lost buy
+and sell replies after closure, closure during recovery, fresh revision on the
+next command, suppressed sounds, retained scene/character cancellation and late
+menu rejection. Server checks prove rejected parent transactions remain usable
+and unchanged, and an independent connection sees successful command writes as
+soon as the executor returns.
+
+Rendered verification: all seven checks in `shop-inventory-recovery.spec.ts`
+passed through `bash scripts/testing/run-isolated-e2e.sh` (1.2 minutes), with
+evidence retained at `/var/tmp/capturequest-rendered.ZhLhHd`. The two new cases
+close the rendered shop using EXIT/Escape after a real server commit, then
+deliver the delayed acknowledgement or allow timeout recovery. They verify
+reconciliation while closed, reopen through the clerk and complete a second
+purchase at revision 2. Duplicate sends still produce exactly one commit per
+intentional purchase. The timeout-case screenshot was inspected: the reopened
+merchant and trainer wallet both show ¥9,600 after two ¥200 purchases. Existing
+buy/sell duplicate, lost-reply, reentry and retired-menu checks also pass.
+
+`npm run build` (including runtime asset validation) and `git diff --check`
+passed. Existing dynamic-import/chunk-size warnings remain. These checks use
+local rendered clients and disposable PostgreSQL; production was not exercised.
+This follow-up is a local checkpoint on `codex/server-foundations`.
+
+Next step: review this bounded follow-up and choose one subsequent family before
+resuming migration. No additional family, framework, SQL schema or wire-contract
+change is included; no push or production deployment is performed.
 
 ## Current scope and status
 

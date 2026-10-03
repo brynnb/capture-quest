@@ -6,15 +6,15 @@ import { runInventoryRequest } from "./InventoryCommandService";
 import AudioManager from "@/services/audio/AudioManager";
 import { sfxPathForConstant } from "@/services/audio/pokemonMusic";
 
-const watchShop = (cancel: () => void) => useCQInventoryStore.subscribe((state, previous) => {
-  if (!state.shopOpen && (previous.shopOpen || previous.shopItems !== state.shopItems)) cancel();
+const watchShop = (retire: () => void) => useCQInventoryStore.subscribe((state, previous) => {
+  if (!state.shopOpen && (previous.shopOpen || previous.shopItems !== state.shopItems)) retire();
 });
 
 function sendShopCommand(opcode: number, responseOpcode: number, payload: Record<string, number>): Promise<void> {
   const {shopOpen, shopActorId: actorId} = useCQInventoryStore.getState();
   if (!shopOpen || !actorId || !Number.isSafeInteger(actorId) || actorId <= 0) return Promise.resolve();
   return runInventoryRequest<CQMerchantBuyResponse | CQMerchantSellResponse>({
-    opcode, responseOpcode, payload: {...payload, actorId}, mutation: true, watch: watchShop,
+    opcode, responseOpcode, payload: {...payload, actorId}, mutation: true, watchPresentation: watchShop,
     present: () => {
       const sound = sfxPathForConstant("SFX_PURCHASE"); if (sound) void AudioManager.playSFX(sound, 0.8);
     },
@@ -35,7 +35,7 @@ export async function openShopForActor(actorId: number): Promise<void> {
   if (!characterId) return;
   return runInventoryRequest<CQMerchantOpenResponse>({
     opcode: OpCodes.CQMerchantOpenRequest, responseOpcode: OpCodes.CQMerchantOpenResponse,
-    payload: {actorId}, mutation: false, watch: watchShop,
+    payload: {actorId}, mutation: false, watchPresentation: watchShop,
     validate: reply => {
       if (reply.characterId !== characterId || !Number.isSafeInteger(reply.merchantId) || reply.merchantId <= 0
         || typeof reply.name !== "string" || !Array.isArray(reply.items)

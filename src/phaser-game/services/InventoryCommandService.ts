@@ -33,12 +33,14 @@ function views() {
 }
 
 // One owner for admission, correlation, cancellation, stale replies and recovery.
-// Domain adapters validate/present their result; only this layer applies the bag.
+// Domain adapters validate/apply their projection and present effects; only this
+// layer applies the bag. Projection application outlives a closed presentation.
 export async function runInventoryRequest<T extends Reply>(options: {
   opcode: number; responseOpcode: number; payload: Record<string, unknown>;
   mutation: boolean;
-  watch?: (cancel: () => void) => () => void;
+  watchPresentation?: (retire: () => void) => () => void;
   validate?: (reply: T) => void;
+  apply?: (reply: T) => void;
   present: (reply: T) => void;
   readError?: string;
 }): Promise<void> {
@@ -53,7 +55,13 @@ export async function runInventoryRequest<T extends Reply>(options: {
   const stopProfile = usePlayerCharacterStore.subscribe(state => {
     if (state.characterProfile.id !== characterId) { controller.abort(); useCQInventoryStore.getState().closeShop(); }
   });
-  const stopDomain = options.watch?.(() => controller.abort());
+  let presentationCurrent = true;
+  const stopPresentation = options.watchPresentation?.(() => {
+    presentationCurrent = false;
+    // Closing a view cannot undo a sent mutation. Keep its reply/recovery and
+    // admission slot alive; only character/scene retirement cancels ownership.
+    if (!options.mutation) controller.abort();
+  });
   useCQInventoryStore.setState({ inventoryCommandPending: true, inventoryCommandError: null });
   try {
     const reply = await correlatedRequest<T>(
@@ -73,7 +81,8 @@ export async function runInventoryRequest<T extends Reply>(options: {
       useCQInventoryStore.getState().setInventory(reply.inventory.items, reply.inventory.money, reply.inventory.commandRevision);
       usePlayerCharacterStore.getState().handleCharacterWalletData({characterId, pokedollars: reply.inventory.money});
     }
-    options.present(reply);
+    options.apply?.(reply);
+    if (presentationCurrent) options.present(reply);
   } catch (error) {
     if (!current()) return;
     if (!options.mutation) {
@@ -94,7 +103,7 @@ export async function runInventoryRequest<T extends Reply>(options: {
       if (current()) reportError("Could not restore inventory state. Please reconnect.");
     }
   } finally {
-    stopProfile(); stopDomain?.();
+    stopProfile(); stopPresentation?.();
     if (active === controller) { active = null; useCQInventoryStore.setState({inventoryCommandPending: false}); }
   }
 }
@@ -113,8 +122,8 @@ export function sendPartyItemCommand(instanceId: number, partySlot: number, move
         || reply.outcome.partySlot !== partySlot || typeof reply.outcome.message !== "string"
         || (partySlot >= 0 && reply.party[partySlot]?.rowId !== pokemonRowId)) throw new Error("Invalid party-item result");
     },
+    apply: reply => usePokemonPartyStore.getState().setParty(reply.party),
     present: reply => {
-      usePokemonPartyStore.getState().setParty(reply.party);
       const outcome = reply.outcome;
       const bag = useCQInventoryStore.getState();
       bag.setPendingTMHM(outcome.needsMoveSlot ? {

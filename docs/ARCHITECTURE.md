@@ -1204,7 +1204,11 @@ Purchases, sales and the existing outside-battle party-item service use
 `cqitems.Store.ExecuteCommand`. It owns the bounded transaction, character lock,
 expected-revision comparison/advance and final inventory projection. The callback
 receives the transaction handle; payment/stock/stack rules remain in `economy`,
-while medicine, TM/HM, evolution and Flute rules remain in `itemuse`. Domain,
+while medicine, TM/HM, evolution and Flute rules remain in `itemuse`. The executor
+requires a non-nil `*sql.DB` pool and rejects raw or wrapped parent transactions
+before invoking the callback or writing anything. It must own the final commit
+to promise a committed result; repository helpers inside its callback still join
+that owned transaction. Domain,
 snapshot, cancellation and commit errors return no successful projection and roll
 back the revision with the gameplay changes. This is a two-family consolidation,
 not a universal executor for movement or battles.
@@ -1212,8 +1216,15 @@ not a universal executor for movement or battles.
 `InventoryCommandService` is the single scene owner for these client operations:
 one pending request, correlation, character/scene cancellation, stale-view checks,
 application of the complete bag and wallet, and uncertain-result recovery.
-`ShopCommandService` supplies merchant-menu validation, shop-close cancellation
-and purchase presentation. Party-item presentation and stable-target validation
+`ShopCommandService` supplies merchant-menu validation, shop presentation
+retirement and purchase sounds. Closing a shop cancels a pending read-only menu,
+but a sent mutation retains its admission slot and reply/recovery until it
+settles for the current character and scene. Its committed bag/wallet still apply
+while the shop is closed; late purchase sounds are suppressed and the menu stays
+closed. The next admitted mutation uses the reconciled revision. Character or
+scene retirement still cancels request/recovery ownership. Domain projections
+apply independently of presentation (including the party-item party snapshot).
+Party-item presentation and stable-target validation
 use the same coordinator. Merchant opening uses its read path and preserves
 existing state on failure. Recovery applies current bag, party and currency
 without replaying purchase sounds or old item outcomes. A timeout or rejection

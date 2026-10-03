@@ -12,11 +12,17 @@ import (
 // ExecuteCommand owns admission, the durable revision and the committed bag
 // projection for shop and party-item commands. A stale request is rejected;
 // clients recover current state without automatically resending the mutation.
+// Unlike repository helpers, this boundary cannot join a parent transaction:
+// returning a successful projection requires owning the final commit.
 // Keep the existing character_shop_state row so deployed revisions are preserved
 // without a second counter or a data migration. Its scope now includes party use.
 func (s *Store) ExecuteCommand(ctx context.Context, charID int32, expected int64, apply func(db.DBTX) error) (CQInventorySnapshot, error) {
+	database, ok := s.database.(*sql.DB)
+	if !ok || database == nil {
+		return CQInventorySnapshot{}, fmt.Errorf("inventory command requires a database pool to own its commit, got %T", s.database)
+	}
 	var result CQInventorySnapshot
-	err := db.Transaction(ctx, s.database, func(tx db.DBTX) error {
+	err := db.Transaction(ctx, database, func(tx db.DBTX) error {
 		if expected < 0 || expected >= 9007199254740991 {
 			return fmt.Errorf("invalid inventory command revision")
 		}

@@ -13,6 +13,7 @@ import {openShopForActor,buyShopItem,sellShopItem} from "./ShopCommandService";
 
 import {bindInventoryScene,sendPartyItemCommand} from "./InventoryCommandService";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
+import AudioManager from "@/services/audio/AudioManager";
 const party = [{rowId:7,curHp:21}] as any;
 const actions = ["buy","sell","party"] as const;
 const send = (action:typeof actions[number]) => action==="buy"?buyShopItem(1,1,10):action==="sell"?sellShopItem(7):sendPartyItemCommand(1,0);
@@ -23,6 +24,7 @@ const id=()=>net.send.mock.calls.at(-1)![1].requestId;
 const emit=(opcode:number,reply:any)=>net.listeners.get(opcode)?.forEach(receive=>receive(reply));
 beforeEach(()=>{
   vi.useFakeTimers();net.listeners.clear();net.send.mockReset().mockResolvedValue(undefined);net.read.mockReset();
+  vi.mocked(AudioManager.playSFX).mockClear();
   useCQInventoryStore.setState({items:[],money:1000,commandRevision:4,shopOpen:true,inventoryCommandPending:false});
   usePlayerCharacterStore.getState().setCharacterProfile({id:42,pokedollars:1000});
   usePokemonPartyStore.getState().setParty(party);
@@ -48,9 +50,11 @@ for (const action of actions) {
   for(const another of actions) await send(another);
   expect(net.send).toHaveBeenCalledTimes(1);
   emit(opcode(action),reply("other"));expect(useCQInventoryStore.getState().money).toBe(1000);
-  emit(opcode(action),reply(id()));await pending;
+  const result=reply(id()); result.party=[{rowId:7,curHp:41}];
+  emit(opcode(action),result);await pending;
   expect(useCQInventoryStore.getState()).toMatchObject({money:900,commandRevision:5,inventoryCommandPending:false});
   expect(usePlayerCharacterStore.getState().characterProfile.pokedollars).toBe(900);
+  if(action==="party") expect(usePokemonPartyStore.getState().party).toEqual(result.party);
   expect(net.read).not.toHaveBeenCalled();
  });
  test.each(["timeout","rejection","malformed","overtaken","party update","send failure"])(`${action} %s recovers without resending`,async mode=>{
@@ -70,11 +74,11 @@ for (const action of actions) {
   expect(usePokemonPartyStore.getState().party).toEqual(recoveredParty);
   emit(opcode(action),reply(id()));expect(useCQInventoryStore.getState().money).toBe(800);
  });
- test.each(action==="party"?["scene","character"]:["scene","character","close"])(`${action} %s retirement ignores late replies`,async mode=>{
+ test.each(["scene","character"])(`${action} %s retirement ignores late replies`,async mode=>{
   const pending=send(action);const requestId=id();
+  if(action!=="party") useCQInventoryStore.getState().closeShop();
   if(mode==="scene") retire();
   if(mode==="character") usePlayerCharacterStore.getState().setCharacterProfile({id:43,pokedollars:700});
-  if(mode==="close") useCQInventoryStore.getState().closeShop();
   await pending;
   expect(net.listeners.get(opcode(action))?.size).toBe(0);
   emit(opcode(action),reply(requestId));
@@ -84,6 +88,7 @@ for (const action of actions) {
  test(`${action} retirement while recovering ignores a late snapshot`,async()=>{
   let resolve!:(value:any)=>void;net.read.mockImplementation(()=>new Promise(done=>{resolve=done}));
   const pending=send(action);await vi.advanceTimersByTimeAsync(10000);
+  if(action!=="party") useCQInventoryStore.getState().closeShop();
   retire();resolve({inventory:[],wallet:{characterId:42,pokedollars:0},commandRevision:5,party:[]});
   await pending;expect(useCQInventoryStore.getState().money).toBe(1000);expect(usePokemonPartyStore.getState().party).toEqual(party);
  });
@@ -94,6 +99,50 @@ for (const action of actions) {
   expect(net.send).toHaveBeenCalledTimes(1);
  });
 }
+
+for (const action of ["buy", "sell"] as const) {
+ test.each(["delayed reply", "lost reply"])(`${action} reconciles after shop closure with %s`, async mode => {
+  const items = [{instance:{id:12,quantity:3},item:{name:"Potion"}}] as any;
+  net.read.mockResolvedValue({inventory:items,wallet:{characterId:42,pokedollars:900},commandRevision:5,party});
+  const pending = send(action); const requestId = id();
+  useCQInventoryStore.getState().closeShop();
+  expect(useCQInventoryStore.getState()).toMatchObject({shopOpen:false,inventoryCommandPending:true});
+  expect(net.listeners.get(opcode(action))?.size).toBe(1);
+  await openShopForActor(1001); await sendPartyItemCommand(1,0);
+  expect(net.send).toHaveBeenCalledTimes(1);
+  if (mode === "lost reply") await vi.advanceTimersByTimeAsync(10000);
+  else emit(opcode(action), {...reply(requestId),inventory:{items,money:900,commandRevision:5}});
+  await pending;
+  expect(useCQInventoryStore.getState()).toMatchObject({items,money:900,commandRevision:5,shopOpen:false,inventoryCommandPending:false});
+  expect(usePlayerCharacterStore.getState().characterProfile.pokedollars).toBe(900);
+  expect(AudioManager.playSFX).not.toHaveBeenCalled();
+  expect(net.read).toHaveBeenCalledTimes(mode === "lost reply" ? 1 : 0);
+  expect(net.send).toHaveBeenCalledTimes(1);
+  // Reopening must not need a rejected stale mutation to refresh the revision.
+  const opening = openShopForActor(1001);
+  emit(95,{...menu(id()),money:900}); await opening;
+  const next = send(action);
+  expect(net.send.mock.calls.at(-1)![1].command).toEqual({characterId:42,revision:5});
+  emit(opcode(action),reply(requestId));
+  expect(useCQInventoryStore.getState().inventoryCommandPending).toBe(true);
+  emit(opcode(action),reply(id(),6)); await next;
+  expect(useCQInventoryStore.getState().commandRevision).toBe(6);
+  expect(AudioManager.playSFX).toHaveBeenCalledTimes(1);
+ });
+}
+
+test("closing during recovery still applies the current gameplay snapshot", async () => {
+ let resolve!:(value:any)=>void; net.read.mockImplementation(()=>new Promise(done=>{resolve=done}));
+ const pending=buyShopItem(1,1,1); await vi.advanceTimersByTimeAsync(10000);
+ useCQInventoryStore.getState().closeShop();
+ expect(net.read.mock.calls[0][0].aborted).toBe(false);
+ const recoveredParty=[{rowId:7,curHp:41}];
+ resolve({inventory:[],wallet:{characterId:42,pokedollars:900},commandRevision:5,party:recoveredParty});
+ await pending;
+ expect(useCQInventoryStore.getState()).toMatchObject({money:900,commandRevision:5,shopOpen:false,inventoryCommandPending:false});
+ expect(usePokemonPartyStore.getState().party).toEqual(recoveredParty);
+ expect(AudioManager.playSFX).not.toHaveBeenCalled();
+});
 
 test("older scene cleanup cannot release a newer command",async()=>{
  const first=buyShopItem(1,1,1);const firstId=id();const oldRetire=retire;

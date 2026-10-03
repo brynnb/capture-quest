@@ -61,6 +61,68 @@ test(`a duplicated shop ${action} request with lost reply=${loseReply} settles o
 }
 }
 
+for (const completion of ["delayed reply", "timeout recovery"] as const) {
+test(`closing a committed purchase preserves ${completion} and the next purchase`, async ({page}, testInfo) => {
+  test.setTimeout(120000);
+  const errors = collectPageErrors(page);
+  const faults = await inventoryCommandFaults<CQMerchantBuyResponse>(page, OpCodes.CQMerchantBuyRequest, OpCodes.CQMerchantBuyResponse, true);
+  await createGuestCharacterAndEnterWorld(page);
+  await jumpToScenario(page, "debug_shop_inventory_publication");
+  await pressMovement(page, "left");
+  await expect.poll(async () => (await getGameState(page)).player.direction).toBe("LEFT");
+  await pressSpace(page);
+  await expect(page.getByRole("button", {name:"BUY",exact:true})).toBeEnabled();
+  const before = (await getGameState(page)).inventory;
+  const commandState = () => page.evaluate(async () => {
+    const path = "/src/stores/CQInventoryStore.ts";
+    const {default:store} = await import(path);
+    const state = store.getState();
+    return {revision:state.commandRevision,pending:state.inventoryCommandPending};
+  });
+  await page.getByRole("button", {name:"BUY",exact:true}).click();
+  // The real server has committed; keep its reply outside the browser until
+  // after the actual EXIT/Escape interaction has closed the shop.
+  await expect.poll(() => faults.replies.length).toBe(1);
+  const committed = faults.replies[0].inventory;
+  expect(committed.commandRevision).toBe(1);
+  expect(committed.money).toBe(before.money - 200);
+  expect(committed.items.map(item => item.instance.quantity)).toEqual([96]);
+  if (completion === "delayed reply") await page.getByRole("button", {name:"EXIT",exact:true}).click();
+  else await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", {name:"BUY",exact:true})).toHaveCount(0);
+  expect(await commandState()).toEqual({revision:0,pending:true});
+  if (completion === "delayed reply") faults.deliverReply(0);
+  await expect.poll(commandState, {timeout:20000}).toEqual({revision:1,pending:false});
+  const recovered = (await getGameState(page)).inventory;
+  expect(recovered.shopOpen).toBe(false);
+  expect(recovered.money).toBe(committed.money);
+  expect(recovered.items.map(item => ({id:item.instanceId,quantity:item.quantity}))).toEqual(
+    committed.items.map(item => ({id:item.instance.id,quantity:item.instance.quantity})),
+  );
+  expect(faults.requests).toBe(1);
+  await expect(page.getByRole("button", {name:"BUY",exact:true})).toHaveCount(0);
+
+  // Reopen through the clerk and make a distinct purchase. A stale local
+  // revision would cause the server to reject it instead of returning success.
+  await pressSpace(page);
+  await expect(page.getByRole("button", {name:"BUY",exact:true})).toBeEnabled();
+  await expect(page.getByText(`¥${committed.money.toLocaleString()}`, {exact:true}).first()).toBeVisible();
+  await page.getByRole("button", {name:"BUY",exact:true}).click();
+  await expect.poll(() => faults.replies.length).toBe(2);
+  expect(faults.replies[1].inventory.commandRevision).toBe(2);
+  faults.deliverReply(1);
+  await expect.poll(commandState).toEqual({revision:2,pending:false});
+  await expect.poll(async () => (await getGameState(page)).inventory.items.map(item => item.quantity)).toEqual([97]);
+  await expect(page.getByText(`¥${(before.money-400).toLocaleString()}`, {exact:true}).first()).toBeVisible();
+  await page.screenshot({path:testInfo.outputPath("shop-reopened-after-reconciliation.png")});
+  expect(faults.requests).toBe(2); expect(faults.successes).toBe(2);
+  await expect.poll(() => faults.rejections).toBe(2);
+  await page.getByRole("button", {name:"EXIT",exact:true}).click();
+  await quitToCharacterSelect(page);
+  errors.assertNoSevereErrors();
+});
+}
+
 test("a delayed merchant menu cannot reopen a retired scene", async ({page}) => {
   test.setTimeout(120000);
   const errors=collectPageErrors(page);

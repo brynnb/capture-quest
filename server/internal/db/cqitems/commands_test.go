@@ -3,12 +3,83 @@ package cqitems
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"testing"
 	"time"
 
 	"capturequest/internal/db"
 	"capturequest/internal/testdb"
 )
+
+func TestCommandExecutorRejectsParentTransactions(t *testing.T) {
+	for _, wrapped := range []bool{false, true} {
+		t.Run(fmt.Sprintf("wrapped=%v", wrapped), func(t *testing.T) {
+			database, store := inventoryDatabase(t)
+			tx, err := database.Begin()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tx.Rollback()
+			check := func(parent db.DBTX) error {
+				called := false
+				snapshot, err := NewStore(parent).ExecuteCommand(context.Background(), 1, 0, func(inner db.DBTX) error {
+					called = true
+					_, err := NewStore(inner).AddItemToInventory(1, 1, 1)
+					return err
+				})
+				if err == nil || called || !reflect.DeepEqual(snapshot, CQInventorySnapshot{}) {
+					t.Fatalf("parent accepted: called=%v snapshot=%+v error=%v", called, snapshot, err)
+				}
+				// Rejection must leave the caller's transaction usable and untouched.
+				var rows int
+				if err := parent.QueryRow(`SELECT count(*) FROM character_shop_state`).Scan(&rows); err != nil || rows != 0 {
+					t.Fatalf("parent revision rows=%d error=%v", rows, err)
+				}
+				return nil
+			}
+			if wrapped {
+				err = db.Transaction(context.Background(), tx, check)
+			} else {
+				err = check(tx)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := tx.Commit(); err != nil {
+				t.Fatal(err)
+			}
+			snapshot, err := store.GetCharacterSnapshot(context.Background(), 1)
+			if err != nil || len(snapshot.Items) != 0 || snapshot.CommandRevision != 0 {
+				t.Fatalf("rejected command changed durable state: %+v %v", snapshot, err)
+			}
+		})
+	}
+}
+
+func TestCommandExecutorSuccessIsCommittedOnReturn(t *testing.T) {
+	database, store := inventoryDatabase(t)
+	ctx := context.Background()
+	// Reserve an independent connection before the command starts.
+	reader, err := database.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	snapshot, err := store.ExecuteCommand(ctx, 1, 0, func(tx db.DBTX) error {
+		_, err := NewStore(tx).AddItemToInventory(1, 1, 2)
+		return err
+	})
+	if err != nil || snapshot.CommandRevision != 1 || len(snapshot.Items) != 1 {
+		t.Fatalf("command=%+v %v", snapshot, err)
+	}
+	var revision int64
+	var quantity int
+	err = reader.QueryRowContext(ctx, `SELECT revision, quantity FROM character_shop_state
+		JOIN cq_item_instances ON owner_id=character_id WHERE character_id=1 AND owner_type=0`).Scan(&revision, &quantity)
+	if err != nil || revision != snapshot.CommandRevision || quantity != 2 {
+		t.Fatalf("uncommitted success: revision=%d quantity=%d error=%v", revision, quantity, err)
+	}
+}
 
 // Both consumers use this boundary; failed effects, projections and commits
 // must roll back the revision as well as gameplay writes and publish nothing.
