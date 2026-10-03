@@ -456,9 +456,9 @@ func TestMovementStepBlackoutReturningToSourceConsumesToken(t *testing.T) {
 		if message.opcode != opcodes.PlayerStepCompleteResponse {
 			t.Fatalf("duplicate recovery published opcode %d", message.opcode)
 		}
-		var response protocol.PlayerStepError
-		if err := json.Unmarshal(message.payload, &response); err != nil || response.Success || response.Error == "" {
-			t.Fatalf("duplicate recovery result %+v %v", response, err)
+		var response protocol.PlayerStepCompleteResponse
+		if err := json.Unmarshal(message.payload, &response); err != nil || !response.Success || !response.Replayed || response.X != 7 {
+			t.Fatalf("duplicate recovery receipt %+v %v", response, err)
 		}
 	}
 }

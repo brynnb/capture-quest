@@ -2,8 +2,8 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest checkpoint: atomic movement-step effects
-(2026-10-03), following retirement of the client coordinate setter `2df1db0`, correlated cutscene completion `6638a63`, issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
+Working branch: `codex/server-foundations`. Latest checkpoint: durable ordinary-step receipts
+(2026-10-03), following atomic movement-step effects `cfdeb9e`, retirement of the client coordinate setter `2df1db0`, correlated cutscene completion `6638a63`, issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
 `0585dde`, committed
 blackout/recovery `2f62595`, teleport notification projection `65a5581`, Instant
 Warp `e1f54a8`, normal warps `3899660`, owned-position loading `64cf970`,
@@ -50,7 +50,12 @@ explicit server projection; local teleport events require committed-result prove
 Cutscene completion returns a correlated committed
 result and reconciles owned position before unlocking. Issued ordinary walking,
 forced path points and target-based Surf entry now share one transaction for their
-position and applicable step effects. Durable result recovery remains unfinished. Evidence and verification limits appear in the checkpoint sections below.
+position and applicable step effects. The latest ordinary-step commit now retains
+one durable receipt per character. Duplicate completion acknowledges that receipt
+without repeating effects. Recovery reads return current owned position and the
+matching historical receipt separately. Durable recovery of other commands and
+lost gameplay notifications remains unfinished. Evidence and verification limits
+appear in the checkpoint sections below.
 
 There is no reliable overall completion percentage: the remaining endpoint
 and ownership audits can reveal additional work. Use the five-area status
@@ -60,10 +65,106 @@ number of commits or passing tests. All five areas still have outstanding work.
 | Area | Implemented | Still required |
 | --- | --- | --- |
 | Request/session boundary | Packet and connection limits, centralized session prerequisites, removal of insecure session takeover, actual transport closure, location/visibility checks for scripted clicks, dialogue choices and direct trainer battles, client destination catalog validation, server-resolved normal warp activation, explicit Instant Warp commands, committed teleport notification contracts and read-only map metadata, retired coordinate/map setters, and preserved command deadlines/disconnect cancellation in migrated operations. | Audit remaining interaction/mutation endpoints; propagate cancellation through legacy managers and remaining database/network work. |
-| Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors, Game Corner prizes and bounded coin/slot/hidden-coin operations, atomic Escape Rope/FLY positions, durable Repel counters, Safari entry/turn/capture state and exhaustion destinations, atomic blackout/recovery destinations and map-load position/Safari/flag/visibility/boulder effects, atomic movement-step counters, encounters and recovery, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery of committed results across reconnects. |
+| Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors, Game Corner prizes and bounded coin/slot/hidden-coin operations, atomic Escape Rope/FLY positions, durable Repel counters, Safari entry/turn/capture state and exhaustion destinations, atomic blackout/recovery destinations and map-load position/Safari/flag/visibility/boulder effects, atomic movement-step counters, encounters and recovery, durable latest ordinary-step receipts, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery of committed results across reconnects. |
 | Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, and movement ticks coordinated with the owner. | Finish timer/callback/shared-state and legacy position-writer audits; prove remaining concurrent/reconnect behavior across real transports. |
 | Domains and wire contracts | Injected content-query service; typed character/wallet/bind, Pokédex/card, content detail, map-script, map-info/list and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
 | Lifecycle and verification | Owned HTTP/listeners, readiness, listener failure propagation, joined periodic workers, sealed session admissions, fail-closed staged preload, startup cancellation, atomic scripted-event publication, and deadline-aware shutdown waits with returned failure results. | Audit cancellation of remaining legacy work, define durable final-save recovery, and complete transport/rendered integration coverage. Owned HTTP and player transport retirement and isolated active-player shutdown checks have landed. |
+
+## Durable ordinary-step receipt checkpoint (2026-10-03)
+
+After an ordinary step committed, losing its reply used to look like rejection:
+its token existed only in the movement registration and was consumed on commit.
+A fresh registration could read current position, but could not establish whether
+that particular step had committed. Retrying the token returned a stale error.
+
+`movement_receipt.go` stores a versioned `CommittedPlayerStep` in
+`character_movement_receipts` inside the existing position/effects transaction.
+The table keeps one row per character, with a character-scoped token and final
+map/coordinates/direction. Only another successfully committed ordinary step
+replaces it. Failed commits and mere step acceptance cannot replace it; forced
+points and teleports leave it intact. The one-outstanding-step protocol bounds
+storage without keeping an ever-growing log of walking commands. An older token
+is no longer recoverable after the next ordinary step commits; it still cannot
+execute again without a valid outstanding issuance.
+
+Completion checks the durable receipt before consulting an in-memory token.
+A match returns correlated success with `replayed: true`, without position writes,
+actor broadcasts, counters, battle creation or trigger publication. This works
+with a fresh movement manager/owner. An owned-position read may include
+`stepToken`; its `committedStep` is historical while the response's ordinary
+`mapId/x/y/direction` describe current ownership. A subsequent teleport therefore
+cannot be undone by replaying an older receipt. Missing matches omit the receipt;
+malformed/unsupported stored records return an error rather than a guessed result.
+Startup requires this table before exposing readiness.
+
+The browser retries a completion once on a response timeout using the same token
+and a fresh request correlation. Cancellation, an explicit rejection and other
+errors do not retry. A replayed result reads current ownership, discards queued
+user movement/arrival callbacks, and projects that position; it does not activate
+a warp from a historical tile. A queued server path stays exclusive. Scene/session
+retirement ignores late reads. Failed replay reconciliation retains the input lock
+until retirement.
+
+The real WebSocket loss/re-entry check also exposed a lifecycle defect:
+TileViewer listened only for Phaser `shutdown`, but game destruction emits
+`destroy` directly. Its window/store listeners could survive quitting and handle
+warps in a new game through a retired ScenePlugin (`queueOp` on a null scene
+manager). Cleanup now runs on both lifecycle events, removing the hook pair so
+restarts do not accumulate destroy handlers. The severe-error assertion remains
+in the re-entry test.
+
+Schema/release boundary: this adds an idempotent table to
+`server/schema/postgres_runtime_schema.sql`. A future authorized release must
+apply the tracked schema before starting this binary; the existing deployment
+classifier places schema changes in the full-data lane. No reset is needed for
+this additive table. Nothing is deployed by this checkpoint.
+
+Validation:
+
+- Race-enabled PostgreSQL checks passed for `internal/db/...`, `internal/world`,
+  `internal/protocol`, `internal/scriptsim`, `cmd/server` and `cmd/import-phaser`.
+  Receipt tests cover late failure rolling back position/daycare, preserving the
+  previous receipt, loss before publication with a fresh owner, historical/current
+  position separation, character isolation, unsupported/corrupt records (including
+  missing/null coordinates) and missing-schema startup.
+- All 45 focused frontend tests passed across five files, including timeout retry
+  limits, correlation, cancellation, server-path recovery, retirement and failed
+  reconciliation. Tygo generation, typechecking, runtime asset validation and the
+  production build passed; the build retains its existing large-chunk warning.
+- All 27 isolated Chromium checks passed (3.5 minutes). The added test drops the
+  first successful completion reply at the real WebSocket boundary, observes
+  exactly two completions with the same token and different correlation IDs,
+  verifies a replay receipt/current-position read, then re-enters the character
+  and confirms a historical replay cannot rewind a subsequent Instant Warp.
+  The original severe-error and retired-coordinate-packet checks remain enabled.
+  The first run exposed the destroy-cleanup defect; the final rerun passes with
+  that fix. No receipt-read or movement-commit failures appear in the final log.
+
+Evidence: `/var/tmp/capturequest-movement-receipt-go-final.log`,
+`/var/tmp/capturequest-movement-receipt-frontend-final.log`,
+`/var/tmp/capturequest-movement-receipt-typecheck.log`,
+`/var/tmp/capturequest-movement-receipt-build.log`, and
+`/var/tmp/capturequest-movement-receipt-rendered-final.log`. Final browser/server
+artifacts: `/var/tmp/capturequest-rendered.vbJZ9H`; the earlier failure trace is
+retained in `/var/tmp/capturequest-rendered.55g1PX`. These are local checks,
+not production or throughput evidence. The final server check also verifies
+stricter corrupt-record decoding added after the rendered run; valid receipt
+encoding and frontend behavior are unchanged by that validation.
+
+Changes are checkpointed locally on `codex/server-foundations`, without push or
+deployment.
+
+Still required: receipts/issuance for other mutations; durable delivery/resumption
+of trainer and cutscene plans; full current gameplay-state resynchronization when
+notifications are lost; abrupt process/network-loss acceptance checks; and the
+remaining four-area audits alongside durable gameplay. This receipt proves an
+ordinary step's saved outcome, not replay of every presentation effect. Double
+timeout, disconnection before recovery and non-timeout transport failures still
+require later session recovery. The full five-area goal remains active.
+
+Recommended next step: durable pending gameplay plans and current-state
+resynchronization, sharing the existing authoritative battle/Safari stores rather
+than replaying old notification payloads.
 
 ## Atomic movement-step checkpoint (2026-10-03)
 

@@ -79,8 +79,8 @@ func TestIssuedPlayerStepCommitRollbackRetryAndDuplicate(t *testing.T) {
 	assertStepPosition(t, wh, ses, 8)
 	// Duplicate acknowledgement cannot execute durable step effects again.
 	battleDispatch(t, wh, ses, opcodes.PlayerStepCompleteRequest, payload)
-	if err := json.Unmarshal(messages.streams[len(messages.streams)-1].payload, &response); err != nil || response.Success || response.Error == "" {
-		t.Fatal("duplicate acknowledged")
+	if err := json.Unmarshal(messages.streams[len(messages.streams)-1].payload, &success); err != nil || !success.Success || !success.Replayed || success.X != 8 {
+		t.Fatalf("duplicate receipt=%+v %v", success, err)
 	}
 	assertStepPosition(t, wh, ses, 8)
 }

@@ -77,6 +77,9 @@ func NewWorldHandler(ctx context.Context, sessionManager *session.SessionManager
 		return nil, fmt.Errorf("preload actors: %w", err)
 	}
 	wh.PlayerMovement = NewPlayerMovementManager(wh, wh.ActorManager)
+	if err := wh.PlayerMovement.Load(ctx); err != nil {
+		return nil, fmt.Errorf("preload PlayerMovement: %w", err)
+	}
 	wh.TrainerEncounter = NewTrainerEncounterManager(wh)
 	if err := wh.TrainerEncounter.Load(ctx); err != nil {
 		return nil, fmt.Errorf("preload TrainerEncounter: %w", err)

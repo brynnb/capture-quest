@@ -1,5 +1,5 @@
 import type { PlayerStepResponse, PlayerStepError } from "@/net/generated/protocol";
-import { requestPlayerFacing, requestPlayerStep, completePlayerStep } from "../services/PlayerMovementService";
+import { requestPlayerFacing, requestPlayerStep, completePlayerStep, readOwnedPlayerPosition } from "../services/PlayerMovementService";
 import { CorrelatedResponseError } from "../services/CorrelatedRequest";
 import { Scene } from "phaser";
 import { PhaserActor, PhaserTile, PhaserWarp } from "@/net/generated/world_api";
@@ -134,7 +134,9 @@ export class PlayerMovementController {
 
   // Callback fired when player arrives at a destination (used for warp pathing)
   private arrivalCallback: ((x: number, y: number) => boolean) | null = null;
-  private inputFrozenChecker: () => boolean = () => isWorldInputFrozen();
+  private inputFreezeProvider: () => boolean = () => isWorldInputFrozen();
+  private stepRecoveryRequired = false;
+  private inputFrozenChecker = (): boolean => this.stepRecoveryRequired || this.inputFreezeProvider();
   private warpTileChecker: (x: number, y: number) => boolean = () => false;
   private warpAtProvider: (x: number, y: number) => PhaserWarp | null =
     () => null;
@@ -153,7 +155,7 @@ export class PlayerMovementController {
   }
 
   setInputFrozenChecker(checker: () => boolean): void {
-    this.inputFrozenChecker = checker;
+    this.inputFreezeProvider = checker;
   }
 
   setWarpTileChecker(checker: (x: number, y: number) => boolean): void {
@@ -1546,8 +1548,32 @@ export class PlayerMovementController {
         if (!abort || issued.x !== x || issued.y !== y || issued.mapId !== this.currentMapId) {
           throw new Error("Movement animation disagrees with the issued step");
         }
-        await completePlayerStep(issued.stepToken, abort.signal);
+        const result = await completePlayerStep(issued.stepToken, abort.signal);
         if (generation !== this.movementGeneration || abort.signal.aborted) return;
+        if (result.replayed) {
+          // A receipt is historical. Read the current owned location before
+          // projecting recovery, and discard future path/arrival callbacks.
+          let owned;
+          try { owned = await readOwnedPlayerPosition(abort.signal, issued.stepToken); }
+          catch (error) {
+            if (generation !== this.movementGeneration || abort.signal.aborted) return;
+            this.stepRecoveryRequired = true;
+            this.currentPath = [];
+            this.arrivalCallback = null;
+            throw error;
+          }
+          if (generation !== this.movementGeneration || abort.signal.aborted) return;
+          this.stopMovement(true);
+          if (owned.mapId === this.currentMapId) {
+            this.syncPosition(owned.x, owned.y);
+            this.syncDirection(owned.direction);
+            this.mapRenderer?.snapActorPosition(actorId, owned.x, owned.y, owned.direction);
+            if (owned.serverMovementPending) this.beginServerMovement(false);
+          } else {
+            window.dispatchEvent(new CustomEvent("warpTileTeleport", { detail: { ...owned, serverCommitted: true, sfxAlreadyPlayed: true } }));
+          }
+          return;
+        }
         this.issuedStep = null;
         this.stepAbort = null;
       } else {
@@ -1688,6 +1714,10 @@ export class PlayerMovementController {
 
   private handleStepFailure(error: unknown): void {
     if (error instanceof DOMException && error.name === "AbortError") return;
+    if (this.stepRecoveryRequired) {
+      console.error("[PlayerMovement] Could not recover movement; input remains locked until scene/session retirement", error);
+      return;
+    }
     this.stopMovement(true);
     if (error instanceof CorrelatedResponseError) {
       const owned = error.response as PlayerStepError;
@@ -1966,6 +1996,7 @@ export class PlayerMovementController {
 
   stopMovement(retireIssued = false): void {
     if (retireIssued) {
+      this.stepRecoveryRequired = false;
       this.serverMovementInProgress = false;
       this.serverPathFinished = true;
       this.facingAbort?.abort();

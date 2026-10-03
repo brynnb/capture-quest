@@ -276,6 +276,7 @@ export interface PlayerStepCompleteRequest {
   requestId: string;
 }
 export interface PlayerStepCompleteResponse {
+  replayed?: boolean;
   success: true;
   requestId: string;
   mapId: number /* int */;
@@ -336,10 +337,22 @@ export interface CutsceneEndRequest {
   scriptLabel: string;
   requestId: string;
 }
+/**
+ * CommittedPlayerStep is a historical receipt, never a new position command.
+ */
+export interface CommittedPlayerStep {
+  stepToken: string;
+  mapId: number /* int */;
+  x: number /* int */;
+  y: number /* int */;
+  direction: string;
+}
 export interface OwnedPlayerPositionRequest {
   requestId: string;
+  stepToken?: string;
 }
 export interface OwnedPlayerPositionResponse {
+  committedStep?: CommittedPlayerStep;
   success: true;
   requestId: string;
   mapId: number /* int */;

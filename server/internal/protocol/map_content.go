@@ -191,6 +191,7 @@ type PlayerStepCompleteRequest struct {
 	RequestID string `json:"requestId"`
 }
 type PlayerStepCompleteResponse struct {
+	Replayed  bool   `json:"replayed,omitempty"`
 	Success   bool   `json:"success" tstype:"true"`
 	RequestID string `json:"requestId"`
 	MapID     int    `json:"mapId"`
@@ -248,17 +249,28 @@ type CutsceneEndRequest struct {
 	RequestID       string `json:"requestId"`
 }
 
+// CommittedPlayerStep is a historical receipt, never a new position command.
+type CommittedPlayerStep struct {
+	StepToken string `json:"stepToken"`
+	MapID     int    `json:"mapId"`
+	X         int    `json:"x"`
+	Y         int    `json:"y"`
+	Direction string `json:"direction"`
+}
+
 type OwnedPlayerPositionRequest struct {
 	RequestID string `json:"requestId"`
+	StepToken string `json:"stepToken,omitempty"`
 }
 type OwnedPlayerPositionResponse struct {
-	Success               bool   `json:"success" tstype:"true"`
-	RequestID             string `json:"requestId"`
-	MapID                 int    `json:"mapId"`
-	X                     int    `json:"x"`
-	Y                     int    `json:"y"`
-	Direction             string `json:"direction"`
-	ServerMovementPending bool   `json:"serverMovementPending"`
+	CommittedStep         *CommittedPlayerStep `json:"committedStep,omitempty"`
+	Success               bool                 `json:"success" tstype:"true"`
+	RequestID             string               `json:"requestId"`
+	MapID                 int                  `json:"mapId"`
+	X                     int                  `json:"x"`
+	Y                     int                  `json:"y"`
+	Direction             string               `json:"direction"`
+	ServerMovementPending bool                 `json:"serverMovementPending"`
 }
 type CutsceneEndResponse struct {
 	OwnedPlayerPositionResponse `tstype:",extends"`

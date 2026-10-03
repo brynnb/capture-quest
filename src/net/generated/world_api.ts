@@ -1008,6 +1008,10 @@ export interface MapScriptManager {
 }
 
 //////////
+// source: movement_receipt.go
+
+
+//////////
 // source: movement_step.go
 
 

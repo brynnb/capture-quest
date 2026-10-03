@@ -425,8 +425,10 @@ export class TileViewer extends Scene {
     this.mapInfo = null;
     this.tileLookup.clear();
 
-    // Set up scene cleanup
+    // Restart emits shutdown, while game destruction emits destroy directly.
+    // Both must retire window/store subscriptions before another game is created.
     this.events.once("shutdown", this.cleanupResources, this);
+    this.events.once("destroy", this.cleanupResources, this);
 
     // Create map container - ensure any existing one is destroyed first
     const existingContainer = this.children.getByName("mapContainer");
@@ -2114,6 +2116,10 @@ export class TileViewer extends Scene {
   }
 
   cleanupResources() {
+    // Explicit reset also cleans up before Phaser shutdown. Remove both hooks
+    // so subsequent create calls install exactly one pair for the new lifetime.
+    this.events.off("shutdown", this.cleanupResources, this);
+    this.events.off("destroy", this.cleanupResources, this);
     this.warpExitInputLocked = false;
     clearCaptureQuestTileViewerDiagnostics();
 

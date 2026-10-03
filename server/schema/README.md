@@ -16,3 +16,11 @@ seeds deterministic CaptureQuest runtime data, syncs file-backed scripted
 events, and runs database smoke checks.
 
 Use `docs/DATABASE_BOOTSTRAP.md` for setup details.
+
+The server-foundations movement checkpoint adds `character_movement_receipts`
+with one versioned latest ordinary-step result per character. The table is added
+idempotently and cascades on character deletion. Apply the tracked schema before
+starting a binary that requires receipts; startup fails if it is absent. Ordinary
+step receipt writes share the position/effects transaction. This addition requires
+no database reset. For an authorized production release, use the schema-aware
+full-data workflow in `docs/DEPLOYMENT.md`.

@@ -759,6 +759,20 @@ cache refresh failure, durable command/result delivery and throughput remain in
 `SERVER_FOUNDATIONS.md`; fresh-manager recovery and rendered Safari checks do not
 prove abrupt network/process recovery or completion of those wider requirements.
 
+Ordinary step completion persists a versioned receipt in
+`character_movement_receipts` inside that same position/effects transaction.
+There is one row per character, replaced only by the next committed ordinary
+step. A duplicate token returns correlated historical success without applying
+any effects or overwriting current location. Owned-position reads optionally
+return the matching receipt separately from current ownership. This survives a
+fresh movement registration; startup requires its schema. TileViewer retires
+window/store subscriptions on both Phaser shutdown and destroy, including game
+replacement at character re-entry. The browser retries a
+timed-out completion once, then reads current ownership on replay and discards
+its old path/arrival callbacks. Receipt recovery does not yet resume every lost
+trainer/cutscene notification; broader durable issuance and gameplay-state
+resynchronization remain in `SERVER_FOUNDATIONS.md`.
+
 Session commands now retain the original admission deadline through
 `Session.CommandContext()` and cancel it when the connection closes. Migrated
 handlers use it for their context-aware queries/transactions; movement saves

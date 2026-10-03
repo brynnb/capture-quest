@@ -67,11 +67,21 @@ func sendPlayerStepError(ses *session.Session, wh *WorldHandler, requestID strin
 // No arrival effects, position writes or client destination are part of recovery.
 func HandleOwnedPlayerPositionRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
 	var req protocol.OwnedPlayerPositionRequest
-	if decodePlayerMovement(payload, &req) != nil || req.RequestID == "" || len(req.RequestID) > 64 {
+	if decodePlayerMovement(payload, &req) != nil || req.RequestID == "" || len(req.RequestID) > 64 || (req.StepToken != "" && !validMovementToken(req.StepToken)) {
 		sendOwnedPlayerError(ses, wh, req.RequestID, opcodes.OwnedPlayerPositionResponse, "Invalid position read.")
 		return false
 	}
-	ses.SendStreamJSON(wh.ownedPlayerSnapshot(ses, req.RequestID), opcodes.OwnedPlayerPositionResponse)
+	snapshot := wh.ownedPlayerSnapshot(ses, req.RequestID)
+	if req.StepToken != "" {
+		receipt, err := loadMovementReceipt(ses.CommandContext(), wh.database, int64(ses.Client.CharData().ID), req.StepToken)
+		if err != nil {
+			logutil.Debugf("[PlayerMovement] Read receipt: %v", err)
+			sendOwnedPlayerError(ses, wh, req.RequestID, opcodes.OwnedPlayerPositionResponse, "Could not read movement result.")
+			return false
+		}
+		snapshot.CommittedStep = receipt
+	}
+	ses.SendStreamJSON(snapshot, opcodes.OwnedPlayerPositionResponse)
 	return false
 }
 
@@ -175,8 +185,20 @@ func HandlePlayerStepCompleteRequest(ses *session.Session, payload []byte, wh *W
 	var req protocol.PlayerStepCompleteRequest
 	err := decodePlayerMovement(payload, &req)
 	fail := func() { sendPlayerStepError(ses, wh, req.RequestID, opcodes.PlayerStepCompleteResponse) }
-	if err != nil || req.RequestID == "" || len(req.RequestID) > 64 || req.StepToken == "" || wh.PlayerMovement == nil {
+	if err != nil || req.RequestID == "" || len(req.RequestID) > 64 || !validMovementToken(req.StepToken) || wh.PlayerMovement == nil {
 		fail()
+		return false
+	}
+	receipt, err := loadMovementReceipt(ses.CommandContext(), wh.database, int64(ses.Client.CharData().ID), req.StepToken)
+	if err != nil {
+		logutil.Debugf("[PlayerMovement] Read completion receipt: %v", err)
+		fail()
+		return false
+	}
+	if receipt != nil {
+		// Historical success acknowledges the lost reply only. Never rewind live
+		// state, republish triggers, or replay counters/battles on a duplicate.
+		ses.SendStreamJSON(protocol.PlayerStepCompleteResponse{Success: true, RequestID: req.RequestID, MapID: receipt.MapID, X: receipt.X, Y: receipt.Y, Direction: receipt.Direction, Replayed: true}, opcodes.PlayerStepCompleteResponse)
 		return false
 	}
 	step, err := wh.PlayerMovement.completePlayerStep(ses, req.StepToken)
@@ -233,7 +255,7 @@ func (m *PlayerMovementManager) completePlayerStep(ses *session.Session, token s
 	} else if value, exists := collision[tileKey(step.x, step.y)]; !exists || !isPathableCollision(value, pathfindOptions{AllowWater: surfing}) {
 		return nil, fmt.Errorf("step became blocked")
 	}
-	effects, err := commitMovementStep(ses.CommandContext(), m.wh, int64(charID), movementStepCandidate{SourceMap: step.mapID, SourceX: step.sourceX, SourceY: step.sourceY, MapID: step.mapID, X: step.x, Y: step.y, Direction: step.direction})
+	effects, err := commitMovementStep(ses.CommandContext(), m.wh, int64(charID), movementStepCandidate{StepToken: token, SourceMap: step.mapID, SourceX: step.sourceX, SourceY: step.sourceY, MapID: step.mapID, X: step.x, Y: step.y, Direction: step.direction})
 	if err != nil {
 		return nil, err
 	}

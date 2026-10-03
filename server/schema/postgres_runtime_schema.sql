@@ -150,6 +150,15 @@ CREATE TABLE IF NOT EXISTS character_safari_state (
     updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- One outstanding ordinary step per character: retain the latest commit receipt.
+-- A receipt is replaced only by another successfully committed ordinary step.
+CREATE TABLE IF NOT EXISTS character_movement_receipts (
+    character_id bigint PRIMARY KEY REFERENCES character_data(id) ON DELETE CASCADE,
+    step_token varchar(32) NOT NULL CHECK (step_token ~ '^[0-9a-f]{32}$'),
+    result_json text NOT NULL,
+    committed_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS character_repels (
     character_id bigint PRIMARY KEY REFERENCES character_data(id) ON DELETE CASCADE,
     steps_left integer NOT NULL CHECK (steps_left > 0),

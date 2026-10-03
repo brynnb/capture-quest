@@ -4,6 +4,9 @@ interface CorrelatedErrorResponse { success: false; requestId: string; error: st
 export class CorrelatedResponseError extends Error {
   constructor(public readonly response: CorrelatedErrorResponse) { super(response.error); }
 }
+export class CorrelatedRequestTimeoutError extends Error {
+  constructor() { super("Timeout waiting for server response"); }
+}
 const REQUEST_TIMEOUT_MS = 10000;
 
 let requestSequence = 0;
@@ -43,7 +46,7 @@ export function correlatedRequest<T extends { success: true; requestId: string }
     if (settled) { unsubscribe(); return; }
     signal?.addEventListener("abort", abort, { once: true });
     if (signal?.aborted) { abort(); return; }
-    timeout = setTimeout(() => finish(new Error("Timeout waiting for server response")), REQUEST_TIMEOUT_MS);
+    timeout = setTimeout(() => finish(new CorrelatedRequestTimeoutError()), REQUEST_TIMEOUT_MS);
     try { send(requestId); } catch (error) { finish(error instanceof Error ? error : new Error(String(error))); }
   });
 }

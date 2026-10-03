@@ -5,6 +5,7 @@ vi.mock("../services/PlayerMovementService", () => ({
   requestPlayerFacing: vi.fn(async () => ({ success: true, requestId: "face", mapId: 9999, x: 10, y: 0, direction: "LEFT" })),
   requestPlayerStep: vi.fn(async () => ({ success: true, requestId: "accepted", stepToken: "issued", mapId: 9999, x: 10, y: 2, direction: "DOWN", ledgeJump: true })),
   completePlayerStep: vi.fn(async () => ({ success: true, requestId: "complete", mapId: 9999, x: 10, y: 2, direction: "DOWN" })),
+  readOwnedPlayerPosition: vi.fn(async () => ({ success: true, requestId: "owned", mapId: 9999, x: 9, y: 0, direction: "LEFT", serverMovementPending: false })),
 }));
 afterEach(() => vi.clearAllMocks());
 import { describe, expect, test, vi } from "vitest";
@@ -349,4 +350,62 @@ test("committed warp exit is a server projection and retirement ignores late com
   idle(); await done;
   expect(controller.getCurrentPosition()).toEqual({ x: 20, y: 20 });
   expect(movement.completePlayerStep).not.toHaveBeenCalled();
+});
+
+
+test("a replayed receipt reconciles current ownership and does not trigger another arrival", async () => {
+  vi.mocked(movement.completePlayerStep).mockResolvedValueOnce({ success: true, requestId: "receipt", replayed: true, mapId: 9999, x: 10, y: 2, direction: "DOWN" });
+  const { controller, mapRenderer } = buildLedgeController();
+  const arrived = vi.fn(); controller.setArrivalCallback(arrived);
+  controller.handleKeyboardMove("DOWN");
+  await vi.waitFor(() => expect(movement.requestPlayerStep).toHaveBeenCalled());
+  controller.onStepComplete(1, 10, 2, "DOWN");
+  await vi.waitFor(() => expect(mapRenderer.snapActorPosition).toHaveBeenCalledWith(1, 9, 0, "LEFT"));
+  expect(movement.readOwnedPlayerPosition).toHaveBeenCalledWith(expect.any(AbortSignal), "issued");
+  expect(controller.getCurrentPosition()).toEqual({ x: 9, y: 0 });
+  expect(controller.getIsMoving()).toBe(false);
+  expect(arrived).not.toHaveBeenCalled();
+  controller.clear();
+});
+
+test("receipt recovery preserves a current server path instead of resuming user input", async () => {
+  vi.mocked(movement.completePlayerStep).mockResolvedValueOnce({ success: true, requestId: "receipt", replayed: true, mapId: 9999, x: 10, y: 2, direction: "DOWN" });
+  vi.mocked(movement.readOwnedPlayerPosition).mockResolvedValueOnce({ success: true, requestId: "owned", mapId: 9999, x: 9, y: 0, direction: "LEFT", serverMovementPending: true });
+  const { controller, mapRenderer } = buildLedgeController();
+  controller.handleKeyboardMove("DOWN");
+  await vi.waitFor(() => expect(movement.requestPlayerStep).toHaveBeenCalled());
+  controller.onStepComplete(1, 10, 2, "DOWN");
+  await vi.waitFor(() => expect(mapRenderer.snapActorPosition).toHaveBeenCalled());
+  expect(controller.getIsMoving()).toBe(true);
+  expect(controller.handleKeyboardMove("DOWN")).toBe(false);
+  controller.clear();
+});
+
+test("retirement ignores a late receipt recovery and failed recovery keeps input locked", async () => {
+  vi.mocked(movement.completePlayerStep).mockResolvedValueOnce({ success: true, requestId: "receipt", replayed: true, mapId: 9999, x: 10, y: 2, direction: "DOWN" });
+  let recover!: (value: Awaited<ReturnType<typeof movement.readOwnedPlayerPosition>>) => void;
+  vi.mocked(movement.readOwnedPlayerPosition).mockImplementationOnce(() => new Promise(resolve => { recover = resolve; }));
+  const { controller, mapRenderer } = buildLedgeController();
+  controller.handleKeyboardMove("DOWN");
+  await vi.waitFor(() => expect(movement.requestPlayerStep).toHaveBeenCalled());
+  controller.onStepComplete(1, 10, 2, "DOWN");
+  await vi.waitFor(() => expect(movement.readOwnedPlayerPosition).toHaveBeenCalled());
+  controller.clear(); controller.syncPosition(20, 20);
+  recover({ success: true, requestId: "late", mapId: 9999, x: 9, y: 0, direction: "LEFT", serverMovementPending: false });
+  await Promise.resolve(); await Promise.resolve();
+  expect(mapRenderer.snapActorPosition).not.toHaveBeenCalled();
+  expect(controller.getCurrentPosition()).toEqual({ x: 20, y: 20 });
+
+  vi.clearAllMocks();
+  vi.mocked(movement.completePlayerStep).mockResolvedValueOnce({ success: true, requestId: "receipt", replayed: true, mapId: 9999, x: 10, y: 2, direction: "DOWN" });
+  vi.mocked(movement.readOwnedPlayerPosition).mockRejectedValueOnce(new Error("recovery unavailable"));
+  const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  const next = buildLedgeController().controller;
+  next.handleKeyboardMove("DOWN");
+  await vi.waitFor(() => expect(movement.requestPlayerStep).toHaveBeenCalled());
+  next.onStepComplete(1, 10, 2, "DOWN");
+  await vi.waitFor(() => expect(log).toHaveBeenCalled());
+  expect(next.handleKeyboardMove("LEFT")).toBe(false);
+  expect(next.requestMoveTo(9, 0)).toBe(false);
+  next.clear(); log.mockRestore();
 });

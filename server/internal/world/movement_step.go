@@ -14,6 +14,7 @@ import (
 // Surf entry preserves its existing wild-only effect policy; forced paths alone
 // resolve spin/current/automatic warp continuation. Ordinary warps use 183/184.
 type movementStepCandidate struct {
+	StepToken                          string
 	SourceMap, SourceX, SourceY        int
 	MapID, X, Y                        int
 	Direction                          string
@@ -87,6 +88,9 @@ func commitMovementStep(ctx context.Context, wh *WorldHandler, charID int64, c m
 				if err == nil {
 					result.Flags = final.flags[charID]
 				}
+			}
+			if err == nil && c.StepToken != "" {
+				err = saveMovementReceiptIn(tx, charID, c.StepToken, result)
 			}
 		}()
 		if c.SurfEntry {
