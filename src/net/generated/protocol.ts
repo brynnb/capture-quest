@@ -247,6 +247,54 @@ export interface SafariZoneExitNotify extends WarpTileTeleportNotify {
   ballsLeft: number /* int */;
   message: string;
 }
+/**
+ * PlayerStepRequest proposes one direction from an expected owned source.
+ * The server resolves the target and issues a session-bound animation token.
+ */
+export interface PlayerStepRequest {
+  mapId: number /* int */;
+  fromX: number;
+  fromY: number;
+  direction: string;
+  requestId: string;
+}
+export interface PlayerStepResponse {
+  success: true;
+  requestId: string;
+  stepToken: string;
+  mapId: number /* int */;
+  x: number /* int */;
+  y: number /* int */;
+  direction: string;
+  ledgeJump: boolean;
+}
+/**
+ * PlayerStepCompleteRequest acknowledges issued movement, never coordinates.
+ */
+export interface PlayerStepCompleteRequest {
+  stepToken: string;
+  requestId: string;
+}
+export interface PlayerStepCompleteResponse {
+  success: true;
+  requestId: string;
+  mapId: number /* int */;
+  x: number /* int */;
+  y: number /* int */;
+  direction: string;
+}
+/**
+ * PlayerStepError returns the owned location so rejected animations can reconcile.
+ */
+export interface PlayerStepError {
+  success: false;
+  requestId: string;
+  error: string;
+  mapId: number /* int */;
+  x: number /* int */;
+  y: number /* int */;
+  direction: string;
+}
 
 //////////
 // source: pokedex.go

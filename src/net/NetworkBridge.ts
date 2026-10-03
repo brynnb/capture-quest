@@ -90,6 +90,8 @@ export class NetworkBridge {
 
       // Phaser 2D game opcodes
       case OpCodes.PhaserMapInfoResponse:
+      case OpCodes.PlayerStepResponse:
+      case OpCodes.PlayerStepCompleteResponse:
       case OpCodes.PhaserMapLoadResponse:
       case OpCodes.PhaserInstantWarpResponse:
       case OpCodes.PhaserWarpActivateResponse:

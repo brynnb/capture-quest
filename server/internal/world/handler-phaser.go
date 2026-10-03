@@ -880,6 +880,12 @@ func HandlePhaserPlayerPositionUpdate(ses *session.Session, payload []byte, wh *
 		handleClientReportedStepEffects(ses, wh, int64(char.ID), req.X, req.Y, mapID, direction, mapChanged, prevMapID)
 	}
 
+	broadcastCommittedPlayerStep(ses, wh, req.X, req.Y, mapID, direction, prevMapID)
+	return false
+}
+
+func broadcastCommittedPlayerStep(ses *session.Session, wh *WorldHandler, x, y, mapID int, direction string, previousMapID int) {
+	char := ses.Client.CharData()
 	ridingBicycle := wh.PlayerMovement != nil && wh.PlayerMovement.IsBicycleActive(int(char.ID))
 	surfing := wh.PlayerMovement != nil && wh.PlayerMovement.IsSurfing(int(char.ID))
 	spriteName := playerSpriteName(char.Gender, ridingBicycle, surfing)
@@ -888,8 +894,8 @@ func HandlePhaserPlayerPositionUpdate(ses *session.Session, payload []byte, wh *
 	playerActor := PhaserActor{
 		ID:              wh.ActorRegistry.GetPhaserID(ActorTypePlayer, int(char.ID)),
 		InternalID:      int(char.ID),
-		X:               &req.X,
-		Y:               &req.Y,
+		X:               &x,
+		Y:               &y,
 		MapID:           mapID,
 		ObjectType:      "player",
 		SpriteName:      &spriteName,
@@ -900,13 +906,11 @@ func HandlePhaserPlayerPositionUpdate(ses *session.Session, payload []byte, wh *
 		MoveSpeed:       wh.PlayerMovement.GetMoveSpeed(int(char.ID)),
 	}
 
-	if mapChanged {
-		broadcastPlayerActorVisibleMapChange(ses, wh, prevMapID, &playerActor)
+	if previousMapID != mapID {
+		broadcastPlayerActorVisibleMapChange(ses, wh, previousMapID, &playerActor)
 	} else {
 		wh.ActorManager.broadcastActorUpdate(&playerActor, ses.SessionID)
 	}
-
-	return false
 }
 
 func handleClientReportedStepEffects(ses *session.Session, wh *WorldHandler, charID int64, x, y, mapID int, direction string, mapChanged bool, previousMapID int) {

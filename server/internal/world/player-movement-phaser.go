@@ -31,6 +31,7 @@ type PlayerMovementState struct {
 	ForcedBicycle   bool       `json:"forcedBicycle,omitempty"`
 	LastMoveTime    time.Time  `json:"lastMoveTime"`
 	LastSaveTime    time.Time  `json:"lastSaveTime"` // Last time we persisted to DB
+	pendingStep     *issuedPlayerStep
 	positionDirty   bool
 	lastSaveAttempt time.Time
 	MoveSpeed       time.Duration `json:"moveSpeed"` // Time per tile, including runtime movement effects
@@ -293,6 +294,7 @@ func (m *PlayerMovementManager) StopMovement(charID int) {
 	if !ok {
 		return
 	}
+	state.pendingStep = nil
 	state.Path = nil
 }
 
@@ -323,6 +325,7 @@ func (m *PlayerMovementManager) UpdateMapID(charID int, mapID int) {
 				ses.PreviousMapID = previousMapID
 			}
 		}
+		state.pendingStep = nil
 		state.Path = nil // Clear any pending path on old map
 		m.applyBicycleMapRules(state)
 	}
@@ -350,6 +353,7 @@ func (m *PlayerMovementManager) UpdatePosition(charID int, x, y, mapID int, dire
 			}
 		}
 	}
+	state.pendingStep = nil
 	state.positionDirty = true
 	state.CurrentX = x
 	state.CurrentY = y
@@ -396,6 +400,7 @@ func (m *PlayerMovementManager) UpdateReportedPosition(charID int, x, y, mapID i
 		}
 	}
 
+	state.pendingStep = nil
 	state.positionDirty = true
 	state.CurrentX = x
 	state.CurrentY = y
@@ -824,6 +829,7 @@ func (m *PlayerMovementManager) MovePlayerTo(ctx context.Context, charID int, x,
 		m.mu.Unlock()
 		return false
 	}
+	state.pendingStep = nil
 	state.positionDirty = true
 	state.CurrentX = x
 	state.CurrentY = y

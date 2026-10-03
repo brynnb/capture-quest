@@ -31,6 +31,18 @@ func ApplyEventObjectVisibilityToActors(charID int64, mapID int, efm *EventFlagM
 	if len(actors) == 0 {
 		return actors
 	}
+	visible, err := applyEventObjectVisibilityContext(context.Background(), db.GlobalWorldDB.DB, charID, mapID, efm, actors)
+	if err != nil {
+		log.Printf("[EventObjects] Visibility: %v", err)
+		return actors
+	}
+	return visible
+}
+
+func applyEventObjectVisibilityContext(ctx context.Context, database db.ContextDBTX, charID int64, mapID int, efm *EventFlagManager, actors []PhaserActor) ([]PhaserActor, error) {
+	if len(actors) == 0 {
+		return actors, nil
+	}
 
 	mapIDs := map[int]bool{mapID: true}
 	if mapID == UnifiedOverworldMapID {
@@ -44,10 +56,9 @@ func ApplyEventObjectVisibilityToActors(charID int64, mapID int, efm *EventFlagM
 	rulesByMap := make(map[int][]eventObjectVisibility, len(mapIDs))
 	hasRules := false
 	for id := range mapIDs {
-		rules, err := eventObjectVisibilityForMap(id)
+		rules, err := eventObjectVisibilityForMapContext(ctx, database, id)
 		if err != nil {
-			log.Printf("[EventObjects] Failed to load visibility rules for map %d: %v", id, err)
-			continue
+			return nil, err
 		}
 		if len(rules) > 0 {
 			hasRules = true
@@ -55,13 +66,12 @@ func ApplyEventObjectVisibilityToActors(charID int64, mapID int, efm *EventFlagM
 		}
 	}
 	if !hasRules {
-		return actors
+		return actors, nil
 	}
 
-	overrides, err := objectVisibilityOverridesForCharacter(charID)
+	overrides, err := objectVisibilityOverridesForCharacterContext(ctx, database, charID)
 	if err != nil {
-		log.Printf("[EventObjects] Failed to load visibility overrides for character %d: %v", charID, err)
-		overrides = nil
+		return nil, err
 	}
 
 	filtered := actors[:0]
@@ -81,7 +91,7 @@ func ApplyEventObjectVisibilityToActors(charID int64, mapID int, efm *EventFlagM
 			filtered = append(filtered, actor)
 		}
 	}
-	return filtered
+	return filtered, nil
 }
 
 func EventObjectStatesForCharacter(charID int64, mapID int, efm *EventFlagManager) ([]EventObjectState, error) {

@@ -2,12 +2,11 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest checkpoint: owned-only MapLoad
-requests (2026-10-02), following committed blackout
-recovery, Safari presentation and explicit test warp probes `2f62595`, then
-teleport notification projection `65a5581`, Instant Warp `e1f54a8`, normal warps
-`3899660`, owned-position loading `64cf970`, provenance `057f758` and atomic
-map-load `b8f5ccd`.
+Working branch: `codex/server-foundations`. Latest checkpoint: issued ordinary
+player steps (implementation checkpoint; rendered acceptance incomplete, 2026-10-02), following owned-only MapLoad `0585dde`, committed
+blackout/recovery `2f62595`, teleport notification projection `65a5581`, Instant
+Warp `e1f54a8`, normal warps `3899660`, owned-position loading `64cf970`,
+provenance `057f758` and atomic map-load `b8f5ccd`.
 Earlier foundation checkpoints remain in this branch's history. No push or production deployment
 is authorized by this goal.
 
@@ -32,26 +31,20 @@ evidence, including remaining-work notes that subsequent commits may resolve.
 
 ### Checkpoint handoff (2026-10-02)
 
-Implementation checkpoints are committed locally on
-`codex/server-foundations`; the current checkpoint retires supplied MapLoad
-destinations after `2f62595`. The goal remains active; no push or deployment has
-been performed as part of these checkpoints. The preceding change makes blackout
-wallet, healed party, Safari exit and saved destination commit together, then
-publishes the committed position. Safari and test warp presentation also use
-server-committed destinations.
+Implementation checkpoints are committed locally on `codex/server-foundations`.
+The goal remains active; no push or deployment is part of these checkpoints.
+MapLoad now rejects supplied destinations. Ordinary walking requests a direction
+from its expected owned source, animates a server-issued step, then acknowledges
+its token before continuing the path. Blackout, Safari and explicit warp commands
+publish server-committed destinations.
 
-MapLoad now rejects supplied `destX`/`destY` and loads only owned position.
-The next implementation checkpoint is to bind walking/facing and scripted
-animation reports to accepted server movement; opcode 45 still permits broader
-location reporting. Keep legitimate movement and map-arrival effects working
-through that migration.
-
-The latest verification includes PostgreSQL rollback/retry and race checks,
-25 focused frontend tests, typecheck, production build, asset validation,
-stable protocol generation, and isolated rendered blackout/Instant Warp/Safari
-checks. Detailed results and rerun limits are in the checkpoint below. These
-checks do not establish durable replay/reconnect recovery or completion of
-every legacy mutation, callback, dependency or wire-contract migration.
+Before the next migration, resolve the two rendered movement failures documented
+below and recheck input cancellation while an issued step is completing. Then
+continue retiring legacy opcode 45: scripted/field animation reports and
+facing updates still share its broader coordinate authority. Bind those to issued
+script/field results and owned facing state before retiring that writer. Step
+side effects and durable result recovery also need further work. Evidence and
+verification limits appear in the checkpoint sections below.
 
 There is no reliable overall completion percentage: the remaining endpoint
 and ownership audits can reveal additional work. Use the five-area status
@@ -118,6 +111,93 @@ number of commits or passing tests. All five areas still have outstanding work.
    cancellation/timeouts, failure/retry and shutdown with active players.
    Acceptance: evidence covers the original five milestones, including visible
    behavior where relevant. Only then mark the full goal complete.
+
+## Issued ordinary player steps (2026-10-02)
+
+Ordinary walking previously started a local path and sent arbitrary coordinates
+through opcode 45 after each animation. The server accepted catalog membership
+without proving a permitted step from owned location. Fresh entry did not even
+register movement: the first legacy report created that state. This checkpoint
+registers movement when character ownership and durable location are established,
+before publishing entry success, including after a drained connection handoff.
+
+New protocol pairs 187/188 (intent/result) and 189/190 (completion/result) are
+generated from explicit Go JSON fields. Intent contains the expected source and
+direction, never a destination. The server resolves one cardinal step or a source
+ledge jump using the shared character collision model, including event/Cut
+changes, boulders, NPC visibility/runtime positions and surfing eligibility.
+Acceptance issues one random token bound to the current movement registration.
+It does not save or publish a new position. A replacement intent at the same
+source retires the previous token, so a cancelled request does not block retry.
+
+Completion contains only token and correlation ID. It checks the session/source,
+expiry and current dynamic collision, waits under the command context until the
+issued movement duration has elapsed, then saves position in the existing bounded
+character-locked transaction. Commit precedes owned-state refresh, response,
+multiplayer broadcast and step effects. A failed commit publishes only the owned
+location in an error response; retry requires a new intent. Replay, connection
+replacement, map/position replacement and stopped server movement invalidate the
+old token. One pending step has a ten-second lifetime; it is session state, not
+a durable replay/result log.
+
+The shared collision and visibility loaders now expose injected, context-aware,
+error-returning paths. A failed event/NPC/boulder/property read rejects movement
+instead of treating the obstacle as absent. Boulder result rows are closed before
+reading visibility rules, avoiding nested connection acquisition. Existing
+character pathfinding uses the same collision model. Two Cut tests now supply an
+empty database-backed blocker catalog while preserving their path assertions.
+Legacy wrapper/global consumers remain on the broader dependency roadmap.
+
+The client waits for acceptance before queuing the visual step and waits for
+completion before starting the next path step or activating its warp. Reads,
+warps and movement share one correlated request settlement primitive with timeout,
+abort, listener cleanup and stale-response filtering. Scene retirement and snaps
+abort and retire pending work. Discarding future input preserves a currently issued
+animation's token so its completion cannot become a legacy position report.
+Rejected completion reconciles from the server-owned error location; a timeout
+stops the path and does not prove rollback or automatically replay the command.
+
+Verification: 40 focused frontend tests pass across movement, correlated requests,
+map loading and committed warp presentation. Typecheck, production build, runtime
+asset validation and canonical protocol regeneration pass. Asset validation checks
+826 tile images, 92 sprites and 561 compact audio files. The final isolated
+PostgreSQL race-enabled world/protocol/simulator suites and server compilation are
+recorded in `/var/tmp/capturequest-checkpoint-go.log`.
+
+Rendered acceptance is **incomplete**. The initial isolated run passed 19 of 23
+cases and revealed missing fresh-entry movement registration. After that fix,
+`/var/tmp/capturequest-rendered.TB5rDF` passed 21 of 23 cases. The unresolved cases
+are movement immediately after Instant Warp (server rejected a stale source) and
+Red's house exit (client requested an ordinary step onto a blocked carpet tile).
+A focused Instant Warp repeat in `/var/tmp/capturequest-rendered.M3WDf8` passed;
+that single pass does not resolve the intermittent failure. Detailed owned/requested
+source diagnostics are now available behind debug logging. Initial broader checks
+also caught database-free Cut fixtures and a lost old-map despawn during
+actor-broadcast extraction; both were corrected without weakening assertions.
+These evidence directories are local scratch records, not permanent release receipts.
+
+Immediate follow-up:
+
+1. Route blocked carpet entry through the existing server-resolved warp activation
+   boundary rather than permitting an ordinary step onto blocked collision.
+2. Reproduce the Instant Warp race with repeated rendered checks and inspect the
+   owned versus requested map, coordinates and session. Fix the actual lifecycle
+   ordering before claiming success.
+3. Check cancellation/new-input overlap: `stopMovement()` preserves an issued token
+   but clears `isMoving`. Prove a second input cannot replace an in-flight animation
+   or completion, and cover reconciliation after rejection and lost responses.
+4. Rerun the integrated rendered cases before treating this checkpoint as ready
+   for a separately authorized release.
+
+Remaining: retire opcode 45 coordinate writes for facing/script/field animations;
+authorize movement against issued interaction/cutscene phases; make position and
+applicable durable step effects/recovery coherent across failure; recover lost
+acceptance/completion results and reconnects; measure latency and query load over
+realistic transports. Day Care, Safari and encounter/script effects still run
+through their existing operations after position commit. This checkpoint does not
+make that full sequence atomic or prove every callback race. The five-area roadmap
+above remains active. Next: resolve the rendered failures and input-overlap audit,
+then migrate facing/issued script acknowledgements and step-effect recovery. No push or deployment is included.
 
 ## Owned-only MapLoad requests (2026-10-02)
 
@@ -385,7 +465,7 @@ The producer audit for the next retirement is:
 | --- | --- | --- |
 | `WarpManager.activateWarp` | Correlated server-resolved normal warp | Active migration complete; add durable result recovery. |
 | `TileViewerInteractionController` Instant Warp | Explicit correlated catalog destination command (185/186) | Active migration complete; add durable result recovery. |
-| `PlayerMovementController.onStepComplete` and direction updates | Walking animation completion and turning/boulder attempts through opcode 45 | Separate intent from accepted movement results; reject stale location-changing echoes. |
+| `PlayerMovementController.onStepComplete` and direction updates | Ordinary steps use issued direction commands and token completions; turning/boulder and script/field callbacks retain opcode 45 | Retire legacy coordinate authority after the remaining issued-animation and facing migration. |
 | TileViewer cutscene movement callback | Reports scripted animation coordinates | Bind acknowledgement to issued script movement instead of accepting coordinates as authority. |
 | Blackout/Safari store events and test warp probes | Committed recovery presentation and explicit Instant Warp probes | Active destination producer migration complete; verify remaining delayed/session races. |
 | `MapLoader.prepareMapLoad` | Loads current owned position using mapId/requestId only | Destination fields retired; retain failure/retry and stale-session coverage. |

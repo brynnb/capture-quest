@@ -222,6 +222,11 @@ func sendCharacterStateFromDB(ses *session.Session, wh *WorldHandler, characterN
 	if err != nil {
 		return err
 	}
+	// Movement ownership must exist before gameplay starts. Previously the first
+	// arbitrary browser position report created it, so fresh entry had no owner.
+	if wh.PlayerMovement != nil && wh.ActorManager != nil {
+		RegisterPlayerForMovement(ses, wh)
+	}
 	ses.StartPlaytime(playStartedAt, charData.TimePlayed, int32(charData.ID))
 
 	ses.SendStreamJSON(SimpleSuccessResponse{Value: 1}, opcodes.PostEnterWorld)

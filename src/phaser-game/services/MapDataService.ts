@@ -1,4 +1,5 @@
-import type { PhaserMapInfo, PhaserMapInfoResponse, PhaserMapLoadResponse, PhaserMapRequestError, PhaserWarpActivateResponse, PhaserInstantWarpResponse } from "@/net/generated/protocol";
+import { correlatedRequest } from "./CorrelatedRequest";
+import type { PhaserMapInfo, PhaserMapInfoResponse, PhaserMapLoadResponse, PhaserWarpActivateResponse, PhaserInstantWarpResponse } from "@/net/generated/protocol";
 /**
  * MapDataService - Phaser map data fetching via WebTransport
  *
@@ -71,48 +72,6 @@ function normalizeCorrelatedTiles(data: PhaserTilesResponse): PhaserTile[] {
     throw new Error("Invalid tile response: tiles must be an array");
   }
   return tiles as PhaserTile[];
-}
-
-let mapRequestSequence = 0;
-
-// Correlation and one settlement boundary cover both reads and arrival commands.
-// A local cancellation cannot undo a server commit; a later load reads owned state.
-function correlatedMapRequest<T extends { success: true; requestId: string }>(
-  subscribe: (receive: (response: T | PhaserMapRequestError) => void) => () => void,
-  send: (requestId: string) => void,
-  signal?: AbortSignal,
-): Promise<T> {
-  if (!PhaserNet.isConnected()) return Promise.reject(new Error("Not connected to server - please log in first"));
-  if (signal?.aborted) return Promise.reject(new DOMException("Map request cancelled", "AbortError"));
-  const requestId = `map:${Date.now()}:${++mapRequestSequence}`;
-  return new Promise<T>((resolve, reject) => {
-    let settled = false;
-    let unsubscribe = () => {};
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    const finish = (error?: Error, response?: T) => {
-      if (settled) return;
-      settled = true;
-      unsubscribe();
-      if (timeout !== undefined) clearTimeout(timeout);
-      signal?.removeEventListener("abort", abort);
-      if (error) reject(error);
-      else resolve(response!);
-    };
-    const abort = () => finish(new DOMException("Map request cancelled", "AbortError"));
-    unsubscribe = subscribe((response) => {
-      if (!response || response.requestId !== requestId) return;
-      if (response.success === false) finish(new Error(response.error));
-      else if (response.success === true) finish(undefined, response);
-      else finish(new Error("Invalid correlated map response"));
-    });
-    // Subscription APIs do not emit on registration, but handle that boundary
-    // explicitly so cleanup also remains correct if a consumer changes them.
-    if (settled) { unsubscribe(); return; }
-    signal?.addEventListener("abort", abort, { once: true });
-    if (signal?.aborted) { abort(); return; }
-    timeout = setTimeout(() => finish(new Error("Timeout fetching map response")), REQUEST_TIMEOUT_MS);
-    try { send(requestId); } catch (error) { finish(error instanceof Error ? error : new Error(String(error))); }
-  });
 }
 
 /**
@@ -215,7 +174,7 @@ export class MapDataService {
    * Fetch map info by ID - returns a Promise that resolves when data arrives
    */
   async fetchMapInfo(mapId: number, signal?: AbortSignal): Promise<PhaserMapInfo> {
-    const response = await correlatedMapRequest<PhaserMapInfoResponse>(
+    const response = await correlatedRequest<PhaserMapInfoResponse>(
       (receive) => PhaserNet.onMapInfo(receive),
       (requestId) => PhaserNet.requestMapInfo({ mapId, requestId }),
       signal,
@@ -225,7 +184,7 @@ export class MapDataService {
   }
 
   async prepareMapLoad(mapId: number, signal?: AbortSignal): Promise<void> {
-    await correlatedMapRequest<PhaserMapLoadResponse>(
+    await correlatedRequest<PhaserMapLoadResponse>(
       (receive) => PhaserNet.onMapLoad(receive),
       (requestId) => PhaserNet.requestMapLoad({ mapId, requestId }),
       signal,
@@ -233,7 +192,7 @@ export class MapDataService {
   }
 
   async instantWarp(mapId: number, x: number, y: number, direction: string, signal?: AbortSignal): Promise<PhaserInstantWarpResponse> {
-    return correlatedMapRequest<PhaserInstantWarpResponse>(
+    return correlatedRequest<PhaserInstantWarpResponse>(
       (receive) => PhaserNet.onInstantWarp(receive),
       (requestId) => PhaserNet.requestInstantWarp({ mapId, x, y, direction, requestId }),
       signal,
@@ -241,7 +200,7 @@ export class MapDataService {
   }
 
   async activateWarp(warpId: number, direction: string, inputSource: "click" | "keyboard", signal?: AbortSignal): Promise<PhaserWarpActivateResponse> {
-    return correlatedMapRequest<PhaserWarpActivateResponse>(
+    return correlatedRequest<PhaserWarpActivateResponse>(
       (receive) => PhaserNet.onWarpActivation(receive),
       (requestId) => PhaserNet.requestWarpActivation({ warpId, direction, inputSource, requestId }),
       signal,

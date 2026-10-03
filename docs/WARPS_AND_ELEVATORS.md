@@ -54,7 +54,9 @@ in the following MapLoad transaction. Blackout/Safari store paths now project
 committed recovery locations without echoes; blackout destination, wallet and party
 healing share the initiating transaction. Test probes await explicit Instant Warp
 commands. MapLoad now rejects supplied coordinates and loads the current owned
-position; walking/scripted opcode 45 position authority remains to be retired.
+position. Ordinary walking now uses server-issued direction steps and token
+completion before activating a warp. Facing and scripted/field opcode 45
+coordinate reports remain to be retired.
 
 Frontend and backend must be released together when a deployment is authorized.
 

@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const network = vi.hoisted(() => ({
+  step: new Set<(data: unknown) => void>(),
+  stepRequests: [] as Array<{ mapId: number; requestId: string }>,
+  complete: new Set<(data: unknown) => void>(),
+  completeRequests: [] as Array<{ requestId: string }>,
   info: new Set<(data: unknown) => void>(),
   instant: new Set<(data: unknown) => void>(),
   instantRequests: [] as Array<{ mapId: number; requestId: string }>,
@@ -13,6 +17,10 @@ const network = vi.hoisted(() => ({
 
 vi.mock("./PhaserNetworkService", () => ({
   isConnected: () => true,
+  onPlayerStep: (receive: (data: unknown) => void) => { network.step.add(receive); return () => network.step.delete(receive); },
+  onPlayerStepComplete: (receive: (data: unknown) => void) => { network.complete.add(receive); return () => network.complete.delete(receive); },
+  requestPlayerStep: (request: { mapId: number; requestId: string }) => network.stepRequests.push(request),
+  completePlayerStep: (request: { requestId: string }) => network.completeRequests.push(request),
   onMapInfo: (receive: (data: unknown) => void) => {
     network.info.add(receive);
     return () => network.info.delete(receive);
@@ -39,11 +47,16 @@ vi.mock("./RuntimeAssetCompatibility", () => ({
   ensureRuntimeTileCatalogCurrent: vi.fn(async () => undefined),
 }));
 
+import { requestPlayerStep, completePlayerStep } from "./PlayerMovementService";
 import { MapDataService } from "./MapDataService";
 
 describe("correlated map read and load requests", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    network.step.clear();
+    network.stepRequests.length = 0;
+    network.complete.clear();
+    network.completeRequests.length = 0;
     network.instant.clear();
     network.instantRequests.length = 0;
     network.warp.clear();
@@ -56,6 +69,10 @@ describe("correlated map read and load requests", () => {
   afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
   const cases = [
+    { name: "movement intent", handlers: network.step, requests: network.stepRequests,
+      start: (_service: MapDataService, signal?: AbortSignal) => requestPlayerStep({ mapId: 38, fromX: 3, fromY: 7, direction: "DOWN" }, signal) },
+    { name: "movement completion", handlers: network.complete, requests: network.completeRequests,
+      start: (_service: MapDataService, signal?: AbortSignal) => completePlayerStep("issued", signal) },
     { name: "Instant Warp", handlers: network.instant, requests: network.instantRequests,
       start: (service: MapDataService, signal?: AbortSignal) => service.instantWarp(38, 3, 7, "DOWN", signal) },
     { name: "metadata", handlers: network.info, requests: network.infoRequests,
@@ -99,7 +116,7 @@ describe("correlated map read and load requests", () => {
       expect(vi.getTimerCount()).toBe(0);
 
       const timedOut = tc.start(new MapDataService());
-      const timeout = expect(timedOut).rejects.toThrow("Timeout fetching map response");
+      const timeout = expect(timedOut).rejects.toThrow("Timeout waiting for server response");
       await vi.advanceTimersByTimeAsync(10_000);
       await timeout;
       expect(tc.handlers.size).toBe(0);

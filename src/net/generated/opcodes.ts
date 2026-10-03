@@ -224,3 +224,7 @@ export const PhaserWarpActivateRequest: OpCode = 183;
 export const PhaserWarpActivateResponse: OpCode = 184;
 export const PhaserInstantWarpRequest: OpCode = 185;
 export const PhaserInstantWarpResponse: OpCode = 186;
+export const PlayerStepRequest: OpCode = 187;
+export const PlayerStepResponse: OpCode = 188;
+export const PlayerStepCompleteRequest: OpCode = 189;
+export const PlayerStepCompleteResponse: OpCode = 190;

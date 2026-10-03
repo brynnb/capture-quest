@@ -1101,6 +1101,10 @@ export interface AStarNode {
 export type PriorityQueue = (AStarNode | undefined)[];
 
 //////////
+// source: player_steps.go
+
+
+//////////
 // source: pokemon_tower7f_postwin.go
 
 

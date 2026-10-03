@@ -151,6 +151,9 @@ func TestEnterWorldHandoffReloadsAfterOldCommandCommits(t *testing.T) {
 	if !next.HasValidClient() || next.Client.CharData().X != 21 {
 		t.Fatal("entry did not reload committed old-session position")
 	}
+	if x, y, mapID, ok := wh.PlayerMovement.GetPosition(42); !ok || x != 21 || y != 10 || mapID != 1 {
+		t.Fatal("entry did not register the reloaded owned movement source")
+	}
 	if old.HasValidClient() || !wh.characterOwners.owns(42, next) {
 		t.Fatal("handoff did not retire previous owner")
 	}

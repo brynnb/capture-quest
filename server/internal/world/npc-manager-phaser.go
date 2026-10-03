@@ -340,6 +340,10 @@ func (m *PhaserActorManager) loadWalkingActors(ctx context.Context) error {
 }
 
 func (m *PhaserActorManager) ensureWalkableMapLoadedLocked(ctx context.Context, mapID int) error {
+	return m.ensureWalkableMapLoadedLockedIn(ctx, db.GlobalWorldDB.DB, mapID)
+}
+
+func (m *PhaserActorManager) ensureWalkableMapLoadedLockedIn(ctx context.Context, database db.ContextDBTX, mapID int) error {
 	if m.collisionMap == nil {
 		m.collisionMap = make(map[int]map[string]int)
 	}
@@ -360,7 +364,7 @@ func (m *PhaserActorManager) ensureWalkableMapLoadedLocked(ctx context.Context, 
 	// since they're stitched together with global coordinates
 	if m.overworldMapIds[mapID] || mapID == 0 || mapID == UnifiedOverworldMapID {
 		// Overworld tiles use global coordinates and have map_id IS NULL.
-		rows, err = db.GlobalWorldDB.DB.QueryContext(ctx, `
+		rows, err = database.QueryContext(ctx, `
 				SELECT x, y, collision_type, raw_foot_tile_id
 				FROM phaser_tiles
 				WHERE map_id IS NULL
@@ -370,7 +374,7 @@ func (m *PhaserActorManager) ensureWalkableMapLoadedLocked(ctx context.Context, 
 		}
 	} else {
 		// For interior maps, just load that specific map
-		rows, err = db.GlobalWorldDB.DB.QueryContext(ctx, `
+		rows, err = database.QueryContext(ctx, `
 				SELECT x, y, collision_type, raw_foot_tile_id
 				FROM phaser_tiles
 				WHERE map_id = $1
@@ -760,17 +764,50 @@ func (m *PhaserActorManager) FindPathForCharacter(charID int64, mapID, startX, s
 }
 
 func (m *PhaserActorManager) FindPathForCharacterWithOptions(charID int64, mapID, startX, startY, endX, endY int, efm *EventFlagManager, opts pathfindOptions) []PathNode {
-	collisionMap := m.collisionMapForMap(mapID)
-	if collisionMap == nil {
+	var database db.ContextDBTX
+	if m.wh != nil && m.wh.database != nil {
+		database = m.wh.database
+	} else if db.GlobalWorldDB != nil {
+		database = db.GlobalWorldDB.DB
+	}
+	if database == nil {
 		return nil
 	}
-	var rawFootTileMap map[string]int
-	if m.IsOverworld(mapID) {
-		rawFootTileMap = m.rawFootTileMapForMap(mapID)
+	collisionMap, rawFootTileMap, err := m.characterCollision(context.Background(), database, charID, mapID, startX, startY, efm)
+	if err != nil {
+		log.Printf("[ActorManager] Character collision: %v", err)
+		return nil
 	}
-	var overrides map[string]int
+	return findPathOnCollisionMapWithOptions(collisionMap, rawFootTileMap, startX, startY, endX, endY, opts)
+}
+
+// characterCollision is shared by pathfinding and issued player steps. A failed
+// dynamic blocker read must never authorize movement through that blocker.
+func (m *PhaserActorManager) characterCollision(ctx context.Context, database db.ContextDBTX, charID int64, mapID, startX, startY int, efm *EventFlagManager) (map[string]int, map[string]int, error) {
+	m.mu.Lock()
+	if err := m.ensureWalkableMapLoadedLockedIn(ctx, database, mapID); err != nil {
+		m.mu.Unlock()
+		return nil, nil, err
+	}
+	collisionMap := m.collisionMap[mapID]
+	var rawFootTileMap map[string]int
+	if m.isOverworldMapLocked(mapID) {
+		rawFootTileMap = m.rawFootTileMap[mapID]
+	}
+	m.mu.Unlock()
+	var tileOverrides []eventTileOverride
+	var err error
 	if efm != nil {
-		overrides = EventTileCollisionOverrides(charID, mapID, efm)
+		tileOverrides, err = eventTileOverridesForMapContext(ctx, database, mapID)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	overrides := make(map[string]int)
+	for _, override := range tileOverrides {
+		if override.eventTileEligible(charID, efm) {
+			overrides[tileKey(override.X, override.Y)] = override.CollisionType
+		}
 	}
 	if len(overrides) > 0 {
 		withOverrides := copyCollisionMap(collisionMap, len(overrides))
@@ -792,7 +829,16 @@ func (m *PhaserActorManager) FindPathForCharacterWithOptions(charID int64, mapID
 	if rawFootTileMap != nil {
 		var rawOverrides map[string]*int
 		if efm != nil {
-			rawOverrides = EventTileRawFootTileOverrides(charID, mapID, efm)
+			rawOverrides = make(map[string]*int)
+			for _, override := range tileOverrides {
+				if override.eventTileEligible(charID, efm) {
+					props, err := tileRuntimePropertiesForTileImageContext(ctx, database, override.TileImageID)
+					if err != nil {
+						return nil, nil, err
+					}
+					rawOverrides[tileKey(override.X, override.Y)] = props.RawFootTileID
+				}
+			}
 		}
 		if len(rawOverrides) > 0 {
 			withOverrides := copyRawFootTileMap(rawFootTileMap, 0)
@@ -821,9 +867,8 @@ func (m *PhaserActorManager) FindPathForCharacterWithOptions(charID int64, mapID
 		}
 	}
 	var boulders []BoulderObjectState
-	var err error
 	if efm != nil {
-		boulders, err = BoulderObjectsForCharacter(charID, mapID, efm)
+		boulders, err = boulderObjectsForCharacterContext(ctx, database, charID, mapID, efm)
 	}
 	if err == nil && len(boulders) > 0 {
 		withBoulders := copyCollisionMap(collisionMap, len(boulders))
@@ -838,13 +883,16 @@ func (m *PhaserActorManager) FindPathForCharacterWithOptions(charID int64, mapID
 		}
 		collisionMap = withBoulders
 	} else if err != nil {
-		log.Printf("[ActorManager] Failed to apply boulder collision for char %d map %d: %v", charID, mapID, err)
+		return nil, nil, fmt.Errorf("boulder collision for char %d map %d: %w", charID, mapID, err)
 	}
-	blockers := m.NPCBlockingPositionsForCharacter(charID, mapID, efm)
+	blockers, err := m.npcBlockingPositionsContext(ctx, database, charID, mapID, efm)
+	if err != nil {
+		return nil, nil, err
+	}
 	if len(blockers) > 0 {
 		collisionMap = collisionMapWithBlockedPositions(collisionMap, blockers, startX, startY)
 	}
-	return findPathOnCollisionMapWithOptions(collisionMap, rawFootTileMap, startX, startY, endX, endY, opts)
+	return collisionMap, rawFootTileMap, nil
 }
 
 func collisionMapWithBlockedPositions(collisionMap map[string]int, blockers []tilePosition, startX, startY int) map[string]int {
@@ -947,18 +995,37 @@ func (m *PhaserActorManager) NPCBlockingPositionsForCharacter(charID int64, mapI
 	if m == nil || db.GlobalWorldDB == nil || db.GlobalWorldDB.DB == nil {
 		return nil
 	}
-
-	actors, err := m.npcBlockingActors(mapID)
+	positions, err := m.npcBlockingPositionsContext(context.Background(), db.GlobalWorldDB.DB, charID, mapID, efm)
 	if err != nil {
-		log.Printf("[ActorManager] Failed to load NPC blockers for char %d map %d: %v", charID, mapID, err)
+		log.Printf("[ActorManager] NPC collision: %v", err)
 		return nil
+	}
+	return positions
+}
+
+func (m *PhaserActorManager) npcBlockingPositionsContext(ctx context.Context, database db.ContextDBTX, charID int64, mapID int, efm *EventFlagManager) ([]tilePosition, error) {
+	actors, err := m.npcBlockingActorsContext(ctx, database, mapID)
+	if err != nil {
+		return nil, err
 	}
 	if len(actors) == 0 {
-		return nil
+		return nil, nil
 	}
 
-	actors = ApplyEventObjectVisibilityToActors(charID, mapID, efm, actors)
-	actors = ApplyCharacterObjectPositions(charID, actors)
+	actors, err = applyEventObjectVisibilityContext(ctx, database, charID, mapID, efm, actors)
+	if err != nil {
+		return nil, err
+	}
+	positionsByID, err := characterObjectPositionsContext(ctx, database, charID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range actors {
+		if pos, ok := positionsByID[actors[i].DbID]; ok {
+			x, y := pos.X, pos.Y
+			actors[i].X, actors[i].Y = &x, &y
+		}
+	}
 
 	positions := make([]tilePosition, 0, len(actors))
 	for _, actor := range actors {
@@ -967,10 +1034,14 @@ func (m *PhaserActorManager) NPCBlockingPositionsForCharacter(charID int64, mapI
 		}
 		positions = append(positions, tilePosition{X: *actor.X, Y: *actor.Y})
 	}
-	return positions
+	return positions, nil
 }
 
 func (m *PhaserActorManager) npcBlockingActors(mapID int) ([]PhaserActor, error) {
+	return m.npcBlockingActorsContext(context.Background(), db.GlobalWorldDB.DB, mapID)
+}
+
+func (m *PhaserActorManager) npcBlockingActorsContext(ctx context.Context, database db.ContextDBTX, mapID int) ([]PhaserActor, error) {
 	query := `
 		SELECT po.id, po.map_id,
 			COALESCE(po.x, po.local_x) AS x,
@@ -997,7 +1068,7 @@ func (m *PhaserActorManager) npcBlockingActors(mapID int) ([]PhaserActor, error)
 		args = nil
 	}
 
-	rows, err := db.GlobalWorldDB.DB.Query(query, args...)
+	rows, err := database.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

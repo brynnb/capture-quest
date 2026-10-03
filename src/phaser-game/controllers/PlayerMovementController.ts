@@ -1,3 +1,6 @@
+import type { PlayerStepResponse, PlayerStepError } from "@/net/generated/protocol";
+import { requestPlayerStep, completePlayerStep } from "../services/PlayerMovementService";
+import { CorrelatedResponseError } from "../services/CorrelatedRequest";
 import { Scene } from "phaser";
 import { PhaserActor, PhaserTile, PhaserWarp } from "@/net/generated/world_api";
 import { TILE_SIZE, UNIFIED_OVERWORLD_MAP_ID } from "../constants";
@@ -108,6 +111,9 @@ export class PlayerMovementController {
 
   // Current path (array of tile coordinates)
   private currentPath: MovementPathStep[] = [];
+  private stepAbort: AbortController | null = null;
+  private issuedStep: PlayerStepResponse | null = null;
+  private movementGeneration = 0;
   private isMoving: boolean = false;
   private activeMoveDestination: {
     x: number;
@@ -139,6 +145,7 @@ export class PlayerMovementController {
 
   constructor(scene: Scene) {
     this.scene = scene;
+    scene.events?.once?.("shutdown", () => this.stopMovement(true));
   }
 
   setInputFrozenChecker(checker: () => boolean): void {
@@ -1479,6 +1486,10 @@ export class PlayerMovementController {
     completedDirection: string,
     kind: "step" | "snap" = "step",
   ): void {
+    void this.finishVisualStep(actorId, x, y, completedDirection, kind).catch((error: unknown) => this.handleStepFailure(error));
+  }
+
+  private async finishVisualStep(actorId: number, x: number, y: number, completedDirection: string, kind: "step" | "snap"): Promise<void> {
     if (this.playerId === actorId) {
       // ActorMovementController derives this from the actual completed tile
       // delta. Use it as the authoritative facing direction before reporting
@@ -1493,15 +1504,25 @@ export class PlayerMovementController {
       // A snap projects a server position; it is not a new completed move.
       // Keep local context fresh without echoing a write or activating a warp.
       if (kind === "snap") {
-        this.stopMovement();
+        this.stopMovement(true);
         return;
       }
-      PhaserNet.sendPlayerPosition(
-        x,
-        y,
-        this.currentMapId,
-        this.currentDirection,
-      );
+      const issued = this.issuedStep;
+      if (issued) {
+        const abort = this.stepAbort;
+        const generation = this.movementGeneration;
+        if (!abort || issued.x !== x || issued.y !== y || issued.mapId !== this.currentMapId) {
+          throw new Error("Movement animation disagrees with the issued step");
+        }
+        await completePlayerStep(issued.stepToken, abort.signal);
+        if (generation !== this.movementGeneration || abort.signal.aborted) return;
+        this.issuedStep = null;
+        this.stepAbort = null;
+      } else {
+        // Server-driven field/script animations retain the legacy report until
+        // their issued-sequence migration. Ordinary walking never uses it.
+        PhaserNet.sendPlayerPosition(x, y, this.currentMapId, this.currentDirection);
+      }
 
       // Finish the current visual step, then discard any queued user path as
       // soon as a panel, dialogue, battle, shop, or modal takes input focus.
@@ -1614,20 +1635,39 @@ export class PlayerMovementController {
     else if (nextTile.y > this.currentTileY) direction = "DOWN";
     else if (nextTile.y < this.currentTileY) direction = "UP";
 
-    this.currentDirection = direction;
+    const sourceX = this.currentTileX;
+    const sourceY = this.currentTileY;
+    const mapId = this.currentMapId;
+    const generation = this.movementGeneration;
+    const abort = new AbortController();
+    this.stepAbort = abort;
+    void requestPlayerStep({ mapId, fromX: sourceX, fromY: sourceY, direction }, abort.signal).then((step) => {
+      if (abort.signal.aborted || generation !== this.movementGeneration) return;
+      if (step.mapId !== mapId || step.x !== nextTile.x || step.y !== nextTile.y) {
+        throw new Error("Movement destination disagrees with server collision data");
+      }
+      this.issuedStep = step;
+      this.currentDirection = step.direction;
+      mapRenderer.updateActorPosition(playerId, sourceX, sourceY, step.x, step.y, step.direction, undefined, step.ledgeJump ? { ledgeJump: true } : undefined);
+    }).catch((error: unknown) => {
+      if (generation === this.movementGeneration && !abort.signal.aborted) this.handleStepFailure(error);
+    });
+  }
 
-    // Trigger local movement update (so we see ourselves move immediately)
-    // This adds to the ActorMovementController queue via MapRenderer
-    mapRenderer.updateActorPosition(
-      playerId,
-      this.currentTileX,
-      this.currentTileY,
-      nextTile.x,
-      nextTile.y,
-      direction,
-      undefined,
-      nextTile.ledgeJump ? { ledgeJump: true } : undefined,
-    );
+  private handleStepFailure(error: unknown): void {
+    if (error instanceof DOMException && error.name === "AbortError") return;
+    this.stopMovement(true);
+    if (error instanceof CorrelatedResponseError) {
+      const owned = error.response as PlayerStepError;
+      if (owned.mapId === this.currentMapId && this.playerId !== null) {
+        this.syncPosition(owned.x, owned.y);
+        this.syncDirection(owned.direction);
+        this.mapRenderer?.snapActorPosition(this.playerId, owned.x, owned.y, owned.direction);
+      }
+    }
+    // A timeout does not prove rollback. Stop the path instead of animating or
+    // replaying an unconfirmed result; reconnect/reload recovers owned position.
+    console.error("[PlayerMovement] Movement request failed", error);
   }
 
   /**
@@ -1889,7 +1929,16 @@ export class PlayerMovementController {
     return true;
   }
 
-  stopMovement(): void {
+  stopMovement(retireIssued = false): void {
+    // Input focus discards the future path but lets the current issued animation
+    // finish and acknowledge. Otherwise its callback could fall back to opcode 45.
+    // Scene retirement and authoritative snaps explicitly retire that animation.
+    if (retireIssued || !this.issuedStep) {
+      this.movementGeneration++;
+      this.stepAbort?.abort();
+      this.stepAbort = null;
+      this.issuedStep = null;
+    }
     this.currentPath = [];
     this.isMoving = false;
     this.arrivalCallback = null;
@@ -2133,7 +2182,7 @@ export class PlayerMovementController {
   }
 
   clear(): void {
-    this.stopMovement();
+    this.stopMovement(true);
     this.arrivalCallback = null;
     this.collisionMap.clear();
     this.rawFootTileMap.clear();

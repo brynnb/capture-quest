@@ -211,4 +211,8 @@ const (
 	PhaserWarpActivateResponse    OpCode = 184
 	PhaserInstantWarpRequest      OpCode = 185
 	PhaserInstantWarpResponse     OpCode = 186
+	PlayerStepRequest             OpCode = 187
+	PlayerStepResponse            OpCode = 188
+	PlayerStepCompleteRequest     OpCode = 189
+	PlayerStepCompleteResponse    OpCode = 190
 )

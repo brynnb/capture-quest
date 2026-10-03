@@ -130,7 +130,11 @@ func TryPushBoulder(charID int64, mapID int, playerX, playerY int, direction str
 }
 
 func BoulderObjectsForCharacter(charID int64, mapID int, efm *EventFlagManager) ([]BoulderObjectState, error) {
-	rows, err := db.GlobalWorldDB.DB.Query(`
+	return boulderObjectsForCharacterContext(context.Background(), db.GlobalWorldDB.DB, charID, mapID, efm)
+}
+
+func boulderObjectsForCharacterContext(ctx context.Context, database db.ContextDBTX, charID int64, mapID int, efm *EventFlagManager) ([]BoulderObjectState, error) {
+	rows, err := database.QueryContext(ctx, `
 		SELECT po.id, po.map_id, po.name, COALESCE(po.text, ''),
 		       COALESCE(cop.x, po.x, po.local_x) AS x,
 		       COALESCE(cop.y, po.y, po.local_y) AS y
@@ -147,15 +151,6 @@ func BoulderObjectsForCharacter(charID int64, mapID int, efm *EventFlagManager) 
 	}
 	defer rows.Close()
 
-	rules, err := eventObjectVisibilityForMap(mapID)
-	if err != nil {
-		return nil, err
-	}
-	overrides, err := objectVisibilityOverridesForCharacter(charID)
-	if err != nil {
-		return nil, err
-	}
-
 	boulders := []BoulderObjectState{}
 	for rows.Next() {
 		var boulder BoulderObjectState
@@ -169,11 +164,29 @@ func BoulderObjectsForCharacter(charID int64, mapID int, efm *EventFlagManager) 
 		); err != nil {
 			return nil, err
 		}
-		boulder.Visible, boulder.Label = currentEventObjectVisibility(charID, efm, boulder.Name, rules)
-		boulder.Visible, boulder.Label = applyObjectVisibilityOverride(boulder.ObjectID, boulder.Visible, boulder.Label, overrides)
 		boulders = append(boulders, boulder)
 	}
-	return boulders, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	rules, err := eventObjectVisibilityForMapContext(ctx, database, mapID)
+	if err != nil {
+		return nil, err
+	}
+	overrides, err := objectVisibilityOverridesForCharacterContext(ctx, database, charID)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range boulders {
+		boulder := &boulders[i]
+		boulder.Visible, boulder.Label = currentEventObjectVisibility(charID, efm, boulder.Name, rules)
+		boulder.Visible, boulder.Label = applyObjectVisibilityOverride(boulder.ObjectID, boulder.Visible, boulder.Label, overrides)
+	}
+	return boulders, nil
 }
 
 func ApplyCharacterObjectPositions(charID int64, actors []PhaserActor) []PhaserActor {

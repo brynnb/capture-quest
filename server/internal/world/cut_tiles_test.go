@@ -1,9 +1,12 @@
 package world
 
-import "testing"
+import (
+	"capturequest/internal/testdb"
+	"testing"
+)
 
 func TestCutTileAllowsOnlyThatCharacterToPathThroughClearedTree(t *testing.T) {
-	wh := &WorldHandler{CutTiles: NewCutTileManager()}
+	wh := &WorldHandler{database: testdb.Postgres(t), CutTiles: NewCutTileManager()}
 	actorManager := NewPhaserActorManager(wh)
 	wh.ActorManager = actorManager
 	actorManager.collisionMap[1] = map[string]int{
@@ -29,7 +32,7 @@ func TestCutTileAllowsOnlyThatCharacterToPathThroughClearedTree(t *testing.T) {
 }
 
 func TestCutTileClearMapRestoresBlockedPath(t *testing.T) {
-	wh := &WorldHandler{CutTiles: NewCutTileManager()}
+	wh := &WorldHandler{database: testdb.Postgres(t), CutTiles: NewCutTileManager()}
 	actorManager := NewPhaserActorManager(wh)
 	wh.ActorManager = actorManager
 	actorManager.collisionMap[1] = map[string]int{

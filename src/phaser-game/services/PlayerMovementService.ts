@@ -1,0 +1,11 @@
+import type { PlayerStepRequest, PlayerStepResponse, PlayerStepCompleteResponse } from "@/net/generated/protocol";
+import * as PhaserNet from "./PhaserNetworkService";
+import { correlatedRequest } from "./CorrelatedRequest";
+
+export function requestPlayerStep(request: Omit<PlayerStepRequest, "requestId">, signal?: AbortSignal): Promise<PlayerStepResponse> {
+  return correlatedRequest<PlayerStepResponse>(PhaserNet.onPlayerStep, (requestId) => PhaserNet.requestPlayerStep({ ...request, requestId }), signal);
+}
+
+export function completePlayerStep(stepToken: string, signal?: AbortSignal): Promise<PlayerStepCompleteResponse> {
+  return correlatedRequest<PlayerStepCompleteResponse>(PhaserNet.onPlayerStepComplete, (requestId) => PhaserNet.completePlayerStep({ stepToken, requestId }), signal);
+}

@@ -357,7 +357,11 @@ field-name conversion or generated-name postprocessor will remain.
    the existing server-selected zero-position recovery can change location.
    Overworld arrival and script
    issuance share original-tile provenance; arrival resolves effects inside its
-   character-locked transaction. Movement eligibility remains in the active roadmap.
+   character-locked transaction. Ordinary movement now requests an issued direction step (187/188) and
+   acknowledges its token (189/190). The shared character collision model resolves
+   destinations and rechecks dynamic blockers, with injected cancellable queries.
+   Completion saves position before publication and effects; legacy opcode 45
+   facing/script/field writers and atomic step-effect recovery remain on the roadmap.
    Map-script and learnset aggregates now also use the service and protocol
    types. They read under one read-only repeatable-read transaction and one
    five-second budget, returning no partial projection on any failure. A shared

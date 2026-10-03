@@ -1,3 +1,10 @@
+import { afterEach } from "vitest";
+import * as movement from "../services/PlayerMovementService";
+vi.mock("../services/PlayerMovementService", () => ({
+  requestPlayerStep: vi.fn(async () => ({ success: true, requestId: "accepted", stepToken: "issued", mapId: 9999, x: 10, y: 2, direction: "DOWN", ledgeJump: true })),
+  completePlayerStep: vi.fn(async () => ({ success: true, requestId: "complete", mapId: 9999, x: 10, y: 2, direction: "DOWN" })),
+}));
+afterEach(() => vi.clearAllMocks());
 import { describe, expect, test, vi } from "vitest";
 import { PlayerMovementController } from "./PlayerMovementController";
 import { TILE_SIZE, UNIFIED_OVERWORLD_MAP_ID } from "../constants";
@@ -39,7 +46,7 @@ function buildLedgeController() {
     }),
     getMovementController: () => movementController,
   };
-  const controller = new PlayerMovementController({} as Scene);
+  const controller = new PlayerMovementController({ events: { emit: vi.fn(), once: vi.fn() } } as unknown as Scene);
   controller.buildCollisionMap([
     tile(1, 10, 0, 1, 0x2c),
     tile(2, 10, 1, 0, 0x37),
@@ -70,12 +77,12 @@ describe("PlayerMovementController ledges", () => {
     expect(send).not.toHaveBeenCalled();
     send.mockRestore();
   });
-  test("WASD jumps directly over a valid ledge instead of pathing around to the landing tile", () => {
+  test("WASD jumps directly over a valid ledge instead of pathing around to the landing tile", async () => {
     const { controller, updates } = buildLedgeController();
 
     expect(controller.handleKeyboardMove("DOWN")).toBe(true);
 
-    expect(updates).toHaveLength(1);
+    await vi.waitFor(() => expect(updates).toHaveLength(1));
     expect(updates[0]).toEqual([
       1,
       10,
@@ -88,12 +95,12 @@ describe("PlayerMovementController ledges", () => {
     ]);
   });
 
-  test("clicking a ledge landing tile starts with the one-way jump, not the walk-around route", () => {
+  test("clicking a ledge landing tile starts with the one-way jump, not the walk-around route", async () => {
     const { controller, updates } = buildLedgeController();
 
     controller.handleTileClick(10 * TILE_SIZE + 8, 2 * TILE_SIZE + 8);
 
-    expect(updates).toHaveLength(1);
+    await vi.waitFor(() => expect(updates).toHaveLength(1));
     expect(updates[0]).toEqual([
       1,
       10,
@@ -129,3 +136,44 @@ describe("PlayerMovementController completed facing", () => {
     expect(controller.getCurrentDirection()).toBe("RIGHT");
   });
 });
+
+describe("issued player movement lifecycle", () => {
+  test("animation waits for acceptance and completion sends only the issued token", async () => {
+    const { controller, updates } = buildLedgeController();
+    const legacy = vi.spyOn(PhaserNet, "sendPlayerPosition");
+    controller.handleKeyboardMove("DOWN");
+    expect(updates).toHaveLength(0);
+    await vi.waitFor(() => expect(updates).toHaveLength(1));
+    expect(movement.requestPlayerStep).toHaveBeenCalledWith({ mapId: 9999, fromX: 10, fromY: 0, direction: "DOWN" }, expect.any(AbortSignal));
+    controller.onStepComplete(1, 10, 2, "DOWN");
+    await vi.waitFor(() => expect(movement.completePlayerStep).toHaveBeenCalledWith("issued", expect.any(AbortSignal)));
+    expect(legacy).not.toHaveBeenCalled();
+    legacy.mockRestore();
+    controller.clear();
+  });
+
+  test("a retired scene ignores late acceptance", async () => {
+    let accept!: (value: Awaited<ReturnType<typeof movement.requestPlayerStep>>) => void;
+    vi.mocked(movement.requestPlayerStep).mockImplementationOnce(() => new Promise((resolve) => { accept = resolve; }));
+    const { controller, updates } = buildLedgeController();
+    controller.handleKeyboardMove("DOWN");
+    controller.clear();
+    accept({ success: true, requestId: "late", stepToken: "old", mapId: 9999, x: 10, y: 2, direction: "DOWN", ledgeJump: true });
+    await Promise.resolve();
+    expect(updates).toHaveLength(0);
+    expect(controller.getIsMoving()).toBe(false);
+  });
+});
+
+ test("discarding a path lets its current issued animation acknowledge without a legacy report", async () => {
+    const { controller, updates } = buildLedgeController();
+    const legacy = vi.spyOn(PhaserNet, "sendPlayerPosition");
+    controller.handleKeyboardMove("DOWN");
+    await vi.waitFor(() => expect(updates).toHaveLength(1));
+    controller.stopMovement();
+    controller.onStepComplete(1, 10, 2, "DOWN");
+    await vi.waitFor(() => expect(movement.completePlayerStep).toHaveBeenCalledWith("issued", expect.any(AbortSignal)));
+    expect(legacy).not.toHaveBeenCalled();
+    legacy.mockRestore();
+    controller.clear();
+ });

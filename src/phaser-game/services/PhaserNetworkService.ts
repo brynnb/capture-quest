@@ -1,4 +1,4 @@
-import type { PhaserMapInfo, PhaserMapInfoRequest, PhaserMapInfoResponse, PhaserMapLoadRequest, PhaserMapLoadResponse, PhaserMapRequestError, PhaserWarpActivateRequest, PhaserWarpActivateResponse, PhaserInstantWarpRequest, PhaserInstantWarpResponse } from "@/net/generated/protocol";
+import type { PlayerStepRequest, PlayerStepResponse, PlayerStepCompleteRequest, PlayerStepCompleteResponse, PlayerStepError, PhaserMapInfo, PhaserMapInfoRequest, PhaserMapInfoResponse, PhaserMapLoadRequest, PhaserMapLoadResponse, PhaserMapRequestError, PhaserWarpActivateRequest, PhaserWarpActivateResponse, PhaserInstantWarpRequest, PhaserInstantWarpResponse } from "@/net/generated/protocol";
 import type { GameCornerSlotPlayRequest } from "@/net/generated/world_api";
 import type { PhaserMapScriptsRequest } from "@/net/generated/protocol";
 /**
@@ -34,6 +34,13 @@ export function requestMapInfo(request: PhaserMapInfoRequest): void {
 
 export function requestMapLoad(request: PhaserMapLoadRequest): void {
   NetworkBridge.send(request, OpCodes.PhaserMapLoadRequest);
+}
+
+export function requestPlayerStep(request: PlayerStepRequest): void {
+  NetworkBridge.send(request, OpCodes.PlayerStepRequest);
+}
+export function completePlayerStep(request: PlayerStepCompleteRequest): void {
+  NetworkBridge.send(request, OpCodes.PlayerStepCompleteRequest);
 }
 
 export function requestInstantWarp(request: PhaserInstantWarpRequest): void {
@@ -358,6 +365,8 @@ export type TrainerEncounterHandler = (
 export type PhaserMapMusicHandler = (data: MapMusicResult) => void;
 
 const handlers = {
+  playerStep: new Set<(data: PlayerStepResponse | PlayerStepError) => void>(),
+  playerStepComplete: new Set<(data: PlayerStepCompleteResponse | PlayerStepError) => void>(),
   mapInfo: new Set<PhaserMapInfoHandler>(),
   mapLoad: new Set<PhaserMapLoadHandler>(),
   instantWarp: new Set<(data: PhaserInstantWarpResponse | PhaserMapRequestError) => void>(),
@@ -376,6 +385,15 @@ const handlers = {
 export function onMapInfo(handler: PhaserMapInfoHandler): () => void {
   handlers.mapInfo.add(handler);
   return () => handlers.mapInfo.delete(handler);
+}
+
+export function onPlayerStep(handler: (data: PlayerStepResponse | PlayerStepError) => void): () => void {
+  handlers.playerStep.add(handler);
+  return () => { handlers.playerStep.delete(handler); };
+}
+export function onPlayerStepComplete(handler: (data: PlayerStepCompleteResponse | PlayerStepError) => void): () => void {
+  handlers.playerStepComplete.add(handler);
+  return () => { handlers.playerStepComplete.delete(handler); };
 }
 
 export function onInstantWarp(handler: (data: PhaserInstantWarpResponse | PhaserMapRequestError) => void): () => void {
@@ -558,6 +576,12 @@ export function normalizePhaserArrayPayload<T>(
 // Internal: dispatch incoming Phaser responses
 export function dispatchPhaserResponse(opcode: number, data: unknown): void {
   switch (opcode) {
+    case OpCodes.PlayerStepResponse:
+      handlers.playerStep.forEach((h) => h(data as PlayerStepResponse | PlayerStepError));
+      break;
+    case OpCodes.PlayerStepCompleteResponse:
+      handlers.playerStepComplete.forEach((h) => h(data as PlayerStepCompleteResponse | PlayerStepError));
+      break;
     case OpCodes.PhaserMapInfoResponse:
       handlers.mapInfo.forEach((h) => h(data as PhaserMapInfoResponse | PhaserMapRequestError));
       break;

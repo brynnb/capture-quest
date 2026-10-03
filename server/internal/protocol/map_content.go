@@ -162,3 +162,48 @@ type SafariZoneExitNotify struct {
 	BallsLeft              int    `json:"ballsLeft"`
 	Message                string `json:"message"`
 }
+
+// PlayerStepRequest proposes one direction from an expected owned source.
+// The server resolves the target and issues a session-bound animation token.
+type PlayerStepRequest struct {
+	MapID     int    `json:"mapId"`
+	FromX     *int   `json:"fromX" tstype:"number,required"`
+	FromY     *int   `json:"fromY" tstype:"number,required"`
+	Direction string `json:"direction"`
+	RequestID string `json:"requestId"`
+}
+type PlayerStepResponse struct {
+	Success   bool   `json:"success" tstype:"true"`
+	RequestID string `json:"requestId"`
+	StepToken string `json:"stepToken"`
+	MapID     int    `json:"mapId"`
+	X         int    `json:"x"`
+	Y         int    `json:"y"`
+	Direction string `json:"direction"`
+	LedgeJump bool   `json:"ledgeJump"`
+}
+
+// PlayerStepCompleteRequest acknowledges issued movement, never coordinates.
+type PlayerStepCompleteRequest struct {
+	StepToken string `json:"stepToken"`
+	RequestID string `json:"requestId"`
+}
+type PlayerStepCompleteResponse struct {
+	Success   bool   `json:"success" tstype:"true"`
+	RequestID string `json:"requestId"`
+	MapID     int    `json:"mapId"`
+	X         int    `json:"x"`
+	Y         int    `json:"y"`
+	Direction string `json:"direction"`
+}
+
+// PlayerStepError returns the owned location so rejected animations can reconcile.
+type PlayerStepError struct {
+	Success   bool   `json:"success" tstype:"false"`
+	RequestID string `json:"requestId"`
+	Error     string `json:"error"`
+	MapID     int    `json:"mapId"`
+	X         int    `json:"x"`
+	Y         int    `json:"y"`
+	Direction string `json:"direction"`
+}
