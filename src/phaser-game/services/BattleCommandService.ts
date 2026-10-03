@@ -132,6 +132,12 @@ async function sendBattleCommand(opcode: number, responseOpcode: number, command
       // cannot run while the preceding command still owns the single-flight slot.
       usePokeBattleStore.setState({ battleCommandPending: true });
       await project(snapshot.position);
+      // Close may have committed even when its acknowledgement was lost. Keep
+      // the server's previously recovered terminal message across store retirement;
+      // opening it here follows confirmed absence and never initiates another warp.
+      if (safariCommand && "action" in command && command.action === "close" && initial.safariExitMessage && !snapshot.battle && !snapshot.safari?.pokemon && !controller.signal.aborted && sceneProjection === project) {
+        usePokemonDialogueStore.getState().openDialogue([initial.safariExitMessage], null);
+      }
     } catch (recoveryError) {
       if (controller.signal.aborted || sceneProjection !== project) return;
       console.warn("[BattleCommand] Current-state recovery failed:", recoveryError);

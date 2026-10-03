@@ -24,6 +24,7 @@ vi.mock("./CutsceneService", () => ({ handleCutsceneStart: vi.fn() }));
 vi.mock("@/services/audio/AudioManager", () => ({ default: { playMusic: vi.fn(), playSFX: vi.fn() } }));
 import usePokeBattleStore from "@/stores/PokeBattleStore";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
+import usePokemonDialogueStore from "@/stores/PokemonDialogueStore";
 import { bindBattleScene, sendBattleAction, sendBattleSwitch, sendMoveLearningChoice, closeOrdinaryBattle, sendSafariAction, closeSafariBattle } from "./BattleCommandService";
 
 const pokemon: PokemonDTO = { id: 25, name: "PIKACHU", level: 5, type1: "ELECTRIC", type2: "", curHp: 1, maxHp: 20, attack: 10, defense: 10, speed: 10, special: 10, exp: 125, expToNextLevel: 91, status: "", isWild: false, boxSlot: 0, moves: [] };
@@ -90,6 +91,44 @@ test("lost Safari close acknowledgement restores absence without resending dismi
   await recoverRead(null, { active: true, ballsLeft: 29, stepsLeft: 499 }); await closing;
   expect(usePokeBattleStore.getState().isInBattle).toBe(false);
   expect(net.send).toHaveBeenCalledTimes(1); expect(net.commands.get(130)?.size).toBe(0); expect(vi.getTimerCount()).toBe(0);
+});
+
+test.each([false, true])("expired Safari dismissal presents the server message after projection; lost reply=%s", async lost => {
+  const terminal = { ...safari(2), active: false, ballsLeft: 0, isOver: true, exitMessage: "Server expiry announcement" };
+  usePokeBattleStore.getState().restoreGameplay({ success: true, requestId: "start", position: position("start"), battle: null, safari: terminal, trainer: null, cutscene: null });
+  const announce = vi.spyOn(usePokemonDialogueStore.getState(), "openDialogue").mockImplementation(() => {});
+  project.mockImplementationOnce(async () => { expect(announce).not.toHaveBeenCalled(); });
+  const closing = closeSafariBattle(); const id = sentID();
+  if (lost) { await vi.advanceTimersByTimeAsync(10000); await recoverRead(null); }
+  else emit(130, { ...safariReply(id, 3), closed: true, safariOver: true, isOver: true, ballsLeft: 0, exitMessage: terminal.exitMessage });
+  await closing;
+  expect(announce).toHaveBeenCalledTimes(1); expect(announce).toHaveBeenCalledWith([terminal.exitMessage], null);
+  expect(usePokeBattleStore.getState()).toMatchObject({ isInBattle: false, safariExitMessage: null });
+  emit(130, { ...safariReply(id, 3), closed: true, safariOver: true, exitMessage: terminal.exitMessage });
+  expect(announce).toHaveBeenCalledTimes(1); expect(net.send).toHaveBeenCalledTimes(1);
+});
+
+test("failed expired Safari dismissal retains the terminal encounter without announcing or retrying", async () => {
+  const terminal = { ...safari(2), active: false, ballsLeft: 0, isOver: true, exitMessage: "Server expiry announcement" };
+  usePokeBattleStore.getState().restoreGameplay({ success: true, requestId: "start", position: position("start"), battle: null, safari: terminal, trainer: null, cutscene: null });
+  const announce = vi.spyOn(usePokemonDialogueStore.getState(), "openDialogue").mockImplementation(() => {});
+  const closing = closeSafariBattle(); emit(130, { success: false, requestId: sentID(), error: "Commit failed" });
+  await recoverRead(null, terminal); await closing;
+  expect(usePokeBattleStore.getState()).toMatchObject({ isInBattle: true, safariExitMessage: terminal.exitMessage, commandError: expect.stringContaining("reconnect") });
+  expect(announce).not.toHaveBeenCalled(); expect(net.send).toHaveBeenCalledTimes(1);
+});
+
+test("scene retirement during recovered Safari dismissal projection suppresses the old announcement", async () => {
+  const terminal = { ...safari(2), active: false, ballsLeft: 0, isOver: true, exitMessage: "Old scene announcement" };
+  usePokeBattleStore.getState().restoreGameplay({ success: true, requestId: "start", position: position("start"), battle: null, safari: terminal, trainer: null, cutscene: null });
+  const announce = vi.spyOn(usePokemonDialogueStore.getState(), "openDialogue").mockImplementation(() => {});
+  let finish!: () => void;
+  project.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+  const closing = closeSafariBattle(); await vi.advanceTimersByTimeAsync(10000); await recoverRead(null);
+  await vi.advanceTimersByTimeAsync(0); expect(project).toHaveBeenCalledTimes(1);
+  retireScene(); finish(); await closing;
+  expect(announce).not.toHaveBeenCalled(); expect(net.send).toHaveBeenCalledTimes(1);
+  expect(net.gameplay.size).toBe(0); expect(net.commands.get(130)?.size).toBe(0);
 });
 
 test("a correlated turn has one in-flight mutation; unrelated and late duplicate replies cannot apply", async () => {

@@ -1083,8 +1083,12 @@ expired encounter blocks a new payment; dismissal clears its encounter and captu
 metadata. A failed close whose recovery still finds the encounter reports a
 reconnect error instead of retrying dismissal. Normal expiry acknowledgement
 projects the committed position; the subsequent acknowledged close presents the
-PA dialogue without initiating another warp. Expired close-reply-loss dialogue and
-last-ball scene replacement still require rendered acceptance.
+PA dialogue without initiating another warp. Recovery snapshots also carry the shared server expiry message for inactive
+terminal encounters. The store retains that message until explicit dismissal;
+confirmed recovered absence presents it only after owned position projection and
+under the captured scene guard. Failed close recovery keeps the terminal state;
+scene retirement suppresses the old message. This covers close-reply loss within
+an admitted command, not a durable notice after process death following dismissal.
 
 Save version 2 requires nonempty identity and a positive revision. The supported
 ID-less version-1 encounter is upgraded once under the character lock in

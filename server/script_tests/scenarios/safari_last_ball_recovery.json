@@ -1,0 +1,58 @@
+{
+  "name": "safari_last_ball_recovery",
+  "description": "A last Safari Ball commits expiry and a retained terminal encounter for lost-reply and reentry acceptance; the actual catch/flee outcome remains random.",
+  "fixture": {
+    "characterName": "ScriptSimSafariLastBallRecovery",
+    "mapName": "SAFARI_ZONE_CENTER",
+    "x": 14,
+    "y": 24,
+    "direction": "DOWN",
+    "flags": [],
+    "party": [
+      {
+        "speciesId": 25,
+        "level": 30
+      }
+    ],
+    "inventory": [],
+    "hiddenObjects": [],
+    "safari": {
+      "active": true,
+      "ballsLeft": 1,
+      "stepsLeft": 499,
+      "battle": {
+        "pokemonId": 111,
+        "level": 25
+      }
+    }
+  },
+  "trigger": {
+    "type": "safari_battle_action",
+    "mapName": "SAFARI_ZONE_CENTER",
+    "action": "ball"
+  },
+  "expect": {
+    "scriptLabel": "SafariBattleAction",
+    "safariActive": false,
+    "safariBallsLeft": 0,
+    "safariStepsLeft": 499,
+    "safariBattle": {
+      "active": false
+    },
+    "messages": [
+      {
+        "channel": "stream",
+        "opcode": 130,
+        "payloadContains": [
+          "\"success\":true",
+          "\"isOver\":true",
+          "\"safariOver\":true"
+        ]
+      }
+    ],
+    "actionTypesContains": [
+      "safariBattleAction"
+    ],
+    "activeBattleAbsent": true
+  }
+}

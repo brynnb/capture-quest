@@ -2,8 +2,8 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest checkpoint: guarded Safari commands and terminal recovery
-(2026-10-03), following durable capture placement and terminal login retention `58d0b85`, rendered move-choice recovery `7eb3a7e`, move-choice storage/coordinator acceptance `072ad71`, blackout scene ownership `04579dc`, terminal dismissal/post-battle plans `8ce43ff`, current-owned gameplay recovery `c38a74c`, correlated battle recovery `30fa1bb` and network battle command identity `8a5ba4a`, coherent gameplay recovery `c0d31f9` and durable cutscene issuance/completion `e9eb834`, pending trainer encounters `84f2d91` and ordinary-step receipts `80a544c`, following atomic movement-step effects `cfdeb9e`, retirement of the client coordinate setter `2df1db0`, correlated cutscene completion `6638a63`, issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
+Working branch: `codex/server-foundations`. Latest checkpoint: Safari last-ball expiry presentation recovery
+(2026-10-03), following guarded Safari commands `d673aea`, durable capture placement and terminal login retention `58d0b85`, rendered move-choice recovery `7eb3a7e`, move-choice storage/coordinator acceptance `072ad71`, blackout scene ownership `04579dc`, terminal dismissal/post-battle plans `8ce43ff`, current-owned gameplay recovery `c38a74c`, correlated battle recovery `30fa1bb` and network battle command identity `8a5ba4a`, coherent gameplay recovery `c0d31f9` and durable cutscene issuance/completion `e9eb834`, pending trainer encounters `84f2d91` and ordinary-step receipts `80a544c`, following atomic movement-step effects `cfdeb9e`, retirement of the client coordinate setter `2df1db0`, correlated cutscene completion `6638a63`, issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
 `0585dde`, committed
 blackout/recovery `2f62595`, teleport notification projection `65a5581`, Instant
 Warp `e1f54a8`, normal warps `3899660`, owned-position loading `64cf970`,
@@ -65,8 +65,7 @@ presentation is replaced. Capture placement now survives lost replies and
 character reentry, with explicit party/PC summary dismissal. Login retains
 terminal battles for coherent scene recovery and atomic post-battle plan issuance.
 Safari actions and dismissal now share the correlated command coordinator, with
-durable identity/revision guards and terminal catch placement recovery. Safari
-exhaustion/reply-loss acceptance and full inventory, wallet and flag
+durable identity/revision guards and terminal catch placement recovery. Rendered Safari capture/process recovery acceptance and full inventory, wallet and flag
 resynchronization still need work. Evidence and verification limits
 appear in the checkpoint sections below.
 
@@ -78,10 +77,55 @@ number of commits or passing tests. All five areas still have outstanding work.
 | Area | Implemented | Still required |
 | --- | --- | --- |
 | Request/session boundary | Packet and connection limits, centralized session prerequisites, removal of insecure session takeover, actual transport closure, location/visibility checks for scripted clicks, dialogue choices and direct trainer battles, client destination catalog validation, server-resolved normal warp activation, explicit Instant Warp commands, committed teleport notification contracts and read-only map metadata, retired coordinate/map setters, and preserved command deadlines/disconnect cancellation in migrated operations. | Audit remaining interaction/mutation endpoints; propagate cancellation through legacy managers and remaining database/network work. |
-| Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors, Game Corner prizes and bounded coin/slot/hidden-coin operations, atomic Escape Rope/FLY positions, durable Repel counters, Safari entry/turn/capture state and exhaustion destinations, atomic blackout/recovery destinations and map-load position/Safari/flag/visibility/boulder effects, atomic movement-step counters, encounters and recovery, durable latest ordinary-step receipts, durable sight-trainer plans/resumption and atomic readiness resolution, durable cutscene snapshots/completion receipts/cancellation, coherent battle/Safari/pending-plan recovery, mandatory ordinary/Safari battle command identity, correlated battle timeout recovery and retained Safari terminal/capture state, recoverable terminal dismissal and atomic post-battle plans, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery for remaining mutations across reconnects; finish current-state recovery for inventory/wallet/flags and remaining presentation, finish Safari exhaustion/capture/scene-replacement acceptance; finish queued-plan/source/catalog ordering acceptance coverage and remaining command recovery. |
+| Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors, Game Corner prizes and bounded coin/slot/hidden-coin operations, atomic Escape Rope/FLY positions, durable Repel counters, Safari entry/turn/capture state and exhaustion destinations, atomic blackout/recovery destinations and map-load position/Safari/flag/visibility/boulder effects, atomic movement-step counters, encounters and recovery, durable latest ordinary-step receipts, durable sight-trainer plans/resumption and atomic readiness resolution, durable cutscene snapshots/completion receipts/cancellation, coherent battle/Safari/pending-plan recovery, mandatory ordinary/Safari battle command identity, correlated battle timeout recovery and retained Safari terminal/capture state, recoverable terminal dismissal and atomic post-battle plans, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery for remaining mutations across reconnects; finish current-state recovery for inventory/wallet/flags and remaining presentation, finish rendered Safari party/PC capture and process-death acceptance; finish queued-plan/source/catalog ordering acceptance coverage and remaining command recovery. |
 | Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, movement ticks coordinated with the owner, and immediate retirement of battle-scene command admission/subscriptions. | Finish timer/callback/shared-state and legacy position-writer audits; prove remaining concurrent/reconnect behavior across real transports. |
 | Domains and wire contracts | Injected content-query service; typed character/wallet/bind, Pokédex/card, content detail, map-script, map-info/list, sight-trainer notification/readiness, coherent gameplay recovery, ordinary/Safari battle command replies, shared battle events and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
 | Lifecycle and verification | Owned HTTP/listeners, readiness, listener failure propagation, joined periodic workers, sealed session admissions, fail-closed staged preload, startup cancellation, atomic scripted-event publication, and deadline-aware shutdown waits with returned failure results. | Audit cancellation of remaining legacy work, define durable final-save recovery, and complete transport/rendered integration coverage. Owned HTTP and player transport retirement and isolated active-player shutdown checks have landed. |
+
+## Safari last-ball expiry presentation recovery (2026-10-03)
+
+A rendered lost-last-ball/close test first proved that the last ball committed the
+gate position and retained the terminal encounter across reentry, then failed at
+the PA announcement. The close response carried `exitMessage`, but timeout recovery
+had only encounter absence and therefore silently lost that presentation.
+The initial failing evidence is `/var/tmp/capturequest-rendered.YRZfHB`.
+
+The read-only gameplay snapshot now includes the shared server expiry message for
+an inactive retained encounter. The battle store retains it with terminal state.
+After the user's explicit close, confirmed encounter absence and completed owned
+position projection permit presentation of that captured server message. Failed
+close recovery retains the encounter and reports a reconnect error; retired scene
+ownership suppresses the old announcement. Late replies cannot replay it. No
+additional warp, mutation retry, guessed text or persistent parallel state is added.
+
+The data-only `safari_last_ball_recovery` fixture seeds one ordinary Safari Ball;
+it uses the real random capture/flee mechanics. Rendered expectations follow the
+actual committed catch outcome and verify its summary at the gate after timeout
+and reentry, followed by lost close acknowledgement, expiry presentation and late
+reply retirement. This does not guarantee a capture in every rendered run.
+PostgreSQL recovery tests separately reach actual party and full-party PC catches
+with independent real rolls, then check inactive terminal identity/revision,
+authoritative party, BOX 4 placement, expiry message and absence after dismissal.
+
+Verification: world and battle PostgreSQL race suites passed, three focused
+frontend suites passed (34 tests), typecheck and production build/runtime asset
+validation passed, and all seven isolated rendered Safari/gameplay recovery cases
+passed at `/var/tmp/capturequest-rendered.KoREbh`. Logs are
+`/var/tmp/capturequest-safari-expiry-{go,front-verified,types-verified,build,rendered-final}.log`.
+The first unit run used a matcher unavailable in this Vitest version; separate
+count and argument assertions preserve the same requirement. The change
+is additive runtime JSON and regenerated TypeScript; no SQL migration or extractor
+artifact changes are involved. The full goal remains active. Remaining: rendered
+Safari party/PC capture acceptance, process-death recovery and the five-area audits.
+Expiry presentation is not a durable acknowledged notice after process death once
+the encounter has been dismissed. A follow-up inspection also found that
+`internal/scriptsim/runner.go:runSafariBattleAction` still marshals only `action`.
+That consumer must migrate to the required identity/request contract, and its
+Safari goldens must be regenerated/checked against the matched private runtime;
+they were not run in this checkpoint. The new fixture's rendered debugger path
+is verified, but its simulator trigger is not yet accepted. Recommended next
+step: migrate that simulator consumer, then finish Safari capture/process checks
+and continue inventory/wallet/flag resynchronization.
 
 ## Guarded Safari commands and terminal recovery (2026-10-03)
 

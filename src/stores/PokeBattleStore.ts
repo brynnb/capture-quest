@@ -55,6 +55,7 @@ interface PokeBattleState extends BattleCommandIdentity {
   // Safari Zone battle state
   isSafari: boolean;
   safariBallsLeft: number;
+  safariExitMessage: string | null;
   // Caught Pokémon sent to Bill's PC (party was full)
   sentToPC: boolean;
   sentToPCBox: number | null;
@@ -91,7 +92,7 @@ interface PokeBattleState extends BattleCommandIdentity {
   setPhase: (phase: BattlePhase) => void;
   advanceEvent: () => void;
   startSafariBattle: (data: { battleId?: string; revision?: number; pokemon: { id: number; name: string; level: number; hp: number; maxHp: number }; ballsLeft: number; stepsLeft: number }) => void;
-  updateSafariState: (data: { events: BattleEvent[]; ballsLeft: number; stepsLeft: number; isOver: boolean; caught: boolean; fled: boolean; caughtPokemon?: { name: string }; sentToPC?: boolean; pcBox?: number }) => void;
+  updateSafariState: (data: { events: BattleEvent[]; ballsLeft: number; stepsLeft: number; isOver: boolean; caught: boolean; fled: boolean; caughtPokemon?: { name: string }; exitMessage?: string; sentToPC?: boolean; pcBox?: number }) => void;
 }
 
 type BattlePresentationState = Omit<PokeBattleState,
@@ -128,6 +129,7 @@ const initialBattleState: BattlePresentationState = {
   pendingMoveLearn: null,
   isSafari: false,
   safariBallsLeft: 0,
+  safariExitMessage: null,
   sentToPC: false,
   sentToPCBox: null,
 };
@@ -337,6 +339,7 @@ const usePokeBattleStore = create<PokeBattleState>((set, get) => ({
     const hasEvents = data.events && data.events.length > 0;
     const updates: Partial<PokeBattleState> = {
       safariBallsLeft: data.ballsLeft,
+      safariExitMessage: data.exitMessage ?? null,
       sentToPC: data.sentToPC || false,
       sentToPCBox: data.pcBox ?? null,
     };

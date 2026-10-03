@@ -459,6 +459,7 @@ export interface SafariRecoveryPokemon {
   maxHp: number /* int */;
 }
 export interface SafariRecoveryState {
+  exitMessage?: string;
   isOver?: boolean;
   caught?: boolean;
   fled?: boolean;

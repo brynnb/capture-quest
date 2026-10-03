@@ -57,6 +57,7 @@ type SafariRecoveryPokemon struct {
 	MaxHP int    `json:"maxHp"`
 }
 type SafariRecoveryState struct {
+	ExitMessage string                 `json:"exitMessage,omitempty"`
 	IsOver      bool                   `json:"isOver,omitempty"`
 	Caught      bool                   `json:"caught,omitempty"`
 	Fled        bool                   `json:"fled,omitempty"`
@@ -149,6 +150,9 @@ func readGameplayState(ctx context.Context, ses *session.Session, wh *WorldHandl
 		}
 		if safari != nil && (safari.Active || safari.Battle != nil) {
 			result.Safari = &SafariRecoveryState{Active: safari.Active, BallsLeft: safari.BallsLeft, StepsLeft: safari.StepsLeft}
+			if !safari.Active {
+				result.Safari.ExitMessage = SafariExpiryMessage
+			}
 			if safari.Battle != nil {
 				if safari.Battle.BattleID == "" || safari.Battle.Revision < 1 {
 					return fmt.Errorf("Safari encounter requires identity upgrade before recovery")

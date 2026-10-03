@@ -267,6 +267,53 @@ func TestGameplayRecoveryReadsSafariBattleCountersAndRejectsCorruptStore(t *test
 	}
 }
 
+func TestLastBallSafariCaptureRecoveryRetainsPlacementAndExpiry(t *testing.T) {
+	for _, size := range []int{1, 6} {
+		t.Run(fmt.Sprintf("party_%d", size), func(t *testing.T) {
+			wh, ses, messages := setupIssuedStep(t)
+			wh.Safari = NewSafariZoneManager(wh.database)
+			if size == 6 {
+				testdb.Exec(t, wh.database, `INSERT INTO character_pokemon(character_id,party_slot,box_slot,pokemon_id,level,exp,cur_hp,max_hp) SELECT 42,s,s,25,50,125000,1,95 FROM generate_series(1,5) s; INSERT INTO character_pc_state(character_id,current_box) VALUES(42,3)`)
+			}
+			var result safariActionResult
+			for i := 0; i < 128; i++ {
+				// Use the real capture roll; only reset independent test encounters.
+				seedSafariBattle(t, wh.Safari, 1)
+				var err error
+				result, err = safariFixtureAction(t, wh.Safari, "ball")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if result.Battle.Caught {
+					break
+				}
+			}
+			if result.Battle == nil || !result.Battle.Caught {
+				t.Fatal("no capture reached recovery")
+			}
+			publishCommittedPlayerPosition(ses, wh, SafariZoneGateMapID, SafariZoneGateReturnX, SafariZoneGateReturnY, "DOWN")
+			messages.streams = nil
+			battleDispatch(t, wh, ses, opcodes.GameplayStateRequest, `{"requestId":"expired","current":true}`)
+			reply := recoveryReply(t, messages)
+			s := reply.Safari
+			if s == nil || s.Active || !s.IsOver || !s.Caught || s.BallsLeft != 0 || s.ExitMessage != SafariExpiryMessage || s.BattleID != result.Battle.BattleID || s.Revision != 2 || reply.Position.MapID != SafariZoneGateMapID {
+				t.Fatalf("expired capture recovery=%+v position=%+v", s, reply.Position)
+			}
+			if s.SentToPC != (size == 6) || (size == 6 && (s.PCBox != 4 || len(s.PlayerParty) != 6)) || (size == 1 && (len(s.PlayerParty) != 2 || s.PlayerParty[1].ID != 129)) {
+				t.Fatalf("placement/party=%+v", s)
+			}
+			if _, err := wh.Safari.act(context.Background(), 42, "close", BattleCommandIdentity{BattleID: s.BattleID, Revision: s.Revision}); err != nil {
+				t.Fatal(err)
+			}
+			messages.streams = nil
+			battleDispatch(t, wh, ses, opcodes.GameplayStateRequest, `{"requestId":"closed","current":true}`)
+			if recoveryReply(t, messages).Safari != nil {
+				t.Fatal("dismissed encounter recovered again")
+			}
+		})
+	}
+}
+
 func TestGameplayRecoveryTrainerPlanThenLostBattleStart(t *testing.T) {
 	wh, ses, messages, notify := pendingTrainerFixture(t)
 	messages.streams = nil
