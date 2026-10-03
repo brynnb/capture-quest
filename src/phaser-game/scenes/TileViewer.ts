@@ -1,4 +1,4 @@
-import { bindShopScene } from "@/phaser-game/services/ShopCommandService";
+import { bindInventoryScene } from "@/phaser-game/services/InventoryCommandService";
 import { bindBattleScene } from "@/phaser-game/services/BattleCommandService";
 import type { PhaserMapInfo } from "@/net/generated/protocol";
 import { Scene } from "phaser";
@@ -89,7 +89,7 @@ function numberOrNull(value: unknown): number | null {
 }
 
 export class TileViewer extends Scene {
-  private shopSceneUnsubscribe: (() => void) | null = null;
+  private inventorySceneUnsubscribe: (() => void) | null = null;
   private battleSceneUnsubscribe: (() => void) | null = null;
 
   // Services and managers
@@ -557,7 +557,7 @@ export class TileViewer extends Scene {
       resetScene: (resetCamera) => this.resetScene(resetCamera),
     });
     this.warpEvents.register();
-    this.shopSceneUnsubscribe = bindShopScene();
+    this.inventorySceneUnsubscribe = bindInventoryScene();
     this.battleSceneUnsubscribe = bindBattleScene(position => this.warpEvents.reconcileOwnedPosition(position));
 
     this.eventBridge = new TileViewerEventBridge({
@@ -2106,8 +2106,8 @@ export class TileViewer extends Scene {
   }
 
   cleanupResources() {
-    this.shopSceneUnsubscribe?.();
-    this.shopSceneUnsubscribe = null;
+    this.inventorySceneUnsubscribe?.();
+    this.inventorySceneUnsubscribe = null;
     this.battleSceneUnsubscribe?.();
     this.battleSceneUnsubscribe = null;
     // Explicit reset also cleans up before Phaser shutdown. Remove both hooks

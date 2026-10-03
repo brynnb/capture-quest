@@ -33,7 +33,7 @@ export async function readCurrentGameplayState(signal?: AbortSignal): Promise<Ga
 
 export function applyGameplaySnapshot(snapshot: GameplayStateResponse): void {
   validateGameplaySnapshot(snapshot);
-  useCQInventoryStore.getState().setInventory(snapshot.inventory, snapshot.wallet.pokedollars, snapshot.shopRevision);
+  useCQInventoryStore.getState().setInventory(snapshot.inventory, snapshot.wallet.pokedollars, snapshot.commandRevision);
   usePlayerCharacterStore.getState().handleCharacterWalletData(snapshot.wallet);
   usePlayerCharacterStore.getState().setEventFlags(snapshot.eventFlags);
   usePokemonPartyStore.getState().setParty(snapshot.party);
@@ -64,7 +64,7 @@ export async function recoverGameplayState(mapId: number, signal?: AbortSignal):
 // turn. Compare immutable store states and retry a read, never a mutation.
 function captureGameplayViews() {
   const inventory = useCQInventoryStore.getState();
-  return [usePokeBattleStore.getState(), inventory.items, inventory.money, inventory.shopRevision, usePlayerCharacterStore.getState().characterProfile, usePokemonPartyStore.getState().party];
+  return [usePokeBattleStore.getState(), inventory.items, inventory.money, inventory.commandRevision, usePlayerCharacterStore.getState().characterProfile, usePokemonPartyStore.getState().party];
 }
 function gameplayViewsChanged(before: ReturnType<typeof captureGameplayViews>) {
   return captureGameplayViews().some((view, index) => view !== before[index]);
@@ -74,7 +74,7 @@ function gameplayViewsChanged(before: ReturnType<typeof captureGameplayViews>) {
 function validateGameplaySnapshot(snapshot: GameplayStateResponse): void {
   if (!Array.isArray(snapshot.inventory) || !Array.isArray(snapshot.party) || !Array.isArray(snapshot.eventFlags)
     || snapshot.eventFlags.some(flag => typeof flag !== "string" || !flag)
-    || !Number.isSafeInteger(snapshot.shopRevision) || snapshot.shopRevision < 0
+    || !Number.isSafeInteger(snapshot.commandRevision) || snapshot.commandRevision < 0
     || !Number.isSafeInteger(snapshot.wallet?.characterId) || snapshot.wallet.characterId <= 0
     || !Number.isSafeInteger(snapshot.wallet.pokedollars) || snapshot.wallet.pokedollars < 0) {
     throw new Error("Incomplete owned gameplay snapshot; reconnect to a matching server");

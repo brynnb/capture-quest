@@ -474,7 +474,7 @@ export interface SafariRecoveryState {
   pokemon?: SafariRecoveryPokemon;
 }
 export interface GameplayStateResponse {
-  shopRevision: number /* int64 */;
+  commandRevision: number /* int64 */;
   inventory: import("./cqitems").CQInventoryItem[];
   wallet: import("./models").CharacterWallet;
   party: PokemonDTO[];
@@ -495,14 +495,14 @@ export interface GameplayStateResponse {
 //////////
 // source: handler-cqitems.go
 
-export interface ShopCommandIdentity {
+export interface InventoryCommandIdentity {
   characterId: number /* int64 */;
   revision?: number;
 }
 export interface CQMerchantBuyRequest {
   actorId: number /* int */;
   requestId: string;
-  shop?: ShopCommandIdentity;
+  command?: InventoryCommandIdentity;
   merchantId: number /* int32 */;
   itemId: number /* int32 */;
   quantity: number /* uint16 */;
@@ -510,10 +510,10 @@ export interface CQMerchantBuyRequest {
 export interface CQMerchantSellRequest {
   actorId: number /* int */;
   requestId: string;
-  shop?: ShopCommandIdentity;
+  command?: InventoryCommandIdentity;
   instanceId: number /* int32 */;
 }
-export interface ShopCommandError {
+export interface InventoryCommandError {
   success: false;
   requestId: string;
   error: string;
@@ -522,7 +522,7 @@ export interface ShopCommandError {
  * These tagged contracts replace map-shaped bag and shop mutation successes.
  */
 export interface CQInventoryResponse {
-  shopRevision: number /* int64 */;
+  commandRevision: number /* int64 */;
   success: true;
   items: import("./cqitems").CQInventoryItem[];
   money: number /* int64 */;
@@ -558,6 +558,25 @@ export interface CQMerchantOpenResponse {
   name: string;
   items: import("./cqitems").CQMerchantItem[];
   money: number /* int64 */;
+}
+export interface CQPartyItemUseResponse {
+  requestId: string;
+  success: true;
+  inventory: import("./cqitems").CQInventorySnapshot;
+  party: PokemonDTO[];
+  outcome: import("./itemuse").PartyUse;
+}
+export interface CQItemUseRequest {
+  requestId?: string;
+  command?: InventoryCommandIdentity;
+  pokemonRowId?: number /* int64 */;
+  instanceId: number /* int32 */; // Item instance ID in inventory
+  partySlot: number /* int */; // Target Pokémon party slot (0-5)
+  moveSlot: number /* int */; // For move-targeted items: which move slot (0-3), -1 otherwise
+  mapId?: number /* int */;
+  x?: number /* int */;
+  y?: number /* int */;
+  direction?: string;
 }
 
 //////////
@@ -1022,6 +1041,7 @@ export interface PokeBattleStartRequest {
  * PokemonDTO is the client-facing representation of a Pokémon in battle and party.
  */
 export interface PokemonDTO {
+  rowId?: number /* int64 */;
   id: number /* int */;
   name: string;
   level: number /* int */;

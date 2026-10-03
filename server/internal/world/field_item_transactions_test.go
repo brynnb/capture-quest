@@ -8,11 +8,13 @@ import (
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
 	"capturequest/internal/db/cqitems"
+	"capturequest/internal/itemuse"
 	"capturequest/internal/testdb"
 )
 
 func TestBicycleDispatchRequiresOwnedInstanceAndReportsReadFailures(t *testing.T) {
 	database, wh, ses, messages := battleTestWorld(t)
+	wh.Items = itemuse.New(database)
 	testdb.Exec(t, database, `INSERT INTO cq_items(id,name,short_name,is_usable) VALUES(100,'Bicycle','BICYCLE',true)`)
 	instance, err := cqitems.NewStore(database).AddItemToInventory(42, 100, 1)
 	if err != nil {
@@ -38,6 +40,8 @@ func TestBicycleDispatchRequiresOwnedInstanceAndReportsReadFailures(t *testing.T
 		}
 	}
 	assertRejected(fmt.Sprintf(`{"instanceId":%d,"unknown":true}`, instance), "Invalid item use request")
+	// Correlated party commands cannot enter the legacy field-effect branch.
+	assertRejected(fmt.Sprintf(`{"instanceId":%d,"requestId":"wrong-family","command":{"characterId":42,"revision":0}}`, instance), "That item can't be used outside of battle")
 	for _, mutation := range []string{
 		`UPDATE cq_item_instances SET owner_id=43`,
 		`UPDATE cq_item_instances SET owner_id=42,owner_type=1`,

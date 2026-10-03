@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import type { CQMerchantBuyRequest, CQMerchantSellRequest, CQMerchantBuyResponse, CQMerchantSellResponse, ShopCommandError } from "../../src/net/generated/world_api";
+import type { CQMerchantBuyRequest, CQMerchantSellRequest, CQMerchantBuyResponse, CQMerchantSellResponse, InventoryCommandError } from "../../src/net/generated/world_api";
 import * as OpCodes from "../../src/net/generated/opcodes";
 import { createGuestCharacterAndEnterWorld, enterWorld, quitToCharacterSelect } from "./helpers/auth";
 import { collectPageErrors } from "./helpers/errors";
@@ -14,7 +14,7 @@ test("committed shop buy and sale survive two SIGKILLs without replaying effects
   const { sql, crash, record } = await isolatedCrashRuntime();
   const errors = collectPageErrors(page);
   const buys: CQMerchantBuyRequest[] = [], sales: CQMerchantSellRequest[] = [];
-  const rejected: ShopCommandError[] = [];
+  const rejected: InventoryCommandError[] = [];
   let purchase: CQMerchantBuyResponse | undefined, sale: CQMerchantSellResponse | undefined;
   let purchasePacket: Buffer | undefined;
   let withhold = false;
@@ -116,7 +116,7 @@ test("committed shop buy and sale survive two SIGKILLs without replaying effects
   }, bought.items[1].id);
   await expect.poll(() => !!sale).toBe(true);
   expect(sales).toHaveLength(1);
-  expect(sale).toMatchObject({ sellPrice: 600, money: 8600, inventory: { shopRevision: 2 } });
+  expect(sale).toMatchObject({ sellPrice: 600, money: 8600, inventory: { commandRevision: 2 } });
   const sold = await readDurable();
   expect(sold).toEqual({ ...bought, money: 8600, revision: 2, items: [bought.items[0]] });
   expect((await getGameState(fresh)).inventory.money).toBe(8000);
@@ -137,7 +137,7 @@ test("committed shop buy and sale survive two SIGKILLs without replaying effects
     const net = await import(path);
     const target = window as typeof window & { recoveredShopLateReply?: boolean };
     target.recoveredShopLateReply = false;
-    const stop = net.onShopCommand(opcode, () => { target.recoveredShopLateReply = true; stop(); });
+    const stop = net.onInventoryCommand(opcode, () => { target.recoveredShopLateReply = true; stop(); });
   }, OpCodes.CQMerchantBuyResponse);
   deliver!(purchasePacket!);
   await expect.poll(() => final.evaluate(() => (window as typeof window & { recoveredShopLateReply?: boolean }).recoveredShopLateReply)).toBe(true);

@@ -20,6 +20,7 @@ type PokeBattleStartRequest struct {
 
 // PokemonDTO is the client-facing representation of a Pokémon in battle and party.
 type PokemonDTO struct {
+	RowID          int64     `json:"rowId,omitempty"`
 	ID             int       `json:"id"`
 	Name           string    `json:"name"`
 	Level          int       `json:"level"`
@@ -118,6 +119,7 @@ func pokemonToDTO(p *pokebattle.Pokemon) PokemonDTO {
 	}
 
 	dto := PokemonDTO{
+		RowID:          p.RowID,
 		ID:             p.ID,
 		Name:           p.Name,
 		Level:          p.Level,

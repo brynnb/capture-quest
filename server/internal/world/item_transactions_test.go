@@ -21,7 +21,8 @@ func TestItemDispatchPublishesOnlyCommittedEffects(t *testing.T) {
 	db.GlobalWorldDB = &db.WorldDB{DB: database}
 	t.Cleanup(func() { removeBattle(1); db.GlobalWorldDB = previous })
 	testdb.Exec(t, database, `INSERT INTO character_data(id,name) VALUES(1,'one');
-	INSERT INTO phaser_pokemon(id,name,type_1,hp,atk,def,spd,spc,catch_rate,base_exp) VALUES(25,'PIKACHU','ELECTRIC',35,55,30,90,50,190,82);
+	INSERT INTO character_wallet VALUES(1,1000);
+ INSERT INTO phaser_pokemon(id,name,type_1,hp,atk,def,spd,spc,catch_rate,base_exp) VALUES(25,'PIKACHU','ELECTRIC',35,55,30,90,50,190,82);
 	INSERT INTO character_pokemon(character_id,party_slot,box_slot,pokemon_id,level,cur_hp,max_hp) VALUES(1,0,0,25,50,1,95);
 	INSERT INTO cq_items(id,name,short_name,is_usable,heal_amount) VALUES(1,'Potion','POTION',true,20);
 	ALTER TABLE character_pokemon ADD CONSTRAINT fail_heal CHECK(cur_hp=1);`)
@@ -33,7 +34,7 @@ func TestItemDispatchPublishesOnlyCommittedEffects(t *testing.T) {
 	ses := &session.Session{Authenticated: true, Client: &testSessionClient{char: &model.CharacterData{ID: 1}}, Messenger: messenger}
 	registry := NewWorldOpCodeRegistry()
 	registry.WH = &WorldHandler{database: database, Items: itemuse.New(database)}
-	request := clientPacket(opcodes.CQItemUseRequest, fmt.Sprintf(`{"instanceId":%d,"partySlot":0,"moveSlot":-1}`, instance))
+	request := clientPacket(opcodes.CQItemUseRequest, fmt.Sprintf(`{"requestId":"use","command":{"characterId":1,"revision":0},"pokemonRowId":1,"instanceId":%d,"partySlot":0,"moveSlot":-1}`, instance))
 	registry.HandleWorldPacket(ses, request)
 	if len(messenger.streams) != 1 || messenger.streams[0].opcode != opcodes.CQItemUseResponse {
 		t.Fatalf("failure messages=%+v", messenger.streams)
@@ -65,25 +66,14 @@ func TestItemDispatchPublishesOnlyCommittedEffects(t *testing.T) {
 	removeBattle(1)
 	messenger.streams = nil
 	registry.HandleWorldPacket(ses, request)
-	if len(messenger.streams) != 3 || messenger.streams[1].opcode != opcodes.PokemonPartyResponse || messenger.streams[2].opcode != opcodes.CQInventoryResponse {
+	if len(messenger.streams) != 1 || messenger.streams[0].opcode != opcodes.CQItemUseResponse {
 		t.Fatalf("committed messages=%+v", messenger.streams)
 	}
-	var success itemuse.PartyUse
+	var success CQPartyItemUseResponse
 	if err := json.Unmarshal(messenger.streams[0].payload, &success); err != nil {
 		t.Fatal(err)
 	}
-	if !success.Success || success.NewQuantity != 0 {
-		t.Fatalf("success=%+v", success)
-	}
-	var party struct {
-		Party []struct {
-			CurHP int `json:"curHp"`
-		}
-	}
-	if err := json.Unmarshal(messenger.streams[1].payload, &party); err != nil {
-		t.Fatal(err)
-	}
-	if len(party.Party) != 1 || party.Party[0].CurHP != 21 {
-		t.Fatalf("published party=%+v", party)
+	if !success.Success || success.RequestID != "use" || success.Outcome.NewQuantity != 0 || success.Inventory.CommandRevision != 1 || len(success.Inventory.Items) != 0 || len(success.Party) != 1 || success.Party[0].CurHP != 21 || success.Party[0].RowID != 1 {
+		t.Fatalf("committed projection=%+v", success)
 	}
 }

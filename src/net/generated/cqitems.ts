@@ -66,7 +66,7 @@ export interface CQInventoryItem {
  * CQInventorySnapshot is the complete owned bag and balance from one transaction.
  */
 export interface CQInventorySnapshot {
-  shopRevision: number /* int64 */;
+  commandRevision: number /* int64 */;
   items: CQInventoryItem[];
   money: number /* int64 */;
 }

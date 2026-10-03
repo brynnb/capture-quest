@@ -2,9 +2,9 @@
 
 Status: paused (confirmed in the goal tool on 2026-10-03). Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest checkpoint: shared owned-item
-instance reads and bounded item dispatch (2026-10-03), following committed
-shop buy/sale recovery across two actual process crashes. The shop runtime
+Working branch: `codex/server-foundations`. Current bounded checkpoint: shared
+purchase/party-item command execution and recovery (2026-10-03), following the
+owned-item dispatch checkpoint and committed shop crash/restart acceptance. The shop runtime
 implementation is `f118916` (per-command clerk authorization and source sale
 policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected menu
 reads) and `21fd084` (durable shop revisions and correlated recovery).
@@ -16,11 +16,94 @@ The bounded [Nakama feasibility assessment](NAKAMA_FEASIBILITY.md) is complete
 using the existing infrastructure before migrating another endpoint family.
 Nakama's managed transactions would require a player-data migration; an RPC-only
 integration would retain our SQL and recovery work. This is an evaluated
-recommendation, not an implemented replacement architecture.
+recommendation. The user subsequently authorized the bounded two-consumer
+consolidation below; a framework migration remains outside scope.
 
 Keep Go, PostgreSQL, one deployable server, and the authoritative extractor,
 runtime asset, and scripted-action contracts. Improve runtime safety through
 small verified changes. No production deployment or push is part of this goal.
+
+## Shared inventory command checkpoint (2026-10-03)
+
+Scope: complete the finite milestone from NAKAMA_FEASIBILITY.md, then stop before
+migrating another command family. The broader five-area goal remains paused and
+incomplete. This work adds no framework dependency, database migration, broker,
+event store or parallel party-item lifecycle.
+
+Implemented:
+
+- `cqitems.Store.ExecuteCommand` owns one transaction/lock/revision/projection
+  boundary used by purchase, sale and outside-battle party-item services. Reuse the
+  existing `character_shop_state` counter and reject stale revisions across both
+  consumers; recover current state instead of replaying historical results.
+- One `InventoryCommandService` owns client admission, correlation, cancellation,
+  stale-response checks, pending/error state and current bag/party/wallet recovery.
+  Shop opening retains read-only failure behavior through that same owner.
+- Party-item commands carry durable Pokémon row identity and return one correlated
+  committed bag/party/outcome packet. Pending PP/TM selection retains its target.
+  Existing medicine, TM/HM, evolution and Flute policies stay in `itemuse`.
+- The former global party-item quantity/prompt handler and separate party/bag
+  publications are retired. Unmigrated field-item effects remain explicitly
+  separate on their existing protocol; correlated party commands cannot enter it.
+
+Before/after review: the shop client module falls from 128 to 50 lines, containing
+only its policy and presentation. Its scene/request/recovery ownership moves into
+one 130-line coordinator that also supplies party use. This is not a net reduction
+in those two files (180 versus 128 lines): party commands gain protections they
+previously lacked. The removed global TM prompt handler and direct UI party sends
+also reduce duplication. On the server, three consumers now call one executor;
+the economy-specific revision helper and repeated lock/projection orchestration
+are gone. Domain SQL and item effects remain explicit rather than encoded in
+operation-specific switches inside the executor.
+
+Verification completed:
+
+- PostgreSQL `-race` suites: `./internal/db/cqitems`, `./internal/economy`,
+  `./internal/itemuse` and `./internal/world` passed through
+  `scripts/testing/run-go-postgres.sh`. Shared tests inject domain, final-read,
+  commit and cancellation failures; consumer fixtures prove concurrent duplicate
+  rejection, two intentional uses and cross-consumer revision exclusion. The
+  world suite passed in 37.208 seconds; a final focused item/field dispatch run
+  passed after removing the redundant pre-transaction party-item lookup.
+- 97 focused client tests passed across InventoryCommandService,
+  GameplayRecoveryService, NetworkBridge.inventory, BattleCommandService and
+  PokeBattleStore.recovery. The shared consumer matrix covers success, timeout,
+  rejection, malformed/overtaken replies, send failure, scene/character retirement,
+  retirement during recovery, late replies and recovery failure. Shop-specific
+  close/menu checks and TM target retention remain explicit.
+- `npm run tygo`, `npx tsc --noEmit`, `npm run build` (including runtime asset
+  validation) and `git diff --check` passed. The build retains its existing chunk
+  size warning; this checkpoint makes no bundle-size claim.
+- Rendered acceptance passed for all 12 selected checks across two runs:
+  `inventory-items.spec.ts`, `shop-inventory-recovery.spec.ts`,
+  `shop-process-recovery.spec.ts` and `party-item-recovery.spec.ts`, using
+  `CQ_E2E_CRASH_RECOVERY=true bash scripts/testing/run-isolated-e2e.sh ...`.
+  Shop evidence is `/var/tmp/capturequest-rendered.dm1kKd` (10 passing cases,
+  two actual SIGKILL/restarts). The two initial Potion cases failed at fixture
+  setup: the browser debugger's Pokemon fixture type does not support `curHp`.
+  The corrected tests injure the verified private database while the character
+  is offline; they do not change runtime healing or debug-fixture behavior.
+- Potion rerun: `/var/tmp/capturequest-rendered.PKgmuQ`, two passing cases in
+  40.3 seconds. Both duplicate each request, exercise two intentional heals
+  (1 → 21 → 41 HP), preserve Pokemon row identity and currency, reject historical
+  acknowledgement application, and verify an empty bag after character reentry.
+  The withheld-reply case also verifies reentry after a third actual SIGKILL.
+  Its restart occurs after current-state recovery; shop acceptance covers the
+  stricter crash-before-acknowledgement boundary. The recovered party/bag
+  screenshot was inspected. These are local rendered and isolated-DB checks,
+  not production deployment evidence.
+
+The finite milestone is complete. No additional command family is authorized by
+this checkpoint.
+
+Remaining after this bounded milestone: assess the shared boundary before
+selecting the next family. Field effects, battle/movement coordinators, legacy
+standalone notifications and the five-area ownership/recovery audit below have
+not been folded into this executor. The revision is scoped to migrated commands,
+not every writer of inventory or party state. Browser acceptance uses Potion as
+the representative party item; TM/HM/evolution/Flute retain service-level tests.
+Frontend/backend wire changes require coordinated activation and refreshed clients.
+No push or production deployment is authorized or performed.
 
 ## Current scope and status
 

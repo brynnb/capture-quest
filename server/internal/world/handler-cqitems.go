@@ -13,46 +13,46 @@ import (
 	"capturequest/internal/session"
 )
 
-type ShopCommandIdentity struct {
+type InventoryCommandIdentity struct {
 	CharacterID int64  `json:"characterId"`
 	Revision    *int64 `json:"revision" tstype:"number"`
 }
 type CQMerchantBuyRequest struct {
-	ActorID    int                  `json:"actorId"`
-	RequestID  string               `json:"requestId"`
-	Shop       *ShopCommandIdentity `json:"shop" tstype:"ShopCommandIdentity"`
-	MerchantID int32                `json:"merchantId"`
-	ItemID     int32                `json:"itemId"`
-	Quantity   uint16               `json:"quantity"`
+	ActorID    int                       `json:"actorId"`
+	RequestID  string                    `json:"requestId"`
+	Command    *InventoryCommandIdentity `json:"command" tstype:"InventoryCommandIdentity"`
+	MerchantID int32                     `json:"merchantId"`
+	ItemID     int32                     `json:"itemId"`
+	Quantity   uint16                    `json:"quantity"`
 }
 type CQMerchantSellRequest struct {
-	ActorID    int                  `json:"actorId"`
-	RequestID  string               `json:"requestId"`
-	Shop       *ShopCommandIdentity `json:"shop" tstype:"ShopCommandIdentity"`
-	InstanceID int32                `json:"instanceId"`
+	ActorID    int                       `json:"actorId"`
+	RequestID  string                    `json:"requestId"`
+	Command    *InventoryCommandIdentity `json:"command" tstype:"InventoryCommandIdentity"`
+	InstanceID int32                     `json:"instanceId"`
 }
-type ShopCommandError struct {
+type InventoryCommandError struct {
 	Success   bool   `json:"success" tstype:"false"`
 	RequestID string `json:"requestId"`
 	Error     string `json:"error"`
 }
 
-func validShopCommand(ses *session.Session, requestID string, identity *ShopCommandIdentity) bool {
+func validInventoryCommand(ses *session.Session, requestID string, identity *InventoryCommandIdentity) bool {
 	return requestID != "" && len(requestID) <= 64 && identity != nil && identity.Revision != nil && *identity.Revision >= 0 && identity.CharacterID == int64(ses.Client.CharData().ID)
 }
-func sendShopCommandError(ses *session.Session, requestID string, opcode opcodes.OpCode, message string) {
+func sendInventoryCommandError(ses *session.Session, requestID string, opcode opcodes.OpCode, message string) {
 	if len(requestID) > 64 {
 		requestID = ""
 	}
-	ses.SendStreamJSON(ShopCommandError{RequestID: requestID, Error: message}, opcode)
+	ses.SendStreamJSON(InventoryCommandError{RequestID: requestID, Error: message}, opcode)
 }
 
 // These tagged contracts replace map-shaped bag and shop mutation successes.
 type CQInventoryResponse struct {
-	ShopRevision int64                     `json:"shopRevision"`
-	Success      bool                      `json:"success" tstype:"true"`
-	Items        []cqitems.CQInventoryItem `json:"items" tstype:"import(\"./cqitems\").CQInventoryItem[]"`
-	Money        int64                     `json:"money"`
+	CommandRevision int64                     `json:"commandRevision"`
+	Success         bool                      `json:"success" tstype:"true"`
+	Items           []cqitems.CQInventoryItem `json:"items" tstype:"import(\"./cqitems\").CQInventoryItem[]"`
+	Money           int64                     `json:"money"`
 }
 type CQMerchantBuyResponse struct {
 	RequestID  string                      `json:"requestId"`
@@ -146,7 +146,7 @@ func HandleCQMerchantOpenRequest(ses *session.Session, payload []byte, wh *World
 	}
 	var req CQMerchantOpenRequest
 	fail := func(message string) {
-		sendShopCommandError(ses, req.RequestID, opcodes.CQMerchantOpenResponse, message)
+		sendInventoryCommandError(ses, req.RequestID, opcodes.CQMerchantOpenResponse, message)
 	}
 	if err := decodePlayerMovement(payload, &req); err != nil || req.RequestID == "" || len(req.RequestID) > 64 || req.CharacterID != int64(ses.Client.CharData().ID) || req.ActorID <= 0 {
 		fail("Invalid shop interaction")
@@ -176,8 +176,8 @@ func HandleCQMerchantBuyRequest(ses *session.Session, payload []byte, wh *WorldH
 		return false
 	}
 	var req CQMerchantBuyRequest
-	if err := decodePlayerMovement(payload, &req); err != nil || !validShopCommand(ses, req.RequestID, req.Shop) {
-		sendShopCommandError(ses, req.RequestID, opcodes.CQMerchantBuyResponse, "Invalid shop command identity.")
+	if err := decodePlayerMovement(payload, &req); err != nil || !validInventoryCommand(ses, req.RequestID, req.Command) {
+		sendInventoryCommandError(ses, req.RequestID, opcodes.CQMerchantBuyResponse, "Invalid shop command identity.")
 		return false
 	}
 
@@ -185,14 +185,14 @@ func HandleCQMerchantBuyRequest(ses *session.Session, payload []byte, wh *WorldH
 	defer cancel()
 	actor, err := wh.authorizeMerchantInteraction(ctx, ses, req.ActorID)
 	if err != nil {
-		sendShopCommandError(ses, req.RequestID, opcodes.CQMerchantBuyResponse, err.Error())
+		sendInventoryCommandError(ses, req.RequestID, opcodes.CQMerchantBuyResponse, err.Error())
 		return false
 	}
 	charID := int32(ses.Client.CharData().ID)
-	purchase, err := wh.Economy.Buy(ctx, charID, int32(actor.MapID), req.MerchantID, req.ItemID, req.Quantity, *req.Shop.Revision)
+	purchase, err := wh.Economy.Buy(ctx, charID, int32(actor.MapID), req.MerchantID, req.ItemID, req.Quantity, *req.Command.Revision)
 	if err != nil {
 		log.Printf("[CQItems] Purchase failed for character %d: %v", charID, err)
-		sendShopCommandError(ses, req.RequestID, opcodes.CQMerchantBuyResponse, "Could not buy this item. Read current inventory before trying again.")
+		sendInventoryCommandError(ses, req.RequestID, opcodes.CQMerchantBuyResponse, "Could not buy this item. Read current inventory before trying again.")
 		return false
 	}
 	ses.SendStreamJSON(CQMerchantBuyResponse{RequestID: req.RequestID, Success: true, ItemID: purchase.ItemID,
@@ -201,14 +201,25 @@ func HandleCQMerchantBuyRequest(ses *session.Session, payload []byte, wh *WorldH
 	return false
 }
 
-type cqItemUseRequest struct {
-	InstanceID int32  `json:"instanceId"` // Item instance ID in inventory
-	PartySlot  int    `json:"partySlot"`  // Target Pokémon party slot (0-5)
-	MoveSlot   int    `json:"moveSlot"`   // For move-targeted items: which move slot (0-3), -1 otherwise
-	MapID      *int   `json:"mapId,omitempty"`
-	X          *int   `json:"x,omitempty"`
-	Y          *int   `json:"y,omitempty"`
-	Direction  string `json:"direction,omitempty"`
+type CQPartyItemUseResponse struct {
+	RequestID string                      `json:"requestId"`
+	Success   bool                        `json:"success" tstype:"true"`
+	Inventory cqitems.CQInventorySnapshot `json:"inventory" tstype:"import(\"./cqitems\").CQInventorySnapshot"`
+	Party     []PokemonDTO                `json:"party"`
+	Outcome   itemuse.PartyUse            `json:"outcome" tstype:"import(\"./itemuse\").PartyUse"`
+}
+
+type CQItemUseRequest struct {
+	RequestID    string                    `json:"requestId,omitempty"`
+	Command      *InventoryCommandIdentity `json:"command,omitempty"`
+	PokemonRowID int64                     `json:"pokemonRowId,omitempty"`
+	InstanceID   int32                     `json:"instanceId"` // Item instance ID in inventory
+	PartySlot    int                       `json:"partySlot"`  // Target Pokémon party slot (0-5)
+	MoveSlot     int                       `json:"moveSlot"`   // For move-targeted items: which move slot (0-3), -1 otherwise
+	MapID        *int                      `json:"mapId,omitempty"`
+	X            *int                      `json:"x,omitempty"`
+	Y            *int                      `json:"y,omitempty"`
+	Direction    string                    `json:"direction,omitempty"`
 }
 
 // HandleCQItemUse handles using an item from inventory outside of battle.
@@ -217,34 +228,49 @@ func HandleCQItemUse(ses *session.Session, payload []byte, wh *WorldHandler) boo
 	if !ses.HasValidClient() {
 		return false
 	}
-	var req cqItemUseRequest
+	var req CQItemUseRequest
+	fail := func(message string) {
+		if req.RequestID != "" {
+			sendInventoryCommandError(ses, req.RequestID, opcodes.CQItemUseResponse, message)
+		} else {
+			sendCQItemUseError(ses, message)
+		}
+	}
 	if err := decodePlayerMovement(payload, &req); err != nil {
-		sendCQItemUseError(ses, "Invalid item use request")
+		fail("Invalid item use request")
 		return false
 	}
 
 	charID := int32(ses.Client.CharData().ID)
 	if battle := getBattle(int64(charID)); battle != nil && !battle.IsOver() {
-		sendCQItemUseError(ses, "Use the battle item menu during a battle")
+		fail("Use the battle item menu during a battle")
 		return false
 	}
 	ctx, cancel := context.WithTimeout(ses.CommandContext(), 5*time.Second)
 	defer cancel()
-	found, err := cqitems.NewStore(wh.database).FindInventoryItemByInstanceIDContext(ctx, charID, req.InstanceID)
-	if err != nil {
-		message := "Could not read this item. Please try again."
-		if errors.Is(err, sql.ErrNoRows) {
-			message = "Item not found in inventory"
-		} else {
-			log.Printf("[CQItems] Read owned instance %d for character %d: %v", req.InstanceID, charID, err)
+	// Only unmigrated field effects use this dispatch lookup. Party commands
+	// read and validate ownership once inside their shared transaction executor.
+	if req.RequestID == "" && req.Command == nil {
+		found, err := cqitems.NewStore(wh.database).FindInventoryItemByInstanceIDContext(ctx, charID, req.InstanceID)
+		if err != nil {
+			message := "Could not read this item. Please try again."
+			if errors.Is(err, sql.ErrNoRows) {
+				message = "Item not found in inventory"
+			} else {
+				log.Printf("[CQItems] Read owned instance %d for character %d: %v", req.InstanceID, charID, err)
+			}
+			fail(message)
+			return false
 		}
-		sendCQItemUseError(ses, message)
+		if tryHandleFieldItemUse(ses, wh, found, charID, req) {
+			return false
+		}
+	}
+	if !validInventoryCommand(ses, req.RequestID, req.Command) {
+		fail("Invalid item command identity.")
 		return false
 	}
-	if tryHandleFieldItemUse(ses, wh, found, charID, req) {
-		return false
-	}
-	result, err := wh.Items.UsePartyItem(ctx, charID, req.InstanceID, req.PartySlot, req.MoveSlot)
+	result, err := wh.Items.UsePartyItem(ctx, charID, req.InstanceID, req.PartySlot, req.MoveSlot, *req.Command.Revision, req.PokemonRowID)
 	if err != nil {
 		message := "Could not use this item. Please try again."
 		var rejection *itemuse.Rejection
@@ -253,14 +279,14 @@ func HandleCQItemUse(ses *session.Session, payload []byte, wh *WorldHandler) boo
 		} else {
 			log.Printf("[CQItems] Item use failed for character %d instance %d: %v", charID, req.InstanceID, err)
 		}
-		sendCQItemUseError(ses, message)
+		fail(message)
 		return false
 	}
-	ses.SendStreamJSON(result, opcodes.CQItemUseResponse)
-	if !result.NeedsMoveSlot {
-		sendPokemonPartySnapshot(ses, result.Party)
-		sendCQInventorySnapshot(ses, charID)
+	party := make([]PokemonDTO, len(result.Party))
+	for i, p := range result.Party {
+		party[i] = pokemonToDTO(p)
 	}
+	ses.SendStreamJSON(CQPartyItemUseResponse{RequestID: req.RequestID, Success: true, Inventory: result.Inventory, Party: party, Outcome: result}, opcodes.CQItemUseResponse)
 	return false
 }
 
@@ -270,8 +296,8 @@ func HandleCQMerchantSellRequest(ses *session.Session, payload []byte, wh *World
 		return false
 	}
 	var req CQMerchantSellRequest
-	if err := decodePlayerMovement(payload, &req); err != nil || !validShopCommand(ses, req.RequestID, req.Shop) {
-		sendShopCommandError(ses, req.RequestID, opcodes.CQMerchantSellResponse, "Invalid shop command identity.")
+	if err := decodePlayerMovement(payload, &req); err != nil || !validInventoryCommand(ses, req.RequestID, req.Command) {
+		sendInventoryCommandError(ses, req.RequestID, opcodes.CQMerchantSellResponse, "Invalid shop command identity.")
 		return false
 	}
 
@@ -279,14 +305,14 @@ func HandleCQMerchantSellRequest(ses *session.Session, payload []byte, wh *World
 	defer cancel()
 	actor, err := wh.authorizeMerchantInteraction(ctx, ses, req.ActorID)
 	if err != nil {
-		sendShopCommandError(ses, req.RequestID, opcodes.CQMerchantSellResponse, err.Error())
+		sendInventoryCommandError(ses, req.RequestID, opcodes.CQMerchantSellResponse, err.Error())
 		return false
 	}
 	charID := int32(ses.Client.CharData().ID)
-	sale, err := wh.Economy.Sell(ctx, charID, int32(actor.MapID), req.InstanceID, *req.Shop.Revision)
+	sale, err := wh.Economy.Sell(ctx, charID, int32(actor.MapID), req.InstanceID, *req.Command.Revision)
 	if err != nil {
 		log.Printf("[CQItems] Sale failed for character %d: %v", charID, err)
-		sendShopCommandError(ses, req.RequestID, opcodes.CQMerchantSellResponse, "Could not sell this item. Read current inventory before trying again.")
+		sendInventoryCommandError(ses, req.RequestID, opcodes.CQMerchantSellResponse, "Could not sell this item. Read current inventory before trying again.")
 		return false
 	}
 	ses.SendStreamJSON(CQMerchantSellResponse{RequestID: req.RequestID, Success: true, InstanceID: sale.InstanceID,

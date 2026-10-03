@@ -69,3 +69,7 @@ packages:
   - path: capturequest/internal/pokebattle
     include_files: [battle_events.go]
     output_path: ../src/net/generated/battle_events.ts
+
+  - path: capturequest/internal/itemuse
+    include_files: [party.go]
+    output_path: ../src/net/generated/itemuse.ts

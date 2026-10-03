@@ -1,4 +1,4 @@
-import type { CQMerchantOpenResponse, CQMerchantBuyResponse, CQMerchantSellResponse, ShopCommandError } from "@/net/generated/world_api";
+import type { CQPartyItemUseResponse, CQMerchantOpenResponse, CQMerchantBuyResponse, CQMerchantSellResponse, InventoryCommandError } from "@/net/generated/world_api";
 import { openShopForActor, buyShopItem, sellShopItem } from "./ShopCommandService";
 import type { BattleCommandResponse, SafariBattleActionResponse, BattleCommandError } from "@/net/generated/world_api";
 import type { GameplayStateRequest, GameplayStateResponse } from "@/net/generated/world_api";
@@ -364,14 +364,14 @@ export function onBattleCommand(opcode: number, receive: BattleCommandHandler): 
   listeners.add(receive); return () => listeners.delete(receive);
 }
 
-type ShopReply = CQMerchantOpenResponse | CQMerchantBuyResponse | CQMerchantSellResponse | ShopCommandError;
-const shopCommandHandlers = new Map<number, Set<(reply: ShopReply) => void>>([
- [OpCodes.CQMerchantOpenResponse,new Set()], [OpCodes.CQMerchantBuyResponse,new Set()], [OpCodes.CQMerchantSellResponse,new Set()],
+type InventoryReply = CQPartyItemUseResponse | CQMerchantOpenResponse | CQMerchantBuyResponse | CQMerchantSellResponse | InventoryCommandError;
+const inventoryCommandHandlers = new Map<number, Set<(reply: InventoryReply) => void>>([
+ [OpCodes.CQItemUseResponse,new Set()], [OpCodes.CQMerchantOpenResponse,new Set()], [OpCodes.CQMerchantBuyResponse,new Set()], [OpCodes.CQMerchantSellResponse,new Set()],
 ]);
-export function onShopCommand<T extends ShopReply>(opcode: number, receive: (reply: T) => void): () => void {
- const listeners = shopCommandHandlers.get(opcode);
- if (!listeners) throw new Error("Unsupported shop response opcode");
- const listener = (reply: ShopReply) => receive(reply as T);
+export function onInventoryCommand<T extends InventoryReply>(opcode: number, receive: (reply: T) => void): () => void {
+ const listeners = inventoryCommandHandlers.get(opcode);
+ if (!listeners) throw new Error("Unsupported inventory response opcode");
+ const listener = (reply: InventoryReply) => receive(reply as T);
  listeners.add(listener); return () => listeners.delete(listener);
 }
 
@@ -541,7 +541,7 @@ export const sendCQMerchantSell = sellShopItem;
 export function clearAllHandlers(): void {
   for (const listeners of Object.values(handlers)) listeners.clear();
   for (const listeners of battleCommandHandlers.values()) listeners.clear();
-  for (const listeners of shopCommandHandlers.values()) listeners.clear();
+  for (const listeners of inventoryCommandHandlers.values()) listeners.clear();
 }
 
 
@@ -568,10 +568,11 @@ export function normalizePhaserArrayPayload<T>(
 // Internal: dispatch incoming Phaser responses
 export function dispatchPhaserResponse(opcode: number, data: unknown): void {
   switch (opcode) {
+    case OpCodes.CQItemUseResponse:
     case OpCodes.CQMerchantOpenResponse:
     case OpCodes.CQMerchantBuyResponse:
     case OpCodes.CQMerchantSellResponse:
-      shopCommandHandlers.get(opcode)?.forEach(receive => receive(data as ShopReply));
+      inventoryCommandHandlers.get(opcode)?.forEach(receive => receive(data as InventoryReply));
       break;
     case OpCodes.SafariBattleActionResponse:
     case OpCodes.PokeBattleActionResponse:

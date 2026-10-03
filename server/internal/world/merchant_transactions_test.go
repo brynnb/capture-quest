@@ -71,7 +71,7 @@ func TestMerchantOpenDispatchUsesSourceReachEligibilityAndCorrelation(t *testing
 	for _, payload := range []string{`{"requestId":"open","characterId":99,"actorId":1}`, `{"requestId":"open","characterId":42,"mapId":1}`, `{"requestId":"open","characterId":42,"actorId":1,"mapId":1}`} {
 		messages.streams = nil
 		battleDispatch(t, wh, ses, opcodes.CQMerchantOpenRequest, payload)
-		var result ShopCommandError
+		var result InventoryCommandError
 		if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &result) != nil || result.Success || result.RequestID != "open" {
 			t.Fatalf("invalid request=%s reply=%+v", payload, messages.streams)
 		}
@@ -81,7 +81,7 @@ func TestMerchantOpenDispatchUsesSourceReachEligibilityAndCorrelation(t *testing
 	requiredMoney := 1
 	wh.Cutscenes.byLabel["CLERK"] = &CutsceneScript{ScriptLabel: "CLERK", MapName: "ROOM", TriggerType: "npc_click", RequiresMoney: &requiredMoney}
 	request(actorID, false)
-	var failedEligibility ShopCommandError
+	var failedEligibility InventoryCommandError
 	if err := json.Unmarshal(messages.streams[0].payload, &failedEligibility); err != nil || failedEligibility.Error != "Shop eligibility unavailable" {
 		t.Fatalf("eligibility failure bypassed script: %+v %v", failedEligibility, err)
 	}
@@ -107,7 +107,7 @@ func TestMerchantDispatchPublishesOnlyCommittedResults(t *testing.T) {
 	registry.WH = &WorldHandler{database: database, Economy: economy.New(database), ActorRegistry: NewActorRegistry(), Cutscenes: NewCutsceneManager(database)}
 	registry.WH.ActorManager = NewPhaserActorManager(registry.WH)
 	actorID := registry.WH.ActorRegistry.GetPhaserID(ActorTypeNPC, 10)
-	request := clientPacket(opcodes.CQMerchantBuyRequest, fmt.Sprintf(`{"actorId":%d,"requestId":"buy","shop":{"characterId":1,"revision":0},"merchantId":1,"itemId":1,"quantity":1}`, actorID))
+	request := clientPacket(opcodes.CQMerchantBuyRequest, fmt.Sprintf(`{"actorId":%d,"requestId":"buy","command":{"characterId":1,"revision":0},"merchantId":1,"itemId":1,"quantity":1}`, actorID))
 	registry.HandleWorldPacket(ses, request)
 	if len(messenger.streams) != 1 || messenger.streams[0].opcode != opcodes.CQMerchantBuyResponse {
 		t.Fatalf("failure messages=%+v", messenger.streams)
@@ -135,18 +135,18 @@ func TestMerchantDispatchPublishesOnlyCommittedResults(t *testing.T) {
 	if bought.Inventory.Money != 90 || len(bought.Inventory.Items) != 1 || bought.Inventory.Items[0].Instance.Quantity != 1 {
 		t.Fatalf("mutation reply omitted committed bag: %+v", bought)
 	}
-	if bought.RequestID != "buy" || bought.Inventory.ShopRevision != 1 {
+	if bought.RequestID != "buy" || bought.Inventory.CommandRevision != 1 {
 		t.Fatalf("purchase lost command identity=%+v", bought)
 	}
 	for _, invalid := range []string{
 		`{"merchantId":1,"itemId":1,"quantity":1}`,
-		`{"requestId":"missing-revision","shop":{"characterId":1},"merchantId":1,"itemId":1,"quantity":1}`,
-		`{"requestId":"wrong-owner","shop":{"characterId":2,"revision":1},"merchantId":1,"itemId":1,"quantity":1}`,
-		fmt.Sprintf(`{"actorId":%d,"requestId":"duplicate","shop":{"characterId":1,"revision":0},"merchantId":1,"itemId":1,"quantity":1}`, actorID),
+		`{"requestId":"missing-revision","command":{"characterId":1},"merchantId":1,"itemId":1,"quantity":1}`,
+		`{"requestId":"wrong-owner","command":{"characterId":2,"revision":1},"merchantId":1,"itemId":1,"quantity":1}`,
+		fmt.Sprintf(`{"actorId":%d,"requestId":"duplicate","command":{"characterId":1,"revision":0},"merchantId":1,"itemId":1,"quantity":1}`, actorID),
 	} {
 		messenger.streams = nil
 		registry.HandleWorldPacket(ses, clientPacket(opcodes.CQMerchantBuyRequest, invalid))
-		var rejection ShopCommandError
+		var rejection InventoryCommandError
 		if len(messenger.streams) != 1 || json.Unmarshal(messenger.streams[0].payload, &rejection) != nil || rejection.Success || rejection.Error == "" {
 			t.Fatalf("invalid command=%s publication=%+v", invalid, messenger.streams)
 		}
@@ -181,9 +181,9 @@ func TestMerchantMutationsRecheckReachVisibilityAndCurrentScriptEligibility(t *t
 	clerkID := wh.ActorRegistry.GetPhaserID(ActorTypeNPC, 10)
 	packet := func(op opcodes.OpCode, actorID int, revision int) string {
 		if op == opcodes.CQMerchantBuyRequest {
-			return fmt.Sprintf(`{"requestId":"command","actorId":%d,"shop":{"characterId":42,"revision":%d},"merchantId":1,"itemId":1,"quantity":1}`, actorID, revision)
+			return fmt.Sprintf(`{"requestId":"command","actorId":%d,"command":{"characterId":42,"revision":%d},"merchantId":1,"itemId":1,"quantity":1}`, actorID, revision)
 		}
-		return fmt.Sprintf(`{"requestId":"command","actorId":%d,"shop":{"characterId":42,"revision":%d},"instanceId":%d}`, actorID, revision, instanceID)
+		return fmt.Sprintf(`{"requestId":"command","actorId":%d,"command":{"characterId":42,"revision":%d},"instanceId":%d}`, actorID, revision, instanceID)
 	}
 	check := func(actorID int, revision int, want bool, ops ...opcodes.OpCode) {
 		t.Helper()
@@ -235,7 +235,7 @@ func TestMerchantMutationsRecheckReachVisibilityAndCurrentScriptEligibility(t *t
 	}
 	battleTestStart(t, database, false, nil)
 	check(clerkID, 2, false, ops...)
-	var rejected ShopCommandError
+	var rejected InventoryCommandError
 	if err := json.Unmarshal(messages.streams[0].payload, &rejected); err != nil || rejected.Error != "Shop unavailable during battle" {
 		t.Fatalf("battle admitted shop: %+v %v", rejected, err)
 	}

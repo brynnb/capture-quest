@@ -16,7 +16,7 @@ import (
 	"capturequest/internal/session"
 )
 
-func tryHandleFieldItemUse(ses *session.Session, wh *WorldHandler, found *cqitems.CQInventoryItem, charID int32, req cqItemUseRequest) bool {
+func tryHandleFieldItemUse(ses *session.Session, wh *WorldHandler, found *cqitems.CQInventoryItem, charID int32, req CQItemUseRequest) bool {
 	item := found.Item
 	switch itemuse.ShortName(item) {
 	case "REPEL", "SUPER_REPEL", "MAX_REPEL":

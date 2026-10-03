@@ -24,26 +24,25 @@ func (e *Rejection) Error() string            { return e.Message }
 func reject(format string, args ...any) error { return &Rejection{fmt.Sprintf(format, args...)} }
 
 type PartyUse struct {
-	Success       bool                  `json:"success"`
-	InstanceID    int32                 `json:"instanceId"`
-	PartySlot     int                   `json:"partySlot"`
-	NewQuantity   uint16                `json:"newQty"`
-	Message       string                `json:"message"`
-	NeedsMoveSlot bool                  `json:"needsMoveSlot,omitempty"`
-	MoveID        int                   `json:"moveId,omitempty"`
-	MoveName      string                `json:"moveName,omitempty"`
-	Party         []*pokebattle.Pokemon `json:"-"`
+	Success       bool                        `json:"success"`
+	InstanceID    int32                       `json:"instanceId"`
+	PartySlot     int                         `json:"partySlot"`
+	NewQuantity   uint16                      `json:"newQty"`
+	Message       string                      `json:"message"`
+	NeedsMoveSlot bool                        `json:"needsMoveSlot,omitempty"`
+	MoveID        int                         `json:"moveId,omitempty"`
+	MoveName      string                      `json:"moveName,omitempty"`
+	Party         []*pokebattle.Pokemon       `json:"-"`
+	Inventory     cqitems.CQInventorySnapshot `json:"-"`
 }
 
 // UsePartyItem reads mutable state under the character lock, then commits the
 // item, party effect, and any evolved species registration together. A move
-// selection prompt is a read-only result; a later choice revalidates everything.
-func (s *Service) UsePartyItem(ctx context.Context, charID int32, instanceID int32, partySlot, moveSlot int) (PartyUse, error) {
+// selection prompt advances only the command revision; a later choice is a new
+// command that revalidates the item, stable target and selected move.
+func (s *Service) UsePartyItem(ctx context.Context, charID int32, instanceID int32, partySlot, moveSlot int, expectedRevision, pokemonRowID int64) (PartyUse, error) {
 	var result PartyUse
-	err := db.Transaction(ctx, s.database, func(tx db.DBTX) error {
-		if err := db.LockCharacter(tx, int64(charID)); err != nil {
-			return err
-		}
+	snapshot, err := cqitems.NewStore(s.database).ExecuteCommand(ctx, charID, expectedRevision, func(tx db.DBTX) error {
 		store := cqitems.NewStore(tx)
 		owned, err := store.FindInventoryItemByInstanceID(charID, instanceID)
 		if errors.Is(err, sql.ErrNoRows) {
@@ -89,6 +88,9 @@ func (s *Service) UsePartyItem(ctx context.Context, charID int32, instanceID int
 				return reject("Invalid Pokémon")
 			}
 			p := party[partySlot]
+			if pokemonRowID <= 0 || p.RowID != pokemonRowID {
+				return reject("The selected Pokémon has changed. Read your party before trying again.")
+			}
 			beforeSpecies := p.ID
 			if isTMHM(item) {
 				result.Message, result.MoveID, result.MoveName, result.NeedsMoveSlot, err = teachMove(tx, item, p, moveSlot)
@@ -96,6 +98,7 @@ func (s *Service) UsePartyItem(ctx context.Context, charID int32, instanceID int
 					return err
 				}
 				if result.NeedsMoveSlot {
+					result.Party = party
 					return nil
 				}
 			} else {
@@ -122,6 +125,7 @@ func (s *Service) UsePartyItem(ctx context.Context, charID int32, instanceID int
 	if err != nil {
 		return PartyUse{}, err
 	}
+	result.Inventory = snapshot
 	return result, nil
 }
 

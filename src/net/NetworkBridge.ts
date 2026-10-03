@@ -161,7 +161,11 @@ export class NetworkBridge {
         this.handleCQInventoryResponse(data as Record<string, unknown>);
         break;
       case OpCodes.CQItemUseResponse:
-        this.handleCQItemUseResponse(data as Record<string, unknown>);
+        // Correlated party replies belong exclusively to the scene coordinator.
+        // Field-item effects retain their existing uncorrelated protocol.
+        if (typeof (data as Record<string, unknown>).requestId === "string") {
+          import("@/phaser-game/services/PhaserNetworkService").then(module => module.dispatchPhaserResponse(opcode, data));
+        } else this.handleCQItemUseResponse(data as Record<string, unknown>);
         break;
       case OpCodes.PokeFishingResponse:
         this.handlePokeFishingResponse(data as Record<string, unknown>);
@@ -422,12 +426,12 @@ export class NetworkBridge {
     // A malformed success must not clear a real bag or replace money with zero.
     if (!snapshot || !Array.isArray(snapshot.items)
       || !Number.isSafeInteger(snapshot.money) || snapshot.money < 0 || snapshot.money > 0xffffffff
-      || !Number.isSafeInteger(snapshot.shopRevision) || snapshot.shopRevision < 0) {
+      || !Number.isSafeInteger(snapshot.commandRevision) || snapshot.commandRevision < 0) {
       console.warn("[NetworkBridge] Invalid inventory snapshot");
       return false;
     }
-    if (snapshot.shopRevision < useCQInventoryStore.getState().shopRevision) return false;
-    useCQInventoryStore.getState().setInventory(snapshot.items, snapshot.money, snapshot.shopRevision);
+    if (snapshot.commandRevision < useCQInventoryStore.getState().commandRevision) return false;
+    useCQInventoryStore.getState().setInventory(snapshot.items, snapshot.money, snapshot.commandRevision);
     const characterId = usePlayerCharacterStore.getState().characterProfile?.id;
     if (characterId !== undefined) {
       usePlayerCharacterStore.getState().handleCharacterWalletData({ characterId, pokedollars: snapshot.money });
@@ -441,34 +445,6 @@ export class NetworkBridge {
       useChatStore.getState().addMessage(error, MessageType.SYSTEM);
       console.warn("[NetworkBridge] Item use failed:", data.error);
       this.playSourceSFX("SFX_DENIED", 0.8);
-      return;
-    }
-
-    // TM/HM needs move slot selection — signal the UI via store
-    if (data.needsMoveSlot) {
-      const instanceId = Number(data.instanceId);
-      const partySlot = Number(data.partySlot);
-      if (!Number.isInteger(instanceId) || !Number.isInteger(partySlot)) {
-        const error = "Unable to choose a move for that TM/HM. Please try again.";
-        useChatStore.getState().addMessage(error, MessageType.SYSTEM);
-        console.warn("[NetworkBridge] TM/HM move-slot response missing context:", data);
-        this.playSourceSFX("SFX_DENIED", 0.8);
-        return;
-      }
-      const store = useCQInventoryStore.getState();
-      const inv = store.items.find((i) => i.instance.id === instanceId);
-      const moveId = Number(data.moveId);
-      const moveName = typeof data.moveName === "string" ? data.moveName : undefined;
-      store.setPendingTMHM({
-        instanceId,
-        partySlot,
-        itemName: inv?.item.name || "TM/HM",
-        moveId: Number.isInteger(moveId) ? moveId : undefined,
-        moveName,
-        message: data.message as string,
-      });
-      console.log("[NetworkBridge] TM/HM needs move slot:", data.message);
-      this.playSourceSFX("SFX_PRESS_AB", 0.6);
       return;
     }
 
@@ -487,9 +463,6 @@ export class NetworkBridge {
       );
       useCQInventoryStore.setState({ items });
     }
-
-    // Clear any pending TM/HM state on success
-    store.setPendingTMHM(null);
 
     const bicycle = data.bicycle as
       | {

@@ -1193,45 +1193,70 @@ Recovered flags belong to the character profile; gameplay eligibility remains
 server-authoritative. Both money views receive the same balance. Delayed recovery
 reads compare the participating data views, not UI-only state such as hover or
 shop presentation; an overtaking notification triggers one fresh read instead of
-rewinding current state. Other command families still need their own correlation,
-deadline, duplicate and timeout-recovery migration. Standalone inventory transport
-and legacy flag-cache writers remain in the full audit.
+rewinding current state. Remaining command families still need correlation,
+deadline, duplicate and timeout-recovery migration through appropriate shared
+owners. Standalone inventory transport and legacy flag-cache writers remain in
+the full audit.
 
-### Shop and standalone inventory publication
+### Shared inventory command lifecycle
 
-CQ bag and balance reads share `Store.GetCharacterSnapshot`, a bounded transaction
-that joins an existing transaction and locks the character before both reads.
-Gameplay recovery, standalone bag requests and shop mutations use the same
-currency policy and error boundary. Buy/sell capture their complete bag before
-commit; final read failures roll back the mutation. Tagged replies include
-`inventory: {items, money, shopRevision}`; shop mutations publish only their
-correlated result. The client replaces the full bag and synchronizes both money views;
-it does not reconstruct split-stack grants from the first returned instance ID.
+Purchases, sales and the existing outside-battle party-item service use
+`cqitems.Store.ExecuteCommand`. It owns the bounded transaction, character lock,
+expected-revision comparison/advance and final inventory projection. The callback
+receives the transaction handle; payment/stock/stack rules remain in `economy`,
+while medicine, TM/HM, evolution and Flute rules remain in `itemuse`. Domain,
+snapshot, cancellation and commit errors return no successful projection and roll
+back the revision with the gameplay changes. This is a two-family consolidation,
+not a universal executor for movement or battles.
 
-The durable revision rules below protect competing shop commands; publication
-alone is not duplicate protection. Remaining standalone stream and party/field
-outcome migrations are tracked in SERVER_FOUNDATIONS.md. Updated frontend and
-backend shop contracts must be activated together.
+`InventoryCommandService` is the single scene owner for these client operations:
+one pending request, correlation, character/scene cancellation, stale-view checks,
+application of the complete bag and wallet, and uncertain-result recovery.
+`ShopCommandService` supplies merchant-menu validation, shop-close cancellation
+and purchase presentation. Party-item presentation and stable-target validation
+use the same coordinator. Merchant opening uses its read path and preserves
+existing state on failure. Recovery applies current bag, party and currency
+without replaying purchase sounds or old item outcomes. A timeout or rejection
+never automatically resends a mutation. Read recovery already checks for
+overtaking state and permits one fresh read through `GameplayRecoveryService`.
 
-### Durable shop command identity
+### Durable inventory command identity and publication
 
-Buy/sell requests carry correlated request IDs and the owned character's current
-shop revision. One `character_shop_state` row retains the durable revision;
-transactional comparison/advance joins the character lock, payment, stock,
-inventory mutation and final bag read. Failure rolls everything back. Repeated
-old revisions are rejected across connection/service replacement, including
-cross-family reuse. Inventory and gameplay recovery expose the current revision.
-Startup rejects a missing shop schema before readiness. The schema change selects
-the full-data lane and requires frontend/backend activation together.
+Mutations carry `requestId` for reply correlation and
+`command: {characterId, revision}` for durable duplicate protection. The existing
+`character_shop_state` row is deliberately retained: its revision now covers both
+shop and party-item commands, preserving deployed values without a second counter
+or schema migration. Wire snapshots expose `commandRevision` in place of
+`shopRevision`. A successful command advances once; a repeated old revision is
+rejected, including reuse by another consumer or after restart. The client reads
+current state rather than retrieving or replaying a historical success. Failed
+transactions do not consume a revision. A TM/HM move-selection prompt advances
+only this protocol revision; item and Pokémon data are unchanged until a new,
+revalidated selection command succeeds.
 
-Shop acknowledgement is scene-owned and single-flight, with cancellation on
-shop close, character change and scene retirement. The UI waits for a correlated
-reply or current-state recovery; a timeout never resends a mutation. The obsolete
-independent shop inventory publication and global buy/sell handlers are removed.
-Standalone inventory readers remain and filter lower shop revisions. Same-revision
-legacy notifications and party/field commands still need migration; shop revision
-is not a universal inventory version. Source clerk authorization applies to
-opening, buying and selling, as described under Offers above.
+`Store.GetCharacterSnapshot` remains the authoritative bag/wallet reader used by
+standalone reads, gameplay recovery and the executor. Replies contain
+`inventory: {items, money, commandRevision}`. Party-item replies additionally
+contain `party` and `outcome` in that same correlated packet, replacing separate
+item, party and bag publications. The client never guesses split-stack changes or
+applies unsolicited command replies globally. Party requests include
+`pokemonRowId`, checked against the durable row occupying `partySlot`; multi-step
+PP/TM selection retains that original row identity. Whole-party Flute use has no
+individual target. Existing ownership, active-battle and item-rule checks remain.
+
+Field effects such as Repel, Escape Rope, Bicycle and fishing retain their
+existing uncorrelated path on opcode 100/101. Correlated party requests cannot
+enter that branch, and uncorrelated requests cannot execute party-item mutations.
+The global bridge now handles only legacy field results; correlated results go to
+the shared coordinator. Remaining field/battle/standalone notifications are
+outside this counter's scope: it is not a universal version for every inventory
+or party write. Broader migration remains recorded in SERVER_FOUNDATIONS.md.
+
+Frontend and backend must be activated together and clients refreshed because the
+wire fields changed. No runtime SQL schema, extractor data or generated asset
+catalog changes are required by this consolidation. Startup still validates the
+existing counter table. Production deployment remains a separate authorized
+operation following DEPLOYMENT.md.
 
 The isolated shop process-recovery test verifies committed buy and sale outcomes
 across two actual SIGKILL/restart boundaries with lost acknowledgements. It compares

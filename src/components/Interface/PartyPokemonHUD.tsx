@@ -386,6 +386,7 @@ function isPartyFieldMove(move: MoveDTO): boolean {
 }
 
 export interface PendingItemUse {
+  pokemonRowId: number;
   instanceId: number;
   partySlot: number;
   itemName: string;

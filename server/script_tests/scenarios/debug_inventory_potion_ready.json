@@ -1,14 +1,14 @@
 {
   "name": "debug_inventory_potion_ready",
-  "description": "Debug setup: open-world character with a Potion in inventory.",
+  "description": "Debug setup: open-world character with two Potions in inventory.",
   "fixture": {
     "characterName": "DebugInventoryPotionReady",
     "mapName": "PALLET_TOWN",
     "x": 9,
     "y": 4,
     "direction": "DOWN",
-    "party": [{ "speciesId": 25, "level": 5 }],
-    "inventory": [{ "itemId": 20, "quantity": 1 }],
+    "party": [{ "speciesId": 25, "level": 50 }],
+    "inventory": [{ "itemId": 20, "quantity": 2 }],
     "hiddenObjects": []
   },
   "trigger": {
@@ -20,7 +20,7 @@
     "finalX": 9,
     "finalY": 4,
     "finalDirection": "DOWN",
-    "inventoryContains": [{ "itemId": 20, "quantity": 1 }],
+    "inventoryContains": [{ "itemId": 20, "quantity": 2 }],
     "activeBattleAbsent": true
   }
 }

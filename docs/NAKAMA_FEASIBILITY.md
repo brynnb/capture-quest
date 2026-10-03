@@ -199,7 +199,7 @@ or migrate the database as part of that milestone. If the abstraction requires
 many operation-specific flags or duplicates the existing owner, revise it at
 this boundary rather than extending it across more endpoints.
 
-## Verification record
+## Assessment verification record (before implementation)
 
 Source/API mapping is complete. Existing tests passed against disposable
 PostgreSQL with `-race` using:
@@ -212,4 +212,6 @@ bash scripts/testing/run-go-postgres.sh ./internal/economy ./internal/itemuse \
 Economy completed in 1.498 seconds and itemuse in 1.505 seconds; the wrapper
 stopped and removed its private database. These tests validate the current
 CaptureQuest behavior, not a hypothetical Nakama port. `git diff --check` passed.
-No game runtime code, generated assets, dependencies or production state changed.
+This assessment commit changed no game runtime code, generated assets, dependencies
+or production state. The subsequently authorized two-consumer implementation is
+recorded in [SERVER_FOUNDATIONS.md](SERVER_FOUNDATIONS.md#shared-inventory-command-checkpoint-2026-10-03).

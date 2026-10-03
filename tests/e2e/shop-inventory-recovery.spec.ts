@@ -4,6 +4,8 @@ import { collectPageErrors } from "./helpers/errors";
 import { jumpToScenario } from "./helpers/scenarioDebugger";
 import { getGameState, waitForNoMapLoading } from "./helpers/state";
 import { pressMovement, pressSpace } from "./helpers/input";
+import { inventoryCommandFaults } from "./helpers/inventoryCommandFaults";
+import type { CQMerchantBuyResponse } from "../../src/net/generated/world_api";
 import * as OpCodes from "../../src/net/generated/opcodes";
 
 for (const action of ["buy", "sell"] as const) {
@@ -13,34 +15,7 @@ test(`a duplicated shop ${action} request with lost reply=${loseReply} settles o
   const errors = collectPageErrors(page);
   const requestOpcode=action==="buy"?OpCodes.CQMerchantBuyRequest:OpCodes.CQMerchantSellRequest;
   const responseOpcode=action==="buy"?OpCodes.CQMerchantBuyResponse:OpCodes.CQMerchantSellResponse;
-  let purchases = 0, successes = 0, rejections = 0;
-  let duplicate: (() => void) | undefined;
-  let committed: { inventory: { items: Array<{ instance: { id: number; quantity: number } }>; money: number; shopRevision: number } } | undefined;
-  await page.routeWebSocket("**/ws", socket => {
-    const server = socket.connectToServer();
-    socket.onMessage(message => {
-      if (Buffer.isBuffer(message) && message.length >= 6 && message.readUInt16LE(4) === requestOpcode) {
-        purchases++;
-        // Deliver the same authenticated command twice, preserving its identity.
-        server.send(message);
-      }
-      server.send(message);
-    });
-    server.onMessage(message => {
-      if (Buffer.isBuffer(message) && message.length >= 6 && purchases > 0) {
-        const opcode = message.readUInt16LE(4);
-        if (opcode === OpCodes.CQInventoryResponse) return;
-        if (opcode === responseOpcode) {
-          const reply = JSON.parse(message.subarray(6).toString());
-          if (reply.success) {
-            successes++; committed = reply; duplicate = () => socket.send(message);
-            if (loseReply) return;
-          } else { rejections++; return; }
-        }
-      }
-      socket.send(message);
-    });
-  });
+  const faults = await inventoryCommandFaults<CQMerchantBuyResponse>(page, requestOpcode, responseOpcode, loseReply);
   const character = await createGuestCharacterAndEnterWorld(page);
   // One fixture supplies both currency and post-parcel clerk eligibility.
   await jumpToScenario(page, "debug_shop_inventory_publication");
@@ -62,24 +37,24 @@ test(`a duplicated shop ${action} request with lost reply=${loseReply} settles o
       const net=await import(path); void net.sendCQMerchantSell(instanceId);
     },before.inventory.items[0].instanceId);
   }
-  await expect.poll(() => !!committed).toBe(true);
+  await expect.poll(() => faults.replies.length > 0).toBe(true);
   if (loseReply) await expect(page.getByRole("button", { name: "BUY", exact: true })).toBeDisabled();
-  const expected = committed!.inventory;
-  expect(expected.shopRevision).toBe(1);
+  const expected = faults.replies[0].inventory;
+  expect(expected.commandRevision).toBe(1);
   expect(expected.money).toBe(before.inventory.money + (action==="buy"?-2000:9500));
   expect(expected.items.map(item => item.instance.quantity).sort((a, b) => a - b)).toEqual(action==="buy"?[6,99]:[]);
   const bag = expected.items.map(item => ({ id: item.instance.id, quantity: item.instance.quantity }));
   await expect.poll(async () => (await getGameState(page)).inventory.items.map(item => ({ id: item.instanceId, quantity: item.quantity })),{timeout:20000}).toEqual(bag);
   await expect.poll(async () => (await getGameState(page)).inventory.money).toBe(expected.money);
   await expect(page.getByText(`¥${expected.money.toLocaleString()}`, { exact: true }).first()).toBeVisible();
-  duplicate!();
+  faults.deliverReply(0);
   await page.getByRole("button", { name: "EXIT", exact: true }).click();
   await quitToCharacterSelect(page);
   await enterWorld(page, character);
   await waitForNoMapLoading(page);
   expect((await getGameState(page)).inventory.items.map(item => ({ id: item.instanceId, quantity: item.quantity }))).toEqual(bag);
   expect((await getGameState(page)).inventory.money).toBe(expected.money);
-  expect(purchases).toBe(1); expect(successes).toBe(1); expect(rejections).toBe(1);
+  expect(faults.requests).toBe(1); expect(faults.successes).toBe(1); expect(faults.rejections).toBe(1);
   await quitToCharacterSelect(page);
   errors.assertNoSevereErrors();
 });
@@ -115,7 +90,7 @@ test("a delayed merchant menu cannot reopen a retired scene", async ({page}) => 
     const net=await import(path);
     const target=window as typeof window & { shopLateMenuReceived?: boolean };
     target.shopLateMenuReceived=false;
-    const stop=net.onShopCommand(95,()=>{ target.shopLateMenuReceived=true; stop(); });
+    const stop=net.onInventoryCommand(95,()=>{ target.shopLateMenuReceived=true; stop(); });
   });
   release!();
   await expect.poll(()=>page.evaluate(()=> (window as typeof window & { shopLateMenuReceived?: boolean }).shopLateMenuReceived)).toBe(true);

@@ -22,6 +22,7 @@ export const ITEM_TYPE_EVOLUTION_STONE = 9;
 export interface PendingTMHM {
   instanceId: number;
   partySlot: number;
+  pokemonRowId: number;
   itemName: string;
   moveId?: number;
   moveName?: string;
@@ -31,9 +32,9 @@ export interface PendingTMHM {
 interface CQInventoryState {
   items: CQInventoryItem[];
   money: number;
-  shopRevision: number;
-  shopCommandPending: boolean;
-  shopCommandError: string | null;
+  commandRevision: number;
+  inventoryCommandPending: boolean;
+  inventoryCommandError: string | null;
 
   // Merchant/shop state
   shopOpen: boolean;
@@ -46,7 +47,7 @@ interface CQInventoryState {
   pendingTMHM: PendingTMHM | null;
 
   // Actions
-  setInventory: (items: CQInventoryItem[], money: number, shopRevision?: number) => void;
+  setInventory: (items: CQInventoryItem[], money: number, commandRevision?: number) => void;
   setMoney: (money: number) => void;
   setPendingTMHM: (pending: PendingTMHM | null) => void;
   openShop: (
@@ -62,9 +63,9 @@ interface CQInventoryState {
 const useCQInventoryStore = create<CQInventoryState>((set) => ({
   items: [],
   money: 0,
-  shopRevision: 0,
-  shopCommandPending: false,
-  shopCommandError: null,
+  commandRevision: 0,
+  inventoryCommandPending: false,
+  inventoryCommandError: null,
   shopOpen: false,
   shopName: "",
   shopMerchantId: null,
@@ -72,7 +73,7 @@ const useCQInventoryStore = create<CQInventoryState>((set) => ({
   shopItems: [],
   pendingTMHM: null,
 
-  setInventory: (items, money, shopRevision) => set({ items, money, ...(shopRevision === undefined ? {} : {shopRevision}) }),
+  setInventory: (items, money, commandRevision) => set({ items, money, ...(commandRevision === undefined ? {} : {commandRevision}) }),
 
   setMoney: (money) => set({ money }),
 

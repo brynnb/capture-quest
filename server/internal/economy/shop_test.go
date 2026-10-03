@@ -215,7 +215,7 @@ func TestSaleSourcePolicyRejectsKeyItemsAndHMsButAcceptsUnstockedItems(t *testin
 		t.Fatal(err)
 	}
 	result, err := service.Sell(context.Background(), 1, 38, unstocked, 0)
-	if err != nil || result.SellPrice != 200 || result.Inventory.ShopRevision != 1 {
+	if err != nil || result.SellPrice != 200 || result.Inventory.CommandRevision != 1 {
 		t.Fatalf("unstocked sale=%+v %v", result, err)
 	}
 	assertWalletAndItems(t, database, 1, 1200, 2)
@@ -279,7 +279,7 @@ func TestShopSnapshotFailureRollsBackMutation(t *testing.T) {
 	}
 }
 
-func TestShopRevisionRejectsConcurrentDuplicatesAndSurvivesNewService(t *testing.T) {
+func TestCommandRevisionRejectsConcurrentDuplicatesAndSurvivesNewService(t *testing.T) {
 	database, service := shopDatabase(t)
 	var workers sync.WaitGroup
 	results := make(chan error, 4)
@@ -308,7 +308,7 @@ func TestShopRevisionRejectsConcurrentDuplicatesAndSurvivesNewService(t *testing
 		t.Fatal("reconnected duplicate purchased twice")
 	}
 	snapshot, err := cqitems.NewStore(database).GetCharacterSnapshot(context.Background(), 1)
-	if err != nil || snapshot.ShopRevision != 1 {
+	if err != nil || snapshot.CommandRevision != 1 {
 		t.Fatalf("current revision=%+v %v", snapshot, err)
 	}
 	id := snapshot.Items[0].Instance.ID
@@ -316,7 +316,7 @@ func TestShopRevisionRejectsConcurrentDuplicatesAndSurvivesNewService(t *testing
 		t.Fatal("sale reused stale purchase revision")
 	}
 	sale, err := service.Sell(context.Background(), 1, 38, id, 1)
-	if err != nil || sale.Inventory.ShopRevision != 2 {
+	if err != nil || sale.Inventory.CommandRevision != 2 {
 		t.Fatalf("new sale=%+v %v", sale, err)
 	}
 	assertWalletAndItems(t, database, 1, 1080, 0)
@@ -325,7 +325,7 @@ func TestShopRevisionRejectsConcurrentDuplicatesAndSurvivesNewService(t *testing
 	}
 }
 
-func TestShopRevisionLateCommitFailureRollsBackGuardAndEffects(t *testing.T) {
+func TestCommandRevisionLateCommitFailureRollsBackGuardAndEffects(t *testing.T) {
 	database, service := shopDatabase(t)
 	testdb.Exec(t, database, `CREATE FUNCTION reject_shop_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'late shop commit failure'; END $$;
  CREATE CONSTRAINT TRIGGER reject_shop_commit AFTER UPDATE ON character_shop_state DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_shop_commit();`)
@@ -340,7 +340,7 @@ func TestShopRevisionLateCommitFailureRollsBackGuardAndEffects(t *testing.T) {
 	}
 	testdb.Exec(t, database, `DROP TRIGGER reject_shop_commit ON character_shop_state`)
 	result, err = service.Buy(context.Background(), 1, 38, 1, 1, 1, 0)
-	if err != nil || result.Inventory.ShopRevision != 1 {
+	if err != nil || result.Inventory.CommandRevision != 1 {
 		t.Fatalf("retry after rollback=%+v %v", result, err)
 	}
 }

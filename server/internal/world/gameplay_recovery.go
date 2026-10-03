@@ -75,7 +75,7 @@ type SafariRecoveryState struct {
 	Pokemon     *SafariRecoveryPokemon `json:"pokemon"`
 }
 type GameplayStateResponse struct {
-	ShopRevision int64                                   `json:"shopRevision"`
+	CommandRevision int64                                   `json:"commandRevision"`
 	Inventory    []cqitems.CQInventoryItem               `json:"inventory" tstype:"import(\"./cqitems\").CQInventoryItem[]"`
 	Wallet       model.CharacterWallet                   `json:"wallet" tstype:"import(\"./models\").CharacterWallet"`
 	Party        []PokemonDTO                            `json:"party"`
@@ -142,7 +142,7 @@ func readGameplayState(ctx context.Context, ses *session.Session, wh *WorldHandl
 		}
 		result.Wallet = model.CharacterWallet{CharacterID: uint32(charID), Pokedollars: uint32(inventory.Money)}
 		result.Inventory = inventory.Items
-		result.ShopRevision = inventory.ShopRevision
+		result.CommandRevision = inventory.CommandRevision
 		flags, err := eventFlagSnapshotIn(tx, charID)
 		if err != nil {
 			return err

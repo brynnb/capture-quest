@@ -161,11 +161,11 @@ const QtyDisplay = styled.span`
 `;
 
 const PokeMartShop: React.FC = () => {
-  const { shopOpen, shopName, shopMerchantId, shopItems, money, closeShop, shopCommandPending } =
+  const { shopOpen, shopName, shopMerchantId, shopItems, money, closeShop, inventoryCommandPending } =
     useCQInventoryStore();
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [quantity, setQuantity] = useState(1);
-  const buying = shopCommandPending;
+  const buying = inventoryCommandPending;
 
   useEffect(() => {
     if (!shopOpen) return;

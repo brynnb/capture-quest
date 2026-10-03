@@ -32,14 +32,8 @@ func (s *Service) Buy(ctx context.Context, charID, mapID, merchantID, itemID int
 	if quantity < 1 || quantity > 99 {
 		return result, fmt.Errorf("choose between 1 and 99 items")
 	}
-	err := db.Transaction(ctx, s.database, func(tx db.DBTX) error {
-		if err := db.LockCharacter(tx, int64(charID)); err != nil {
-			return err
-		}
+	snapshot, err := cqitems.NewStore(s.database).ExecuteCommand(ctx, charID, expectedRevision, func(tx db.DBTX) error {
 		var price int64
-		if err := advanceShopRevision(tx, charID, expectedRevision); err != nil {
-			return err
-		}
 		var stock int
 		err := tx.QueryRow(`SELECT COALESCE(mi.price_override, i.price), mi.quantity
 			FROM cq_merchant_items mi JOIN cq_items i ON i.id = mi.item_id
@@ -84,12 +78,12 @@ func (s *Service) Buy(ctx context.Context, charID, mapID, merchantID, itemID int
 			}
 		}
 		result.ItemID, result.Quantity = itemID, quantity
-		result.Inventory, err = items.GetCharacterSnapshot(ctx, charID)
-		return err
+		return nil
 	})
 	if err != nil {
 		return Purchase{}, err
 	}
+	result.Inventory = snapshot
 	return result, nil
 }
 
@@ -105,13 +99,7 @@ type Sale struct {
 // stack but credited only one unit; credit and removal now commit together.
 func (s *Service) Sell(ctx context.Context, charID, mapID, instanceID int32, expectedRevision int64) (Sale, error) {
 	var result Sale
-	err := db.Transaction(ctx, s.database, func(tx db.DBTX) error {
-		if err := db.LockCharacter(tx, int64(charID)); err != nil {
-			return err
-		}
-		if err := advanceShopRevision(tx, charID, expectedRevision); err != nil {
-			return err
-		}
+	snapshot, err := cqitems.NewStore(s.database).ExecuteCommand(ctx, charID, expectedRevision, func(tx db.DBTX) error {
 		// Every canonical Mart offers the source sell menu; its buy catalog does
 		// not restrict sale items. Reject sales where no merchant exists at all.
 		var merchantID int32
@@ -136,11 +124,11 @@ func (s *Service) Sell(ctx context.Context, charID, mapID, instanceID int32, exp
 		if err != nil {
 			return err
 		}
-		result.Inventory, err = items.GetCharacterSnapshot(ctx, charID)
-		return err
+		return nil
 	})
 	if err != nil {
 		return Sale{}, err
 	}
+	result.Inventory = snapshot
 	return result, nil
 }
