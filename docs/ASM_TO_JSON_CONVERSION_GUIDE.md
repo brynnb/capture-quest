@@ -193,14 +193,25 @@ UI opens a scrollable panel listing scripted scenarios in game-progression order
 
 ## CLI Scenario Testing
 
-Use the script simulator for repeatable scripted-event validation without launching Phaser:
+Use the isolated script simulator for repeatable scripted-event validation without launching Phaser. Run from the repository root:
 
 ```bash
-cd server
-go run ./cmd/script-sim --scenario pallet_town_oak_stops_player --check
-go run ./cmd/script-sim --scenario pallet_town_oak_stops_player --update --check
-go run ./cmd/script-sim --all --check
+bash scripts/testing/run-isolated-script-sim.sh --scenario pallet_town_oak_stops_player --check
+bash scripts/testing/run-isolated-script-sim.sh --scenario pallet_town_oak_stops_player --update --check
 ```
+
+The wrapper validates the matched runtime artifacts, creates a private PostgreSQL
+cluster under `/var/tmp`, bootstraps through the canonical importer, records logs
+and stops that exact cluster on success or failure. It never loads application
+`.env` files or uses the configured development database. `--update` deliberately
+writes the selected tracked golden; `--check` compares it, but still syncs scripts
+and replaces fixture rows inside the disposable database.
+
+Direct `go run ./cmd/script-sim ...` requires an explicit
+`CAPTUREQUEST_TEST_DATABASE_URL` pointing to a disposable PostgreSQL database.
+`DATABASE_URL`, local config and server defaults are not accepted as substitutes.
+Use the wrapper for ordinary checks; the explicit variable is intended for an
+already isolated test harness. It does not make an arbitrary database disposable.
 
 Scenario files live in `server/script_tests/scenarios/*.json`; expected output lives in `server/script_tests/golden/*.golden`.
 
@@ -225,7 +236,7 @@ an unfinished playable encounter. Add `pokemonId`/`level` expectations when a
 finished encounter must remain saved for recovery; inactivity alone permits absence.
 
 The `safari_last_ball_recovery` scenario uses real random catch/flee rolls. Run it
-with `go run ./cmd/script-sim --scenario safari_last_ball_recovery` to check its
+with `bash scripts/testing/run-isolated-script-sim.sh --scenario safari_last_ball_recovery` to check its
 runtime expectations (terminal encounter, zero balls, gate position and game-over
 flag). Its full text has no fixed golden because the actual outcome, events and
 caught party stats can vary. Do not make a golden pass by suppressing those fields

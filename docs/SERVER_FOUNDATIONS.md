@@ -2,7 +2,7 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest implementation checkpoint: committed shop inventory snapshots, following coherent inventory/wallet/party/flag recovery `129463c` and ordinary step crash acceptance `e0ecf41`, issued cutscene and creation-only fixtures `8c95d40`, move-choice acceptance `e0da0c4` and terminal Safari acceptance `9bf3630`
+Working branch: `codex/server-foundations`. Latest implementation checkpoint: explicit isolated simulator targeting, following committed shop inventory snapshots `5082a39` and coherent inventory/wallet/party/flag recovery `129463c` and ordinary step crash acceptance `e0ecf41`, issued cutscene and creation-only fixtures `8c95d40`, move-choice acceptance `e0da0c4` and terminal Safari acceptance `9bf3630`
 (2026-10-03), following rendered capture recovery `fbe744e`, simulator contract migration `9f59dd3`, expiry presentation recovery `54dbef6`, guarded Safari commands `d673aea`, durable capture placement and terminal login retention `58d0b85`, rendered move-choice recovery `7eb3a7e`, move-choice storage/coordinator acceptance `072ad71`, blackout scene ownership `04579dc`, terminal dismissal/post-battle plans `8ce43ff`, current-owned gameplay recovery `c38a74c`, correlated battle recovery `30fa1bb` and network battle command identity `8a5ba4a`, coherent gameplay recovery `c0d31f9` and durable cutscene issuance/completion `e9eb834`, pending trainer encounters `84f2d91` and ordinary-step receipts `80a544c`, following atomic movement-step effects `cfdeb9e`, retirement of the client coordinate setter `2df1db0`, correlated cutscene completion `6638a63`, issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
 `0585dde`, committed
 blackout/recovery `2f62595`, teleport notification projection `65a5581`, Instant
@@ -105,6 +105,47 @@ legacy behavior and verification limits; a narrow passing checkpoint does not
 close the broad goal. Production validation belongs to a separately authorized
 deployment. Current work is committed locally; nothing has been pushed or
 deployed by this goal.
+
+## Explicit simulator database boundary (2026-10-03)
+
+The previous checkpoint exposed `scriptsim.InitDB` inheriting the application's
+configured database and syncing scripts before scenario execution. Bare
+`script-sim --check` was not read-only: it also reset and seeded a named fixture.
+Initialization now requires `CAPTUREQUEST_TEST_DATABASE_URL`, the same explicit
+disposable-database variable used by Go integration tests. It does not consult
+`DATABASE_URL`, server defaults or local config. Missing or malformed targets
+fail before a connection, script sync or fixture mutation; malformed-target
+errors do not echo credentials.
+
+`scripts/testing/run-isolated-script-sim.sh` is the ordinary entry point. It
+validates matched runtime artifacts, creates a private Unix-socket PostgreSQL
+cluster under `/var/tmp`, bootstraps through the canonical schema/import/script
+pipeline, then forwards simulator arguments. Logs are retained and its exact
+cluster is stopped on success or failure. It does not launch a game server or
+browser. `--update` still intentionally writes a selected tracked golden; the
+wrapper isolates database changes, not requested file output. The conversion
+guide now documents this boundary and uses the wrapper in its CLI examples.
+
+Verification: the focused simulator race tests passed, including absent/blank
+explicit targets with an application `DATABASE_URL` present, and malformed
+credential-bearing input. A bare CLI run exited before connection with the new
+required-target error. The isolated runner passed
+`debug_shop_inventory_publication --check` at
+`/var/tmp/capturequest-script-sim.MHnQQS`. A second run intentionally requested a
+missing fixture at `/var/tmp/capturequest-script-sim.AdtggK`; it returned failure
+and its cleanup stopped PostgreSQL. Both exact data directories have no live
+`postmaster.pid`. Shell syntax and `git diff --check` passed. This verifies the
+new target boundary and both cleanup outcomes; no frontend/build/deployment
+behavior changed.
+
+The explicit test variable is authorization to use the named test target, not
+proof that an arbitrary database is disposable. Ordinary checks should use the
+wrapper. Fixture replacement is still nontransactional, and schema/data validation
+before simulator sync remains a separate audit for custom harnesses. This
+checkpoint closes implicit application-target selection; it does not close the
+full server goal. Recommended next step: continue durable shop mutation identity,
+correlated acknowledgement, timeout recovery and request duplicate acceptance.
+Local checkpoint only; no push or deployment.
 
 ## Committed shop inventory snapshots and endpoint audit (2026-10-03)
 
