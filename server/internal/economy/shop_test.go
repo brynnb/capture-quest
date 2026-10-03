@@ -156,7 +156,10 @@ func TestSaleOwnershipDuplicateAndRollback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Sell(context.Background(), 2, id, 0); err == nil {
+	if _, err := service.Sell(context.Background(), 1, 39, id, 0); err == nil {
+		t.Fatal("sold without a merchant on the owned map")
+	}
+	if _, err := service.Sell(context.Background(), 2, 38, id, 0); err == nil {
 		t.Fatal("sold another character's stack")
 	}
 	if err := store.RemoveItemFromInventory(2, id); err == nil {
@@ -166,12 +169,12 @@ func TestSaleOwnershipDuplicateAndRollback(t *testing.T) {
 		t.Fatal("consumed another character's stack")
 	}
 	testdb.Exec(t, database, `ALTER TABLE character_wallet ADD CONSTRAINT reject_credit CHECK(pokedollars<=1000)`)
-	if _, err := service.Sell(context.Background(), 1, id, 0); err == nil {
+	if _, err := service.Sell(context.Background(), 1, 38, id, 0); err == nil {
 		t.Fatal("sale ignored failed credit")
 	}
 	assertWalletAndItems(t, database, 1, 1000, 3)
 	testdb.Exec(t, database, `ALTER TABLE character_wallet DROP CONSTRAINT reject_credit`)
-	result, err := service.Sell(context.Background(), 1, id, 0)
+	result, err := service.Sell(context.Background(), 1, 38, id, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,10 +184,41 @@ func TestSaleOwnershipDuplicateAndRollback(t *testing.T) {
 	if result.Inventory.Money != 1150 || result.Inventory.Items == nil || len(result.Inventory.Items) != 0 {
 		t.Fatalf("sale did not return authoritative empty bag: %+v", result.Inventory)
 	}
-	if _, err := service.Sell(context.Background(), 1, id, 0); err == nil {
+	if _, err := service.Sell(context.Background(), 1, 38, id, 0); err == nil {
 		t.Fatal("sold same stack twice")
 	}
 	assertWalletAndItems(t, database, 1, 1150, 0)
+}
+
+func TestSaleSourcePolicyRejectsKeyItemsAndHMsButAcceptsUnstockedItems(t *testing.T) {
+	database, service := shopDatabase(t)
+	store := cqitems.NewStore(database)
+	id, err := store.AddItemToInventory(1, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, change := range []string{
+		`UPDATE cq_items SET is_key_item=true WHERE id=1`,
+		`UPDATE cq_items SET is_key_item=false,item_type=6 WHERE id=1`,
+		`UPDATE cq_items SET item_type=0,price=1 WHERE id=1`,
+	} {
+		testdb.Exec(t, database, change)
+		if result, err := service.Sell(context.Background(), 1, 38, id, 0); err == nil || result.InstanceID != 0 {
+			t.Fatalf("unsellable result=%+v error=%v", result, err)
+		}
+		assertWalletAndItems(t, database, 1, 1000, 2)
+	}
+	// Item 2 is not in this shop's offers; source sale policy uses the bag,
+	// rather than restricting it to the merchant's purchase catalog.
+	unstocked, err := store.AddItemToInventory(1, 2, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.Sell(context.Background(), 1, 38, unstocked, 0)
+	if err != nil || result.SellPrice != 200 || result.Inventory.ShopRevision != 1 {
+		t.Fatalf("unstocked sale=%+v %v", result, err)
+	}
+	assertWalletAndItems(t, database, 1, 1200, 2)
 }
 
 func TestPurchaseCancellationReleasesLocks(t *testing.T) {
@@ -231,7 +265,7 @@ func TestShopSnapshotFailureRollsBackMutation(t *testing.T) {
 					t.Fatalf("partial purchase=%+v %v", result, err)
 				}
 			} else {
-				result, err := service.Sell(context.Background(), 1, id, 0)
+				result, err := service.Sell(context.Background(), 1, 38, id, 0)
 				if err == nil || result.InstanceID != 0 || result.Inventory.Items != nil {
 					t.Fatalf("partial sale=%+v %v", result, err)
 				}
@@ -278,15 +312,15 @@ func TestShopRevisionRejectsConcurrentDuplicatesAndSurvivesNewService(t *testing
 		t.Fatalf("current revision=%+v %v", snapshot, err)
 	}
 	id := snapshot.Items[0].Instance.ID
-	if _, err := service.Sell(context.Background(), 1, id, 0); err == nil {
+	if _, err := service.Sell(context.Background(), 1, 38, id, 0); err == nil {
 		t.Fatal("sale reused stale purchase revision")
 	}
-	sale, err := service.Sell(context.Background(), 1, id, 1)
+	sale, err := service.Sell(context.Background(), 1, 38, id, 1)
 	if err != nil || sale.Inventory.ShopRevision != 2 {
 		t.Fatalf("new sale=%+v %v", sale, err)
 	}
 	assertWalletAndItems(t, database, 1, 1080, 0)
-	if _, err := service.Sell(context.Background(), 1, id, 1); err == nil {
+	if _, err := service.Sell(context.Background(), 1, 38, id, 1); err == nil {
 		t.Fatal("duplicate sale accepted")
 	}
 }

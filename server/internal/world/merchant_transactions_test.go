@@ -93,17 +93,21 @@ func TestMerchantDispatchPublishesOnlyCommittedResults(t *testing.T) {
 	previous := db.GlobalWorldDB
 	db.GlobalWorldDB = &db.WorldDB{DB: database}
 	t.Cleanup(func() { db.GlobalWorldDB = previous })
-	testdb.Exec(t, database, `INSERT INTO character_data(id,name) VALUES(1,'one');
+	testdb.Exec(t, database, `INSERT INTO phaser_maps(id,name,width,height) VALUES(38,'SHOP',10,10);
+ INSERT INTO phaser_objects(id,map_id,x,y,object_type,name,text,sprite_name) VALUES(10,38,1,0,'npc','CLERK','CLERK','SPRITE_CLERK');
+ INSERT INTO character_data(id,name) VALUES(1,'one');
 		INSERT INTO character_wallet VALUES(1,100);
 		INSERT INTO cq_items(id,name,short_name,price) VALUES(1,'Potion','POTION',10);
 		INSERT INTO cq_merchants(id,name,map_id) VALUES(1,'Shop',38);
 		INSERT INTO cq_merchant_items(merchant_id,item_id) VALUES(1,1);
 		ALTER TABLE cq_character_inventory ADD CONSTRAINT fail_grant CHECK(character_id<>1);`)
 	messenger := &recordingMessenger{}
-	ses := &session.Session{Authenticated: true, MapID: 38, Client: &testSessionClient{char: &model.CharacterData{ID: 1}}, Messenger: messenger}
+	ses := &session.Session{Authenticated: true, MapID: 38, Client: &testSessionClient{char: &model.CharacterData{ID: 1, MapID: 38}}, Messenger: messenger}
 	registry := NewWorldOpCodeRegistry()
-	registry.WH = &WorldHandler{Economy: economy.New(database)}
-	request := clientPacket(opcodes.CQMerchantBuyRequest, `{"requestId":"buy","shop":{"characterId":1,"revision":0},"merchantId":1,"itemId":1,"quantity":1}`)
+	registry.WH = &WorldHandler{database: database, Economy: economy.New(database), ActorRegistry: NewActorRegistry(), Cutscenes: NewCutsceneManager(database)}
+	registry.WH.ActorManager = NewPhaserActorManager(registry.WH)
+	actorID := registry.WH.ActorRegistry.GetPhaserID(ActorTypeNPC, 10)
+	request := clientPacket(opcodes.CQMerchantBuyRequest, fmt.Sprintf(`{"actorId":%d,"requestId":"buy","shop":{"characterId":1,"revision":0},"merchantId":1,"itemId":1,"quantity":1}`, actorID))
 	registry.HandleWorldPacket(ses, request)
 	if len(messenger.streams) != 1 || messenger.streams[0].opcode != opcodes.CQMerchantBuyResponse {
 		t.Fatalf("failure messages=%+v", messenger.streams)
@@ -138,7 +142,7 @@ func TestMerchantDispatchPublishesOnlyCommittedResults(t *testing.T) {
 		`{"merchantId":1,"itemId":1,"quantity":1}`,
 		`{"requestId":"missing-revision","shop":{"characterId":1},"merchantId":1,"itemId":1,"quantity":1}`,
 		`{"requestId":"wrong-owner","shop":{"characterId":2,"revision":1},"merchantId":1,"itemId":1,"quantity":1}`,
-		`{"requestId":"duplicate","shop":{"characterId":1,"revision":0},"merchantId":1,"itemId":1,"quantity":1}`,
+		fmt.Sprintf(`{"actorId":%d,"requestId":"duplicate","shop":{"characterId":1,"revision":0},"merchantId":1,"itemId":1,"quantity":1}`, actorID),
 	} {
 		messenger.streams = nil
 		registry.HandleWorldPacket(ses, clientPacket(opcodes.CQMerchantBuyRequest, invalid))
@@ -155,6 +159,86 @@ func TestMerchantDispatchPublishesOnlyCommittedResults(t *testing.T) {
 		t.Fatalf("duplicate granted quantity=%d %v", quantity, err)
 	}
 
+}
+
+func TestMerchantMutationsRecheckReachVisibilityAndCurrentScriptEligibility(t *testing.T) {
+	database, wh, ses, messages := battleTestWorld(t)
+	wh.Economy = economy.New(database)
+	wh.ActorRegistry = NewActorRegistry()
+	wh.ActorManager = NewPhaserActorManager(wh)
+	wh.Cutscenes = NewCutsceneManager(database)
+	ses.MapID = 1
+	ses.Client.CharData().MapID = 1
+	testdb.Exec(t, database, `UPDATE cq_items SET price=10 WHERE id=1;
+		INSERT INTO phaser_maps(id,name,width,height) VALUES(1,'SHOP',10,10),(2,'OTHER',10,10);
+		INSERT INTO phaser_objects(id,map_id,x,y,object_type,name,text,sprite_name) VALUES(10,1,1,0,'npc','CLERK','CLERK','SPRITE_CLERK'),(11,2,1,0,'npc','REMOTE','REMOTE','SPRITE_CLERK'),(12,1,1,0,'npc','NURSE','NURSE','SPRITE_NURSE');
+		INSERT INTO cq_merchants(id,name,map_id) VALUES(1,'Shop',1),(2,'Other',2);
+		INSERT INTO cq_merchant_items(merchant_id,item_id) VALUES(1,1)`)
+	instanceID, err := cqitems.NewStore(database).AddItemToInventory(42, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clerkID := wh.ActorRegistry.GetPhaserID(ActorTypeNPC, 10)
+	packet := func(op opcodes.OpCode, actorID int, revision int) string {
+		if op == opcodes.CQMerchantBuyRequest {
+			return fmt.Sprintf(`{"requestId":"command","actorId":%d,"shop":{"characterId":42,"revision":%d},"merchantId":1,"itemId":1,"quantity":1}`, actorID, revision)
+		}
+		return fmt.Sprintf(`{"requestId":"command","actorId":%d,"shop":{"characterId":42,"revision":%d},"instanceId":%d}`, actorID, revision, instanceID)
+	}
+	check := func(actorID int, revision int, want bool, ops ...opcodes.OpCode) {
+		t.Helper()
+		for _, op := range ops {
+			messages.streams = nil
+			battleDispatch(t, wh, ses, op, packet(op, actorID, revision))
+			var result struct {
+				Success   bool
+				RequestID string
+			}
+			if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &result) != nil || result.Success != want || result.RequestID != "command" {
+				t.Fatalf("opcode=%d response=%+v", op, messages.streams)
+			}
+		}
+	}
+	ops := []opcodes.OpCode{opcodes.CQMerchantBuyRequest, opcodes.CQMerchantSellRequest}
+	// Even a successfully opened menu is not permission to mutate after moving.
+	battleDispatch(t, wh, ses, opcodes.CQMerchantOpenRequest, fmt.Sprintf(`{"requestId":"open","characterId":42,"actorId":%d}`, clerkID))
+	ses.Client.CharData().X = 8
+	check(clerkID, 0, false, ops...)
+	ses.Client.CharData().X = 0
+	check(0, 0, false, ops...)
+	check(10, 0, false, ops...)
+	check(wh.ActorRegistry.GetPhaserID(ActorTypeNPC, 11), 0, false, ops...)
+	check(wh.ActorRegistry.GetPhaserID(ActorTypeNPC, 12), 0, false, ops...)
+	testdb.Exec(t, database, `INSERT INTO character_object_visibility_overrides(character_id,object_id,visible,source) VALUES(42,10,false,'test')`)
+	check(clerkID, 0, false, ops...)
+	testdb.Exec(t, database, `DELETE FROM character_object_visibility_overrides`)
+	flag := "SCRIPT_REQUIRED"
+	wh.Cutscenes.byLabel["CLERK"] = &CutsceneScript{ScriptLabel: "CLERK", MapName: "SHOP", TriggerType: "npc_click", RequiresFlag: &flag}
+	testdb.Exec(t, database, `INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'SCRIPT_REQUIRED')`)
+	wh.EventFlags.flags[42] = map[string]bool{} // Stale session cache cannot skip the script.
+	check(clerkID, 0, false, ops...)
+	delete(wh.Cutscenes.byLabel, "CLERK")
+	var money, quantity, revision int
+	if err := database.QueryRow(`SELECT pokedollars FROM character_wallet WHERE character_id=42`).Scan(&money); err != nil || money != 100 {
+		t.Fatalf("rejection money=%d %v", money, err)
+	}
+	if err := database.QueryRow(`SELECT quantity FROM cq_item_instances WHERE id=$1`, instanceID).Scan(&quantity); err != nil || quantity != 2 {
+		t.Fatalf("rejection quantity=%d %v", quantity, err)
+	}
+	if err := database.QueryRow(`SELECT COALESCE((SELECT revision FROM character_shop_state WHERE character_id=42),0)`).Scan(&revision); err != nil || revision != 0 {
+		t.Fatalf("rejection advanced revision=%d %v", revision, err)
+	}
+	check(clerkID, 0, true, opcodes.CQMerchantBuyRequest)
+	check(clerkID, 1, true, opcodes.CQMerchantSellRequest)
+	if err := database.QueryRow(`SELECT pokedollars FROM character_wallet WHERE character_id=42`).Scan(&money); err != nil || money != 105 {
+		t.Fatalf("sale money=%d %v", money, err)
+	}
+	battleTestStart(t, database, false, nil)
+	check(clerkID, 2, false, ops...)
+	var rejected ShopCommandError
+	if err := json.Unmarshal(messages.streams[0].payload, &rejected); err != nil || rejected.Error != "Shop unavailable during battle" {
+		t.Fatalf("battle admitted shop: %+v %v", rejected, err)
+	}
 }
 
 func TestInventoryDispatchFailsWholeReadOnWalletError(t *testing.T) {

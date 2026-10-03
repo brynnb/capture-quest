@@ -4,6 +4,10 @@
 // source: types.go
 
 /**
+ * ItemTypeHM is the canonical importer category derived from source HM constants.
+ */
+export const ItemTypeHM = 6;
+/**
  * CQItem represents a row from cq_items (item template)
  */
 export interface CQItem {

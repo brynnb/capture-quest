@@ -1,5 +1,8 @@
 package cqitems
 
+// ItemTypeHM is the canonical importer category derived from source HM constants.
+const ItemTypeHM = 6
+
 // CQItem represents a row from cq_items (item template)
 type CQItem struct {
 	ID             int32   `json:"id"`

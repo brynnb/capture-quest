@@ -103,7 +103,7 @@ type Sale struct {
 
 // Sell sells the selected whole stack. The previous handler removed the entire
 // stack but credited only one unit; credit and removal now commit together.
-func (s *Service) Sell(ctx context.Context, charID, instanceID int32, expectedRevision int64) (Sale, error) {
+func (s *Service) Sell(ctx context.Context, charID, mapID, instanceID int32, expectedRevision int64) (Sale, error) {
 	var result Sale
 	err := db.Transaction(ctx, s.database, func(tx db.DBTX) error {
 		if err := db.LockCharacter(tx, int64(charID)); err != nil {
@@ -112,12 +112,18 @@ func (s *Service) Sell(ctx context.Context, charID, instanceID int32, expectedRe
 		if err := advanceShopRevision(tx, charID, expectedRevision); err != nil {
 			return err
 		}
+		// Every canonical Mart offers the source sell menu; its buy catalog does
+		// not restrict sale items. Reject sales where no merchant exists at all.
+		var merchantID int32
+		if err := tx.QueryRow(`SELECT id FROM cq_merchants WHERE map_id=$1 ORDER BY id LIMIT 1 FOR SHARE`, mapID).Scan(&merchantID); err != nil {
+			return fmt.Errorf("sale merchant unavailable: %w", err)
+		}
 		items := cqitems.NewStore(tx)
 		owned, err := items.FindInventoryItemByInstanceID(charID, instanceID)
 		if err != nil {
 			return err
 		}
-		if owned.Item.IsKeyItem || owned.Item.Price < 2 {
+		if owned.Item.IsKeyItem || owned.Item.ItemType == cqitems.ItemTypeHM || owned.Item.Price < 2 {
 			return fmt.Errorf("this item cannot be sold")
 		}
 		result = Sale{InstanceID: instanceID, ItemName: owned.Item.Name, SellPrice: int64(owned.Item.Price/2) * int64(owned.Instance.Quantity)}

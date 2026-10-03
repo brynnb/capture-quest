@@ -18,6 +18,7 @@ type ShopCommandIdentity struct {
 	Revision    *int64 `json:"revision" tstype:"number"`
 }
 type CQMerchantBuyRequest struct {
+	ActorID    int                  `json:"actorId"`
 	RequestID  string               `json:"requestId"`
 	Shop       *ShopCommandIdentity `json:"shop" tstype:"ShopCommandIdentity"`
 	MerchantID int32                `json:"merchantId"`
@@ -25,6 +26,7 @@ type CQMerchantBuyRequest struct {
 	Quantity   uint16               `json:"quantity"`
 }
 type CQMerchantSellRequest struct {
+	ActorID    int                  `json:"actorId"`
 	RequestID  string               `json:"requestId"`
 	Shop       *ShopCommandIdentity `json:"shop" tstype:"ShopCommandIdentity"`
 	InstanceID int32                `json:"instanceId"`
@@ -95,6 +97,47 @@ type CQMerchantOpenResponse struct {
 	Money       int64                    `json:"money"`
 }
 
+// Opening a menu does not grant a reusable permission. Revalidate this same
+// source boundary for every command, including after movement or flag changes.
+func (wh *WorldHandler) authorizeMerchantInteraction(ctx context.Context, ses *session.Session, actorID int) (PhaserActor, error) {
+	if actorID <= 0 {
+		return PhaserActor{}, errors.New("Invalid shop actor")
+	}
+	charID := int64(ses.Client.CharData().ID)
+	// Match field-item admission: world shop commands cannot race the active
+	// battle's inventory/money decisions merely because the UI hides the clerk.
+	if battle := getBattle(charID); battle != nil && !battle.IsOver() {
+		return PhaserActor{}, errors.New("Shop unavailable during battle")
+	}
+	if wh.Economy == nil || wh.database == nil || wh.ActorRegistry == nil || wh.Cutscenes == nil {
+		return PhaserActor{}, errors.New("Shop unavailable")
+	}
+	flags := NewEventFlagManager(wh.database)
+	if err := flags.LoadFlagsContext(ctx, charID); err != nil {
+		return PhaserActor{}, errors.New("Shop eligibility unavailable")
+	}
+	objectID := wh.ActorRegistry.GetOriginalID(ActorTypeNPC, actorID)
+	if objectID == 0 {
+		return PhaserActor{}, errors.New("Unknown shop actor")
+	}
+	actor, mapName, err := wh.scriptInteractionTargetWithFlags(ctx, ses, objectID, flags)
+	if err != nil || actor.SpriteName == nil || *actor.SpriteName != "SPRITE_CLERK" {
+		return PhaserActor{}, errors.New("Shop actor unavailable or out of reach")
+	}
+	facing := ""
+	if wh.PlayerMovement != nil {
+		facing, _ = wh.PlayerMovement.GetDirection(int(charID))
+	}
+	script, err := wh.Cutscenes.FindEligibleClickCutsceneContext(ctx, mapName, scriptedEventTriggerKeys(actor), charID, flags, facing)
+	if err != nil {
+		return PhaserActor{}, errors.New("Shop eligibility unavailable")
+	}
+	if script != nil {
+		return PhaserActor{}, errors.New("Complete the clerk interaction first")
+	}
+	return actor, nil
+}
+
 // Merchant opening is the fallback after source scripted interaction, not an
 // alternate way to skip an eligible clerk script or select a remote map.
 func HandleCQMerchantOpenRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
@@ -109,38 +152,11 @@ func HandleCQMerchantOpenRequest(ses *session.Session, payload []byte, wh *World
 		fail("Invalid shop interaction")
 		return false
 	}
-	if wh.Economy == nil || wh.database == nil || wh.ActorRegistry == nil || wh.Cutscenes == nil {
-		fail("Shop unavailable")
-		return false
-	}
 	ctx, cancel := context.WithTimeout(ses.CommandContext(), 5*time.Second)
 	defer cancel()
-	flags := NewEventFlagManager(wh.database)
-	if err := flags.LoadFlagsContext(ctx, req.CharacterID); err != nil {
-		fail("Shop eligibility unavailable")
-		return false
-	}
-	objectID := wh.ActorRegistry.GetOriginalID(ActorTypeNPC, req.ActorID)
-	if objectID == 0 {
-		fail("Unknown shop actor")
-		return false
-	}
-	actor, mapName, err := wh.scriptInteractionTargetWithFlags(ctx, ses, objectID, flags)
-	if err != nil || actor.SpriteName == nil || *actor.SpriteName != "SPRITE_CLERK" {
-		fail("Shop actor unavailable or out of reach")
-		return false
-	}
-	facing := ""
-	if wh.PlayerMovement != nil {
-		facing, _ = wh.PlayerMovement.GetDirection(int(req.CharacterID))
-	}
-	script, err := wh.Cutscenes.FindEligibleClickCutsceneContext(ctx, mapName, scriptedEventTriggerKeys(actor), req.CharacterID, flags, facing)
+	actor, err := wh.authorizeMerchantInteraction(ctx, ses, req.ActorID)
 	if err != nil {
-		fail("Shop eligibility unavailable")
-		return false
-	}
-	if script != nil {
-		fail("Complete the clerk interaction first")
+		fail(err.Error())
 		return false
 	}
 	menu, err := wh.Economy.Open(ctx, int32(req.CharacterID), int32(actor.MapID), 0)
@@ -165,8 +181,15 @@ func HandleCQMerchantBuyRequest(ses *session.Session, payload []byte, wh *WorldH
 		return false
 	}
 
+	ctx, cancel := context.WithTimeout(ses.CommandContext(), 5*time.Second)
+	defer cancel()
+	actor, err := wh.authorizeMerchantInteraction(ctx, ses, req.ActorID)
+	if err != nil {
+		sendShopCommandError(ses, req.RequestID, opcodes.CQMerchantBuyResponse, err.Error())
+		return false
+	}
 	charID := int32(ses.Client.CharData().ID)
-	purchase, err := wh.Economy.Buy(ses.CommandContext(), charID, int32(ses.MapID), req.MerchantID, req.ItemID, req.Quantity, *req.Shop.Revision)
+	purchase, err := wh.Economy.Buy(ctx, charID, int32(actor.MapID), req.MerchantID, req.ItemID, req.Quantity, *req.Shop.Revision)
 	if err != nil {
 		log.Printf("[CQItems] Purchase failed for character %d: %v", charID, err)
 		sendShopCommandError(ses, req.RequestID, opcodes.CQMerchantBuyResponse, "Could not buy this item. Read current inventory before trying again.")
@@ -244,8 +267,15 @@ func HandleCQMerchantSellRequest(ses *session.Session, payload []byte, wh *World
 		return false
 	}
 
+	ctx, cancel := context.WithTimeout(ses.CommandContext(), 5*time.Second)
+	defer cancel()
+	actor, err := wh.authorizeMerchantInteraction(ctx, ses, req.ActorID)
+	if err != nil {
+		sendShopCommandError(ses, req.RequestID, opcodes.CQMerchantSellResponse, err.Error())
+		return false
+	}
 	charID := int32(ses.Client.CharData().ID)
-	sale, err := wh.Economy.Sell(ses.CommandContext(), charID, req.InstanceID, *req.Shop.Revision)
+	sale, err := wh.Economy.Sell(ctx, charID, int32(actor.MapID), req.InstanceID, *req.Shop.Revision)
 	if err != nil {
 		log.Printf("[CQItems] Sale failed for character %d: %v", charID, err)
 		sendShopCommandError(ses, req.RequestID, opcodes.CQMerchantSellResponse, "Could not sell this item. Read current inventory before trying again.")

@@ -19,13 +19,21 @@ beforeEach(()=>{
   useCQInventoryStore.setState({items:[],money:1000,shopRevision:4,shopOpen:true,shopCommandPending:false});
   usePlayerCharacterStore.getState().setCharacterProfile({id:42,pokedollars:1000});
   retire=bindShopScene();
-  useCQInventoryStore.getState().openShop(1,"Shop",[],1000);
+  useCQInventoryStore.getState().openShop(1,"Shop",[],1000,1001);
 });
 afterEach(()=>{retire();vi.useRealTimers();});
+
+test.each([null,0,-1])("shop mutations require the live menu actor %s",async actorId=>{
+  useCQInventoryStore.setState({shopActorId:actorId});
+  await buyShopItem(1,1,1); await sellShopItem(7);
+  expect(net.send).not.toHaveBeenCalled();
+  expect(net.read).not.toHaveBeenCalled();
+});
 
 test.each(["buy","sell"])("%s awaits correlation, carries durable identity and accepts one next revision",async action=>{
   const opcode=action==="buy"?97:99;
   const pending=action==="buy"?buyShopItem(1,1,10):sellShopItem(7);
+  expect(net.send.mock.calls[0][1].actorId).toBe(1001);
   expect(net.send.mock.calls[0][1].shop).toEqual({characterId:42,revision:4});
   expect(useCQInventoryStore.getState().shopCommandPending).toBe(true);
   await buyShopItem(1,1,1);expect(net.send).toHaveBeenCalledTimes(1);
@@ -74,7 +82,7 @@ test("failed recovery leaves the bag intact and reports a controlled reconnect e
 
 test("older scene cleanup cannot release or settle a newer scene's command",async()=>{
   const first=buyShopItem(1,1,1);const firstId=id();const oldRetire=retire;
-  retire=bindShopScene();useCQInventoryStore.getState().openShop(1,"Shop",[],1000);const second=buyShopItem(1,1,1);const secondId=id();
+  retire=bindShopScene();useCQInventoryStore.getState().openShop(1,"Shop",[],1000,1001);const second=buyShopItem(1,1,1);const secondId=id();
   oldRetire();await first;
   expect(useCQInventoryStore.getState().shopCommandPending).toBe(true);
   emit(97,{success:true,requestId:firstId,inventory:{items:[],money:900,shopRevision:5}});

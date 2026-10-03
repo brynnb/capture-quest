@@ -3,7 +3,7 @@
 Status: active. Started 2026-09-25 from `02c51ba`.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-source-authorized merchant opening and scene-bound replies, following injected merchant reads and owned-map selection `5ac9f66`, then `21fd084` — durable shop revisions and correlated command recovery, explicit isolated simulator targeting `74defe0` and committed shop inventory snapshots `5082a39` and coherent inventory/wallet/party/flag recovery `129463c` and ordinary step crash acceptance `e0ecf41`, issued cutscene and creation-only fixtures `8c95d40`, move-choice acceptance `e0da0c4` and terminal Safari acceptance `9bf3630`
+per-command clerk authorization and source sale policy, following source-authorized merchant opening and scene-bound replies `d638d8b`, then injected merchant reads and owned-map selection `5ac9f66`, then `21fd084` — durable shop revisions and correlated command recovery, explicit isolated simulator targeting `74defe0` and committed shop inventory snapshots `5082a39` and coherent inventory/wallet/party/flag recovery `129463c` and ordinary step crash acceptance `e0ecf41`, issued cutscene and creation-only fixtures `8c95d40`, move-choice acceptance `e0da0c4` and terminal Safari acceptance `9bf3630`
 (2026-10-03), following rendered capture recovery `fbe744e`, simulator contract migration `9f59dd3`, expiry presentation recovery `54dbef6`, guarded Safari commands `d673aea`, durable capture placement and terminal login retention `58d0b85`, rendered move-choice recovery `7eb3a7e`, move-choice storage/coordinator acceptance `072ad71`, blackout scene ownership `04579dc`, terminal dismissal/post-battle plans `8ce43ff`, current-owned gameplay recovery `c38a74c`, correlated battle recovery `30fa1bb` and network battle command identity `8a5ba4a`, coherent gameplay recovery `c0d31f9` and durable cutscene issuance/completion `e9eb834`, pending trainer encounters `84f2d91` and ordinary-step receipts `80a544c`, following atomic movement-step effects `cfdeb9e`, retirement of the client coordinate setter `2df1db0`, correlated cutscene completion `6638a63`, issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
 `0585dde`, committed
 blackout/recovery `2f62595`, teleport notification projection `65a5581`, Instant
@@ -71,7 +71,7 @@ The coherent recovery response now includes inventory, wallet, the full party an
 sorted flags. Inventory reads share one bounded transactional reader, and shop
 buy/sell replies include their complete committed bag without client stack guessing.
 Shop mutations now require character-bound durable revisions and correlated replies;
-the client waits for acknowledgement or current-state recovery without resending. Merchant opening now uses source clerk reach and fresh script eligibility with scene-bound correlated replies. Integration with remaining legacy mutation timeouts and remaining
+the client waits for acknowledgement or current-state recovery without resending. Merchant opening and buy/sell commands now use source clerk reach and fresh script eligibility with scene-bound correlated replies. Integration with remaining legacy mutation timeouts and remaining
 process-recovery coverage still need work. Evidence and verification limits
 appear in the checkpoint sections below.
 
@@ -82,7 +82,7 @@ number of commits or passing tests. All five areas still have outstanding work.
 
 | Area | Implemented | Still required |
 | --- | --- | --- |
-| Request/session boundary | Packet and connection limits, centralized session prerequisites, removal of insecure session takeover, actual transport closure, location/visibility checks for merchant opening, scripted clicks, dialogue choices and direct trainer battles, client destination catalog validation, server-resolved normal warp activation, explicit Instant Warp commands, committed teleport notification contracts and read-only map metadata, retired coordinate/map setters, and preserved command deadlines/disconnect cancellation in migrated operations. | Audit remaining interaction/mutation endpoints; propagate cancellation through legacy managers and remaining database/network work. |
+| Request/session boundary | Packet and connection limits, centralized session prerequisites, removal of insecure session takeover, actual transport closure, location/visibility checks for merchant opening and buy/sell commands, scripted clicks, dialogue choices and direct trainer battles, client destination catalog validation, server-resolved normal warp activation, explicit Instant Warp commands, committed teleport notification contracts and read-only map metadata, retired coordinate/map setters, and preserved command deadlines/disconnect cancellation in migrated operations. | Audit remaining interaction/mutation endpoints; propagate cancellation through legacy managers and remaining database/network work. |
 | Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors, Game Corner prizes and bounded coin/slot/hidden-coin operations, atomic Escape Rope/FLY positions, durable Repel counters, Safari entry/turn/capture state and exhaustion destinations, atomic blackout/recovery destinations and map-load position/Safari/flag/visibility/boulder effects, atomic movement-step counters, encounters and recovery, durable latest ordinary-step receipts, durable sight-trainer plans/resumption and atomic readiness resolution, durable cutscene snapshots/completion receipts/cancellation, coherent battle/Safari/pending-plan recovery, mandatory ordinary/Safari battle command identity, correlated battle timeout recovery and retained Safari terminal/capture state, recoverable terminal dismissal and atomic post-battle plans, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery for remaining mutations across reconnects; finish recovery integration for remaining inventory/wallet/flag mutations and presentation, finish process-death acceptance for remaining movement/script/trainer plans and choices; finish queued-plan/source/catalog ordering acceptance coverage and remaining command recovery. |
 | Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, movement ticks coordinated with the owner, and immediate retirement of battle-scene command admission/subscriptions. | Finish timer/callback/shared-state and legacy position-writer audits; prove remaining concurrent/reconnect behavior across real transports. |
 | Domains and wire contracts | Injected content-query service; typed inventory, shop opening and mutation successes, character/wallet/bind, Pokédex/card, content detail, map-script, map-info/list, sight-trainer notification/readiness, coherent gameplay recovery, ordinary/Safari battle command replies, shared battle events and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
@@ -90,14 +90,14 @@ number of commits or passing tests. All five areas still have outstanding work.
 
 ### Next work and completion criteria
 
-Merchant opening now requires a reachable visible source clerk, checks current
-script eligibility, and returns a typed reply correlated to the live character
-and scene. The immediate next audit is purchase/sale interaction policy: opening
-is a read and does not issue a durable merchant permission for later mutations.
-Purchases currently validate the owned map and offer; sales validate ownership
-and item policy. Determine and enforce the source merchant boundary for both,
-then finish rendered sale and actual shop process-death acceptance. Continue
-party/field item commands through the same typed ownership and recovery boundary.
+Merchant opening and every buy/sell command now require a reachable visible
+source clerk and current script eligibility. The client retains the acknowledged
+menu's actor ID; an earlier open is not a reusable server permission. Source sale
+policy and real-transport delivered/lost sale acknowledgement checks have landed.
+The immediate next checkpoint is actual process-death acceptance for shop
+commands, followed by party/field item commands through the same typed ownership
+and recovery boundary. The sale browser check exercises the existing coordinator
+and rendered balance; the product still has no Sell button.
 
 Continue with recovery integration for the remaining mutation commands and the
 remaining script/trainer plans and their queue/source/catalog ordering. Ordinary
@@ -117,6 +117,65 @@ legacy behavior and verification limits; a narrow passing checkpoint does not
 close the broad goal. Production validation belongs to a separately authorized
 deployment. Current work is committed locally; nothing has been pushed or
 deployed by this goal.
+
+## Per-command clerk authorization and source sale policy (2026-10-03)
+
+The original shop engine at
+`tools/pokemon-gameboy-extractor-tool/pokemon-game-data/engine/events/pokemart.asm`
+provides the sell menu through the clerk interaction. It builds that menu from the
+bag, independently of the shop's buy catalog, rejects key items and HMs, and halves
+item prices. CaptureQuest retains its existing whole-stack sale contract and
+minimum price policy; source quantity selection and a new Sell UI are not added
+by this server checkpoint.
+
+Buy and sell now require the runtime `actorId` in their generated request types.
+Opening, buying and selling share one source authorization helper that rechecks
+reach, visibility and fresh script eligibility on every command. Active battles
+reject all three shop command families, matching field-item admission. Each command's
+single session-derived five-second deadline includes authorization and the
+transaction. The economy purchase uses the authorized actor's map, and the sale
+transaction requires a canonical merchant on that map. An opened menu cannot
+grant permission after movement, actor hiding or a script eligibility change.
+The same durable character/revision guard still commits with all effects and the
+complete inventory result. Source HMs are explicitly unsellable even with a
+positive price and a false key-item bit. The canonical HM category is shared by
+item use and economy and generated for TypeScript.
+
+The client store records the acknowledged menu's actor ID and clears it on close.
+The existing scene coordinator includes it in both commands and refuses admission
+without a valid live actor context. It retains existing correlation, cancellation,
+current-state recovery and no-resend behavior. Server authorization remains the
+boundary; this client field is a selector, not a permission token.
+
+Verification: complete isolated PostgreSQL race suites passed for world
+(38.496 seconds), economy (2.743 seconds), item use (1.541 seconds) and inventory
+repository (1.574 seconds). New packet checks prove that a prior open cannot
+bypass moved/remote/non-clerk/hidden actors or newly eligible scripts, and that
+rejection leaves money, inventory and durable revision unchanged. The final
+packet check also proves active battle rejection. Domain checks
+reject missing merchants, key items and positive-price HMs, and accept ordinary
+items absent from the buy catalog. Existing rollback/duplicate/concurrency checks
+remain passing. Seventy frontend tests across five files, canonical type
+regeneration, typecheck, runtime asset validation, production build (3.55 seconds)
+and `git diff --check` passed.
+
+Five rendered transport cases passed in 48.6 seconds at
+`/var/tmp/capturequest-rendered.QJ884Q`: delivered/lost buy replies, delivered/lost
+sale replies and verified late-menu delivery after scene reentry. Each mutation
+packet is delivered twice with the same identity and commits once. The sale of
+the fixture's 95 POKE_BALL stack credits 9,500, removes the whole stack, advances
+revision to 1, recovers the rendered balance/bag after a lost reply, ignores the
+late success and persists across authenticated reentry. The test calls the
+existing sale coordinator because there is no Sell button; it does not claim UI
+sale selection. The final active-battle admission check was added afterward and
+verified by the final PostgreSQL packet/race suite. The exact private browser
+runtime and PostgreSQL cluster stopped.
+
+Remaining: actual shop process-death acceptance, party/field item identity and
+recovery, remaining callback/domain/wire migrations, plan ordering and lifecycle
+work in the five-area table. The full goal remains active. Frontend and backend
+must activate together through a separately authorized release; no push or
+deployment was performed. Recommended next step: shop process-death acceptance.
 
 ## Source-authorized merchant opening and scene retirement (2026-10-03)
 

@@ -39,6 +39,7 @@ interface CQInventoryState {
   shopOpen: boolean;
   shopName: string;
   shopMerchantId: number | null;
+  shopActorId: number | null;
   shopItems: CQMerchantItem[];
 
   // TM/HM pending move forget
@@ -53,6 +54,7 @@ interface CQInventoryState {
     name: string,
     items: CQMerchantItem[],
     money: number,
+    actorId: number,
   ) => void;
   closeShop: () => void;
 }
@@ -66,6 +68,7 @@ const useCQInventoryStore = create<CQInventoryState>((set) => ({
   shopOpen: false,
   shopName: "",
   shopMerchantId: null,
+  shopActorId: null,
   shopItems: [],
   pendingTMHM: null,
 
@@ -75,10 +78,11 @@ const useCQInventoryStore = create<CQInventoryState>((set) => ({
 
   setPendingTMHM: (pending) => set({ pendingTMHM: pending }),
 
-  openShop: (merchantId, name, items, money) =>
+  openShop: (merchantId, name, items, money, actorId) =>
     set({
       shopOpen: true,
       shopMerchantId: merchantId,
+      shopActorId: actorId,
       shopName: name,
       shopItems: items,
       money,
@@ -89,6 +93,7 @@ const useCQInventoryStore = create<CQInventoryState>((set) => ({
       shopOpen: false,
       shopName: "",
       shopMerchantId: null,
+      shopActorId: null,
       shopItems: [],
     }),
 }));

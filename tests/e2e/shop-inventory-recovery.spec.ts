@@ -6,17 +6,20 @@ import { getGameState, waitForNoMapLoading } from "./helpers/state";
 import { pressMovement, pressSpace } from "./helpers/input";
 import * as OpCodes from "../../src/net/generated/opcodes";
 
+for (const action of ["buy", "sell"] as const) {
 for (const loseReply of [false, true]) {
-test(`a duplicated shop request with lost reply=${loseReply} settles once and recovers its committed bag`, async ({ page }) => {
+test(`a duplicated shop ${action} request with lost reply=${loseReply} settles once and recovers its committed bag`, async ({ page }) => {
   test.setTimeout(120000);
   const errors = collectPageErrors(page);
+  const requestOpcode=action==="buy"?OpCodes.CQMerchantBuyRequest:OpCodes.CQMerchantSellRequest;
+  const responseOpcode=action==="buy"?OpCodes.CQMerchantBuyResponse:OpCodes.CQMerchantSellResponse;
   let purchases = 0, successes = 0, rejections = 0;
   let duplicate: (() => void) | undefined;
   let committed: { inventory: { items: Array<{ instance: { id: number; quantity: number } }>; money: number; shopRevision: number } } | undefined;
   await page.routeWebSocket("**/ws", socket => {
     const server = socket.connectToServer();
     socket.onMessage(message => {
-      if (Buffer.isBuffer(message) && message.length >= 6 && message.readUInt16LE(4) === OpCodes.CQMerchantBuyRequest) {
+      if (Buffer.isBuffer(message) && message.length >= 6 && message.readUInt16LE(4) === requestOpcode) {
         purchases++;
         // Deliver the same authenticated command twice, preserving its identity.
         server.send(message);
@@ -27,7 +30,7 @@ test(`a duplicated shop request with lost reply=${loseReply} settles once and re
       if (Buffer.isBuffer(message) && message.length >= 6 && purchases > 0) {
         const opcode = message.readUInt16LE(4);
         if (opcode === OpCodes.CQInventoryResponse) return;
-        if (opcode === OpCodes.CQMerchantBuyResponse) {
+        if (opcode === responseOpcode) {
           const reply = JSON.parse(message.subarray(6).toString());
           if (reply.success) {
             successes++; committed = reply; duplicate = () => socket.send(message);
@@ -48,14 +51,23 @@ test(`a duplicated shop request with lost reply=${loseReply} settles once and re
   await expect(page.getByRole("button", { name: "BUY", exact: true })).toBeEnabled();
   const before = await getGameState(page);
   expect(before.inventory.items.filter(item => item.shortName === "POKE_BALL").map(item => item.quantity)).toEqual([95]);
-  for (let i = 0; i < 9; i++) await page.getByRole("button", { name: "+", exact: true }).click();
-  await page.getByRole("button", { name: "BUY", exact: true }).click();
+  if(action==="buy") {
+    for (let i = 0; i < 9; i++) await page.getByRole("button", { name: "+", exact: true }).click();
+    await page.getByRole("button", { name: "BUY", exact: true }).click();
+  } else {
+    // The product currently exposes no Sell button. Exercise its existing
+    // coordinator over the real transport and verify the rendered money view.
+    await page.evaluate(async instanceId => {
+      const path="/src/phaser-game/services/PhaserNetworkService.ts";
+      const net=await import(path); void net.sendCQMerchantSell(instanceId);
+    },before.inventory.items[0].instanceId);
+  }
   await expect.poll(() => !!committed).toBe(true);
   if (loseReply) await expect(page.getByRole("button", { name: "BUY", exact: true })).toBeDisabled();
   const expected = committed!.inventory;
   expect(expected.shopRevision).toBe(1);
-  expect(expected.money).toBe(before.inventory.money - 2000);
-  expect(expected.items.map(item => item.instance.quantity).sort((a, b) => a - b)).toEqual([6, 99]);
+  expect(expected.money).toBe(before.inventory.money + (action==="buy"?-2000:9500));
+  expect(expected.items.map(item => item.instance.quantity).sort((a, b) => a - b)).toEqual(action==="buy"?[6,99]:[]);
   const bag = expected.items.map(item => ({ id: item.instance.id, quantity: item.instance.quantity }));
   await expect.poll(async () => (await getGameState(page)).inventory.items.map(item => ({ id: item.instanceId, quantity: item.quantity })),{timeout:20000}).toEqual(bag);
   await expect.poll(async () => (await getGameState(page)).inventory.money).toBe(expected.money);
@@ -71,6 +83,7 @@ test(`a duplicated shop request with lost reply=${loseReply} settles once and re
   await quitToCharacterSelect(page);
   errors.assertNoSevereErrors();
 });
+}
 }
 
 test("a delayed merchant menu cannot reopen a retired scene", async ({page}) => {

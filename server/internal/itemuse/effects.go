@@ -15,7 +15,7 @@ const (
 	cqItemTypeBattleItem     = 3
 	cqItemTypeFieldItem      = 4
 	cqItemTypeTM             = 5
-	cqItemTypeHM             = 6
+	cqItemTypeHM             = cqitems.ItemTypeHM
 	cqItemTypeEvolutionStone = 9
 
 	vitaminEVIncrease = 2560

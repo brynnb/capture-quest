@@ -500,6 +500,7 @@ export interface ShopCommandIdentity {
   revision?: number;
 }
 export interface CQMerchantBuyRequest {
+  actorId: number /* int */;
   requestId: string;
   shop?: ShopCommandIdentity;
   merchantId: number /* int32 */;
@@ -507,6 +508,7 @@ export interface CQMerchantBuyRequest {
   quantity: number /* uint16 */;
 }
 export interface CQMerchantSellRequest {
+  actorId: number /* int */;
   requestId: string;
   shop?: ShopCommandIdentity;
   instanceId: number /* int32 */;

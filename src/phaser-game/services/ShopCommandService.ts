@@ -11,7 +11,7 @@ import { sfxPathForConstant } from "@/services/audio/pokemonMusic";
 
 let scene: symbol | null = null;
 let active: AbortController | null = null;
-type ShopCommand = Omit<CQMerchantBuyRequest,"requestId"|"shop"> | Omit<CQMerchantSellRequest,"requestId"|"shop">;
+type ShopCommand = Omit<CQMerchantBuyRequest,"requestId"|"shop"|"actorId"> | Omit<CQMerchantSellRequest,"requestId"|"shop"|"actorId">;
 
 export function bindShopScene(): () => void {
   active?.abort(); active = null;
@@ -33,7 +33,8 @@ async function sendShopCommand(opcode: number, responseOpcode: number, command: 
   const initialBag = useCQInventoryStore.getState();
   const initialProfile = usePlayerCharacterStore.getState().characterProfile;
   const revision = initialBag.shopRevision;
-  if (!initialBag.shopOpen || !owner || !characterId || !Number.isSafeInteger(revision) || revision < 0) return;
+  const actorId = initialBag.shopActorId;
+  if (!initialBag.shopOpen || !Number.isSafeInteger(actorId) || !actorId || actorId <= 0 || !owner || !characterId || !Number.isSafeInteger(revision) || revision < 0) return;
   const controller = new AbortController(); active = controller;
   const current = () => !controller.signal.aborted && scene === owner && usePlayerCharacterStore.getState().characterProfile.id === characterId;
   const stopProfile = usePlayerCharacterStore.subscribe(state => { if (state.characterProfile.id !== characterId) controller.abort(); });
@@ -44,7 +45,7 @@ async function sendShopCommand(opcode: number, responseOpcode: number, command: 
   try {
     const reply = await correlatedRequest<CQMerchantBuyResponse | CQMerchantSellResponse>(
       receive => PhaserNet.onShopCommand(responseOpcode,receive),
-      requestId => WorldSocket.sendStreamJsonMessage(opcode,{...command,requestId,shop:{characterId,revision}}),
+      requestId => WorldSocket.sendStreamJsonMessage(opcode,{...command,requestId,actorId,shop:{characterId,revision}}),
       controller.signal,
     );
     if (!current()) return;
@@ -112,7 +113,7 @@ export async function openShopForActor(actorId: number): Promise<void> {
       || !Number.isSafeInteger(reply.money) || reply.money < 0 || reply.money > 0xffffffff
       || bag.items !== initialBag.items || bag.money !== initialBag.money || bag.shopRevision !== initialBag.shopRevision
       || usePlayerCharacterStore.getState().characterProfile !== profile) throw new Error("Invalid or overtaken merchant menu");
-    useCQInventoryStore.getState().openShop(reply.merchantId, reply.name, reply.items, reply.money);
+    useCQInventoryStore.getState().openShop(reply.merchantId, reply.name, reply.items, reply.money, actorId);
     usePlayerCharacterStore.getState().handleCharacterWalletData({ characterId, pokedollars: reply.money });
   } catch {
     if (current()) {

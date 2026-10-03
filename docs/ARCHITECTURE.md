@@ -185,13 +185,18 @@ We follow a **"Model-First"** architecture. Data is categorized into distinct st
   takes a read-only character row lock, reads all selected offers and the wallet,
   and returns nothing on any read/commit failure. Empty offers are an explicit
   array. Merchant-open transport requires a character-bound correlation and
-  runtime clerk ID; the shared interaction reader checks source visibility and
+  runtime clerk ID. Buy/sell requests carry the same actor selector and recheck
+  authorization for every command; an open menu is not a retained permission.
+  Active battles reject shop commands under the same rule as field-item use.
+  The shared interaction reader checks source visibility and
   adjacency/counter reach with a fresh private flag view. The bounded script
   resolver returns eligibility errors and denies fallback while a source script
   is eligible. The existing scene-owned shop coordinator retires late menus on
   character/scene/close changes; no global menu handler applies unsolicited replies.
-  Purchase/sale interaction policy and remaining acceptance are tracked in
-  `SERVER_FOUNDATIONS.md`.
+  Sale transactions require a merchant on that authorized map and reject key
+  items/HMs independently of the shop's purchase catalog. CaptureQuest retains
+  whole-stack sales. The client records the menu actor and clears it on close.
+  Remaining process-death acceptance is tracked in `SERVER_FOUNDATIONS.md`.
 - **Wire types**: Generate inventory types from `internal/db/cqitems/types.go`;
   do not duplicate those interfaces in client stores.
 - **Party item use**: `internal/itemuse.Service` owns outside-battle party item
