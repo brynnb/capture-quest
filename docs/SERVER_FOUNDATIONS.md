@@ -72,6 +72,37 @@ observed error alone cannot distinguish connection acquisition, the character
 lock, later queries or commit. The next diagnostic must identify the failing
 stage and any blocking owner before changing deadlines or recovery policy.
 
+### Login timeout investigation and remaining-family inventory
+
+The first bounded reproduction completed eight Repel browser cases (four normal
+reentries and four lost-reply/crash/restart cases) in 1.9 minutes without another
+timeout. Evidence is retained at `/var/tmp/capturequest-rendered.p9383nht`, using
+a copy of the stopped private test database and a fresh server build. PostgreSQL
+logged lock waits over 100 ms and statements over 100 ms throughout the run. The
+only recorded slow statements were startup tile-snapshot maintenance (645–1,059
+ms); no login failure or lock wait was captured. An initial activity-sampling
+command failed because separate `psql -c` calls do not retain the query for
+`\watch`; corrected sampling covered only the end of the run and found no
+qualifying character/battle query. It is not evidence for the earlier cases.
+
+Shared transaction errors now identify begin, character-lock and commit failures
+while retaining wrapped error identity. Login restore failures report total login
+and restore durations plus database pool statistics; deltas are pool-wide, not
+attribution to one character. Success-path logging and deadlines are unchanged.
+Focused PostgreSQL race tests cover pool exhaustion, lock timeout, commit
+rejection, rollback/recovery, inventory command execution and character handoff.
+The original timeout remains **unresolved**, with better evidence available on
+recurrence; a passing stress run does not establish its cause. Further blind
+repetition is not justified by this result.
+
+[SERVER_COMMAND_AUDIT.md](SERVER_COMMAND_AUDIT.md) accounts for all 87 registered
+commands plus HTTP and background-owner work. It distinguishes implementation
+evidence from acceptance evidence and unaudited paths. The next selected command
+family is party reordering: its slot-index request can be replayed against a
+different ordering, and it fits the existing party/inventory recovery projection.
+PC storage and center healing remain explicit subsequent work, with their own
+authorization and projection requirements.
+
 ## Repel command migration (2026-10-03)
 
 The user authorized choosing and completing one additional family after the

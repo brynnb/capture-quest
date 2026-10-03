@@ -51,13 +51,16 @@ func Transaction(ctx context.Context, database DBTX, operation func(DBTX) error)
 		defer cancel()
 		tx, err := database.BeginTx(ctx, nil)
 		if err != nil {
-			return err
+			return fmt.Errorf("begin transaction: %w", err)
 		}
 		defer tx.Rollback()
 		if err := operation(transactionQueries{tx, ctx}); err != nil {
 			return err
 		}
-		return tx.Commit()
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit transaction: %w", err)
+		}
+		return nil
 	default:
 		return fmt.Errorf("transaction requires a database or transaction, got %T", database)
 	}
@@ -84,7 +87,7 @@ func (q transactionQueries) Exec(query string, args ...any) (sql.Result, error) 
 func LockCharacter(database DBTX, characterID int64) error {
 	result, err := database.Exec(`UPDATE character_data SET id = id WHERE id = $1`, characterID)
 	if err != nil {
-		return err
+		return fmt.Errorf("lock character %d: %w", characterID, err)
 	}
 	n, err := result.RowsAffected()
 	if err != nil {
