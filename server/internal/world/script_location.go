@@ -16,7 +16,7 @@ func (wh *WorldHandler) nativeScriptMap(ses *session.Session) (string, error) {
 		return "", fmt.Errorf("script location unavailable")
 	}
 	x, y, mapID := wh.scriptPlayerPosition(ses)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(ses.CommandContext(), 5*time.Second)
 	defer cancel()
 	if mapID != UnifiedOverworldMapID {
 		var name string

@@ -1,7 +1,6 @@
 package world
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -127,7 +126,7 @@ func HandleCQMerchantBuyRequest(ses *session.Session, payload []byte, wh *WorldH
 	}
 
 	charID := int32(ses.Client.CharData().ID)
-	purchase, err := wh.Economy.Buy(context.Background(), charID, int32(ses.MapID), req.MerchantID, req.ItemID, req.Quantity)
+	purchase, err := wh.Economy.Buy(ses.CommandContext(), charID, int32(ses.MapID), req.MerchantID, req.ItemID, req.Quantity)
 	if err != nil {
 		log.Printf("[CQItems] Purchase failed for character %d: %v", charID, err)
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not buy this item. Check the shop, quantity, and balance."}, opcodes.CQMerchantBuyResponse)
@@ -178,7 +177,7 @@ func HandleCQItemUse(ses *session.Session, payload []byte, wh *WorldHandler) boo
 	if tryHandleFieldItemUse(ses, wh, found, charID, req) {
 		return false
 	}
-	result, err := wh.Items.UsePartyItem(context.Background(), charID, req.InstanceID, req.PartySlot, req.MoveSlot)
+	result, err := wh.Items.UsePartyItem(ses.CommandContext(), charID, req.InstanceID, req.PartySlot, req.MoveSlot)
 	if err != nil {
 		message := "Could not use this item. Please try again."
 		var rejection *itemuse.Rejection
@@ -212,7 +211,7 @@ func HandleCQMerchantSellRequest(ses *session.Session, payload []byte, wh *World
 	}
 
 	charID := int32(ses.Client.CharData().ID)
-	sale, err := wh.Economy.Sell(context.Background(), charID, req.InstanceID)
+	sale, err := wh.Economy.Sell(ses.CommandContext(), charID, req.InstanceID)
 	if err != nil {
 		log.Printf("[CQItems] Sale failed for character %d: %v", charID, err)
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not sell this item."}, opcodes.CQMerchantSellResponse)

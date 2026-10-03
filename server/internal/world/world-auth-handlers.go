@@ -22,7 +22,7 @@ type JWTLoginResponse struct {
 }
 
 func HandleJWTLogin(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	ctx := context.Background()
+	ctx := ses.CommandContext()
 	var req JWTLoginRequest
 	if err := json.Unmarshal(payload, &req); err != nil {
 		log.Printf("failed to unmarshal JWTLogin JSON: %v", err)

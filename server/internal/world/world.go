@@ -166,7 +166,7 @@ func (wh *WorldHandler) cleanupCharacterSession(ses *session.Session) {
 		return
 	}
 	log.Printf("[WORLD] Flushing position for character %d (%s) from session %d", charID, char.Name, ses.SessionID)
-	wh.PlayerMovement.FlushPlayerPosition(charID)
+	wh.PlayerMovement.FlushPlayerPosition(context.Background(), charID)
 	wh.PlayerMovement.UnregisterPlayer(charID)
 	wh.TrainerEncounter.ClearPlayer(int64(charID))
 	wh.EventFlags.UnloadFlags(int64(charID))

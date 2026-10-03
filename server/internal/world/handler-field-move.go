@@ -288,7 +288,7 @@ func handleFlyFieldMove(ses *session.Session, req FieldMoveUseRequestPayload, wh
 		return false
 	}
 
-	result, err := useFly(context.Background(), wh.database, int64(charData.ID), *req.MapID, *req.TargetX, *req.TargetY, func(mapID int) int {
+	result, err := useFly(ses.CommandContext(), wh.database, int64(charData.ID), *req.MapID, *req.TargetX, *req.TargetY, func(mapID int) int {
 		return normalizedVisiblePlayerMapID(wh, mapID)
 	})
 	if err != nil {

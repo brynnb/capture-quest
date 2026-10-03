@@ -238,7 +238,7 @@ func HandleGameCornerCoinBalance(ses *session.Session, payload []byte, wh *World
 		return false
 	}
 	var coins int
-	err := db.Transaction(context.Background(), wh.database, func(tx db.DBTX) error {
+	err := db.Transaction(ses.CommandContext(), wh.database, func(tx db.DBTX) error {
 		var err error
 		coins, err = gameCornerCoinBalance(tx, int64(char.ID))
 		return err
@@ -269,7 +269,7 @@ func HandleGameCornerBuyCoins(ses *session.Session, payload []byte, wh *WorldHan
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Move to the coin clerk first."}, opcodes.GameCornerCoinBalanceResponse)
 		return false
 	}
-	result, err := buyGameCornerCoins(context.Background(), wh.database, charID)
+	result, err := buyGameCornerCoins(ses.CommandContext(), wh.database, charID)
 	if err != nil {
 		log.Printf("Game Corner coin purchase character %d: %v", charID, err)
 	}
@@ -318,7 +318,7 @@ func HandleGameCornerSlotPlay(ses *session.Session, payload []byte, wh *WorldHan
 		ses.SendStreamJSON(GameCornerSlotResultResponse{Error: err.Error(), Bet: req.Bet}, opcodes.GameCornerSlotResultResponse)
 		return false
 	}
-	result, err := playGameCornerSlot(context.Background(), wh.database, charID, req.Bet, isLucky, gameCornerRandSource{})
+	result, err := playGameCornerSlot(ses.CommandContext(), wh.database, charID, req.Bet, isLucky, gameCornerRandSource{})
 	if err != nil {
 		log.Printf("Game Corner slots character %d: %v", charID, err)
 	}
@@ -398,7 +398,7 @@ func HandleGameCornerPrizeBuy(ses *session.Session, payload []byte, wh *WorldHan
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Move to the window selling this prize first."}, opcodes.GameCornerPrizeBuyResponse)
 		return false
 	}
-	result, err := buyGameCornerPrize(context.Background(), wh.database, charID, req.PrizeID, "")
+	result, err := buyGameCornerPrize(ses.CommandContext(), wh.database, charID, req.PrizeID, "")
 	if err != nil {
 		log.Printf("Game Corner prize purchase character %d: %v", charID, err)
 	}

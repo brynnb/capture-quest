@@ -6,7 +6,6 @@ import (
 	db_character "capturequest/internal/db/character"
 	"capturequest/internal/pokebattle"
 	"capturequest/internal/session"
-	"context"
 	"encoding/json"
 	"log"
 )
@@ -31,7 +30,7 @@ func HandlePokeCenterHeal(ses *session.Session, payload []byte, wh *WorldHandler
 
 	charID := int64(ses.Client.CharData().ID)
 	myDB := db.GlobalWorldDB.DB
-	ctx := context.Background()
+	ctx := ses.CommandContext()
 
 	party, err := HealCharacterParty(charID)
 	if err != nil {

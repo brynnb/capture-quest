@@ -1,15 +1,13 @@
 package world
 
 import (
-	"context"
-
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/session"
 	"capturequest/internal/staticdata"
 )
 
 func HandleStaticDataRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	ctx := context.Background()
+	ctx := ses.CommandContext()
 	data, err := staticdata.GetStaticData(ctx)
 	if err != nil {
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.StaticDataResponse)
@@ -27,7 +25,7 @@ func HandleStaticDataRequest(ses *session.Session, payload []byte, wh *WorldHand
 }
 
 func HandleCharCreateDataRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	ctx := context.Background()
+	ctx := ses.CommandContext()
 	data, err := staticdata.GetStaticData(ctx)
 	if err != nil {
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.CharCreateDataResponse)

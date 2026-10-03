@@ -1,7 +1,6 @@
 package world
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -128,7 +127,7 @@ func tryHandleVermilionGymTrashClick(ses *session.Session, wh *WorldHandler, cha
 		if !ok {
 			continue
 		}
-		outcome, err := handleVermilionGymTrashCan(context.Background(), wh.database, charID, canIndex, wh.EventFlags, RandomVermilionGymTrashPicker{})
+		outcome, err := handleVermilionGymTrashCan(ses.CommandContext(), wh.database, charID, canIndex, wh.EventFlags, RandomVermilionGymTrashPicker{})
 		if err != nil {
 			return true, err
 		}
@@ -165,7 +164,7 @@ func tryHandleSilphCardKeyClick(ses *session.Session, wh *WorldHandler, charID i
 		if door.MapName != mapName {
 			return true, fmt.Errorf("card key door %s belongs to %s, got %s", key, door.MapName, mapName)
 		}
-		outcome, err := handleSilphCardKeyDoor(context.Background(), wh.database, charID, key, wh.EventFlags)
+		outcome, err := handleSilphCardKeyDoor(ses.CommandContext(), wh.database, charID, key, wh.EventFlags)
 		if err != nil {
 			return true, err
 		}

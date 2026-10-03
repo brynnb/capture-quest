@@ -68,7 +68,7 @@ func HandleTrainerInteractRequest(ses *session.Session, payload []byte, wh *Worl
 	if defeated && !shouldBattle {
 		label = trainer.AfterBattleTextLabel
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(ses.CommandContext(), 5*time.Second)
 	defer cancel()
 	dialogue, err := trainerDialogueByLabelContext(ctx, wh.database, label)
 	if err != nil && label != "" {
@@ -188,7 +188,7 @@ func trainerDataForRuntimeActor(ses *session.Session, wh *WorldHandler, actorID 
 	if objectID == 0 {
 		return nil, fmt.Errorf("unknown actor %d", actorID)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(ses.CommandContext(), 5*time.Second)
 	defer cancel()
 	actor, _, err := wh.scriptInteractionTargetContext(ctx, ses, objectID)
 	if err != nil {

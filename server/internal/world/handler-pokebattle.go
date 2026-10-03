@@ -337,7 +337,7 @@ func HandlePokeBattleAction(ses *session.Session, payload []byte, wh *WorldHandl
 		return false
 	}
 	var result battleTurnResult
-	committed, err := pokebattle.CommitBattle(context.Background(), wh.database, charID, current, func(tx db.DBTX, next *pokebattle.BattleState) (err error) {
+	committed, err := pokebattle.CommitBattle(ses.CommandContext(), wh.database, charID, current, func(tx db.DBTX, next *pokebattle.BattleState) (err error) {
 		result, err = applyBattleTurn(tx, charID, next, req)
 		return err
 	})
@@ -387,7 +387,7 @@ func HandlePokeBattleSwitch(ses *session.Session, payload []byte, wh *WorldHandl
 		return false
 	}
 	var result battleTurnResult
-	committed, err := pokebattle.CommitBattle(context.Background(), wh.database, charID, current, func(tx db.DBTX, next *pokebattle.BattleState) (err error) {
+	committed, err := pokebattle.CommitBattle(ses.CommandContext(), wh.database, charID, current, func(tx db.DBTX, next *pokebattle.BattleState) (err error) {
 		if next.Phase != pokebattle.PhaseFaintSwitch {
 			return battleRuleError("Not in faint switch phase")
 		}
@@ -626,7 +626,7 @@ func HandlePokeMoveLearn(ses *session.Session, payload []byte, wh *WorldHandler)
 		return false
 	}
 	var response map[string]interface{}
-	committed, err := pokebattle.CommitBattle(context.Background(), wh.database, charID, current, func(tx db.DBTX, next *pokebattle.BattleState) error {
+	committed, err := pokebattle.CommitBattle(ses.CommandContext(), wh.database, charID, current, func(tx db.DBTX, next *pokebattle.BattleState) error {
 		pending := next.PendingMoveLearn
 		if req.ForgetSlot < -1 || req.ForgetSlot >= 4 {
 			return battleRuleError("Invalid slot index")
@@ -679,7 +679,7 @@ func HandlePokeBattleClose(ses *session.Session, _ []byte, wh *WorldHandler) boo
 	if battle == nil {
 		return false
 	}
-	if err := pokebattle.CloseBattle(context.Background(), wh.database, charID, battle); err != nil {
+	if err := pokebattle.CloseBattle(ses.CommandContext(), wh.database, charID, battle); err != nil {
 		log.Printf("[PokeBattle] Close failed for character %d: %v", charID, err)
 		return false
 	}

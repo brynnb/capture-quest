@@ -151,7 +151,7 @@ func HandleDialogueChoiceRequest(ses *session.Session, payload []byte, wh *World
 		return false
 	}
 	objectID := wh.ActorRegistry.GetOriginalID(ActorTypeNPC, req.ActorID)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(ses.CommandContext(), 5*time.Second)
 	defer cancel()
 	actor, mapName, err := wh.scriptInteractionTargetContext(ctx, ses, objectID)
 	if err != nil || actor.Text == nil || *actor.Text != req.TextConstant {

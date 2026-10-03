@@ -168,7 +168,7 @@ func (m *PlayerMovementManager) applyBicycleMapRules(state *PlayerMovementState)
 
 // FlushPlayerPosition immediately saves a player's current position to the database
 // Useful when a player disconnects or warp/teleport happens
-func (m *PlayerMovementManager) FlushPlayerPosition(charID int) error {
+func (m *PlayerMovementManager) FlushPlayerPosition(ctx context.Context, charID int) error {
 	m.mu.Lock()
 	state := m.players[charID]
 	if state == nil {
@@ -178,7 +178,7 @@ func (m *PlayerMovementManager) FlushPlayerPosition(charID int) error {
 	snapshot := *state
 	state.lastSaveAttempt = time.Now()
 	m.mu.Unlock()
-	if err := commitPlayerPosition(context.Background(), m.wh.database, int64(charID), snapshot.MapID, snapshot.CurrentX, snapshot.CurrentY); err != nil {
+	if err := commitPlayerPosition(ctx, m.wh.database, int64(charID), snapshot.MapID, snapshot.CurrentX, snapshot.CurrentY); err != nil {
 		log.Printf("[PlayerMovement] Save position for %d: %v", charID, err)
 		return err
 	}
@@ -457,14 +457,17 @@ func (m *PlayerMovementManager) processTick() {
 			if !ses.HasValidClient() || !m.wh.characterOwners.owns(int64(c.characterID), ses) {
 				return
 			}
-			m.processCharacterTick(c.characterID, c.state)
+			m.processCharacterTick(ses.CommandContext(), c.characterID, c.state)
 		})
 	}
 }
 
 // Called only within the owning session's command gate. The pointer check rejects
 // a movement registration replaced after the timer collected its candidates.
-func (m *PlayerMovementManager) processCharacterTick(characterID int, expected *PlayerMovementState) {
+func (m *PlayerMovementManager) processCharacterTick(ctx context.Context, characterID int, expected *PlayerMovementState) {
+	if ctx.Err() != nil {
+		return
+	}
 	m.mu.Lock()
 	state := m.players[characterID]
 	if state == nil || state != expected {
@@ -475,7 +478,12 @@ func (m *PlayerMovementManager) processCharacterTick(characterID int, expected *
 	retry := !moved && state.positionDirty && time.Since(state.lastSaveAttempt) >= 5*time.Second
 	m.mu.Unlock()
 	if (moved && update.shouldSave) || retry {
-		_ = m.FlushPlayerPosition(characterID)
+		_ = m.FlushPlayerPosition(ctx, characterID)
+	}
+	// A cancelled save must not begin more step-effect transactions using
+	// legacy managers that do not yet accept the owner's context.
+	if ctx.Err() != nil {
+		return
 	}
 	if !moved {
 		return
@@ -781,7 +789,7 @@ func triggerLabels(triggers []CoordinateTrigger) []string {
 	return labels
 }
 
-func (m *PlayerMovementManager) MovePlayerTo(charID int, x, y, mapID int, direction string, isSurfing bool) bool {
+func (m *PlayerMovementManager) MovePlayerTo(ctx context.Context, charID int, x, y, mapID int, direction string, isSurfing bool) bool {
 	normalizedDirection := normalizeWarpDirection(direction)
 	if normalizedDirection == "" {
 		normalizedDirection = "DOWN"
@@ -794,7 +802,7 @@ func (m *PlayerMovementManager) MovePlayerTo(charID int, x, y, mapID int, direct
 		return false
 	}
 	m.mu.Unlock()
-	if err := commitPlayerPosition(context.Background(), m.wh.database, int64(charID), mapID, x, y); err != nil {
+	if err := commitPlayerPosition(ctx, m.wh.database, int64(charID), mapID, x, y); err != nil {
 		log.Printf("[PlayerMovement] Save forced move for %d: %v", charID, err)
 		return false
 	}

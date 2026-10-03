@@ -47,7 +47,7 @@ func TestMovementTickUsesSessionOwnerAndRejectsStaleRegistration(t *testing.T) {
 	replacement := m.players[42]
 	replacement.Path = []PathNode{{X: 21, Y: 20}}
 	replacement.LastMoveTime = time.Time{}
-	_ = ses.ExecuteCommand(context.Background(), func() { m.processCharacterTick(42, state) })
+	_ = ses.ExecuteCommand(context.Background(), func() { m.processCharacterTick(ses.CommandContext(), 42, state) })
 	if replacement.CurrentX != 20 || len(replacement.Path) != 1 {
 		t.Fatal("stale timer candidate advanced replacement registration")
 	}

@@ -16,7 +16,7 @@ var errScriptInteractionDenied = errors.New("actor unavailable or out of reach")
 // issue completion tokens. Match the client's adjacency/counter rule, while
 // taking target position and visibility exclusively from server state.
 func (wh *WorldHandler) scriptInteractionTarget(ses *session.Session, objectID int) (PhaserActor, string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(ses.CommandContext(), 5*time.Second)
 	defer cancel()
 	return wh.scriptInteractionTargetContext(ctx, ses, objectID)
 }

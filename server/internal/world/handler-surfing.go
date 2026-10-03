@@ -254,7 +254,7 @@ func handlePokeSurfingTarget(
 	if _, _, _, ok := wh.PlayerMovement.GetPosition(charIDInt); !ok {
 		wh.PlayerMovement.RegisterPlayer(ses, charIDInt, playerX, playerY, currentMapID, direction)
 	}
-	if !wh.PlayerMovement.MovePlayerTo(charIDInt, targetX, targetY, targetMapID, direction, true) {
+	if !wh.PlayerMovement.MovePlayerTo(ses.CommandContext(), charIDInt, targetX, targetY, targetMapID, direction, true) {
 		ses.SendStreamJSON(map[string]interface{}{
 			"success": false,
 			"error":   "You can't SURF here.",

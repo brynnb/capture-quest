@@ -30,7 +30,7 @@ func HandleEnterWorld(ses *session.Session, payload []byte, wh *WorldHandler) bo
 	}
 	name := req.Name
 	log.Printf("[WORLD] Session %d entering world as character %q (account %d)", ses.SessionID, name, ses.AccountID)
-	if accountMatch, err := AccountHasCharacterName(context.Background(), ses.AccountID, name); err != nil || !accountMatch {
+	if accountMatch, err := AccountHasCharacterName(ses.CommandContext(), ses.AccountID, name); err != nil || !accountMatch {
 		log.Printf("[WORLD] Session %d: Tried to log in unsuccessfully from account %d with character %q: %v", ses.SessionID, ses.AccountID, name, err)
 		return false
 	}
@@ -63,7 +63,7 @@ func HandleEnterWorld(ses *session.Session, payload []byte, wh *WorldHandler) bo
 			// the results (XP, party) were already saved — just clean up silently.
 			if battle.IsOver() && battle.PendingMoveLearn == nil {
 				log.Printf("[PokeBattle] Restored battle for char %d is already over with no pending action — cleaning up", charID)
-				if err := pokebattle.CloseBattle(context.Background(), wh.database, charID, battle); err != nil {
+				if err := pokebattle.CloseBattle(ses.CommandContext(), wh.database, charID, battle); err != nil {
 					log.Printf("[PokeBattle] Close restored battle for character %d: %v", charID, err)
 				} else {
 					forgetBattle(charID, battle)
@@ -130,7 +130,7 @@ func HandleCharacterDelete(ses *session.Session, payload []byte, wh *WorldHandle
 		return false
 	}
 
-	ctx := context.Background()
+	ctx := ses.CommandContext()
 	name := req.Value
 	log.Printf("Deleting character: %s for account %d", name, ses.AccountID)
 	if err := DeleteCharacter(ctx, ses.AccountID, name); err != nil {

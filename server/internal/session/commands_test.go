@@ -120,3 +120,81 @@ func TestCancelledCommandDoesNotExecuteAndReleasesCapacity(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestRunningCommandObservesDeadlineAndReleasesOwner(t *testing.T) {
+	s := &Session{}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	err := s.ExecuteCommand(ctx, func() {
+		commandCtx := s.CommandContext()
+		expected, _ := ctx.Deadline()
+		if deadline, ok := commandCtx.Deadline(); !ok || !deadline.Equal(expected) {
+			t.Error("running command lost admission deadline")
+		}
+		<-commandCtx.Done()
+	})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("deadline result=%v", err)
+	}
+	if s.CommandContext().Err() != nil {
+		t.Fatal("completed request context leaked")
+	}
+	if err := s.ExecuteCommand(context.Background(), func() {}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCloseCancelsPeriodicOwnerBeforeCleanup(t *testing.T) {
+	s := &Session{}
+	entered, cancelled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		done <- s.TryExecuteCommand(func() {
+			ctx := s.CommandContext()
+			close(entered)
+			<-ctx.Done()
+			close(cancelled)
+			<-release
+		})
+	}()
+	<-entered
+	queued := make(chan error, 1)
+	go func() {
+		queued <- s.ExecuteCommand(context.Background(), func() { t.Error("closed queued callback ran") })
+	}()
+	deadline := time.Now().Add(time.Second)
+	for s.commands.pending.Load() != 2 {
+		if time.Now().After(deadline) {
+			t.Fatal("queued callback did not enter gate")
+		}
+		runtime.Gosched()
+	}
+	s.Close()
+	select {
+	case err := <-queued:
+		if !errors.Is(err, ErrSessionClosed) {
+			t.Fatalf("closed queued result=%v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("closed queued callback kept waiting for owner")
+	}
+	select {
+	case <-cancelled:
+	case <-time.After(time.Second):
+		t.Fatal("close did not cancel running owner")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if err := s.DrainCommandsContext(ctx, func() { t.Error("cleanup overlapped callback") }); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("drain=%v", err)
+	}
+	close(release)
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("closed callback=%v", err)
+	}
+	cleaned := false
+	s.DrainCommands(func() { cleaned = true })
+	if !cleaned {
+		t.Fatal("cleanup did not drain")
+	}
+}

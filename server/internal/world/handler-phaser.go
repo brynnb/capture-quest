@@ -153,7 +153,7 @@ func HandlePhaserMapInfoRequest(ses *session.Session, payload []byte, wh *WorldH
 		return false
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(ses.CommandContext(), 5*time.Second)
 	defer cancel()
 	var mapInfo PhaserMapInfo
 	if req.MapID == UnifiedOverworldMapID {
@@ -192,7 +192,7 @@ func HandlePhaserMapInfoRequest(ses *session.Session, payload []byte, wh *WorldH
 	}
 
 	if req.DestX != nil && req.DestY != nil && ses.HasValidClient() {
-		if err := commitPlayerPosition(context.Background(), wh.database, int64(ses.Client.CharData().ID), normalizedVisiblePlayerMapID(wh, mapInfo.ID), *req.DestX, *req.DestY); err != nil {
+		if err := commitPlayerPosition(ses.CommandContext(), wh.database, int64(ses.Client.CharData().ID), normalizedVisiblePlayerMapID(wh, mapInfo.ID), *req.DestX, *req.DestY); err != nil {
 			log.Printf("[Phaser] Save map destination: %v", err)
 			ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not save the destination. Please try again."}, opcodes.PhaserMapInfoResponse)
 			return false
@@ -338,7 +338,7 @@ func setServerTeleportedPlayerPosition(ses *session.Session, wh *WorldHandler, m
 		return 0, fmt.Errorf("teleport requires a character")
 	}
 	normalizedMapID := normalizedVisiblePlayerMapID(wh, mapID)
-	if err := commitPlayerPosition(context.Background(), wh.database, int64(ses.Client.CharData().ID), normalizedMapID, x, y); err != nil {
+	if err := commitPlayerPosition(ses.CommandContext(), wh.database, int64(ses.Client.CharData().ID), normalizedMapID, x, y); err != nil {
 		return 0, err
 	}
 	refreshSafariFlags(wh, int64(ses.Client.CharData().ID))
@@ -904,7 +904,7 @@ func HandlePhaserPlayerPositionUpdate(ses *session.Session, payload []byte, wh *
 			(prevMapID != mapID || prevX != req.X || prevY != req.Y)
 	mapChanged := prevMapID != 0 && prevMapID != mapID
 
-	if err := commitPlayerPosition(context.Background(), wh.database, int64(char.ID), mapID, req.X, req.Y); err != nil {
+	if err := commitPlayerPosition(ses.CommandContext(), wh.database, int64(char.ID), mapID, req.X, req.Y); err != nil {
 		log.Printf("[Phaser] Save reported position for %d: %v", char.ID, err)
 		SendSystemMessage(ses, "Could not save your position. Please try again.")
 		return false

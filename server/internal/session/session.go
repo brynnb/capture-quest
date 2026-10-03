@@ -202,6 +202,8 @@ func (s *Session) Close() {
 	s.GameCorner.Clear()
 	stream := s.controlStream
 	s.closedMu.Unlock()
+	s.commands.init()
+	s.commands.stop()
 
 	// Messengers can serve several sessions, so close only this connection.
 	if closer, ok := s.Messenger.(interface{ CloseSession(int) error }); ok {

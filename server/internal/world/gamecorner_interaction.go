@@ -46,7 +46,7 @@ func (wh *WorldHandler) authorizeSlotMachine(ses *session.Session, req GameCorne
 	if mapID != GameCornerMapID || dx+dy > 2 {
 		return false, fmt.Errorf("Move next to the slot machine first.")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(ses.CommandContext(), 5*time.Second)
 	defer cancel()
 	rows, err := wh.database.QueryContext(ctx, `SELECT x,y,routine,item_or_direction FROM phaser_hidden_objects WHERE map_id=$1 ORDER BY id`, GameCornerMapID)
 	if err != nil {
@@ -126,7 +126,7 @@ func (wh *WorldHandler) authorizePrizeWindow(ses *session.Session, prizeID int) 
 // an actor ID. Both prize windows and the coin clerk use the same bounded,
 // fail-closed identity and runtime reach/visibility boundary.
 func (wh *WorldHandler) authorizeSourceInteraction(ses *session.Session, mapID int, text string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(ses.CommandContext(), 5*time.Second)
 	defer cancel()
 	var objectID *int
 	var count int

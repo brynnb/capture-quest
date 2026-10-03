@@ -1,7 +1,6 @@
 package world
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -104,7 +103,7 @@ func handleCQRepelUse(ses *session.Session, wh *WorldHandler, found *cqitems.CQI
 
 func handleCQEscapeRopeUse(ses *session.Session, wh *WorldHandler, found *cqitems.CQInventoryItem, charID int32) {
 	_, _, mapID := currentTilePosition(ses, wh)
-	result, err := useEscapeRope(context.Background(), wh.database, charID, found.Instance.ID, mapID, func(id int) int {
+	result, err := useEscapeRope(ses.CommandContext(), wh.database, charID, found.Instance.ID, mapID, func(id int) int {
 		return normalizedVisiblePlayerMapID(wh, id)
 	})
 	if err != nil {

@@ -165,7 +165,7 @@ func (r *HandlerRegistry) HandleWorldPacket(ses *session.Session, data []byte) b
 	defer cancel()
 	var result bool
 	err := ses.ExecuteCommand(ctx, func() { result = r.handleWorldPacket(ses, data) })
-	if err != nil && !errors.Is(err, session.ErrSessionClosed) {
+	if err != nil && !errors.Is(err, session.ErrSessionClosed) && !ses.IsClosed() {
 		log.Printf("[HandlerRegistry] Session %d command rejected: %v", ses.SessionID, err)
 		ses.Close()
 	}

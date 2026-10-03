@@ -3,9 +3,9 @@
 Status: active. Started 2026-09-25 from `02c51ba`.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-shared position persistence and committed teleport publication (2026-10-02),
-following durable Safari checkpoint `19203f2`, Repel checkpoint `adaa047` and
-FLY checkpoint `b785d58`.
+running-command cancellation (2026-10-02), following shared position persistence
+checkpoint `d70813e`, durable Safari checkpoint `19203f2`, Repel checkpoint
+`adaa047` and FLY checkpoint `b785d58`.
 All earlier foundation checkpoints are retained in this
 branch's history. No push or production deployment is authorized by this goal.
 
@@ -30,7 +30,7 @@ evidence, including remaining-work notes that subsequent commits may resolve.
 
 | Area | Implemented | Still required |
 | --- | --- | --- |
-| Request/session boundary | Packet and connection limits, centralized session prerequisites, removal of insecure session takeover, actual transport closure, and location/visibility checks for scripted clicks, dialogue choices and direct trainer battles. | Audit remaining interaction/mutation endpoints; propagate cancellation through running commands and remaining database/network work. |
+| Request/session boundary | Packet and connection limits, centralized session prerequisites, removal of insecure session takeover, actual transport closure, location/visibility checks for scripted clicks, dialogue choices and direct trainer battles, and preserved command deadlines/disconnect cancellation in migrated operations. | Audit remaining interaction/mutation endpoints; propagate cancellation through legacy managers and remaining database/network work. |
 | Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors, Game Corner prizes and bounded coin/slot/hidden-coin operations, atomic Escape Rope/FLY positions, durable Repel counters, Safari entry/turn/capture state and exhaustion destinations, atomic recovery warps, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery of committed results across reconnects. |
 | Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, and movement ticks coordinated with the owner. | Finish timer/callback/shared-state and legacy position-writer audits; prove remaining concurrent/reconnect behavior across real transports. |
 | Domains and wire contracts | Injected content-query service; typed character/wallet/bind, Pokédex/card, content detail, map-script and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
@@ -85,6 +85,56 @@ evidence, including remaining-work notes that subsequent commits may resolve.
    cancellation/timeouts, failure/retry and shutdown with active players.
    Acceptance: evidence covers the original five milestones, including visible
    behavior where relevant. Only then mark the full goal complete.
+
+## Running-command cancellation checkpoint (2026-10-02)
+
+The session gate previously used the request context only while waiting for
+admission. An admitted callback lost its caller's deadline, and disconnect did
+not cancel its database work. The gate now owns a connection cancellation context
+and exposes the current owner's `CommandContext()`. It preserves the admission
+deadline and cancels on connection closure. Queued requests wake immediately on
+close; running callbacks retain the gate until they actually return. Cleanup
+never overlaps a callback merely because cancellation was requested.
+
+Migrated handlers pass that context into economy/inventory, battle turns/close,
+position/field destinations, healing, item pickup, puzzle/door operations,
+content queries, dialogue/trainer/source authorization and context-aware
+account/character operations. Movement ticks and Surf pass it explicitly to
+position persistence. Disconnect's final flush deliberately uses a separate
+context: the closed connection must not cancel persistence cleanup.
+
+`CommandContext()` is for synchronous code within the session owner. It must not
+be retained for later callbacks or cleanup. Calls outside the command gate have
+no request context; fixture/setup callers retain their existing behavior. A
+cancelled command result does not prove rollback: a commit completed before
+cancellation remains durable and still needs the planned result-recovery policy.
+
+Session tests prove preservation of the original deadline, cancellation of a
+running periodic owner, immediate rejection of queued closed work, and cleanup
+waiting for callback completion. A real opcode/database test holds the character
+row lock, closes the session during a reported-position write, verifies prompt
+transaction cancellation with unchanged saved/live position, then drains cleanup.
+Race-enabled world, session, server and script-simulator suites pass.
+All Go packages compile, TypeScript typecheck passes, and canonical Tygo
+regeneration leaves generated contracts unchanged.
+The isolated rendered run at `/var/tmp/capturequest-rendered.Uldwvm` passed
+six field-move/Safari checks. The keyboard Cut case timed out before guest login:
+its trace records `ERR_NETWORK_CHANGED` loading local JavaScript modules and
+its screenshot is blank. It never reached the scenario or sent a gameplay
+request. The failed run is retained; this is not a seven-test passing run.
+The unchanged Cut case passed in a fresh isolated rerun (5.9 seconds), retained
+at `/var/tmp/capturequest-rendered.AAPUPp`. All seven cases therefore have passing
+rendered evidence across those two runs, with the initial load failure preserved.
+
+This is a prerequisite for bounded shutdown, not completion of it. Safari/Repel
+manager methods, script/battle-start helpers, cached/global reads and other
+legacy operations still start independent contexts or lack cancellable queries.
+Non-cooperative callbacks cannot be forcibly stopped safely. HTTP/world shutdown
+and periodic-worker joins still wait without a drain deadline. Final-flush failure
+handling, database-close ordering and active-player shutdown verification remain
+required. Next: migrate those running operations, define the cleanup failure
+policy, then implement a bounded lifecycle that never closes storage beneath
+owned work. No push or deployment is included.
 
 ## Position persistence checkpoint (2026-10-02)
 

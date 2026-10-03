@@ -203,7 +203,7 @@ func (wh *WorldHandler) handleStateUpdate(ses *session.Session) {
 // Core Helpers
 
 func sendCharInfo(ses *session.Session, accountId int64) {
-	ctx := context.Background()
+	ctx := ses.CommandContext()
 	charInfo, err := GetCharSelectInfo(ses, ctx, accountId)
 	if err != nil {
 		log.Printf("failed to get character select info for accountID %d: %v", accountId, err)
@@ -224,7 +224,7 @@ func sendCharacterStateFromDB(ses *session.Session, wh *WorldHandler, characterN
 		return fmt.Errorf("character does not belong to authenticated account")
 	}
 	charID := int64(charData.ID)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(ses.CommandContext(), 5*time.Second)
 	defer cancel()
 	if err = wh.characterOwners.acquire(ctx, charID, ses, wh.cleanupCharacterSession); err != nil {
 		return err
@@ -305,7 +305,7 @@ func buildAndSendCharacterState(ses *session.Session) {
 	}
 
 	charData := ses.Client.CharData()
-	ctx := context.Background()
+	ctx := ses.CommandContext()
 
 	ses.SendStreamJSON(protocol.CharacterData{
 		CharacterData: *charData,

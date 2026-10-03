@@ -1,7 +1,6 @@
 package world
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -356,7 +355,7 @@ func HandlePhaserPokemonDataRequest(ses *session.Session, payload []byte, wh *Wo
 		return false
 	}
 
-	p, err := wh.Content.Pokemon(context.Background(), req.PokemonID)
+	p, err := wh.Content.Pokemon(ses.CommandContext(), req.PokemonID)
 	if err != nil {
 		log.Printf("[Phaser] Pokémon query failed: %d: %v", req.PokemonID, err)
 		ses.SendStreamJSON(protocol.ErrorResponse{Error: contentQueryError("pokemon", err)}, opcodes.PhaserPokemonDataResponse)
@@ -377,7 +376,7 @@ func HandlePhaserMoveDataRequest(ses *session.Session, payload []byte, wh *World
 		return false
 	}
 
-	m, err := wh.Content.Move(context.Background(), req.MoveID)
+	m, err := wh.Content.Move(ses.CommandContext(), req.MoveID)
 	if err != nil {
 		log.Printf("[Phaser] Move query failed: %d: %v", req.MoveID, err)
 		ses.SendStreamJSON(protocol.ErrorResponse{Error: contentQueryError("move", err)}, opcodes.PhaserMoveDataResponse)
@@ -396,7 +395,7 @@ func HandlePhaserMapScriptsRequest(ses *session.Session, payload []byte, wh *Wor
 		ses.SendStreamJSON(protocol.ErrorResponse{Error: "invalid map scripts request"}, opcodes.PhaserMapScriptsResponse)
 		return false
 	}
-	res, err := wh.Content.MapScripts(context.Background(), req.MapName)
+	res, err := wh.Content.MapScripts(ses.CommandContext(), req.MapName)
 	if err != nil {
 		log.Printf("[Phaser] Map script query failed for %s: %v", req.MapName, err)
 		ses.SendStreamJSON(protocol.ErrorResponse{Error: "failed to load map scripts"}, opcodes.PhaserMapScriptsResponse)
@@ -434,7 +433,7 @@ func HandlePhaserLearnsetRequest(ses *session.Session, payload []byte, wh *World
 		ses.SendStreamJSON(protocol.ErrorResponse{Error: "invalid learnset request"}, opcodes.PhaserLearnsetResponse)
 		return false
 	}
-	res, err := wh.Content.Learnset(context.Background(), req.PokemonID)
+	res, err := wh.Content.Learnset(ses.CommandContext(), req.PokemonID)
 	if err != nil {
 		log.Printf("[Phaser] Learnset query failed for pokemon %d: %v", req.PokemonID, err)
 		ses.SendStreamJSON(protocol.ErrorResponse{Error: "failed to load learnset"}, opcodes.PhaserLearnsetResponse)
@@ -453,7 +452,7 @@ func HandlePhaserItemDataRequest(ses *session.Session, payload []byte, wh *World
 		return false
 	}
 
-	item, err := wh.Content.Item(context.Background(), req.ItemID)
+	item, err := wh.Content.Item(ses.CommandContext(), req.ItemID)
 	if err != nil {
 		log.Printf("[Phaser] Item query failed: %d: %v", req.ItemID, err)
 		ses.SendStreamJSON(protocol.ErrorResponse{Error: contentQueryError("item", err)}, opcodes.PhaserItemDataResponse)

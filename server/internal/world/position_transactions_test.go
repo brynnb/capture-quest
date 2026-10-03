@@ -109,14 +109,14 @@ func TestMovementSaveFailureKeepsDirtyStateForRetry(t *testing.T) {
 	testdb.Exec(t, database, `CREATE FUNCTION reject_flush_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'late flush failure'; END $$;
  CREATE CONSTRAINT TRIGGER reject_flush_commit AFTER UPDATE ON character_data DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_flush_commit();`)
 	db.GlobalWorldDB = nil
-	if err := m.FlushPlayerPosition(42); err == nil {
+	if err := m.FlushPlayerPosition(context.Background(), 42); err == nil {
 		t.Fatal("flush ignored commit failure")
 	}
 	if !m.players[42].positionDirty || !m.players[42].LastSaveTime.Equal(before) {
 		t.Fatal("failed flush marked saved")
 	}
 	testdb.Exec(t, database, `DROP TRIGGER reject_flush_commit ON character_data`)
-	if err := m.FlushPlayerPosition(42); err != nil {
+	if err := m.FlushPlayerPosition(context.Background(), 42); err != nil {
 		t.Fatal(err)
 	}
 	if m.players[42].positionDirty || !m.players[42].LastSaveTime.After(before) {
@@ -164,7 +164,7 @@ func TestBlockedMovementFlushReleasesGlobalLockAndDoesNotMarkNewSnapshotSaved(t 
 		t.Fatal(err)
 	}
 	done := make(chan error, 1)
-	go func() { done <- m.FlushPlayerPosition(42) }()
+	go func() { done <- m.FlushPlayerPosition(context.Background(), 42) }()
 	deadline := time.Now().Add(time.Second)
 	for database.Stats().InUse < 2 {
 		if time.Now().After(deadline) {
@@ -188,7 +188,7 @@ func TestBlockedMovementFlushReleasesGlobalLockAndDoesNotMarkNewSnapshotSaved(t 
 	if !m.players[42].positionDirty || !m.players[42].LastSaveTime.Equal(before) {
 		t.Fatal("old flush marked newer snapshot committed")
 	}
-	if err := m.FlushPlayerPosition(42); err != nil {
+	if err := m.FlushPlayerPosition(context.Background(), 42); err != nil {
 		t.Fatal(err)
 	}
 	var x, y int
@@ -218,5 +218,54 @@ func TestPositionTransactionCancellationWhileCharacterLocked(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("position ignored cancellation")
+	}
+}
+
+func TestDisconnectCancelsReportedPositionTransactionBeforeCleanup(t *testing.T) {
+	database, wh, ses, _ := battleTestWorld(t)
+	wh.ActorManager = NewPhaserActorManager(wh)
+	ses.Client.CharData().MapID = 50
+	ses.Client.CharData().X = 7
+	ses.Client.CharData().Y = 8
+	testdb.Exec(t, database, `UPDATE character_data SET map_id=50,x=7,y=8 WHERE id=42`)
+	lock, err := database.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Rollback()
+	if _, err := lock.Exec(`UPDATE character_data SET id=id WHERE id=42`); err != nil {
+		t.Fatal(err)
+	}
+	registry := NewWorldOpCodeRegistry()
+	registry.WH = wh
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		registry.HandleWorldPacket(ses, clientPacket(opcodes.PhaserPlayerPositionUpdate, `{"mapId":60,"x":3,"y":4,"direction":"DOWN"}`))
+	}()
+	deadline := time.Now().Add(time.Second)
+	for database.Stats().InUse < 2 {
+		if time.Now().After(deadline) {
+			t.Fatal("reported position did not start its transaction")
+		}
+		runtime.Gosched()
+	}
+	ses.Close()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("disconnect did not cancel blocked position transaction")
+	}
+	cleaned := false
+	ses.DrainCommands(func() { cleaned = true })
+	if !cleaned {
+		t.Fatal("cancelled command kept cleanup blocked")
+	}
+	var x, y, mapID int
+	if err := database.QueryRow(`SELECT x,y,map_id FROM character_data WHERE id=42`).Scan(&x, &y, &mapID); err != nil || x != 7 || y != 8 || mapID != 50 {
+		t.Fatalf("cancelled position changed durable state: %d %d %d %v", x, y, mapID, err)
+	}
+	if ses.Client.CharData().X != 7 || ses.Client.CharData().Y != 8 {
+		t.Fatal("cancelled position changed live state")
 	}
 }

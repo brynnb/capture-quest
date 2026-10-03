@@ -1,7 +1,6 @@
 package world
 
 import (
-	"context"
 	"log"
 
 	"capturequest/internal/api/opcodes"
@@ -28,7 +27,7 @@ func HandleWarpHomeRequest(ses *session.Session, _ []byte, wh *WorldHandler) boo
 	y := int(RecoverySpawnY)
 
 	previousBattle := getBattle(charID)
-	if err := db.Transaction(context.Background(), wh.database, func(tx db.DBTX) error {
+	if err := db.Transaction(ses.CommandContext(), wh.database, func(tx db.DBTX) error {
 		if err := db.LockCharacter(tx, charID); err != nil {
 			return err
 		}

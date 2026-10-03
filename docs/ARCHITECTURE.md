@@ -701,6 +701,16 @@ release the shared player lock before saving a coordinate snapshot; only a
 matching registration/position is marked clean after commit. A failed save stays
 dirty for later retry. Ordinary forced-path movement and its step effects still
 have separate persistence boundaries. Disconnect final-flush failure policy,
-cache refresh failure, durable command/result delivery, cancellation and throughput remain in
+cache refresh failure, durable command/result delivery and throughput remain in
 `SERVER_FOUNDATIONS.md`; fresh-manager recovery and rendered Safari checks do not
 prove abrupt network/process recovery or completion of those wider requirements.
+
+Session commands now retain the original admission deadline through
+`Session.CommandContext()` and cancel it when the connection closes. Migrated
+handlers use it for their context-aware queries/transactions; movement saves
+accept it explicitly. Cancellation requests cooperation: the gate and cleanup
+barrier still wait for the callback to return. Disconnect persistence uses a
+separate context after that barrier, so closing a connection does not cancel its
+final flush. Legacy managers and helpers still require cancellation migration;
+unbounded lifecycle waits have not yet been replaced. Cancellation after a
+successful commit does not undo that durable result.
