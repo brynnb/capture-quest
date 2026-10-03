@@ -3,7 +3,7 @@
 Status: active. Started 2026-09-25 from `02c51ba`.
 
 Working branch: `codex/server-foundations`. Latest checkpoint: committed blackout
-recovery, Safari presentation and explicit test warp probes (2026-10-02), following
+recovery, Safari presentation and explicit test warp probes `2f62595` (2026-10-02), following
 teleport notification projection `65a5581`, Instant Warp `e1f54a8`, normal warps
 `3899660`, owned-position loading `64cf970`, provenance `057f758` and atomic
 map-load `b8f5ccd`.
@@ -28,6 +28,34 @@ The full goal is **in progress**. A completed checkpoint proves its documented
 behavior; it does not prove that every gameplay path has migrated. The summary
 below is the current handoff. Later checkpoint entries preserve historical
 evidence, including remaining-work notes that subsequent commits may resolve.
+
+### Checkpoint handoff (2026-10-02)
+
+All implementation through `2f62595` is committed locally on
+`codex/server-foundations`. The goal remains active; no push or deployment has
+been performed as part of these checkpoints. The latest change makes blackout
+wallet, healed party, Safari exit and saved destination commit together, then
+publishes the committed position. Safari and test warp presentation also use
+server-committed destinations.
+
+The next implementation checkpoint is to remove supplied `destX`/`destY` from
+MapLoad requests and reject those fields at the server boundary. Teleport
+producers have migrated, but that request compatibility path still exists.
+Afterward, bind walking/facing and scripted animation reports to accepted
+server movement; opcode 45 still permits broader location reporting. Keep
+legitimate movement and map-arrival effects working through both migrations.
+
+The latest verification includes PostgreSQL rollback/retry and race checks,
+25 focused frontend tests, typecheck, production build, asset validation,
+stable protocol generation, and isolated rendered blackout/Instant Warp/Safari
+checks. Detailed results and rerun limits are in the checkpoint below. These
+checks do not establish durable replay/reconnect recovery or completion of
+every legacy mutation, callback, dependency or wire-contract migration.
+
+There is no reliable overall completion percentage: the remaining endpoint
+and ownership audits can reveal additional work. Use the five-area status
+table and the acceptance checks below to assess completion, rather than the
+number of commits or passing tests. All five areas still have outstanding work.
 
 | Area | Implemented | Still required |
 | --- | --- | --- |
