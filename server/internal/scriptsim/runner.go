@@ -1387,7 +1387,10 @@ func runRepelUse(scenario *Scenario, applied *AppliedFixture, initial *Snapshot)
 	if scenario.Trigger.ItemID <= 0 {
 		return nil, fmt.Errorf("repel_use trigger requires itemId")
 	}
-	wh, summary := newRepelScenarioWorld(scenario, applied.CharacterID)
+	wh, summary, err := newRepelScenarioWorld(scenario, applied.CharacterID)
+	if err != nil {
+		return nil, err
+	}
 	summary.ItemID = scenario.Trigger.ItemID
 
 	ses, recorder := NewRecordedSession(
@@ -1413,7 +1416,10 @@ func runRepelUse(scenario *Scenario, applied *AppliedFixture, initial *Snapshot)
 	summary.Success = success
 	summary.Message = responseText
 
-	status := wh.WildEncounter.RepelStatus(applied.CharacterID)
+	status, err := wh.WildEncounter.RepelStatus(applied.CharacterID)
+	if err != nil {
+		return nil, err
+	}
 	summary.Active = status.Active
 	summary.StepsLeft = status.StepsLeft
 
@@ -1474,18 +1480,28 @@ func parseRepelUseResponse(payload []byte) (bool, string, error) {
 }
 
 func runRepelStep(scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
-	wh, summary := newRepelScenarioWorld(scenario, applied.CharacterID)
+	wh, summary, err := newRepelScenarioWorld(scenario, applied.CharacterID)
+	if err != nil {
+		return nil, err
+	}
 	repeat := scenario.Trigger.Repeat
 	if repeat <= 0 {
 		repeat = 1
 	}
 	for i := 0; i < repeat; i++ {
-		if wh.WildEncounter.AdvanceRepelStep(applied.CharacterID) {
+		wore, err := wh.WildEncounter.AdvanceRepelStep(applied.CharacterID)
+		if err != nil {
+			return nil, err
+		}
+		if wore {
 			summary.WoreOff = true
 			summary.Message = "REPEL's effect wore off!"
 		}
 	}
-	status := wh.WildEncounter.RepelStatus(applied.CharacterID)
+	status, err := wh.WildEncounter.RepelStatus(applied.CharacterID)
+	if err != nil {
+		return nil, err
+	}
 	summary.Active = status.Active
 	summary.StepsLeft = status.StepsLeft
 
@@ -1594,19 +1610,24 @@ func runResolveActiveBattle(scenario *Scenario, applied *AppliedFixture, initial
 	return result, nil
 }
 
-func newRepelScenarioWorld(scenario *Scenario, charID int64) (*world.WorldHandler, *RepelSummary) {
+func newRepelScenarioWorld(scenario *Scenario, charID int64) (*world.WorldHandler, *RepelSummary, error) {
 	wh := &world.WorldHandler{}
-	wh.WildEncounter = world.NewWildEncounterManager(wh)
+	wh.WildEncounter = world.NewWildEncounterManager(wh, db.GlobalWorldDB.DB)
 	if scenario.Fixture.Repel != nil {
-		wh.WildEncounter.SetRepelSteps(charID, scenario.Fixture.Repel.StepsLeft)
+		if err := wh.WildEncounter.SetRepelSteps(charID, scenario.Fixture.Repel.StepsLeft); err != nil {
+			return nil, nil, err
+		}
 	}
-	status := wh.WildEncounter.RepelStatus(charID)
+	status, err := wh.WildEncounter.RepelStatus(charID)
+	if err != nil {
+		return nil, nil, err
+	}
 	return wh, &RepelSummary{
 		InitialActive:    status.Active,
 		InitialStepsLeft: status.StepsLeft,
 		Active:           status.Active,
 		StepsLeft:        status.StepsLeft,
-	}
+	}, nil
 }
 
 func resolveScript(s *Scenario, applied *AppliedFixture, cutscenes *world.CutsceneManager, efm *world.EventFlagManager) (*world.CutsceneScript, error) {

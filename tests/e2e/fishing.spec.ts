@@ -24,7 +24,7 @@ test("Old Rod used from inventory while facing water starts a fishing battle", a
   await waitForPlayerTile(page, 3, 17);
   await waitForInventoryItem(page, "OLD_ROD");
 
-  await page.getByRole("button", { name: "Inventory" }).click();
+  await page.getByRole("button", { name: "Bag", exact: true }).click();
   await waitForInventoryOpen(page, true);
   await page.getByTestId("inventory-item-old-rod").click();
 
@@ -47,7 +47,7 @@ test("Old Rod used from inventory while facing land does not start a battle", as
   await waitForPlayerTile(page, 9, 4);
   await waitForInventoryItem(page, "OLD_ROD");
 
-  await page.getByRole("button", { name: "Inventory" }).click();
+  await page.getByRole("button", { name: "Bag", exact: true }).click();
   await waitForInventoryOpen(page, true);
   await page.getByTestId("inventory-item-old-rod").click();
 

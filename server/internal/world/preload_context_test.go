@@ -18,7 +18,7 @@ func TestAllWorldPreloadsRespectCancelledContext(t *testing.T) {
 	loaders := map[string]func(context.Context) error{
 		"actors":      wh.ActorManager.Load,
 		"trainers":    NewTrainerEncounterManager(wh).Load,
-		"wild":        NewWildEncounterManager(wh).Load,
+		"wild":        NewWildEncounterManager(wh, wh.database).Load,
 		"coordinates": NewCoordinateTriggerManager(database).Load,
 		"map scripts": NewMapScriptManager(database).Load,
 		"spin tiles":  NewSpinTileManager(database).Load,

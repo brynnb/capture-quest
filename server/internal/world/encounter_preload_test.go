@@ -12,7 +12,7 @@ func TestEncounterPreloadRejectsOrphansAndPreservesCompleteCache(t *testing.T) {
 	database := testdb.Postgres(t)
 	wh := &WorldHandler{database: database}
 	wh.ActorManager = NewPhaserActorManager(wh)
-	m := NewWildEncounterManager(wh)
+	m := NewWildEncounterManager(wh, wh.database)
 	testdb.Exec(t, database, `INSERT INTO phaser_encounter_areas(id,name,encounter_rate) VALUES(1,'test',25);
  INSERT INTO phaser_encounter_area_slots(encounter_area_id,slot_index,pokemon_id,level,probability) VALUES(1,0,25,5,1);
  INSERT INTO phaser_tiles(x,y,tile_image_id,encounter_area_id) VALUES(10,11,1,1);`)
@@ -29,6 +29,12 @@ func TestEncounterPreloadRejectsOrphansAndPreservesCompleteCache(t *testing.T) {
 			t.Fatal("failed load published partial encounter state")
 		}
 	}
+	testdb.Exec(t, database, `ALTER TABLE character_repels RENAME TO unavailable_repels`)
+	if err := m.Load(context.Background()); err == nil || !strings.Contains(err.Error(), "repel state schema") {
+		t.Fatalf("missing durable effect schema accepted: %v", err)
+	}
+	checkUnchanged()
+	testdb.Exec(t, database, `ALTER TABLE unavailable_repels RENAME TO character_repels`)
 	testdb.Exec(t, database, `INSERT INTO phaser_encounter_area_slots(encounter_area_id,slot_index,pokemon_id,level,probability) VALUES(999,0,25,5,1)`)
 	if err := m.Load(context.Background()); err == nil || !strings.Contains(err.Error(), "absent area 999") {
 		t.Fatalf("orphan slot: %v", err)

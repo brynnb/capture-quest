@@ -24,7 +24,7 @@ func TestScriptAndWarpLoadersReturnQueryFailures(t *testing.T) {
 		"warp tiles":      NewWarpTileManager(database).Load,
 		"map warps":       newPhaserWarpManager(database).load,
 		"trainers":        NewTrainerEncounterManager(wh).Load,
-		"wild encounters": NewWildEncounterManager(wh).Load,
+		"wild encounters": NewWildEncounterManager(wh, wh.database).Load,
 	}
 	for name, load := range loaders {
 		t.Run(name, func(t *testing.T) {

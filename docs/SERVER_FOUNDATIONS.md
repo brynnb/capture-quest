@@ -3,8 +3,8 @@
 Status: active. Started 2026-09-25 from `02c51ba`.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-validated FLY catalog and atomic position publication (2026-10-02), following
-Escape Rope checkpoint `86d9d46`.
+durable Repel consumption/activation/expiry (2026-10-02), following FLY
+checkpoint `b785d58`.
 All earlier foundation checkpoints are retained in this
 branch's history. No push or production deployment is authorized by this goal.
 
@@ -30,7 +30,7 @@ evidence, including remaining-work notes that subsequent commits may resolve.
 | Area | Implemented | Still required |
 | --- | --- | --- |
 | Request/session boundary | Packet and connection limits, centralized session prerequisites, removal of insecure session takeover, actual transport closure, and location/visibility checks for scripted clicks, dialogue choices and direct trainer battles. | Audit remaining interaction/mutation endpoints; propagate cancellation through running commands and remaining database/network work. |
-| Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors, Game Corner prizes and bounded coin/slot/hidden-coin operations, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery of committed results across reconnects. |
+| Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors, Game Corner prizes and bounded coin/slot/hidden-coin operations, atomic Escape Rope/FLY positions, durable Repel counters, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery of committed results across reconnects. |
 | Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, and movement ticks coordinated with the owner. | Finish timer/callback/shared-state and Safari audits; prove remaining concurrent/reconnect behavior across real transports. |
 | Domains and wire contracts | Injected content-query service; typed character/wallet/bind, Pokédex/card, content detail, map-script and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
 | Lifecycle and verification | Owned HTTP/listeners, readiness, listener failure propagation, joined periodic workers, sealed session admissions, fail-closed staged preload, startup cancellation, and atomic scripted-event publication. | Bounded shutdown with active players and running work; complete transport/rendered integration and failure/retry/cancellation coverage. |
@@ -46,7 +46,8 @@ evidence, including remaining-work notes that subsequent commits may resolve.
    require reach/visibility to the source coin clerk. Escape Rope consumption and
    saved destination now commit together before live teleport publication. FLY
    validates the destination catalog and durable party/badge eligibility inside
-   its position transaction. Audit remaining field
+   its position transaction. Repel consumption and activation now share a durable
+   transaction, with committed step updates and expiry. Audit remaining field
    effects and other mutation paths for the same requirements.
    Extend the shared transaction/domain operations already in use. Acceptance:
    a late failure leaves all affected state unchanged; retry and concurrent
@@ -96,6 +97,73 @@ deployment, and complete its applicable workflow and live checks.
 
 Continue with item 1 above. Keep this current summary synchronized with coherent
 checkpoint commits; retain the original milestone acceptance criteria below.
+
+## Durable Repel checkpoint (2026-10-02)
+
+Repel previously checked an in-memory counter, consumed an inventory item in a
+separate transaction, then activated that counter. Disconnect cleanup deleted
+the effect. Overlapping activations could both consume items, and an effect could
+be lost after a committed consumption without a durable record to recover.
+
+`character_repels` is now the single authoritative counter. Both item-use routes
+recheck active state and inventory identity under the character lock, then consume
+and activate in the same bounded transaction. Step updates and expiry use that
+same durable counter; wear-off notifications follow commit. The in-memory map
+and disconnect deletion are retired. A newly constructed manager recovers the
+committed effect directly from its injected database. The simulator and local
+scenario reset/setup paths use the same state and propagate read/write errors.
+The ordinary battle guard now also covers the legacy Repel opcode. Expected
+rejections stay player-facing; database details stay in diagnostics.
+
+The canonical runtime schema adds the table with a positive-step constraint and
+character ownership foreign key. Database smoke checks require it, and wild
+encounter preload checks its columns before readiness. An eventual deployment
+must apply this schema through the applicable documented lane before activating
+this code. No schema mutation was made to a normal local or production database.
+
+PostgreSQL dispatcher tests cover deferred activation failure on both opcodes,
+retry, recovery through a new manager, deferred expiry failure and one wear-off
+notification. Four concurrent managers consume exactly one item and leave one
+active counter. Missing-table preload rejects without replacing the encounter
+cache. Race suites for item use, world, simulator and database smoke passed;
+all Go packages compiled and TypeScript checks passed. The three existing Repel
+simulator scenarios passed their unchanged golden files on the canonically
+bootstrapped private database. That run exposed a stale fixture insert using
+`character_data.level`; the fixture now follows the canonical character schema.
+
+The first rendered attempt used a stale `Inventory` button selector; the actual
+`BottomHUD` menu and screenshot show `Bag`. The known inventory-opening selectors
+were updated across inventory, bicycle, fishing and audio tests. The next run
+passed Repel, potion cursor and Coin Case checks, then exposed a misleading
+non-usable-item message. Actual imported rows are `NUGGET` (`id=49`,
+`is_usable=false`, `item_type=0`) and `X ATTACK` (`id=65`, `is_usable=true`,
+`item_type=3`). The shared item-use validator now distinguishes an unusable item
+from a battle-only item; the original rejection assertion was preserved.
+Failure evidence remains at `/var/tmp/capturequest-rendered.ubkegx` and
+`/var/tmp/capturequest-rendered.hggpJh`. A subsequent re-entry test found two
+Repel stacks: the local-only fixture deliberately tops total inventory up to
+five on entering the world. The test now tracks the original instance ID across
+re-entry, verifying its retained quantity and a fresh active-effect rejection;
+it does not hide the extra stack with an arbitrary first-row selector. That
+investigated run is retained at `/var/tmp/capturequest-rendered.qzNHgr`. Final
+rendered evidence is `/var/tmp/capturequest-rendered.b4DScR`: all four inventory
+tests passed (21.8 seconds), including consumption, active-effect rejection,
+leaving/re-entering the world with the original stack unchanged, medicine cursor,
+Coin Case and blocked-item behavior. This tests character detach/re-entry through
+the live WebSocket server, not abrupt socket loss or process restart. Other
+selector-only test files have not been rendered here.
+
+Current encounter-step timing is preserved: the counter advances on the existing
+eligible encounter-tile hook before the probability roll. This checkpoint does
+not claim historical every-tile timing or durable delivery of wear-off messages.
+Database failure leaves the counter unchanged and skips that encounter check
+with a diagnostic. Durable updates add database work to this hook; performance
+under many moving players remains part of integration verification.
+
+Next: Safari payment/session/battle ownership and remaining field eligibility.
+Cancellation through running commands, durable request/result recovery, bounded
+shutdown, remaining dependencies/contracts and broad transport/reconnect/rendered
+acceptance remain required. The full goal stays active; no push or deployment.
 
 ## FLY catalog and position checkpoint (2026-10-02)
 

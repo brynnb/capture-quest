@@ -671,3 +671,13 @@ commit; cached event flags do not decide this durable effect. The shared
 field-move eligibility evaluator supports both transaction-backed effects and
 the existing simulator/presentation flag view. The current all-cities policy
 remains; historical outdoor/visited-town rules need further eligibility work.
+
+Repel has one durable owner: `character_repels`. Activation checks the current
+counter and owned inventory inside a character-locked transaction, then consumes
+the item and stores the effect together. Step updates/expiry are bounded durable
+operations; notifications follow commit. The old per-manager pointer map and
+disconnect deletion are retired. Runtime and simulator managers receive an
+explicit database, and a replacement manager reads the committed counter.
+Preload/readiness and database smoke checks reject a missing effect schema.
+The existing eligible encounter-tile timing remains; broader movement timing,
+throughput and durable message recovery need their own integration evidence.

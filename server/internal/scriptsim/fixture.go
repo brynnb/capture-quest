@@ -212,9 +212,9 @@ func ensureCharacter(name string, mapID, x, y int) (int64, error) {
 
 	err = db.GlobalWorldDB.DB.QueryRow(`
 		INSERT INTO character_data
-			(account_id, name, map_id, x, y, z, heading, gender, faction_id, class, level)
+			(account_id, name, map_id, x, y, z, heading, gender, faction_id, class)
 		VALUES
-			(0, $1, $2, $3, $4, 0, 0, 0, 1, 1, 1)
+			(0, $1, $2, $3, $4, 0, 0, 0, 1, 1)
 		RETURNING id`,
 		name, mapID, x, y).Scan(&id)
 	if err != nil {
@@ -231,6 +231,7 @@ func resetCharacterState(charID int64) error {
 		`DELETE FROM character_in_game_trades WHERE character_id = $1`,
 		`DELETE FROM character_pokemon WHERE character_id = $1`,
 		`DELETE FROM character_field_move_state WHERE character_id = $1`,
+		`DELETE FROM character_repels WHERE character_id = $1`,
 		`DELETE FROM character_object_positions WHERE character_id = $1`,
 		`DELETE FROM character_object_visibility_overrides WHERE character_id = $1`,
 		`DELETE FROM character_collected_items WHERE character_id = $1`,

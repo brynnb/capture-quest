@@ -37,11 +37,6 @@ const (
 	MaxRepelItemID   = 57
 )
 
-// repelState tracks active repel for a player.
-type repelState struct {
-	StepsLeft int
-}
-
 type RepelStatus struct {
 	Active    bool
 	StepsLeft int
@@ -61,18 +56,16 @@ type WildEncounterManager struct {
 	tileCacheMu sync.RWMutex
 	cacheLoaded bool
 
-	// Repel tracking per player
-	repels   map[int64]*repelState
-	repelsMu sync.RWMutex
+	database *sql.DB
 }
 
 // NewWildEncounterManager creates and initializes the wild encounter manager.
-func NewWildEncounterManager(wh *WorldHandler) *WildEncounterManager {
+func NewWildEncounterManager(wh *WorldHandler, database *sql.DB) *WildEncounterManager {
 	return &WildEncounterManager{
 		wh:        wh,
 		areas:     make(map[int]*encounterAreaData),
 		tileCache: make(map[[3]int]int),
-		repels:    make(map[int64]*repelState),
+		database:  database,
 	}
 }
 
@@ -82,6 +75,15 @@ func (m *WildEncounterManager) Load(ctx context.Context) error {
 		return fmt.Errorf("wild encounter preload requires a database")
 	}
 	myDB := m.wh.database
+	// Readiness must reject a code-only activation without its durable effect
+	// schema; otherwise every encounter step would fail after serving traffic.
+	probe, err := m.database.QueryContext(ctx, `SELECT character_id,steps_left FROM character_repels LIMIT 0`)
+	if err != nil {
+		return fmt.Errorf("repel state schema: %w", err)
+	}
+	if err := probe.Close(); err != nil {
+		return fmt.Errorf("close repel schema probe: %w", err)
+	}
 
 	areas := make(map[int]*encounterAreaData)
 	// Load encounter areas
@@ -209,7 +211,11 @@ func (m *WildEncounterManager) CheckPlayerStep(charID int64, x, y, mapID int, se
 	}
 
 	// Tick repel step counter (even if no encounter triggers)
-	m.tickRepel(charID, ses)
+	repel, err := m.tickRepel(charID, ses)
+	if err != nil {
+		log.Printf("[Repel] Step failed for character %d: %v", charID, err)
+		return false
+	}
 
 	// Gen 1 encounter rate check: roll rand(256) < encounterRate
 	roll := rand.Intn(256)
@@ -221,7 +227,7 @@ func (m *WildEncounterManager) CheckPlayerStep(charID int64, x, y, mapID int, se
 	pokemonID, level := m.selectEncounterPokemon(area)
 
 	// Repel check: if repel is active and wild level < lead party level, suppress
-	if m.isRepelActive(charID) {
+	if repel.Active {
 		leadLevel := m.getLeadPokemonLevel(charID)
 		if level < leadLevel {
 			return false // Repel suppresses this encounter
@@ -417,18 +423,6 @@ func (m *WildEncounterManager) startWildBattleWithPokemon(charID int64, pokemonI
 
 // --- Repel system ---
 
-// ActivateRepel starts a repel effect for the given player.
-func (m *WildEncounterManager) ActivateRepel(charID int64, itemID int) {
-	steps, ok := RepelStepsForItem(itemID)
-	if !ok {
-		return
-	}
-	m.repelsMu.Lock()
-	m.repels[charID] = &repelState{StepsLeft: steps}
-	m.repelsMu.Unlock()
-	log.Printf("[Repel] Activated for char %d: %d steps", charID, steps)
-}
-
 func RepelStepsForItem(itemID int) (int, bool) {
 	switch itemID {
 	case RepelItemID:
@@ -442,62 +436,28 @@ func RepelStepsForItem(itemID int) (int, bool) {
 	}
 }
 
-// isRepelActive returns true if the player has an active repel.
-func (m *WildEncounterManager) isRepelActive(charID int64) bool {
-	m.repelsMu.RLock()
-	defer m.repelsMu.RUnlock()
-	r := m.repels[charID]
-	return r != nil && r.StepsLeft > 0
+func (m *WildEncounterManager) RepelStatus(charID int64) (RepelStatus, error) {
+	return loadRepelStatus(context.Background(), m.database, charID)
 }
 
-func (m *WildEncounterManager) RepelStatus(charID int64) RepelStatus {
-	m.repelsMu.RLock()
-	defer m.repelsMu.RUnlock()
-	r := m.repels[charID]
-	if r == nil || r.StepsLeft <= 0 {
-		return RepelStatus{}
-	}
-	return RepelStatus{
-		Active:    true,
-		StepsLeft: r.StepsLeft,
-	}
+func (m *WildEncounterManager) SetRepelSteps(charID int64, stepsLeft int) error {
+	return setRepelSteps(context.Background(), m.database, charID, stepsLeft)
 }
 
-func (m *WildEncounterManager) SetRepelSteps(charID int64, stepsLeft int) {
-	m.repelsMu.Lock()
-	defer m.repelsMu.Unlock()
-	if stepsLeft <= 0 {
-		delete(m.repels, charID)
-		return
-	}
-	m.repels[charID] = &repelState{StepsLeft: stepsLeft}
+func (m *WildEncounterManager) AdvanceRepelStep(charID int64) (bool, error) {
+	_, wore, err := advanceRepelStep(context.Background(), m.database, charID)
+	return wore, err
 }
 
-// tickRepel decrements the repel counter and notifies when it wears off.
-func (m *WildEncounterManager) tickRepel(charID int64, ses *session.Session) {
-	wore := m.AdvanceRepelStep(charID)
+func (m *WildEncounterManager) tickRepel(charID int64, ses *session.Session) (RepelStatus, error) {
+	status, wore, err := advanceRepelStep(context.Background(), m.database, charID)
+	if err != nil {
+		return RepelStatus{}, err
+	}
 	if wore {
-		log.Printf("[Repel] Wore off for char %d", charID)
-		ses.SendStreamJSON(map[string]interface{}{
-			"message": "REPEL's effect wore off!",
-		}, opcodes.RepelWoreOffNotify)
+		ses.SendStreamJSON(map[string]interface{}{"message": "REPEL's effect wore off!"}, opcodes.RepelWoreOffNotify)
 	}
-}
-
-func (m *WildEncounterManager) AdvanceRepelStep(charID int64) bool {
-	m.repelsMu.Lock()
-	r := m.repels[charID]
-	if r == nil || r.StepsLeft <= 0 {
-		m.repelsMu.Unlock()
-		return false
-	}
-	r.StepsLeft--
-	wore := r.StepsLeft <= 0
-	if wore {
-		delete(m.repels, charID)
-	}
-	m.repelsMu.Unlock()
-	return wore
+	return status, nil
 }
 
 // getLeadPokemonLevel returns the level of the player's lead (first non-fainted) Pokémon.
@@ -513,11 +473,4 @@ func (m *WildEncounterManager) getLeadPokemonLevel(charID int64) int {
 		}
 	}
 	return party[0].Level
-}
-
-// ClearPlayer removes all tracking data for a player (on disconnect).
-func (m *WildEncounterManager) ClearPlayer(charID int64) {
-	m.repelsMu.Lock()
-	delete(m.repels, charID)
-	m.repelsMu.Unlock()
 }

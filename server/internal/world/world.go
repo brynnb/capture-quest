@@ -76,7 +76,7 @@ func NewWorldHandler(ctx context.Context, sessionManager *session.SessionManager
 	if err := wh.TrainerEncounter.Load(ctx); err != nil {
 		return nil, fmt.Errorf("preload TrainerEncounter: %w", err)
 	}
-	wh.WildEncounter = NewWildEncounterManager(wh)
+	wh.WildEncounter = NewWildEncounterManager(wh, wh.database)
 	if err := wh.WildEncounter.Load(ctx); err != nil {
 		return nil, fmt.Errorf("preload WildEncounter: %w", err)
 	}
@@ -166,7 +166,6 @@ func (wh *WorldHandler) cleanupCharacterSession(ses *session.Session) {
 	wh.PlayerMovement.FlushPlayerPosition(charID)
 	wh.PlayerMovement.UnregisterPlayer(charID)
 	wh.TrainerEncounter.ClearPlayer(int64(charID))
-	wh.WildEncounter.ClearPlayer(int64(charID))
 	wh.EventFlags.UnloadFlags(int64(charID))
 	saveBattleOnDisconnect(int64(charID))
 	wh.persistSessionPlaytime(ses, time.Now())

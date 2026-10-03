@@ -117,7 +117,7 @@ func TestEnterWorldHandoffReloadsAfterOldCommandCommits(t *testing.T) {
 	wh.ActorManager = NewPhaserActorManager(wh)
 	wh.PlayerMovement = NewPlayerMovementManager(wh, wh.ActorManager)
 	wh.TrainerEncounter = NewTrainerEncounterManager(wh)
-	wh.WildEncounter = NewWildEncounterManager(wh)
+	wh.WildEncounter = NewWildEncounterManager(wh, wh.database)
 	if err := wh.characterOwners.acquire(context.Background(), 42, old, nil); err != nil {
 		t.Fatal(err)
 	}

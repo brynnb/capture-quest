@@ -2,16 +2,18 @@ package world
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 
 	"capturequest/internal/api/opcodes"
+	"capturequest/internal/itemuse"
 	"capturequest/internal/session"
 )
 
 // HandleRepelUse activates a repel when the player uses one from inventory.
 func HandleRepelUse(ses *session.Session, payload []byte, wh *WorldHandler) bool {
 	var req struct {
-		ItemID int `json:"itemId"`
+		ItemID int32 `json:"itemId"`
 	}
 	if err := json.Unmarshal(payload, &req); err != nil {
 		log.Printf("[Repel] Invalid use request: %v", err)
@@ -28,7 +30,7 @@ func HandleRepelUse(ses *session.Session, payload []byte, wh *WorldHandler) bool
 	if err != nil {
 		ses.SendStreamJSON(map[string]interface{}{
 			"success": false,
-			"error":   err.Error(),
+			"error":   repelUseErrorMessage(charID, err),
 		}, opcodes.RepelUseResponse)
 		return false
 	}
@@ -40,4 +42,13 @@ func HandleRepelUse(ses *session.Session, payload []byte, wh *WorldHandler) bool
 		"stepsLeft":   result.StepsLeft,
 	}, opcodes.RepelUseResponse)
 	return false
+}
+
+func repelUseErrorMessage(charID int64, err error) string {
+	var rejection *itemuse.Rejection
+	if errors.As(err, &rejection) {
+		return rejection.Message
+	}
+	log.Printf("[Repel] Use failed for character %d: %v", charID, err)
+	return "Could not use the repel. Please try again."
 }

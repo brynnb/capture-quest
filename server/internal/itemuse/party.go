@@ -66,7 +66,10 @@ func (s *Service) UsePartyItem(ctx context.Context, charID int32, instanceID int
 		}
 		item := owned.Item
 		flute := ShortName(item) == "POKE_FLUTE"
-		if !flute && (!item.IsUsable || !itemUsableOnPartyOutsideBattle(item)) {
+		if !flute && !item.IsUsable {
+			return reject("That item can't be used like that")
+		}
+		if !flute && !itemUsableOnPartyOutsideBattle(item) {
 			return reject("That item can't be used outside of battle")
 		}
 		party, err := pokebattle.LoadParty(tx, int64(charID))

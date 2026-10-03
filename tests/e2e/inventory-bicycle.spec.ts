@@ -27,7 +27,7 @@ test("Bicycle can be toggled from inventory and pauses indoors", async ({
   await waitForPlayerTile(page, 9, 4, 30_000);
   await waitForWarps(page);
 
-  await page.getByRole("button", { name: "Inventory" }).click();
+  await page.getByRole("button", { name: "Bag", exact: true }).click();
   await waitForInventoryOpen(page, true);
   await page.getByTestId("inventory-item-bicycle").click();
   await waitForMessage(page, /Bicycle/i);

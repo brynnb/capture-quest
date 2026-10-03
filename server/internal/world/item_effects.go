@@ -96,7 +96,7 @@ func coinCaseMessage(coins int) string {
 func handleCQRepelUse(ses *session.Session, wh *WorldHandler, found *cqitems.CQInventoryItem, charID int32) {
 	result, err := UseRepelInventoryItem(wh, charID, found.Item.ID, found)
 	if err != nil {
-		sendCQItemUseError(ses, err.Error())
+		sendCQItemUseError(ses, repelUseErrorMessage(int64(charID), err))
 		return
 	}
 	sendCQItemUseSuccess(ses, found, result.Message, result.NewQuantity)
