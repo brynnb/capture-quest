@@ -30,6 +30,10 @@ type WorldHandler struct {
 	characterOwners  characterOwners
 	timeoutWorker    periodicWorker
 	shutdownOnce     sync.Once
+	shutdownDone     chan struct{}
+	shutdownErr      error
+	cleanupDraining  bool
+	cleanupErrors    error
 	cleanupMu        sync.Mutex
 	cleanupWG        sync.WaitGroup
 	ActorManager     *PhaserActorManager       `json:"actorManager,omitempty"`
@@ -144,6 +148,11 @@ func (wh *WorldHandler) RemoveSession(sessionID int) {
 	log.Printf("[WORLD] Removing session %d", sessionID)
 	ses.DrainCommands(func() {
 		if err := wh.cleanupCharacterSession(context.Background(), ses); err != nil {
+			wh.cleanupMu.Lock()
+			if wh.cleanupDraining {
+				wh.cleanupErrors = errors.Join(wh.cleanupErrors, fmt.Errorf("session %d: %w", ses.SessionID, err))
+			}
+			wh.cleanupMu.Unlock()
 			log.Printf("[WORLD] Session %d cleanup persistence failed: %v", ses.SessionID, err)
 		}
 	})
@@ -202,10 +211,33 @@ func (wh *WorldHandler) persistSessionPlaytime(ctx context.Context, ses *session
 
 // Shutdown flushes active playtime before the database connection closes.
 func (wh *WorldHandler) Shutdown() {
-	wh.shutdownOnce.Do(wh.shutdown)
+	if err := wh.ShutdownContext(context.Background()); err != nil {
+		log.Printf("[WORLD] Shutdown: %v", err)
+	}
+}
+
+// ShutdownContext bounds the caller wait, not the lifetime of owned work.
+// A timeout leaves one drain running; callers can join it again before closing storage.
+func (wh *WorldHandler) ShutdownContext(ctx context.Context) error {
+	wh.shutdownOnce.Do(func() {
+		wh.shutdownDone = make(chan struct{})
+		go func() {
+			wh.shutdown()
+			close(wh.shutdownDone)
+		}()
+	})
+	select {
+	case <-wh.shutdownDone:
+		return wh.shutdownErr
+	case <-ctx.Done():
+		return fmt.Errorf("world drain unfinished: %w", ctx.Err())
+	}
 }
 
 func (wh *WorldHandler) shutdown() {
+	wh.cleanupMu.Lock()
+	wh.cleanupDraining = true
+	wh.cleanupMu.Unlock()
 	wh.sessionManager.Seal()
 	wh.sessionManager.ForEachSession(func(ses *session.Session) { ses.Close() })
 	wh.timeoutWorker.stop()
@@ -220,6 +252,9 @@ func (wh *WorldHandler) shutdown() {
 	wh.cleanupMu.Lock()
 	wh.cleanupMu.Unlock()
 	wh.cleanupWG.Wait()
+	wh.cleanupMu.Lock()
+	wh.shutdownErr = wh.cleanupErrors
+	wh.cleanupMu.Unlock()
 }
 
 func (wh *WorldHandler) StartSessionTimeoutChecker() {

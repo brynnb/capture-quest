@@ -48,7 +48,7 @@ func main() {
 		log.Fatalf("failed to initialize world database: %v", err)
 	}
 
-	srv, err := server.NewServer(startupCtx, target.DSN, time.Duration(serverConfig.GracePeriod), serverConfig.Local)
+	srv, err := server.NewServer(startupCtx, target.DSN, time.Duration(serverConfig.GracePeriod)*time.Second, serverConfig.Local)
 	if err != nil {
 		_ = db.GlobalWorldDB.DB.Close()
 		if processCtx.Err() != nil {
@@ -77,8 +77,17 @@ func main() {
 		log.Printf("Listener failed, shutting down: %v", serveErr)
 	}
 
-	srv.StopServer()
-	if serveErr != nil {
+	shutdownBudget := time.Duration(serverConfig.GracePeriod) * time.Second
+	if shutdownBudget <= 0 {
+		shutdownBudget = 30 * time.Second
+	}
+	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), shutdownBudget)
+	defer cancelShutdown()
+	shutdownErr := srv.StopServerContext(shutdownCtx)
+	if shutdownErr != nil {
+		log.Printf("Shutdown failed: %v", shutdownErr)
+	}
+	if serveErr != nil || shutdownErr != nil {
 		os.Exit(1)
 	}
 }

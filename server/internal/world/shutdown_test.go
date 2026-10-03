@@ -2,12 +2,15 @@ package world
 
 import (
 	"context"
+	"errors"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"capturequest/internal/session"
+	"capturequest/internal/testdb"
 )
 
 func TestShutdownDrainsActiveCharacterAndAlreadyClaimedDisconnect(t *testing.T) {
@@ -63,8 +66,19 @@ func TestShutdownDrainsActiveCharacterAndAlreadyClaimedDisconnect(t *testing.T) 
 				t.Fatal("shutdown returned before command completed")
 			default:
 			}
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+			defer cancel()
+			if err := wh.ShutdownContext(ctx); !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("blocked command shutdown=%v", err)
+			}
+			if err := database.Ping(); err != nil {
+				t.Fatal("storage unavailable during unfinished drain")
+			}
 			releaseOnce.Do(func() { close(release) })
 			<-shutdownDone
+			if err := wh.ShutdownContext(context.Background()); err != nil {
+				t.Fatal(err)
+			}
 			if ses.HasValidClient() || wh.characterOwners.owns(42, ses) {
 				t.Fatal("character survived shutdown cleanup")
 			}
@@ -79,5 +93,30 @@ func TestShutdownDrainsActiveCharacterAndAlreadyClaimedDisconnect(t *testing.T) 
 				t.Fatalf("playtime was not flushed: %d", seconds)
 			}
 		})
+	}
+}
+
+func TestShutdownReturnsFinalPersistenceFailure(t *testing.T) {
+	database, wh, fixture, _ := battleTestWorld(t)
+	wh.sessionManager = session.NewSessionManager()
+	ses := wh.sessionManager.CreateNextSession(&recordingMessenger{}, "", nil)
+	ses.Client = fixture.Client
+	wh.ActorRegistry = NewActorRegistry()
+	wh.ActorManager = NewPhaserActorManager(wh)
+	wh.PlayerMovement = NewPlayerMovementManager(wh, wh.ActorManager)
+	wh.TrainerEncounter = NewTrainerEncounterManager(wh)
+	if err := wh.characterOwners.acquire(context.Background(), 42, ses, nil); err != nil {
+		t.Fatal(err)
+	}
+	ses.StartPlaytime(time.Now().Add(-3*time.Second), 0, 42)
+	testdb.Exec(t, database, `CREATE FUNCTION reject_shutdown_save() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'reject shutdown save'; END $$;
+ CREATE CONSTRAINT TRIGGER reject_shutdown_save AFTER UPDATE ON character_data DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_shutdown_save();`)
+	for i := 0; i < 2; i++ {
+		if err := wh.ShutdownContext(context.Background()); err == nil || !strings.Contains(err.Error(), "final playtime") {
+			t.Fatalf("shutdown persistence failure=%v", err)
+		}
+	}
+	if ses.HasValidClient() || wh.characterOwners.owns(42, ses) {
+		t.Fatal("failed final save left runtime alive")
 	}
 }

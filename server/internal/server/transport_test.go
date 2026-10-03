@@ -32,7 +32,7 @@ func (w *transportTestWorld) RemoveSession(id int) {
 		w.removed <- id
 	}
 }
-func (*transportTestWorld) Shutdown() {}
+func (*transportTestWorld) ShutdownContext(context.Context) error { return nil }
 
 func testWSServer(t *testing.T) (*Server, *transportTestWorld, string) {
 	t.Helper()

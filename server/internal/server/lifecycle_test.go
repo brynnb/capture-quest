@@ -1,21 +1,27 @@
 package server
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"net"
 	"net/http"
 	"sync"
 	"testing"
+	"time"
 
 	"capturequest/internal/session"
 	_ "modernc.org/sqlite"
 )
 
-type lifecycleTestWorld struct{ shutdown func() }
+type lifecycleTestWorld struct {
+	shutdown func()
+	failure  error
+}
 
-func (*lifecycleTestWorld) HandlePacket(*session.Session, []byte) {}
-func (*lifecycleTestWorld) RemoveSession(int)                     {}
-func (w *lifecycleTestWorld) Shutdown()                           { w.shutdown() }
+func (*lifecycleTestWorld) HandlePacket(*session.Session, []byte)   {}
+func (*lifecycleTestWorld) RemoveSession(int)                       {}
+func (w *lifecycleTestWorld) ShutdownContext(context.Context) error { w.shutdown(); return w.failure }
 
 func TestServerShutdownDrainsHTTPAndWorldBeforeClosingDatabase(t *testing.T) {
 	database, err := sql.Open("sqlite", ":memory:")
@@ -68,6 +74,14 @@ func TestServerShutdownDrainsHTTPAndWorldBeforeClosingDatabase(t *testing.T) {
 	if err := database.Ping(); err != nil {
 		t.Fatal("database closed while HTTP handler active")
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if err := s.StopServerContext(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("blocked handler shutdown=%v", err)
+	}
+	if err := database.Ping(); err != nil {
+		t.Fatal("timeout closed storage under active handler")
+	}
 	once.Do(func() { close(release) })
 	if err := <-handlerResult; err != nil {
 		t.Fatalf("active HTTP query failed: %v", err)
@@ -83,5 +97,23 @@ func TestServerShutdownDrainsHTTPAndWorldBeforeClosingDatabase(t *testing.T) {
 	}
 	if err := s.StartServer(); err == nil {
 		t.Fatal("server restarted after shutdown")
+	}
+}
+
+func TestShutdownReturnsWorldFailureAfterClosingJoinedStorage(t *testing.T) {
+	database, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	failure := errors.New("final persistence failed")
+	s := &Server{database: database, worldHandler: &lifecycleTestWorld{shutdown: func() {}, failure: failure}}
+	for i := 0; i < 2; i++ {
+		if err := s.StopServerContext(context.Background()); !errors.Is(err, failure) {
+			t.Fatalf("shutdown failure=%v", err)
+		}
+	}
+	if err := database.Ping(); err == nil {
+		t.Fatal("joined storage remained open")
 	}
 }

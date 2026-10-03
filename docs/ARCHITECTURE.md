@@ -734,3 +734,11 @@ one five-second persistence budget and returns final-position/playtime errors;
 handoff propagates them before admitting a replacement. Disconnect still retires
 failed session state and logs errors, without a durable recovery queue. Lifecycle
 joins and shutdown failure reporting remain unfinished.
+
+Shutdown has one owned completion per world/server. Context-aware callers can
+stop waiting at a deadline and rejoin later; timeout leaves storage open beneath
+unfinished work. Joined final-save errors are returned through the server, whose
+standalone process reports shutdown failure with a nonzero exit. The configured
+`gracePeriod` is seconds, with a 30-second default when nonpositive. Underlying
+legacy operations still need cancellation/force-close coverage; a bounded wait
+alone does not prove a bounded successful drain or durable final-save recovery.

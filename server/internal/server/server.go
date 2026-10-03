@@ -41,7 +41,7 @@ import (
 type worldRuntime interface {
 	HandlePacket(*session.Session, []byte)
 	RemoveSession(int)
-	Shutdown()
+	ShutdownContext(context.Context) error
 }
 
 // Server hosts HTTP, WebSocket and WebTransport connections.
@@ -53,6 +53,8 @@ type Server struct {
 	failures          chan error
 	lifecycleMu       sync.Mutex
 	stopOnce          sync.Once
+	stopDone          chan struct{}
+	stopErr           error
 	started, stopping bool
 	httpServer        *http.Server
 	httpDone          chan struct{}
@@ -362,41 +364,66 @@ func (s *Server) handleSessionClose(sessionID int) {
 	s.worldHandler.RemoveSession(sessionID)
 }
 
-// StopServer tears down all listeners and connections.
+// StopServer uses the configured grace period for the caller's wait.
 func (s *Server) StopServer() {
+	budget := s.gracePeriod
+	if budget <= 0 {
+		budget = 30 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), budget)
+	defer cancel()
+	if err := s.StopServerContext(ctx); err != nil {
+		log.Printf("Server shutdown: %v", err)
+	}
+}
+
+// StopServerContext starts one owned drain and permits later callers to join it.
+// On timeout storage stays open until HTTP handlers and world work have joined.
+func (s *Server) StopServerContext(ctx context.Context) error {
 	s.stopOnce.Do(func() {
-		s.draining.Store(true)
-		s.ready.Store(false)
-		s.lifecycleMu.Lock()
-		s.stopping = true
-		s.lifecycleMu.Unlock()
-		if s.sessionManager != nil {
-			s.sessionManager.Seal()
-		}
-		// Shutdown joins ordinary HTTP handlers. Hijacked WebSockets are owned by
-		// the session manager and are drained by world shutdown below.
-		if s.httpServer != nil {
-			if err := s.httpServer.Shutdown(context.Background()); err != nil {
-				log.Printf("HTTP shutdown: %v", err)
-			}
-			<-s.httpDone
-		}
-		if s.discordChat != nil {
-			s.discordChat.Close()
-		}
-		if s.wtServer != nil {
-			_ = s.wtServer.Close()
-		}
-		if s.udpConn != nil {
-			_ = s.udpConn.Close()
-		}
-		if s.worldHandler != nil {
-			s.worldHandler.Shutdown()
-		}
-		if s.database != nil {
-			_ = s.database.Close()
-		}
+		s.stopDone = make(chan struct{})
+		go func() { s.drain(); close(s.stopDone) }()
 	})
+	select {
+	case <-s.stopDone:
+		return s.stopErr
+	case <-ctx.Done():
+		return fmt.Errorf("server drain unfinished: %w", ctx.Err())
+	}
+}
+
+func (s *Server) drain() {
+	s.draining.Store(true)
+	s.ready.Store(false)
+	s.lifecycleMu.Lock()
+	s.stopping = true
+	s.lifecycleMu.Unlock()
+	if s.sessionManager != nil {
+		s.sessionManager.Seal()
+	}
+	// Shutdown joins ordinary HTTP handlers. Hijacked WebSockets are owned by
+	// the session manager and are drained by world shutdown below.
+	if s.httpServer != nil {
+		if err := s.httpServer.Shutdown(context.Background()); err != nil {
+			s.stopErr = errors.Join(s.stopErr, fmt.Errorf("HTTP shutdown: %w", err))
+		}
+		<-s.httpDone
+	}
+	if s.discordChat != nil {
+		s.discordChat.Close()
+	}
+	if s.wtServer != nil {
+		_ = s.wtServer.Close()
+	}
+	if s.udpConn != nil {
+		_ = s.udpConn.Close()
+	}
+	if s.worldHandler != nil {
+		s.stopErr = errors.Join(s.stopErr, s.worldHandler.ShutdownContext(context.Background()))
+	}
+	if s.database != nil {
+		s.stopErr = errors.Join(s.stopErr, s.database.Close())
+	}
 }
 
 // serveHTTP owns the listener and serve completion for the server lifecycle.

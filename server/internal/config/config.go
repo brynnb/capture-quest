@@ -59,7 +59,7 @@ type Config struct {
 	DBSSLMode   string `json:"db_sslmode"`
 	Local       bool   `json:"local"`
 	LocalQuests bool   `json:"localQuests"`
-	GracePeriod int    `json:"gracePeriod"`
+	GracePeriod int    `json:"gracePeriod"` // Shutdown wait in seconds; nonpositive uses 30 seconds.
 	OpenAIKey   string `json:"openai_key"`
 	HTTPPort    int    `json:"http_port"`
 	AdminKey    string `json:"admin_key"`

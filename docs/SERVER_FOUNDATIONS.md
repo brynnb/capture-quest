@@ -3,7 +3,8 @@
 Status: active. Started 2026-09-25 from `02c51ba`.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-context-aware lifecycle persistence (2026-10-02), following effect/script
+bounded shutdown waits and failure results (2026-10-02), following lifecycle
+persistence checkpoint `1e26eb7` and effect/script
 cancellation checkpoint `ac06a58` and running-command
 cancellation checkpoint `ff46ada`, position persistence checkpoint `d70813e`,
 durable Safari checkpoint `19203f2`, Repel checkpoint `adaa047` and FLY
@@ -36,7 +37,7 @@ evidence, including remaining-work notes that subsequent commits may resolve.
 | Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors, Game Corner prizes and bounded coin/slot/hidden-coin operations, atomic Escape Rope/FLY positions, durable Repel counters, Safari entry/turn/capture state and exhaustion destinations, atomic recovery warps, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery of committed results across reconnects. |
 | Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, and movement ticks coordinated with the owner. | Finish timer/callback/shared-state and legacy position-writer audits; prove remaining concurrent/reconnect behavior across real transports. |
 | Domains and wire contracts | Injected content-query service; typed character/wallet/bind, Pokédex/card, content detail, map-script and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
-| Lifecycle and verification | Owned HTTP/listeners, readiness, listener failure propagation, joined periodic workers, sealed session admissions, fail-closed staged preload, startup cancellation, and atomic scripted-event publication. | Bounded shutdown with active players and running work; complete transport/rendered integration and failure/retry/cancellation coverage. |
+| Lifecycle and verification | Owned HTTP/listeners, readiness, listener failure propagation, joined periodic workers, sealed session admissions, fail-closed staged preload, startup cancellation, atomic scripted-event publication, and deadline-aware shutdown waits with returned failure results. | Finish cancellation of remaining running work and forced transport retirement, durable final-save recovery, and complete transport/rendered integration coverage. |
 
 ## Remaining work, in recommended order
 
@@ -72,8 +73,8 @@ evidence, including remaining-work notes that subsequent commits may resolve.
 4. **Finish ownership and bounded shutdown.** Audit remaining NPC callbacks,
    timers and shared world writers; define disconnect behavior when the final
    position flush fails and propagate cancellation into running work.
-   Replace unbounded shutdown waits with a documented drain deadline and
-   failure policy that preserves persistence ordering. Acceptance: shutdown
+   Complete underlying cancellation and transport retirement beneath the
+   deadline-aware shutdown result API, preserving persistence ordering. Acceptance: shutdown
    during gameplay terminates predictably, persists accepted work as specified,
    and does not close the database while owned work still uses it.
 5. **Complete domain and contract migration.** Extract cohesive gameplay services
@@ -87,6 +88,40 @@ evidence, including remaining-work notes that subsequent commits may resolve.
    cancellation/timeouts, failure/retry and shutdown with active players.
    Acceptance: evidence covers the original five milestones, including visible
    behavior where relevant. Only then mark the full goal complete.
+
+## Shutdown wait and result checkpoint (2026-10-02)
+
+World and server shutdown now expose context-aware result APIs. Each starts one
+owned drain; repeated callers join the same completion and receive its final
+result. A caller deadline returns an explicit unfinished-drain error. HTTP
+handlers, periodic callbacks, commands and cleanup retain their ownership until
+they finish; storage closes only after HTTP and world work have joined. A timeout
+does not close storage beneath unfinished work. Final session persistence errors
+from shutdown cleanup propagate through world and server results instead of only
+being logged. Joined cleanup failures still use the documented best-effort
+retirement policy below; no recovery queue has been added.
+
+The process uses `gracePeriod` as a shutdown wait in seconds (nonpositive means
+30 seconds). The previously unused field was passed as a raw Go duration, which
+would have interpreted `5` as five nanoseconds. Signal/listener shutdown now
+reports a nonzero process exit for deadline or persistence failure. In an embedded
+server the drain continues after the caller times out; exiting the standalone
+process terminates remaining work. This is an explicit failure outcome, not a
+successful persistence guarantee.
+
+Verification: race tests exercise active character commands, a disconnect
+already claimed by another callback, blocked HTTP handlers, later rejoin,
+exactly-once drain and storage ordering. Deferred PostgreSQL trigger failure
+proves final playtime errors reach repeated world callers; a server boundary test
+proves joined world errors propagate after storage closes. All Go packages
+compile. These tests do not prove bounded completion of the underlying work:
+legacy HTTP/database/manager operations and transport closure still need caller
+cancellation or explicit force-close policies. No rendered behavior changed.
+
+Next: cancel/retire those remaining operations within the drain budget and test
+real transport shutdown, while preserving storage ordering and defining durable
+recovery for failed final saves. The full roadmap remains active; nothing is
+pushed or deployed.
 
 ## Lifecycle persistence checkpoint (2026-10-02)
 
