@@ -264,16 +264,19 @@ func buildAndSendCharacterState(ses *session.Session) {
 }
 
 func sendCQInventorySnapshot(ses *session.Session, charID int32) {
-	items, err := cqitems.NewStore(db.GlobalWorldDB.DB).GetCharacterInventory(charID)
+	publishCQInventorySnapshot(ses, db.GlobalWorldDB.DB, charID)
+}
+
+func publishCQInventorySnapshot(ses *session.Session, database db.DBTX, charID int32) {
+	snapshot, err := cqitems.NewStore(database).GetCharacterSnapshot(ses.CommandContext(), charID)
 	if err != nil {
 		log.Printf("[CQItems] Failed to load inventory snapshot for char %d: %v", charID, err)
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Failed to load inventory"}, opcodes.CQInventoryResponse)
 		return
 	}
-	money, _ := cqitems.NewStore(db.GlobalWorldDB.DB).GetCharacterMoney(charID)
-	log.Printf("[CQItems] Sending inventory snapshot for char %d: %d items", charID, len(items))
-	ses.SendStreamJSON(map[string]interface{}{
-		"success": true,
-		"items":   items,
-		"money":   money,
-	}, opcodes.CQInventoryResponse)
+	sendCommittedCQInventory(ses, snapshot)
+}
+
+func sendCommittedCQInventory(ses *session.Session, snapshot cqitems.CQInventorySnapshot) {
+	ses.SendStreamJSON(CQInventoryResponse{Success: true, Items: snapshot.Items, Money: snapshot.Money}, opcodes.CQInventoryResponse)
 }

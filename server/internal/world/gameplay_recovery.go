@@ -135,26 +135,12 @@ func readGameplayState(ctx context.Context, ses *session.Session, wh *WorldHandl
 		if mapID != result.Position.MapID || x != result.Position.X || y != result.Position.Y {
 			return fmt.Errorf("saved recovery source differs from owned source")
 		}
-		// Every family is read through this transaction, after the same character
-		// row lock. The existing currency repository defines an absent wallet row
-		// as a valid zero balance (including new characters); actual read errors
-		// still fail the whole response, never publish a partial inventory view.
-		store := cqitems.NewStore(tx)
-		money, err := store.GetCharacterMoney(int32(charID))
-		if err != nil {
-			return fmt.Errorf("recovery wallet: %w", err)
-		}
-		if money < 0 || money > int64(^uint32(0)) {
-			return fmt.Errorf("invalid recovery wallet balance %d for character %d", money, charID)
-		}
-		result.Wallet = model.CharacterWallet{CharacterID: uint32(charID), Pokedollars: uint32(money)}
-		result.Inventory, err = store.GetCharacterInventory(int32(charID))
+		inventory, err := cqitems.NewStore(tx).GetCharacterSnapshot(ctx, int32(charID))
 		if err != nil {
 			return err
 		}
-		if result.Inventory == nil {
-			result.Inventory = []cqitems.CQInventoryItem{}
-		}
+		result.Wallet = model.CharacterWallet{CharacterID: uint32(charID), Pokedollars: uint32(inventory.Money)}
+		result.Inventory = inventory.Items
 		flags, err := eventFlagSnapshotIn(tx, charID)
 		if err != nil {
 			return err

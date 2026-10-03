@@ -48,6 +48,16 @@ func TestPurchaseUsesOfferAndPreservesOverflow(t *testing.T) {
 	if result.Money != 900 || result.Quantity != 10 {
 		t.Fatalf("purchase = %+v", result)
 	}
+	if result.Inventory.Money != result.Money || len(result.Inventory.Items) != 2 {
+		t.Fatalf("purchase omitted complete split-stack snapshot: %+v", result.Inventory)
+	}
+	var snapshotQuantity int
+	for _, item := range result.Inventory.Items {
+		snapshotQuantity += int(item.Instance.Quantity)
+	}
+	if snapshotQuantity != 105 {
+		t.Fatalf("snapshot quantity=%d", snapshotQuantity)
+	}
 	assertWalletAndItems(t, database, 1, 900, 105)
 	var stacks, maxQuantity, stock int
 	if err := database.QueryRow(`SELECT COUNT(*), MAX(quantity) FROM cq_item_instances`).Scan(&stacks, &maxQuantity); err != nil {
@@ -168,6 +178,9 @@ func TestSaleOwnershipDuplicateAndRollback(t *testing.T) {
 	if result.SellPrice != 150 || result.InstanceID != id {
 		t.Fatalf("sale=%+v", result)
 	}
+	if result.Inventory.Money != 1150 || result.Inventory.Items == nil || len(result.Inventory.Items) != 0 {
+		t.Fatalf("sale did not return authoritative empty bag: %+v", result.Inventory)
+	}
 	if _, err := service.Sell(context.Background(), 1, id); err == nil {
 		t.Fatal("sold same stack twice")
 	}
@@ -193,5 +206,41 @@ func TestPurchaseCancellationReleasesLocks(t *testing.T) {
 	assertWalletAndItems(t, database, 1, 1000, 0)
 	if _, err := service.Buy(context.Background(), 1, 38, 1, 1, 1); err != nil {
 		t.Fatalf("purchase after cancellation: %v", err)
+	}
+}
+
+func TestShopSnapshotFailureRollsBackMutation(t *testing.T) {
+	for _, action := range []string{"buy", "sell"} {
+		t.Run(action, func(t *testing.T) {
+			database, service := shopDatabase(t)
+			store := cqitems.NewStore(database)
+			id, err := store.AddItemToInventory(1, 1, 3)
+			if err != nil {
+				t.Fatal(err)
+			}
+			other, err := store.AddItemToInventory(1, 2, 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Grant/removal succeeds, then the final bag read encounters invalid
+			// persisted data in another stack. It must roll back the whole action.
+			testdb.Exec(t, database, `UPDATE cq_item_instances SET charges=256 WHERE id=$1`, other)
+			if action == "buy" {
+				result, err := service.Buy(context.Background(), 1, 38, 1, 1, 1)
+				if err == nil || result.InstanceID != 0 || result.Inventory.Items != nil {
+					t.Fatalf("partial purchase=%+v %v", result, err)
+				}
+			} else {
+				result, err := service.Sell(context.Background(), 1, id)
+				if err == nil || result.InstanceID != 0 || result.Inventory.Items != nil {
+					t.Fatalf("partial sale=%+v %v", result, err)
+				}
+			}
+			assertWalletAndItems(t, database, 1, 1000, 4)
+			var stock int
+			if err := database.QueryRow(`SELECT quantity FROM cq_merchant_items`).Scan(&stock); err != nil || stock != 100 {
+				t.Fatalf("failed snapshot changed stock=%d %v", stock, err)
+			}
+		})
 	}
 }

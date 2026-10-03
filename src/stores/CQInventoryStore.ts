@@ -52,17 +52,9 @@ interface CQInventoryState {
     money: number,
   ) => void;
   closeShop: () => void;
-  updateAfterBuy: (
-    itemId: number,
-    quantity: number,
-    instanceId: number,
-    money: number,
-    item: CQItemTemplate,
-  ) => void;
-  updateAfterSell: (instanceId: number, money: number) => void;
 }
 
-const useCQInventoryStore = create<CQInventoryState>((set, get) => ({
+const useCQInventoryStore = create<CQInventoryState>((set) => ({
   items: [],
   money: 0,
   shopOpen: false,
@@ -93,47 +85,6 @@ const useCQInventoryStore = create<CQInventoryState>((set, get) => ({
       shopMerchantId: null,
       shopItems: [],
     }),
-
-  updateAfterBuy: (itemId, quantity, instanceId, money, item) => {
-    const { items } = get();
-    // Check if we stacked onto an existing item
-    const existingIdx = items.findIndex(
-      (i) => i.instance.id === instanceId,
-    );
-    if (existingIdx >= 0) {
-      // Update quantity on existing stack
-      const updated = [...items];
-      updated[existingIdx] = {
-        ...updated[existingIdx],
-        instance: {
-          ...updated[existingIdx].instance,
-          quantity: updated[existingIdx].instance.quantity + quantity,
-        },
-      };
-      set({ items: updated, money });
-    } else {
-      // New item in inventory
-      const newItem: CQInventoryItem = {
-        instance: {
-          id: instanceId,
-          itemId,
-          charges: 0,
-          quantity,
-          ownerType: 0,
-        },
-        item,
-      };
-      set({ items: [...items, newItem], money });
-    }
-  },
-
-  updateAfterSell: (instanceId, money) => {
-    const { items } = get();
-    set({
-      items: items.filter((i) => i.instance.id !== instanceId),
-      money,
-    });
-  },
 }));
 
 export default useCQInventoryStore;

@@ -2,7 +2,7 @@
 
 Status: active. Started 2026-09-25 from `02c51ba`.
 
-Working branch: `codex/server-foundations`. Latest implementation checkpoint: coherent inventory/wallet/party/flag recovery, following ordinary step crash acceptance `e0ecf41`, issued cutscene and creation-only fixtures `8c95d40`, move-choice acceptance `e0da0c4` and terminal Safari acceptance `9bf3630`
+Working branch: `codex/server-foundations`. Latest implementation checkpoint: committed shop inventory snapshots, following coherent inventory/wallet/party/flag recovery `129463c` and ordinary step crash acceptance `e0ecf41`, issued cutscene and creation-only fixtures `8c95d40`, move-choice acceptance `e0da0c4` and terminal Safari acceptance `9bf3630`
 (2026-10-03), following rendered capture recovery `fbe744e`, simulator contract migration `9f59dd3`, expiry presentation recovery `54dbef6`, guarded Safari commands `d673aea`, durable capture placement and terminal login retention `58d0b85`, rendered move-choice recovery `7eb3a7e`, move-choice storage/coordinator acceptance `072ad71`, blackout scene ownership `04579dc`, terminal dismissal/post-battle plans `8ce43ff`, current-owned gameplay recovery `c38a74c`, correlated battle recovery `30fa1bb` and network battle command identity `8a5ba4a`, coherent gameplay recovery `c0d31f9` and durable cutscene issuance/completion `e9eb834`, pending trainer encounters `84f2d91` and ordinary-step receipts `80a544c`, following atomic movement-step effects `cfdeb9e`, retirement of the client coordinate setter `2df1db0`, correlated cutscene completion `6638a63`, issued cutscene source binding `18ebc34`, facing/server-path projection `be79129`, source collision/issued-step overlap `4177378` and issued ordinary steps `9fd9b84`, owned-only MapLoad
 `0585dde`, committed
 blackout/recovery `2f62595`, teleport notification projection `65a5581`, Instant
@@ -67,7 +67,8 @@ terminal battles for coherent scene recovery and atomic post-battle plan issuanc
 Safari actions and dismissal now share the correlated command coordinator, with
 durable identity/revision guards and terminal catch placement recovery. Terminal Safari Run, party/PC captures, pending move choices and one issued Oak's Lab cutscene now have actual crash/restart acceptance. Ordinary walking now has acceptance for abandoning uncompleted tokens and recovering committed receipts without repeating Safari counters. Local/test party and inventory setup both belong to creation; reentry preserves intentionally empty parties.
 The coherent recovery response now includes inventory, wallet, the full party and
-sorted flags. Integration with remaining legacy mutation timeouts and remaining
+sorted flags. Inventory reads share one bounded transactional reader, and shop
+buy/sell replies include their complete committed bag without client stack guessing. Integration with remaining legacy mutation timeouts and remaining
 process-recovery coverage still need work. Evidence and verification limits
 appear in the checkpoint sections below.
 
@@ -81,7 +82,7 @@ number of commits or passing tests. All five areas still have outstanding work.
 | Request/session boundary | Packet and connection limits, centralized session prerequisites, removal of insecure session takeover, actual transport closure, location/visibility checks for scripted clicks, dialogue choices and direct trainer battles, client destination catalog validation, server-resolved normal warp activation, explicit Instant Warp commands, committed teleport notification contracts and read-only map metadata, retired coordinate/map setters, and preserved command deadlines/disconnect cancellation in migrated operations. | Audit remaining interaction/mutation endpoints; propagate cancellation through legacy managers and remaining database/network work. |
 | Durable gameplay | Shared bounded transactions; atomic shops/inventory, stable Pokémon row identities, party/item changes, battle persistence, script rewards/completion, trade rollback/deduplication, atomic Vermilion puzzle transitions, item-ball collection, Silph doors, Game Corner prizes and bounded coin/slot/hidden-coin operations, atomic Escape Rope/FLY positions, durable Repel counters, Safari entry/turn/capture state and exhaustion destinations, atomic blackout/recovery destinations and map-load position/Safari/flag/visibility/boulder effects, atomic movement-step counters, encounters and recovery, durable latest ordinary-step receipts, durable sight-trainer plans/resumption and atomic readiness resolution, durable cutscene snapshots/completion receipts/cancellation, coherent battle/Safari/pending-plan recovery, mandatory ordinary/Safari battle command identity, correlated battle timeout recovery and retained Safari terminal/capture state, recoverable terminal dismissal and atomic post-battle plans, and commit-before-publication in migrated paths. | Finish remaining dynamic puzzles, pickups, prize/field-effect paths; durable duplicate protection and recovery for remaining mutations across reconnects; finish recovery integration for remaining inventory/wallet/flag mutations and presentation, finish process-death acceptance for remaining movement/script/trainer plans and choices; finish queued-plan/source/catalog ordering acceptance coverage and remaining command recovery. |
 | Character ownership | Bounded serialized session commands, exclusive character ownership and drained handoff, stale-cleanup guards, immutable cross-session presence, movement ticks coordinated with the owner, and immediate retirement of battle-scene command admission/subscriptions. | Finish timer/callback/shared-state and legacy position-writer audits; prove remaining concurrent/reconnect behavior across real transports. |
-| Domains and wire contracts | Injected content-query service; typed character/wallet/bind, Pokédex/card, content detail, map-script, map-info/list, sight-trainer notification/readiness, coherent gameplay recovery, ordinary/Safari battle command replies, shared battle events and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
+| Domains and wire contracts | Injected content-query service; typed inventory and shop mutation successes, character/wallet/bind, Pokédex/card, content detail, map-script, map-info/list, sight-trainer notification/readiness, coherent gameplay recovery, ordinary/Safari battle command replies, shared battle events and learnset contracts generated from explicit JSON names. | Migrate remaining gameplay/query families and global dependencies; retire `StructToMap` and the casing postprocessor after every consumer moves. |
 | Lifecycle and verification | Owned HTTP/listeners, readiness, listener failure propagation, joined periodic workers, sealed session admissions, fail-closed staged preload, startup cancellation, atomic scripted-event publication, and deadline-aware shutdown waits with returned failure results. | Audit cancellation of remaining legacy work, define durable final-save recovery, and complete transport/rendered integration coverage. Owned HTTP and player transport retirement and isolated active-player shutdown checks have landed. |
 
 ### Next work and completion criteria
@@ -104,6 +105,95 @@ legacy behavior and verification limits; a narrow passing checkpoint does not
 close the broad goal. Production validation belongs to a separately authorized
 deployment. Current work is committed locally; nothing has been pushed or
 deployed by this goal.
+
+## Committed shop inventory snapshots and endpoint audit (2026-10-03)
+
+The endpoint audit found that `HandleCQInventoryRequest` and
+`sendCQInventorySnapshot` read inventory and money separately and discarded the
+wallet error (`money, _`). A query failure could therefore publish a plausible
+zero balance with a real bag. `CQInventoryStore.updateAfterBuy` also incremented
+only the first affected instance or invented one new stack, although
+`AddItemToInventory` can split a grant across multiple stacks. A separate
+inventory notification was required to correct that intermediate view.
+
+`cqitems.Store.GetCharacterSnapshot` is now the shared reader for standalone
+inventory, coherent gameplay recovery and shop mutations. It owns or joins a
+bounded transaction and takes the character lock before reading bag and wallet.
+Missing wallet rows retain the canonical zero-balance policy; query errors and
+out-of-range balances fail the entire read. Empty bags are explicit arrays.
+The standalone request uses the injected world database. Legacy callers of
+`sendCQInventorySnapshot` still use the existing global database and remain in
+the dependency migration audit.
+
+Buy and sell now capture the whole bag/balance inside the mutation transaction.
+A failed final snapshot or commit returns no result and rolls back payment,
+stock and inventory changes. Tagged successes drive generated TypeScript
+contracts. Each reply contains `inventory: {items, money}`; the compatibility
+inventory publication uses that same committed value without another query.
+The browser replaces the full bag and both money views, so duplicate delivery
+cannot increment a stack. The incremental shop store methods are retired.
+Malformed success payloads do not synthesize an empty bag or zero money.
+This changes the shop reply contract and requires the frontend and backend to
+move together; no mixed-version deployment is claimed.
+
+Final isolated PostgreSQL race suites passed for `world` (41.415 seconds),
+`cqitems` (1.555 seconds) and `economy` (1.773 seconds), including purchase/sale
+rollback when the final bag read encounters invalid persisted charges. An initial
+broad run caught the shared reader using the mutation lock's no-op `UPDATE`;
+that violated recovery's existing no-write trigger assertions. The reader now
+uses `SELECT ... FOR UPDATE`, and direct snapshot plus existing recovery tests
+prove that read-only publication does not fire character update triggers.
+
+Verification: five focused frontend files passed 47 tests, including the real
+network bridge's split-stack application, duplicate delivery, empty bag and
+malformed top-level array/balance cases. Type generation, typecheck, runtime asset
+validation and the production build passed. The rendered shop test passed in
+5.9 seconds at `/var/tmp/capturequest-rendered.oSFzSP`: the source `POKE_BALL`
+item is ID 4 with price 200; buying ten changed a 95 stack into 99 and 6 and
+money from 10,000 to 8,000. The independent inventory notification was dropped;
+the committed reply restored the bag, duplicate delivery did not increment it,
+and authenticated reentry preserved it. The same browser case passed again on
+the final SELECT-lock implementation (6.1 seconds) at
+`/var/tmp/capturequest-rendered.61fkiE`; its private runtime and PostgreSQL were
+stopped. Shop opening uses the real transport;
+purchase and money display use the rendered UI. The fixture golden was generated
+and checked with the canonical simulator against that private PostgreSQL database.
+
+The initial combined browser run at `/var/tmp/capturequest-rendered.i5FHpi`
+failed: the first shop fixture lost its funding because each scenario jump resets
+wallet state, fixed by one funded shop fixture. The existing Bicycle test proved
+three toggles, then failed because the bag list (`z-index: 2500`, `top: 570px`)
+intercepts the Done button (`z-index: 1000`) at the default 720-pixel viewport.
+Those layout sources are unchanged; indoor/reentry Bicycle acceptance did not
+complete and is not claimed here. Both private browser runtimes and PostgreSQL
+instances were stopped.
+
+A simulator attempt without an explicit database target used the configured local
+`127.0.0.1:5432/capturequest` database, synced 375 scripts (63 changed), and failed
+while resetting its named fixture because `character_repels` was absent. That
+attempt is not verification. `scriptsim.InitDB` still inherits application
+configuration and syncs before validating the fixture schema; it needs an explicit
+test-target guard. Subsequent golden generation/check used a command-scoped
+`DATABASE_URL` for the private database only. Do not run the bare simulator
+command as an isolated check.
+
+### Remaining endpoint work
+
+| Boundary | Current evidence | Still required |
+| --- | --- | --- |
+| Inventory request (92/93) | Bounded locked read, explicit typed success, whole-read errors, empty arrays. | Correlation, character/session retirement and revision fencing for delayed standalone replies. |
+| Merchant open (94/95) | Existing merchant/map lookup; unchanged by this checkpoint. | Injected cancellable reads, propagation of item/wallet lookup failures, owned map and clerk eligibility audit, correlated presentation. |
+| Merchant buy (96/97) | Atomic offer/map/stock/payment/grant and complete committed bag publication. | Durable command identity, duplicate request protection, correlated acknowledgement, timeout recovery and retirement. `PokeMartShop` still releases `buying` after 300 ms rather than awaiting acknowledgement. |
+| Merchant sell (98/99) | Atomic ownership/removal/whole-stack credit and complete committed bag publication. | The same durable identity/correlation/recovery audit and merchant eligibility policy. |
+| Field item use (100/101) | Party item transaction and existing field-item dispatch; item consumption still projects `newQty`. | Full action-specific audit, typed outcomes, durable duplicate protection and scene-owned timeout recovery. Rods delegate to fishing; Bicycle, Repel and Escape Rope have distinct existing paths that must be audited together. |
+
+Duplicate **delivery** is covered here; a repeated purchase **request** can still
+buy twice. Snapshots do not impose a revision fence on older standalone packets
+arriving after a newer operation. These gaps remain explicit parts of the full
+five-area goal. Recommended next step: migrate shop mutations to durable command
+identity and correlated, cancellable acknowledgement with current-state recovery,
+then extend that boundary to party/field item use. Local checkpoint only; no push
+or deployment.
 
 ## Coherent owned inventory, wallet, party and flags (2026-10-03)
 

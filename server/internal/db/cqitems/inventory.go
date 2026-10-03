@@ -7,6 +7,42 @@ import (
 	"capturequest/internal/db"
 )
 
+// GetCharacterSnapshot joins an existing transaction or owns a bounded one.
+// The character lock serializes both reads with gameplay writers. Query errors
+// must never turn a wallet failure into a plausible zero-balance success.
+func (s *Store) GetCharacterSnapshot(ctx context.Context, charID int32) (CQInventorySnapshot, error) {
+	var result CQInventorySnapshot
+	err := db.Transaction(ctx, s.database, func(tx db.DBTX) error {
+		// Snapshot reads must not fire UPDATE triggers or perform even a no-op
+		// character write. PostgreSQL takes the same ownership lock with SELECT.
+		var lockedID int32
+		if err := tx.QueryRow(`SELECT id FROM character_data WHERE id=$1 FOR UPDATE`, charID).Scan(&lockedID); err != nil {
+			return fmt.Errorf("lock inventory snapshot character %d: %w", charID, err)
+		}
+		store := NewStore(tx)
+		var err error
+		result.Money, err = store.GetCharacterMoney(charID)
+		if err != nil {
+			return fmt.Errorf("inventory wallet: %w", err)
+		}
+		if result.Money < 0 || result.Money > int64(^uint32(0)) {
+			return fmt.Errorf("invalid inventory wallet balance %d for character %d", result.Money, charID)
+		}
+		result.Items, err = store.GetCharacterInventory(charID)
+		if err != nil {
+			return err
+		}
+		if result.Items == nil {
+			result.Items = []CQInventoryItem{}
+		}
+		return nil
+	})
+	if err != nil {
+		return CQInventorySnapshot{}, err
+	}
+	return result, nil
+}
+
 // AddItemToInventory grants the entire quantity, splitting overflow into new
 // stacks. The returned ID identifies the first affected stack; callers should
 // send a fresh inventory snapshot because a grant can affect several stacks.

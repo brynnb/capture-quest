@@ -1,12 +1,58 @@
 package cqitems
 
 import (
+	"context"
 	"database/sql"
 	"sync"
 	"testing"
+	"time"
 
 	"capturequest/internal/testdb"
 )
+
+func TestInventorySnapshotZeroWalletAndReadFailures(t *testing.T) {
+	database, store := inventoryDatabase(t)
+	testdb.Exec(t, database, `CREATE FUNCTION reject_snapshot_update() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'snapshot wrote character'; END $$;
+ CREATE TRIGGER reject_snapshot_update BEFORE UPDATE ON character_data FOR EACH ROW EXECUTE FUNCTION reject_snapshot_update();`)
+	snapshot, err := store.GetCharacterSnapshot(context.Background(), 1)
+	if err != nil || snapshot.Items == nil || len(snapshot.Items) != 0 || snapshot.Money != 0 {
+		t.Fatalf("empty owned snapshot=%+v %v", snapshot, err)
+	}
+	testdb.Exec(t, database, `DROP TABLE character_wallet`)
+	snapshot, err = store.GetCharacterSnapshot(context.Background(), 1)
+	if err == nil || snapshot.Items != nil {
+		t.Fatalf("query failure became success: %+v %v", snapshot, err)
+	}
+}
+
+func TestInventorySnapshotCannotReadUncommittedBagAndWallet(t *testing.T) {
+	database, store := inventoryDatabase(t)
+	testdb.Exec(t, database, `INSERT INTO character_wallet VALUES(1,100)`)
+	tx, err := database.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`UPDATE character_data SET id=id WHERE id=1; UPDATE character_wallet SET pokedollars=50 WHERE character_id=1`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewStore(tx).AddItemToInventory(1, 1, 2); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	snapshot, err := store.GetCharacterSnapshot(ctx, 1)
+	if err == nil || snapshot.Items != nil {
+		t.Fatalf("read crossed uncommitted ownership: %+v %v", snapshot, err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err = store.GetCharacterSnapshot(context.Background(), 1)
+	if err != nil || snapshot.Money != 50 || len(snapshot.Items) != 1 || snapshot.Items[0].Instance.Quantity != 2 {
+		t.Fatalf("committed bag/balance=%+v %v", snapshot, err)
+	}
+}
 
 func inventoryDatabase(t *testing.T) (*sql.DB, *Store) {
 	t.Helper()

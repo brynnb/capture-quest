@@ -13,30 +13,35 @@ import (
 	"capturequest/internal/session"
 )
 
-// HandleCQInventoryRequest sends the player's full CQ inventory
+// These tagged contracts replace map-shaped bag and shop mutation successes.
+type CQInventoryResponse struct {
+	Success bool                      `json:"success" tstype:"true"`
+	Items   []cqitems.CQInventoryItem `json:"items" tstype:"import(\"./cqitems\").CQInventoryItem[]"`
+	Money   int64                     `json:"money"`
+}
+type CQMerchantBuyResponse struct {
+	Success    bool                        `json:"success" tstype:"true"`
+	ItemID     int32                       `json:"itemId"`
+	Quantity   uint16                      `json:"quantity"`
+	InstanceID int32                       `json:"instanceId"`
+	Money      int64                       `json:"money"`
+	Inventory  cqitems.CQInventorySnapshot `json:"inventory" tstype:"import(\"./cqitems\").CQInventorySnapshot"`
+}
+type CQMerchantSellResponse struct {
+	Success    bool                        `json:"success" tstype:"true"`
+	InstanceID int32                       `json:"instanceId"`
+	ItemName   string                      `json:"itemName"`
+	SellPrice  int64                       `json:"sellPrice"`
+	Money      int64                       `json:"money"`
+	Inventory  cqitems.CQInventorySnapshot `json:"inventory" tstype:"import(\"./cqitems\").CQInventorySnapshot"`
+}
+
+// HandleCQInventoryRequest sends one coherent owned bag and balance.
 func HandleCQInventoryRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
 	if !ses.HasValidClient() {
 		return false
 	}
-	charID := int32(ses.Client.CharData().ID)
-	items, err := cqitems.NewStore(db.GlobalWorldDB.DB).GetCharacterInventory(charID)
-	if err != nil {
-		log.Printf("[CQItems] Failed to get inventory for char %d: %v", charID, err)
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "Failed to load inventory",
-		}, opcodes.CQInventoryResponse)
-		return false
-	}
-
-	money, _ := cqitems.NewStore(db.GlobalWorldDB.DB).GetCharacterMoney(charID)
-
-	log.Printf("[CQItems] Sending inventory response for char %d: %d items", charID, len(items))
-	ses.SendStreamJSON(map[string]interface{}{
-		"success": true,
-		"items":   items,
-		"money":   money,
-	}, opcodes.CQInventoryResponse)
+	publishCQInventorySnapshot(ses, wh.database, int32(ses.Client.CharData().ID))
 	return false
 }
 
@@ -132,13 +137,12 @@ func HandleCQMerchantBuyRequest(ses *session.Session, payload []byte, wh *WorldH
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not buy this item. Check the shop, quantity, and balance."}, opcodes.CQMerchantBuyResponse)
 		return false
 	}
-	ses.SendStreamJSON(map[string]interface{}{
-		"success": true, "itemId": purchase.ItemID, "quantity": purchase.Quantity,
-		"instanceId": purchase.InstanceID, "money": purchase.Money, "item": purchase.Item,
-	}, opcodes.CQMerchantBuyResponse)
-	// A grant can fill several stacks. Publish the committed inventory rather
-	// than asking the client to guess how the purchased quantity was split.
-	sendCQInventorySnapshot(ses, charID)
+	ses.SendStreamJSON(CQMerchantBuyResponse{Success: true, ItemID: purchase.ItemID,
+		Quantity: purchase.Quantity, InstanceID: purchase.InstanceID, Money: purchase.Money,
+		Inventory: purchase.Inventory}, opcodes.CQMerchantBuyResponse)
+	// Compatibility publication is the same committed view; never reread after
+	// commit or ask the browser to reconstruct a grant that may span stacks.
+	sendCommittedCQInventory(ses, purchase.Inventory)
 	return false
 }
 
@@ -217,10 +221,9 @@ func HandleCQMerchantSellRequest(ses *session.Session, payload []byte, wh *World
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not sell this item."}, opcodes.CQMerchantSellResponse)
 		return false
 	}
-	ses.SendStreamJSON(map[string]interface{}{
-		"success": true, "instanceId": sale.InstanceID, "itemName": sale.ItemName,
-		"sellPrice": sale.SellPrice, "money": sale.Money,
-	}, opcodes.CQMerchantSellResponse)
-	sendCQInventorySnapshot(ses, charID)
+	ses.SendStreamJSON(CQMerchantSellResponse{Success: true, InstanceID: sale.InstanceID,
+		ItemName: sale.ItemName, SellPrice: sale.SellPrice, Money: sale.Money,
+		Inventory: sale.Inventory}, opcodes.CQMerchantSellResponse)
+	sendCommittedCQInventory(ses, sale.Inventory)
 	return false
 }

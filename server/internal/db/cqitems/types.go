@@ -52,6 +52,12 @@ type CQInventoryItem struct {
 	Item     CQItem         `json:"item"`
 }
 
+// CQInventorySnapshot is the complete owned bag and balance from one transaction.
+type CQInventorySnapshot struct {
+	Items []CQInventoryItem `json:"items"`
+	Money int64             `json:"money"`
+}
+
 // CQMerchant represents a shop
 type CQMerchant struct {
 	ID      int32  `json:"id"`

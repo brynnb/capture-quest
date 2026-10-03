@@ -59,6 +59,13 @@ export interface CQInventoryItem {
   item: CQItem;
 }
 /**
+ * CQInventorySnapshot is the complete owned bag and balance from one transaction.
+ */
+export interface CQInventorySnapshot {
+  items: CQInventoryItem[];
+  money: number /* int64 */;
+}
+/**
  * CQMerchant represents a shop
  */
 export interface CQMerchant {

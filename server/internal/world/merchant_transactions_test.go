@@ -6,6 +6,7 @@ import (
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
+	"capturequest/internal/db/cqitems"
 	model "capturequest/internal/db/models"
 	"capturequest/internal/economy"
 	"capturequest/internal/session"
@@ -45,14 +46,38 @@ func TestMerchantDispatchPublishesOnlyCommittedResults(t *testing.T) {
 	if len(messenger.streams) != 2 || messenger.streams[1].opcode != opcodes.CQInventoryResponse {
 		t.Fatalf("success messages=%+v", messenger.streams)
 	}
-	var bought struct {
-		Success bool
-		Money   int
-	}
+	var bought CQMerchantBuyResponse
 	if err := json.Unmarshal(messenger.streams[0].payload, &bought); err != nil {
 		t.Fatal(err)
 	}
 	if !bought.Success || bought.Money != 90 {
 		t.Fatalf("purchase response=%+v", bought)
+	}
+	if bought.Inventory.Money != 90 || len(bought.Inventory.Items) != 1 || bought.Inventory.Items[0].Instance.Quantity != 1 {
+		t.Fatalf("mutation reply omitted committed bag: %+v", bought)
+	}
+	var snapshot CQInventoryResponse
+	if err := json.Unmarshal(messenger.streams[1].payload, &snapshot); err != nil || snapshot.Money != bought.Inventory.Money || len(snapshot.Items) != 1 || snapshot.Items[0].Instance.ID != bought.Inventory.Items[0].Instance.ID {
+		t.Fatalf("compatibility stream differs from commit: %+v %v", snapshot, err)
+	}
+}
+
+func TestInventoryDispatchFailsWholeReadOnWalletError(t *testing.T) {
+	wh, ses, messages := setupIssuedStep(t)
+	if _, err := cqitems.NewStore(wh.database).AddItemToInventory(42, 1, 2); err != nil {
+		t.Fatal(err)
+	}
+	testdb.Exec(t, wh.database, `DROP TABLE character_wallet`)
+	battleDispatch(t, wh, ses, opcodes.CQInventoryRequest, `{}`)
+	if len(messages.streams) != 1 || messages.streams[0].opcode != opcodes.CQInventoryResponse {
+		t.Fatalf("inventory publication=%+v", messages.streams)
+	}
+	var reply struct {
+		Success bool
+		Error   string
+		Items   []cqitems.CQInventoryItem
+	}
+	if err := json.Unmarshal(messages.streams[0].payload, &reply); err != nil || reply.Success || reply.Error == "" || reply.Items != nil {
+		t.Fatalf("wallet query failure cleared/published bag: %+v %v", reply, err)
 	}
 }

@@ -494,6 +494,30 @@ export interface GameplayStateResponse {
 //////////
 // source: handler-cqitems.go
 
+/**
+ * These tagged contracts replace map-shaped bag and shop mutation successes.
+ */
+export interface CQInventoryResponse {
+  success: true;
+  items: import("./cqitems").CQInventoryItem[];
+  money: number /* int64 */;
+}
+export interface CQMerchantBuyResponse {
+  success: true;
+  itemId: number /* int32 */;
+  quantity: number /* uint16 */;
+  instanceId: number /* int32 */;
+  money: number /* int64 */;
+  inventory: import("./cqitems").CQInventorySnapshot;
+}
+export interface CQMerchantSellResponse {
+  success: true;
+  instanceId: number /* int32 */;
+  itemName: string;
+  sellPrice: number /* int64 */;
+  money: number /* int64 */;
+  inventory: import("./cqitems").CQInventorySnapshot;
+}
 
 //////////
 // source: handler-cutscene.go

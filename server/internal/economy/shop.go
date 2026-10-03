@@ -17,11 +17,12 @@ type Service struct{ database *sql.DB }
 func New(database *sql.DB) *Service { return &Service{database: database} }
 
 type Purchase struct {
-	ItemID     int32           `json:"itemId"`
-	Quantity   uint16          `json:"quantity"`
-	InstanceID int32           `json:"instanceId"`
-	Money      int64           `json:"money"`
-	Item       *cqitems.CQItem `json:"item"`
+	Inventory  cqitems.CQInventorySnapshot `json:"inventory"`
+	ItemID     int32                       `json:"itemId"`
+	Quantity   uint16                      `json:"quantity"`
+	InstanceID int32                       `json:"instanceId"`
+	Money      int64                       `json:"money"`
+	Item       *cqitems.CQItem             `json:"item"`
 }
 
 // Buy checks the authoritative offer and stock. mapID comes from the server's
@@ -80,7 +81,8 @@ func (s *Service) Buy(ctx context.Context, charID, mapID, merchantID, itemID int
 			}
 		}
 		result.ItemID, result.Quantity = itemID, quantity
-		return nil
+		result.Inventory, err = items.GetCharacterSnapshot(ctx, charID)
+		return err
 	})
 	if err != nil {
 		return Purchase{}, err
@@ -89,10 +91,11 @@ func (s *Service) Buy(ctx context.Context, charID, mapID, merchantID, itemID int
 }
 
 type Sale struct {
-	InstanceID int32  `json:"instanceId"`
-	ItemName   string `json:"itemName"`
-	SellPrice  int64  `json:"sellPrice"`
-	Money      int64  `json:"money"`
+	Inventory  cqitems.CQInventorySnapshot `json:"inventory"`
+	InstanceID int32                       `json:"instanceId"`
+	ItemName   string                      `json:"itemName"`
+	SellPrice  int64                       `json:"sellPrice"`
+	Money      int64                       `json:"money"`
 }
 
 // Sell sells the selected whole stack. The previous handler removed the entire
@@ -118,6 +121,10 @@ func (s *Service) Sell(ctx context.Context, charID, instanceID int32) (Sale, err
 		err = tx.QueryRow(`INSERT INTO character_wallet(character_id, pokedollars) VALUES ($1, $2)
 			ON CONFLICT(character_id) DO UPDATE SET pokedollars = character_wallet.pokedollars + $2
 			RETURNING pokedollars`, charID, result.SellPrice).Scan(&result.Money)
+		if err != nil {
+			return err
+		}
+		result.Inventory, err = items.GetCharacterSnapshot(ctx, charID)
 		return err
 	})
 	if err != nil {

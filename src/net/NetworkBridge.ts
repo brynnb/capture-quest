@@ -1,4 +1,5 @@
-import type { BattleEndOutcome } from "@/net/generated/world_api";
+import type { CQInventorySnapshot } from "@/net/generated/cqitems";
+import type { CQInventoryResponse, CQMerchantBuyResponse, CQMerchantSellResponse, BattleEndOutcome } from "@/net/generated/world_api";
 import { presentBattleEnd } from "@/phaser-game/services/BattleCommandService";
 import { WorldSocket } from "./index";
 import * as OpCodes from "./generated/opcodes";
@@ -420,11 +421,22 @@ export class NetworkBridge {
       console.warn("[NetworkBridge] Inventory request failed:", data.error);
       return;
     }
-    const items = (data.items || []) as Parameters<
-      ReturnType<typeof useCQInventoryStore.getState>["setInventory"]
-    >[0];
-    const money = (data.money || 0) as number;
-    useCQInventoryStore.getState().setInventory(items, money);
+    this.applyInventorySnapshot(data as unknown as CQInventoryResponse);
+  }
+
+  private applyInventorySnapshot(snapshot: CQInventorySnapshot): boolean {
+    // A malformed success must not clear a real bag or replace money with zero.
+    if (!snapshot || !Array.isArray(snapshot.items)
+      || !Number.isSafeInteger(snapshot.money) || snapshot.money < 0 || snapshot.money > 0xffffffff) {
+      console.warn("[NetworkBridge] Invalid inventory snapshot");
+      return false;
+    }
+    useCQInventoryStore.getState().setInventory(snapshot.items, snapshot.money);
+    const characterId = usePlayerCharacterStore.getState().characterProfile?.id;
+    if (characterId !== undefined) {
+      usePlayerCharacterStore.getState().handleCharacterWalletData({ characterId, pokedollars: snapshot.money });
+    }
+    return true;
   }
 
   private handleCQMerchantOpenResponse(data: Record<string, unknown>) {
@@ -446,17 +458,9 @@ export class NetworkBridge {
       console.warn("[NetworkBridge] Buy failed:", data.error);
       return;
     }
+    const reply = data as unknown as CQMerchantBuyResponse;
+    if (!this.applyInventorySnapshot(reply.inventory)) return;
     this.playSourceSFX("SFX_PURCHASE", 0.8);
-    useCQInventoryStore.getState().updateAfterBuy(
-      data.itemId as number,
-      data.quantity as number,
-      data.instanceId as number,
-      data.money as number,
-      data.item as Parameters<
-        ReturnType<typeof useCQInventoryStore.getState>["updateAfterBuy"]
-      >[4],
-    );
-    console.log("[NetworkBridge] Bought item, money:", data.money);
   }
 
   private handleCQMerchantSellResponse(data: Record<string, unknown>) {
@@ -464,12 +468,9 @@ export class NetworkBridge {
       console.warn("[NetworkBridge] Sell failed:", data.error);
       return;
     }
+    const reply = data as unknown as CQMerchantSellResponse;
+    if (!this.applyInventorySnapshot(reply.inventory)) return;
     this.playSourceSFX("SFX_PURCHASE", 0.8);
-    useCQInventoryStore.getState().updateAfterSell(
-      data.instanceId as number,
-      data.money as number,
-    );
-    console.log("[NetworkBridge] Sold", data.itemName, "for", data.sellPrice);
   }
 
   private handleCQItemUseResponse(data: Record<string, unknown>) {
@@ -514,7 +515,7 @@ export class NetworkBridge {
     const newQty = data.newQty as number;
     const store = useCQInventoryStore.getState();
     if (newQty !== undefined && newQty <= 0) {
-      store.updateAfterSell(instanceId, store.money); // reuse removal logic
+      store.setInventory(store.items.filter((item) => item.instance.id !== instanceId), store.money);
     } else if (newQty !== undefined) {
       // Update quantity on the existing item
       const items = store.items.map((i) =>

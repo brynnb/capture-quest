@@ -1162,3 +1162,20 @@ shop presentation; an overtaking notification triggers one fresh read instead of
 rewinding current state. Other command families still need their own correlation,
 deadline, duplicate and timeout-recovery migration. Standalone inventory transport
 and legacy flag-cache writers remain in the full audit.
+
+### Shop and standalone inventory publication
+
+CQ bag and balance reads share `Store.GetCharacterSnapshot`, a bounded transaction
+that joins an existing transaction and locks the character before both reads.
+Gameplay recovery, standalone bag requests and shop mutations use the same
+currency policy and error boundary. Buy/sell capture their complete bag before
+commit; final read failures roll back the mutation. Tagged replies include
+`inventory: {items, money}` and the compatibility bag notification reuses that
+exact value. The client replaces the full bag and synchronizes both money views;
+it does not reconstruct split-stack grants from the first returned instance ID.
+
+This provides correct committed publication and idempotent delivery, not durable
+request deduplication. Shop request identity, acknowledgement/timeout recovery,
+merchant eligibility, standalone packet revision fences and field-item outcome
+migration remain in SERVER_FOUNDATIONS.md. Updated frontend and backend shop
+contracts must be activated together.
