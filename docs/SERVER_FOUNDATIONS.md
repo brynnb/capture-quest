@@ -11,6 +11,13 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. No push or production deployment is authorized by this goal.
 
+The bounded [Nakama feasibility assessment](NAKAMA_FEASIBILITY.md) is complete
+(2026-10-03). It recommends consolidating purchase and party-item command handling
+using the existing infrastructure before migrating another endpoint family.
+Nakama's managed transactions would require a player-data migration; an RPC-only
+integration would retain our SQL and recovery work. This is an evaluated
+recommendation, not an implemented replacement architecture.
+
 Keep Go, PostgreSQL, one deployable server, and the authoritative extractor,
 runtime asset, and scripted-action contracts. Improve runtime safety through
 small verified changes. No production deployment or push is part of this goal.
@@ -98,12 +105,16 @@ stale-revision rejection, stable item identities and verified late-reply deliver
 The shared item-instance reader now rejects inventory links whose instance has a
 different `owner_id`, non-character `owner_type`, or zero quantity. Item dispatch
 uses a cancellable bounded read and distinguishes missing ownership from database
-failure. The next checkpoint, when the goal resumes, is durable party/field command
-identity, typed correlated outcomes and timeout recovery. The sale browser check exercises the existing coordinator
+failure. The next implementation milestone is the two-consumer consolidation in
+[NAKAMA_FEASIBILITY.md](NAKAMA_FEASIBILITY.md#finite-next-milestone-and-stop-condition):
+one common command lifecycle for purchase and party-item use, with a measured
+reduction in repeated orchestration. Do not build another independent item
+coordinator. Field effects and other families remain in the broad backlog until
+that boundary is reviewed. The sale browser check exercises the existing coordinator
 and rendered balance; the product still has no Sell button.
 
-Continue with recovery integration for the remaining mutation commands and the
-remaining script/trainer plans and their queue/source/catalog ordering. Ordinary
+After that milestone, remaining work includes recovery integration for other
+mutation commands and script/trainer plans and their queue/source/catalog ordering. Ordinary
 walking, pending move choices and one issued cutscene now have two-crash
 acceptance as documented below; that evidence does not cover every movement or
 issued-plan family.

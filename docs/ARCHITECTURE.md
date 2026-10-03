@@ -9,6 +9,12 @@ CaptureQuest uses its own Postgres runtime database. Do not depend on private
 local database dumps; use the bundled extractor submodule and repo-owned import
 paths.
 
+The [Nakama feasibility assessment](NAKAMA_FEASIBILITY.md) records the evaluated
+purchase and party-item mappings and the next bounded consolidation milestone.
+It recommends reusing the current persistence/ownership primitives with a shared
+command lifecycle. The framework migration and proposed consolidation are not
+implemented by that documentation checkpoint.
+
 ---
 
 ## Development Workflow
