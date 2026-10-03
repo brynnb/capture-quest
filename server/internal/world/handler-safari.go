@@ -1,7 +1,6 @@
 package world
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"log"
@@ -13,28 +12,6 @@ import (
 	"capturequest/internal/pokebattle"
 	"capturequest/internal/session"
 )
-
-func endSafariSessionIfLeavingMap(charID int64, sourceMapID, destMapID int, wh *WorldHandler) (bool, error) {
-	if wh == nil || wh.Safari == nil || !IsInSafariZone(sourceMapID) || IsInSafariZone(destMapID) || destMapID == SafariZoneGateMapID {
-		return false, nil
-	}
-	var ended bool
-	err := db.Transaction(context.Background(), wh.Safari.database, func(tx db.DBTX) error {
-		if err := db.LockCharacter(tx, charID); err != nil {
-			return err
-		}
-		var err error
-		ended, err = endSafariForDestinationIn(tx, charID, destMapID)
-		return err
-	})
-	if err != nil {
-		return false, err
-	}
-	if ended {
-		refreshSafariFlags(wh, charID)
-	}
-	return ended, nil
-}
 
 // HandleSafariZoneEnter handles the player entering the Safari Zone.
 // If payload contains "statusOnly":true, it only returns existing session data
@@ -55,7 +32,7 @@ func HandleSafariZoneEnter(ses *session.Session, payload []byte, wh *WorldHandle
 	charID := int64(char.ID)
 
 	// Check if already in safari
-	existing, err := wh.Safari.GetSession(charID)
+	existing, err := wh.Safari.GetSession(ses.CommandContext(), charID)
 	if err != nil {
 		safariStorageError(ses, charID, err, opcodes.SafariZoneEnterResponse)
 		return false
@@ -102,7 +79,7 @@ func HandleSafariZoneEnter(ses *session.Session, payload []byte, wh *WorldHandle
 		sendSafariEntryFailure(ses, SafariEntryResult{Message: "Please check in at the counter first."})
 		return false
 	}
-	result, err := TryStartSafariZoneVisit(charID, wh.Safari)
+	result, err := TryStartSafariZoneVisit(ses.CommandContext(), charID, wh.Safari)
 	if err != nil {
 		safariStorageError(ses, charID, err, opcodes.SafariZoneEnterResponse)
 		return false
@@ -155,7 +132,7 @@ func HandleSafariBattleAction(ses *session.Session, payload []byte, wh *WorldHan
 		return false
 	}
 
-	result, err := wh.Safari.act(charID, req.Action)
+	result, err := wh.Safari.act(ses.CommandContext(), charID, req.Action)
 	if err != nil {
 		var rejection *itemuse.Rejection
 		if errors.As(err, &rejection) {
@@ -223,7 +200,7 @@ func CheckSafariStep(charID int64, x, y, mapID int, ses *session.Session, wh *Wo
 
 	var safariSes *SafariSession
 	var expired bool
-	err := wh.Safari.mutate(charID, func(tx db.DBTX, s *SafariSession) error {
+	err := wh.Safari.mutate(ses.CommandContext(), charID, func(tx db.DBTX, s *SafariSession) error {
 		if s == nil || !s.Active || s.Battle != nil {
 			return nil
 		}

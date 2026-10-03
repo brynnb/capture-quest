@@ -133,7 +133,7 @@ func HandleTrainerBattleStartRequest(ses *session.Session, payload []byte, wh *W
 
 	playerX, playerY := trainerInteractionPlayerPosition(ses, wh, charID)
 	postWinMapName, postWinActions := pokemonTower7FPostWinActions(trainer, playerX, playerY)
-	battle, events, err := startScriptedTrainerBattle(wh.database, charID, ScriptedTrainerBattleSpec{
+	battle, events, err := StartScriptedTrainerBattle(ses.CommandContext(), wh.database, charID, ScriptedTrainerBattleSpec{
 		TrainerClass:    trainer.TrainerClass,
 		PartyIndex:      trainer.PartyIndex,
 		TrainerObjectID: trainer.ObjectID,

@@ -359,7 +359,7 @@ func (m *WildEncounterManager) startWildBattle(charID int64, area *encounterArea
 	// Create battle
 	battle := pokebattle.NewWildBattle(playerParty, wildPokemon)
 	configureBattleObedience(battle, charID, m.wh.EventFlags)
-	battle, err = startBattle(m.wh.database, charID, battle)
+	battle, err = startBattle(ses.CommandContext(), m.wh.database, charID, battle)
 	if err != nil {
 		log.Printf("[PokeBattle] Start failed for character %d: %v", charID, err)
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not start battle. Please reconnect."}, opcodes.PokeBattleStartResponse)
@@ -406,7 +406,7 @@ func (m *WildEncounterManager) startWildBattleWithPokemon(charID int64, pokemonI
 
 	battle := pokebattle.NewWildBattle(playerParty, wildPokemon)
 	configureBattleObedience(battle, charID, m.wh.EventFlags)
-	battle, err = startBattle(m.wh.database, charID, battle)
+	battle, err = startBattle(ses.CommandContext(), m.wh.database, charID, battle)
 	if err != nil {
 		log.Printf("[PokeBattle] Start failed for character %d: %v", charID, err)
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not start battle. Please reconnect."}, opcodes.PokeBattleStartResponse)
@@ -436,21 +436,21 @@ func RepelStepsForItem(itemID int) (int, bool) {
 	}
 }
 
-func (m *WildEncounterManager) RepelStatus(charID int64) (RepelStatus, error) {
-	return loadRepelStatus(context.Background(), m.database, charID)
+func (m *WildEncounterManager) RepelStatus(ctx context.Context, charID int64) (RepelStatus, error) {
+	return loadRepelStatus(ctx, m.database, charID)
 }
 
-func (m *WildEncounterManager) SetRepelSteps(charID int64, stepsLeft int) error {
-	return setRepelSteps(context.Background(), m.database, charID, stepsLeft)
+func (m *WildEncounterManager) SetRepelSteps(ctx context.Context, charID int64, stepsLeft int) error {
+	return setRepelSteps(ctx, m.database, charID, stepsLeft)
 }
 
-func (m *WildEncounterManager) AdvanceRepelStep(charID int64) (bool, error) {
-	_, wore, err := advanceRepelStep(context.Background(), m.database, charID)
+func (m *WildEncounterManager) AdvanceRepelStep(ctx context.Context, charID int64) (bool, error) {
+	_, wore, err := advanceRepelStep(ctx, m.database, charID)
 	return wore, err
 }
 
 func (m *WildEncounterManager) tickRepel(charID int64, ses *session.Session) (RepelStatus, error) {
-	status, wore, err := advanceRepelStep(context.Background(), m.database, charID)
+	status, wore, err := advanceRepelStep(ses.CommandContext(), m.database, charID)
 	if err != nil {
 		return RepelStatus{}, err
 	}

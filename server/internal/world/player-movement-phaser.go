@@ -677,7 +677,7 @@ func (m *PlayerMovementManager) applyMovementStepEffects(update playerMovementSt
 				wt.DestMapID, wt.DestX, wt.DestY)
 
 			ses, ok := m.wh.sessionManager.GetSession(state.SessionID)
-			if ok && m.isSafariEntryWarpBlocked(int64(state.CharacterID), state.MapID, wt.DestMapID, ses) {
+			if ok && m.isSafariEntryWarpBlocked(ses.CommandContext(), int64(state.CharacterID), state.MapID, wt.DestMapID, ses) {
 				m.StopMovement(state.CharacterID)
 				return
 			}
@@ -695,12 +695,12 @@ func (m *PlayerMovementManager) applyMovementStepEffects(update playerMovementSt
 	}
 }
 
-func (m *PlayerMovementManager) isSafariEntryWarpBlocked(charID int64, sourceMapID, destMapID int, ses *session.Session) bool {
+func (m *PlayerMovementManager) isSafariEntryWarpBlocked(ctx context.Context, charID int64, sourceMapID, destMapID int, ses *session.Session) bool {
 	if sourceMapID != SafariZoneGateMapID || !IsInSafariZone(destMapID) {
 		return false
 	}
 	if m.wh != nil && m.wh.Safari != nil {
-		safari, err := m.wh.Safari.GetSession(charID)
+		safari, err := m.wh.Safari.GetSession(ctx, charID)
 		if err != nil {
 			log.Printf("[Safari] Entry guard for %d: %v", charID, err)
 			if ses != nil {

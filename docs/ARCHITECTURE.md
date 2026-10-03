@@ -714,3 +714,13 @@ separate context after that barrier, so closing a connection does not cancel its
 final flush. Legacy managers and helpers still require cancellation migration;
 unbounded lifecycle waits have not yet been replaced. Cancellation after a
 successful commit does not undo that durable result.
+
+Safari and Repel manager operations, script action/completion transactions and
+battle start/resume now accept explicit execution contexts. Runtime callers
+carry the session owner's context into these shared boundaries; fixture and
+simulator callers choose their own context. Scripted battle creation also
+requires the captured database rather than a global-database wrapper. The old
+standalone Safari map-exit cleanup is retired: destination persistence owns that
+cleanup in its existing transaction. Legacy reads, post-commit flag refresh and
+other lifecycle operations still require migration before end-to-end shutdown
+bounds can be established.

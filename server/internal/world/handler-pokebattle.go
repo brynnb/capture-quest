@@ -308,7 +308,7 @@ func HandlePokeBattleStart(ses *session.Session, payload []byte, wh *WorldHandle
 	// Create battle
 	battle := pokebattle.NewWildBattle(playerParty, wildPokemon)
 	configureBattleObedience(battle, charID, wh.EventFlags)
-	battle, err = startBattle(wh.database, charID, battle)
+	battle, err = startBattle(ses.CommandContext(), wh.database, charID, battle)
 	if err != nil {
 		log.Printf("[PokeBattle] Start failed for character %d: %v", charID, err)
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not start battle. Please reconnect."}, opcodes.PokeBattleStartResponse)

@@ -1,18 +1,20 @@
 package scriptsim
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 
 	"capturequest/internal/world"
 )
 
-func seedFixtureActiveBattle(charID int64, fixture FixtureActiveBattle) error {
+func seedFixtureActiveBattle(database *sql.DB, charID int64, fixture FixtureActiveBattle) error {
 	switch fixture.Type {
 	case "wild":
 		if fixture.PokemonID <= 0 || fixture.Level <= 0 {
 			return fmt.Errorf("activeBattle wild fixture requires pokemonId and level")
 		}
-		_, _, err := world.StartScriptedWildBattle(charID, world.ScriptedWildBattleSpec{
+		_, _, err := world.StartScriptedWildBattle(context.Background(), database, charID, world.ScriptedWildBattleSpec{
 			PokemonID:       fixture.PokemonID,
 			Level:           fixture.Level,
 			WinFlag:         fixture.WinFlag,
@@ -29,7 +31,7 @@ func seedFixtureActiveBattle(charID int64, fixture FixtureActiveBattle) error {
 		if fixture.TrainerClass == "" || fixture.PartyIndex <= 0 {
 			return fmt.Errorf("activeBattle trainer fixture requires trainerClass and partyIndex")
 		}
-		_, _, err := world.StartScriptedTrainerBattle(charID, world.ScriptedTrainerBattleSpec{
+		_, _, err := world.StartScriptedTrainerBattle(context.Background(), database, charID, world.ScriptedTrainerBattleSpec{
 			TrainerClass:     fixture.TrainerClass,
 			PartyIndex:       fixture.PartyIndex,
 			TrainerName:      fixture.TrainerName,

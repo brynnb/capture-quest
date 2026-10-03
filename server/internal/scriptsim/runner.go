@@ -291,7 +291,7 @@ func Run(scenario *Scenario) (*Result, error) {
 		ObjectStates:  objectStates,
 	}
 	if scenarioWorld != nil && scenarioWorld.Safari != nil {
-		saved, err := scenarioWorld.Safari.GetSession(applied.CharacterID)
+		saved, err := scenarioWorld.Safari.GetSession(context.Background(), applied.CharacterID)
 		if err != nil {
 			return nil, err
 		}
@@ -1154,7 +1154,7 @@ func gameCornerPrizeSummary(prize world.GameCornerPrize) GameCornerPrizeSummary 
 
 func runSafariEnter(scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
 	safari := world.NewSafariZoneManager(db.GlobalWorldDB.DB)
-	entry, err := world.TryStartSafariZoneVisit(applied.CharacterID, safari)
+	entry, err := world.TryStartSafariZoneVisit(context.Background(), applied.CharacterID, safari)
 	if err != nil {
 		return nil, err
 	}
@@ -1172,7 +1172,7 @@ func runSafariEnter(scenario *Scenario, applied *AppliedFixture, initial *Snapsh
 	}
 
 	summary := &SafariSummary{}
-	session, err := safari.GetSession(applied.CharacterID)
+	session, err := safari.GetSession(context.Background(), applied.CharacterID)
 	if err != nil {
 		return nil, err
 	}
@@ -1218,12 +1218,12 @@ func runSafariStep(scenario *Scenario, applied *AppliedFixture, initial *Snapsho
 	ballsLeft := 0
 	expired := false
 	for i := 0; i < repeat; i++ {
-		stepsLeft, ballsLeft, expired, err = safari.DecrementStep(applied.CharacterID)
+		stepsLeft, ballsLeft, expired, err = safari.DecrementStep(context.Background(), applied.CharacterID)
 		if err != nil {
 			return nil, err
 		}
 	}
-	saved, err := safari.GetSession(applied.CharacterID)
+	saved, err := safari.GetSession(context.Background(), applied.CharacterID)
 	if err != nil {
 		return nil, err
 	}
@@ -1265,7 +1265,7 @@ func runSafariBattleAction(scenario *Scenario, applied *AppliedFixture, initial 
 	if err != nil {
 		return nil, err
 	}
-	saved, err := wh.Safari.GetSession(applied.CharacterID)
+	saved, err := wh.Safari.GetSession(context.Background(), applied.CharacterID)
 	if err != nil {
 		return nil, err
 	}
@@ -1290,7 +1290,7 @@ func runSafariBattleAction(scenario *Scenario, applied *AppliedFixture, initial 
 	if err != nil {
 		return nil, err
 	}
-	saved, err = wh.Safari.GetSession(applied.CharacterID)
+	saved, err = wh.Safari.GetSession(context.Background(), applied.CharacterID)
 	if err != nil {
 		return nil, err
 	}
@@ -1382,7 +1382,7 @@ func newSafariScenarioWorld(scenario *Scenario, charID int64) (*world.WorldHandl
 			}
 			session.Battle = pokebattle.NewSafariBattle(wild, fixture.BallsLeft, fixture.StepsLeft)
 		}
-		if err := safari.SetSession(charID, session); err != nil {
+		if err := safari.SetSession(context.Background(), charID, session); err != nil {
 			return nil, err
 		}
 	}
@@ -1444,7 +1444,7 @@ func runRepelUse(scenario *Scenario, applied *AppliedFixture, initial *Snapshot)
 	summary.Success = success
 	summary.Message = responseText
 
-	status, err := wh.WildEncounter.RepelStatus(applied.CharacterID)
+	status, err := wh.WildEncounter.RepelStatus(context.Background(), applied.CharacterID)
 	if err != nil {
 		return nil, err
 	}
@@ -1517,7 +1517,7 @@ func runRepelStep(scenario *Scenario, applied *AppliedFixture, initial *Snapshot
 		repeat = 1
 	}
 	for i := 0; i < repeat; i++ {
-		wore, err := wh.WildEncounter.AdvanceRepelStep(applied.CharacterID)
+		wore, err := wh.WildEncounter.AdvanceRepelStep(context.Background(), applied.CharacterID)
 		if err != nil {
 			return nil, err
 		}
@@ -1526,7 +1526,7 @@ func runRepelStep(scenario *Scenario, applied *AppliedFixture, initial *Snapshot
 			summary.Message = "REPEL's effect wore off!"
 		}
 	}
-	status, err := wh.WildEncounter.RepelStatus(applied.CharacterID)
+	status, err := wh.WildEncounter.RepelStatus(context.Background(), applied.CharacterID)
 	if err != nil {
 		return nil, err
 	}
@@ -1642,11 +1642,11 @@ func newRepelScenarioWorld(scenario *Scenario, charID int64) (*world.WorldHandle
 	wh := &world.WorldHandler{}
 	wh.WildEncounter = world.NewWildEncounterManager(wh, db.GlobalWorldDB.DB)
 	if scenario.Fixture.Repel != nil {
-		if err := wh.WildEncounter.SetRepelSteps(charID, scenario.Fixture.Repel.StepsLeft); err != nil {
+		if err := wh.WildEncounter.SetRepelSteps(context.Background(), charID, scenario.Fixture.Repel.StepsLeft); err != nil {
 			return nil, nil, err
 		}
 	}
-	status, err := wh.WildEncounter.RepelStatus(charID)
+	status, err := wh.WildEncounter.RepelStatus(context.Background(), charID)
 	if err != nil {
 		return nil, nil, err
 	}

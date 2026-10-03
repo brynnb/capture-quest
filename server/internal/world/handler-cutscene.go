@@ -78,7 +78,7 @@ func HandleCutsceneEndRequest(ses *session.Session, payload []byte, wh *WorldHan
 		return false
 	}
 
-	_, completed, err := ApplyCutsceneScript(CutsceneActionContext{Session: ses, WorldHandler: wh, EventFlags: wh.EventFlags}, &cs, charID)
+	_, completed, err := ApplyCutsceneScript(ses.CommandContext(), CutsceneActionContext{Session: ses, WorldHandler: wh, EventFlags: wh.EventFlags}, &cs, charID)
 	if err != nil {
 		log.Printf("[Cutscene] Failed to apply script %s for character %d: %v", cs.ScriptLabel, charID, err)
 		SendSystemMessage(ses, "That event could not be completed. Please try again.")

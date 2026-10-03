@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -326,7 +327,7 @@ func HandleDebugSceneJumpRequest(ses *session.Session, payload []byte, wh *World
 		"scriptLabel":  scene.ScriptLabel,
 	}, opcodes.DebugSceneJumpResponse)
 
-	if err := sendDebugActiveBattle(ses, charID, scenario.Scenario.Fixture.ActiveBattle); err != nil {
+	if err := sendDebugActiveBattle(ses, wh, charID, scenario.Scenario.Fixture.ActiveBattle); err != nil {
 		log.Printf("[DebugScene] Failed to start active battle for %s: %v", scenario.Scenario.Name, err)
 		ses.SendStreamJSON(map[string]interface{}{
 			"success": false,
@@ -1214,14 +1215,14 @@ func seedDebugSafariSession(charID int64, fixture *debugSafariFixture, wh *World
 		}
 		session.Battle = pokebattle.NewSafariBattle(wild, fixture.BallsLeft, fixture.StepsLeft)
 	}
-	return wh.Safari.SetSession(charID, session)
+	return wh.Safari.SetSession(context.Background(), charID, session)
 }
 
 func sendDebugSafariState(ses *session.Session, charID int64, wh *WorldHandler, mapID int) {
 	if wh == nil || wh.Safari == nil {
 		return
 	}
-	session, err := wh.Safari.GetSession(charID)
+	session, err := wh.Safari.GetSession(ses.CommandContext(), charID)
 	if err != nil {
 		safariStorageError(ses, charID, err, opcodes.SafariZoneEnterResponse)
 		return
@@ -1265,7 +1266,7 @@ func sendDebugSafariState(ses *session.Session, charID int64, wh *WorldHandler, 
 	}, opcodes.SafariBattleStartNotify)
 }
 
-func sendDebugActiveBattle(ses *session.Session, charID int64, fixture *debugFixtureActiveBattle) error {
+func sendDebugActiveBattle(ses *session.Session, wh *WorldHandler, charID int64, fixture *debugFixtureActiveBattle) error {
 	if fixture == nil {
 		return nil
 	}
@@ -1281,7 +1282,7 @@ func sendDebugActiveBattle(ses *session.Session, charID int64, fixture *debugFix
 		if fixture.PokemonID <= 0 || fixture.Level <= 0 {
 			return fmt.Errorf("activeBattle wild fixture requires pokemonId and level")
 		}
-		battle, events, err = StartScriptedWildBattle(charID, ScriptedWildBattleSpec{
+		battle, events, err = StartScriptedWildBattle(ses.CommandContext(), wh.database, charID, ScriptedWildBattleSpec{
 			PokemonID:       fixture.PokemonID,
 			Level:           fixture.Level,
 			WinFlag:         fixture.WinFlag,
@@ -1294,7 +1295,7 @@ func sendDebugActiveBattle(ses *session.Session, charID int64, fixture *debugFix
 		if fixture.TrainerClass == "" || fixture.PartyIndex <= 0 {
 			return fmt.Errorf("activeBattle trainer fixture requires trainerClass and partyIndex")
 		}
-		battle, events, err = StartScriptedTrainerBattle(charID, ScriptedTrainerBattleSpec{
+		battle, events, err = StartScriptedTrainerBattle(ses.CommandContext(), wh.database, charID, ScriptedTrainerBattleSpec{
 			TrainerClass:     fixture.TrainerClass,
 			PartyIndex:       fixture.PartyIndex,
 			TrainerName:      fixture.TrainerName,
@@ -1375,7 +1376,7 @@ func resetDebugCharacterToFreshStart(charID int64, wh *WorldHandler) (int, int, 
 func resetDebugCharacterState(charID int64, wh *WorldHandler) error {
 	ClearBattleForCharacter(charID)
 	if wh != nil && wh.Safari != nil {
-		if err := wh.Safari.EndSession(charID); err != nil {
+		if err := wh.Safari.EndSession(context.Background(), charID); err != nil {
 			return err
 		}
 	}

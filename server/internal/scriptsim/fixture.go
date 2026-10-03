@@ -136,7 +136,7 @@ func ApplyFixture(f Fixture) (*AppliedFixture, error) {
 		}
 	}
 	if f.ActiveBattle != nil {
-		if err := seedFixtureActiveBattle(charID, *f.ActiveBattle); err != nil {
+		if err := seedFixtureActiveBattle(db.GlobalWorldDB.DB, charID, *f.ActiveBattle); err != nil {
 			return nil, err
 		}
 	}

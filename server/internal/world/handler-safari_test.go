@@ -1,84 +1,35 @@
 package world
 
-import "testing"
+import (
+	"context"
+	"fmt"
+	"testing"
+)
 
-func TestEndSafariSessionIfLeavingMap(t *testing.T) {
-	const charID int64 = 42
-	_, wh, _, _ := battleTestWorld(t)
-	wh.Safari = NewSafariZoneManager(wh.database)
-	if err := wh.Safari.SetSession(charID, SafariSession{
-		Active:    true,
-		BallsLeft: 30,
-		StepsLeft: 500,
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	if ended, err := endSafariSessionIfLeavingMap(charID, 220, 1, wh); err != nil || !ended {
-		t.Fatal("expected safari session to end when leaving Safari Zone")
-	}
-	if session, err := wh.Safari.GetSession(charID); err != nil || session != nil {
-		t.Fatalf("expected no safari session after leaving, got %+v", session)
-	}
-}
-
-func TestEndSafariSessionIfLeavingMapPreservesSafariGateExit(t *testing.T) {
-	const charID int64 = 42
-	_, wh, _, _ := battleTestWorld(t)
-	wh.Safari = NewSafariZoneManager(wh.database)
-	if err := wh.Safari.SetSession(charID, SafariSession{
-		Active:    true,
-		BallsLeft: 30,
-		StepsLeft: 500,
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	if ended, err := endSafariSessionIfLeavingMap(charID, 220, SafariZoneGateMapID, wh); err != nil || ended {
-		t.Fatal("did not expect safari session to end when entering Safari Zone gate")
-	}
-	if session, err := wh.Safari.GetSession(charID); err != nil || session == nil || !session.Active {
-		t.Fatalf("expected active safari session to remain for gate exit script, got %+v", session)
-	}
-}
-
-func TestEndSafariSessionIfLeavingMapPreservesSafariToSafari(t *testing.T) {
-	const charID int64 = 42
-	_, wh, _, _ := battleTestWorld(t)
-	wh.Safari = NewSafariZoneManager(wh.database)
-	if err := wh.Safari.SetSession(charID, SafariSession{
-		Active:    true,
-		BallsLeft: 30,
-		StepsLeft: 500,
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	if ended, err := endSafariSessionIfLeavingMap(charID, 220, 217, wh); err != nil || ended {
-		t.Fatal("did not expect safari session to end between Safari Zone maps")
-	}
-	if session, err := wh.Safari.GetSession(charID); err != nil || session == nil || !session.Active {
-		t.Fatalf("expected active safari session to remain, got %+v", session)
-	}
-}
-
-func TestEndSafariSessionIfLeavingMapIgnoresNonSafariSource(t *testing.T) {
-	const charID int64 = 42
-	_, wh, _, _ := battleTestWorld(t)
-	wh.Safari = NewSafariZoneManager(wh.database)
-	if err := wh.Safari.SetSession(charID, SafariSession{
-		Active:    true,
-		BallsLeft: 30,
-		StepsLeft: 500,
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	if ended, err := endSafariSessionIfLeavingMap(charID, 156, 220, wh); err != nil || ended {
-		t.Fatal("did not expect safari session to end before entering Safari Zone")
-	}
-	if session, err := wh.Safari.GetSession(charID); err != nil || session == nil || !session.Active {
-		t.Fatalf("expected active safari session to remain, got %+v", session)
+func TestSafariDestinationLifecycleUsesPositionTransaction(t *testing.T) {
+	for _, destination := range []int{60, SafariZoneGateMapID, SafariZoneCenterMapID, 217} {
+		t.Run(fmt.Sprint(destination), func(t *testing.T) {
+			database, wh, _, _ := battleTestWorld(t)
+			wh.Safari = NewSafariZoneManager(database)
+			if err := wh.Safari.SetSession(context.Background(), 42, SafariSession{Active: true, BallsLeft: 30, StepsLeft: 500}); err != nil {
+				t.Fatal(err)
+			}
+			if err := commitPlayerPosition(context.Background(), database, 42, destination, 3, 4); err != nil {
+				t.Fatal(err)
+			}
+			visit, err := wh.Safari.GetSession(context.Background(), 42)
+			if err != nil {
+				t.Fatal(err)
+			}
+			shouldRetain := destination == SafariZoneGateMapID || IsInSafariZone(destination)
+			if (visit != nil) != shouldRetain {
+				t.Fatalf("destination=%d visit=%+v", destination, visit)
+			}
+			var savedMap int
+			if err := database.QueryRow(`SELECT map_id FROM character_data WHERE id=42`).Scan(&savedMap); err != nil || savedMap != destination {
+				t.Fatalf("destination=%d saved=%d error=%v", destination, savedMap, err)
+			}
+		})
 	}
 }
 
@@ -88,7 +39,7 @@ func TestSafariGateEntryWarpRequiresActiveSession(t *testing.T) {
 	wh.Safari = NewSafariZoneManager(wh.database)
 	movement := &PlayerMovementManager{wh: wh}
 
-	if !movement.isSafariEntryWarpBlocked(charID, SafariZoneGateMapID, SafariZoneCenterMapID, nil) {
+	if !movement.isSafariEntryWarpBlocked(context.Background(), charID, SafariZoneGateMapID, SafariZoneCenterMapID, nil) {
 		t.Fatal("expected Safari Zone entry warp to be blocked without an active session")
 	}
 }
@@ -97,7 +48,7 @@ func TestSafariGateEntryWarpAllowsActiveSession(t *testing.T) {
 	const charID int64 = 42
 	_, wh, _, _ := battleTestWorld(t)
 	wh.Safari = NewSafariZoneManager(wh.database)
-	if err := wh.Safari.SetSession(charID, SafariSession{
+	if err := wh.Safari.SetSession(context.Background(), charID, SafariSession{
 		Active:    true,
 		BallsLeft: 30,
 		StepsLeft: 500,
@@ -106,7 +57,7 @@ func TestSafariGateEntryWarpAllowsActiveSession(t *testing.T) {
 	}
 	movement := &PlayerMovementManager{wh: wh}
 
-	if movement.isSafariEntryWarpBlocked(charID, SafariZoneGateMapID, SafariZoneCenterMapID, nil) {
+	if movement.isSafariEntryWarpBlocked(context.Background(), charID, SafariZoneGateMapID, SafariZoneCenterMapID, nil) {
 		t.Fatal("did not expect Safari Zone entry warp to be blocked with an active session")
 	}
 }
@@ -117,7 +68,7 @@ func TestSafariGateEntryWarpIgnoresNonSafariDestination(t *testing.T) {
 	wh.Safari = NewSafariZoneManager(wh.database)
 	movement := &PlayerMovementManager{wh: wh}
 
-	if movement.isSafariEntryWarpBlocked(charID, SafariZoneGateMapID, 1, nil) {
+	if movement.isSafariEntryWarpBlocked(context.Background(), charID, SafariZoneGateMapID, 1, nil) {
 		t.Fatal("did not expect non-Safari destination to be blocked")
 	}
 }

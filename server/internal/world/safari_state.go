@@ -140,16 +140,16 @@ func (m *SafariZoneManager) Load(ctx context.Context) error {
 	}
 	return rows.Close()
 }
-func (m *SafariZoneManager) GetSession(charID int64) (*SafariSession, error) {
+func (m *SafariZoneManager) GetSession(ctx context.Context, charID int64) (*SafariSession, error) {
 	var s *SafariSession
-	err := db.Transaction(context.Background(), m.database, func(tx db.DBTX) error { var err error; s, err = safariSessionIn(tx, charID); return err })
+	err := db.Transaction(ctx, m.database, func(tx db.DBTX) error { var err error; s, err = safariSessionIn(tx, charID); return err })
 	if err != nil {
 		return nil, err
 	}
 	return s, nil
 }
-func (m *SafariZoneManager) mutate(charID int64, apply func(db.DBTX, *SafariSession) error) error {
-	return db.Transaction(context.Background(), m.database, func(tx db.DBTX) error {
+func (m *SafariZoneManager) mutate(ctx context.Context, charID int64, apply func(db.DBTX, *SafariSession) error) error {
+	return db.Transaction(ctx, m.database, func(tx db.DBTX) error {
 		if err := db.LockCharacter(tx, charID); err != nil {
 			return err
 		}
@@ -165,8 +165,8 @@ func (m *SafariZoneManager) mutate(charID int64, apply func(db.DBTX, *SafariSess
 }
 
 // SetSession is explicit fixture setup, never an unlocked runtime writeback.
-func (m *SafariZoneManager) SetSession(charID int64, s SafariSession) error {
-	return db.Transaction(context.Background(), m.database, func(tx db.DBTX) error {
+func (m *SafariZoneManager) SetSession(ctx context.Context, charID int64, s SafariSession) error {
+	return db.Transaction(ctx, m.database, func(tx db.DBTX) error {
 		if err := db.LockCharacter(tx, charID); err != nil {
 			return err
 		}
@@ -182,8 +182,8 @@ func endSafariSessionIn(tx db.DBTX, charID int64) error {
 	}
 	return writeEventFlag(tx, charID, EventSafariGameOver, false)
 }
-func (m *SafariZoneManager) EndSession(charID int64) error {
-	return db.Transaction(context.Background(), m.database, func(tx db.DBTX) error {
+func (m *SafariZoneManager) EndSession(ctx context.Context, charID int64) error {
+	return db.Transaction(ctx, m.database, func(tx db.DBTX) error {
 		if err := db.LockCharacter(tx, charID); err != nil {
 			return err
 		}
@@ -198,10 +198,10 @@ func advanceSafariStep(s *SafariSession) (expired bool) {
 	}
 	return false
 }
-func (m *SafariZoneManager) DecrementStep(charID int64) (int, int, bool, error) {
+func (m *SafariZoneManager) DecrementStep(ctx context.Context, charID int64) (int, int, bool, error) {
 	var steps, balls int
 	var expired bool
-	err := m.mutate(charID, func(tx db.DBTX, s *SafariSession) error {
+	err := m.mutate(ctx, charID, func(tx db.DBTX, s *SafariSession) error {
 		if s == nil || !s.Active || s.Battle != nil {
 			return nil
 		}
@@ -261,9 +261,9 @@ func startSafariVisitIn(tx db.DBTX, charID int64) (SafariEntryResult, error) {
 	result.StepsLeft = s.StepsLeft
 	return result, nil
 }
-func TryStartSafariZoneVisit(charID int64, m *SafariZoneManager) (SafariEntryResult, error) {
+func TryStartSafariZoneVisit(ctx context.Context, charID int64, m *SafariZoneManager) (SafariEntryResult, error) {
 	var result SafariEntryResult
-	err := db.Transaction(context.Background(), m.database, func(tx db.DBTX) error {
+	err := db.Transaction(ctx, m.database, func(tx db.DBTX) error {
 		if err := db.LockCharacter(tx, charID); err != nil {
 			return err
 		}
@@ -284,9 +284,9 @@ type safariActionResult struct {
 	PCBox    int
 }
 
-func (m *SafariZoneManager) act(charID int64, action string) (safariActionResult, error) {
+func (m *SafariZoneManager) act(ctx context.Context, charID int64, action string) (safariActionResult, error) {
 	var result safariActionResult
-	err := m.mutate(charID, func(tx db.DBTX, s *SafariSession) error {
+	err := m.mutate(ctx, charID, func(tx db.DBTX, s *SafariSession) error {
 		if s == nil || !s.Active || s.Battle == nil {
 			return &itemuse.Rejection{Message: "not in safari battle"}
 		}

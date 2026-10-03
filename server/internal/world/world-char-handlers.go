@@ -51,7 +51,7 @@ func HandleEnterWorld(ses *session.Session, payload []byte, wh *WorldHandler) bo
 	// Check for a saved battle from a previous session and restore it
 	if ses.HasValidClient() {
 		charID := int64(ses.Client.CharData().ID)
-		battle, err := restoreBattleOnLogin(wh.database, charID)
+		battle, err := restoreBattleOnLogin(ses.CommandContext(), wh.database, charID)
 		if err != nil {
 			log.Printf("[PokeBattle] Restore failed for character %d: %v", charID, err)
 			ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not restore your battle. Please reconnect."}, opcodes.PokeBattleStartResponse)

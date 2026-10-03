@@ -61,14 +61,10 @@ type BattlePokemonSummary struct {
 	Level     int
 }
 
-func StartScriptedTrainerBattle(charID int64, spec ScriptedTrainerBattleSpec) (*pokebattle.BattleState, []pokebattle.BattleEvent, error) {
-	return startScriptedTrainerBattle(db.GlobalWorldDB.DB, charID, spec)
-}
-
-func startScriptedTrainerBattle(database *sql.DB, charID int64, spec ScriptedTrainerBattleSpec) (*pokebattle.BattleState, []pokebattle.BattleEvent, error) {
+func StartScriptedTrainerBattle(ctx context.Context, database *sql.DB, charID int64, spec ScriptedTrainerBattleSpec) (*pokebattle.BattleState, []pokebattle.BattleEvent, error) {
 	var battle *pokebattle.BattleState
 	var events []pokebattle.BattleEvent
-	err := db.Transaction(context.Background(), database, func(tx db.DBTX) (err error) {
+	err := db.Transaction(ctx, database, func(tx db.DBTX) (err error) {
 		if err := db.LockCharacter(tx, charID); err != nil {
 			return err
 		}
@@ -155,10 +151,10 @@ func prepareScriptedTrainerBattle(myDB db.DBTX, charID int64, spec ScriptedTrain
 	return battle, events, nil
 }
 
-func StartScriptedWildBattle(charID int64, spec ScriptedWildBattleSpec) (*pokebattle.BattleState, []pokebattle.BattleEvent, error) {
+func StartScriptedWildBattle(ctx context.Context, database *sql.DB, charID int64, spec ScriptedWildBattleSpec) (*pokebattle.BattleState, []pokebattle.BattleEvent, error) {
 	var battle *pokebattle.BattleState
 	var events []pokebattle.BattleEvent
-	err := db.Transaction(context.Background(), db.GlobalWorldDB.DB, func(tx db.DBTX) (err error) {
+	err := db.Transaction(ctx, database, func(tx db.DBTX) (err error) {
 		if err := db.LockCharacter(tx, charID); err != nil {
 			return err
 		}

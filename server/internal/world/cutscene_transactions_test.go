@@ -20,7 +20,7 @@ func TestCutsceneCompletionRollsBackRewardsAndPublishesAfterCommit(t *testing.T)
 	script := &CutsceneScript{RequiresFlagAbst: &flag, SetsFlags: []string{flag}, Actions: json.RawMessage(`[{"type":"giveItem","itemId":1,"quantity":2},{"type":"healParty"},{"type":"giveCoins","coins":10}]`)}
 	ctx := CutsceneActionContext{Database: database, Session: ses, EventFlags: wh.EventFlags}
 	testdb.Exec(t, database, `ALTER TABLE character_event_flags ADD CONSTRAINT reject_done CHECK(flag_name<>'DONE')`)
-	if _, _, err := ApplyCutsceneScript(ctx, script, 42); err == nil {
+	if _, _, err := ApplyCutsceneScript(context.Background(), ctx, script, 42); err == nil {
 		t.Fatal("accepted completion failure")
 	}
 	if len(messages.streams) != 0 || wh.EventFlags.CheckFlag(42, flag) {
@@ -37,14 +37,14 @@ func TestCutsceneCompletionRollsBackRewardsAndPublishesAfterCommit(t *testing.T)
 		t.Fatalf("coins=%d %v", count, err)
 	}
 	testdb.Exec(t, database, `ALTER TABLE character_event_flags DROP CONSTRAINT reject_done`)
-	if _, completed, err := ApplyCutsceneScript(ctx, script, 42); err != nil || !completed {
+	if _, completed, err := ApplyCutsceneScript(context.Background(), ctx, script, 42); err != nil || !completed {
 		t.Fatalf("retry completed=%t err=%v", completed, err)
 	}
 	if !wh.EventFlags.CheckFlag(42, flag) || len(messages.streams) == 0 {
 		t.Fatal("committed state not published")
 	}
 	messages.streams = nil
-	if _, completed, err := ApplyCutsceneScript(ctx, script, 42); err != nil || completed {
+	if _, completed, err := ApplyCutsceneScript(context.Background(), ctx, script, 42); err != nil || completed {
 		t.Fatalf("repeat completed=%t err=%v", completed, err)
 	}
 	if len(messages.streams) != 0 {
@@ -66,7 +66,7 @@ func TestConcurrentCutsceneCompletionAwardsOnce(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, done, err := ApplyCutsceneScript(CutsceneActionContext{Database: database}, script, 42)
+			_, done, err := ApplyCutsceneScript(context.Background(), CutsceneActionContext{Database: database}, script, 42)
 			if err != nil {
 				t.Errorf("completion: %v", err)
 			}
@@ -156,7 +156,7 @@ func TestCutsceneBattleStartRollsBackWithLaterAction(t *testing.T) {
 	ctx := CutsceneActionContext{Database: database, Session: ses, EventFlags: wh.EventFlags}
 	raw := json.RawMessage(`[{"type":"healParty"},{"type":"startWildBattle","pokemonId":129,"level":5},{"type":"setFlag","flag":"STARTED"}]`)
 	testdb.Exec(t, database, `ALTER TABLE character_event_flags ADD CONSTRAINT reject_started CHECK(flag_name<>'STARTED')`)
-	if _, _, err := ApplyCutsceneActionList(ctx, "TEST", raw, 42); err == nil {
+	if _, _, err := ApplyCutsceneActionList(context.Background(), ctx, "TEST", raw, 42); err == nil {
 		t.Fatal("accepted failed script after battle start")
 	}
 	if len(messages.streams) != 0 || getBattle(42) != nil {
@@ -166,7 +166,7 @@ func TestCutsceneBattleStartRollsBackWithLaterAction(t *testing.T) {
 		t.Fatalf("saved uncommitted battle=%+v %v", saved, err)
 	}
 	testdb.Exec(t, database, `ALTER TABLE character_event_flags DROP CONSTRAINT reject_started`)
-	if _, _, err := ApplyCutsceneActionList(ctx, "TEST", raw, 42); err != nil {
+	if _, _, err := ApplyCutsceneActionList(context.Background(), ctx, "TEST", raw, 42); err != nil {
 		t.Fatal(err)
 	}
 	saved, err := pokebattle.ResumeBattle(context.Background(), database, 42)
@@ -250,7 +250,7 @@ func TestCutsceneCompletionRechecksDurableEligibility(t *testing.T) {
 			}
 			script := &CutsceneScript{Actions: json.RawMessage(`[{"type":"giveItem","itemId":1}]`)}
 			tt.configure(script)
-			if _, completed, err := ApplyCutsceneScript(CutsceneActionContext{Database: database}, script, 42); err != nil || completed {
+			if _, completed, err := ApplyCutsceneScript(context.Background(), CutsceneActionContext{Database: database}, script, 42); err != nil || completed {
 				t.Fatalf("ineligible completed=%t error=%v", completed, err)
 			}
 		})
@@ -269,17 +269,17 @@ func TestCutsceneEligibilityUsesOwnedInventoryAndExactThresholds(t *testing.T) {
 	itemID, money, coins, caught := 2, 100, 10, 1
 	flag := "READY"
 	script := &CutsceneScript{RequiresFlag: &flag, RequiresItemAbst: &itemID, RequiresMoney: &money, RequiresCoins: &coins, RequiresCaught: &caught, Actions: json.RawMessage(`[{"type":"giveItem","itemId":2}]`)}
-	if _, done, err := ApplyCutsceneScript(CutsceneActionContext{Database: database}, script, 42); err != nil || !done {
+	if _, done, err := ApplyCutsceneScript(context.Background(), CutsceneActionContext{Database: database}, script, 42); err != nil || !done {
 		t.Fatalf("eligible done=%t %v", done, err)
 	}
-	if _, done, err := ApplyCutsceneScript(CutsceneActionContext{Database: database}, script, 42); err != nil || done {
+	if _, done, err := ApplyCutsceneScript(context.Background(), CutsceneActionContext{Database: database}, script, 42); err != nil || done {
 		t.Fatalf("owned item did not reject duplicate: %t %v", done, err)
 	}
 	// A corrupt link to someone else's item must never satisfy ownership.
 	testdb.Exec(t, database, `UPDATE cq_item_instances SET owner_id=43 WHERE owner_id=42`)
 	script.RequiresItemAbst = nil
 	script.RequiresItemID = &itemID
-	if _, done, err := ApplyCutsceneScript(CutsceneActionContext{Database: database}, script, 42); err != nil || done {
+	if _, done, err := ApplyCutsceneScript(context.Background(), CutsceneActionContext{Database: database}, script, 42); err != nil || done {
 		t.Fatalf("foreign item authorized reward: %t %v", done, err)
 	}
 }

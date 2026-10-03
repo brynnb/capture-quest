@@ -28,7 +28,7 @@ func TestSafariConcurrentEntryChargesOnceAndRecovers(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			r, err := TryStartSafariZoneVisit(42, NewSafariZoneManager(wh.database))
+			r, err := TryStartSafariZoneVisit(context.Background(), 42, NewSafariZoneManager(wh.database))
 			results <- r
 			errs <- err
 		}()
@@ -53,12 +53,12 @@ func TestSafariConcurrentEntryChargesOnceAndRecovers(t *testing.T) {
 	if paid != 1 {
 		t.Fatalf("new visits=%d", paid)
 	}
-	s, err := m.GetSession(42)
+	s, err := m.GetSession(context.Background(), 42)
 	if err != nil || s == nil || s.StepsLeft != 500 {
 		t.Fatalf("recovery=%+v %v", s, err)
 	}
 	s.StepsLeft = 1
-	fresh, err := NewSafariZoneManager(wh.database).GetSession(42)
+	fresh, err := NewSafariZoneManager(wh.database).GetSession(context.Background(), 42)
 	if err != nil || fresh.StepsLeft != 500 {
 		t.Fatalf("snapshot mutated owner=%+v %v", fresh, err)
 	}
@@ -68,7 +68,7 @@ func TestSafariEntryCommitFailureRollsBackPaymentAndFlags(t *testing.T) {
 	testdb.Exec(t, wh.database, `UPDATE character_wallet SET pokedollars=1000 WHERE character_id=42;
  CREATE FUNCTION reject_safari_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'late safari failure'; END $$;
  CREATE CONSTRAINT TRIGGER reject_safari_commit AFTER INSERT ON character_safari_state DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_safari_commit();`)
-	result, err := TryStartSafariZoneVisit(42, m)
+	result, err := TryStartSafariZoneVisit(context.Background(), 42, m)
 	if err == nil || result.Success {
 		t.Fatalf("failure=%+v %v", result, err)
 	}
@@ -76,7 +76,7 @@ func TestSafariEntryCommitFailureRollsBackPaymentAndFlags(t *testing.T) {
 	if err := wh.database.QueryRow(`SELECT pokedollars FROM character_wallet WHERE character_id=42`).Scan(&money); err != nil {
 		t.Fatal(err)
 	}
-	s, err := m.GetSession(42)
+	s, err := m.GetSession(context.Background(), 42)
 	if err != nil || s != nil || money != 1000 {
 		t.Fatalf("partial entry=%+v money=%d err=%v", s, money, err)
 	}
@@ -85,7 +85,7 @@ func TestSafariEntryCommitFailureRollsBackPaymentAndFlags(t *testing.T) {
 		t.Fatalf("partial flag=%t %v", on, err)
 	}
 	testdb.Exec(t, wh.database, `DROP TRIGGER reject_safari_commit ON character_safari_state`)
-	result, err = TryStartSafariZoneVisit(42, m)
+	result, err = TryStartSafariZoneVisit(context.Background(), 42, m)
 	if err != nil || !result.Success || result.Money != 500 {
 		t.Fatalf("retry=%+v %v", result, err)
 	}
@@ -100,7 +100,7 @@ func seedSafariBattle(t *testing.T, m *SafariZoneManager, balls int) {
 	wild.Speed = 0
 	b := pokebattle.NewSafariBattle(wild, balls, 499)
 	b.CurrentCatchRate = 255
-	if err := m.SetSession(42, SafariSession{Active: true, BallsLeft: balls, StepsLeft: 499, Battle: b}); err != nil {
+	if err := m.SetSession(context.Background(), 42, SafariSession{Active: true, BallsLeft: balls, StepsLeft: 499, Battle: b}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -123,14 +123,14 @@ func TestSafariTurnCommitFailureDoesNotPublishOrMutateSnapshot(t *testing.T) {
 	if err := json.Unmarshal(messages.streams[0].payload, &response); err != nil || response.Success {
 		t.Fatalf("failure=%+v %v", response, err)
 	}
-	saved, err := wh.Safari.GetSession(42)
+	saved, err := wh.Safari.GetSession(context.Background(), 42)
 	if err != nil || saved.Battle == nil || saved.Battle.IsOver() {
 		t.Fatalf("partial turn=%+v %v", saved, err)
 	}
 	testdb.Exec(t, database, `DROP TRIGGER reject_safari_turn ON character_safari_state`)
 	messages.streams = nil
 	battleDispatch(t, wh, ses, opcodes.SafariBattleActionRequest, `{"action":"run"}`)
-	saved, err = wh.Safari.GetSession(42)
+	saved, err = wh.Safari.GetSession(context.Background(), 42)
 	if err != nil || saved.Battle != nil || !saved.Active {
 		t.Fatalf("retry=%+v %v", saved, err)
 	}
@@ -144,7 +144,7 @@ func TestSafariCaptureCommitFailurePreservesPokemonAndDex(t *testing.T) {
 	failedCatch := false
 	for i := 0; i < 128; i++ {
 		seedSafariBattle(t, m, 1)
-		_, err := m.act(42, "ball")
+		_, err := m.act(context.Background(), 42, "ball")
 		if err != nil {
 			failedCatch = true
 			break
@@ -153,7 +153,7 @@ func TestSafariCaptureCommitFailurePreservesPokemonAndDex(t *testing.T) {
 	if !failedCatch {
 		t.Fatal("no capture reached commit failure")
 	}
-	s, err := m.GetSession(42)
+	s, err := m.GetSession(context.Background(), 42)
 	if err != nil || s.Battle == nil || s.BallsLeft != 1 || s.Battle.TurnNum != 0 {
 		t.Fatalf("partial catch=%+v %v", s, err)
 	}
@@ -171,7 +171,7 @@ func TestSafariCaptureCommitFailurePreservesPokemonAndDex(t *testing.T) {
 	caught := false
 	for i := 0; i < 128; i++ {
 		seedSafariBattle(t, m, 1)
-		r, err := m.act(42, "ball")
+		r, err := m.act(context.Background(), 42, "ball")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -183,7 +183,7 @@ func TestSafariCaptureCommitFailurePreservesPokemonAndDex(t *testing.T) {
 	if !caught {
 		t.Fatal("no committed catch")
 	}
-	s, err = m.GetSession(42)
+	s, err = m.GetSession(context.Background(), 42)
 	if err != nil || s.Active || s.Battle != nil || s.BallsLeft != 0 {
 		t.Fatalf("last ball state=%+v %v", s, err)
 	}
@@ -196,14 +196,14 @@ func TestSafariCaptureCommitFailurePreservesPokemonAndDex(t *testing.T) {
 	if count != 2 || dex != 1 {
 		t.Fatalf("committed capture pokemon=%d dex=%d", count, dex)
 	}
-	if _, err := m.act(42, "ball"); err == nil {
+	if _, err := m.act(context.Background(), 42, "ball"); err == nil {
 		t.Fatal("replayed capture accepted")
 	}
 }
 func TestSafariExpiryCommitFailurePublishesNothing(t *testing.T) {
 	database, wh, ses, messages := battleTestWorld(t)
 	wh.Safari = NewSafariZoneManager(database)
-	if err := wh.Safari.SetSession(42, SafariSession{Active: true, BallsLeft: 3, StepsLeft: 1}); err != nil {
+	if err := wh.Safari.SetSession(context.Background(), 42, SafariSession{Active: true, BallsLeft: 3, StepsLeft: 1}); err != nil {
 		t.Fatal(err)
 	}
 	testdb.Exec(t, database, `UPDATE character_data SET map_id=220,x=14,y=24 WHERE id=42;
@@ -215,7 +215,7 @@ func TestSafariExpiryCommitFailurePublishesNothing(t *testing.T) {
 	if len(messages.streams) != 0 {
 		t.Fatalf("failure published=%+v", messages.streams)
 	}
-	s, err := wh.Safari.GetSession(42)
+	s, err := wh.Safari.GetSession(context.Background(), 42)
 	if err != nil || !s.Active || s.StepsLeft != 1 {
 		t.Fatalf("partial expiry=%+v %v", s, err)
 	}
@@ -231,7 +231,7 @@ func TestSafariExpiryCommitFailurePublishesNothing(t *testing.T) {
 	if err := database.QueryRow(`SELECT map_id FROM character_data WHERE id=42`).Scan(&mapID); err != nil || mapID != 156 {
 		t.Fatalf("expiry position=%d %v", mapID, err)
 	}
-	s, err = NewSafariZoneManager(database).GetSession(42)
+	s, err = NewSafariZoneManager(database).GetSession(context.Background(), 42)
 	if err != nil || s.Active || s.StepsLeft != 0 {
 		t.Fatalf("recovered expiry=%+v %v", s, err)
 	}
@@ -239,10 +239,10 @@ func TestSafariExpiryCommitFailurePublishesNothing(t *testing.T) {
 func TestSafariCorruptionAndMissingSchemaFailClosed(t *testing.T) {
 	wh, m := safariTestWorld(t)
 	testdb.Exec(t, wh.database, `INSERT INTO character_safari_state(character_id,state_json) VALUES(42,'{"version":99,"visit":{}}')`)
-	if _, err := m.GetSession(42); err == nil {
+	if _, err := m.GetSession(context.Background(), 42); err == nil {
 		t.Fatal("unsupported version accepted")
 	}
-	if _, err := TryStartSafariZoneVisit(42, m); err == nil {
+	if _, err := TryStartSafariZoneVisit(context.Background(), 42, m); err == nil {
 		t.Fatal("corruption treated as inactive")
 	}
 	testdb.Exec(t, wh.database, `DROP TABLE character_safari_state`)
@@ -250,7 +250,7 @@ func TestSafariCorruptionAndMissingSchemaFailClosed(t *testing.T) {
 		t.Fatal("readiness accepted missing state schema")
 	}
 	movement := &PlayerMovementManager{wh: wh}
-	if !movement.isSafariEntryWarpBlocked(42, 156, 220, nil) {
+	if !movement.isSafariEntryWarpBlocked(context.Background(), 42, 156, 220, nil) {
 		t.Fatal("missing state table allowed entry")
 	}
 }
@@ -263,13 +263,13 @@ func TestSafariScriptEntryAndExitJoinOuterCommit(t *testing.T) {
  CREATE CONSTRAINT TRIGGER reject_safari_script AFTER UPDATE ON character_data DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN(NEW.map_id=220) EXECUTE FUNCTION reject_safari_script();`)
 	ctx := CutsceneActionContext{Database: database, Session: ses, WorldHandler: wh, EventFlags: wh.EventFlags}
 	actions := json.RawMessage(`[{"type":"startSafariSession"}]`)
-	if _, _, err := ApplyCutsceneActionList(ctx, "SAFARI_ZONE_GATE", actions, 42); err == nil {
+	if _, _, err := ApplyCutsceneActionList(context.Background(), ctx, "SAFARI_ZONE_GATE", actions, 42); err == nil {
 		t.Fatal("script ignored commit failure")
 	}
 	if len(messages.streams) != 0 {
 		t.Fatalf("uncommitted script published=%+v", messages.streams)
 	}
-	s, err := wh.Safari.GetSession(42)
+	s, err := wh.Safari.GetSession(context.Background(), 42)
 	if err != nil || s != nil {
 		t.Fatalf("script leaked visit=%+v %v", s, err)
 	}
@@ -278,28 +278,28 @@ func TestSafariScriptEntryAndExitJoinOuterCommit(t *testing.T) {
 		t.Fatalf("partial payment=%d %v", money, err)
 	}
 	testdb.Exec(t, database, `DROP TRIGGER reject_safari_script ON character_data`)
-	if _, _, err := ApplyCutsceneActionList(ctx, "SAFARI_ZONE_GATE", actions, 42); err != nil {
+	if _, _, err := ApplyCutsceneActionList(context.Background(), ctx, "SAFARI_ZONE_GATE", actions, 42); err != nil {
 		t.Fatal(err)
 	}
-	s, err = wh.Safari.GetSession(42)
+	s, err = wh.Safari.GetSession(context.Background(), 42)
 	if err != nil || s == nil || !s.Active || !wh.EventFlags.CheckFlag(42, EventInSafariZone) {
 		t.Fatalf("committed entry=%+v %v", s, err)
 	}
 	testdb.Exec(t, database, `CREATE CONSTRAINT TRIGGER reject_safari_end AFTER DELETE ON character_safari_state DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_safari_script();`)
 	messages.streams = nil
 	exit := json.RawMessage(`[{"type":"endSafariSession"}]`)
-	if _, _, err := ApplyCutsceneActionList(ctx, "SAFARI_ZONE_GATE", exit, 42); err == nil {
+	if _, _, err := ApplyCutsceneActionList(context.Background(), ctx, "SAFARI_ZONE_GATE", exit, 42); err == nil {
 		t.Fatal("script exit ignored commit failure")
 	}
-	s, err = wh.Safari.GetSession(42)
+	s, err = wh.Safari.GetSession(context.Background(), 42)
 	if err != nil || s == nil || !s.Active || len(messages.streams) != 0 || !wh.EventFlags.CheckFlag(42, EventInSafariZone) {
 		t.Fatalf("partial exit=%+v %v messages=%+v", s, err, messages.streams)
 	}
 	testdb.Exec(t, database, `DROP TRIGGER reject_safari_end ON character_safari_state`)
-	if _, _, err := ApplyCutsceneActionList(ctx, "SAFARI_ZONE_GATE", exit, 42); err != nil {
+	if _, _, err := ApplyCutsceneActionList(context.Background(), ctx, "SAFARI_ZONE_GATE", exit, 42); err != nil {
 		t.Fatal(err)
 	}
-	s, err = wh.Safari.GetSession(42)
+	s, err = wh.Safari.GetSession(context.Background(), 42)
 	if err != nil || s != nil || wh.EventFlags.CheckFlag(42, EventInSafariZone) {
 		t.Fatalf("exit=%+v %v", s, err)
 	}
@@ -314,7 +314,7 @@ func TestSafariFullPartyCaptureUsesPCAndRetainsExistingIdentities(t *testing.T) 
 	var result safariActionResult
 	for i := 0; i < 128; i++ {
 		seedSafariBattle(t, m, 30)
-		r, err := m.act(42, "ball")
+		r, err := m.act(context.Background(), 42, "ball")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -344,7 +344,7 @@ func TestSafariDirectEntryCannotChargeRemotePlayer(t *testing.T) {
 	if err := database.QueryRow(`SELECT pokedollars FROM character_wallet WHERE character_id=42`).Scan(&money); err != nil || money != 1000 {
 		t.Fatalf("remote charge=%d %v", money, err)
 	}
-	s, err := wh.Safari.GetSession(42)
+	s, err := wh.Safari.GetSession(context.Background(), 42)
 	if err != nil || s != nil {
 		t.Fatalf("remote visit=%+v %v", s, err)
 	}
@@ -357,7 +357,7 @@ func TestWarpHomeCommitsBattleSafariAndPositionTogether(t *testing.T) {
 	database, wh, ses, messages := battleTestWorld(t)
 	wh.Safari = NewSafariZoneManager(database)
 	battle := battleTestStart(t, database, false, nil)
-	if err := wh.Safari.SetSession(42, SafariSession{Active: true, BallsLeft: 30, StepsLeft: 500}); err != nil {
+	if err := wh.Safari.SetSession(context.Background(), 42, SafariSession{Active: true, BallsLeft: 30, StepsLeft: 500}); err != nil {
 		t.Fatal(err)
 	}
 	testdb.Exec(t, database, `UPDATE character_data SET map_id=220,x=14,y=24 WHERE id=42;
@@ -374,7 +374,7 @@ func TestWarpHomeCommitsBattleSafariAndPositionTogether(t *testing.T) {
 	if err != nil || saved == nil || getBattle(42) != battle {
 		t.Fatalf("partial battle removal=%+v %v", saved, err)
 	}
-	s, err := wh.Safari.GetSession(42)
+	s, err := wh.Safari.GetSession(context.Background(), 42)
 	if err != nil || s == nil || !s.Active {
 		t.Fatalf("partial safari=%+v %v", s, err)
 	}
@@ -389,7 +389,7 @@ func TestWarpHomeCommitsBattleSafariAndPositionTogether(t *testing.T) {
 	if err != nil || saved != nil || getBattle(42) != nil {
 		t.Fatalf("battle retained=%+v %v", saved, err)
 	}
-	s, err = wh.Safari.GetSession(42)
+	s, err = wh.Safari.GetSession(context.Background(), 42)
 	if err != nil || s != nil {
 		t.Fatalf("safari retained=%+v %v", s, err)
 	}
@@ -415,14 +415,14 @@ func TestSafariDirectEntryRequiresVisibleSourceWorker(t *testing.T) {
 	db.GlobalWorldDB = nil
 	t.Cleanup(func() { db.GlobalWorldDB = previous })
 	battleDispatch(t, wh, ses, opcodes.SafariZoneEnterRequest, `{}`)
-	s, err := wh.Safari.GetSession(42)
+	s, err := wh.Safari.GetSession(context.Background(), 42)
 	if err != nil || s != nil {
 		t.Fatalf("hidden worker granted visit=%+v %v", s, err)
 	}
 	testdb.Exec(t, database, `DELETE FROM character_object_visibility_overrides`)
 	messages.streams = nil
 	battleDispatch(t, wh, ses, opcodes.SafariZoneEnterRequest, `{}`)
-	s, err = wh.Safari.GetSession(42)
+	s, err = wh.Safari.GetSession(context.Background(), 42)
 	if err != nil || s == nil || !s.Active {
 		t.Fatalf("visible worker denied visit=%+v %v messages=%+v", s, err, messages.streams)
 	}

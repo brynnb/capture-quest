@@ -74,20 +74,20 @@ func (m *cutsceneMutation) publish(ctx CutsceneActionContext) {
 	}
 }
 
-func ApplyCutsceneActionList(ctx CutsceneActionContext, mapName string, rawActions json.RawMessage, charID int64) ([]CutsceneActionEffect, bool, error) {
-	return runCutsceneMutation(ctx, mapName, rawActions, charID, nil)
+func ApplyCutsceneActionList(executionCtx context.Context, ctx CutsceneActionContext, mapName string, rawActions json.RawMessage, charID int64) ([]CutsceneActionEffect, bool, error) {
+	return runCutsceneMutation(executionCtx, ctx, mapName, rawActions, charID, nil)
 }
 
 // ApplyCutsceneScript includes completion guards, rewards, completion flags and
 // the final warp in one commit. Live handlers and the simulator use this boundary.
-func ApplyCutsceneScript(ctx CutsceneActionContext, script *CutsceneScript, charID int64) ([]CutsceneActionEffect, bool, error) {
+func ApplyCutsceneScript(executionCtx context.Context, ctx CutsceneActionContext, script *CutsceneScript, charID int64) ([]CutsceneActionEffect, bool, error) {
 	if script == nil {
 		return nil, false, fmt.Errorf("cutscene script is required")
 	}
-	return runCutsceneMutation(ctx, script.MapName, script.Actions, charID, script)
+	return runCutsceneMutation(executionCtx, ctx, script.MapName, script.Actions, charID, script)
 }
 
-func runCutsceneMutation(ctx CutsceneActionContext, mapName string, raw json.RawMessage, charID int64, script *CutsceneScript) ([]CutsceneActionEffect, bool, error) {
+func runCutsceneMutation(executionCtx context.Context, ctx CutsceneActionContext, mapName string, raw json.RawMessage, charID int64, script *CutsceneScript) ([]CutsceneActionEffect, bool, error) {
 	if ctx.mutation != nil {
 		return applyCutsceneActionList(ctx, mapName, raw, charID)
 	}
@@ -113,7 +113,7 @@ func runCutsceneMutation(ctx CutsceneActionContext, mapName string, raw json.Raw
 	var completed bool
 	mutation := &cutsceneMutation{characterID: charID}
 	ctx.mutation = mutation
-	err := db.Transaction(context.Background(), database, func(tx db.DBTX) (err error) {
+	err := db.Transaction(executionCtx, database, func(tx db.DBTX) (err error) {
 		if err := db.LockCharacter(tx, charID); err != nil {
 			return err
 		}

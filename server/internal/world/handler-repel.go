@@ -26,7 +26,7 @@ func HandleRepelUse(ses *session.Session, payload []byte, wh *WorldHandler) bool
 	}
 	charID := int64(char.ID)
 
-	result, err := UseRepelInventoryItem(wh, int32(charID), int32(req.ItemID), nil)
+	result, err := UseRepelInventoryItem(ses.CommandContext(), wh, int32(charID), int32(req.ItemID), nil)
 	if err != nil {
 		ses.SendStreamJSON(map[string]interface{}{
 			"success": false,

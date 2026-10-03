@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sync"
@@ -46,7 +47,7 @@ func TestRepelDispatcherCommitFailureAndDurableExpiry(t *testing.T) {
 		if err != nil || found.Instance.Quantity != 2 {
 			t.Fatalf("failed activation consumed inventory %+v: %v", found, err)
 		}
-		status, err := wh.WildEncounter.RepelStatus(42)
+		status, err := wh.WildEncounter.RepelStatus(context.Background(), 42)
 		if err != nil || status.Active {
 			t.Fatalf("failed activation published repel %+v: %v", status, err)
 		}
@@ -66,11 +67,11 @@ func TestRepelDispatcherCommitFailureAndDurableExpiry(t *testing.T) {
 	}
 	// A new manager has no inherited pointer/cache; the committed effect survives.
 	wh.WildEncounter = NewWildEncounterManager(wh, database)
-	status, err := wh.WildEncounter.RepelStatus(42)
+	status, err := wh.WildEncounter.RepelStatus(context.Background(), 42)
 	if err != nil || !status.Active || status.StepsLeft != RepelSteps {
 		t.Fatalf("recreated manager status %+v: %v", status, err)
 	}
-	if err := wh.WildEncounter.SetRepelSteps(42, 1); err != nil {
+	if err := wh.WildEncounter.SetRepelSteps(context.Background(), 42, 1); err != nil {
 		t.Fatal(err)
 	}
 	testdb.Exec(t, database, `CREATE CONSTRAINT TRIGGER reject_repel_expiry AFTER DELETE ON character_repels DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_repel_commit()`)
@@ -78,7 +79,7 @@ func TestRepelDispatcherCommitFailureAndDurableExpiry(t *testing.T) {
 	if _, err := wh.WildEncounter.tickRepel(42, ses); err == nil {
 		t.Fatal("expected failed expiry commit")
 	}
-	status, err = wh.WildEncounter.RepelStatus(42)
+	status, err = wh.WildEncounter.RepelStatus(context.Background(), 42)
 	if err != nil || status.StepsLeft != 1 || len(messages.streams) != 0 {
 		t.Fatalf("failed expiry status %+v messages %+v: %v", status, messages.streams, err)
 	}
@@ -110,7 +111,7 @@ func TestConcurrentRepelActivationConsumesOnceAcrossManagers(t *testing.T) {
 			defer workers.Done()
 			owned := &WorldHandler{database: database}
 			owned.WildEncounter = NewWildEncounterManager(owned, database)
-			_, err := UseRepelInventoryItem(owned, 42, 30, nil)
+			_, err := UseRepelInventoryItem(context.Background(), owned, 42, 30, nil)
 			results <- err
 		}()
 	}
@@ -129,7 +130,7 @@ func TestConcurrentRepelActivationConsumesOnceAcrossManagers(t *testing.T) {
 		t.Fatalf("accepted=%d inventory %+v: %v", accepted, found, err)
 	}
 	wh.WildEncounter = NewWildEncounterManager(wh, database)
-	status, err := wh.WildEncounter.RepelStatus(42)
+	status, err := wh.WildEncounter.RepelStatus(context.Background(), 42)
 	if err != nil || status.StepsLeft != RepelSteps {
 		t.Fatalf("durable status %+v: %v", status, err)
 	}

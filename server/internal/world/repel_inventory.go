@@ -16,7 +16,7 @@ type RepelUseResult struct {
 	StepsLeft   int
 }
 
-func UseRepelInventoryItem(wh *WorldHandler, charID int32, itemID int32, found *cqitems.CQInventoryItem) (RepelUseResult, error) {
+func UseRepelInventoryItem(ctx context.Context, wh *WorldHandler, charID int32, itemID int32, found *cqitems.CQInventoryItem) (RepelUseResult, error) {
 	if wh == nil || wh.WildEncounter == nil {
 		return RepelUseResult{}, &itemuse.Rejection{Message: "Repel can't be used right now"}
 	}
@@ -24,7 +24,7 @@ func UseRepelInventoryItem(wh *WorldHandler, charID int32, itemID int32, found *
 		return RepelUseResult{}, &itemuse.Rejection{Message: "Use the battle item menu during a battle"}
 	}
 	var result RepelUseResult
-	err := db.Transaction(context.Background(), wh.WildEncounter.database, func(tx db.DBTX) error {
+	err := db.Transaction(ctx, wh.WildEncounter.database, func(tx db.DBTX) error {
 		if err := db.LockCharacter(tx, int64(charID)); err != nil {
 			return err
 		}

@@ -53,7 +53,7 @@ func battleTestStart(t *testing.T, database *sql.DB, trainer bool, prepare func(
 	if prepare != nil {
 		prepare(battle)
 	}
-	battle, err = startBattle(database, 42, battle)
+	battle, err = startBattle(context.Background(), database, 42, battle)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func TestBattleCaptureUsesOneTransaction(t *testing.T) {
 		t.Fatal("capture not committed")
 	}
 	saveBattleOnDisconnect(42)
-	restored, err := restoreBattleOnLogin(database, 42)
+	restored, err := restoreBattleOnLogin(context.Background(), database, 42)
 	if err != nil || !restored.PlayerCaught || len(restored.PlayerParty) != 2 || restored.PlayerParty[1].RowID != finished.PlayerParty[1].RowID {
 		t.Fatalf("capture resume=%+v error=%v", restored, err)
 	}
@@ -205,7 +205,7 @@ func TestInvalidBattleActionPreservesFaintSwitchPhase(t *testing.T) {
 		t.Fatal("client closed active battle")
 	}
 	saveBattleOnDisconnect(42)
-	restored, err := restoreBattleOnLogin(database, 42)
+	restored, err := restoreBattleOnLogin(context.Background(), database, 42)
 	if err != nil || restored.Phase != pokebattle.PhaseFaintSwitch {
 		t.Fatalf("resume lost phase: %+v %v", restored, err)
 	}
@@ -234,7 +234,7 @@ func TestMoveLearningPublishesOnlyAfterPartyAndBattleCommit(t *testing.T) {
 		t.Fatalf("move failure response=%+v error=%v", response, err)
 	}
 	saveBattleOnDisconnect(42)
-	restored, err := restoreBattleOnLogin(database, 42)
+	restored, err := restoreBattleOnLogin(context.Background(), database, 42)
 	if err != nil || restored.PendingMoveLearn == nil || len(restored.PostMoveLearnEvents) != 1 {
 		t.Fatalf("lost pending choice after failure/disconnect: %+v %v", restored, err)
 	}

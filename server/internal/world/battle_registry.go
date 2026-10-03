@@ -36,8 +36,8 @@ func forgetBattle(charID int64, expected *pokebattle.BattleState) {
 	}
 }
 
-func startBattle(database *sql.DB, charID int64, battle *pokebattle.BattleState) (*pokebattle.BattleState, error) {
-	committed, err := pokebattle.StartBattle(context.Background(), database, charID, battle, func(tx db.DBTX, next *pokebattle.BattleState) error {
+func startBattle(ctx context.Context, database *sql.DB, charID int64, battle *pokebattle.BattleState) (*pokebattle.BattleState, error) {
+	committed, err := pokebattle.StartBattle(ctx, database, charID, battle, func(tx db.DBTX, next *pokebattle.BattleState) error {
 		return markPokemonSeen(tx, charID, next.GetEnemyPokemon().ID)
 	})
 	if err != nil {
@@ -70,8 +70,8 @@ func saveBattleOnDisconnect(charID int64) {
 	forgetBattle(charID, getBattle(charID))
 }
 
-func restoreBattleOnLogin(database *sql.DB, charID int64) (*pokebattle.BattleState, error) {
-	battle, err := pokebattle.ResumeBattle(context.Background(), database, charID)
+func restoreBattleOnLogin(ctx context.Context, database *sql.DB, charID int64) (*pokebattle.BattleState, error) {
+	battle, err := pokebattle.ResumeBattle(ctx, database, charID)
 	if err != nil || battle == nil {
 		return nil, err
 	}

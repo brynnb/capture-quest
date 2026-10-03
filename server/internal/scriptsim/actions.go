@@ -1,6 +1,7 @@
 package scriptsim
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -28,7 +29,7 @@ func ExecuteServerActionsWithChoice(charID int64, cs *world.CutsceneScript, efm 
 }
 
 func ExecuteServerActionsWithChoiceAndWorld(charID int64, cs *world.CutsceneScript, efm *world.EventFlagManager, choice *bool, wh *world.WorldHandler) ([]ActionEffect, error) {
-	effects, _, err := world.ApplyCutsceneScript(world.CutsceneActionContext{WorldHandler: wh, EventFlags: efm, Choice: choice, StopAtChoice: true}, cs, charID)
+	effects, _, err := world.ApplyCutsceneScript(context.Background(), world.CutsceneActionContext{WorldHandler: wh, EventFlags: efm, Choice: choice, StopAtChoice: true}, cs, charID)
 	return effects, err
 }
 
@@ -42,7 +43,7 @@ func ExecuteActionListWithChoice(charID int64, mapName string, rawActions json.R
 }
 
 func ExecuteActionListWithChoiceAndWorld(charID int64, mapName string, rawActions json.RawMessage, efm *world.EventFlagManager, choice *bool, wh *world.WorldHandler) ([]ActionEffect, bool, error) {
-	return world.ApplyCutsceneActionList(world.CutsceneActionContext{
+	return world.ApplyCutsceneActionList(context.Background(), world.CutsceneActionContext{
 		WorldHandler: wh,
 		EventFlags:   efm,
 		Choice:       choice,

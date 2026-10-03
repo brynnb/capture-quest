@@ -3,9 +3,10 @@
 Status: active. Started 2026-09-25 from `02c51ba`.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-running-command cancellation (2026-10-02), following shared position persistence
-checkpoint `d70813e`, durable Safari checkpoint `19203f2`, Repel checkpoint
-`adaa047` and FLY checkpoint `b785d58`.
+effect/script transaction cancellation (2026-10-02), following running-command
+cancellation checkpoint `ff46ada`, position persistence checkpoint `d70813e`,
+durable Safari checkpoint `19203f2`, Repel checkpoint `adaa047` and FLY
+checkpoint `b785d58`.
 All earlier foundation checkpoints are retained in this
 branch's history. No push or production deployment is authorized by this goal.
 
@@ -85,6 +86,52 @@ evidence, including remaining-work notes that subsequent commits may resolve.
    cancellation/timeouts, failure/retry and shutdown with active players.
    Acceptance: evidence covers the original five milestones, including visible
    behavior where relevant. Only then mark the full goal complete.
+
+## Effect and script cancellation checkpoint (2026-10-02)
+
+Safari, Repel and script/battle helpers previously started independent background
+contexts after their callers had entered a bounded session command. A blocked
+character write could therefore continue waiting after disconnect or the
+original request deadline.
+
+The shared Safari read/setup/entry/turn/step/exit APIs and Repel activation,
+status/setup/step APIs now require an execution context. Runtime callers pass
+`Session.CommandContext()`; fixtures and the standalone simulator explicitly
+choose their setup context. Script action/completion transactions receive a
+context separately from interpreter dependencies. Nested script operations
+continue to use their outer transaction's query handle and commit boundary.
+Ordinary battle start/resume and scripted battle creation also use caller
+contexts. Scripted trainer/wild battle helpers now require an explicit database;
+the redundant global-database trainer wrapper is retired.
+
+The unused standalone Safari map-exit helper is removed. Actual destination
+writes already end Safari within the position transaction, so maintaining a
+second independent cleanup transaction was obsolete. Tests now exercise this
+authoritative boundary and verify gate/zone retention and non-Safari cleanup
+together with the saved destination.
+
+PostgreSQL cancellation tests hold the character row lock and apply a 100 ms
+caller deadline to Safari entry and turns, Repel activation, script reward
+completion and scripted wild battle start. Each operation returns before the
+independent five-second transaction budget, with unchanged wallet, inventory,
+flags, battle state and visit counters; cancelled starts publish no battle cache.
+Existing failure/retry and lifecycle tests pass in race-enabled world,
+script-simulator, battle, session and server suites. All Go packages compile;
+TypeScript typecheck and canonical Tygo regeneration pass without contract
+changes.
+All seven isolated rendered field-move/Safari checks pass (42.6 seconds),
+covering Surf input, Cut interaction, Safari entry, battle run and step
+exhaustion. Evidence is retained at `/var/tmp/capturequest-rendered.ytn0RK`.
+
+The full goal remains active. Legacy party/encounter/catalog reads, post-commit
+cache refresh, flag writes, blackout and lifecycle/playtime helpers still need
+cancellation/dependency work. This checkpoint does not prove cancellation through
+every handler or bounded shutdown. Final-flush failure policy, HTTP/world drain
+deadlines, database-close ordering, durable replay/reconnect results, remaining
+domain/wire migrations and integrated transport verification remain in the
+roadmap above. Next: move lifecycle persistence and remaining running queries to
+explicit contexts, then implement and test the drain/failure policy. No push or
+deployment is included.
 
 ## Running-command cancellation checkpoint (2026-10-02)
 

@@ -21,7 +21,7 @@ func TestTeleportCommitFailurePreservesSafariPositionAndPublication(t *testing.T
 	ses.Client.CharData().X = 14
 	ses.Client.CharData().Y = 24
 	wh.PlayerMovement.RegisterPlayer(ses, 42, 14, 24, 220, "UP")
-	if err := wh.Safari.SetSession(42, SafariSession{Active: true, BallsLeft: 30, StepsLeft: 500}); err != nil {
+	if err := wh.Safari.SetSession(context.Background(), 42, SafariSession{Active: true, BallsLeft: 30, StepsLeft: 500}); err != nil {
 		t.Fatal(err)
 	}
 	testdb.Exec(t, database, `UPDATE character_data SET map_id=220,x=14,y=24 WHERE id=42;
@@ -41,7 +41,7 @@ func TestTeleportCommitFailurePreservesSafariPositionAndPublication(t *testing.T
 	if !ok || mapID != 220 || x != 14 || y != 24 || ses.MapID != 220 || ses.Client.CharData().MapID != 220 {
 		t.Fatalf("failed live position %d %d %d", x, y, mapID)
 	}
-	s, err := wh.Safari.GetSession(42)
+	s, err := wh.Safari.GetSession(context.Background(), 42)
 	if err != nil || s == nil || !s.Active {
 		t.Fatalf("failed teleport removed Safari=%+v %v", s, err)
 	}
@@ -52,7 +52,7 @@ func TestTeleportCommitFailurePreservesSafariPositionAndPublication(t *testing.T
 	if len(messages.streams) != 1 || messages.streams[0].opcode != opcodes.WarpTileTeleportNotify {
 		t.Fatalf("committed teleport=%+v", messages.streams)
 	}
-	s, err = wh.Safari.GetSession(42)
+	s, err = wh.Safari.GetSession(context.Background(), 42)
 	if err != nil || s != nil || wh.EventFlags.CheckFlag(42, EventInSafariZone) {
 		t.Fatalf("committed Safari exit=%+v %v", s, err)
 	}

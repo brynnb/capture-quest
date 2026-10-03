@@ -202,7 +202,7 @@ func HandleDialogueChoiceRequest(ses *session.Session, payload []byte, wh *World
 		if bd.RequiresEventFlag.Valid {
 			script.RequiresFlag = &bd.RequiresEventFlag.String
 		}
-		_, completed, err := ApplyCutsceneScript(CutsceneActionContext{Session: ses, WorldHandler: wh, EventFlags: wh.EventFlags}, script, charID)
+		_, completed, err := ApplyCutsceneScript(ses.CommandContext(), CutsceneActionContext{Session: ses, WorldHandler: wh, EventFlags: wh.EventFlags}, script, charID)
 		if err != nil || !completed {
 			if err != nil {
 				log.Printf("[DialogueChoice] Failed to apply choice actions for %s: %v", req.TextConstant, err)

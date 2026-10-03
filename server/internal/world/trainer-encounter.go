@@ -607,7 +607,7 @@ func HandleTrainerEncounterReady(ses *session.Session, payload []byte, wh *World
 		WinFlag:         t.EventFlag,
 	}
 	applyPokemonTower7FPostWinMetadata(battle.Trainer, t, enc.PlayerX, enc.PlayerY)
-	battle, err = startBattle(wh.database, charID, battle)
+	battle, err = startBattle(ses.CommandContext(), wh.database, charID, battle)
 	if err != nil {
 		log.Printf("[PokeBattle] Start failed for character %d: %v", charID, err)
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not start battle. Please reconnect."}, opcodes.PokeBattleStartResponse)
