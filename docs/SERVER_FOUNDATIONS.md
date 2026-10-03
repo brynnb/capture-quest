@@ -3,7 +3,8 @@
 Status: active. Started 2026-09-25 from `02c51ba`.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-owned transport shutdown (2026-10-02), following HTTP retirement checkpoint
+integrated active-player shutdown verification (2026-10-02), following
+owned transport checkpoint `fea2a16` and HTTP retirement checkpoint
 `5160707`, shutdown
 wait/result checkpoint `d51956c` and lifecycle
 persistence checkpoint `1e26eb7` and effect/script
@@ -90,6 +91,47 @@ evidence, including remaining-work notes that subsequent commits may resolve.
    cancellation/timeouts, failure/retry and shutdown with active players.
    Acceptance: evidence covers the original five milestones, including visible
    behavior where relevant. Only then mark the full goal complete.
+
+## Integrated active-player shutdown verification (2026-10-02)
+
+The dedicated isolated browser test now exercises rendered login, actual player
+movement, PostgreSQL position persistence, signal shutdown, transport closure,
+final playtime and the standalone server exit result together. It validates the
+private cluster path and the exact running executable before signalling the
+runner-owned PID. Fault injection targets only its freshly created character in
+the disposable database. Ordinary test runs skip this process-control case;
+use the dedicated runner modes:
+
+```bash
+CQ_E2E_SHUTDOWN_MODE=success bash scripts/testing/run-isolated-e2e.sh
+CQ_E2E_SHUTDOWN_MODE=failure bash scripts/testing/run-isolated-e2e.sh
+```
+
+The runner collects the child process's real exit status and requires terminal
+test evidence before waiting. It retains `shutdown-evidence.json`, `server-exit`,
+server logs and the pre-shutdown screenshot, and cleans up only its owned
+processes/private cluster. No normal development or production database is used.
+
+Verified success: `/var/tmp/capturequest-rendered.8UzH8Z`, one Chromium case
+passed in 6.0 seconds. Character `1` retained map `38`, position `(4,6)`; active
+playtime increased from `0` to `2`; its WebSocket closed; server exit was `0`.
+Verified deferred save failure: `/var/tmp/capturequest-rendered.wvvMXz`, one case
+passed in 6.3 seconds. Position remained `38,4,6`, playtime remained `0`, the
+socket closed, and `final playtime` propagated into `Shutdown failed` and exit
+`1`. The failure run's screenshot was inspected: the player is visibly present
+in Reds House 2F before shutdown. TypeScript typecheck, shell syntax and diff
+whitespace checks passed. Both runners completed their cleanup.
+
+This proves an idle active player's accepted movement and final playtime/error
+handling over the shipped WebSocket path. It does not prove interrupted in-flight
+gameplay over that transport, an active character over browser WebTransport,
+concurrent-player shutdown, or recovery of a failed final save after process exit.
+The failure result makes loss observable; it does not add durable recovery.
+Those coverage/recovery requirements remain in the full goal.
+
+Next: migrate the known legacy `PerformMapChange` publication/authorization path
+to the authoritative position transaction, then complete remaining mutation and
+reconnect/result recovery audits. Nothing is pushed or deployed.
 
 ## Owned transport shutdown checkpoint (2026-10-02)
 

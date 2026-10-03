@@ -53,6 +53,15 @@ npm run build
 git diff --check
 ```
 
+For active-player shutdown acceptance, run the same isolated runner with
+`CQ_E2E_SHUTDOWN_MODE=success` and separately with `failure`, without a test-file
+argument. These dedicated modes verify the exact owned executable and private
+cluster before signalling, exercise browser movement plus final persistence,
+and collect the child process exit status. Evidence includes SQL before/after
+values, socket closure, logs and a screenshot. Failure injection is private and
+character-specific. This proves the WebSocket path; active-character browser
+WebTransport and interrupted concurrent commands require additional coverage.
+
 For scripted event changes, prefer the script-test CLI and golden expectations
 under `server/script_tests/` instead of relying only on browser inspection.
 
