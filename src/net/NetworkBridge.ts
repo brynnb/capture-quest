@@ -98,6 +98,7 @@ export class NetworkBridge {
       case OpCodes.CQMerchantBuyResponse:
       case OpCodes.CQMerchantSellResponse:
       case OpCodes.RepelUseResponse:
+      case OpCodes.PokemonPartyReorderResponse:
       case OpCodes.SafariBattleActionResponse:
       case OpCodes.PokeBattleActionResponse:
       case OpCodes.PokeBattleSwitchResponse:
@@ -200,11 +201,6 @@ export class NetworkBridge {
 
       // Move learning (Phase 6.2)
 
-
-      // Party reorder (Phase 6.1)
-      case OpCodes.PokemonPartyReorderResponse:
-        this.handlePokemonPartyReorderResponse(data as Record<string, unknown>);
-        break;
 
       // Dialogue choice (Phase 9.6)
       case OpCodes.DialogueChoiceResponse:
@@ -595,19 +591,6 @@ export class NetworkBridge {
     if (data.message) {
       usePokemonDialogueStore.getState().openDialogue([String(data.message)]);
     }
-  }
-
-  private handlePokemonPartyReorderResponse(data: Record<string, unknown>) {
-    if (!data.success) {
-      console.warn("[NetworkBridge] Party reorder failed:", data.error);
-      return;
-    }
-    const party = (data.party || []) as Parameters<
-      ReturnType<typeof usePokemonPartyStore.getState>["setParty"]
-    >[0];
-    usePokemonPartyStore.getState().setParty(party);
-    this.playSourceSFX("SFX_PRESS_AB", 0.55);
-    console.log("[NetworkBridge] Party reordered successfully");
   }
 
   private handleItemPickupResponse(data: Record<string, unknown>) {

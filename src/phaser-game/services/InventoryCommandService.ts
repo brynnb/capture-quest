@@ -1,5 +1,5 @@
 import { OpCodes, WorldSocket } from "@/net";
-import type { CQMerchantOpenResponse, CQMerchantBuyResponse, CQMerchantSellResponse, CQPartyItemUseResponse, RepelUseResponse } from "@/net/generated/world_api";
+import type { CQMerchantOpenResponse, CQMerchantBuyResponse, CQMerchantSellResponse, CQPartyItemUseResponse, RepelUseResponse, PokemonPartyReorderResponse } from "@/net/generated/world_api";
 import useCQInventoryStore from "@/stores/CQInventoryStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
@@ -13,7 +13,7 @@ import { sfxPathForConstant } from "@/services/audio/pokemonMusic";
 
 let scene: symbol | null = null;
 let active: AbortController | null = null;
-type Reply = CQMerchantOpenResponse | CQMerchantBuyResponse | CQMerchantSellResponse | CQPartyItemUseResponse | RepelUseResponse;
+type Reply = CQMerchantOpenResponse | CQMerchantBuyResponse | CQMerchantSellResponse | CQPartyItemUseResponse | RepelUseResponse | PokemonPartyReorderResponse;
 
 export function bindInventoryScene(): () => void {
   active?.abort(); active = null;
@@ -112,6 +112,29 @@ export async function runInventoryRequest<T extends Reply>(options: {
 function reportError(message: string) {
   useCQInventoryStore.setState({inventoryCommandError: message});
   useChatStore.getState().addMessage(message, MessageType.SYSTEM);
+}
+
+export function sendPartyReorderCommand(pokemonIds: readonly (number | undefined)[]): Promise<void> {
+  if (pokemonIds.length < 1 || pokemonIds.length > 6
+    || !pokemonIds.every((id): id is number => id !== undefined && Number.isSafeInteger(id) && id > 0)
+    || new Set(pokemonIds).size !== pokemonIds.length) {
+    reportError("Party identity is unavailable. Please reconnect before reordering.");
+    return Promise.resolve();
+  }
+  const ids = [...pokemonIds];
+  return runInventoryRequest<PokemonPartyReorderResponse>({
+    opcode: OpCodes.PokemonPartyReorderRequest, responseOpcode: OpCodes.PokemonPartyReorderResponse,
+    payload: {pokemonIds: ids}, mutation: true,
+    validate: reply => {
+      if (!Array.isArray(reply.party) || reply.party.length !== ids.length
+        || reply.party.some((pokemon, i) => pokemon.rowId !== ids[i])) throw new Error("Invalid reordered party");
+    },
+    apply: reply => usePokemonPartyStore.getState().setParty(reply.party),
+    present: () => {
+      const sound = sfxPathForConstant("SFX_PRESS_AB");
+      if (sound) void AudioManager.playSFX(sound, 0.55);
+    },
+  });
 }
 
 export function sendRepelItemCommand(instanceId: number): Promise<void> {

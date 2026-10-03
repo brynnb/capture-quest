@@ -8,6 +8,8 @@ import React, {
 import { createPortal } from "react-dom";
 import styled from "styled-components";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
+import useCQInventoryStore from "@/stores/CQInventoryStore";
+import { sendPartyReorderCommand } from "@/phaser-game/services/InventoryCommandService";
 import useGameStatusStore from "@/stores/GameStatusStore";
 import useStaticDataStore from "@/stores/StaticDataStore";
 import type { MoveDTO, PokemonDTO } from "@/net/generated/world_api";
@@ -419,6 +421,7 @@ const PartyPokemonHUD: React.FC<PartyPokemonHUDProps> = ({
   onCancelPendingItem,
 }) => {
   const { party } = usePokemonPartyStore();
+  const commandPending = useCQInventoryStore(s => s.inventoryCommandPending);
   const uiScale = useGameStatusStore((s) => s.uiScale);
   const homeTowns = useStaticDataStore((s) => s.homeTowns);
   const isLoadingCharCreate = useStaticDataStore((s) => s.isLoadingCharCreate);
@@ -434,17 +437,18 @@ const PartyPokemonHUD: React.FC<PartyPokemonHUDProps> = ({
     active: boolean;
     origIdx: number;
     order: number[];
+    sourceParty: PokemonDTO[] | null;
     mouseX: number;
     mouseY: number;
     offsetX: number;
     offsetY: number;
-  }>({ active: false, origIdx: -1, order: [], mouseX: 0, mouseY: 0, offsetX: 0, offsetY: 0 });
+  }>({ active: false, origIdx: -1, order: [], sourceParty: null, mouseX: 0, mouseY: 0, offsetX: 0, offsetY: 0 });
 
   const slotRefs = useRef<(HTMLDivElement | null)[]>([]);
   const suppressClick = useRef(false);
 
   const ds = dragState.current;
-  const isDragging = ds.active;
+  const isDragging = ds.active && ds.sourceParty === party && !commandPending;
   const displayOrder = isDragging ? ds.order : party.map((_, i) => i);
   const draggedOrigIdx = isDragging ? ds.origIdx : -1;
 
@@ -486,6 +490,15 @@ const PartyPokemonHUD: React.FC<PartyPokemonHUDProps> = ({
   }, [cursorItemUse]);
 
   useEffect(() => {
+    // A drag describes this exact party view. A recovery or another command can
+    // replace it before mouseup; never reinterpret old indices against new rows.
+    if (ds.active && (ds.sourceParty !== party || commandPending)) {
+      ds.active = false; ds.origIdx = -1; ds.order = []; ds.sourceParty = null;
+      forceRender(c => c + 1);
+    }
+  }, [party, commandPending, ds]);
+
+  useEffect(() => {
     if (!isDragging) return;
 
     const onMouseMove = (e: MouseEvent) => {
@@ -522,17 +535,15 @@ const PartyPokemonHUD: React.FC<PartyPokemonHUDProps> = ({
       const finalOrder = ds.order;
       const identity = party.map((_, i) => i);
       const changed = finalOrder.some((v, i) => v !== identity[i]);
+      const sourceCurrent = ds.sourceParty === usePokemonPartyStore.getState().party;
 
       ds.active = false;
       ds.origIdx = -1;
       ds.order = [];
+      ds.sourceParty = null;
 
-      if (changed) {
-        const newParty = finalOrder.map(i => party[i]);
-        usePokemonPartyStore.getState().setParty(newParty);
-        WorldSocket.sendJsonMessage(OpCodes.PokemonPartyReorderRequest, {
-          order: finalOrder,
-        });
+      if (changed && sourceCurrent) {
+        void sendPartyReorderCommand(finalOrder.map(i => party[i].rowId));
       }
 
       suppressClick.current = true;
@@ -556,11 +567,13 @@ const PartyPokemonHUD: React.FC<PartyPokemonHUDProps> = ({
   const handleGrabMouseDown = useCallback((e: React.MouseEvent, origIdx: number, displayIdx: number) => {
     e.preventDefault();
     e.stopPropagation();
+    if (useCQInventoryStore.getState().inventoryCommandPending) return;
     const entryEl = slotRefs.current[displayIdx];
     const ds = dragState.current;
     ds.active = true;
     ds.origIdx = origIdx;
     ds.order = party.map((_, i) => i);
+    ds.sourceParty = party;
     ds.mouseX = e.clientX;
     ds.mouseY = e.clientY;
     ds.offsetX = entryEl ? e.clientX - entryEl.getBoundingClientRect().left : 0;
@@ -605,6 +618,7 @@ const PartyPokemonHUD: React.FC<PartyPokemonHUDProps> = ({
     return (
       <PartyContainer
         id="party-pokemon-hud"
+        aria-busy={commandPending}
         style={containerStyle}
         $embedded={Boolean(containerStyle)}
       >
@@ -620,6 +634,7 @@ const PartyPokemonHUD: React.FC<PartyPokemonHUDProps> = ({
     <>
       <PartyContainer
         id="party-pokemon-hud"
+        aria-busy={commandPending}
         style={containerStyle}
         $embedded={Boolean(containerStyle)}
       >
@@ -636,6 +651,7 @@ const PartyPokemonHUD: React.FC<PartyPokemonHUDProps> = ({
             >
               <PokemonEntry
                 data-cq-party-entry="true"
+                data-pokemon-row-id={pokemon.rowId}
                 data-cq-party-item-target={cursorItemUse ? "true" : undefined}
                 $isPlaceholder={isBeingDragged}
                 $isItemTarget={Boolean(cursorItemUse)}
@@ -663,7 +679,7 @@ const PartyPokemonHUD: React.FC<PartyPokemonHUDProps> = ({
                         </span>
                       </PokemonLevel>
                     </InfoColumn>
-                    <GrabHandle onMouseDown={(e) => handleGrabMouseDown(e, origIdx, displayIdx)}>
+                    <GrabHandle data-testid="party-reorder-handle" onMouseDown={(e) => handleGrabMouseDown(e, origIdx, displayIdx)}>
                       <GrabDot /><GrabDot /><GrabDot />
                       <GrabDot /><GrabDot /><GrabDot />
                     </GrabHandle>

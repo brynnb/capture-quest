@@ -6,8 +6,9 @@ the full roadmap from local implementation checkpoint `3a6d68d`. The goal tool
 confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
-Working branch: `codex/server-foundations`. Latest completed checkpoint: Repel
-activation through the shared inventory command boundary (2026-10-03), following
+Working branch: `codex/server-foundations`. Latest checkpoint: party ordering
+through the shared inventory command boundary (2026-10-03), following `cf0aafb`
+(transaction diagnostics and remaining-family inventory), `3a6d68d` (Repel),
 `a96eaa7` (commit/presentation review fixes), `5c8da47` (shop/party consolidation), the
 owned-item dispatch checkpoint and committed shop crash/restart acceptance. The shop runtime
 implementation is `f118916` (per-command clerk authorization and source sale
@@ -97,11 +98,70 @@ repetition is not justified by this result.
 
 [SERVER_COMMAND_AUDIT.md](SERVER_COMMAND_AUDIT.md) accounts for all 87 registered
 commands plus HTTP and background-owner work. It distinguishes implementation
-evidence from acceptance evidence and unaudited paths. The next selected command
-family is party reordering: its slot-index request can be replayed against a
+evidence from acceptance evidence and unaudited paths. The first selected command
+family was party reordering: its slot-index request could be replayed against a
 different ordering, and it fits the existing party/inventory recovery projection.
-PC storage and center healing remain explicit subsequent work, with their own
-authorization and projection requirements.
+That migration is recorded below. PC storage and center healing remain explicit
+subsequent work, with their own authorization and projection requirements.
+
+## Party ordering through the shared command boundary (2026-10-03)
+
+The previous drag handler changed the shared party optimistically and sent only
+slot indices. Repeating `[1,2,0]` after the first reorder permuted the new party
+again. Replies were uncorrelated and applied globally, so late packets could
+replace a newer party view. The server loaded the party before its save transaction
+and used the global database handle.
+
+Opcode 90/91 now carries the complete desired order as stable `pokemonIds`, the
+shared character/revision identity and a correlation ID. The domain callback
+validates exact current membership under the character lock and reuses the
+existing atomic party writer. Ordinary and Safari battle ownership, including a
+terminal record awaiting dismissal, prevents reordering. Failed domain writes,
+bag projection or commit roll back both the order and the revision. The response
+contains one committed party/bag snapshot; old index-only requests reject.
+
+The HUD keeps its drag preview local. A changed source party cancels the drag,
+and a pending inventory-family command prevents another admission. The existing
+client coordinator applies the acknowledgement or reads current gameplay state
+after a lost/rejected reply. The legacy global reply handler and optimistic store
+write are removed. No new retry loop, command counter, database schema or asset
+catalog was introduced.
+
+Shared-boundary review: the executor and coordinator algorithms are unchanged;
+the new consumer supplies stable-membership rules and a small projection/sound
+adapter. Recovery already contains party state, so no parallel recovery model is
+needed. This does not migrate independent legacy party reads or other party
+writers; their broader stale-projection audit remains explicit in the matrix.
+
+Verification:
+
+- Full PostgreSQL race suites passed for db, cqitems, economy, itemuse, pokebattle
+  and world through `run-go-postgres.sh` (world: 40.310 seconds). New dispatcher
+  checks cover stable final ordering, old/duplicate requests, foreign identity,
+  malformed membership, shared revisions, concurrent duplicates, blocked-lock
+  cancellation, domain/projection/commit rollback and durable battle ownership.
+- 109 focused client checks passed. Reordering uses the same admission, timeout,
+  rejection, malformed/stale response, scene/character retirement and recovery
+  matrix as the other command consumers. Invalid/missing IDs and unsolicited
+  reordered-party replies are covered.
+- Canonical `npm run tygo`, typecheck and production build with runtime asset
+  validation passed. Existing dynamic-import/chunk-size warnings remain.
+- Four rendered cases passed in `/var/tmp/capturequest-rendered.zlr6gcqp`: two
+  existing party-item cases and two new party-order cases. The new tests drag the
+  real HUD, duplicate each command, recover a lost reply without resending, apply
+  a distinct second order, verify late-reply retirement and survive reentry. The
+  lost-reply case kills the exact owned server after commit and before delivery;
+  its restart receipt records exit 137. Inspected screenshots show the new party
+  order. Both final party-order cases passed again in 26.6 seconds with an added
+  real party refresh during a drag, proving that the stale preview cancels before
+  any mutation is sent. That evidence is under `playwright-drag-retry`; the
+  earlier `playwright` evidence and all three crash receipts are retained.
+
+Next: center healing's source authorization and atomic execution. Inspect the
+existing nurse scripts and `applyHealPartyAction` first: the current client
+special-cases `SPRITE_NURSE` into a separate legacy handler. Consolidate that path
+with the authoritative interaction/mutation system. The login timeout and all
+five broad roadmap areas remain open. No push or deployment is performed.
 
 ## Repel command migration (2026-10-03)
 
@@ -420,12 +480,14 @@ lost-reply, reentry and actual crash/restart acceptance. The unresolved login
 restore timeout from that acceptance run is the first investigation in the active
 plan above; its cause is still unknown.
 
-The next migration is selected from the remaining-family audit after that
-investigation. PC transfers require box-state recovery; Escape Rope, Bicycle and
-fishing involve movement or battle ownership. These are candidates to assess,
-not instructions to build separate command coordinators or repeat completed
-atomicity work. The sale browser check exercises the existing coordinator and
-rendered balance; the product still has no Sell button.
+The bounded login investigation and remaining-family inventory are recorded
+above. Party ordering has subsequently migrated through the reviewed boundary.
+Center healing is next: unify its legacy nurse route with source-authorized
+interaction and atomic healing. PC transfers require box-state recovery; Escape
+Rope, Bicycle and fishing involve movement or battle ownership. Reuse their
+appropriate existing owners and completed atomicity work. The sale browser check
+exercises the existing coordinator and rendered balance; the product still has
+no Sell button.
 
 Remaining work includes recovery integration for other mutation commands and
 script/trainer plans and their queue/source/catalog ordering. Ordinary

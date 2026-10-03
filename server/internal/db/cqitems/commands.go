@@ -10,12 +10,12 @@ import (
 )
 
 // ExecuteCommand owns admission, the durable revision and the committed bag
-// projection for shop and party-item commands. A stale request is rejected;
+// projection for shop, party and Repel commands. A stale request is rejected;
 // clients recover current state without automatically resending the mutation.
 // Unlike repository helpers, this boundary cannot join a parent transaction:
 // returning a successful projection requires owning the final commit.
 // Keep the existing character_shop_state row so deployed revisions are preserved
-// without a second counter or a data migration. Its scope now includes party use.
+// without a second counter or a data migration. Its scope includes party use and ordering.
 func (s *Store) ExecuteCommand(ctx context.Context, charID int32, expected int64, apply func(db.DBTX) error) (CQInventorySnapshot, error) {
 	database, ok := s.database.(*sql.DB)
 	if !ok || database == nil {

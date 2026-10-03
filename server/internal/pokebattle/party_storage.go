@@ -7,6 +7,42 @@ import (
 	"capturequest/internal/db"
 )
 
+// ReorderPartyInTransaction changes ordering only. Resolve the complete owned
+// set by stable row ID while locked, then reuse the authoritative party writer
+// so slots, metadata and rollback keep the same rules as other party changes.
+func ReorderPartyInTransaction(tx db.DBTX, characterID int64, ids []int64) ([]*Pokemon, error) {
+	if err := db.RequireTransaction(tx); err != nil {
+		return nil, err
+	}
+	if len(ids) < 1 || len(ids) > 6 {
+		return nil, fmt.Errorf("invalid party size")
+	}
+	if err := db.LockCharacter(tx, characterID); err != nil {
+		return nil, err
+	}
+	party, err := LoadParty(tx, characterID)
+	if err != nil {
+		return nil, err
+	}
+	if len(party) != len(ids) {
+		return nil, fmt.Errorf("party membership changed")
+	}
+	owned := make(map[int64]*Pokemon, len(party))
+	for _, pokemon := range party {
+		owned[pokemon.RowID] = pokemon
+	}
+	ordered := make([]*Pokemon, len(ids))
+	for i, id := range ids {
+		pokemon := owned[id]
+		if id <= 0 || pokemon == nil {
+			return nil, fmt.Errorf("pokemon row %d is not a unique current party member", id)
+		}
+		ordered[i] = pokemon
+		delete(owned, id)
+	}
+	return SavePartyInTransaction(tx, characterID, ordered)
+}
+
 // All party/storage membership changes share this lock, including empty parties.
 // Nested operations join the caller's transaction and propagate failures.
 func withCharacterTransaction(database DBTX, characterID int64, operation func(DBTX) error) error {

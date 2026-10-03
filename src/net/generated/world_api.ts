@@ -770,6 +770,21 @@ export type GameCornerRandom = any;
 
 
 //////////
+// source: handler-party-commands.go
+
+export interface PokemonPartyReorderRequest {
+  requestId: string;
+  command?: InventoryCommandIdentity;
+  pokemonIds: number /* int64 */[];
+}
+export interface PokemonPartyReorderResponse {
+  success: true;
+  requestId: string;
+  inventory: import("./cqitems").CQInventorySnapshot;
+  party: PokemonDTO[];
+}
+
+//////////
 // source: handler-phaser-data.go
 
 export interface PhaserDialogueRequest {

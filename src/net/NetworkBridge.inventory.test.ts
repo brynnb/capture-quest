@@ -1,11 +1,12 @@
 import { beforeEach, expect, test, vi } from "vitest";
 import { NetworkBridge } from "./NetworkBridge";
 import { WorldSocket } from "./index";
-import { CQItemUseResponse, CQInventoryResponse, CQMerchantBuyResponse, CQMerchantSellResponse, RepelUseResponse } from "./generated/opcodes";
+import { CQItemUseResponse, CQInventoryResponse, CQMerchantBuyResponse, CQMerchantSellResponse, RepelUseResponse, PokemonPartyReorderResponse } from "./generated/opcodes";
 import type { CQInventoryItem } from "./generated/cqitems";
 import useCQInventoryStore from "@/stores/CQInventoryStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import AudioManager from "@/services/audio/AudioManager";
+import usePokemonPartyStore from "@/stores/PokemonPartyStore";
 
 const stack = (id: number, quantity: number): CQInventoryItem => ({
   instance: { id, itemId: 1, quantity, charges: 0, ownerType: 0 },
@@ -19,11 +20,13 @@ beforeEach(() => {
   vi.spyOn(AudioManager, "playSFX").mockResolvedValue(undefined);
 });
 
-test.each([CQMerchantBuyResponse,CQMerchantSellResponse,CQItemUseResponse,RepelUseResponse])("unsolicited inventory reply %d cannot apply a historical bag", async opcode => {
-  WorldSocket.onJson?.(opcode,{success:true,requestId:"retired",inventory:{items:[],money:0,commandRevision:1}});
+test.each([CQMerchantBuyResponse,CQMerchantSellResponse,CQItemUseResponse,RepelUseResponse,PokemonPartyReorderResponse])("unsolicited inventory reply %d cannot apply a historical bag or party", async opcode => {
+  const party=usePokemonPartyStore.getState().party;
+  WorldSocket.onJson?.(opcode,{success:true,requestId:"retired",party:[],inventory:{items:[],money:0,commandRevision:1}});
   await Promise.resolve();
   expect(useCQInventoryStore.getState().items).toEqual([stack(1,95)]);
   expect(useCQInventoryStore.getState().money).toBe(1000);
+  expect(usePokemonPartyStore.getState().party).toBe(party);
 });
 
 test("empty bag reads replace the whole bag and synchronize both money views", () => {

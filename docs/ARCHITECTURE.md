@@ -1202,12 +1202,14 @@ the full audit.
 
 ### Shared inventory command lifecycle
 
-Purchases, sales, outside-battle party items and Repel activation use
+Purchases, sales, outside-battle party items, party ordering and Repel activation use
 `cqitems.Store.ExecuteCommand`. It owns the bounded transaction, character lock,
 expected-revision comparison/advance and final inventory projection. The callback
 receives the transaction handle; payment/stock/stack rules remain in `economy`,
 while medicine, TM/HM, evolution and Flute rules remain in `itemuse`, and Repel's
-existing duration/active-counter rules remain in `world/repel_inventory.go`. The executor
+existing duration/active-counter rules remain in `world/repel_inventory.go`.
+Party ordering validates stable membership in `pokebattle.ReorderPartyInTransaction`
+and uses the existing atomic party writer. The executor
 requires a non-nil `*sql.DB` pool and rejects raw or wrapped parent transactions
 before invoking the callback or writing anything. It must own the final commit
 to promise a committed result; repository helpers inside its callback still join
@@ -1239,7 +1241,7 @@ overtaking state and permits one fresh read through `GameplayRecoveryService`.
 Mutations carry `requestId` for reply correlation and
 `command: {characterId, revision}` for durable duplicate protection. The existing
 `character_shop_state` row is deliberately retained: its revision covers shop,
-party-item and Repel commands, preserving deployed values without a second counter
+party-item, party-order and Repel commands, preserving deployed values without a second counter
 or schema migration. Wire snapshots expose `commandRevision` in place of
 `shopRevision`. A successful command advances once; a repeated old revision is
 rejected, including reuse by another consumer or after restart. The client reads
@@ -1257,6 +1259,17 @@ applies unsolicited command replies globally. Party requests include
 `pokemonRowId`, checked against the durable row occupying `partySlot`; multi-step
 PP/TM selection retains that original row identity. Whole-party Flute use has no
 individual target. Existing ownership, active-battle and item-rule checks remain.
+
+Party ordering uses opcode 90/91 with `pokemonIds` (the complete intended order of
+stable Pokémon row IDs), `requestId` and the shared command identity. The server
+validates current party membership and ordinary/Safari battle ownership inside
+the shared character transaction, then publishes one committed party/inventory
+reply. Terminal battle ownership lasts until dismissal. Old index-only `order`
+requests reject. The HUD keeps drag preview local and changes the shared party
+only on acknowledgement or recovery. A replacement party view cancels a drag;
+another inventory-family command blocks admission while pending. Unsolicited
+reorder replies have no global store or sound effect. Independent legacy party
+reads/pushes still need the broader projection audit.
 
 Repel, Super Repel and Max Repel use opcode 143/144 with `instanceId`, `requestId`
 and the shared command identity. A successful reply carries the complete inventory
