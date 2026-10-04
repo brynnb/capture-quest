@@ -17,6 +17,31 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. No push or production deployment is authorized by this goal.
 
+### GitHub handoff checkpoint (2026-10-03)
+
+The user separately authorized committing and pushing the current stopping point
+to a GitHub branch. The implementation checkpoint is `0d6b640` on
+`codex/server-foundations`; the working tree was clean before this documentation
+update. This handoff authorizes a branch push, with no production deployment.
+
+Center healing remains inspection only. The current extractor SQLite database
+contains 12 center nurse text blocks using the same `script_pokecenter_nurse`
+macro, with source text pointers and dialogue available. The original macro and
+healing sequence are in the extractor submodule's `macros/scripts/text.asm` and
+`engine/events/pokecenter.asm` (submodule revision
+`ed8b7d58ab3cac46401beb7e53896a88f51b9139`). The client sprite shortcut currently
+bypasses that source interaction. The existing scripted-event system already
+provides source-target authorization, durable issuance/completion and the shared
+`applyHealPartyAction` transaction path.
+
+Recommended next step: finish tracing choice cancellation and blackout destination
+data, then compile the complete nurse macro family through the canonical script
+compiler and existing scripted-event boundary. Make party healing, center options
+and the explicit trainer-reset policy atomic; retire the legacy healing route and
+verify rejection, rollback, duplicate completion and recovery. No nurse compiler,
+runtime or client migration has been implemented or verified at this checkpoint.
+The login timeout and the other remaining roadmap areas are still unresolved.
+
 The bounded [Nakama feasibility assessment](NAKAMA_FEASIBILITY.md) is complete
 (2026-10-03). It recommends consolidating purchase and party-item command handling
 using the existing infrastructure before migrating another endpoint family.
