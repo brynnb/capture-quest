@@ -153,11 +153,6 @@ export class NetworkBridge {
         this.handlePokemonPartyResponse(data as Record<string, unknown>);
         break;
 
-      // Pokémon Center healing (Phase 6.6)
-      case OpCodes.PokeCenterHealResponse:
-        this.handlePokeCenterHealResponse(data as Record<string, unknown>);
-        break;
-
       // CQ Inventory & Merchant (Phase 7)
       case OpCodes.CQInventoryResponse:
         this.handleCQInventoryResponse(data as Record<string, unknown>);
@@ -386,17 +381,6 @@ export class NetworkBridge {
       return;
     }
     presentBattleEnd(end);
-  }
-
-  private handlePokeCenterHealResponse(data: Record<string, unknown>) {
-    if (!data.success) {
-      console.warn("[NetworkBridge] Pokémon Center heal failed:", data.error);
-      return;
-    }
-    this.playSourceSFX("SFX_HEALING_MACHINE", 0.9);
-    // Don't update party store here — the client will request fresh party data
-    // after the Nurse Joy dialogue finishes (via the onClose callback).
-    console.log("[NetworkBridge] Pokémon Center heal confirmed by server");
   }
 
   private handlePokemonPartyResponse(data: Record<string, unknown>) {

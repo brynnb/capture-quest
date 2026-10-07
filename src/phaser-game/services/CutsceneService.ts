@@ -372,6 +372,10 @@ async function executeAction(
       // No-op client-side — Pokemon rewards are persisted server-side on CutsceneEnd
       return true;
 
+    case "healParty":
+      // Healing and center policy commit with the durable CutsceneEnd command.
+      return true;
+
     case "giveItem":
     case "takeItem":
       // No-op client-side — inventory is persisted server-side on CutsceneEnd

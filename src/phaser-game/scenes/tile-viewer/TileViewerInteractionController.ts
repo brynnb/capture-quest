@@ -496,25 +496,6 @@ export class TileViewerInteractionController {
   }
 
   private async performActorInteraction(actor: PhaserActor): Promise<void> {
-    if (actor.spriteName === "SPRITE_NURSE") {
-      console.log(
-        `[TileViewer] Nurse Joy clicked on map ${actor.mapId}, triggering heal`,
-      );
-      PhaserNet.sendPokeCenterHeal(actor.mapId);
-      const healLines = [
-        "Welcome to our POKéMON CENTER!",
-        "We'll restore your POKéMON to full health.",
-        "...",
-        "Thank you for waiting.\nYour POKéMON are fully healed!",
-      ];
-      usePokemonDialogueStore
-        .getState()
-        .openDialogue(healLines, "NURSE JOY", actor.id, () => {
-          PhaserNet.sendPokemonPartyRequest();
-        });
-      return;
-    }
-
     if (actor.objectType === "pc") {
       console.log(`[TileViewer] PC clicked on map ${actor.mapId}`);
       PhaserNet.sendPokemonPCOpen();

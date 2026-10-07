@@ -133,8 +133,17 @@ func mapActions(actions []candidateAction) ([]json.RawMessage, error) {
 	result := []json.RawMessage{}
 	for _, action := range actions {
 		switch action.Type {
-		case "lockInput", "unlockInput", "endSafariSession", "healParty":
+		case "lockInput", "unlockInput", "endSafariSession":
 			result = append(result, rawAction(map[string]any{"type": action.Type}))
+		case "healParty":
+			if action.HealingPolicy != "" && action.HealingPolicy != "center" {
+				return nil, fmt.Errorf("unsupported healingPolicy %q", action.HealingPolicy)
+			}
+			mapped := map[string]any{"type": action.Type}
+			if action.HealingPolicy != "" {
+				mapped["healingPolicy"] = action.HealingPolicy
+			}
+			result = append(result, rawAction(mapped))
 		case "delay", "screenFade":
 			result = append(result, rawAction(map[string]any{
 				"type": action.Type,

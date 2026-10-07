@@ -1128,16 +1128,6 @@ export interface CQBattleItemUseRequest {
 }
 
 //////////
-// source: handler-pokecenter.go
-
-/**
- * PokeCenterHealRequest is sent by the client when the player interacts with Nurse Joy.
- */
-export interface PokeCenterHealRequest {
-  mapId: number /* int */; // The map the player is currently on (should be a Pokémon Center)
-}
-
-//////////
 // source: handler-pokemon-pc.go
 
 

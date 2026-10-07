@@ -55,6 +55,18 @@ func Run(ctx context.Context, opts Options) (Stats, error) {
 	if err != nil {
 		return Stats{}, err
 	}
+	macros, err := loadTextMacroCandidates(ctx, db)
+	if err != nil {
+		return Stats{}, err
+	}
+	for _, macro := range macros {
+		for _, candidate := range candidates {
+			if candidate.ScriptLabel == macro.ScriptLabel || (candidate.MapName == macro.MapName && candidate.Trigger.Type == macro.Trigger.Type && candidate.Trigger.Label == macro.Trigger.Label) {
+				return Stats{}, fmt.Errorf("text macro %s/%s conflicts with an extractor candidate", macro.MapName, macro.ScriptLabel)
+			}
+		}
+		candidates = append(candidates, macro)
+	}
 	stats.Read = len(candidates)
 
 	coordResolver, err := newCoordinateResolver(ctx, db)

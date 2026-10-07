@@ -9,6 +9,7 @@ by candidate compilation, runtime execution, and offline simulation.
 
 export interface Action {
   type: string;
+  healingPolicy?: string;
   speaker?: string;
   lines?: string[];
   actor?: string;

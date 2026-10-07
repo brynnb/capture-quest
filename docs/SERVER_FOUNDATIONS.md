@@ -6,8 +6,10 @@ the full roadmap from local implementation checkpoint `3a6d68d`. The goal tool
 confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
-Working branch: `codex/server-foundations`. Latest checkpoint: party ordering
-through the shared inventory command boundary (2026-10-03), following `cf0aafb`
+Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+center healing through the shared scripted-event boundary (2026-10-07), with
+nurse-specific rendered/recovery acceptance still open. This follows `0d6b640`
+(party ordering through the shared inventory command boundary) and `cf0aafb`
 (transaction diagnostics and remaining-family inventory), `3a6d68d` (Repel),
 `a96eaa7` (commit/presentation review fixes), `5c8da47` (shop/party consolidation), the
 owned-item dispatch checkpoint and committed shop crash/restart acceptance. The shop runtime
@@ -16,6 +18,57 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. No push or production deployment is authorized by this goal.
+
+## Center healing implementation checkpoint (2026-10-07)
+
+The 12 center nurses are now compiled as a complete source macro family from
+`script_event_ir_blocks`, `text_pointers`, `maps` and `dialogue_text`. Translation
+requires an exact supported macro body and consistent, unique map/text identity;
+missing dialogue, changed bodies and duplicate records fail compilation. Events
+use the canonical locked output plan. The current corpus generates 12 new scripts
+and preserves 321 existing scripts; `--check` reports 333 unchanged candidates,
+zero unsupported candidates and no overrides. Generated outputs remain ignored.
+
+The client sprite shortcut, direct heal sender, fabricated dialogue and global
+heal-response handler are retired. All nurse actors use the existing scripted
+interaction flow, including the separately sourced Silph nurse. Reserved opcode
+79 rejects stale callers without mutation. No new command/recovery coordinator
+was added. Center scripts extend the shared `healParty` action with the explicit
+`healingPolicy: "center"`; ordinary scripted and battle healing retain their
+existing policy. Center healing rejects ordinary/Safari battle ownership,
+changed source maps, empty parties and non-object options. It heals through the
+existing party writer, merges center option keys without discarding unknown
+options, resets defeated trainers and resolves the durable token in one commit.
+In-memory trainer tracking clears only after commit.
+
+Source provenance is the extractor submodule revision recorded in the handoff
+below. Its `SetLastBlackoutMap` and `FlyWarpData` use outdoor source destinations.
+This migration deliberately preserves CaptureQuest's existing center-interior
+arrival `(3,4)` and trainer resets as explicit game policies; the legacy claim
+that trainer resets reproduce cartridge behavior was incorrect. The dialogue
+always presents the healing choice rather than introducing the cartridge's
+first-visit welcome bit. Source artwork/animation fidelity is not established.
+
+Verification so far: compiler regression tests and all compiler package tests,
+focused real PostgreSQL race checks for center completion and existing durable
+cutscene/interaction boundaries, nine client cutscene lifecycle tests, canonical
+type generation, TypeScript checks, runtime asset validation and production
+frontend build passed. Center regressions cover HP/PP/status restoration,
+preserved options, cancelled tokens, stale opcode rejection, final-commit rollback,
+completed-token replay after new damage/trainer wins, ordinary battle ownership,
+changed maps, malformed options and unknown policy rejection.
+
+Remaining acceptance: rendered nurse Yes/No and source reach/visibility checks,
+lost issuance/completion delivery, actual process death and reentry, plus review
+of the shared boundary before another family. Existing general cutscene recovery
+evidence is reusable but does not establish those nurse-specific browser results.
+The full five-area goal and login timeout investigation remain incomplete. A
+future deployment needs the full-data lane because the compiler/action contract
+and generated script family changed; no deployment is authorized here.
+
+Recommended next step: finish nurse rendered/recovery acceptance with the existing
+isolated cutscene and exact-process harnesses, then review this migration before
+choosing the next command family.
 
 ### GitHub handoff checkpoint (2026-10-03)
 

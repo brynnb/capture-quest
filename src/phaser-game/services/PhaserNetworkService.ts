@@ -505,14 +505,6 @@ export function sendTrainerEncounterReady(trainerActorId: number, encounterToken
 }
 
 /**
- * Send a Pokémon Center heal request to the server (triggered by clicking Nurse Joy).
- */
-export function sendPokeCenterHeal(mapId: number): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ mapId }, OpCodes.PokeCenterHealRequest);
-}
-
-/**
  * Request the player's current Pokémon party from the server.
  */
 export function sendPokemonPartyRequest(): void {

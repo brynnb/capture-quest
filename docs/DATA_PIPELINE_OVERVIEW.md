@@ -76,6 +76,15 @@ relational identity columns disagree. Runtime execution, offline simulation,
 and candidate compilation share the action wire contract in
 `server/internal/scriptedactions`.
 
+The compiler also translates the center-nurse text macro family preserved in
+`script_event_ir_blocks`, resolving its map/text identity and dialogue from the
+same negotiated SQLite source. Exact supported bodies are required; malformed
+or missing source records fail instead of producing plausible dialogue. These
+events use the shared `healParty` action with an explicit center policy and the
+same output publication plan as relational candidates. Compiler/action changes
+require the full-data deployment lane so generated events and runtime move
+together.
+
 Candidate publication is serialized per output root and prepared as one
 rollback-capable multi-file operation. To verify generated files in CI without
 changing them, run:

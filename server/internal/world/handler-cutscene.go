@@ -350,7 +350,7 @@ func applyCutsceneActionList(ctx CutsceneActionContext, mapName string, rawActio
 				return err
 			})
 		case "healParty":
-			detail, err := applyHealPartyAction(ctx, charID)
+			detail, err := applyHealPartyAction(ctx, mapName, action, charID)
 			if err != nil {
 				return effects, false, err
 			}
@@ -618,10 +618,21 @@ func applyGiveCoinsAction(ctx CutsceneActionContext, action CutsceneAction, char
 	return fmt.Sprintf("coins=%d total=%d", action.Coins, total), nil
 }
 
-func applyHealPartyAction(ctx CutsceneActionContext, charID int64) (string, error) {
+func applyHealPartyAction(ctx CutsceneActionContext, mapName string, action CutsceneAction, charID int64) (string, error) {
+	if action.HealingPolicy != "" && action.HealingPolicy != "center" {
+		return "", fmt.Errorf("unsupported healingPolicy %q", action.HealingPolicy)
+	}
+	if action.HealingPolicy == "center" {
+		if err := applyCenterHealingPolicy(ctx, mapName, charID); err != nil {
+			return "", err
+		}
+	}
 	party, err := ctx.mutation.loadParty()
 	if err != nil {
 		return "", err
+	}
+	if action.HealingPolicy == "center" && len(party) == 0 {
+		return "", fmt.Errorf("no party to heal")
 	}
 	HealPokemonParty(party)
 	ctx.mutation.partyDirty = true
