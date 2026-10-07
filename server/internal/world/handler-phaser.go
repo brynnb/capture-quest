@@ -618,7 +618,12 @@ func HandlePhaserActorsRequest(ses *session.Session, payload []byte, wh *WorldHa
 		actors = append(actors, n)
 	}
 
-	actors = ApplyEventObjectVisibilityToActors(charID, req.MapID, wh.EventFlags, actors)
+	actors, err = applyEventObjectVisibilityContext(ses.CommandContext(), wh.database, charID, req.MapID, wh.EventFlags, actors)
+	if err != nil {
+		log.Printf("[Phaser] Actor visibility for map %d: %v", req.MapID, err)
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "actor visibility unavailable"}, opcodes.PhaserActorsResponse)
+		return false
+	}
 	actors = ApplyCharacterObjectPositions(charID, actors)
 
 	// Publish this command's map change before enumerating visible players.

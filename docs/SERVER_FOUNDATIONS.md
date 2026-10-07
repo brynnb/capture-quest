@@ -7,8 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-center healing through the shared scripted-event boundary (2026-10-07), with
-nurse-specific rendered/recovery acceptance still open. This follows `0d6b640`
+center healing through the shared scripted-event boundary (2026-10-07), followed
+by rendered/recovery acceptance and shared issuance/visibility fixes. This follows `0d6b640`
 (party ordering through the shared inventory command boundary) and `cf0aafb`
 (transaction diagnostics and remaining-family inventory), `3a6d68d` (Repel),
 `a96eaa7` (commit/presentation review fixes), `5c8da47` (shop/party consolidation), the
@@ -58,7 +58,7 @@ preserved options, cancelled tokens, stale opcode rejection, final-commit rollba
 completed-token replay after new damage/trainer wins, ordinary battle ownership,
 changed maps, malformed options and unknown policy rejection.
 
-Remaining acceptance: rendered nurse Yes/No and source reach/visibility checks,
+At the implementation checkpoint, remaining acceptance was rendered nurse Yes/No and source reach/visibility checks,
 lost issuance/completion delivery, actual process death and reentry, plus review
 of the shared boundary before another family. Existing general cutscene recovery
 evidence is reusable but does not establish those nurse-specific browser results.
@@ -66,9 +66,76 @@ The full five-area goal and login timeout investigation remain incomplete. A
 future deployment needs the full-data lane because the compiler/action contract
 and generated script family changed; no deployment is authorized here.
 
-Recommended next step: finish nurse rendered/recovery acceptance with the existing
-isolated cutscene and exact-process harnesses, then review this migration before
+The follow-up below records that acceptance and shared-boundary review before
 choosing the next command family.
+
+### Nurse acceptance and shared issuance review (2026-10-07)
+
+The new browser fixture places the character at the source counter opposite the
+Viridian nurse. Tests use the existing private PostgreSQL/exact-process runner,
+real actor clicks and rendered Yes/No controls. Injuries and trainer wins are
+seeded only in the verified private database while the character is offline.
+No new recovery coordinator or process-control mechanism was introduced.
+
+The final two rendered cases passed in 31.8 seconds against the final server
+source. Evidence is retained in `/var/tmp/capturequest-rendered.xOsPaR`:
+remote nurse requests reject; source-counter clicks show Yes/No; No cancels the
+durable token without healing, changing center options or resetting trainers;
+Yes restores the party and persists the center/trainer policy. A hidden nurse
+is absent from the actor view and rejects a stale actor ID. Inspected screenshots
+show the nurse choice, full party HP and the nurse's absence under the override.
+No retired heal command was sent. The lost-delivery case drops the first issued
+script, resumes its exact token after reentry, then drops the successful completion
+reply and kills the owned server before acknowledgement recovery. The receipt
+records exit 137; the same private database survives restart and browser reentry
+with full HP, cleared status, center options and the committed trainer reset.
+The isolated runner stopped its own app/client/database processes on completion.
+
+Earlier runs remain in `BMELm7`, `t2OPSO`, `BlbhDt` and `AIVcxP` under the same
+`/var/tmp/capturequest-rendered.` prefix. They distinguish fixture corrections
+(expected outage errors and an insufficient diagnostic snapshot radius) from the
+actual visibility defect below. The error collector still rejects unrelated
+errors; only exact WebSocket connection-refused errors and the corresponding
+socket error are permitted inside the deliberate crash window. No assertion of
+hidden-actor behavior was removed or relaxed. TypeScript checks, fixture usable-tile
+validation and `git diff --check` passed. The complete world PostgreSQL race suite
+passed again after the visibility fix (40.540 seconds).
+
+Review found the generic scripted interaction replied `started: true` before
+`SendCutsceneToPlayer` committed the durable token. The shared issuance transaction
+is now exposed as a preparation step used by both that notification wrapper and
+generic interactions. Generic interaction publishes success and the start payload
+only after the token commit. A real deferred commit-rejection regression proves
+failure produces only a negative interaction reply and no durable plan; retry
+issues one recoverable plan. Focused PostgreSQL race checks and the complete world
+race suite passed after this change (world: 42.657 seconds).
+
+The rendered hidden-nurse check exposed a second shared defect: actor-list
+filtering returned before loading per-character overrides when a map had no
+source visibility rules. Interaction authorization did load those overrides, so
+display and interaction disagreed. Removing that early return applies the same
+override policy to ordinary interior and unified-overworld actors. Actor-list
+requests now use the injected, cancellable visibility boundary and report its
+errors; broadcast filtering logs visibility errors and withholds unverified
+actors instead of publishing the unfiltered list. PostgreSQL regressions cover
+maps without source rules, both map modes and missing override storage.
+
+Special puzzle/card-key interaction handlers still perform their domain mutation
+before separate dialogue issuance. Their atomic mutation/issuance audit remains
+part of the wider script-writer inventory; this checkpoint does not close it.
+Presentation dialogue/SFX still run before final cutscene completion, as in the
+existing interpreter. Durable state, token resolution and projections depend on
+the confirmed transaction; this work does not establish cartridge animation or
+presentation timing fidelity.
+
+This finishes the selected nurse migration and its planned acceptance checks,
+not the full foundations goal or the entire scripted-event audit. The original
+login timeout did not recur in these runs and remains unresolved. Next: audit PC
+opening/source authorization and its stable Pokemon identities, then migrate PC
+commands through the existing shared transaction and recovery boundaries with
+coherent box/party projections. Other command and lifecycle work remains in
+`SERVER_COMMAND_AUDIT.md`. These checkpoints are local; no further push or
+production deployment was performed.
 
 ### GitHub handoff checkpoint (2026-10-03)
 

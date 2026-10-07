@@ -100,6 +100,57 @@ func TestScriptInteractionAuthorizesServerPositionAndVisibility(t *testing.T) {
 	request(false) // SQL failure must not silently expose an actor.
 }
 
+func TestScriptInteractionPublishesStartedOnlyAfterDurableIssuanceCommit(t *testing.T) {
+	database, wh, ses, messages := battleTestWorld(t)
+	wh.ActorRegistry = NewActorRegistry()
+	wh.ActorManager = NewPhaserActorManager(wh)
+	wh.Cutscenes = NewCutsceneManager(database)
+	cs := &CutsceneScript{ScriptLabel: "GREETING", MapName: "ROOM", TriggerType: "npc_click", Actions: json.RawMessage(`[]`)}
+	wh.Cutscenes.byLabel[cs.ScriptLabel] = cs
+	testdb.Exec(t, database, `INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(1,'ROOM',10,10,0);
+ INSERT INTO phaser_objects(id,map_id,x,y,object_type,name,text) VALUES(10,1,1,0,'npc','GREETING','GREETING');
+ CREATE FUNCTION reject_issuance_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'issuance commit rejected'; END $$;
+ CREATE CONSTRAINT TRIGGER reject_issuance_commit AFTER INSERT ON character_cutscene_plans DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_issuance_commit();`)
+	ses.Client.CharData().MapID = 1
+	actorID := wh.ActorRegistry.GetPhaserID(ActorTypeNPC, 10)
+	request := fmt.Sprintf(`{"actorId":%d}`, actorID)
+	battleDispatch(t, wh, ses, opcodes.ScriptedEventInteractRequest, request)
+	var response ScriptedEventInteractResponse
+	if len(messages.streams) != 1 || messages.streams[0].opcode != opcodes.ScriptedEventInteractResponse || json.Unmarshal(messages.streams[0].payload, &response) != nil || response.Success || response.Started {
+		t.Fatalf("announced failed issuance: %+v messages=%v", response, messages.streams)
+	}
+	var count int
+	if err := database.QueryRow(`SELECT count(*) FROM character_cutscene_plans WHERE character_id=42`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("failed issuance plans=%d err=%v", count, err)
+	}
+	testdb.Exec(t, database, `DROP TRIGGER reject_issuance_commit ON character_cutscene_plans`)
+	messages.streams = nil
+	battleDispatch(t, wh, ses, opcodes.ScriptedEventInteractRequest, request)
+	if len(messages.streams) != 2 || json.Unmarshal(messages.streams[0].payload, &response) != nil || !response.Success || !response.Started || messages.streams[1].opcode != opcodes.CutsceneStartNotify {
+		t.Fatalf("retry did not issue: %+v", response)
+	}
+	if err := database.QueryRow(`SELECT count(*) FROM character_cutscene_plans WHERE character_id=42 AND resolution='pending'`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("retry plans=%d err=%v", count, err)
+	}
+}
+
+func TestActorVisibilityOverridesApplyWithoutSourceRules(t *testing.T) {
+	database, wh, _, _ := battleTestWorld(t)
+	testdb.Exec(t, database, `INSERT INTO character_object_visibility_overrides(character_id,object_id,visible,source) VALUES(42,10,false,'test')`)
+	name := "PLAIN_ACTOR"
+	actors := []PhaserActor{{ID: 100, DbID: 10, MapID: 41, Name: &name}, {ID: 101, DbID: 11, MapID: 41}}
+	for _, mapID := range []int{41, UnifiedOverworldMapID} {
+		visible, err := applyEventObjectVisibilityContext(context.Background(), database, 42, mapID, wh.EventFlags, append([]PhaserActor(nil), actors...))
+		if err != nil || len(visible) != 1 || visible[0].DbID != 11 {
+			t.Fatalf("map=%d visible=%+v err=%v", mapID, visible, err)
+		}
+	}
+	testdb.Exec(t, database, `ALTER TABLE character_object_visibility_overrides RENAME TO unavailable_overrides`)
+	if _, err := applyEventObjectVisibilityContext(context.Background(), database, 42, 41, wh.EventFlags, actors); err == nil {
+		t.Fatal("missing override table exposed actors")
+	}
+}
+
 func TestRemoteScriptInteractionCannotUnlockCardKeyDoor(t *testing.T) {
 	database, wh, ses, messages := battleTestWorld(t)
 	wh.ActorRegistry = NewActorRegistry()

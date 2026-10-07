@@ -34,7 +34,9 @@ func ApplyEventObjectVisibilityToActors(charID int64, mapID int, efm *EventFlagM
 	visible, err := applyEventObjectVisibilityContext(context.Background(), db.GlobalWorldDB.DB, charID, mapID, efm, actors)
 	if err != nil {
 		log.Printf("[EventObjects] Visibility: %v", err)
-		return actors
+		// Broadcast callers cannot publish an actor whose visibility could not be
+		// established. Request callers use the error-returning boundary directly.
+		return nil
 	}
 	return visible
 }
@@ -54,21 +56,15 @@ func applyEventObjectVisibilityContext(ctx context.Context, database db.ContextD
 	}
 
 	rulesByMap := make(map[int][]eventObjectVisibility, len(mapIDs))
-	hasRules := false
 	for id := range mapIDs {
 		rules, err := eventObjectVisibilityForMapContext(ctx, database, id)
 		if err != nil {
 			return nil, err
 		}
 		if len(rules) > 0 {
-			hasRules = true
 			rulesByMap[id] = rules
 		}
 	}
-	if !hasRules {
-		return actors, nil
-	}
-
 	overrides, err := objectVisibilityOverridesForCharacterContext(ctx, database, charID)
 	if err != nil {
 		return nil, err

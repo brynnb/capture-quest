@@ -109,12 +109,18 @@ func HandleScriptedEventInteract(ses *session.Session, payload []byte, wh *World
 
 	log.Printf("[ScriptedEvent] Starting %s for char %d from actor %d/object %d",
 		cs.ScriptLabel, charID, req.ActorID, objectID)
+	plan, err := issueCutsceneForPlayer(ses, cs, wh)
+	if err != nil {
+		log.Printf("[ScriptedEvent] Issue %s for character %d: %v", cs.ScriptLabel, charID, err)
+		ses.SendStreamJSON(ScriptedEventInteractResponse{Success: false, Error: "event issuance unavailable"}, opcodes.ScriptedEventInteractResponse)
+		return false
+	}
 	ses.SendStreamJSON(ScriptedEventInteractResponse{
 		Success:     true,
 		Started:     true,
 		ScriptLabel: cs.ScriptLabel,
 	}, opcodes.ScriptedEventInteractResponse)
-	SendCutsceneToPlayer(ses, cs, wh)
+	publishCutscenePlan(ses, plan, wh)
 	return false
 }
 

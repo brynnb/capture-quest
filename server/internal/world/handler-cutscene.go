@@ -136,8 +136,20 @@ type issuedCutscene struct {
 
 // SendCutsceneToPlayer sends a cutscene action sequence to a specific player.
 func SendCutsceneToPlayer(ses *session.Session, cs *CutsceneScript, wh *WorldHandler) {
-	if cs == nil || wh == nil || !ses.HasValidClient() || ses.IsClosed() {
+	plan, err := issueCutsceneForPlayer(ses, cs, wh)
+	if err != nil {
+		log.Printf("[Cutscene] Issue: %v", err)
 		return
+	}
+	publishCutscenePlan(ses, plan, wh)
+}
+
+// Issuance callers with their own positive reply must prepare durable authority
+// before publishing that reply. The existing notification wrapper shares this
+// same transaction rather than reporting a start before a failed commit.
+func issueCutsceneForPlayer(ses *session.Session, cs *CutsceneScript, wh *WorldHandler) (*durableCutscene, error) {
+	if cs == nil || wh == nil || ses == nil || !ses.HasValidClient() || ses.IsClosed() {
+		return nil, fmt.Errorf("cutscene issuance owner unavailable")
 	}
 	x, y, mapID := wh.ownedPlayerPosition(ses)
 	var plan *durableCutscene
@@ -150,10 +162,9 @@ func SendCutsceneToPlayer(ses *session.Session, cs *CutsceneScript, wh *WorldHan
 		return err
 	})
 	if err != nil {
-		log.Printf("[Cutscene] Issue %s: %v", cs.ScriptLabel, err)
-		return
+		return nil, fmt.Errorf("issue %s: %w", cs.ScriptLabel, err)
 	}
-	publishCutscenePlan(ses, plan, wh)
+	return plan, nil
 }
 
 func annotateCutsceneActionsForClient(executionCtx context.Context, cs *CutsceneScript, wh *WorldHandler) (json.RawMessage, error) {

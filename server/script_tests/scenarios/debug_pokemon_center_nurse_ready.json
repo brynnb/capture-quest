@@ -1,0 +1,23 @@
+{
+  "name": "debug_pokemon_center_nurse_ready",
+  "description": "Stand across the source counter from the Viridian center nurse for interaction/recovery checks.",
+  "fixture": {
+    "characterName": "DebugPokemonCenterNurseReady",
+    "mapName": "VIRIDIAN_POKECENTER",
+    "x": 3,
+    "y": 3,
+    "direction": "UP",
+    "party": [{ "speciesId": 1, "level": 12 }],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": { "type": "fixture_state", "mapName": "VIRIDIAN_POKECENTER" },
+  "expect": {
+    "scriptLabel": "FixtureState",
+    "finalX": 3,
+    "finalY": 3,
+    "finalDirection": "UP",
+    "partySpecies": [1],
+    "activeBattleAbsent": true
+  }
+}
