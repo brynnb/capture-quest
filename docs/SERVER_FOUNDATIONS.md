@@ -7,8 +7,10 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-center healing through the shared scripted-event boundary (2026-10-07), followed
-by rendered/recovery acceptance and shared issuance/visibility fixes. This follows `0d6b640`
+stable row-ID PC storage primitives (2026-10-07); PC network/client migration
+remains unfinished. This follows center healing through the shared scripted-event
+boundary and its rendered/recovery acceptance plus shared issuance/visibility
+fixes (`4d18056`, `58b3d53`), following `0d6b640`
 (party ordering through the shared inventory command boundary) and `cf0aafb`
 (transaction diagnostics and remaining-family inventory), `3a6d68d` (Repel),
 `a96eaa7` (commit/presentation review fixes), `5c8da47` (shop/party consolidation), the
@@ -18,6 +20,59 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. No push or production deployment is authorized by this goal.
+
+## PC storage identity prerequisite and source audit (2026-10-07)
+
+The three authoritative storage operations now target stable owned Pokémon row
+IDs through `DepositPokemonToPCInTransaction`,
+`WithdrawPokemonFromPCInTransaction` and `ReleasePokemonFromPCInTransaction`.
+They require an existing transaction, share the character lock and retain the
+existing free-slot allocation, capacity, last-party-member and party-compaction
+rules. Ownership and current party/box membership are checked before changes;
+malformed occupied box slots reject instead of being ignored during allocation.
+No storage engine or commit/recovery coordinator was added.
+
+The existing slot APIs resolve their selectors once under the same lock and
+delegate to these operations. This preserves current callers while the transport
+migration is prepared. It **does not fix slot-only network intent or duplicate
+requests**: handlers still accept party/box slots, use global/background reads,
+emit independent success/party/box packets and lack PC source authorization.
+Those wrappers and replaced network paths must retire as the ID-based command
+family migrates; they are not a permanent compatibility design.
+
+Real PostgreSQL race regressions execute the new operations inside the existing
+`cqitems.Store.ExecuteCommand` boundary. They prove stable targeting after party
+reordering and PC slot reuse, rejection of old shared revisions and released,
+foreign or misplaced targets, box/party capacity and last-member protection,
+caller-owned transaction enforcement, blocked-lock cancellation, and rollback of
+membership plus revision after bag projection, box projection or final commit
+failure. Retry at the unchanged revision succeeds. All pokebattle and cqitems
+race tests passed (3.117 and 2.550 seconds respectively); focused storage checks
+passed again after malformed-slot validation and the added box-projection case
+(2.314 seconds). Existing SQLite storage checks also passed. This is domain and
+command-kernel evidence, not PC transport or rendered acceptance.
+
+Source audit: the current extractor has **zero PC records in `objects`** but
+**20 `hidden_objects` records** with `routine='OpenPokemonCenterPC'` and
+`object_type='pc'`. PCs must be authorized by the hidden-object source identity,
+not the NPC actor registry. The source in `data/events/hidden_objects.asm`,
+`engine/overworld/hidden_objects.asm` and
+`engine/events/hidden_objects/pokecenter_pc.asm` (extractor submodule revision
+`ed8b7d58ab3cac46401beb7e53896a88f51b9139`) matches the coordinate in front of
+the player and requires facing up. Most triggers are at `(13,3)`, but Indigo
+Plateau Lobby is `(15,7)`, Silph 11F is `(10,12)`, and other triggers include
+Safari rest houses, Celadon locations and the fossil room. The current client
+hardcodes 11 center map IDs and one access tile. Preserve source rows as the
+authority and replace that hardcoded subset as part of the migration.
+
+Next: wire all five PC handlers through source authorization and the existing
+shared command/revision boundary, with stable Pokémon IDs and one typed committed
+box/party projection. Extend the current gameplay recovery model with PC state,
+reuse the existing scene-owned command coordinator, and retire global PC reply
+handlers and slot requests. Then verify real source interaction, rollback,
+duplicates, cancellation, stale replies, closed views and crash/reentry through
+the existing isolated harnesses. The full roadmap and login timeout remain open.
+This prerequisite is committed locally; no push or deployment is part of it.
 
 ## Center healing implementation checkpoint (2026-10-07)
 

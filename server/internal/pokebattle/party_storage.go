@@ -68,12 +68,32 @@ func DepositToPC(database DBTX, characterID int64, partySlot int, box int) (int,
 	return result, nil
 }
 
-func depositToPC(db DBTX, characterID int64, partySlot int, box int) (int, error) {
-	if box < 0 || box >= 12 || partySlot < 0 || partySlot >= 6 {
-		return -1, fmt.Errorf("invalid party slot %d or PC box %d", partySlot, box)
+func depositToPC(tx DBTX, characterID int64, partySlot int, box int) (int, error) {
+	if partySlot < 0 || partySlot >= 6 {
+		return -1, fmt.Errorf("invalid party slot %d", partySlot)
+	}
+	var rowID int64
+	if err := tx.QueryRow(`SELECT id FROM character_pokemon WHERE character_id=$1 AND party_slot=$2 AND box=-1`, characterID, partySlot).Scan(&rowID); err != nil {
+		return -1, err
+	}
+	return DepositPokemonToPCInTransaction(tx, characterID, rowID, box)
+}
+
+// DepositPokemonToPCInTransaction selects the exact owned Pokemon, never the
+// occupant of a stale slot. The caller owns the final commit and its projection.
+func DepositPokemonToPCInTransaction(tx DBTX, characterID, rowID int64, box int) (int, error) {
+	if err := lockPCPokemon(tx, characterID, rowID, box); err != nil {
+		return -1, err
+	}
+	var partySlot int
+	if err := tx.QueryRow(`SELECT party_slot FROM character_pokemon WHERE id=$1 AND character_id=$2 AND box=-1`, rowID, characterID).Scan(&partySlot); err != nil {
+		return -1, fmt.Errorf("pokemon %d is not a current party member: %w", rowID, err)
+	}
+	if partySlot < 0 || partySlot >= 6 {
+		return -1, fmt.Errorf("invalid party slot %d for pokemon %d", partySlot, rowID)
 	}
 	var partySize int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM character_pokemon WHERE character_id=$1 AND box=-1`, characterID).Scan(&partySize); err != nil {
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM character_pokemon WHERE character_id=$1 AND box=-1`, characterID).Scan(&partySize); err != nil {
 		return -1, err
 	}
 	if partySize <= 1 {
@@ -81,7 +101,7 @@ func depositToPC(db DBTX, characterID int64, partySlot int, box int) (int, error
 	}
 	// Find first available slot in the box (0-19)
 	var usedSlots []int
-	rows, err := db.Query(`SELECT box_slot FROM character_pokemon WHERE character_id = $1 AND box = $2`, characterID, box)
+	rows, err := tx.Query(`SELECT box_slot FROM character_pokemon WHERE character_id = $1 AND box = $2`, characterID, box)
 	if err != nil {
 		return -1, err
 	}
@@ -90,6 +110,9 @@ func depositToPC(db DBTX, characterID int64, partySlot int, box int) (int, error
 		var s int
 		if err := rows.Scan(&s); err != nil {
 			return -1, err
+		}
+		if err := validatePCSlot(box, s); err != nil {
+			return -1, fmt.Errorf("occupied PC slot is malformed: %w", err)
 		}
 		usedSlots = append(usedSlots, s)
 	}
@@ -115,11 +138,11 @@ func depositToPC(db DBTX, characterID int64, partySlot int, box int) (int, error
 	}
 
 	// Move the party Pokémon to the PC box (NULL party_slot for PC Pokémon)
-	result, err := db.Exec(`
+	result, err := tx.Exec(`
 		UPDATE character_pokemon
 		SET box = $1, box_slot = $2, party_slot = NULL
-		WHERE character_id = $3 AND party_slot = $4 AND box = -1`,
-		box, freeSlot, characterID, partySlot)
+		WHERE character_id = $3 AND id = $4 AND box = -1`,
+		box, freeSlot, characterID, rowID)
 	if err != nil {
 		return -1, err
 	}
@@ -127,12 +150,12 @@ func depositToPC(db DBTX, characterID int64, partySlot int, box int) (int, error
 	if err != nil {
 		return -1, err
 	}
-	if affected == 0 {
-		return -1, fmt.Errorf("no Pokémon found in party slot %d", partySlot)
+	if affected != 1 {
+		return -1, fmt.Errorf("pokemon %d is no longer a party member", rowID)
 	}
 
 	// Compact remaining party slots
-	if err := compactPartySlots(db, characterID); err != nil {
+	if err := compactPartySlots(tx, characterID); err != nil {
 		return -1, err
 	}
 	return freeSlot, nil
@@ -152,21 +175,37 @@ func WithdrawFromPC(database DBTX, characterID int64, box int, boxSlot int) (int
 	return result, nil
 }
 
-func withdrawFromPC(db DBTX, characterID int64, box int, boxSlot int) (int, error) {
+func withdrawFromPC(tx DBTX, characterID int64, box int, boxSlot int) (int, error) {
 	if err := validatePCSlot(box, boxSlot); err != nil {
 		return -1, err
 	}
-	partySlot, err := nextOpenPartySlot(db, characterID)
+	var rowID int64
+	if err := tx.QueryRow(`SELECT id FROM character_pokemon WHERE character_id=$1 AND box=$2 AND box_slot=$3`, characterID, box, boxSlot).Scan(&rowID); err != nil {
+		return -1, err
+	}
+	return WithdrawPokemonFromPCInTransaction(tx, characterID, rowID, box)
+}
+
+// WithdrawPokemonFromPCInTransaction requires current membership in the named
+// box. A later Pokemon reusing the old slot cannot become this command's target.
+func WithdrawPokemonFromPCInTransaction(tx DBTX, characterID, rowID int64, box int) (int, error) {
+	if err := lockPCPokemon(tx, characterID, rowID, box); err != nil {
+		return -1, err
+	}
+	if err := requirePCPokemon(tx, characterID, rowID, box); err != nil {
+		return -1, err
+	}
+	partySlot, err := nextOpenPartySlot(tx, characterID)
 	if err != nil {
 		return -1, err
 	}
 
 	// Move from PC to party (box_slot mirrors party_slot for party uniqueness)
-	result, err := db.Exec(`
+	result, err := tx.Exec(`
 		UPDATE character_pokemon
 		SET box = -1, box_slot = $1, party_slot = $2
-		WHERE character_id = $3 AND box = $4 AND box_slot = $5`,
-		partySlot, partySlot, characterID, box, boxSlot)
+		WHERE character_id = $3 AND box = $4 AND id = $5`,
+		partySlot, partySlot, characterID, box, rowID)
 	if err != nil {
 		return -1, err
 	}
@@ -174,8 +213,8 @@ func withdrawFromPC(db DBTX, characterID int64, box int, boxSlot int) (int, erro
 	if err != nil {
 		return -1, err
 	}
-	if rows == 0 {
-		return -1, fmt.Errorf("no Pokémon found in box %d slot %d", box, boxSlot)
+	if rows != 1 {
+		return -1, fmt.Errorf("pokemon %d is no longer in box %d", rowID, box)
 	}
 
 	return partySlot, nil
@@ -187,19 +226,53 @@ func ReleasePokemon(database DBTX, characterID int64, box int, boxSlot int) erro
 		return err
 	}
 	return withCharacterTransaction(database, characterID, func(tx DBTX) error {
-		result, err := tx.Exec(`DELETE FROM character_pokemon WHERE character_id=$1 AND box=$2 AND box_slot=$3`, characterID, box, boxSlot)
-		if err != nil {
+		var rowID int64
+		if err := tx.QueryRow(`SELECT id FROM character_pokemon WHERE character_id=$1 AND box=$2 AND box_slot=$3`, characterID, box, boxSlot).Scan(&rowID); err != nil {
 			return err
 		}
-		n, err := result.RowsAffected()
-		if err != nil {
-			return err
-		}
-		if n != 1 {
-			return fmt.Errorf("no pokemon found in box %d slot %d", box, boxSlot)
-		}
-		return nil
+		return ReleasePokemonFromPCInTransaction(tx, characterID, rowID, box)
 	})
+}
+
+// ReleasePokemonFromPCInTransaction cannot release a party/day-care/foreign
+// Pokemon or a replacement occupying the slot of an already released Pokemon.
+func ReleasePokemonFromPCInTransaction(tx DBTX, characterID, rowID int64, box int) error {
+	if err := lockPCPokemon(tx, characterID, rowID, box); err != nil {
+		return err
+	}
+	if err := requirePCPokemon(tx, characterID, rowID, box); err != nil {
+		return err
+	}
+	result, err := tx.Exec(`DELETE FROM character_pokemon WHERE id=$1 AND character_id=$2 AND box=$3`, rowID, characterID, box)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return fmt.Errorf("pokemon %d is no longer in box %d", rowID, box)
+	}
+	return nil
+}
+
+func lockPCPokemon(tx DBTX, characterID, rowID int64, box int) error {
+	if err := db.RequireTransaction(tx); err != nil {
+		return err
+	}
+	if rowID <= 0 || box < 0 || box >= 12 {
+		return fmt.Errorf("invalid pokemon identity %d or PC box %d", rowID, box)
+	}
+	return db.LockCharacter(tx, characterID)
+}
+
+func requirePCPokemon(tx DBTX, characterID, rowID int64, box int) error {
+	var slot int
+	if err := tx.QueryRow(`SELECT box_slot FROM character_pokemon WHERE id=$1 AND character_id=$2 AND box=$3 AND party_slot IS NULL`, rowID, characterID, box).Scan(&slot); err != nil {
+		return fmt.Errorf("pokemon %d is not in owned PC box %d: %w", rowID, box, err)
+	}
+	return validatePCSlot(box, slot)
 }
 
 func validatePCSlot(box, slot int) error {
