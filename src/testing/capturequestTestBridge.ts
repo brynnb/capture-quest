@@ -988,7 +988,11 @@ export function installCaptureQuestTestBridge(): void {
     requestGameCornerPrizeList: requestPrizeList,
     buyGameCornerPrize: buyPrize,
     requestPokemonParty: sendPokemonPartyRequest,
-    requestPokemonPC: sendPokemonPCOpen,
+    requestPokemonPC: () => {
+      const state=getState();
+      const source=usePokemonPCStore.getState().sources.find(source => source.mapId===state.map.id && source.x===state.player.x && source.y+1===state.player.y);
+      if (source) void sendPokemonPCOpen(source.id);
+    },
   };
 
   let previousScreen = useGameScreenStore.getState().currentScreen;

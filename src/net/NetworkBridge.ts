@@ -17,7 +17,6 @@ import useGameScreenStore from "@/stores/GameScreenStore";
 import usePokeBattleStore from "@/stores/PokeBattleStore";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
 import useCQInventoryStore from "@/stores/CQInventoryStore";
-import usePokemonPCStore from "@/stores/PokemonPCStore";
 import usePokemonDialogueStore from "@/stores/PokemonDialogueStore";
 import useAudioActivityStore from "@/stores/AudioActivityStore";
 import AudioManager from "@/services/audio/AudioManager";
@@ -92,6 +91,11 @@ export class NetworkBridge {
 
       // Phaser 2D game opcodes
       case OpCodes.PhaserMapInfoResponse:
+      case OpCodes.PokemonPCOpenResponse:
+      case OpCodes.PokemonPCDepositResponse:
+      case OpCodes.PokemonPCWithdrawResponse:
+      case OpCodes.PokemonPCReleaseResponse:
+      case OpCodes.PokemonPCSwitchBoxResponse:
       case OpCodes.CutsceneEndResponse:
       case OpCodes.GameplayStateResponse:
       case OpCodes.CQMerchantOpenResponse:
@@ -178,21 +182,6 @@ export class NetworkBridge {
         break;
 
       // Pokémon PC (Phase 6.5)
-      case OpCodes.PokemonPCOpenResponse:
-        this.handlePokemonPCOpenResponse(data as Record<string, unknown>);
-        break;
-      case OpCodes.PokemonPCDepositResponse:
-        this.handlePokemonPCDepositResponse(data as Record<string, unknown>);
-        break;
-      case OpCodes.PokemonPCWithdrawResponse:
-        this.handlePokemonPCWithdrawResponse(data as Record<string, unknown>);
-        break;
-      case OpCodes.PokemonPCReleaseResponse:
-        this.handlePokemonPCReleaseResponse(data as Record<string, unknown>);
-        break;
-      case OpCodes.PokemonPCSwitchBoxResponse:
-        this.handlePokemonPCSwitchBoxResponse(data as Record<string, unknown>);
-        break;
 
       // Move learning (Phase 6.2)
 
@@ -598,65 +587,6 @@ export class NetworkBridge {
     );
   }
 
-  private handlePokemonPCOpenResponse(data: Record<string, unknown>) {
-    if (!data.success) {
-      console.warn("[NetworkBridge] PC open failed:", data.error);
-      return;
-    }
-    const pcData = data as {
-      currentBox: number;
-      boxCount: number;
-      boxSize: number;
-      box: PCPokemonDTO[];
-      party: PCPokemonDTO[];
-    };
-    usePokemonPCStore.getState().openPC(pcData);
-    this.playSourceSFX("SFX_TURN_ON_PC", 0.7);
-    console.log(`[NetworkBridge] PC opened, box ${pcData.currentBox} with ${pcData.box.length} Pokémon`);
-  }
-
-  private handlePokemonPCDepositResponse(data: Record<string, unknown>) {
-    if (!data.success) {
-      console.warn("[NetworkBridge] PC deposit failed:", data.error);
-      return;
-    }
-    console.log("[NetworkBridge] Pokémon deposited to PC");
-  }
-
-  private handlePokemonPCWithdrawResponse(data: Record<string, unknown>) {
-    if (!data.success) {
-      console.warn("[NetworkBridge] PC withdraw failed:", data.error);
-      return;
-    }
-    console.log("[NetworkBridge] Pokémon withdrawn from PC");
-  }
-
-  private handlePokemonPCReleaseResponse(data: Record<string, unknown>) {
-    if (!data.success) {
-      console.warn("[NetworkBridge] PC release failed:", data.error);
-      return;
-    }
-    console.log("[NetworkBridge] Pokémon released from PC");
-  }
-
-  private handlePokemonPCSwitchBoxResponse(data: Record<string, unknown>) {
-    if (!data.success) {
-      console.warn("[NetworkBridge] PC switch box failed:", data.error);
-      return;
-    }
-    const currentBox = data.currentBox as number;
-    const box = (data.box || []) as PCPokemonDTO[];
-    const party = data.party as PCPokemonDTO[] | undefined;
-    if (party) {
-      // After deposit/withdraw: update box, party, and currentBox together
-      usePokemonPCStore.setState({ currentBox, boxPokemon: box, party });
-    } else {
-      // Normal box switch: only update box contents
-      usePokemonPCStore.getState().setBox(currentBox, box);
-    }
-    console.log(`[NetworkBridge] Switched to box ${currentBox} with ${box.length} Pokémon`);
-  }
-
   private handleDialogueChoiceResponse(data: Record<string, unknown>) {
     if (!data.success) {
       console.warn("[NetworkBridge] Dialogue choice failed:", data.error);
@@ -847,7 +777,3 @@ type PokeBattlePokemonDTO = Parameters<
 type BattleEventDTO = Parameters<
   ReturnType<typeof usePokeBattleStore.getState>["updateBattleState"]
 >[0]["events"][number];
-
-type PCPokemonDTO = Parameters<
-  ReturnType<typeof usePokemonPCStore.getState>["openPC"]
->[0]["box"][number];

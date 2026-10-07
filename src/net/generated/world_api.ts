@@ -1131,6 +1131,27 @@ export interface CQBattleItemUseRequest {
 //////////
 // source: handler-pokemon-pc.go
 
+export interface PokemonPCOpenRequest {
+  requestId: string;
+  characterId: number /* int64 */;
+  sourceId: number /* int */;
+}
+export interface PokemonPCCommandRequest {
+  requestId: string;
+  command?: InventoryCommandIdentity;
+  sourceId: number /* int */;
+  pokemonRowId: number /* int64 */;
+  box?: number /* int */;
+}
+export interface PokemonPCResponse {
+  success: true;
+  requestId: string;
+  characterId: number /* int64 */;
+  sourceId: number /* int */;
+  pc: PCStorageSnapshot;
+  party: PokemonDTO[];
+  inventory: import("./cqitems").CQInventorySnapshot;
+}
 
 //////////
 // source: handler-repel.go

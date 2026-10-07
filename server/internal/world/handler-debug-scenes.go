@@ -339,8 +339,18 @@ func HandleDebugSceneJumpRequest(ses *session.Session, payload []byte, wh *World
 }
 
 func sendDebugFixtureSnapshots(ses *session.Session, charID int64) {
-	sendPCUpdate(ses, charID, debugCurrentPCBox(charID))
+	sendDebugPartySnapshot(ses, charID)
 	sendCQInventorySnapshot(ses, int32(charID))
+}
+
+// PC cache recovery is scene-owned; debug fixtures only publish their party here.
+func sendDebugPartySnapshot(ses *session.Session, charID int64) {
+	party, err := pokebattle.LoadParty(db.GlobalWorldDB.DB, charID)
+	if err != nil {
+		log.Printf("[DebugScene] Party snapshot: %v", err)
+		return
+	}
+	sendPokemonPartySnapshot(ses, party)
 }
 
 // HandleDebugWarpProbeCasesRequest returns test-only warp cases for Playwright's
@@ -804,11 +814,7 @@ func HandleDebugGivePowerPokemonRequest(ses *session.Session, payload []byte, wh
 	if !addedToParty {
 		location = "pc"
 	}
-	refreshBox := box
-	if refreshBox < 0 {
-		refreshBox = debugCurrentPCBox(charID)
-	}
-	sendPCUpdate(ses, charID, refreshBox)
+	sendDebugPartySnapshot(ses, charID)
 	ses.SendStreamJSON(map[string]interface{}{
 		"success":      true,
 		"speciesId":    debugPowerPokemonSpeciesID,
@@ -822,17 +828,6 @@ func HandleDebugGivePowerPokemonRequest(ses *session.Session, payload []byte, wh
 	}, opcodes.DebugGivePowerPokemonResponse)
 
 	return false
-}
-
-func debugCurrentPCBox(charID int64) int {
-	var currentBox int
-	if err := db.GlobalWorldDB.DB.QueryRow(
-		`SELECT current_box FROM character_pc_state WHERE character_id = $1`,
-		charID,
-	).Scan(&currentBox); err != nil {
-		return 0
-	}
-	return currentBox
 }
 
 func debugPowerPokemonMessage(name string, level int, addedToParty bool, box, slot int) string {

@@ -14,17 +14,19 @@ import { sfxPathForConstant } from "@/services/audio/pokemonMusic";
 
 let scene: symbol | null = null;
 let active: AbortController | null = null;
-type Reply = CQMerchantOpenResponse | CQMerchantBuyResponse | CQMerchantSellResponse | CQPartyItemUseResponse | RepelUseResponse | PokemonPartyReorderResponse;
+type Reply = import("@/net/generated/world_api").PokemonPCResponse | CQMerchantOpenResponse | CQMerchantBuyResponse | CQMerchantSellResponse | CQPartyItemUseResponse | RepelUseResponse | PokemonPartyReorderResponse;
 
 export function bindInventoryScene(): () => void {
   active?.abort(); active = null;
   useCQInventoryStore.getState().closeShop();
+  usePokemonPCStore.getState().closePC();
   useCQInventoryStore.setState({ inventoryCommandPending: false, pendingTMHM: null });
   const owner = Symbol("inventory scene"); scene = owner;
   return () => {
     if (scene !== owner) return;
     scene = null; active?.abort(); active = null;
     useCQInventoryStore.getState().closeShop();
+    usePokemonPCStore.getState().closePC();
     useCQInventoryStore.setState({ inventoryCommandPending: false, pendingTMHM: null });
   };
 }

@@ -1,7 +1,7 @@
 import { beforeEach, expect, test, vi } from "vitest";
 import { NetworkBridge } from "./NetworkBridge";
 import { WorldSocket } from "./index";
-import { CQItemUseResponse, CQInventoryResponse, CQMerchantBuyResponse, CQMerchantSellResponse, RepelUseResponse, PokemonPartyReorderResponse } from "./generated/opcodes";
+import { CQItemUseResponse, CQInventoryResponse, CQMerchantBuyResponse, CQMerchantSellResponse, RepelUseResponse, PokemonPartyReorderResponse, PokemonPCOpenResponse, PokemonPCDepositResponse, PokemonPCWithdrawResponse, PokemonPCReleaseResponse, PokemonPCSwitchBoxResponse } from "./generated/opcodes";
 import type { CQInventoryItem } from "./generated/cqitems";
 import useCQInventoryStore from "@/stores/CQInventoryStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
@@ -13,6 +13,15 @@ const stack = (id: number, quantity: number): CQInventoryItem => ({
   item: { id: 1, name: "Potion" } as CQInventoryItem["item"],
 });
 
+test.each([PokemonPCOpenResponse,PokemonPCDepositResponse,PokemonPCWithdrawResponse,PokemonPCReleaseResponse,PokemonPCSwitchBoxResponse])("PC reply %d reaches the shared command subscriber", async opcode => {
+  const net=await import("@/phaser-game/services/PhaserNetworkService");
+  const receive=vi.fn(); const stop=net.onInventoryCommand(opcode,receive);
+  const reply={success:false,requestId:"pc-routing",error:"rejected"};
+  WorldSocket.onJson?.(opcode,reply);
+  await vi.waitFor(()=>expect(receive).toHaveBeenCalledWith(reply));
+  expect(receive).toHaveBeenCalledOnce(); stop();
+});
+
 beforeEach(() => {
   NetworkBridge.initialize();
   useCQInventoryStore.getState().setInventory([stack(1, 95)], 1000,0);
@@ -20,7 +29,7 @@ beforeEach(() => {
   vi.spyOn(AudioManager, "playSFX").mockResolvedValue(undefined);
 });
 
-test.each([CQMerchantBuyResponse,CQMerchantSellResponse,CQItemUseResponse,RepelUseResponse,PokemonPartyReorderResponse])("unsolicited inventory reply %d cannot apply a historical bag or party", async opcode => {
+test.each([CQMerchantBuyResponse,CQMerchantSellResponse,CQItemUseResponse,RepelUseResponse,PokemonPartyReorderResponse,PokemonPCOpenResponse,PokemonPCDepositResponse,PokemonPCWithdrawResponse,PokemonPCReleaseResponse,PokemonPCSwitchBoxResponse])("unsolicited inventory reply %d cannot apply a historical bag or party", async opcode => {
   const party=usePokemonPartyStore.getState().party;
   WorldSocket.onJson?.(opcode,{success:true,requestId:"retired",party:[],inventory:{items:[],money:0,commandRevision:1}});
   await Promise.resolve();

@@ -364,11 +364,12 @@ export function onBattleCommand(opcode: number, receive: BattleCommandHandler): 
   listeners.add(receive); return () => listeners.delete(receive);
 }
 
-type InventoryReply = CQPartyItemUseResponse | CQMerchantOpenResponse | CQMerchantBuyResponse | CQMerchantSellResponse | RepelUseResponse | PokemonPartyReorderResponse | InventoryCommandError;
+type InventoryReply = import("@/net/generated/world_api").PokemonPCResponse | CQPartyItemUseResponse | CQMerchantOpenResponse | CQMerchantBuyResponse | CQMerchantSellResponse | RepelUseResponse | PokemonPartyReorderResponse | InventoryCommandError;
 const inventoryCommandHandlers = new Map<number, Set<(reply: InventoryReply) => void>>([
  [OpCodes.CQItemUseResponse,new Set()], [OpCodes.CQMerchantOpenResponse,new Set()], [OpCodes.CQMerchantBuyResponse,new Set()], [OpCodes.CQMerchantSellResponse,new Set()],
  [OpCodes.RepelUseResponse,new Set()],
  [OpCodes.PokemonPartyReorderResponse,new Set()],
+ ...[OpCodes.PokemonPCOpenResponse,OpCodes.PokemonPCDepositResponse,OpCodes.PokemonPCWithdrawResponse,OpCodes.PokemonPCReleaseResponse,OpCodes.PokemonPCSwitchBoxResponse].map(opcode => [opcode,new Set<(reply: InventoryReply) => void>()] as const),
 ]);
 export function onInventoryCommand<T extends InventoryReply>(opcode: number, receive: (reply: T) => void): () => void {
  const listeners = inventoryCommandHandlers.get(opcode);
@@ -567,6 +568,11 @@ export function dispatchPhaserResponse(opcode: number, data: unknown): void {
     case OpCodes.CQMerchantBuyResponse:
     case OpCodes.CQMerchantSellResponse:
     case OpCodes.RepelUseResponse:
+    case OpCodes.PokemonPCOpenResponse:
+    case OpCodes.PokemonPCDepositResponse:
+    case OpCodes.PokemonPCWithdrawResponse:
+    case OpCodes.PokemonPCReleaseResponse:
+    case OpCodes.PokemonPCSwitchBoxResponse:
     case OpCodes.PokemonPartyReorderResponse:
       inventoryCommandHandlers.get(opcode)?.forEach(receive => receive(data as InventoryReply));
       break;
@@ -661,45 +667,7 @@ export function sendItemPickup(actorId: number): void {
   NetworkBridge.send({ actorId }, OpCodes.ItemPickupRequest);
 }
 
-/**
- * Open the Pokémon PC (triggered by clicking a PC object).
- */
-export function sendPokemonPCOpen(): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({}, OpCodes.PokemonPCOpenRequest);
-}
-
-/**
- * Deposit a party Pokémon into a PC box.
- */
-export function sendPokemonPCDeposit(partySlot: number, box: number): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ partySlot, box }, OpCodes.PokemonPCDepositRequest);
-}
-
-/**
- * Withdraw a Pokémon from a PC box to the party.
- */
-export function sendPokemonPCWithdraw(box: number, boxSlot: number): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ box, boxSlot }, OpCodes.PokemonPCWithdrawRequest);
-}
-
-/**
- * Release a Pokémon from PC storage permanently.
- */
-export function sendPokemonPCRelease(box: number, boxSlot: number): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ box, boxSlot }, OpCodes.PokemonPCReleaseRequest);
-}
-
-/**
- * Switch to a different PC box.
- */
-export function sendPokemonPCSwitchBox(box: number): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ box }, OpCodes.PokemonPCSwitchBoxRequest);
-}
+export { openPokemonPC as sendPokemonPCOpen, depositPokemon as sendPokemonPCDeposit, withdrawPokemon as sendPokemonPCWithdraw, releasePokemon as sendPokemonPCRelease, switchPokemonBox as sendPokemonPCSwitchBox } from "./PCCommandService";
 
 /**
  * Send a dialogue YES/NO choice response to the server.

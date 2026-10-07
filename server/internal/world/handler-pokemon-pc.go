@@ -1,255 +1,187 @@
 package world
 
 import (
-	"encoding/json"
-	"log"
-
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
+	"capturequest/internal/db/cqitems"
 	"capturequest/internal/pokebattle"
 	"capturequest/internal/session"
+	"fmt"
+	"log"
 )
 
 const (
-	pcBoxCount = 12 // Gen 1: 12 boxes
-	pcBoxSize  = 20 // Gen 1: 20 Pokémon per box
+	pcBoxCount = 12
+	pcBoxSize  = 20
 )
 
-// HandlePokemonPCOpen opens the PC and sends the current box contents + party.
+type PokemonPCOpenRequest struct {
+	RequestID   string `json:"requestId"`
+	CharacterID int64  `json:"characterId"`
+	SourceID    int    `json:"sourceId"`
+}
+type PokemonPCCommandRequest struct {
+	RequestID    string                    `json:"requestId"`
+	Command      *InventoryCommandIdentity `json:"command" tstype:"InventoryCommandIdentity"`
+	SourceID     int                       `json:"sourceId"`
+	PokemonRowID int64                     `json:"pokemonRowId"`
+	Box          *int                      `json:"box"`
+}
+type PokemonPCResponse struct {
+	Success     bool                        `json:"success" tstype:"true"`
+	RequestID   string                      `json:"requestId"`
+	CharacterID int64                       `json:"characterId"`
+	SourceID    int                         `json:"sourceId"`
+	PC          PCStorageSnapshot           `json:"pc"`
+	Party       []PokemonDTO                `json:"party"`
+	Inventory   cqitems.CQInventorySnapshot `json:"inventory" tstype:"import(\"./cqitems\").CQInventorySnapshot"`
+}
+
+func authorizePCIn(tx db.DBTX, ses *session.Session, wh *WorldHandler, sourceID int) (int, error) {
+	if sourceID <= 0 {
+		return 0, fmt.Errorf("PC source identity required")
+	}
+	charID := int64(ses.Client.CharData().ID)
+	var mapID, x, y int
+	var facing, routine, kind string
+	if err := tx.QueryRow(`SELECT map_id,x,y,item_or_direction,routine,object_type FROM phaser_hidden_objects WHERE id=$1`, sourceID).Scan(&mapID, &x, &y, &facing, &routine, &kind); err != nil {
+		return 0, err
+	}
+	position := wh.ownedPlayerSnapshot(ses, "")
+	if routine != "OpenPokemonCenterPC" || kind != "pc" || facing != "SPRITE_FACING_UP" || position.MapID != mapID || position.X != x || position.Y != y+1 || position.Direction != "UP" || position.ServerMovementPending {
+		return 0, fmt.Errorf("PC source %d unavailable: owned=(%d,%d,%d,%s,pending=%t) source=(%d,%d,%d,%s,%s,%s)", sourceID, position.MapID, position.X, position.Y, position.Direction, position.ServerMovementPending, mapID, x, y, facing, routine, kind)
+	}
+	var savedMap, savedX, savedY int
+	if err := tx.QueryRow(`SELECT map_id,CAST(x AS INTEGER),CAST(y AS INTEGER) FROM character_data WHERE id=$1`, charID).Scan(&savedMap, &savedX, &savedY); err != nil {
+		return 0, err
+	}
+	if savedMap != mapID || savedX != position.X || savedY != position.Y {
+		return 0, fmt.Errorf("PC source ownership changed")
+	}
+	battle, err := pokebattle.LoadBattleState(tx, charID)
+	if err != nil {
+		return 0, err
+	}
+	if battle != nil {
+		return 0, fmt.Errorf("finish the battle before using PC storage")
+	}
+	visit, err := safariSessionIn(tx, charID)
+	if err != nil {
+		return 0, err
+	}
+	if visit != nil && visit.Battle != nil {
+		return 0, fmt.Errorf("finish the safari encounter before using PC storage")
+	}
+	return mapID, nil
+}
+func readPCResponseIn(tx db.DBTX, charID int64, mapID int) (PokemonPCResponse, error) {
+	pc, err := readPCStorageIn(tx, charID, mapID)
+	if err != nil {
+		return PokemonPCResponse{}, err
+	}
+	party, err := pokebattle.LoadParty(tx, charID)
+	if err != nil {
+		return PokemonPCResponse{}, err
+	}
+	result := PokemonPCResponse{Success: true, CharacterID: charID, PC: pc, Party: make([]PokemonDTO, 0, len(party))}
+	for _, p := range party {
+		result.Party = append(result.Party, pokemonToDTO(p))
+	}
+	return result, nil
+}
 func HandlePokemonPCOpen(ses *session.Session, payload []byte, wh *WorldHandler) bool {
 	if !ses.HasValidClient() {
 		return false
 	}
+	var req PokemonPCOpenRequest
 	charID := int64(ses.Client.CharData().ID)
-	var pc PCStorageSnapshot
-	var partyDTOs []PokemonDTO
+	if err := decodePlayerMovement(payload, &req); err != nil || req.CharacterID != charID || req.RequestID == "" || len(req.RequestID) > 64 || req.SourceID <= 0 {
+		sendInventoryCommandError(ses, req.RequestID, opcodes.PokemonPCOpenResponse, "Invalid PC read.")
+		return false
+	}
+	var result PokemonPCResponse
 	err := db.Transaction(ses.CommandContext(), wh.database, func(tx db.DBTX) error {
-		var mapID int
-		if err := tx.QueryRow(`SELECT map_id FROM character_data WHERE id=$1 FOR UPDATE`, charID).Scan(&mapID); err != nil {
+		var lockedID int64
+		if err := tx.QueryRow(`SELECT id FROM character_data WHERE id=$1 FOR UPDATE`, charID).Scan(&lockedID); err != nil {
 			return err
 		}
-		var err error
-		pc, err = readPCStorageIn(tx, charID, mapID)
+		mapID, err := authorizePCIn(tx, ses, wh, req.SourceID)
 		if err != nil {
 			return err
 		}
-		party, err := pokebattle.LoadParty(tx, charID)
+		result, err = readPCResponseIn(tx, charID, mapID)
 		if err != nil {
 			return err
 		}
-		partyDTOs = make([]PokemonDTO, 0, len(party))
-		for _, pokemon := range party {
-			partyDTOs = append(partyDTOs, pokemonToDTO(pokemon))
-		}
-		return nil
+		result.Inventory, err = cqitems.NewStore(tx).GetCharacterSnapshot(ses.CommandContext(), int32(charID))
+		return err
 	})
 	if err != nil {
-		log.Printf("[PC] Read for character %d: %v", charID, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "PC state unavailable"}, opcodes.PokemonPCOpenResponse)
+		log.Printf("[PC] Open source %d for character %d: %v", req.SourceID, charID, err)
+		sendInventoryCommandError(ses, req.RequestID, opcodes.PokemonPCOpenResponse, "Interact with an available PC terminal.")
 		return false
 	}
-	ses.SendStreamJSON(map[string]interface{}{
-		"success": true, "currentBox": pc.CurrentBox, "boxCount": pc.BoxCount, "boxSize": pc.BoxSize, "box": pc.Box, "sources": pc.Sources, "party": partyDTOs,
-	}, opcodes.PokemonPCOpenResponse)
-
+	result.RequestID, result.SourceID = req.RequestID, req.SourceID
+	ses.SendStreamJSON(result, opcodes.PokemonPCOpenResponse)
 	return false
 }
+func HandlePokemonPCDeposit(s *session.Session, p []byte, w *WorldHandler) bool {
+	return handlePCCommand(s, p, w, opcodes.PokemonPCDepositResponse, "deposit")
+}
+func HandlePokemonPCWithdraw(s *session.Session, p []byte, w *WorldHandler) bool {
+	return handlePCCommand(s, p, w, opcodes.PokemonPCWithdrawResponse, "withdraw")
+}
+func HandlePokemonPCRelease(s *session.Session, p []byte, w *WorldHandler) bool {
+	return handlePCCommand(s, p, w, opcodes.PokemonPCReleaseResponse, "release")
+}
+func HandlePokemonPCSwitchBox(s *session.Session, p []byte, w *WorldHandler) bool {
+	return handlePCCommand(s, p, w, opcodes.PokemonPCSwitchBoxResponse, "switch")
+}
 
-// HandlePokemonPCDeposit deposits a party Pokémon into the current PC box.
-func HandlePokemonPCDeposit(ses *session.Session, payload []byte, wh *WorldHandler) bool {
+// All PC commands join the existing revision/transaction owner. Source permission,
+// domain mutation, box preference and full projection must succeed before commit.
+func handlePCCommand(ses *session.Session, payload []byte, wh *WorldHandler, opcode opcodes.OpCode, kind string) bool {
 	if !ses.HasValidClient() {
 		return false
 	}
-
-	var req struct {
-		PartySlot int `json:"partySlot"`
-		Box       int `json:"box"`
-	}
-	if err := json.Unmarshal(payload, &req); err != nil {
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "invalid request"}, opcodes.PokemonPCDepositResponse)
+	var req PokemonPCCommandRequest
+	if err := decodePlayerMovement(payload, &req); err != nil || !validInventoryCommand(ses, req.RequestID, req.Command) || req.SourceID <= 0 || req.Box == nil || *req.Box < 0 || *req.Box >= pcBoxCount || (kind != "switch" && req.PokemonRowID <= 0) || (kind == "switch" && req.PokemonRowID != 0) {
+		sendInventoryCommandError(ses, req.RequestID, opcode, "Invalid PC command.")
 		return false
 	}
-
 	charID := int64(ses.Client.CharData().ID)
-	myDB := db.GlobalWorldDB.DB
-
-	// Must keep at least 1 Pokémon in party
-	var partySize int
-	myDB.QueryRow(`SELECT COUNT(*) FROM character_pokemon WHERE character_id = $1 AND box = -1`, charID).Scan(&partySize)
-	if partySize <= 1 {
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Can't deposit your last Pokémon!"}, opcodes.PokemonPCDepositResponse)
-		return false
-	}
-
-	if req.Box < 0 || req.Box >= pcBoxCount {
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Invalid box"}, opcodes.PokemonPCDepositResponse)
-		return false
-	}
-
-	boxSlot, err := pokebattle.DepositToPC(myDB, charID, req.PartySlot, req.Box)
+	var result PokemonPCResponse
+	inventory, err := cqitems.NewStore(wh.database).ExecuteCommand(ses.CommandContext(), int32(charID), *req.Command.Revision, func(tx db.DBTX) error {
+		mapID, err := authorizePCIn(tx, ses, wh, req.SourceID)
+		if err != nil {
+			return err
+		}
+		switch kind {
+		case "deposit":
+			_, err = pokebattle.DepositPokemonToPCInTransaction(tx, charID, req.PokemonRowID, *req.Box)
+		case "withdraw":
+			_, err = pokebattle.WithdrawPokemonFromPCInTransaction(tx, charID, req.PokemonRowID, *req.Box)
+		case "release":
+			err = pokebattle.ReleasePokemonFromPCInTransaction(tx, charID, req.PokemonRowID, *req.Box)
+		case "switch":
+		default:
+			return fmt.Errorf("unknown PC command %q", kind)
+		}
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`INSERT INTO character_pc_state(character_id,current_box) VALUES($1,$2) ON CONFLICT(character_id) DO UPDATE SET current_box=EXCLUDED.current_box`, charID, *req.Box); err != nil {
+			return err
+		}
+		result, err = readPCResponseIn(tx, charID, mapID)
+		return err
+	})
 	if err != nil {
-		log.Printf("[PC] Deposit failed for char %d: %v", charID, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.PokemonPCDepositResponse)
+		log.Printf("[PC] %s for character %d: %v", kind, charID, err)
+		sendInventoryCommandError(ses, req.RequestID, opcode, "Could not change PC storage. Check its current state before trying again.")
 		return false
 	}
-
-	log.Printf("[PC] Char %d deposited party slot %d to box %d slot %d", charID, req.PartySlot, req.Box, boxSlot)
-
-	// Send updated box + party
-	sendPCUpdate(ses, charID, req.Box)
-
-	ses.SendStreamJSON(map[string]interface{}{
-		"success": true,
-		"boxSlot": boxSlot,
-	}, opcodes.PokemonPCDepositResponse)
-
+	result.RequestID, result.SourceID, result.Inventory = req.RequestID, req.SourceID, inventory
+	ses.SendStreamJSON(result, opcode)
 	return false
-}
-
-// HandlePokemonPCWithdraw withdraws a PC Pokémon to the party.
-func HandlePokemonPCWithdraw(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	if !ses.HasValidClient() {
-		return false
-	}
-
-	var req struct {
-		Box     int `json:"box"`
-		BoxSlot int `json:"boxSlot"`
-	}
-	if err := json.Unmarshal(payload, &req); err != nil {
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "invalid request"}, opcodes.PokemonPCWithdrawResponse)
-		return false
-	}
-
-	charID := int64(ses.Client.CharData().ID)
-	myDB := db.GlobalWorldDB.DB
-
-	partySlot, err := pokebattle.WithdrawFromPC(myDB, charID, req.Box, req.BoxSlot)
-	if err != nil {
-		log.Printf("[PC] Withdraw failed for char %d: %v", charID, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.PokemonPCWithdrawResponse)
-		return false
-	}
-
-	log.Printf("[PC] Char %d withdrew box %d slot %d to party slot %d", charID, req.Box, req.BoxSlot, partySlot)
-
-	// Send updated box + party
-	sendPCUpdate(ses, charID, req.Box)
-
-	ses.SendStreamJSON(map[string]interface{}{
-		"success":   true,
-		"partySlot": partySlot,
-	}, opcodes.PokemonPCWithdrawResponse)
-
-	return false
-}
-
-// HandlePokemonPCRelease releases a Pokémon from PC storage permanently.
-func HandlePokemonPCRelease(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	if !ses.HasValidClient() {
-		return false
-	}
-
-	var req struct {
-		Box     int `json:"box"`
-		BoxSlot int `json:"boxSlot"`
-	}
-	if err := json.Unmarshal(payload, &req); err != nil {
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "invalid request"}, opcodes.PokemonPCReleaseResponse)
-		return false
-	}
-
-	charID := int64(ses.Client.CharData().ID)
-	myDB := db.GlobalWorldDB.DB
-
-	err := pokebattle.ReleasePokemon(myDB, charID, req.Box, req.BoxSlot)
-	if err != nil {
-		log.Printf("[PC] Release failed for char %d: %v", charID, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.PokemonPCReleaseResponse)
-		return false
-	}
-
-	log.Printf("[PC] Char %d released Pokémon from box %d slot %d", charID, req.Box, req.BoxSlot)
-
-	// Send updated box
-	sendPCUpdate(ses, charID, req.Box)
-
-	ses.SendStreamJSON(map[string]interface{}{
-		"success": true,
-	}, opcodes.PokemonPCReleaseResponse)
-
-	return false
-}
-
-// HandlePokemonPCSwitchBox switches to a different PC box and sends its contents.
-func HandlePokemonPCSwitchBox(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	if !ses.HasValidClient() {
-		return false
-	}
-
-	var req struct {
-		Box int `json:"box"`
-	}
-	if err := json.Unmarshal(payload, &req); err != nil {
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "invalid request"}, opcodes.PokemonPCSwitchBoxResponse)
-		return false
-	}
-
-	if req.Box < 0 || req.Box >= pcBoxCount {
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Invalid box"}, opcodes.PokemonPCSwitchBoxResponse)
-		return false
-	}
-
-	charID := int64(ses.Client.CharData().ID)
-	myDB := db.GlobalWorldDB.DB
-
-	// Save current box preference
-	myDB.Exec(`INSERT INTO character_pc_state (character_id, current_box) VALUES ($1, $2)
-		ON CONFLICT (character_id) DO UPDATE SET current_box = EXCLUDED.current_box`, charID, req.Box)
-
-	// Load box contents
-	boxPokemon, _ := pokebattle.LoadBox(myDB, charID, req.Box)
-	boxDTOs := make([]PokemonDTO, 0, len(boxPokemon))
-	for _, p := range boxPokemon {
-		boxDTOs = append(boxDTOs, pokemonToDTO(p))
-	}
-
-	ses.SendStreamJSON(map[string]interface{}{
-		"success":    true,
-		"currentBox": req.Box,
-		"box":        boxDTOs,
-	}, opcodes.PokemonPCSwitchBoxResponse)
-
-	return false
-}
-
-// sendPCUpdate sends updated box contents and party to the client after a PC operation.
-func sendPCUpdate(ses *session.Session, charID int64, box int) {
-	myDB := db.GlobalWorldDB.DB
-
-	boxPokemon, _ := pokebattle.LoadBox(myDB, charID, box)
-	boxDTOs := make([]PokemonDTO, 0, len(boxPokemon))
-	for _, p := range boxPokemon {
-		boxDTOs = append(boxDTOs, pokemonToDTO(p))
-	}
-
-	party, _ := pokebattle.LoadParty(myDB, charID)
-	partyDTOs := make([]PokemonDTO, 0, len(party))
-	for _, p := range party {
-		partyDTOs = append(partyDTOs, pokemonToDTO(p))
-	}
-
-	// Push updated party to the party store
-	ses.SendStreamJSON(map[string]interface{}{
-		"success": true,
-		"party":   partyDTOs,
-	}, opcodes.PokemonPartyResponse)
-
-	// Push updated box + party to the PC store via switch box response
-	ses.SendStreamJSON(map[string]interface{}{
-		"success":    true,
-		"currentBox": box,
-		"box":        boxDTOs,
-		"party":      partyDTOs,
-	}, opcodes.PokemonPCSwitchBoxResponse)
 }

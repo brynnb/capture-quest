@@ -17,6 +17,10 @@ func TestPCStateJoinsGameplayRecoveryAndOpening(t *testing.T) {
  (10,'ROOM',50,15,7,'SPRITE_FACING_UP','OpenPokemonCenterPC','pc'),
  (11,'OTHER',51,13,3,'SPRITE_FACING_UP','OpenPokemonCenterPC','pc'),
  (12,'ROOM',50,0,4,'SPRITE_FACING_UP','PrintBenchGuyText','hidden');`)
+	if _, err := setServerTeleportedPlayerPosition(ses, wh, 50, 15, 8, "UP"); err != nil {
+		t.Fatal(err)
+	}
+	messages.streams = nil
 	db.GlobalWorldDB = nil // Both consumers must use their captured world dependency.
 	battleDispatch(t, wh, ses, opcodes.GameplayStateRequest, `{"requestId":"pc","current":true}`)
 	result := recoveryReply(t, messages)
@@ -27,28 +31,25 @@ func TestPCStateJoinsGameplayRecoveryAndOpening(t *testing.T) {
 		t.Fatal("PC recovery lost stable party/box identity")
 	}
 	messages.streams = nil
-	HandlePokemonPCOpen(ses, []byte(`{}`), wh)
-	var opened struct {
-		Success    bool
-		CurrentBox int
-		Box        []PokemonDTO
-		Party      []PokemonDTO
-		Sources    []PCInteractionSource
-	}
-	if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &opened) != nil || !opened.Success || opened.CurrentBox != result.PC.CurrentBox || len(opened.Box) != 1 || opened.Box[0].RowID != result.PC.Box[0].RowID || len(opened.Party) != 1 || len(opened.Sources) != 1 {
+	testdb.Exec(t, wh.database, `CREATE FUNCTION reject_pc_read_write() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'PC read attempted write'; END $$; CREATE CONSTRAINT TRIGGER reject_pc_read_write AFTER UPDATE ON character_data DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_pc_read_write();`)
+	HandlePokemonPCOpen(ses, []byte(`{"requestId":"open","characterId":42,"sourceId":10}`), wh)
+	var opened PokemonPCResponse
+	if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &opened) != nil || !opened.Success || opened.PC.CurrentBox != result.PC.CurrentBox || len(opened.PC.Box) != 1 || opened.PC.Box[0].RowID != result.PC.Box[0].RowID || len(opened.Party) != 1 || len(opened.PC.Sources) != 1 {
 		t.Fatalf("opening=%+v", opened)
 	}
+
 }
 
 func TestPCReadFailuresDoNotPublishPartialRecoveryOrSuccessfulOpening(t *testing.T) {
 	for _, failure := range []string{"preference", "source", "box", "missing_table"} {
 		t.Run(failure, func(t *testing.T) {
 			wh, ses, messages := setupIssuedStep(t)
+			testdb.Exec(t, wh.database, `INSERT INTO phaser_hidden_objects(id,map_constant,map_id,x,y,item_or_direction,routine,object_type) VALUES(10,'ROOM',50,7,7,'SPRITE_FACING_UP','OpenPokemonCenterPC','pc')`)
 			switch failure {
 			case "preference":
 				testdb.Exec(t, wh.database, `INSERT INTO character_pc_state(character_id,current_box) VALUES(42,12)`)
 			case "source":
-				testdb.Exec(t, wh.database, `INSERT INTO phaser_hidden_objects(id,map_constant,map_id,x,y,item_or_direction,routine,object_type) VALUES(10,'ROOM',50,13,3,'SPRITE_FACING_LEFT','OpenPokemonCenterPC','pc')`)
+				testdb.Exec(t, wh.database, `UPDATE phaser_hidden_objects SET item_or_direction='SPRITE_FACING_LEFT' WHERE id=10`)
 			case "box":
 				testdb.Exec(t, wh.database, `INSERT INTO character_pokemon(character_id,party_slot,box,box_slot,pokemon_id,level,cur_hp,max_hp) VALUES(42,NULL,0,0,999,12,1,95)`)
 			case "missing_table":
@@ -56,7 +57,11 @@ func TestPCReadFailuresDoNotPublishPartialRecoveryOrSuccessfulOpening(t *testing
 			}
 			for _, opcode := range []opcodes.OpCode{opcodes.GameplayStateRequest, opcodes.PokemonPCOpenRequest} {
 				messages.streams = nil
-				battleDispatch(t, wh, ses, opcode, `{"requestId":"failed","current":true}`)
+				payload := `{"requestId":"failed","current":true}`
+				if opcode == opcodes.PokemonPCOpenRequest {
+					payload = `{"requestId":"failed","characterId":42,"sourceId":10}`
+				}
+				battleDispatch(t, wh, ses, opcode, payload)
 				var reply struct{ Success bool }
 				if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &reply) != nil || reply.Success {
 					t.Fatalf("failure=%s opcode=%d published partial success", failure, opcode)

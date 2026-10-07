@@ -3,6 +3,7 @@ import type { PokemonDTO, PCStorageSnapshot, PCInteractionSource } from "@/net/g
 
 interface PokemonPCState {
   isOpen: boolean;
+  sourceId: number | null;
   currentBox: number;
   boxCount: number;
   boxSize: number;
@@ -12,6 +13,7 @@ interface PokemonPCState {
   applySnapshot: (snapshot: PCStorageSnapshot, party: PokemonDTO[]) => void;
 
   openPC: (data: {
+    sourceId: number;
     currentBox: number;
     boxCount: number;
     boxSize: number;
@@ -25,6 +27,7 @@ interface PokemonPCState {
 
 const usePokemonPCStore = create<PokemonPCState>((set) => ({
   isOpen: false,
+  sourceId: null,
   currentBox: 0,
   boxCount: 12,
   boxSize: 20,
@@ -36,13 +39,14 @@ const usePokemonPCStore = create<PokemonPCState>((set) => ({
   openPC: (data) =>
     set({
       isOpen: true,
+      sourceId: data.sourceId,
       currentBox: data.currentBox,
       boxCount: data.boxCount,
       boxSize: data.boxSize,
       boxPokemon: data.box,
       party: data.party,
     }),
-  closePC: () => set({ isOpen: false }),
+  closePC: () => set({ isOpen: false, sourceId: null }),
   setBox: (currentBox, box) => set({ currentBox, boxPokemon: box }),
   setBoxAndParty: (box, party) => set({ boxPokemon: box, party }),
 }));

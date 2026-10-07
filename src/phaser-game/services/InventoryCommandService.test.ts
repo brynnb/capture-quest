@@ -1,12 +1,14 @@
 import { beforeEach, afterEach, expect, test, vi } from "vitest";
 const net = vi.hoisted(() => ({ listeners:new Map<number,Set<(reply:any)=>void>>(),send:vi.fn(),read:vi.fn() }));
-vi.mock("@/net",()=>({OpCodes:{PokemonPartyReorderRequest:90,PokemonPartyReorderResponse:91,CQItemUseRequest:100,CQItemUseResponse:101,RepelUseRequest:143,RepelUseResponse:144,CQMerchantOpenRequest:94,CQMerchantOpenResponse:95,CQMerchantBuyRequest:96,CQMerchantBuyResponse:97,CQMerchantSellRequest:98,CQMerchantSellResponse:99},WorldSocket:{sendStreamJsonMessage:net.send}}));
+vi.mock("@/net",()=>({OpCodes:{PokemonPCOpenRequest:108,PokemonPCOpenResponse:109,PokemonPCDepositRequest:110,PokemonPCDepositResponse:111,PokemonPCWithdrawRequest:112,PokemonPCWithdrawResponse:113,PokemonPCReleaseRequest:114,PokemonPCReleaseResponse:115,PokemonPCSwitchBoxRequest:116,PokemonPCSwitchBoxResponse:117,PokemonPartyReorderRequest:90,PokemonPartyReorderResponse:91,CQItemUseRequest:100,CQItemUseResponse:101,RepelUseRequest:143,RepelUseResponse:144,CQMerchantOpenRequest:94,CQMerchantOpenResponse:95,CQMerchantBuyRequest:96,CQMerchantBuyResponse:97,CQMerchantSellRequest:98,CQMerchantSellResponse:99},WorldSocket:{sendStreamJsonMessage:net.send}}));
 vi.mock("./PhaserNetworkService",()=>({isConnected:()=>true,onInventoryCommand:(opcode:number,receive:(reply:any)=>void)=>{
   if (!net.listeners.has(opcode)) net.listeners.set(opcode,new Set());
   const listeners=net.listeners.get(opcode)!;listeners.add(receive);return()=>listeners.delete(receive);
 }}));
 vi.mock("./GameplayRecoveryService",()=>({readCurrentGameplayState:net.read}));
 vi.mock("@/services/audio/AudioManager",()=>({default:{playSFX:vi.fn()}}));
+import usePokemonPCStore from "@/stores/PokemonPCStore";
+import {depositPokemon,withdrawPokemon,releasePokemon,switchPokemonBox} from "./PCCommandService";
 import useCQInventoryStore from "@/stores/CQInventoryStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import {openShopForActor,buyShopItem,sellShopItem} from "./ShopCommandService";
@@ -16,10 +18,10 @@ import usePokemonPartyStore from "@/stores/PokemonPartyStore";
 import useGameStatusStore from "@/stores/GameStatusStore";
 import AudioManager from "@/services/audio/AudioManager";
 const party = [{rowId:7,curHp:21}] as any;
-const actions = ["buy","sell","party","repel","reorder"] as const;
-const send = (action:typeof actions[number]) => action==="buy"?buyShopItem(1,1,10):action==="sell"?sellShopItem(7):action==="repel"?sendRepelItemCommand(1):action==="reorder"?sendPartyReorderCommand([7]):sendPartyItemCommand(1,0);
-const opcode = (action:typeof actions[number]) => action==="buy"?97:action==="sell"?99:action==="repel"?144:action==="reorder"?91:101;
-const reply = (requestId:string, revision=5) => ({success:true,requestId,instanceId:1,message:"Repel started",stepsLeft:100,inventory:{items:[],money:900,commandRevision:revision},party,outcome:{instanceId:1,partySlot:0,message:"Healed"}});
+const actions = ["buy","sell","party","repel","reorder","pcDeposit","pcWithdraw","pcRelease","pcSwitch"] as const;
+const send = (action:typeof actions[number]) => action==="pcDeposit"?depositPokemon(7,0):action==="pcWithdraw"?withdrawPokemon(0,7):action==="pcRelease"?releasePokemon(0,7):action==="pcSwitch"?switchPokemonBox(0):action==="buy"?buyShopItem(1,1,10):action==="sell"?sellShopItem(7):action==="repel"?sendRepelItemCommand(1):action==="reorder"?sendPartyReorderCommand([7]):sendPartyItemCommand(1,0);
+const opcode = (action:typeof actions[number]) => action==="pcDeposit"?111:action==="pcWithdraw"?113:action==="pcRelease"?115:action==="pcSwitch"?117:action==="buy"?97:action==="sell"?99:action==="repel"?144:action==="reorder"?91:101;
+const reply = (requestId:string, revision=5) => ({success:true,requestId,characterId:42,sourceId:10,pc:{currentBox:0,boxCount:12,boxSize:20,box:[],sources:[{id:10,mapId:50,x:7,y:7,direction:"UP"}]},instanceId:1,message:"Repel started",stepsLeft:100,inventory:{items:[],money:900,commandRevision:revision},party,outcome:{instanceId:1,partySlot:0,message:"Healed"}});
 let retire:()=>void;
 const id=()=>net.send.mock.calls.at(-1)![1].requestId;
 const emit=(opcode:number,reply:any)=>net.listeners.get(opcode)?.forEach(receive=>receive(reply));
@@ -31,6 +33,7 @@ beforeEach(()=>{
   usePlayerCharacterStore.getState().setCharacterProfile({id:42,pokedollars:1000});
   usePokemonPartyStore.getState().setParty(party);
   retire=bindInventoryScene();
+  usePokemonPCStore.getState().openPC({sourceId:10,currentBox:0,boxCount:12,boxSize:20,box:[],party});
   useCQInventoryStore.getState().openShop(1,"Shop",[],1000,1001);
 });
 afterEach(()=>{retire();vi.useRealTimers();});
@@ -48,6 +51,7 @@ for (const action of actions) {
   expect(net.send.mock.calls[0][1].command).toEqual({characterId:42,revision:4});
   if(action==="party") expect(net.send.mock.calls[0][1].pokemonRowId).toBe(7);
   else if(action==="reorder") expect(net.send.mock.calls[0][1].pokemonIds).toEqual([7]);
+  else if(action.startsWith("pc")) expect(net.send.mock.calls[0][1].sourceId).toBe(10);
   else if(action!=="repel") expect(net.send.mock.calls[0][1].actorId).toBe(1001);
   else expect(net.send.mock.calls[0][1].instanceId).toBe(1);
   expect(useCQInventoryStore.getState().inventoryCommandPending).toBe(true);
@@ -185,6 +189,16 @@ test.each([{instanceId:99},{stepsLeft:0},{message:null}])("invalid Repel outcome
  expect(net.read).toHaveBeenCalledTimes(1);
  expect(useCQInventoryStore.getState()).toMatchObject({commandRevision:6,money:800});
  expect(AudioManager.playSFX).not.toHaveBeenCalled();
+});
+
+test.each(["pcDeposit","pcWithdraw","pcRelease","pcSwitch"] as const)("%s reconciles a delayed reply after closing without reopening or sound",async action=>{
+  const pending=send(action); const requestId=id();
+  usePokemonPCStore.getState().closePC();
+  expect(useCQInventoryStore.getState().inventoryCommandPending).toBe(true);
+  emit(opcode(action),reply(requestId)); await pending;
+  expect(usePokemonPCStore.getState()).toMatchObject({isOpen:false,sourceId:null,currentBox:0});
+  expect(useCQInventoryStore.getState()).toMatchObject({commandRevision:5,inventoryCommandPending:false});
+  expect(AudioManager.playSFX).not.toHaveBeenCalled();
 });
 
 test("older scene cleanup cannot release a newer command",async()=>{

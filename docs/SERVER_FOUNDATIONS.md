@@ -7,8 +7,9 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-stable row-ID PC storage primitives and coherent PC recovery (2026-10-07); PC network/client migration
-remains unfinished. This follows center healing through the shared scripted-event
+source-authorized PC commands through the shared boundary (2026-10-07); PC
+lost-reply/crash and additional source-location acceptance remain open. This follows
+stable row-ID storage primitives and coherent PC recovery, and center healing through the shared scripted-event
 boundary and its rendered/recovery acceptance plus shared issuance/visibility
 fixes (`4d18056`, `58b3d53`), following `0d6b640`
 (party ordering through the shared inventory command boundary) and `cf0aafb`
@@ -20,6 +21,60 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. No push or production deployment is authorized by this goal.
+
+## PC command and source migration (2026-10-07)
+
+All five PC handlers now require source hidden-object identity and correlation.
+Opening takes the shared character read lock without a no-op UPDATE. Deposit,
+withdrawal, release and box selection use the existing command revision executor;
+source authorization, ordinary/Safari battle ownership checks, row-ID storage
+mutation, box preference and complete box/party/bag projection succeed in one
+transaction before one typed `PokemonPCResponse` is published. Authorization
+checks the original PC routine/type/facing, exact owned map and tile in front of
+the player, an idle movement phase and matching durable position. Terminal battle
+records also retain ownership until dismissal. Missing identities and slot-only
+packets reject without mutation. PC read failures log their stage/source only on
+failure; success paths add no diagnostics.
+
+The client resolves terminals from recovered source records, replacing the 11-map
+list and fixed access coordinates. Click/keyboard interaction uses each source's
+actual coordinate and faces its terminal. PC commands use the existing
+scene-owned inventory coordinator for admission, correlation, stale views,
+cancellation and current-state recovery. Selections hold Pokémon row IDs rather
+than array indices. Pending controls disable, scene retirement closes the PC,
+and closing a panel leaves sent mutation reconciliation alive. Global PC reply
+handlers and independent party/box pushes are retired. Debug fixture publication
+no longer emits the retired PC update; scene recovery supplies its PC cache.
+
+Verification: real PostgreSQL dispatcher checks cover all operations, source
+reach/facing/routine, battle ownership, old packets, duplicate revisions, coherent
+recovery and rollback of membership/preference/revision after final commit
+rejection, followed by retry. A deferred UPDATE rejection proves opening is a
+read. World, pokebattle and cqitems race suites passed (41.786, 3.302 and 2.567
+seconds); focused PC checks passed after read-lock hardening (2.122 seconds).
+The shared coordinator has 134 passing checks, including all four PC consumers;
+22 bridge checks include active forwarding and inert unsolicited PC replies.
+Existing gameplay recovery/interaction tests, canonical generation, TypeScript,
+build/asset validation and diff checks passed.
+
+Both rendered PC cases passed in 12.1 seconds in
+`/var/tmp/capturequest-rendered.jv0eJn`, using the new handlers and dynamic source
+interaction. Earlier failures in `QnszzJ` and `WwrPGF` under the same evidence
+prefix came from missing client bridge forwarding, not weakened source rules.
+The captured request/response showed valid source 15 and a successful server
+reply; adding the five replies to the shared bridge route fixed the timeout.
+The initial movement-order hypothesis was disproven and no movement workaround
+was added. The new bridge regression proves actual delivery to subscribed
+listeners, not merely lack of global store mutation.
+
+Remaining before closing this family: rendered duplicates/lost reply, actual
+process death and reentry, additional source locations outside the previous
+hardcoded subset, source/scene retirement races, and review of the completed
+shared boundary. The old Go slot helper wrappers have only test callers now;
+retire them and update those fixtures as cleanup. Debug writers and other
+unmigrated families still have their separate ownership/revision audit. The full
+five-area goal and original login timeout remain open. This checkpoint is local;
+no push or production deployment was performed.
 
 ## Coherent PC recovery and opening reads (2026-10-07)
 
