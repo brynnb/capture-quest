@@ -63,7 +63,7 @@ for (const action of actions) {
  });
  test.each(["timeout","rejection","malformed","overtaken","party update","send failure"])(`${action} %s recovers without resending`,async mode=>{
   const recoveredParty=[{rowId:7,curHp:41}];
-  net.read.mockResolvedValue({inventory:[],wallet:{characterId:42,pokedollars:800},commandRevision:6,party:recoveredParty});
+  net.read.mockResolvedValue({pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, inventory:[],wallet:{characterId:42,pokedollars:800},commandRevision:6,party:recoveredParty});
   if(mode==="send failure") net.send.mockRejectedValue(new Error("failed"));
   const pending=send(action);
   if(mode==="timeout") await vi.advanceTimersByTimeAsync(10000);
@@ -93,7 +93,7 @@ for (const action of actions) {
   let resolve!:(value:any)=>void;net.read.mockImplementation(()=>new Promise(done=>{resolve=done}));
   const pending=send(action);await vi.advanceTimersByTimeAsync(10000);
   if(action!=="party") useCQInventoryStore.getState().closeShop();
-  retire();resolve({inventory:[],wallet:{characterId:42,pokedollars:0},commandRevision:5,party:[]});
+  retire();resolve({pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, inventory:[],wallet:{characterId:42,pokedollars:0},commandRevision:5,party:[]});
   await pending;expect(useCQInventoryStore.getState().money).toBe(1000);expect(usePokemonPartyStore.getState().party).toEqual(party);
  });
  test(`${action} failed recovery preserves state and asks to reconnect`,async()=>{
@@ -105,7 +105,7 @@ for (const action of actions) {
 }
 
 test.each([{party:[]},{party:[{rowId:8}]},{party:[{rowId:7},{rowId:7}]}])("reorder rejects a mismatched final party: %j",async ({party:returnedParty})=>{
- net.read.mockResolvedValue({inventory:[],wallet:{characterId:42,pokedollars:1000},commandRevision:5,party});
+ net.read.mockResolvedValue({pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, inventory:[],wallet:{characterId:42,pokedollars:1000},commandRevision:5,party});
  const ids=[7]; const pending=sendPartyReorderCommand(ids); ids[0]=8;
  expect(net.send.mock.calls[0][1].pokemonIds).toEqual([7]);
  emit(91,{...reply(id()),party:returnedParty}); await pending;
@@ -123,7 +123,7 @@ test.each([{ids:[]},{ids:[undefined]},{ids:[0]},{ids:[7,7]}])("reorder rejects m
 for (const action of ["buy", "sell"] as const) {
  test.each(["delayed reply", "lost reply"])(`${action} reconciles after shop closure with %s`, async mode => {
   const items = [{instance:{id:12,quantity:3},item:{name:"Potion"}}] as any;
-  net.read.mockResolvedValue({inventory:items,wallet:{characterId:42,pokedollars:900},commandRevision:5,party});
+  net.read.mockResolvedValue({pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, inventory:items,wallet:{characterId:42,pokedollars:900},commandRevision:5,party});
   const pending = send(action); const requestId = id();
   useCQInventoryStore.getState().closeShop();
   expect(useCQInventoryStore.getState()).toMatchObject({shopOpen:false,inventoryCommandPending:true});
@@ -157,7 +157,7 @@ test("closing during recovery still applies the current gameplay snapshot", asyn
  useCQInventoryStore.getState().closeShop();
  expect(net.read.mock.calls[0][0].aborted).toBe(false);
  const recoveredParty=[{rowId:7,curHp:41}];
- resolve({inventory:[],wallet:{characterId:42,pokedollars:900},commandRevision:5,party:recoveredParty});
+ resolve({pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, inventory:[],wallet:{characterId:42,pokedollars:900},commandRevision:5,party:recoveredParty});
  await pending;
  expect(useCQInventoryStore.getState()).toMatchObject({money:900,commandRevision:5,shopOpen:false,inventoryCommandPending:false});
  expect(usePokemonPartyStore.getState().party).toEqual(recoveredParty);
@@ -165,7 +165,7 @@ test("closing during recovery still applies the current gameplay snapshot", asyn
 });
 
 test.each(["reply", "timeout"])("Repel reconciles after closing the bag on %s without late effects",async mode=>{
- net.read.mockResolvedValue({inventory:[],wallet:{characterId:42,pokedollars:900},commandRevision:5,party});
+ net.read.mockResolvedValue({pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, inventory:[],wallet:{characterId:42,pokedollars:900},commandRevision:5,party});
  const pending=sendRepelItemCommand(1); const requestId=id();
  useGameStatusStore.setState({isInventoryOpen:false});
  await buyShopItem(1,1,1);
@@ -180,7 +180,7 @@ test.each(["reply", "timeout"])("Repel reconciles after closing the bag on %s wi
 });
 
 test.each([{instanceId:99},{stepsLeft:0},{message:null}])("invalid Repel outcome recovers: %j",async invalid=>{
- net.read.mockResolvedValue({inventory:[],wallet:{characterId:42,pokedollars:800},commandRevision:6,party});
+ net.read.mockResolvedValue({pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, inventory:[],wallet:{characterId:42,pokedollars:800},commandRevision:6,party});
  const pending=sendRepelItemCommand(1); emit(144,{...reply(id()),...invalid}); await pending;
  expect(net.read).toHaveBeenCalledTimes(1);
  expect(useCQInventoryStore.getState()).toMatchObject({commandRevision:6,money:800});

@@ -17,11 +17,44 @@ vi.mock("./PhaserNetworkService", () => ({
 }));
 import useCQInventoryStore from "@/stores/CQInventoryStore";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
+import usePokemonPCStore from "@/stores/PokemonPCStore";
 import { applyGameplaySnapshot, recoverGameplayState, readCurrentGameplayState } from "./GameplayRecoveryService";
-const snapshot = (requestId: string): GameplayStateResponse => ({ commandRevision: 0, inventory: [], wallet: { characterId: 42, pokedollars: 0 }, party: [], eventFlags: [], success: true, requestId, position: { success: true, requestId, mapId: 50, x: 7, y: 8, direction: "UP", serverMovementPending: false }, battle: null, safari: null, trainer: null, cutscene: null });
+const snapshot = (requestId: string): GameplayStateResponse => ({ pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, commandRevision: 0, inventory: [], wallet: { characterId: 42, pokedollars: 0 }, party: [], eventFlags: [], success: true, requestId, position: { success: true, requestId, mapId: 50, x: 7, y: 8, direction: "UP", serverMovementPending: false }, battle: null, safari: null, trainer: null, cutscene: null });
 const receive = (data: unknown) => state.listeners.forEach(listener => listener(data));
 beforeEach(() => { useCQInventoryStore.getState().setInventory([], 0); usePokemonPartyStore.getState().clearParty(); state.current = { restoreGameplay: state.apply }; state.character = { handleCharacterWalletData: state.wallet, setEventFlags: state.flags }; });
 afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); state.listeners.clear(); });
+
+test("owned recovery updates the selected box and source identity without reopening a closed PC", async () => {
+  usePokemonPCStore.getState().closePC();
+  const run = recoverGameplayState(50);
+  const request = state.send.mock.calls[0][0];
+  const reply = snapshot(request.requestId);
+  reply.pc.currentBox = 3;
+  reply.pc.sources = [{id:17,mapId:50,x:15,y:7,direction:"UP"}];
+  receive(reply); await run;
+  expect(usePokemonPCStore.getState()).toMatchObject({isOpen:false,currentBox:3,sources:reply.pc.sources,boxPokemon:[],party:reply.party});
+});
+
+test("a PC box refresh overtaking a gameplay read requires a fresh current snapshot", async () => {
+  const run = recoverGameplayState(50);
+  const first = state.send.mock.calls[0][0];
+  usePokemonPCStore.getState().setBox(2,[]);
+  receive(snapshot(first.requestId)); await Promise.resolve(); await Promise.resolve();
+  expect(state.apply).not.toHaveBeenCalled(); expect(state.send).toHaveBeenCalledTimes(2);
+  const reply = snapshot(state.send.mock.calls[1][0].requestId); reply.pc.currentBox=2;
+  receive(reply); await run;
+  expect(usePokemonPCStore.getState().currentBox).toBe(2);
+});
+
+test("malformed PC identity and a foreign source map cannot publish any gameplay state", () => {
+  const missing = snapshot("old-server"); delete (missing as Partial<GameplayStateResponse>).pc;
+  expect(()=>applyGameplaySnapshot(missing)).toThrow("Incomplete PC snapshot");
+  const invalid = snapshot("invalid-pc"); invalid.pc.currentBox=12;
+  expect(()=>applyGameplaySnapshot(invalid)).toThrow("Incomplete PC snapshot");
+  const foreign = snapshot("foreign-source"); foreign.pc.sources=[{id:17,mapId:51,x:13,y:3,direction:"UP"}];
+  expect(()=>applyGameplaySnapshot(foreign)).toThrow("PC source belongs to another map");
+  expect(state.apply).not.toHaveBeenCalled(); expect(state.wallet).not.toHaveBeenCalled();
+});
 
 test("one correlated current snapshot clears stale state and redelivers its issued plans", async () => {
   const safari = vi.fn(); window.addEventListener("safariZoneEnter", safari);

@@ -474,6 +474,7 @@ export interface SafariRecoveryState {
   pokemon?: SafariRecoveryPokemon;
 }
 export interface GameplayStateResponse {
+  pc: PCStorageSnapshot;
   commandRevision: number /* int64 */;
   inventory: import("./cqitems").CQInventoryItem[];
   wallet: import("./models").CharacterWallet;
@@ -1301,6 +1302,24 @@ export interface ActorPathState {
   onComplete: any; // optional callback when path finishes
 }
 export interface PhaserActorManager {
+}
+
+//////////
+// source: pc_state.go
+
+export interface PCInteractionSource {
+  id: number /* int */;
+  mapId: number /* int */;
+  x: number /* int */;
+  y: number /* int */;
+  direction: string;
+}
+export interface PCStorageSnapshot {
+  currentBox: number /* int */;
+  boxCount: number /* int */;
+  boxSize: number /* int */;
+  box: PokemonDTO[];
+  sources: PCInteractionSource[];
 }
 
 //////////

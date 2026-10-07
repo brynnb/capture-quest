@@ -72,6 +72,20 @@ test("Pokemon Center PC opens from the terminal and stores Pokemon", async ({
   await waitForPartyPokemon(page, /BULBASAUR/i);
   await waitForPartyPokemon(page, /CHARMANDER/i);
 
+  const readRecoveredPC = () => page.evaluate(async () => {
+    const path = "/src/stores/PokemonPCStore.ts";
+    const { default: store } = await import(path);
+    const state = store.getState();
+    return {isOpen:state.isOpen,currentBox:state.currentBox,sources:state.sources};
+  });
+  await expect.poll(async () => (await readRecoveredPC()).sources.length).toBe(1);
+  const recoveredPC = await readRecoveredPC();
+  expect(recoveredPC.isOpen).toBe(false);
+  expect(recoveredPC.currentBox).toBe(0);
+  expect(recoveredPC.sources).toHaveLength(1);
+  expect(recoveredPC.sources[0]).toMatchObject({mapId:41,x:13,y:3,direction:"UP"});
+  expect(recoveredPC.sources[0].id).toBeGreaterThan(0);
+
   await clickTile(page, 13, 4);
   await waitForPlayerTile(page, 13, 4);
   await expect(page.getByTestId("pokemon-pc-main-menu")).toBeVisible({

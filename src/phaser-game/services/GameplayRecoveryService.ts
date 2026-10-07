@@ -4,6 +4,7 @@ import usePokeBattleStore from "@/stores/PokeBattleStore";
 import useCQInventoryStore from "@/stores/CQInventoryStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
+import usePokemonPCStore, { validatePCSnapshot } from "@/stores/PokemonPCStore";
 import { correlatedRequest } from "./CorrelatedRequest";
 import * as PhaserNet from "./PhaserNetworkService";
 import { handleCutsceneStart } from "./CutsceneService";
@@ -37,6 +38,7 @@ export function applyGameplaySnapshot(snapshot: GameplayStateResponse): void {
   usePlayerCharacterStore.getState().handleCharacterWalletData(snapshot.wallet);
   usePlayerCharacterStore.getState().setEventFlags(snapshot.eventFlags);
   usePokemonPartyStore.getState().setParty(snapshot.party);
+  usePokemonPCStore.getState().applySnapshot(snapshot.pc, snapshot.party);
   usePokeBattleStore.getState().restoreGameplay(snapshot);
   window.dispatchEvent(new CustomEvent("safariZoneEnter", { detail: snapshot.safari?.active
     ? { success: true, ballsLeft: snapshot.safari.ballsLeft, stepsLeft: snapshot.safari.stepsLeft }
@@ -64,7 +66,8 @@ export async function recoverGameplayState(mapId: number, signal?: AbortSignal):
 // turn. Compare immutable store states and retry a read, never a mutation.
 function captureGameplayViews() {
   const inventory = useCQInventoryStore.getState();
-  return [usePokeBattleStore.getState(), inventory.items, inventory.money, inventory.commandRevision, usePlayerCharacterStore.getState().characterProfile, usePokemonPartyStore.getState().party];
+  const pc = usePokemonPCStore.getState();
+  return [usePokeBattleStore.getState(), inventory.items, inventory.money, inventory.commandRevision, usePlayerCharacterStore.getState().characterProfile, usePokemonPartyStore.getState().party, pc.boxPokemon, pc.currentBox, pc.sources];
 }
 function gameplayViewsChanged(before: ReturnType<typeof captureGameplayViews>) {
   return captureGameplayViews().some((view, index) => view !== before[index]);
@@ -72,6 +75,8 @@ function gameplayViewsChanged(before: ReturnType<typeof captureGameplayViews>) {
 
 
 function validateGameplaySnapshot(snapshot: GameplayStateResponse): void {
+  validatePCSnapshot(snapshot.pc);
+  if (snapshot.pc.sources.some(source => source.mapId !== snapshot.position.mapId)) throw new Error("PC source belongs to another map");
   if (!Array.isArray(snapshot.inventory) || !Array.isArray(snapshot.party) || !Array.isArray(snapshot.eventFlags)
     || snapshot.eventFlags.some(flag => typeof flag !== "string" || !flag)
     || !Number.isSafeInteger(snapshot.commandRevision) || snapshot.commandRevision < 0

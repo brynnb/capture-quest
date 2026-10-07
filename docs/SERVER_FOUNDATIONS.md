@@ -7,7 +7,7 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-stable row-ID PC storage primitives (2026-10-07); PC network/client migration
+stable row-ID PC storage primitives and coherent PC recovery (2026-10-07); PC network/client migration
 remains unfinished. This follows center healing through the shared scripted-event
 boundary and its rendered/recovery acceptance plus shared issuance/visibility
 fixes (`4d18056`, `58b3d53`), following `0d6b640`
@@ -20,6 +20,55 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. No push or production deployment is authorized by this goal.
+
+## Coherent PC recovery and opening reads (2026-10-07)
+
+`GameplayStateResponse.pc` now contains the selected box, capacity, stable box
+member IDs and source PC triggers for the owned map. The new shared
+`readPCStorageIn` reader runs inside the same character transaction as party,
+wallet, inventory and command-revision recovery. Existing PC opening uses that
+reader and an injected, cancellable character transaction instead of independent
+global reads. Missing preferences mean box zero; failed queries, out-of-range
+preferences, malformed slots/members or unsupported source direction do not
+produce an empty or successful partial snapshot.
+
+Source records are selected from `phaser_hidden_objects` by the original
+`OpenPokemonCenterPC` routine and PC type. Their IDs, map, coordinates and facing
+are exposed through the generated contract for the upcoming authorization and
+interaction migration. This **does not authorize access yet**: PC opening still
+accepts the old request, and the four mutation/preference handlers remain legacy.
+No hardcoded source actor or alternate recovery coordinator was introduced.
+
+The existing client gameplay and inventory-command recovery paths apply PC state
+without reopening a closed PC panel. Box/source changes participate in the same
+stale-read detection as party and inventory changes. Snapshot validation rejects
+missing PC state from an older server, malformed identities and foreign source
+maps before publishing any gameplay projection. Matching server/client builds
+are required; there is no fabricated empty-PC compatibility fallback.
+
+Verification: PostgreSQL regressions exercise real recovery and opening handlers
+with the global database disabled, prove coherent owned row identities and
+nonstandard source coordinates, and reject preference, source, box-data and
+storage-query failures without partial success. Focused checks passed in 3.629
+seconds; the full world race suite passed in 46.048 seconds. All 127 affected
+client recovery checks passed, including a PC refresh overtaking a read, closed
+panel preservation, malformed/missing PC snapshots and foreign-map rejection.
+Canonical type generation, TypeScript checks, asset validation, frontend build
+and diff checks passed.
+
+Two existing rendered PC cases passed in 12.0 seconds in
+`/var/tmp/capturequest-rendered.nsCqDo`. The terminal/storage flow now also verifies
+that source PC identity is present after map recovery while the panel remains
+closed. Existing real opening, deposit, withdrawal, release and NPC interaction
+checks passed. This is browser evidence for the recovery/read extension; it is
+not duplicate/lost-reply/crash acceptance for the still-legacy PC commands.
+
+Next: replace all five PC requests with source-authorized, correlated commands
+using the existing shared revision/transaction boundary and one committed
+box/party projection; move their client adapters onto the existing scene owner,
+retire global PC reply handlers and slot-only requests, and verify cancellation,
+stale replies, closed views and process-death recovery. The full roadmap and
+original login timeout remain open. No push or deployment was performed.
 
 ## PC storage identity prerequisite and source audit (2026-10-07)
 

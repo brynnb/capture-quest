@@ -21,40 +21,35 @@ func HandlePokemonPCOpen(ses *session.Session, payload []byte, wh *WorldHandler)
 		return false
 	}
 	charID := int64(ses.Client.CharData().ID)
-	myDB := db.GlobalWorldDB.DB
-
-	// Get current box
-	currentBox := 0
-	myDB.QueryRow(`SELECT current_box FROM character_pc_state WHERE character_id = $1`, charID).Scan(&currentBox)
-
-	// Load box contents
-	boxPokemon, err := pokebattle.LoadBox(myDB, charID, currentBox)
+	var pc PCStorageSnapshot
+	var partyDTOs []PokemonDTO
+	err := db.Transaction(ses.CommandContext(), wh.database, func(tx db.DBTX) error {
+		var mapID int
+		if err := tx.QueryRow(`SELECT map_id FROM character_data WHERE id=$1 FOR UPDATE`, charID).Scan(&mapID); err != nil {
+			return err
+		}
+		var err error
+		pc, err = readPCStorageIn(tx, charID, mapID)
+		if err != nil {
+			return err
+		}
+		party, err := pokebattle.LoadParty(tx, charID)
+		if err != nil {
+			return err
+		}
+		partyDTOs = make([]PokemonDTO, 0, len(party))
+		for _, pokemon := range party {
+			partyDTOs = append(partyDTOs, pokemonToDTO(pokemon))
+		}
+		return nil
+	})
 	if err != nil {
-		log.Printf("[PC] Failed to load box %d for char %d: %v", currentBox, charID, err)
+		log.Printf("[PC] Read for character %d: %v", charID, err)
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "PC state unavailable"}, opcodes.PokemonPCOpenResponse)
+		return false
 	}
-
-	// Load party
-	party, err := pokebattle.LoadParty(myDB, charID)
-	if err != nil {
-		log.Printf("[PC] Failed to load party for char %d: %v", charID, err)
-	}
-
-	boxDTOs := make([]PokemonDTO, 0, len(boxPokemon))
-	for _, p := range boxPokemon {
-		boxDTOs = append(boxDTOs, pokemonToDTO(p))
-	}
-	partyDTOs := make([]PokemonDTO, 0, len(party))
-	for _, p := range party {
-		partyDTOs = append(partyDTOs, pokemonToDTO(p))
-	}
-
 	ses.SendStreamJSON(map[string]interface{}{
-		"success":    true,
-		"currentBox": currentBox,
-		"boxCount":   pcBoxCount,
-		"boxSize":    pcBoxSize,
-		"box":        boxDTOs,
-		"party":      partyDTOs,
+		"success": true, "currentBox": pc.CurrentBox, "boxCount": pc.BoxCount, "boxSize": pc.BoxSize, "box": pc.Box, "sources": pc.Sources, "party": partyDTOs,
 	}, opcodes.PokemonPCOpenResponse)
 
 	return false

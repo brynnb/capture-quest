@@ -3,6 +3,7 @@ import type { CQMerchantOpenResponse, CQMerchantBuyResponse, CQMerchantSellRespo
 import useCQInventoryStore from "@/stores/CQInventoryStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
+import usePokemonPCStore from "@/stores/PokemonPCStore";
 import useGameStatusStore from "@/stores/GameStatusStore";
 import useChatStore, { MessageType } from "@/stores/ChatStore";
 import { correlatedRequest, CorrelatedResponseError } from "./CorrelatedRequest";
@@ -30,7 +31,8 @@ export function bindInventoryScene(): () => void {
 
 function views() {
   const bag = useCQInventoryStore.getState();
-  return [bag.items, bag.money, bag.commandRevision, usePlayerCharacterStore.getState().characterProfile, usePokemonPartyStore.getState().party];
+  const pc = usePokemonPCStore.getState();
+  return [bag.items, bag.money, bag.commandRevision, usePlayerCharacterStore.getState().characterProfile, usePokemonPartyStore.getState().party, pc.boxPokemon, pc.currentBox, pc.sources];
 }
 
 // One owner for admission, correlation, cancellation, stale replies and recovery.
@@ -98,6 +100,7 @@ export async function runInventoryRequest<T extends Reply>(options: {
       useCQInventoryStore.getState().setInventory(snapshot.inventory, snapshot.wallet.pokedollars, snapshot.commandRevision);
       usePlayerCharacterStore.getState().handleCharacterWalletData(snapshot.wallet);
       usePokemonPartyStore.getState().setParty(snapshot.party);
+      usePokemonPCStore.getState().applySnapshot(snapshot.pc, snapshot.party);
       useCQInventoryStore.getState().setPendingTMHM(null);
       useChatStore.getState().addMessage(error instanceof CorrelatedResponseError ? error.message : "Inventory state refreshed. Check your bag and party before trying again.", MessageType.SYSTEM);
     } catch {
