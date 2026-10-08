@@ -7,7 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-name validation uses owned filtering, explicit identity and cancellable application,
+conditional dialogue rejects malformed conditions and load failures,
+following `e68fce5`: name validation uses owned filtering, explicit identity and cancellable application,
 following `58b871e`: real local Chromium native QUIC login/movement/reentry and restart acceptance,
 following `91c6015`: legacy FIFO timeout/send failure retires ambiguous transport and settles its caller,
 following `aa0e219`: native transport setup/readers/writes are fenced to their captured owner,
@@ -46,6 +47,33 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Dialogue migration prerequisite: explicit condition failure (2026-10-08)
+
+The active dialogue audit found its resolver still uses global data dependencies,
+and its conditional helper hid query/scan failures as no override. More seriously,
+malformed `requires_flags`/`requires_flags_absent` JSON became an empty list, which
+could enable a branch without its intended conditions.
+
+The shared condition decoder now returns errors. Conditional query, scan,
+iteration and JSON failures propagate through the resolver instead of selecting
+a default or unconstrained override. Error messages identify text constant, row
+ID and condition field. Nullable/empty lists and existing scalar/multi-flag
+selection semantics remain supported. This is a prerequisite fix, not a claim
+that the dialogue transport has migrated.
+
+Focused checks cover malformed conditions at the primitive and real resolver,
+missing conditional tables, and existing generated/scalar/multi-flag branches.
+They passed in 1.1s; full world (61.0s), simulator and session race suites passed.
+No rendered dialogue acceptance is inferred from these state/parser checks.
+
+Next: finish injected, cancellable dialogue/branch/trade readers and shared
+snapshot ownership, then client correlation and actor/cutscene lifetime. Those
+global dependencies and other fallback/error paths remain explicitly open in
+the command matrix. Name validation's preceding boundary has been inspected;
+no new change was made to it. All five roadmap areas remain active; historical
+restore timeout and Repel click remain unattributed. No wire/schema/assets,
+push or deployment.
 
 ## Name validation identity and authoritative lookup (2026-10-08)
 

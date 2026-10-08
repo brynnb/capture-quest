@@ -3,7 +3,7 @@ package world
 import (
 	"database/sql"
 	"encoding/json"
-	"log"
+	"fmt"
 	"strings"
 
 	"capturequest/internal/db"
@@ -18,15 +18,14 @@ type conditionalDialogueOverride struct {
 // checkConditionalDialogue checks if a text constant has a conditional override
 // based on the player's event flags. Returns the highest-priority matching
 // override, or nil if no conditions match (use default dialogue).
-func checkConditionalDialogue(textConstant string, charID int64, efm *EventFlagManager) *conditionalDialogueOverride {
+func checkConditionalDialogue(textConstant string, charID int64, efm *EventFlagManager) (*conditionalDialogueOverride, error) {
 	rows, err := db.GlobalWorldDB.DB.Query(`
 		SELECT id, requires_flag, requires_flag_absent, requires_flags, requires_flags_absent, override_dialogue
 		FROM phaser_conditional_dialogue
 		WHERE text_constant = $1
 		ORDER BY priority DESC`, textConstant)
 	if err != nil {
-		log.Printf("[ConditionalDialogue] Error querying rows for %s: %v", textConstant, err)
-		return nil
+		return nil, fmt.Errorf("conditional dialogue %s query: %w", textConstant, err)
 	}
 	defer rows.Close()
 
@@ -37,15 +36,20 @@ func checkConditionalDialogue(textConstant string, charID int64, efm *EventFlagM
 		var dialogue string
 
 		if err := rows.Scan(&id, &reqFlag, &reqFlagAbsent, &reqFlagsRaw, &reqFlagsAbsentRaw, &dialogue); err != nil {
-			log.Printf("[ConditionalDialogue] Error scanning row: %v", err)
-			continue
+			return nil, fmt.Errorf("conditional dialogue %s row %d: %w", textConstant, id, err)
 		}
 
-		requiredFlags := decodeConditionalFlagList(reqFlagsRaw)
+		requiredFlags, err := decodeConditionalFlagList(reqFlagsRaw)
+		if err != nil {
+			return nil, fmt.Errorf("conditional dialogue %s row %d requires_flags: %w", textConstant, id, err)
+		}
 		if reqFlag.Valid && strings.TrimSpace(reqFlag.String) != "" {
 			requiredFlags = append(requiredFlags, strings.TrimSpace(reqFlag.String))
 		}
-		requiredAbsentFlags := decodeConditionalFlagList(reqFlagsAbsentRaw)
+		requiredAbsentFlags, err := decodeConditionalFlagList(reqFlagsAbsentRaw)
+		if err != nil {
+			return nil, fmt.Errorf("conditional dialogue %s row %d requires_flags_absent: %w", textConstant, id, err)
+		}
 		if reqFlagAbsent.Valid && strings.TrimSpace(reqFlagAbsent.String) != "" {
 			requiredAbsentFlags = append(requiredAbsentFlags, strings.TrimSpace(reqFlagAbsent.String))
 		}
@@ -57,23 +61,22 @@ func checkConditionalDialogue(textConstant string, charID int64, efm *EventFlagM
 		return &conditionalDialogueOverride{
 			label:    textConstant + "_CONDITIONAL",
 			dialogue: dialogue,
-		}
+		}, nil
 	}
 	if err := rows.Err(); err != nil {
-		log.Printf("[ConditionalDialogue] Error iterating rows for %s: %v", textConstant, err)
+		return nil, fmt.Errorf("conditional dialogue %s iteration: %w", textConstant, err)
 	}
 
-	return nil
+	return nil, nil
 }
 
-func decodeConditionalFlagList(raw []byte) []string {
+func decodeConditionalFlagList(raw []byte) ([]string, error) {
 	if len(raw) == 0 || strings.EqualFold(strings.TrimSpace(string(raw)), "null") {
-		return nil
+		return nil, nil
 	}
 	var values []string
 	if err := json.Unmarshal(raw, &values); err != nil {
-		log.Printf("[ConditionalDialogue] Error decoding flag list %q: %v", string(raw), err)
-		return nil
+		return nil, fmt.Errorf("invalid conditional flag list: %w", err)
 	}
 	result := make([]string, 0, len(values))
 	for _, value := range values {
@@ -82,7 +85,7 @@ func decodeConditionalFlagList(raw []byte) []string {
 			result = append(result, value)
 		}
 	}
-	return result
+	return result, nil
 }
 
 func conditionalFlagsMatch(charID int64, efm *EventFlagManager, requiredFlags []string, requiredAbsentFlags []string) bool {

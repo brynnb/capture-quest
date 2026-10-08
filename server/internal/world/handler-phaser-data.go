@@ -191,7 +191,11 @@ func resolvePhaserDialogueEntries(textConstant string, charID int64, efm *EventF
 	}
 
 	if charID > 0 && efm != nil {
-		if override := checkConditionalDialogue(textConstant, charID, efm); override != nil {
+		override, err := checkConditionalDialogue(textConstant, charID, efm)
+		if err != nil {
+			return nil, err
+		}
+		if override != nil {
 			entries = []PhaserDialogueEntry{{
 				Label:    override.label,
 				Dialogue: override.dialogue,
