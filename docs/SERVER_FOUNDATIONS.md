@@ -28,6 +28,45 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Skip clean position rewrites; preserve dirty cleanup obligations (2026-10-08)
+
+Position producer inventory distinguishes committed projection from detached
+planning and legacy staging. Ordinary/SURF completion commits before
+`projectCommittedPosition`; published teleports call `markPositionCommitted`.
+Forced planning changes a detached copy and installs it only after commit. The
+flush nonetheless rewrote any registered position, even with `positionDirty=false`.
+
+`FlushPlayerPosition` now returns without storage work for clean state. Committed
+ordinary/SURF projection records clean state directly, including same-tile results,
+while retaining its path/pending/owner behavior. Generic staged updates remain
+explicit dirty obligations. Dirty flush still uses the owned transaction, retains
+failure state for retry, and cannot mark a newer snapshot saved after an older
+blocked flush. No reconnect or clean disconnect now manufactures a position write.
+
+The PostgreSQL held-pool test proves a clean committed flush needs no connection.
+Existing dirty commit-rejection/retry and newer-snapshot tests pass. Cleanup tests
+now cover both clean and explicitly staged dirty positions: clean failure reports
+playtime only; dirty failure reports position and playtime, rejects replacement,
+retires the old writer and persists no partial save. The earlier fixture expected a
+position failure from a clean registration; explicitly staging the dirty case
+preserves its failure assertion instead of weakening it.
+
+Focused movement/step/shutdown checks passed (5.5s), final clean/dirty cleanup checks
+passed (1.8s), full world (67.8s), battle and session race suites passed, all Go
+packages compile and diff checks pass. No new rendered or process-death acceptance
+is claimed for this save-admission change. The preceding committed-movement and
+crash/reentry evidence is retained as baseline; it does not prove every cleanup
+failure recovery outcome.
+
+Remaining: genuinely dirty final position and playtime can still fail during
+cleanup, after which local writers retire. Define recovery/admission from existing
+durable owners without guessing successful saves or retaining stale writers.
+Audit the remaining staged-position fallback producer and final-playtime lifetime,
+plus other matrix rows. The original restore timeout and Repel click failure remain
+unattributed, and all five roadmap areas stay active. Next: complete cleanup
+failure/reentry recovery policy through the movement/session ownership boundary.
+This is a local checkpoint only, without push, deployment, schema or asset change.
+
 ## Shared lock transaction-contract review (2026-10-08)
 
 Caller inventory confirms character locking is performed through owned transaction

@@ -178,7 +178,7 @@ func (m *PlayerMovementManager) applyBicycleMapRules(state *PlayerMovementState)
 func (m *PlayerMovementManager) FlushPlayerPosition(ctx context.Context, charID int) error {
 	m.mu.Lock()
 	state := m.players[charID]
-	if state == nil {
+	if state == nil || !state.positionDirty {
 		m.mu.Unlock()
 		return nil
 	}
@@ -393,6 +393,9 @@ func (m *PlayerMovementManager) projectCommittedPosition(charID int, x, y, mapID
 		state.Direction = normalizedDirection
 	}
 
+	// This is a committed result, not a deferred save obligation.
+	state.positionDirty = false
+	state.LastSaveTime = time.Now()
 	state.IsSurfing = surfing
 	if state.CurrentX == x && state.CurrentY == y && state.MapID == mapID {
 		m.applyBicycleMapRules(state)
@@ -418,7 +421,6 @@ func (m *PlayerMovementManager) projectCommittedPosition(charID int, x, y, mapID
 	}
 
 	state.pendingStep = nil
-	state.positionDirty = true
 	state.CurrentX = x
 	state.CurrentY = y
 	state.MapID = mapID

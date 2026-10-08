@@ -3,6 +3,7 @@ package world
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -55,33 +56,40 @@ func TestPlaytimeCancellationKeepsIntervalForRetryOnCapturedDatabase(t *testing.
 }
 
 func TestFailedFinalSavesRejectCharacterHandoffAndRetireOldConnection(t *testing.T) {
-	database, wh, old, _ := battleTestWorld(t)
-	wh.sessionManager = session.NewSessionManager()
-	wh.ActorRegistry = NewActorRegistry()
-	wh.ActorManager = NewPhaserActorManager(wh)
-	wh.PlayerMovement = NewPlayerMovementManager(wh, wh.ActorManager)
-	wh.TrainerEncounter = NewTrainerEncounterManager(wh)
-	old.StartPlaytime(time.Now().Add(-3*time.Second), 0, 42)
-	wh.PlayerMovement.RegisterPlayer(old, 42, 7, 8, 50, "UP")
-	if err := wh.characterOwners.acquire(context.Background(), 42, old, nil); err != nil {
-		t.Fatal(err)
-	}
-	testdb.Exec(t, database, `CREATE FUNCTION reject_final_save() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'reject final save'; END $$;
+	for _, dirty := range []bool{false, true} {
+		t.Run(fmt.Sprint(dirty), func(t *testing.T) {
+			database, wh, old, _ := battleTestWorld(t)
+			wh.sessionManager = session.NewSessionManager()
+			wh.ActorRegistry = NewActorRegistry()
+			wh.ActorManager = NewPhaserActorManager(wh)
+			wh.PlayerMovement = NewPlayerMovementManager(wh, wh.ActorManager)
+			wh.TrainerEncounter = NewTrainerEncounterManager(wh)
+			old.StartPlaytime(time.Now().Add(-3*time.Second), 0, 42)
+			wh.PlayerMovement.RegisterPlayer(old, 42, 7, 8, 50, "UP")
+			if dirty {
+				wh.PlayerMovement.UpdatePosition(42, 8, 8, 50, "UP")
+			}
+			if err := wh.characterOwners.acquire(context.Background(), 42, old, nil); err != nil {
+				t.Fatal(err)
+			}
+			testdb.Exec(t, database, `CREATE FUNCTION reject_final_save() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'reject final save'; END $$;
  CREATE CONSTRAINT TRIGGER reject_final_save AFTER UPDATE ON character_data DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_final_save();`)
-	next := &session.Session{}
-	err := wh.characterOwners.acquire(context.Background(), 42, next, wh.cleanupCharacterSession)
-	if err == nil || !strings.Contains(err.Error(), "final position") || !strings.Contains(err.Error(), "final playtime") {
-		t.Fatalf("cleanup errors=%v", err)
-	}
-	if !old.IsClosed() || old.HasValidClient() || wh.characterOwners.owns(42, old) || wh.characterOwners.owns(42, next) {
-		t.Fatal("failed cleanup admitted replacement or retained live connection")
-	}
-	if _, _, _, ok := wh.PlayerMovement.GetPosition(42); ok {
-		t.Fatal("failed cleanup left movement writer registered")
-	}
-	var seconds int
-	if err := database.QueryRow(`SELECT time_played FROM character_data WHERE id=42`).Scan(&seconds); err != nil || seconds != 0 {
-		t.Fatalf("failed final save changed playtime=%d %v", seconds, err)
+			next := &session.Session{}
+			err := wh.characterOwners.acquire(context.Background(), 42, next, wh.cleanupCharacterSession)
+			if err == nil || strings.Contains(err.Error(), "final position") != dirty || !strings.Contains(err.Error(), "final playtime") {
+				t.Fatalf("cleanup errors=%v", err)
+			}
+			if !old.IsClosed() || old.HasValidClient() || wh.characterOwners.owns(42, old) || wh.characterOwners.owns(42, next) {
+				t.Fatal("failed cleanup admitted replacement or retained live connection")
+			}
+			if _, _, _, ok := wh.PlayerMovement.GetPosition(42); ok {
+				t.Fatal("failed cleanup left movement writer registered")
+			}
+			var seconds int
+			if err := database.QueryRow(`SELECT time_played FROM character_data WHERE id=42`).Scan(&seconds); err != nil || seconds != 0 {
+				t.Fatalf("failed final save changed playtime=%d %v", seconds, err)
+			}
+		})
 	}
 }
 

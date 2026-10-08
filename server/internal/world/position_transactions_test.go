@@ -261,3 +261,29 @@ func TestDisconnectCancelsIssuedStepTransactionBeforeCleanup(t *testing.T) {
 		t.Fatal("cancelled position changed live state")
 	}
 }
+
+func TestCleanCommittedPositionFlushDoesNotRewriteStorage(t *testing.T) {
+	database, wh, ses, _ := battleTestWorld(t)
+	manager := NewPlayerMovementManager(wh, nil)
+	wh.PlayerMovement = manager
+	manager.RegisterPlayer(ses, 42, 7, 8, 50, "UP")
+	manager.projectCommittedPosition(42, 8, 8, 50, "RIGHT", false)
+	if manager.players[42].positionDirty {
+		t.Fatal("committed projection manufactured dirty state")
+	}
+	database.SetMaxOpenConns(1)
+	lease, err := database.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.Close()
+	before := database.Stats().WaitCount
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if err := manager.FlushPlayerPosition(ctx, 42); err != nil {
+		t.Fatalf("clean flush borrowed storage: %v", err)
+	}
+	if database.Stats().WaitCount != before {
+		t.Fatal("clean flush entered transaction")
+	}
+}
