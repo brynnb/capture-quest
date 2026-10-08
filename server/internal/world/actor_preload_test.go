@@ -14,6 +14,9 @@ import (
 
 func TestActorPreloadFailurePreservesActorsAndCollisionRetry(t *testing.T) {
 	database, wh, _, _ := battleTestWorld(t)
+	old := db.GlobalWorldDB
+	db.GlobalWorldDB = nil
+	t.Cleanup(func() { db.GlobalWorldDB = old })
 	wh.ActorRegistry = NewActorRegistry()
 	m := NewPhaserActorManager(wh)
 	wh.ActorManager = m
@@ -210,4 +213,60 @@ func TestCollisionColdReadCancelsWhileRelationLocked(t *testing.T) {
 		t.Fatal("cancelled read warmed cache")
 	}
 	manager.InvalidateCollisionMap(40)
+}
+
+func TestOverworldReloadWarmsNPCSourceAliases(t *testing.T) {
+	database, wh, _, _ := battleTestWorld(t)
+	manager := NewPhaserActorManager(wh)
+	manager.overworldMapIds[31], manager.overworldMapIds[32] = true, true
+	testdb.Exec(t, database, `INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(31,'AREA_A',20,20,1),(32,'AREA_B',20,20,1),(40,'ROOM',4,4,0);
+ INSERT INTO phaser_tiles(x,y,tile_image_id,collision_type,raw_foot_tile_id,source_map_id) VALUES(2,3,1,1,7,31),(3,3,1,1,8,31)`)
+	manager.collisionMap[40] = map[string]int{"2,3": 0}
+	if _, _, err := manager.baseCollision(context.Background(), database, 9999, true); err != nil {
+		t.Fatal(err)
+	}
+	x, y := 2, 3
+	direction, terrain := "LEFT_RIGHT", "LAND"
+	actor := &PhaserActor{ID: 1, MapID: 31, X: &x, Y: &y, ActionDirection: &direction, MovementType: &terrain}
+	manager.mu.Lock()
+	nx, ny, dir := manager.calculateNextMove(actor)
+	manager.mu.Unlock()
+	if nx != 3 || ny != 3 || dir != "RIGHT" {
+		t.Fatalf("NPC source alias stayed cold: %d,%d %s", nx, ny, dir)
+	}
+	for _, id := range []int{0, 31, 32, 9999} {
+		if manager.collisionMap[id]["3,3"] != 1 || manager.rawFootTileMap[id]["3,3"] != 8 {
+			t.Fatalf("alias %d differs from stitched view", id)
+		}
+	}
+	testdb.Exec(t, database, `UPDATE phaser_tiles SET collision_type=0,raw_foot_tile_id=9 WHERE x=3 AND y=3 AND map_id IS NULL; INSERT INTO phaser_tiles(x,y,tile_image_id,collision_type,source_map_id) VALUES(1,3,1,1,31)`)
+	manager.InvalidateCollisionMap(31)
+	if _, _, err := manager.baseCollision(context.Background(), database, 9999, true); err != nil {
+		t.Fatal(err)
+	}
+	manager.mu.Lock()
+	nx, ny, dir = manager.calculateNextMove(actor)
+	manager.mu.Unlock()
+	if nx != 1 || ny != 3 || dir != "LEFT" {
+		t.Fatalf("NPC reused pre-edit or absent collision: %d,%d %s", nx, ny, dir)
+	}
+	database.SetMaxOpenConns(1)
+	lease, err := database.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.Close()
+	before := database.Stats().WaitCount
+	for _, id := range []int{0, 31, 32, 9999} {
+		collision, raw, err := manager.baseCollision(context.Background(), database, id, true)
+		if err != nil || collision["3,3"] != 0 || raw["3,3"] != 9 {
+			t.Fatalf("cached alias %d reread or retained old data: %v", id, err)
+		}
+	}
+	if database.Stats().WaitCount != before {
+		t.Fatal("shared aliases triggered another SQL read")
+	}
+	if manager.collisionMap[40]["2,3"] != 0 {
+		t.Fatal("overworld reload replaced interior view")
+	}
 }

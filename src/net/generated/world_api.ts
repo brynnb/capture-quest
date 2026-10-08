@@ -1368,16 +1368,6 @@ export interface MapScriptManager {
 //////////
 // source: npc-manager-phaser.go
 
-/**
- * ActorPathState tracks an actor that is being A*-pathed to a destination.
- */
-export interface ActorPathState {
-  actor?: PhaserActor;
-  path: PathNode[];
-  lastMoveTime: any /* time.Time */;
-  moveSpeed: any /* time.Duration */;
-  onComplete: any; // optional callback when path finishes
-}
 export interface PhaserActorManager {
 }
 

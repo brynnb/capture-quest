@@ -14,23 +14,19 @@ Avoid adding one-off Go cutscenes. If a script needs a capability the JSON event
 
 ---
 
-## Architecture: Unified Actor Movement
+## Architecture: Owned scripted and ambient movement
 
-Players and NPCs share the same movement system. The `PhaserActorManager` provides:
+Scripted movement uses the per-character issued cutscene plan and shared action
+contract in `server/internal/scriptedactions`. The client `ActorMovementController`
+animates issued NPC actions; player movement uses the separate owned step/route
+system in `PlayerMovementManager`. `PhaserActorManager` simulates ambient NPC
+wandering and publishes actor updates. Their collision data and deterministic
+pathfinding primitives are shared, while their ownership and execution differ.
 
-- **`FindPath()`** — Shared A\* pathfinding used by both players and NPCs
-- **`SpawnTemporaryActor()`** — Creates a runtime actor (e.g., Oak during a cutscene) with a unique ID, broadcast to all clients
-- **`RequestActorMove()`** — A\*-paths any actor to a destination with tick-based movement and animation broadcasts
-- **`DespawnTemporaryActor()`** — Removes and broadcasts despawn
-- **`processPathedMovement()`** — Runs in the 250ms simulation tick, advances all pathed actors
+Use JSON `move` and `movePlayer` actions through the authoritative scripted-event
+runtime. The unused global actor A* callback queue and `RequestActorMove` API are
+retired; they were not the runtime executing these scripts.
 
-This means **NPCs are actors just like players**. Any actor can be spawned, moved via pathfinding, and despawned using the same APIs. The client's `ActorMovementController` handles walk animation for any actor receiving position updates, regardless of whether it's a player or NPC.
-
-Key files:
-
-- `server/internal/world/npc-manager-phaser.go` — Actor manager with pathfinding and movement
-- `server/internal/world/player-movement-phaser.go` — Player movement (delegates pathfinding to actor manager)
-- `server/internal/world/actor_registry.go` — Unique ID allocation for temporary actors
 
 ---
 
@@ -158,8 +154,8 @@ You don't need deep Z80 knowledge. Key patterns:
 | ASM Pattern                        | Meaning               | Cutscene Equivalent                       |
 | ---------------------------------- | --------------------- | ----------------------------------------- |
 | `call DisplayTextID`               | Show dialogue         | `dialogue` action                         |
-| `call MoveSprite`                  | Animate NPC movement  | `move` action (or Go `RequestActorMove`)  |
-| `call StartSimulatingJoypadStates` | Force player movement | `movePlayer` action (or Go `RequestMove`) |
+| `call MoveSprite`                  | Animate NPC movement  | `move` action in the issued plan  |
+| `call StartSimulatingJoypadStates` | Force player movement | `movePlayer` action in the issued plan |
 | `SetEvent EVENT_FOO`               | Set event flag        | `sets_flags` column                       |
 | `CheckEvent EVENT_FOO`             | Check event flag      | `requires_flag` / `requires_flag_absent`  |
 | `predef ShowObject` / `HideObject` | Show/hide NPC sprite  | `showActor` / `hideActor`                 |

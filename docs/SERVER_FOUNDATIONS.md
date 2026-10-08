@@ -28,6 +28,49 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Dormant actor path retirement and shared overworld cache installation (2026-10-08)
+
+Repository-wide caller/write inventory confirms `RequestActorMove` was the only
+writer of `actorPaths`, with no runtime caller. Its actor A* callback queue, timer
+processing, `ActorPathState`, unconsumed `FindPath` wrapper and unused `TileExists`
+API are removed. Ambient NPC wandering and owned scripted/player movement retain
+their actual existing owners. Canonical `npm run tygo` regeneration removes only
+the retired `ActorPathState` interface; no runtime consumer referenced it. The ASM
+conversion guide no longer recommends these obsolete APIs and instead identifies
+issued JSON actions, player step/routes and ambient simulation responsibilities.
+
+The inventory also found a coherence defect after overworld invalidation: player
+reads warmed unified key 9999, while wandering NPCs looked up their source-map key.
+All those keys query the same `map_id IS NULL` corpus. One shared installation
+primitive now publishes the same immutable collision/raw-foot maps to unified,
+map 0 and catalog overworld keys. Startup and lazy installation both use it;
+interior entries stay independent. Alias invalidation and revision fencing remain
+authoritative, so no reader can publish an overtaken snapshot.
+
+The real PostgreSQL regression warms the unified view and verifies an NPC on a
+source alias can select its valid next step. After changing collision, invalidating
+and reloading unified data, that NPC selects the new permitted step. All aliases
+retain current raw-foot data while a held one-connection pool proves cached access
+needs no additional SQL. The preload regression now removes the global database;
+map IDs, actor rows and collision preload use the injected world database and
+existing caller context. The global startup collision wrapper is retired.
+
+Focused checks passed (1.8s). Full world (48.4s), script-simulator and server race
+suites passed for the retirement/shared-installation change. After the startup
+injection follow-up, final preload/collision checks passed (2.1s), all Go packages
+compile, frontend typecheck and diff checks pass. No rendered NPC movement or
+performance claim follows from the headless next-step/cache checks. No schema,
+opcode, runtime asset family or production state changed.
+
+Remaining: simulator/standalone character pathfinding context/global ownership,
+local debug collision reads and dormant trainer diagnostic wrappers, plus the
+other matrix rows and reconnect/idle recovery. The original restore timeout and
+pre-command Repel click failure remain unattributed; all five roadmap areas remain
+active. Next: finish the standalone/simulator pathfinding boundary using its actual
+caller context and database, then retire diagnostic-only query wrappers in favor
+of tests of the authoritative planner. This checkpoint is local only, without
+push or deployment.
+
 ## Late peer transport read acceptance (2026-10-08)
 
 Two isolated browser contexts now exercise the existing scene-owned actor read and
