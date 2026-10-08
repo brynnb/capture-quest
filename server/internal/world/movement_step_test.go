@@ -3,6 +3,7 @@ package world
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -472,5 +473,89 @@ func TestMovementStepBlackoutReturningToSourceConsumesToken(t *testing.T) {
 		if err := json.Unmarshal(message.payload, &response); err != nil || !response.Success || !response.Replayed || response.X != 7 {
 			t.Fatalf("duplicate recovery receipt %+v %v", response, err)
 		}
+	}
+}
+
+func TestMovementCommitRejectsDurableBattleOwnersWithoutCachedAvailability(t *testing.T) {
+	for _, forced := range []bool{false, true} {
+		for _, owner := range []string{"ordinary", "terminal", "safari", "read failure"} {
+			t.Run(fmt.Sprintf("forced=%t/%s", forced, owner), func(t *testing.T) {
+				wh, ses, messages, attempt := stepEffectFixture(t, forced)
+				daycare := seedStepDaycare(t, wh)
+				switch owner {
+				case "ordinary", "terminal":
+					current := battleTestStart(t, wh.database, false, nil)
+					if owner == "terminal" {
+						_, err := pokebattle.CommitBattle(context.Background(), wh.database, 42, current, func(tx db.DBTX, b *pokebattle.BattleState) error {
+							b.EnemyParty[0].CurHP = 0
+							b.Phase = pokebattle.PhaseBattleEnd
+							return nil
+						})
+						if err != nil {
+							t.Fatal(err)
+						}
+					}
+					forgetBattle(42, getBattle(42))
+				case "safari":
+					wh.Safari = NewSafariZoneManager(wh.database)
+					seedSafariBattle(t, wh.Safari, 3)
+				case "read failure":
+					testdb.Exec(t, wh.database, `ALTER TABLE character_battle_state RENAME TO unavailable_battles`)
+				}
+				attempt()
+				assertStepPosition(t, wh, ses, 7)
+				assertStepDaycare(t, wh, daycare, 125)
+				var receipts int
+				if err := wh.database.QueryRow(`SELECT COUNT(*) FROM character_movement_receipts WHERE character_id=42`).Scan(&receipts); err != nil || receipts != 0 {
+					t.Fatalf("rejection stored receipt: %d %v", receipts, err)
+				}
+				if forced {
+					state := wh.PlayerMovement.players[42]
+					if owner == "read failure" {
+						if len(state.Path) != 1 || len(messages.streams) != 0 {
+							t.Fatal("database failure retired or published path")
+						}
+					} else {
+						var stopped protocol.ServerPlayerMovementNotify
+						if len(state.Path) != 0 || len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &stopped) != nil || stopped.X != 7 || stopped.Y != 8 || !stopped.PathFinished {
+							t.Fatal("battle rejection did not stop at source")
+						}
+						messages.streams = nil
+						attempt()
+						if len(messages.streams) != 0 {
+							t.Fatal("stopped battle path kept publishing")
+						}
+					}
+				} else {
+					assertNoStepSuccess(t, messages)
+				}
+			})
+		}
+	}
+}
+
+func TestSurfEntryCannotCommitDuringUncachedBattle(t *testing.T) {
+	wh, ses, _ := setupIssuedStep(t)
+	battleTestStart(t, wh.database, false, nil)
+	forgetBattle(42, getBattle(42))
+	_, err := commitMovementStep(context.Background(), wh, 42, movementStepCandidate{SourceMap: 50, SourceX: 7, SourceY: 8, MapID: 50, X: 8, Y: 8, Direction: "RIGHT", SurfEntry: true})
+	if !errors.Is(err, errBattleOwnership) {
+		t.Fatalf("Surf bypassed durable owner: %v", err)
+	}
+	assertStepPosition(t, wh, ses, 7)
+}
+
+func TestBattleAcquiredAfterStepIssuanceRejectsCompletion(t *testing.T) {
+	wh, ses, messages := setupIssuedStep(t)
+	step := issueStep(t, wh, ses, messages)
+	battleTestStart(t, wh.database, false, nil)
+	forgetBattle(42, getBattle(42))
+	messages.streams = nil
+	battleDispatch(t, wh, ses, opcodes.PlayerStepCompleteRequest, fmt.Sprintf(`{"requestId":"after-battle","stepToken":%q}`, step.StepToken))
+	assertStepPosition(t, wh, ses, 7)
+	assertNoStepSuccess(t, messages)
+	receipt, err := loadMovementReceipt(context.Background(), wh.database, 42, step.StepToken)
+	if err != nil || receipt != nil {
+		t.Fatalf("battle-owned completion stored receipt: %+v %v", receipt, err)
 	}
 }

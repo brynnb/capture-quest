@@ -62,6 +62,11 @@ func commitMovementStep(ctx context.Context, wh *WorldHandler, charID int64, c m
 		if err := db.LockCharacter(tx, charID); err != nil {
 			return err
 		}
+		// Cached availability is only an early hint. Durable battle ownership
+		// fences all position/effect writers under the same character lock.
+		if err := requireNoOwnedBattleIn(tx, charID); err != nil {
+			return err
+		}
 		var trainerPending bool
 		if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM character_trainer_encounters WHERE character_id=$1 AND resolution='pending') OR EXISTS(SELECT 1 FROM character_cutscene_plans WHERE character_id=$1 AND resolution='pending')`, charID).Scan(&trainerPending); err != nil {
 			return err

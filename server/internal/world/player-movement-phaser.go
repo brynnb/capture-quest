@@ -6,6 +6,7 @@ import (
 	"capturequest/internal/protocol"
 	"capturequest/internal/session"
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -539,6 +540,21 @@ func (m *PlayerMovementManager) processCharacterTick(ctx context.Context, charac
 	effects, err := commitMovementStep(ctx, m.wh, int64(characterID), movementStepCandidate{SourceMap: state.MapID, SourceX: state.CurrentX, SourceY: state.CurrentY, MapID: planned.MapID, X: planned.CurrentX, Y: planned.CurrentY, Direction: planned.Direction, Forced: true, PathDestination: update.isPathDestination})
 	if err != nil {
 		logutil.Debugf("[PlayerMovement] Commit forced step for %d: %v", characterID, err)
+		// A confirmed domain owner ends this path. Database/commit failures
+		// retain it for the existing retry policy; neither can publish a target.
+		if errors.Is(err, errBattleOwnership) {
+			m.mu.Lock()
+			current := m.players[characterID]
+			if current != state {
+				m.mu.Unlock()
+				return
+			}
+			state.Path = nil
+			snapshot := m.snapshotForState(state, 0)
+			m.mu.Unlock()
+			m.broadcastSnapshot(snapshot, true)
+			return
+		}
 		// Retain source/path and retry at the existing movement cadence, without
 		// publishing a position or executing effects after a failed commit.
 		m.mu.Lock()

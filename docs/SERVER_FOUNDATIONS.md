@@ -28,6 +28,52 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized a branch push for the stopping checkpoint on 2026-10-07; production deployment remains unauthorized.
 
+## Durable battle ownership at movement commit (2026-10-07)
+
+`commitMovementStep` previously locked the character and checked pending trainer/
+cutscene plans, saved source and destination catalog, but never consulted ordinary
+or Safari battle records before position and step effects. Issued-step admission
+used `getBattle(charID)`, and the forced timer had no equivalent durable fence.
+Cache absence could therefore admit walking, forced movement or Surf position
+work while a persisted encounter still owned the character.
+
+All three candidates now use the existing `requireNoOwnedBattleIn` immediately
+after the character lock, before position, daycare, encounter counters, plans or
+receipts. The same guard already serves PC, party reorder, center healing and
+Bicycle/Escape Rope. It retains ordinary terminal/pending-choice ownership until
+dismissal and Safari encounter ownership until resolution. No inventory
+coordinator, second battle model or new transaction wrapper was introduced.
+
+The shared guard identifies a confirmed battle rejection with `errBattleOwnership`.
+A forced timer stops that path and broadcasts its unchanged source with
+`PathFinished=true`; it does not poll or resume an old route after the battle.
+Database/read/commit failures keep the existing retry behavior and cannot publish
+a target. Walking and Surf return their existing rejection paths. Newly selected
+encounters during a valid step still commit with that step; the guard checks the
+owner before selection, not after creating its own battle.
+
+Real PostgreSQL regressions cover cache-absent ordinary/terminal and Safari owners,
+read failure, walking/forced rejection without position/daycare/receipt mutation,
+source-only path-stop publication and no subsequent tick publication. A Surf case
+checks the same gate, and a separate issued-before-battle case verifies that
+completion rechecks durable ownership. Existing rollback, encounter creation,
+Safari expiry and ordinary forced-path success checks passed in the focused run
+(3.705 seconds). The full world PostgreSQL race suite passed (44.225 seconds),
+including the added issued-before-battle case. Two local rendered walking recovery
+cases passed in 38.7 seconds in `/var/tmp/capturequest-rendered.6aWF0G`: lost
+completion/reentry without rewind, and issued/committed process death without
+replaying Safari counters. The runner compiled the updated server and stopped its
+private runtime afterward. These rendered cases verify normal recovery remains
+intact; the uncached battle rejection and source-only forced stop are PostgreSQL/
+protocol evidence, not a new visual battle-state acceptance claim. Wire schemas,
+frontend production behavior and generated assets were unchanged. Diff checks
+passed. This checkpoint is committed locally, with no push or deployment.
+
+Remaining: forced-path source/queue/catalog policies, wider movement and battle
+writer audits, the unresolved login restore timeout and the rest of the five-area
+roadmap. Next: review the forced-path source and continuation policies before
+migrating another command family. No new push or deployment is authorized here.
+
 ## Outstanding-step expiry and catalog admission review (2026-10-07)
 
 The pending authorization lifetime was encoded twice: completion used
