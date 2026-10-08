@@ -23,7 +23,7 @@ interface PokeBattleState extends BattleCommandIdentity {
   battleCommandPending: boolean;
   commandError: string | null;
   recoveredDismissal: boolean;
-  restoreGameplay: (snapshot: GameplayStateResponse) => void;
+  restoreGameplay: (snapshot: GameplayStateResponse, initialEvents?: BattleEvent[]) => void;
   isInBattle: boolean;
   phase: BattlePhase;
   pendingPhase: BattlePhase;
@@ -142,11 +142,11 @@ const usePokeBattleStore = create<PokeBattleState>((set, get) => ({
     set({ ...initialBattleState, presentationGeneration: get().presentationGeneration + 1 });
   },
 
-  restoreGameplay: (snapshot) => {
+  restoreGameplay: (snapshot, initialEvents = []) => {
     useAudioActivityStore.getState().setBattleVictoryTrack(null);
     if (snapshot.battle) {
       const battle = snapshot.battle;
-      get().startBattle({ ...battle, events: [] });
+      get().startBattle({ ...battle, events: initialEvents });
       set({ recoveredDismissal: battle.needsDismissal === true });
       if (battle.caught) {
         set({ battleResult: "caught", sentToPC: battle.capture?.sentToPC === true, sentToPCBox: battle.capture?.sentToPC ? battle.capture.pcBox : null });

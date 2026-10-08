@@ -1,13 +1,17 @@
 import { OpCodes, WorldSocket } from "@/net";
 import type { BattleCommandResponse, SafariBattleActionResponse, SafariBattleActionRequest, BattleEndOutcome, PokeBattleActionRequest, PokeBattleSwitchRequest, PokeMoveLearnRequest } from "@/net/generated/world_api";
 import type { OwnedPlayerPositionResponse } from "@/net/generated/protocol";
+import useGameScreenStore from "@/stores/GameScreenStore";
+import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
+import type {BattleEvent} from "@/net/generated/battle_events";
 import usePokeBattleStore from "@/stores/PokeBattleStore";
+import useChatStore, {MessageType} from "@/stores/ChatStore";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
 import usePokemonDialogueStore from "@/stores/PokemonDialogueStore";
 import useAudioActivityStore from "@/stores/AudioActivityStore";
 import AudioManager from "@/services/audio/AudioManager";
-import { victoryMusicTrackForState, sfxPathForConstant } from "@/services/audio/pokemonMusic";
-import { correlatedRequest } from "./CorrelatedRequest";
+import { victoryMusicTrackForState, sfxPathForConstant, cryPathForPokemon } from "@/services/audio/pokemonMusic";
+import { correlatedRequest, readForCurrentCharacter } from "./CorrelatedRequest";
 import * as PhaserNet from "./PhaserNetworkService";
 import { readCurrentGameplayState, applyGameplaySnapshot } from "./GameplayRecoveryService";
 
@@ -17,11 +21,13 @@ type LearnCommand = Omit<PokeMoveLearnRequest, "battle" | "requestId">;
 type Projection = (position: OwnedPlayerPositionResponse) => Promise<void>;
 let sceneProjection: Projection | null = null;
 let active: AbortController | null = null;
+let startRead: AbortController | null = null;
 
 // The scene owns both projection and retirement. An older cleanup must never
 // clear a newer binding or let a late command reply revive a retired panel.
 export function bindBattleScene(reconcile: Projection): () => void {
   active?.abort();
+  startRead?.abort();startRead=null;
   // Scene retirement releases admission immediately. The old projection may
   // still be settling; its identity-guarded finally cannot retire a newer slot.
   active = null;
@@ -29,9 +35,40 @@ export function bindBattleScene(reconcile: Projection): () => void {
   return () => {
     if (sceneProjection !== reconcile) return;
     sceneProjection = null;
+    startRead?.abort();startRead=null;
     active?.abort();
     active = null;
   };
+}
+
+// An unsolicited start is a hint, not authority to revive a panel. Every start
+// producer uses the same owned aggregate read; commands are never resent here.
+export async function recoverBattleStartNotice(notice:Record<string,unknown>):Promise<void>{
+ if(notice.success!==true || !sceneProjection || useGameScreenStore.getState().currentScreen!=="game")return;
+ const initial=usePokeBattleStore.getState();
+ if(initial.battleCommandPending)return;
+ startRead?.abort();const controller=new AbortController();startRead=controller;
+ const project=sceneProjection;
+ const generation=WorldSocket.sessionGeneration;
+ const characterId=usePlayerCharacterStore.getState().characterProfile.id;
+ const presentation=initial.presentationGeneration;
+ const current=()=>!controller.signal.aborted && startRead===controller && sceneProjection===project && WorldSocket.sessionGeneration===generation && usePlayerCharacterStore.getState().characterProfile.id===characterId && useGameScreenStore.getState().currentScreen==="game" && usePokeBattleStore.getState().presentationGeneration===presentation && !usePokeBattleStore.getState().battleCommandPending;
+ try {
+ const snapshot=await readForCurrentCharacter((_id,signal)=>readCurrentGameplayState(signal),controller.signal);
+ if(!current())return;
+ const state=usePokeBattleStore.getState();
+ const owned=snapshot.battle;
+ // Duplicate hints must not restart an existing event queue or an advanced turn.
+ if(owned && state.isInBattle && state.battleId===owned.battleId && state.revision>=owned.revision)return;
+ if(!owned && snapshot.safari?.pokemon && state.isSafari && state.battleId===snapshot.safari.battleId && typeof snapshot.safari.revision==="number" && state.revision>=snapshot.safari.revision)return;
+ if(!owned && !snapshot.safari?.pokemon && !state.isInBattle)return;
+ const events=owned && notice.battleId===owned.battleId && notice.revision===owned.revision && !owned.needsDismissal && Array.isArray(notice.events)
+ ? notice.events as BattleEvent[] : [];
+ state.restoreGameplay(snapshot,events);
+ if(owned){const path=cryPathForPokemon(owned.enemyPokemon.name,owned.enemyPokemon.crySfx);if(path)void AudioManager.playSFX(path,0.8);}
+ }catch(error){
+ if(current() && !(error instanceof DOMException && error.name==="AbortError"))useChatStore.getState().addMessage("Battle state could not be refreshed. Reconnect to recover it.",MessageType.SYSTEM_ERROR);
+ }finally{if(startRead===controller)startRead=null;}
 }
 
 export function presentBattleEnd(end: BattleEndOutcome): void {

@@ -9,7 +9,9 @@ export async function observeResponseDelivery(page:Page,opcodes:number[],receive
  const {WorldSocket}=await import(path) as typeof import("../../../src/net/index");
  const dispatch=WorldSocket.onJson;
  WorldSocket.onJson=(opcode,data)=>{
- if(opcodes.includes(opcode) && data && typeof(data as {requestId?:unknown}).requestId==="string")void(window as unknown as {observeResponseDelivery:(opcode:number,id:string)=>Promise<void>}).observeResponseDelivery(opcode,(data as {requestId:string}).requestId);
+ const envelope=data as {requestId?:unknown;battleId?:unknown}|null;
+ const id=typeof envelope?.requestId==="string" ? envelope.requestId : envelope?.battleId;
+ if(opcodes.includes(opcode) && typeof id==="string")void(window as unknown as {observeResponseDelivery:(opcode:number,id:string)=>Promise<void>}).observeResponseDelivery(opcode,id);
  dispatch?.(opcode,data);
  };
  },opcodes);

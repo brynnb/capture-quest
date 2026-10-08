@@ -1,4 +1,4 @@
-import { presentBattleEnd } from "@/phaser-game/services/BattleCommandService";
+import { presentBattleEnd, recoverBattleStartNotice } from "@/phaser-game/services/BattleCommandService";
 import type { BattleEndOutcome } from "@/net/generated/world_api";
 import { WorldSocket } from "./index";
 import * as OpCodes from "./generated/opcodes";
@@ -16,10 +16,8 @@ import useGameScreenStore from "@/stores/GameScreenStore";
 import usePokeBattleStore from "@/stores/PokeBattleStore";
 import useCQInventoryStore from "@/stores/CQInventoryStore";
 import usePokemonDialogueStore from "@/stores/PokemonDialogueStore";
-import useAudioActivityStore from "@/stores/AudioActivityStore";
 import AudioManager from "@/services/audio/AudioManager";
 import {
-  cryPathForPokemon,
   sfxPathForConstant,
 } from "@/services/audio/pokemonMusic";
 
@@ -323,30 +321,7 @@ export class NetworkBridge {
       console.warn("[NetworkBridge] Battle start failed:", data.error);
       return;
     }
-    useAudioActivityStore.getState().setBattleVictoryTrack(null);
-    usePokeBattleStore.getState().startBattle({
-      battleId: data.battleId as string,
-      revision: data.revision as number,
-      playerPokemon: data.playerPokemon as PokeBattlePokemonDTO,
-      enemyPokemon: data.enemyPokemon as PokeBattlePokemonDTO,
-      phase: data.phase as string,
-      turnNumber: data.turnNumber as number,
-      events: (data.events || []) as BattleEventDTO[],
-      trainerClass: (data.trainerClass as string) || undefined,
-      playerParty: data.playerParty as PokeBattlePokemonDTO[] | undefined,
-      playerActive: data.playerActive as number | undefined,
-      battleType: data.battleType as string | undefined,
-      allowedActions: data.allowedActions as string[] | undefined,
-      guaranteedCatch: data.guaranteedCatch as boolean | undefined,
-    });
-    this.playPokemonCry(data.enemyPokemon as PokeBattlePokemonDTO | undefined);
-  }
-
-  private playPokemonCry(pokemon?: PokeBattlePokemonDTO) {
-    const path = cryPathForPokemon(pokemon?.name, pokemon?.crySfx);
-    if (path) {
-      void AudioManager.playSFX(path, 0.8);
-    }
+    void recoverBattleStartNotice(data);
   }
 
   private playSourceSFX(sfxConstant: string, volume: number) {
@@ -686,11 +661,3 @@ export class NetworkBridge {
     });
   }
 }
-
-type PokeBattlePokemonDTO = Parameters<
-  ReturnType<typeof usePokeBattleStore.getState>["startBattle"]
->[0]["playerPokemon"];
-
-type BattleEventDTO = Parameters<
-  ReturnType<typeof usePokeBattleStore.getState>["updateBattleState"]
->[0]["events"][number];

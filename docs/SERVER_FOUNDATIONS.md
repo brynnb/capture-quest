@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+common battle-start publication uses owned current-state recovery,
+following `11aa26e`:
 rendered trainer read/completion acceptance and shared control-gesture ownership,
 following `44ec129`:
 trainer reads use generated identity and the shared character/actor lifetime
@@ -61,6 +63,62 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Owned battle-start publication (2026-10-08)
+
+NetworkBridge no longer creates a battle from an unsolicited
+`PokeBattleStartResponse` body. A successful packet is a hint to the existing
+current-gameplay snapshot reader, through the shared active-character lifetime.
+This changes the one common consumer used by direct trainers, sight encounters,
+wild/fishing/surfing starts and login restore, rather than adding ownership rules
+at each publisher. The server's legacy carrier remains compatible during
+coordinated client activation; its Pokémon/party/phase fields are not authority
+for the new client.
+
+The existing battle-scene binding now owns a separate cancellable publication
+read. Scene/character/screen/transport retirement, a newer hint, a newer battle
+presentation or a pending battle command prevents obsolete application. Missing
+owned battle state cannot open a panel. Duplicate ordinary/Safari identities
+cannot restart event queues or rewind revisions. Ordinary start intro events are
+retained only when carrier battle ID/revision match the owned snapshot; restored
+battle identity and Pokémon always come from that snapshot. Cry playback uses
+the owned enemy. Failure reports recovery unavailable and permits another hint;
+no mutation is automatically retried.
+
+The store's existing recovery method accepts optional fenced initial events, so
+ordinary initial presentation and durable recovery use the same projection.
+The old raw NetworkBridge battle DTO casts/start path and cry helper are retired.
+This publication applies battle presentation only; movement and resource/plan
+projection remain their existing owners' responsibilities.
+
+Focused checks cover absence/historical hints, exact intro identity, duplicate
+queues, scene/character/screen/transport retirement, newer presentation, command
+admission and failure followed by retry. The broader service/NetworkBridge suite
+passed (25 files, 377 tests), as did typecheck, asset validation, production build
+and diff checks. No server/schema/assets-generation changes.
+
+Rendered evidence uses a real committed trainer start held outside the browser.
+Delivery at character selection opens no panel and sends no recovery read; same
+character reentry restores the correct durable battle ID. Delivery while a
+second character is playing triggers and receives a current owned snapshot,
+with no foreign battle panel or durable battle for that character. Original
+battle state remains committed. Five publication/trainer-completion cases passed
+in 29.9s (`/var/tmp/capturequest-rendered.dkTj2j`), with restored/foreign-hint
+screenshots visually inspected. The selector receipt's later second delivery is
+the legitimate login-restoration packet with the same battle ID, not a second
+historical replay.
+
+Five existing rendered producer regressions also passed in 47.7s
+(`/var/tmp/capturequest-rendered.KKFrln`): battle keyboard actions, battle-start
+blackout, warp rejection, fishing success and fishing rejection. This does not
+attribute the historical restore timeout, prove every sight/surfing/native variant
+or complete direct-start mutation acknowledgement/recovery.
+
+Next: review remaining unsolicited Safari starts/updates and standalone battle
+end/blackout publication against the same owned boundary before another family.
+Direct start remains an unacknowledged legacy mutation; its durable commit and
+reentry recovery exist, but full start-command identity/recovery acceptance is
+still open. The five-area goal remains active. No push or production deployment.
 
 ## Rendered trainer reads and control-owned retirement (2026-10-08)
 
