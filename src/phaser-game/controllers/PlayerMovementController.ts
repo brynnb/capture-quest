@@ -973,6 +973,7 @@ export class PlayerMovementController {
       movementController.handleDirectionUpdate(this.playerId, direction);
     }
     this.requestFacing(direction);
+    this.emitPlayerPositionChanged();
   }
 
   private directionToAdjacentTile(
@@ -1087,11 +1088,7 @@ export class PlayerMovementController {
     if (!direction) return false;
 
     this.currentDirection = direction;
-    const movementController = this.mapRenderer?.getMovementController();
-    if (movementController && this.playerId !== null) {
-      movementController.handleDirectionUpdate(this.playerId, direction);
-    }
-    this.requestFacing(direction);
+    this.faceDirection(direction);
     return true;
   }
 
@@ -1461,11 +1458,7 @@ export class PlayerMovementController {
       }
       if (direction) {
         this.currentDirection = direction;
-        const movementController = this.mapRenderer.getMovementController();
-        if (movementController && this.playerId !== null) {
-          movementController.handleDirectionUpdate(this.playerId, direction);
-        }
-        this.requestFacing(direction);
+        this.faceDirection(direction);
         this.scene.events.emit(
           "playerFacedDirection",
           direction,
@@ -1961,13 +1954,8 @@ export class PlayerMovementController {
         return true;
       }
 
-      // Visually turn the sprite to face the blocked direction
-      const movementController = this.mapRenderer.getMovementController();
-      if (movementController && this.playerId !== null) {
-        movementController.handleDirectionUpdate(this.playerId, direction);
-      }
-      // Notify server so other players see the turn
-      this.requestFacing(direction);
+      // Publish the same facing context used by click and source interactions.
+      this.faceDirection(direction);
       // Emit event so warp manager can check
       this.scene.events.emit(
         "playerFacedDirection",

@@ -6,7 +6,7 @@ import {clickTile,pressMovement} from "./helpers/input";
 import {jumpToScenario} from "./helpers/scenarioDebugger";
 import {getGameState,waitForNoMapLoading,waitForPlayerTile} from "./helpers/state";
 
-for(const mode of ["move","reentry"] as const) {
+for(const mode of ["move","turn","reentry"] as const) {
   test(`delayed PC opening cannot reopen after ${mode}`,async({page})=>{
     test.setTimeout(90000);
     const errors=collectPageErrors(page);
@@ -30,6 +30,10 @@ for(const mode of ["move","reentry"] as const) {
     expect((await getGameState(page)).pokemon.pc.isOpen).toBe(false);
     if(mode==="move") {
       await pressMovement(page,"left"); await waitForPlayerTile(page,12,4);
+    } else if(mode==="turn") {
+      await pressMovement(page,"right"); // The outside edge blocks movement.
+      await waitForPlayerTile(page,13,4);
+      await expect.poll(async()=>(await getGameState(page)).player.direction).toBe("RIGHT");
     } else {
       await quitToCharacterSelect(page); await enterWorld(page,character); await waitForNoMapLoading(page);
     }

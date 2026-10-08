@@ -15,6 +15,7 @@ import type { PhaserTile } from "@/net/generated/world_api";
 import type { Scene } from "phaser";
 import type { MapRenderer } from "../renderers/MapRenderer";
 import { NetworkBridge } from "@/net/NetworkBridge";
+import useGameStatusStore from "@/stores/GameStatusStore";
 import * as OpCodes from "@/net/generated/opcodes";
 
 function tile(
@@ -71,6 +72,11 @@ function buildLedgeController() {
 }
 
 describe("PlayerMovementController ledges", () => {
+  test("facing a source tile publishes its direction without changing location",()=>{
+    const {controller}=buildLedgeController();
+    expect(controller.faceTile(9,0)).toBe(true);
+    expect(useGameStatusStore.getState().playerTileContext).toMatchObject({mapId:9999,x:10,y:0,direction:"LEFT"});
+  });
   test("a server snap updates movement context without echoing a position write", () => {
     const send = vi.spyOn(NetworkBridge, "send");
     const { controller } = buildLedgeController();

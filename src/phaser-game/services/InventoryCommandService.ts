@@ -40,12 +40,12 @@ function views() {
 // Source-bound menus are a view of the interaction at one owned location.
 // Retiring presentation never cancels a sent mutation; the coordinator below
 // still reconciles its commit. Shops and PCs share this location watcher.
-export function watchInteractionPosition(retire: () => void): () => void {
+export function watchInteractionPosition(retire: () => void, includeFacing = false): () => void {
   const origin = useGameStatusStore.getState().playerTileContext;
   let retired=false;
   return useGameStatusStore.subscribe(state => {
     const current = state.playerTileContext;
-    if (!retired && (current?.mapId !== origin?.mapId || current?.x !== origin?.x || current?.y !== origin?.y)) { retired=true; retire(); }
+    if (!retired && (current?.mapId !== origin?.mapId || current?.x !== origin?.x || current?.y !== origin?.y || (includeFacing && current?.direction !== origin?.direction))) { retired=true; retire(); }
   });
 }
 

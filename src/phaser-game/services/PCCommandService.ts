@@ -9,7 +9,7 @@ import AudioManager from "@/services/audio/AudioManager";
 import { sfxPathForConstant } from "@/services/audio/pokemonMusic";
 
 const watchPC = (retire: () => void) => {
-  const stopPosition=watchInteractionPosition(()=>{retire();usePokemonPCStore.getState().closePC();});
+  const stopPosition=watchInteractionPosition(()=>{retire();usePokemonPCStore.getState().closePC();},true);
   const stopPanel=usePokemonPCStore.subscribe((state, previous) => {
     if (previous.isOpen && !state.isOpen) retire();
   });

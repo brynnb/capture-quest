@@ -8,7 +8,7 @@ describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
 source-authorized PC commands and Indigo failure/restart acceptance (2026-10-07);
-final PC source/scene review remains open. This follows
+PC permission/source retirement review is recorded below. This follows
 stable row-ID storage primitives and coherent PC recovery, and center healing through the shared scripted-event
 boundary and its rendered/recovery acceptance plus shared issuance/visibility
 fixes (`4d18056`, `58b3d53`), following `0d6b640`
@@ -21,6 +21,46 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. No push or production deployment is authorized by this goal.
+
+## PC facing review and next read-family audit (2026-10-07)
+
+The server's source rule requires the terminal directly in front of an idle,
+up-facing owned player. The client previously retired menu presentation on
+map/X/Y changes but ignored facing. Some facing paths also updated the sprite
+without updating `playerTileContext`. Click-source facing and blocked click/
+keyboard turns now share `faceDirection`, which publishes the same location and
+new direction to that existing context. The shared interaction watcher has an
+explicit facing option: PCs enable it; shops retain the location-only policy
+because their authorization does not impose the PC facing rule. No separate
+presentation or recovery owner was added.
+
+TypeScript, frontend build, runtime asset validation and diff checks passed.
+All 161 focused checks passed (140 coordinator, 21 movement), including facing
+publication and different PC/shop policies. Five rendered cases passed in 29.9
+seconds in `/var/tmp/capturequest-rendered.etSgzD`: held PC opening replies remain
+inert after movement, after a blocked turn at the same tile and after quit/reentry;
+normal terminal/storage and NPC interaction still work. The old reply is observed
+at the dispatcher before asserting that no panel reopened. No server permission
+check was relaxed. The isolated runtime was stopped by its runner.
+
+Corpus review: PCs are original static hidden-object triggers, not moving NPCs.
+All 18 extractor objects with `SPRITE_CLERK` have `action_type='STAY'`. Thus moving
+PC targets do not require an NPC-motion owner. Runtime visibility/position
+overrides for other interactions remain part of their existing server permission
+and background-owner audit; the corpus observation does not close that wider work.
+The four PC mutations share one handler, response projection, revision executor
+and recovery adapter. Their common client fault matrix and domain-specific
+PostgreSQL checks support reuse of the rendered deposit timeout/crash lane;
+additional browser variants should be driven by a changed boundary or uncovered
+risk, rather than repeating the same scaffolding four times.
+
+The planned PC implementation/acceptance review now has current evidence. This
+does not close every party writer or source permission in the broader roadmap.
+Next: audit standalone `CQInventoryRequest` and `PokemonPartyRequest` reads and
+their unsolicited pushes for correlation, character/scene ownership and stale
+projection. The matrix already identifies those remaining paths, so begin from
+their real consumers rather than adding another coordinator. The original login
+timeout and all five roadmap areas remain open. No push or deployment was performed.
 
 ## Source-position retirement for delayed menus (2026-10-07)
 

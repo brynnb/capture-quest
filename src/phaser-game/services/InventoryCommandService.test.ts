@@ -225,6 +225,15 @@ test("delayed PC opening is inert after scene replacement",async()=>{
   expect(AudioManager.playSFX).not.toHaveBeenCalled(); next();
 });
 
+test.each(["pc","shop"])("facing-only changes follow the %s source policy",async kind=>{
+  usePokemonPCStore.getState().closePC(); useCQInventoryStore.getState().closeShop();
+  const pending=kind==="pc"?openPokemonPC(10):openShopForActor(1001), requestId=id();
+  useGameStatusStore.getState().setPlayerTileContext({mapId:50,x:7,y:8,direction:"LEFT"});
+  emit(kind==="pc"?109:95,{...reply(requestId),merchantId:1,name:"Shop",items:[],money:900}); await pending;
+  expect(usePokemonPCStore.getState().isOpen).toBe(false);
+  expect(useCQInventoryStore.getState().shopOpen).toBe(kind==="shop");
+});
+
 test("PC source movement preserves an already sent mutation's reconciliation",async()=>{
   const pending=depositPokemon(7,0), requestId=id();
   useGameStatusStore.getState().setPlayerTileContext({mapId:50,x:8,y:8,direction:"RIGHT"});
