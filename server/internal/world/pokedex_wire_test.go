@@ -1,13 +1,137 @@
 package world
 
 import (
+	"context"
 	"encoding/json"
+	"runtime"
 	"testing"
+	"time"
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
+	model "capturequest/internal/db/models"
+	"capturequest/internal/protocol"
 	"capturequest/internal/testdb"
 )
+
+func TestPrivatePokedexReadsRejectZeroCharacterIdentity(t *testing.T) {
+	_, wh, ses, messages := battleTestWorld(t)
+	ses.Client = &testSessionClient{char: &model.CharacterData{}}
+	HandlePokedexStatusRequest(ses, nil, wh)
+	HandleTrainerCardRequest(ses, nil, wh)
+	if len(messages.streams) != 2 {
+		t.Fatal("invalid character identity omitted failure")
+	}
+	assertQueryWireFailure(t, messages.streams[0], opcodes.PokedexStatusResponse)
+	assertQueryWireFailure(t, messages.streams[1], opcodes.TrainerCardResponse)
+}
+
+func TestTrainerCardKeepsOneSnapshotAcrossConcurrentPublication(t *testing.T) {
+	database, wh, ses, messages := battleTestWorld(t)
+	writer, err := database.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Rollback()
+	if _, err := writer.Exec(`LOCK TABLE character_event_flags IN ACCESS EXCLUSIVE MODE`); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() { defer close(done); battleDispatch(t, wh, ses, opcodes.TrainerCardRequest, `{}`) }()
+	deadline := time.Now().Add(time.Second)
+	for {
+		var waiting bool
+		if err := database.QueryRow(`SELECT EXISTS(SELECT 1 FROM pg_locks WHERE relation='character_event_flags'::regclass AND NOT granted)`).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting {
+			break
+		}
+		if time.Now().After(deadline) {
+			writer.Rollback()
+			<-done
+			t.Fatal("card did not reach its owned flag read")
+		}
+		runtime.Gosched()
+	}
+	if _, err := writer.Exec(`UPDATE character_wallet SET pokedollars=200 WHERE character_id=42;
+ INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'EVENT_GOT_BOULDERBADGE');
+ INSERT INTO character_pokedex(character_id,pokemon_id,seen,caught) VALUES(42,129,1,1)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	<-done
+	var card protocol.TrainerCardResponse
+	if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &card) != nil || !card.Success || card.Money != 100 || card.BadgeCount != 0 || card.PokedexCaught != 1 {
+		t.Fatalf("mixed card publication=%+v", card)
+	}
+	battleDispatch(t, wh, ses, opcodes.TrainerCardRequest, `{}`)
+	if len(messages.streams) != 2 || json.Unmarshal(messages.streams[1].payload, &card) != nil || !card.Success || card.Money != 200 || card.BadgeCount != 1 || card.PokedexCaught != 2 {
+		t.Fatalf("fresh card missed durable publication=%+v", card)
+	}
+}
+
+func TestPokedexRepairCommitFailureRejectsResponseAndRollsBack(t *testing.T) {
+	database, wh, ses, messages := battleTestWorld(t)
+	testdb.Exec(t, database, `CREATE FUNCTION reject_pokedex_repair() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'reject repair'; END $$;
+ CREATE CONSTRAINT TRIGGER reject_pokedex_repair AFTER INSERT ON character_pokedex DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_pokedex_repair();`)
+	battleDispatch(t, wh, ses, opcodes.PokedexStatusRequest, `{}`)
+	if len(messages.streams) != 1 {
+		t.Fatal("repair failure omitted response")
+	}
+	assertQueryWireFailure(t, messages.streams[0], opcodes.PokedexStatusResponse)
+	var count int
+	if err := database.QueryRow(`SELECT count(*) FROM character_pokedex WHERE character_id=42`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("repair partially committed: count=%d error=%v", count, err)
+	}
+}
+
+func TestPokedexReadDoesNotRewriteAlreadyCompleteOwnedStatus(t *testing.T) {
+	database, wh, ses, messages := battleTestWorld(t)
+	testdb.Exec(t, database, `INSERT INTO character_pokedex(character_id,pokemon_id,seen,caught,first_seen_at,first_caught_at) VALUES(42,25,1,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
+ CREATE FUNCTION reject_redundant_pokedex_write() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'redundant pokedex write'; END $$;
+ CREATE CONSTRAINT TRIGGER reject_redundant_pokedex_write AFTER UPDATE ON character_pokedex DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_redundant_pokedex_write();`)
+	battleDispatch(t, wh, ses, opcodes.PokedexStatusRequest, `{}`)
+	var response protocol.PokedexStatusResponse
+	if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &response) != nil || !response.Success || len(response.Status) != 1 || !response.Status[0].Caught {
+		t.Fatalf("complete status was unnecessarily rewritten: %+v", response)
+	}
+}
+
+func TestPokedexStatusCancellationDoesNotWaitForPoolOrRepair(t *testing.T) {
+	database, wh, ses, messages := battleTestWorld(t)
+	database.SetMaxOpenConns(1)
+	lease, err := database.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = ses.ExecuteCommand(ctx, func() { HandlePokedexStatusRequest(ses, nil, wh) })
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		lease.Close()
+		<-done
+		t.Fatal("status read ignored caller pool deadline")
+	}
+	lease.Close()
+	if len(messages.streams) != 1 {
+		t.Fatal("cancelled read omitted terminal response")
+	}
+	assertQueryWireFailure(t, messages.streams[0], opcodes.PokedexStatusResponse)
+	var count int
+	if err := database.QueryRow(`SELECT count(*) FROM character_pokedex WHERE character_id=42`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("cancelled read repaired pokedex: count=%d error=%v", count, err)
+	}
+}
 
 func TestTrainerCardUsesOwnedEmptyWalletPolicyAndPreservesSQLFailure(t *testing.T) {
 	database, wh, ses, messages := battleTestWorld(t)

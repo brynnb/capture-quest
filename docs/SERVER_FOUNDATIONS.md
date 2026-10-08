@@ -7,7 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-entry persists only last-login metadata and recovery preserves its full pose
+Pokédex/trainer responses share bounded repair and coherent read snapshots,
+following `3ddac87`: entry persists only last-login metadata and recovery preserves its full pose
 through the existing destination transaction, following `5939513`:
 camp no longer replays cached positions; trainer cards reuse the owned wallet
 reader and its established empty-wallet policy, following `267bd9d`:
@@ -35,6 +36,53 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Owned Pokédex repair and response snapshots (2026-10-08)
+
+All three informational handlers previously called the owned-species repair
+without cancellation. Trainer card also combined independent wallet/count queries
+with badge flags from the cache. The held-pool status regression failed before
+the fix because the request ignored its caller deadline.
+
+One domain adapter now shares a five-second budget across the existing bounded
+character transaction for monotonic repair and the existing read-only,
+repeatable-read aggregate for the response. Repair uses the shared character lock;
+late commit failure rejects the request. Species/status row loaders are shared,
+close their rows before subsequent queries, and reject scan/iteration failure.
+Trainer wallet, durable badge flags and Pokédex counts use the same snapshot and
+their existing wallet/flag primitives. Session name and current playtime remain
+the selected owner's presentation values. Complete owned statuses no longer
+receive redundant row updates. Successful routine read logs are retired.
+
+Repair is intentionally a separate monotonic maintenance commit before reading;
+it may remain committed if a later response read fails. The response never
+publishes a partial aggregate. Character-select species access and empty-array
+wire semantics remain unchanged. This does not put reads in the inventory
+command coordinator or create a parallel persistence system.
+
+PostgreSQL checks cover pool cancellation with no repair, deferred repair rollback,
+complete-status reads under a rejecting update trigger, existing wire/error/empty
+wallet contracts, and a real publication barrier. While the card waits on a flag
+table lock, another transaction publishes wallet `100 -> 200`, a badge and a
+second caught species. The held response stays entirely old (`100`, zero badges,
+one caught), then the next request sees the complete new state (`200`, one badge,
+two caught), including durable flags absent from the cache.
+Focused Pokédex/trainer checks passed (1.7s); full world (56.4s), database
+repositories, battle, session and server race suites passed. All Go packages
+compile and diff checks pass. No new rendered check was run for this backend
+snapshot checkpoint; the preceding new-character/playtime browser evidence is
+retained only as its existing baseline.
+Final review preserved the private handlers' zero-character rejection while
+retaining public species access at character select. The added zero-ID regression
+and final focused family checks passed; no invalid identity becomes a successful
+empty private response through the public-catalog branch.
+
+Next: complete client correlation/cancellation and stale-response/reentry handling
+for this read family before claiming its full lifetime audit closed. Wider
+acquisition writers, informational handler prerequisites and the finite command
+matrix remain open. No wire/schema/assets changed, and no new rendered or
+production acceptance is inferred. The historical restore timeout and Repel click
+remain unattributed. All five roadmap areas remain active. No push or deployment.
 
 ## Entry metadata intent and recovery pose (2026-10-08)
 
