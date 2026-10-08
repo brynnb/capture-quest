@@ -78,7 +78,8 @@ func HandleCQInventoryRequest(ses *session.Session, payload []byte, wh *WorldHan
 	if !ses.HasValidClient() {
 		return false
 	}
-	publishCQInventorySnapshot(ses, wh.database, int32(ses.Client.CharData().ID))
+	// Reserved legacy read: current clients use the owned gameplay snapshot.
+	ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Use current gameplay recovery."}, opcodes.CQInventoryResponse)
 	return false
 }
 

@@ -505,21 +505,8 @@ export function sendTrainerEncounterReady(trainerActorId: number, encounterToken
   NetworkBridge.send({ trainerActorId, encounterToken }, OpCodes.TrainerEncounterReady);
 }
 
-/**
- * Request the player's current Pokémon party from the server.
- */
-export function sendPokemonPartyRequest(): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({}, OpCodes.PokemonPartyRequest);
-}
-
-/**
- * Request the player's CQ inventory from the server.
- */
-export function sendCQInventoryRequest(): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({}, OpCodes.CQInventoryRequest);
-}
+// Both read intents share the current locked resource projection and scene owner.
+export { refreshOwnedGameplayResources as sendPokemonPartyRequest, refreshOwnedGameplayResources as sendCQInventoryRequest } from "./InventoryCommandService";
 
 export const sendCQMerchantOpen = openShopForActor;
 

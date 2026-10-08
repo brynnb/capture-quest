@@ -5,7 +5,7 @@ vi.mock("./PhaserNetworkService",()=>({isConnected:()=>true,onInventoryCommand:(
   if (!net.listeners.has(opcode)) net.listeners.set(opcode,new Set());
   const listeners=net.listeners.get(opcode)!;listeners.add(receive);return()=>listeners.delete(receive);
 }}));
-vi.mock("./GameplayRecoveryService",()=>({readCurrentGameplayState:net.read}));
+vi.mock("./GameplayRecoveryService",async importOriginal=>({...await importOriginal<typeof import("./GameplayRecoveryService")>(),readCurrentGameplayState:net.read}));
 vi.mock("@/services/audio/AudioManager",()=>({default:{playSFX:vi.fn()}}));
 import usePokemonPCStore from "@/stores/PokemonPCStore";
 import {openPokemonPC,depositPokemon,withdrawPokemon,releasePokemon,switchPokemonBox} from "./PCCommandService";
@@ -13,7 +13,7 @@ import useCQInventoryStore from "@/stores/CQInventoryStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import {openShopForActor,buyShopItem,sellShopItem} from "./ShopCommandService";
 
-import {bindInventoryScene,sendPartyItemCommand,sendRepelItemCommand,sendPartyReorderCommand} from "./InventoryCommandService";
+import {bindInventoryScene,sendPartyItemCommand,sendRepelItemCommand,sendPartyReorderCommand,refreshOwnedGameplayResources} from "./InventoryCommandService";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
 import useGameStatusStore from "@/stores/GameStatusStore";
 import AudioManager from "@/services/audio/AudioManager";
@@ -67,7 +67,7 @@ for (const action of actions) {
  });
  test.each(["timeout","rejection","malformed","overtaken","party update","send failure"])(`${action} %s recovers without resending`,async mode=>{
   const recoveredParty=[{rowId:7,curHp:41}];
-  net.read.mockResolvedValue({pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, inventory:[],wallet:{characterId:42,pokedollars:800},commandRevision:6,party:recoveredParty});
+  net.read.mockResolvedValue({position:{mapId:50},eventFlags:[],pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, inventory:[],wallet:{characterId:42,pokedollars:800},commandRevision:6,party:recoveredParty});
   if(mode==="send failure") net.send.mockRejectedValue(new Error("failed"));
   const pending=send(action);
   if(mode==="timeout") await vi.advanceTimersByTimeAsync(10000);
@@ -97,7 +97,7 @@ for (const action of actions) {
   let resolve!:(value:any)=>void;net.read.mockImplementation(()=>new Promise(done=>{resolve=done}));
   const pending=send(action);await vi.advanceTimersByTimeAsync(10000);
   if(action!=="party") useCQInventoryStore.getState().closeShop();
-  retire();resolve({pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, inventory:[],wallet:{characterId:42,pokedollars:0},commandRevision:5,party:[]});
+  retire();resolve({position:{mapId:50},eventFlags:[],pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, inventory:[],wallet:{characterId:42,pokedollars:0},commandRevision:5,party:[]});
   await pending;expect(useCQInventoryStore.getState().money).toBe(1000);expect(usePokemonPartyStore.getState().party).toEqual(party);
  });
  test(`${action} failed recovery preserves state and asks to reconnect`,async()=>{
@@ -109,7 +109,7 @@ for (const action of actions) {
 }
 
 test.each([{party:[]},{party:[{rowId:8}]},{party:[{rowId:7},{rowId:7}]}])("reorder rejects a mismatched final party: %j",async ({party:returnedParty})=>{
- net.read.mockResolvedValue({pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, inventory:[],wallet:{characterId:42,pokedollars:1000},commandRevision:5,party});
+ net.read.mockResolvedValue({position:{mapId:50},eventFlags:[],pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, inventory:[],wallet:{characterId:42,pokedollars:1000},commandRevision:5,party});
  const ids=[7]; const pending=sendPartyReorderCommand(ids); ids[0]=8;
  expect(net.send.mock.calls[0][1].pokemonIds).toEqual([7]);
  emit(91,{...reply(id()),party:returnedParty}); await pending;
@@ -127,7 +127,7 @@ test.each([{ids:[]},{ids:[undefined]},{ids:[0]},{ids:[7,7]}])("reorder rejects m
 for (const action of ["buy", "sell"] as const) {
  test.each(["delayed reply", "lost reply"])(`${action} reconciles after shop closure with %s`, async mode => {
   const items = [{instance:{id:12,quantity:3},item:{name:"Potion"}}] as any;
-  net.read.mockResolvedValue({pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, inventory:items,wallet:{characterId:42,pokedollars:900},commandRevision:5,party});
+  net.read.mockResolvedValue({position:{mapId:50},eventFlags:[],pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, inventory:items,wallet:{characterId:42,pokedollars:900},commandRevision:5,party});
   const pending = send(action); const requestId = id();
   useCQInventoryStore.getState().closeShop();
   expect(useCQInventoryStore.getState()).toMatchObject({shopOpen:false,inventoryCommandPending:true});
@@ -161,7 +161,7 @@ test("closing during recovery still applies the current gameplay snapshot", asyn
  useCQInventoryStore.getState().closeShop();
  expect(net.read.mock.calls[0][0].aborted).toBe(false);
  const recoveredParty=[{rowId:7,curHp:41}];
- resolve({pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, inventory:[],wallet:{characterId:42,pokedollars:900},commandRevision:5,party:recoveredParty});
+ resolve({position:{mapId:50},eventFlags:[],pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, inventory:[],wallet:{characterId:42,pokedollars:900},commandRevision:5,party:recoveredParty});
  await pending;
  expect(useCQInventoryStore.getState()).toMatchObject({money:900,commandRevision:5,shopOpen:false,inventoryCommandPending:false});
  expect(usePokemonPartyStore.getState().party).toEqual(recoveredParty);
@@ -169,7 +169,7 @@ test("closing during recovery still applies the current gameplay snapshot", asyn
 });
 
 test.each(["reply", "timeout"])("Repel reconciles after closing the bag on %s without late effects",async mode=>{
- net.read.mockResolvedValue({pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, inventory:[],wallet:{characterId:42,pokedollars:900},commandRevision:5,party});
+ net.read.mockResolvedValue({position:{mapId:50},eventFlags:[],pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, inventory:[],wallet:{characterId:42,pokedollars:900},commandRevision:5,party});
  const pending=sendRepelItemCommand(1); const requestId=id();
  useGameStatusStore.setState({isInventoryOpen:false});
  await buyShopItem(1,1,1);
@@ -184,7 +184,7 @@ test.each(["reply", "timeout"])("Repel reconciles after closing the bag on %s wi
 });
 
 test.each([{instanceId:99},{stepsLeft:0},{message:null}])("invalid Repel outcome recovers: %j",async invalid=>{
- net.read.mockResolvedValue({pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, inventory:[],wallet:{characterId:42,pokedollars:800},commandRevision:6,party});
+ net.read.mockResolvedValue({position:{mapId:50},eventFlags:[],pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, inventory:[],wallet:{characterId:42,pokedollars:800},commandRevision:6,party});
  const pending=sendRepelItemCommand(1); emit(144,{...reply(id()),...invalid}); await pending;
  expect(net.read).toHaveBeenCalledTimes(1);
  expect(useCQInventoryStore.getState()).toMatchObject({commandRevision:6,money:800});
@@ -241,6 +241,34 @@ test("PC source movement preserves an already sent mutation's reconciliation",as
   expect(usePokemonPCStore.getState().isOpen).toBe(false);
   expect(useCQInventoryStore.getState().commandRevision).toBe(5);
   expect(AudioManager.playSFX).not.toHaveBeenCalled(); expect(net.read).not.toHaveBeenCalled();
+});
+
+test("explicit resource refresh shares admission and applies one current projection",async()=>{
+  let resolve!:(value:any)=>void; net.read.mockImplementation(()=>new Promise(done=>{resolve=done}));
+  const pending=refreshOwnedGameplayResources();
+  await depositPokemon(7,0); expect(net.send).not.toHaveBeenCalled();
+  resolve({position:{mapId:50},eventFlags:[],pc:{currentBox:2,boxCount:12,boxSize:20,box:[],sources:[]},inventory:[],wallet:{characterId:42,pokedollars:800},commandRevision:6,party});
+  await pending;
+  expect(useCQInventoryStore.getState()).toMatchObject({money:800,commandRevision:6,inventoryCommandPending:false});
+  expect(usePokemonPCStore.getState().currentBox).toBe(2);
+  expect(AudioManager.playSFX).not.toHaveBeenCalled();
+});
+
+test("retiring an explicit refresh removes its ownership before late resolution",async()=>{
+  let resolve!:(value:any)=>void; net.read.mockImplementation(()=>new Promise(done=>{resolve=done}));
+  const pending=refreshOwnedGameplayResources(); retire();
+  resolve({position:{mapId:50},eventFlags:[],pc:{currentBox:2,boxCount:12,boxSize:20,box:[],sources:[]},inventory:[],wallet:{characterId:42,pokedollars:0},commandRevision:6,party:[]});
+  await pending; expect(useCQInventoryStore.getState().money).toBe(1000);
+  expect(usePokemonPartyStore.getState().party).toEqual(party);
+});
+
+test("an explicit refresh overtaken by a newer resource view stays inert",async()=>{
+  let resolve!:(value:any)=>void; net.read.mockImplementation(()=>new Promise(done=>{resolve=done}));
+  const pending=refreshOwnedGameplayResources();
+  usePokemonPartyStore.getState().setParty([{rowId:9}] as any);
+  resolve({position:{mapId:50},eventFlags:[],pc:{currentBox:2,boxCount:12,boxSize:20,box:[],sources:[]},inventory:[],wallet:{characterId:42,pokedollars:0},commandRevision:6,party:[]});
+  await pending; expect(usePokemonPartyStore.getState().party).toEqual([{rowId:9}]);
+  expect(useCQInventoryStore.getState().money).toBe(1000);
 });
 
 test("older scene cleanup cannot release a newer command",async()=>{

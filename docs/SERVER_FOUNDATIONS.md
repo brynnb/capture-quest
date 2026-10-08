@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+owned explicit resource reads; unsolicited publishers remain under audit.
+The preceding PC migration and
 source-authorized PC commands and Indigo failure/restart acceptance (2026-10-07);
 PC permission/source retirement review is recorded below. This follows
 stable row-ID storage primitives and coherent PC recovery, and center healing through the shared scripted-event
@@ -21,6 +23,45 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. No push or production deployment is authorized by this goal.
+
+## Explicit resource reads through the shared owner (2026-10-07)
+
+The three production refresh sites (bag mount, battle item menu and the
+TileViewer party refresh) now use `refreshOwnedGameplayResources`. The existing
+scene/admission owner accepts a typed read transport as well as its command
+transport; this calls the current locked gameplay endpoint with the same abort
+signal. Resource-only publication shares one validated bag/wallet/party/PC
+projection with uncertain-command recovery and full gameplay recovery. It does
+not replay battle, trainer or cutscene presentation. Late resolution after scene
+retirement or an overtaking resource view remains inert; the read cannot bypass
+the active command's admission slot. No additional recovery coordinator was added.
+
+Client facades no longer emit `CQInventoryRequest` or `PokemonPartyRequest`.
+Their reserved server handlers return a migration error without reading state.
+A regression disables both injected/global databases and verifies no unowned
+snapshot can be published by either old read. The wallet-failure publication
+test still exercises the existing publisher directly rather than falsely using
+a retired read as evidence for query failure. Canonical opcodes remain reserved.
+
+Verification: 185 affected client checks passed, including explicit-read
+admission, late ownership retirement, overtaken views and resource-only projection
+without plan presentation. Focused PostgreSQL read/retirement/recovery checks
+passed in 3.768 seconds; the full world race suite passed in 41.316 seconds.
+TypeScript, build/runtime-asset validation and diff checks passed. Six rendered item/PC
+cases passed in 32.1 seconds in `/var/tmp/capturequest-rendered.leMYzi`, exercising
+the bag and normal item/storage flows with the new refresh transport. The private
+runtime was stopped by its runner.
+
+This does **not retire unsolicited snapshots yet**. Known producers remain in
+login/debug publication, cutscene commits, battle/learning, in-game trades,
+pickups and Game Corner. The global party/bag reply handlers still consume those
+packets. Their current snapshot/revision and lifetime behavior must be migrated
+as a complete producer/consumer boundary; simply dropping them would lose real
+committed updates. Next: inventory those producers and replace unowned payload
+application with owner-scoped current-state reconciliation or their already-owned
+command projection. Preserve mutation publication until its replacement is
+verified. The full roadmap and original login timeout remain open; no push or
+deployment was performed.
 
 ## PC facing review and next read-family audit (2026-10-07)
 

@@ -8,13 +8,13 @@ import useGameStatusStore from "@/stores/GameStatusStore";
 import useChatStore, { MessageType } from "@/stores/ChatStore";
 import { correlatedRequest, CorrelatedResponseError } from "./CorrelatedRequest";
 import * as PhaserNet from "./PhaserNetworkService";
-import { readCurrentGameplayState } from "./GameplayRecoveryService";
+import { readCurrentGameplayState, applyGameplayResourceSnapshot } from "./GameplayRecoveryService";
 import AudioManager from "@/services/audio/AudioManager";
 import { sfxPathForConstant } from "@/services/audio/pokemonMusic";
 
 let scene: symbol | null = null;
 let active: AbortController | null = null;
-type Reply = import("@/net/generated/world_api").PokemonPCResponse | CQMerchantOpenResponse | CQMerchantBuyResponse | CQMerchantSellResponse | CQPartyItemUseResponse | RepelUseResponse | PokemonPartyReorderResponse;
+type Reply = import("@/net/generated/world_api").GameplayStateResponse | import("@/net/generated/world_api").PokemonPCResponse | CQMerchantOpenResponse | CQMerchantBuyResponse | CQMerchantSellResponse | CQPartyItemUseResponse | RepelUseResponse | PokemonPartyReorderResponse;
 
 export function bindInventoryScene(): () => void {
   active?.abort(); active = null;
@@ -53,7 +53,6 @@ export function watchInteractionPosition(retire: () => void, includeFacing = fal
 // Domain adapters validate/apply their projection and present effects; only this
 // layer applies the bag. Projection application outlives a closed presentation.
 export async function runInventoryRequest<T extends Reply>(options: {
-  opcode: number; responseOpcode: number; payload: Record<string, unknown>;
   mutation: boolean;
   watchPresentation?: (retire: () => void) => () => void;
   validate?: (reply: T) => void;
@@ -61,7 +60,7 @@ export async function runInventoryRequest<T extends Reply>(options: {
   present: (reply: T) => void;
   readError?: string;
   recoveryMessage?: string;
-}): Promise<void> {
+} & ({read: (signal: AbortSignal) => Promise<T>; mutation: false; opcode?: never; responseOpcode?: never; payload?: never} | {read?: never; opcode: number; responseOpcode: number; payload: Record<string,unknown>})): Promise<void> {
   if (active || !scene) return;
   const owner = scene;
   const characterId = usePlayerCharacterStore.getState().characterProfile.id;
@@ -82,8 +81,8 @@ export async function runInventoryRequest<T extends Reply>(options: {
   });
   useCQInventoryStore.setState({ inventoryCommandPending: true, inventoryCommandError: null });
   try {
-    const reply = await correlatedRequest<T>(
-      receive => PhaserNet.onInventoryCommand(options.responseOpcode, receive),
+    const reply = options.read ? await options.read(controller.signal) : await correlatedRequest<T>(
+      receive => PhaserNet.onInventoryCommand(options.responseOpcode, value => receive(value as T)),
       requestId => WorldSocket.sendStreamJsonMessage(options.opcode, {
         ...options.payload, requestId,
         ...(options.mutation ? {command: {characterId, revision}} : {characterId}),
@@ -93,7 +92,8 @@ export async function runInventoryRequest<T extends Reply>(options: {
     if (views().some((view, i) => view !== initial[i])) throw new Error("Inventory reply overtaken by newer state");
     options.validate?.(reply);
     if (options.mutation) {
-      if (!("inventory" in reply) || !Array.isArray(reply.inventory?.items)
+      if (!("inventory" in reply) || Array.isArray(reply.inventory)) throw new Error("Invalid mutation response kind");
+      if (!Array.isArray(reply.inventory?.items)
         || reply.inventory.commandRevision !== revision + 1 || !Number.isSafeInteger(reply.inventory.money)
         || reply.inventory.money < 0 || reply.inventory.money > 0xffffffff) throw new Error("Invalid committed inventory response");
       useCQInventoryStore.getState().setInventory(reply.inventory.items, reply.inventory.money, reply.inventory.commandRevision);
@@ -112,10 +112,7 @@ export async function runInventoryRequest<T extends Reply>(options: {
     try {
       const snapshot = await readCurrentGameplayState(controller.signal);
       if (!current()) return;
-      useCQInventoryStore.getState().setInventory(snapshot.inventory, snapshot.wallet.pokedollars, snapshot.commandRevision);
-      usePlayerCharacterStore.getState().handleCharacterWalletData(snapshot.wallet);
-      usePokemonPartyStore.getState().setParty(snapshot.party);
-      usePokemonPCStore.getState().applySnapshot(snapshot.pc, snapshot.party);
+      applyGameplayResourceSnapshot(snapshot);
       useCQInventoryStore.getState().setPendingTMHM(null);
       useChatStore.getState().addMessage(error instanceof CorrelatedResponseError ? error.message : (options.recoveryMessage ?? "Inventory state refreshed. Check your bag and party before trying again."), MessageType.SYSTEM);
     } catch {
@@ -125,6 +122,16 @@ export async function runInventoryRequest<T extends Reply>(options: {
     stopProfile(); stopPresentation?.();
     if (active === controller) { active = null; useCQInventoryStore.setState({inventoryCommandPending: false}); }
   }
+}
+
+// Explicit resource reads use the same scene/admission/cancellation owner and
+// locked current-state endpoint as mutation recovery, without replaying plans.
+export function refreshOwnedGameplayResources(): Promise<void> {
+ return runInventoryRequest<import("@/net/generated/world_api").GameplayStateResponse>({
+  read: readCurrentGameplayState, mutation:false,
+  apply:applyGameplayResourceSnapshot, present:()=>{},
+  readError:"Could not refresh current party and inventory. Please try again.",
+ });
 }
 
 function reportError(message: string) {

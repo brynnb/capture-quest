@@ -241,13 +241,13 @@ func TestMerchantMutationsRecheckReachVisibilityAndCurrentScriptEligibility(t *t
 	}
 }
 
-func TestInventoryDispatchFailsWholeReadOnWalletError(t *testing.T) {
+func TestInventoryPublicationFailsWholeReadOnWalletError(t *testing.T) {
 	wh, ses, messages := setupIssuedStep(t)
 	if _, err := cqitems.NewStore(wh.database).AddItemToInventory(42, 1, 2); err != nil {
 		t.Fatal(err)
 	}
 	testdb.Exec(t, wh.database, `DROP TABLE character_wallet`)
-	battleDispatch(t, wh, ses, opcodes.CQInventoryRequest, `{}`)
+	publishCQInventorySnapshot(ses, wh.database, 42)
 	if len(messages.streams) != 1 || messages.streams[0].opcode != opcodes.CQInventoryResponse {
 		t.Fatalf("inventory publication=%+v", messages.streams)
 	}

@@ -33,18 +33,23 @@ export async function readCurrentGameplayState(signal?: AbortSignal): Promise<Ga
 }
 
 export function applyGameplaySnapshot(snapshot: GameplayStateResponse): void {
-  validateGameplaySnapshot(snapshot);
-  useCQInventoryStore.getState().setInventory(snapshot.inventory, snapshot.wallet.pokedollars, snapshot.commandRevision);
-  usePlayerCharacterStore.getState().handleCharacterWalletData(snapshot.wallet);
+  applyGameplayResourceSnapshot(snapshot);
   usePlayerCharacterStore.getState().setEventFlags(snapshot.eventFlags);
-  usePokemonPartyStore.getState().setParty(snapshot.party);
-  usePokemonPCStore.getState().applySnapshot(snapshot.pc, snapshot.party);
   usePokeBattleStore.getState().restoreGameplay(snapshot);
   window.dispatchEvent(new CustomEvent("safariZoneEnter", { detail: snapshot.safari?.active
     ? { success: true, ballsLeft: snapshot.safari.ballsLeft, stepsLeft: snapshot.safari.stepsLeft }
     : { success: false } }));
   if (snapshot.trainer) PhaserNet.dispatchPhaserResponse(OpCodes.TrainerEncounterNotify, snapshot.trainer);
   if (snapshot.cutscene) void handleCutsceneStart(snapshot.cutscene);
+}
+
+// One resource projection; callers retain battle/movement/plan presentation.
+export function applyGameplayResourceSnapshot(snapshot: GameplayStateResponse): void {
+  validateGameplaySnapshot(snapshot);
+  useCQInventoryStore.getState().setInventory(snapshot.inventory, snapshot.wallet.pokedollars, snapshot.commandRevision);
+  usePlayerCharacterStore.getState().handleCharacterWalletData(snapshot.wallet);
+  usePokemonPartyStore.getState().setParty(snapshot.party);
+  usePokemonPCStore.getState().applySnapshot(snapshot.pc, snapshot.party);
 }
 
 // Apply only a correlated, source-matching read owned by this scene. No handler

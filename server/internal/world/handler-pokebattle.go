@@ -561,28 +561,11 @@ func sendPokemonPartySnapshot(ses *session.Session, party []*pokebattle.Pokemon)
 
 // HandlePokemonPartyRequest sends the player's current Pokémon party to the client.
 func HandlePokemonPartyRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	charID := int64(ses.Client.CharData().ID)
-	myDB := db.GlobalWorldDB.DB
-
-	party, err := pokebattle.LoadParty(myDB, charID)
-	if err != nil {
-		log.Printf("[Party] Failed to load party for char %d: %v", charID, err)
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "failed to load party",
-		}, opcodes.PokemonPartyResponse)
+	if !ses.HasValidClient() {
 		return false
 	}
-
-	partyDTOs := make([]PokemonDTO, 0, len(party))
-	for _, p := range party {
-		partyDTOs = append(partyDTOs, pokemonToDTO(p))
-	}
-
-	ses.SendStreamJSON(map[string]interface{}{
-		"success": true,
-		"party":   partyDTOs,
-	}, opcodes.PokemonPartyResponse)
+	// Reserved legacy read; unsolicited committed snapshots are audited separately.
+	ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Use current gameplay recovery."}, opcodes.PokemonPartyResponse)
 	return false
 }
 
