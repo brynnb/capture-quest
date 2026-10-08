@@ -68,3 +68,46 @@ for (const mode of ["normal", "timeout", "crash"] as const) {
     errors.assertNoSevereErrors();
   });
 }
+
+
+test("failed Escape Rope recovery locks the owner until quit and fresh entry", async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors = collectPageErrors(page);
+  const warnings: string[] = [];
+  page.on("console", message => { if (message.type() === "warning") warnings.push(message.text()); });
+  let withholdReads = false;
+  const faults = await inventoryCommandFaults<EscapeRopeUseResponse>(page,
+    OpCodes.EscapeRopeUseRequest, OpCodes.EscapeRopeUseResponse, false, () => true,
+    opcode => withholdReads && opcode === OpCodes.GameplayStateResponse);
+  const character = await createGuestCharacterAndEnterWorld(page);
+  await jumpToScenario(page, "debug_escape_rope_ready");
+  await waitForPlayerTile(page, 9, 9);
+  await waitForInventoryItem(page, 29);
+  await page.getByRole("button", { name: "Bag", exact: true }).click();
+  await waitForInventoryOpen(page, true);
+  withholdReads = true;
+  const rope = page.getByTestId("inventory-item-escape-rope");
+  await rope.click();
+  await expect.poll(() => warnings.some(w => w.includes("Escape Rope recovery unavailable")), { timeout: 20_000 }).toBe(true);
+  expect(faults.requests).toBe(1);
+  expect(faults.successes).toBe(1);
+  await rope.click();
+  await page.getByRole("button", { name: "Bag", exact: true }).click();
+  await waitForInventoryOpen(page, false);
+  const stepRequests = errors.sentOpcodes.filter(o => o === OpCodes.PlayerStepRequest).length;
+  await page.keyboard.press("ArrowDown");
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  expect(errors.sentOpcodes.filter(o => o === OpCodes.PlayerStepRequest)).toHaveLength(stepRequests);
+  expect(faults.requests).toBe(1);
+  await waitForPlayerTile(page, 9, 9);
+  await quitToCharacterSelect(page);
+  withholdReads = false;
+  await enterWorld(page, character);
+  await waitForNoMapLoading(page);
+  await expect.poll(async () => (await getGameState(page)).inventory.items.find(i => i.itemId === 29)?.quantity).toBe(1);
+  expect((await getGameState(page)).map.id).toBe(9999);
+  faults.deliverReply(0);
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  expect((await getGameState(page)).map.id).toBe(9999);
+  errors.assertNoSevereErrors();
+});

@@ -129,7 +129,7 @@ export class PlayerMovementController {
   }
 
   private async runOwnedFieldCommand(operation: (characterId: number, signal: AbortSignal, current: () => boolean) => Promise<void>): Promise<void> {
-    if (this.fieldCommandAbort || this.fieldCommandsRetired) return;
+    if (this.fieldCommandAbort || this.fieldCommandsRetired || this.movementRecoveryRequired || this.playerId === null) return;
     const characterId = usePlayerCharacterStore.getState().characterProfile.id;
     if (!characterId) return;
     const abort = new AbortController();
@@ -214,7 +214,7 @@ export class PlayerMovementController {
         }
       } catch {
         if (current()) {
-          this.stepRecoveryRequired = true;
+          this.movementRecoveryRequired = true;
           console.warn("[Movement] Escape Rope recovery unavailable; reconnect before moving.");
         }
       }
@@ -238,8 +238,8 @@ export class PlayerMovementController {
   // Callback fired when player arrives at a destination (used for warp pathing)
   private arrivalCallback: ((x: number, y: number) => boolean) | null = null;
   private inputFreezeProvider: () => boolean = () => isWorldInputFrozen();
-  private stepRecoveryRequired = false;
-  private inputFrozenChecker = (): boolean => this.stepRecoveryRequired || this.fieldCommandAbort !== null || this.inputFreezeProvider();
+  private movementRecoveryRequired = false;
+  private inputFrozenChecker = (): boolean => this.movementRecoveryRequired || this.fieldCommandAbort !== null || this.inputFreezeProvider();
   private warpTileChecker: (x: number, y: number) => boolean = () => false;
   private warpAtProvider: (x: number, y: number) => PhaserWarp | null =
     () => null;
@@ -254,7 +254,10 @@ export class PlayerMovementController {
 
   constructor(scene: Scene) {
     this.scene = scene;
-    scene.events?.once?.("shutdown", () => this.stopMovement(true));
+    scene.events?.once?.("shutdown", () => {
+      this.retireFieldCommands();
+      this.stopMovement(true);
+    });
   }
 
   setInputFrozenChecker(checker: () => boolean): void {
@@ -1653,7 +1656,7 @@ export class PlayerMovementController {
           try { owned = await readOwnedPlayerPosition(abort.signal, issued.stepToken); }
           catch (error) {
             if (generation !== this.movementGeneration || abort.signal.aborted) return;
-            this.stepRecoveryRequired = true;
+            this.movementRecoveryRequired = true;
             this.currentPath = [];
             this.arrivalCallback = null;
             throw error;
@@ -1810,7 +1813,7 @@ export class PlayerMovementController {
 
   private handleStepFailure(error: unknown): void {
     if (error instanceof DOMException && error.name === "AbortError") return;
-    if (this.stepRecoveryRequired) {
+    if (this.movementRecoveryRequired) {
       console.error("[PlayerMovement] Could not recover movement; input remains locked until scene/session retirement", error);
       return;
     }
@@ -2087,7 +2090,9 @@ export class PlayerMovementController {
 
   stopMovement(retireIssued = false): void {
     if (retireIssued) {
-      this.stepRecoveryRequired = false;
+      // Retiring prediction or receiving an actor snap does not prove current
+      // command/resources recovery. A failed read keeps this owner locked; a
+      // replacement scene creates a fresh owner after loading owned state.
       this.serverMovementInProgress = false;
       this.serverPathFinished = true;
       this.facingAbort?.abort();
@@ -2354,6 +2359,7 @@ export class PlayerMovementController {
   }
 
   clear(): void {
+    this.retireFieldCommands();
     this.stopMovement(true);
     this.arrivalCallback = null;
     this.collisionMap.clear();

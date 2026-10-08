@@ -145,6 +145,49 @@ test("retired movement owners ignore late Escape Rope recovery", async () => {
   expect(recovery.applyGameplayResourceSnapshot).not.toHaveBeenCalled();
 });
 
+test("failed field recovery stays locked through actor snaps and blocks further commands", async () => {
+  const { controller } = buildLedgeController();
+  usePlayerCharacterStore.getState().setCharacterProfile({ id: 42 });
+  const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  vi.mocked(movement.requestEscapeRope).mockRejectedValueOnce(new Error("timeout"));
+  vi.mocked(recovery.readCurrentGameplayState).mockRejectedValueOnce(new Error("read unavailable"));
+  await controller.useEscapeRope(7);
+  expect(controller.handleKeyboardMove("LEFT")).toBe(false);
+  controller.onStepComplete(1, 10, 0, "UP", "snap");
+  await Promise.resolve();
+  controller.stopMovement(true);
+  expect(controller.handleKeyboardMove("LEFT")).toBe(false);
+  expect(controller.requestMoveTo(9, 0)).toBe(false);
+  await controller.useEscapeRope(7);
+  await controller.changeBicyclePreference(8);
+  expect(movement.requestEscapeRope).toHaveBeenCalledTimes(1);
+  expect(movement.requestBicycleState).not.toHaveBeenCalled();
+  expect(movement.requestPlayerStep).not.toHaveBeenCalled();
+  controller.clear();
+  const replacement = buildLedgeController().controller;
+  expect(replacement.handleKeyboardMove("LEFT")).toBe(true);
+  replacement.clear();
+  warning.mockRestore();
+});
+
+test("controller clear aborts its field request and prevents late application", async () => {
+  const { controller } = buildLedgeController();
+  usePlayerCharacterStore.getState().setCharacterProfile({ id: 42 });
+  useAudioActivityStore.getState().resetTravelAudio();
+  let resolve!: (value: import("@/net/generated/world_api").BicycleStateResponse) => void;
+  const request = vi.mocked(movement.requestBicycleState);
+  request.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+  const pending = controller.changeBicyclePreference(7);
+  const signal = request.mock.calls[0][1];
+  controller.clear();
+  expect(signal.aborted).toBe(true);
+  resolve({ success: true, requestId: "late-clear", characterId: 42,
+    bicycle: { revision: 1, wantsRiding: true, activeRiding: true, forcedRiding: false } });
+  await pending;
+  expect(request).toHaveBeenCalledTimes(1);
+  expect(useAudioActivityStore.getState().wantsBicycle).toBe(false);
+});
+
 describe("PlayerMovementController ledges", () => {
   test("facing a source tile publishes its direction without changing location",()=>{
     const {controller}=buildLedgeController();
@@ -487,5 +530,8 @@ test("retirement ignores a late receipt recovery and failed recovery keeps input
   await vi.waitFor(() => expect(log).toHaveBeenCalled());
   expect(next.handleKeyboardMove("LEFT")).toBe(false);
   expect(next.requestMoveTo(9, 0)).toBe(false);
+  next.onStepComplete(1, 10, 2, "DOWN", "snap");
+  await Promise.resolve();
+  expect(next.handleKeyboardMove("LEFT")).toBe(false);
   next.clear(); log.mockRestore();
 });

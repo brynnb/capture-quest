@@ -28,6 +28,48 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized a branch push for the stopping checkpoint on 2026-10-07; production deployment remains unauthorized.
 
+## Movement recovery boundary review (2026-10-07)
+
+Review found that `stopMovement(true)` assigned `stepRecoveryRequired=false`.
+That method is also called for ordinary actor snaps and completed server paths,
+so it could clear the failed-recovery lock without a successful current read.
+The field admission helper also did not consult that lock, allowing another
+Bicycle/Escape Rope request from an owner whose recovery had failed. Separately,
+`clear()` retired only step work; field cancellation depended on TileViewer's
+cleanup calling a second method.
+
+The existing lock is now named `movementRecoveryRequired` because both completed
+step and consumptive field recovery use it. Stopping prediction, cosmetic actor
+snaps and server-path completion preserve it. The shared field admission helper
+rejects work while recovery is required or player ownership is absent. A fresh
+scene/controller begins after its ordinary owned-state load; failed owners are
+not silently unlocked by a visual update. No additional recovery coordinator,
+retry loop or field-specific latch was introduced.
+
+Controller `clear()` and its shutdown hook now retire field requests directly.
+TileViewer's cleanup remains idempotent. Late replies cannot apply preference or
+resources after the controller's own teardown. Regression checks exercise failed
+Escape Rope recovery, actor snaps/stops, blocked keyboard/click and field requests,
+fresh-controller admission, clear cancellation and late preference suppression.
+The existing failed-step recovery check now also verifies that a subsequent actor
+snap cannot unlock it. All 50 focused movement/recovery/warp client checks and
+TypeScript checks passed. Six rendered cases passed in 1.6 minutes in
+`/var/tmp/capturequest-rendered.QMh5Ap`, including the new failed-read/blocked-input/
+quit/reentry case and the existing Rope normal/timeout/process-death and Bicycle
+normal/timeout/reentry cases. The isolated runner stopped its private runtime.
+Production build, runtime-asset validation and diff checks also passed. These
+are local browser and client-boundary results; server code was unchanged.
+
+The transport fault harness can withhold a chosen response opcode after fixture
+setup. The rendered failure case loses current gameplay reads, waits for the
+explicit terminal recovery warning, then verifies no further item or movement
+request is sent. Quit/reentry restores the committed position and remaining rope;
+a historical acknowledgement after reentry has no position to replay.
+
+The broader roadmap and original login timeout remain open. Next: inspect outstanding-step expiry and movement-map availability in the
+movement admission/catalog/queue audit before selecting another field family.
+This is a local review/fix checkpoint, with no new push or deployment.
+
 ## Escape Rope command and movement-owned recovery (2026-10-07)
 
 Escape Rope now has a typed correlated command (203/204). It names the owned item
