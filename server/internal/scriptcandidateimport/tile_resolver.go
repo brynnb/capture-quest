@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 
+	"capturequest/internal/extractorcontract"
 	"capturequest/internal/phaserdata"
 	"capturequest/internal/scriptedevents"
 )
@@ -123,6 +124,75 @@ func newTileOverrideResolver(ctx context.Context, db *sql.DB) (*tileOverrideReso
 	return resolver, nil
 }
 
+// TileIdentityResolver shares native artwork identity with event compilation.
+// Every external consumer must negotiate the extractor contract before resolving.
+type TileIdentityResolver struct {
+	resolver *tileOverrideResolver
+	catalog  map[int][3]int
+	Contract extractorcontract.Context
+}
+
+func NewTileIdentityResolver(ctx context.Context, source *sql.DB, release string) (*TileIdentityResolver, error) {
+	contract, err := extractorcontract.Negotiate(ctx, source, release)
+	if err != nil {
+		return nil, err
+	}
+	resolver, err := newTileOverrideResolver(ctx, source)
+	if err != nil {
+		return nil, err
+	}
+	catalog := map[int][3]int{}
+	rows, err := source.QueryContext(ctx, `SELECT id,tileset_id,block_index,position FROM tile_images`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, a, b, c int
+		if err := rows.Scan(&id, &a, &b, &c); err != nil {
+			return nil, err
+		}
+		catalog[id] = [3]int{a, b, c}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return &TileIdentityResolver{resolver: resolver, Contract: contract, catalog: catalog}, nil
+}
+func (r *TileIdentityResolver) VerifyCatalogIdentity(id, tileset, block, position int) error {
+	value, ok := r.catalog[id]
+	if !ok || value != ([3]int{tileset, block, position}) {
+		return fmt.Errorf("runtime image %d differs from negotiated source catalog", id)
+	}
+	return nil
+}
+func (r *TileIdentityResolver) Resolve(mapName string, blockID, position int) (int, error) {
+	return r.resolver.resolveTile(mapName, blockID, position)
+}
+func (resolver *tileOverrideResolver) resolveTile(mapName string, blockID, position int) (int, error) {
+	meta, ok := resolver.maps[mapNameToUpperSnake(mapName)]
+	if !ok {
+		return 0, fmt.Errorf("unknown source map %q", mapName)
+	}
+	if position < 0 || position > 3 {
+		return 0, fmt.Errorf("invalid quadrant %d", position)
+	}
+	blockset := sourceBlocksetTilesetID(meta.TilesetID)
+	data := resolver.blocksets[blockset][blockID]
+	if len(data) != 16 {
+		return 0, fmt.Errorf("map %s missing block %d", mapName, blockID)
+	}
+	signature, err := renderTileQuadrantSignature(data, position, blockset, resolver.tilesetTiles)
+	if err != nil {
+		return 0, err
+	}
+	id := resolver.tileImageIDBySignature[signature]
+	if id == 0 {
+		return 0, fmt.Errorf("map %s block %d quadrant %d has no catalog image", mapName, blockID, position)
+	}
+	return id, nil
+}
+
 func (resolver *tileOverrideResolver) MapCandidate(candidate tileOverrideCandidate) ([]scriptedevents.EventTileOverrideRule, error) {
 	if candidate.Kind != "" && candidate.Kind != "eventTileOverrideCandidate" {
 		return nil, fmt.Errorf("unsupported tile override kind %q", candidate.Kind)
@@ -155,13 +225,9 @@ func (resolver *tileOverrideResolver) MapCandidate(candidate tileOverrideCandida
 			return nil, fmt.Errorf("%s replacement %s references missing block %d for tileset %d", candidate.ScriptLabel, replacement.LabelPrefix, replacement.BlockID, blocksetID)
 		}
 		for position := 0; position < 4; position++ {
-			signature, err := renderTileQuadrantSignature(blockData, position, blocksetID, resolver.tilesetTiles)
+			tileImageID, err := resolver.resolveTile(mapName, replacement.BlockID, position)
 			if err != nil {
-				return nil, fmt.Errorf("%s replacement %s position %d: %w", candidate.ScriptLabel, replacement.LabelPrefix, position, err)
-			}
-			tileImageID := resolver.tileImageIDBySignature[signature]
-			if tileImageID == 0 {
-				return nil, fmt.Errorf("%s replacement %s position %d has no matching tile image", candidate.ScriptLabel, replacement.LabelPrefix, position)
+				return nil, fmt.Errorf("%s replacement %s: %w", candidate.ScriptLabel, replacement.LabelPrefix, err)
 			}
 			dx := position % 2
 			dy := position / 2

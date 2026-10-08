@@ -28,6 +28,47 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Native tile expectation identity (2026-10-08)
+
+The corpus audit found 156 tile expectations; 132 have unambiguous native block
+and quadrant identities in the negotiated SQLite tile-override candidates. Those
+expectations now name source `mapName`, `blockId` and `position` instead of stale
+numeric catalog IDs. Translation was deterministic from structured candidates and
+preserved coordinate, collision and label assertions. The remaining 24 unsupported
+mappings retain their original numeric assertions; nothing is inferred for them.
+
+The event compiler's existing decoded-artwork signature resolver now exposes a
+native identity entrypoint, reused by compilation and simulator expectations.
+The simulator CLI lazily loads `--tile-source` (default the canonical SQLite path)
+in read-only mode and negotiates `extractorcontract` before resolution. It verifies
+release/run/source-tree identity against imported Postgres metadata and checks each
+resolved image's catalog tuple against the imported image record before fixture
+mutation. Missing source fields, unknown maps/blocks/quadrants, mixed numeric/native
+identity and differing catalogs reject; resolution stages its changes before
+publishing the full expected set. There is no separate renderer or label-to-runtime-
+rule oracle and no fallback ID.
+
+Tests prove decoded native identity survives catalog renumbering, malformed source
+and mismatched catalog tuples reject, and the final assertion still rejects the
+wrong image, collision and label. Compiler, simulator and world race suites passed
+(world 64.5s), final focused tests and all-package compilation pass, and diff checks
+pass. The final Agatha CLI runtime expectation succeeds at
+`/var/tmp/capturequest-script-sim.UGN607`. In the full corpus run, 176 scenarios
+completed before scenario 177 (`gym_lt_surge_reward`) failed: expected
+`VermilionGymLtSurgePostBattle`, actual `VermilionGymLTSurgeReceiveTM24Script`.
+Evidence is `/var/tmp/capturequest-native-expectation-corpus.log`; its private
+cluster stopped normally. That script-label assertion was not changed.
+
+This is runtime-expectation acceptance, not complete fixed-golden acceptance.
+Text goldens still contain old catalog numbers and require a deliberate portable
+identity format/source review. The 24 unmapped assertions, new label failure and
+remaining corpus cases remain open. Runtime gameplay, schema, opcode and generated
+asset publication did not change; no rendered appearance or deployment is claimed.
+The original restore timeout and pre-command Repel click failure remain unattributed,
+and all five goal areas stay active. Next: trace the Lt. Surge script-label boundary
+against structured source and finish portable expectation/golden identity without
+weakening assertions. This checkpoint is local only, without push or deployment.
+
 ## Runtime image metadata authority correction (2026-10-08)
 
 The apparent missing event metadata was a reader defect, not absent extractor

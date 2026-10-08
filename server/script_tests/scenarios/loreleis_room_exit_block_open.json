@@ -15,8 +15,8 @@
   "expect": {
     "scriptLabel": "TileState:LORELEIS_ROOM",
     "tileStates": [
-      { "x": 0, "y": 4, "tileImageId": 253, "collisionType": 1, "label": "LoreleiExitBlockOpen_0_0" },
-      { "x": 1, "y": 5, "tileImageId": 253, "collisionType": 1, "label": "LoreleiExitBlockOpen_1_1" }
+      { "x": 0, "y": 4, "source": {"mapName":"LoreleisRoom","blockId":5,"position":0}, "collisionType": 1, "label": "LoreleiExitBlockOpen_0_0" },
+      { "x": 1, "y": 5, "source": {"mapName":"LoreleisRoom","blockId":5,"position":3}, "collisionType": 1, "label": "LoreleiExitBlockOpen_1_1" }
     ]
   }
 }

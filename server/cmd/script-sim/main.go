@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -13,13 +14,17 @@ import (
 	"syscall"
 
 	"capturequest/internal/db"
+	"capturequest/internal/scriptcandidateimport"
 	"capturequest/internal/scriptsim"
+	"database/sql"
 )
 
 type runOptions struct {
-	check   bool
-	update  bool
-	verbose bool
+	sourcePath string
+	resolver   **scriptcandidateimport.TileIdentityResolver
+	check      bool
+	update     bool
+	verbose    bool
 }
 
 func main() {
@@ -28,6 +33,7 @@ func main() {
 	check := flag.Bool("check", false, "compare output to golden file")
 	update := flag.Bool("update", false, "write output to golden file")
 	verbose := flag.Bool("verbose", false, "print output even when --check passes")
+	sourcePath := flag.String("tile-source", "../public/phaser/pokemon.db", "negotiated SQLite source for native tile expectations")
 	flag.Parse()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -42,7 +48,8 @@ func main() {
 		log.Fatalf("database init failed: %v", err)
 	}
 
-	opts := runOptions{check: *check, update: *update, verbose: *verbose}
+	var resolver *scriptcandidateimport.TileIdentityResolver
+	opts := runOptions{check: *check, update: *update, verbose: *verbose, sourcePath: *sourcePath, resolver: &resolver}
 	if *all {
 		paths, err := filepath.Glob(filepath.Join("script_tests", "scenarios", "*.json"))
 		if err != nil {
@@ -69,6 +76,36 @@ func runScenario(ctx context.Context, scenarioPath string, opts runOptions) erro
 	scenario, err := scriptsim.LoadScenario(scenarioPath)
 	if err != nil {
 		return fmt.Errorf("load scenario failed: %w", err)
+	}
+	for _, expected := range scenario.Expect.TileStates {
+		if expected.Source == nil {
+			continue
+		}
+		if *opts.resolver == nil {
+			var release string
+			if err := db.GlobalWorldDB.DB.QueryRowContext(ctx, `SELECT release_code FROM phaser_import_metadata WHERE singleton=true`).Scan(&release); err != nil {
+				return err
+			}
+			absolute, err := filepath.Abs(opts.sourcePath)
+			if err != nil {
+				return err
+			}
+			uri := url.URL{Scheme: "file", Path: absolute, RawQuery: "mode=ro"}
+			source, err := sql.Open("sqlite", uri.String())
+			if err != nil {
+				return err
+			}
+			source.SetMaxOpenConns(1)
+			*opts.resolver, err = scriptcandidateimport.NewTileIdentityResolver(ctx, source, release)
+			source.Close()
+			if err != nil {
+				return err
+			}
+		}
+		if err := scriptsim.ResolveTileExpectations(ctx, db.GlobalWorldDB.DB, *opts.resolver, scenario); err != nil {
+			return err
+		}
+		break
 	}
 	result, err := scriptsim.Run(ctx, db.GlobalWorldDB.DB, scenario)
 	output := ""

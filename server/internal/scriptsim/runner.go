@@ -2046,6 +2046,9 @@ func (r *Result) ValidateExpectations() error {
 		}
 	}
 	for _, expected := range exp.TileStates {
+		if expected.Source != nil && expected.TileImageID <= 0 {
+			return fmt.Errorf("unresolved native tile expectation at (%d,%d)", expected.X, expected.Y)
+		}
 		if !hasTileState(r.TileStates, expected) {
 			return fmt.Errorf("expected tile state (%d,%d) tile=%d collision=%d", expected.X, expected.Y, expected.TileImageID, expected.CollisionType)
 		}

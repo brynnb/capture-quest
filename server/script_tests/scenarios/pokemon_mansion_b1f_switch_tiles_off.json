@@ -14,9 +14,9 @@
   "expect": {
     "scriptLabel": "TileState:POKEMON_MANSION_B1F",
     "tileStates": [
-      { "x": 16, "y": 26, "tileImageId": 758, "collisionType": 1, "label": "PokemonMansionSwitchOff_B1F_8_13_0_0" },
-      { "x": 7, "y": 8, "tileImageId": 780, "collisionType": 0, "label": "PokemonMansionSwitchOff_B1F_3_4_1_0" },
-      { "x": 16, "y": 16, "tileImageId": 781, "collisionType": 0, "label": "PokemonMansionSwitchOff_B1F_8_8_0_0" }
+      { "x": 16, "y": 26, "source": {"mapName":"PokemonMansionB1F","blockId":14,"position":0}, "collisionType": 1, "label": "PokemonMansionSwitchOff_B1F_8_13_0_0" },
+      { "x": 7, "y": 8, "source": {"mapName":"PokemonMansionB1F","blockId":95,"position":1}, "collisionType": 0, "label": "PokemonMansionSwitchOff_B1F_3_4_1_0" },
+      { "x": 16, "y": 16, "source": {"mapName":"PokemonMansionB1F","blockId":84,"position":0}, "collisionType": 0, "label": "PokemonMansionSwitchOff_B1F_8_8_0_0" }
     ]
   }
 }

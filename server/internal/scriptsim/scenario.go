@@ -270,13 +270,20 @@ type VermilionGymTrashExpected struct {
 	SecondLockAbsent   bool `json:"secondLockAbsent,omitempty"`
 }
 
+type SourceTileIdentity struct {
+	MapName  string `json:"mapName"`
+	BlockID  *int   `json:"blockId"`
+	Position *int   `json:"position"`
+}
+
 type TileState struct {
-	X             int    `json:"x"`
-	Y             int    `json:"y"`
-	TileImageID   int    `json:"tileImageId"`
-	CollisionType int    `json:"collisionType"`
-	Label         string `json:"label,omitempty"`
-	Erased        bool   `json:"erased,omitempty"`
+	Source        *SourceTileIdentity `json:"source,omitempty"`
+	X             int                 `json:"x"`
+	Y             int                 `json:"y"`
+	TileImageID   int                 `json:"tileImageId"`
+	CollisionType int                 `json:"collisionType"`
+	Label         string              `json:"label,omitempty"`
+	Erased        bool                `json:"erased,omitempty"`
 }
 
 type ObjectState struct {
