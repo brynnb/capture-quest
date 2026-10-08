@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+dialogue reads use generated identity, shared client correlation and actor/cutscene
+cancellation, following `ab377cf`:
 dialogue text, durable flags, trade completion and branch eligibility share one
 bounded read snapshot, following `310be88`:
 dialogue entries, conditional overrides and trade fallback reads use the injected
@@ -51,6 +53,47 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Dialogue identity and caller lifetime (2026-10-08)
+
+The shared Go protocol now defines dialogue request, success, error and entry
+contracts. Canonical tygo generation publishes them to TypeScript. The live
+handler echoes request ID, character ID and text constant on success/failure,
+returns an explicit empty array on a successful no-result read and no longer
+uses reflection for entries. Invalid requests receive a terminal error. Empty
+request IDs remain accepted for existing clients during coordinated activation;
+new clients never consume an untagged response.
+
+DialogueService uses the existing CorrelatedRequest and PhaserNetworkService
+subscription/dispatch paths. Concurrent reads resolve only their own identity;
+timeout, write failure, abort and transport retirement release subscriptions.
+Character or screen replacement cancels the demand. Response shape and identity
+are validated before parsing; failures reject instead of becoming empty text
+that could trigger a cutscene's inline fallback. A successful empty catalog read
+still permits the existing inline source text policy.
+
+Cutscenes pass their existing run abort signal. Actor clicks own a supersedable
+read signal and abort it on controller cleanup. Before opening dialogue they
+recheck source identity/location, player position, displayed map and input
+ownership. Queued interaction-path callbacks are fenced by interaction generation
+and resolve only a current actor, preventing removed/superseded actors from
+starting stale dialogue reads.
+
+Focused PostgreSQL world/simulator checks pass, including tagged invalid requests,
+response identity and the prior coherent snapshot/error boundaries. Client checks
+cover out-of-order/untagged replies, timeout/retry, cancellation, retirement,
+character replacement, invalid identity/payload, write failure/retry, moved and
+superseded actors and retired cutscene dialogue. Existing parser/controller and
+cutscene checks pass. Typecheck, all Go package compilation, runtime asset
+validation and production build pass; build retains its existing chunk warnings.
+These are headless/boundary checks. Rendered dialogue timeout/retry, late response,
+quit/reentry and scene acceptance remain required.
+
+Next: rendered acceptance and a shared-boundary review of the migrated dialogue
+family, then continue the remaining finite command matrix. Simulator fixture
+choice execution remains a separate global legacy path. All five roadmap areas
+remain active; original restore timeout and Repel click remain unattributed.
+No schema/assets publication, push or deployment this checkpoint.
 
 ## Coherent dialogue response snapshot (2026-10-08)
 

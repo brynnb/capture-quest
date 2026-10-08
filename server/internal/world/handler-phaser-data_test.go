@@ -2,6 +2,7 @@ package world
 
 import (
 	"capturequest/internal/api/opcodes"
+	"capturequest/internal/protocol"
 	"capturequest/internal/testdb"
 	"context"
 	"database/sql"
@@ -248,7 +249,7 @@ func TestDialogueResponseUsesDurableFlagsAndOnePublication(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		battleDispatch(t, wh, ses, opcodes.PhaserDialogueRequest, `{"textConstant":"PROMPT"}`)
+		battleDispatch(t, wh, ses, opcodes.PhaserDialogueRequest, `{"requestId":"dialogue:owned","textConstant":"PROMPT"}`)
 	}()
 	deadline := time.Now().Add(time.Second)
 	for {
@@ -291,10 +292,15 @@ func TestDialogueResponseUsesDurableFlagsAndOnePublication(t *testing.T) {
 		}
 	}
 	check("Before", false)
-	battleDispatch(t, wh, ses, opcodes.PhaserDialogueRequest, `{"textConstant":"PROMPT"}`)
+	var identity protocol.PhaserDialogueResponse
+	if err := json.Unmarshal(messages.streams[0].payload, &identity); err != nil || identity.RequestID != "dialogue:owned" || identity.CharacterID != 42 || identity.TextConstant != "PROMPT" {
+		t.Fatalf("identity=%+v error=%v", identity, err)
+	}
+
+	battleDispatch(t, wh, ses, opcodes.PhaserDialogueRequest, `{"requestId":"dialogue:owned","textConstant":"PROMPT"}`)
 	check("Ready", true)
 	testdb.Exec(t, database, `DROP TABLE phaser_branching_dialogue`)
-	battleDispatch(t, wh, ses, opcodes.PhaserDialogueRequest, `{"textConstant":"PROMPT"}`)
+	battleDispatch(t, wh, ses, opcodes.PhaserDialogueRequest, `{"requestId":"dialogue:owned","textConstant":"PROMPT"}`)
 	var failure map[string]any
 	if err := json.Unmarshal(messages.streams[len(messages.streams)-1].payload, &failure); err != nil {
 		t.Fatal(err)
@@ -321,5 +327,14 @@ func TestDialogueSnapshotCancelsHeldPoolAndRetries(t *testing.T) {
 	held.Close()
 	if _, err := readPhaserDialogue(context.Background(), database, "ABSENT", 42, nil); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestDialogueInvalidRequestReturnsTaggedFailure(t *testing.T) {
+	_, wh, ses, messages := battleTestWorld(t)
+	battleDispatch(t, wh, ses, opcodes.PhaserDialogueRequest, `{"requestId":"dialogue:bad","textConstant":42}`)
+	var reply protocol.PhaserDialogueError
+	if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &reply) != nil || reply.Success || reply.RequestID != "dialogue:bad" || reply.CharacterID != 42 || reply.Error == "" {
+		t.Fatalf("reply=%+v", reply)
 	}
 }

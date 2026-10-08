@@ -783,9 +783,6 @@ export interface PokemonPartyReorderResponse {
 //////////
 // source: handler-phaser-data.go
 
-export interface PhaserDialogueRequest {
-  textConstant: string; // e.g. "TEXT_PALLETTOWN_FISHER"
-}
 export interface PhaserWildEncountersRequest {
   mapId: number /* int */;
 }
@@ -796,13 +793,7 @@ export interface PhaserTrainerDataRequest {
 export interface PhaserHiddenObjectsRequest {
   mapId: number /* int */;
 }
-export interface PhaserDialogueEntry {
-  label: string;
-  sourceFile: string;
-  dialogue: string;
-  isTrainer: number /* int */;
-  mapName?: string;
-}
+export type PhaserDialogueEntry = import("./protocol").PhaserDialogueEntry;
 export interface PhaserWildEncounter {
   id: number /* int */;
   mapName: string;

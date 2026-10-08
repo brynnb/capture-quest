@@ -89,3 +89,14 @@ test("failed active animation cancels its issued plan before unlocking; retired 
   expect(reconcile).toHaveBeenCalled(); expect(lock).toHaveBeenLastCalledWith(false);
   expect(requests.read).not.toHaveBeenCalled(); log.mockRestore();
 });
+
+
+test("retiring dialogue aborts its read and ignores late text",async()=>{
+ const dialogue=await import("./DialogueService");const pending=deferred<string[]>();
+ vi.mocked(dialogue.fetchDialogue).mockReturnValueOnce(pending.promise);
+ const run=handleCutsceneStart({...event("Dialogue"),actions:[{type:"dialogue",textConstant:"TEXT"}]});
+ await vi.waitFor(()=>expect(dialogue.fetchDialogue).toHaveBeenCalledWith("TEXT",expect.any(AbortSignal)));
+ const signal=vi.mocked(dialogue.fetchDialogue).mock.calls.at(-1)![1]!;
+ cancelActiveCutscene("quit during dialogue");expect(signal.aborted).toBe(true);
+ pending.resolve(["Old"]);await run;expect(requests.complete).not.toHaveBeenCalled();expect(requests.read).not.toHaveBeenCalled();
+});

@@ -294,6 +294,11 @@ const nameValidationHandlers=new Set<(reply:NameReply)=>void>();
 export function onNameValidation(receive:(reply:NameReply)=>void):()=>void {nameValidationHandlers.add(receive);return()=>nameValidationHandlers.delete(receive);}
 export function requestNameValidation(requestId:string,name:string):Promise<void>{return NetworkBridge.send({requestId,name},OpCodes.ValidateNameRequest);}
 
+export type DialogueReadReply = import("@/net/generated/protocol").PhaserDialogueResponse | import("@/net/generated/protocol").PhaserDialogueError;
+const dialogueReadHandlers = new Set<(reply:DialogueReadReply)=>void>();
+export function onDialogueRead(receive:(reply:DialogueReadReply)=>void):()=>void {dialogueReadHandlers.add(receive);return()=>dialogueReadHandlers.delete(receive);}
+export function requestDialogueRead(requestId:string,textConstant:string):Promise<void>{return NetworkBridge.send({requestId,textConstant},OpCodes.PhaserDialogueRequest);}
+
 export type PokedexReadReply = import("@/net/generated/protocol").TrainerCardResponse | import("@/net/generated/protocol").PokedexListResponse | import("@/net/generated/protocol").PokedexStatusResponse | import("@/net/generated/protocol").PokedexReadError;
 const pokedexReadHandlers = new Map<number, Set<(reply: PokedexReadReply) => void>>([
  OpCodes.TrainerCardResponse,OpCodes.PokedexListResponse,OpCodes.PokedexStatusResponse,
@@ -537,6 +542,8 @@ export function normalizePhaserArrayPayload<T>(
 // Internal: dispatch incoming Phaser responses
 export function dispatchPhaserResponse(opcode: number, data: unknown): void {
   switch (opcode) {
+    case OpCodes.PhaserDialogueResponse:
+      dialogueReadHandlers.forEach(receive=>receive(data as DialogueReadReply));break;
     case OpCodes.ValidateNameResponse:
       nameValidationHandlers.forEach(receive=>receive(data as NameReply));break;
 

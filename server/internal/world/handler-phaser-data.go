@@ -16,10 +16,6 @@ import (
 
 // --- Request types ---
 
-type PhaserDialogueRequest struct {
-	TextConstant string `json:"textConstant"` // e.g. "TEXT_PALLETTOWN_FISHER"
-}
-
 type PhaserWildEncountersRequest struct {
 	MapID int `json:"mapId"`
 }
@@ -35,13 +31,7 @@ type PhaserHiddenObjectsRequest struct {
 
 // --- Response types ---
 
-type PhaserDialogueEntry struct {
-	Label      string  `json:"label"`
-	SourceFile string  `json:"sourceFile"`
-	Dialogue   string  `json:"dialogue"`
-	IsTrainer  int     `json:"isTrainer"`
-	MapName    *string `json:"mapName"`
-}
+type PhaserDialogueEntry = protocol.PhaserDialogueEntry
 
 type PhaserWildEncounter struct {
 	ID            int    `json:"id"`
@@ -112,36 +102,39 @@ type PhaserHiddenObject struct {
 
 // HandlePhaserDialogueRequest resolves a text constant to dialogue text
 func HandlePhaserDialogueRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	var req PhaserDialogueRequest
-	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("[Phaser] Invalid DialogueRequest: %v", err)
-		return false
-	}
-
+	var req protocol.PhaserDialogueRequest
+	err := json.Unmarshal(payload, &req)
 	var charID int64
 	if ses.HasValidClient() {
 		charID = int64(ses.Client.CharData().ID)
 	}
+	identity := protocol.PhaserDialogueIdentity{RequestID: req.RequestID, CharacterID: charID, TextConstant: req.TextConstant}
+	reject := func(message string) {
+		ses.SendStreamJSON(protocol.PhaserDialogueError{PhaserDialogueIdentity: identity, Error: message}, opcodes.PhaserDialogueResponse)
+	}
+	if err != nil || req.TextConstant == "" {
+		reject("Invalid dialogue request")
+		return false
+	}
+	if wh == nil {
+		reject("Dialogue unavailable")
+		return false
+	}
 	result, err := readPhaserDialogue(ses.CommandContext(), wh.database, req.TextConstant, charID, wh.Cutscenes)
 	if err != nil {
 		log.Printf("[Phaser] Error querying dialogue for %s: %v", req.TextConstant, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.PhaserDialogueResponse)
+		reject("Dialogue unavailable")
 		return false
 	}
-
-	res := map[string]interface{}{
-		"success":         true,
-		"textConstant":    req.TextConstant,
-		"dialogueEntries": StructToMap(result.entries),
+	if result.entries == nil {
+		result.entries = []PhaserDialogueEntry{}
 	}
-
-	// Check for branching dialogue (YES/NO choices) with event flag gating.
-	if bd := result.branch; bd != nil {
-		res["hasBranching"] = true
-		res["branchingPrompt"] = bd.PromptText
+	response := protocol.PhaserDialogueResponse{PhaserDialogueIdentity: identity, Success: true, DialogueEntries: result.entries}
+	if result.branch != nil {
+		response.HasBranching = true
+		response.BranchingPrompt = &result.branch.PromptText
 	}
-
-	ses.SendStreamJSON(res, opcodes.PhaserDialogueResponse)
+	ses.SendStreamJSON(response, opcodes.PhaserDialogueResponse)
 	return false
 }
 

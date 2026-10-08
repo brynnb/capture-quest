@@ -111,6 +111,36 @@ export interface PhaserItemDataResponse extends PhaserItemFull {
 }
 
 //////////
+// source: dialogue.go
+
+export interface PhaserDialogueRequest {
+  requestId: string;
+  textConstant: string;
+}
+export interface PhaserDialogueIdentity {
+  requestId: string;
+  characterId: number /* int64 */;
+  textConstant: string;
+}
+export interface PhaserDialogueEntry {
+  label: string;
+  sourceFile: string;
+  dialogue: string;
+  isTrainer: number /* int */;
+  mapName: string | null;
+}
+export interface PhaserDialogueResponse extends PhaserDialogueIdentity {
+  success: true;
+  dialogueEntries: PhaserDialogueEntry[];
+  hasBranching: boolean;
+  branchingPrompt: string | null;
+}
+export interface PhaserDialogueError extends PhaserDialogueIdentity {
+  success: false;
+  error: string;
+}
+
+//////////
 // source: map_content.go
 
 export interface PhaserMapScriptsRequest {

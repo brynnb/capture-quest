@@ -286,3 +286,32 @@ describe("TileViewerInteractionController streamed instant warp", () => {
     );
   });
 });
+
+
+describe("actor dialogue demand ownership",()=>{
+ afterEach(()=>vi.restoreAllMocks());
+ it("superseded dialogue and moved sources cannot open a stale box",async()=>{
+ const dialogue=await import("../../services/DialogueService");
+ const net=await import("../../services/PhaserNetworkService");
+ const store=(await import("@/stores/PokemonDialogueStore")).default;
+ vi.spyOn(net,"tryScriptedEventInteraction").mockResolvedValue(false);
+ const pending=deferred<import("../../services/DialogueService").DialogueResult>();
+ const fetch=vi.spyOn(dialogue,"fetchDialogueWithBranching").mockReturnValue(pending.promise);
+ const open=vi.spyOn(store.getState(),"openDialogue");
+ const actor={id:7,x:1,y:0,mapId:1,text:"TEXT",objectType:"sign"};
+ const controller=new TileViewerInteractionController({isWorldInputFrozen:()=>false,currentActorById:()=>actor,getDisplayedMapId:()=>1,playerMovementController:()=>({getCurrentPosition:()=>({x:0,y:0})})} as never);
+ const internal=controller as unknown as {ensureActorInteractionReachable:()=>Promise<boolean>;handleActorClicked:(actor:unknown)=>Promise<void>};
+ vi.spyOn(internal,"ensureActorInteractionReachable").mockResolvedValue(true);
+ const first=internal.handleActorClicked(actor);
+ await vi.waitFor(()=>expect(fetch).toHaveBeenCalledOnce());
+ const signal=fetch.mock.calls[0][1]!;
+ actor.x=3;
+ pending.resolve({lines:["Old"],hasBranching:false,branchingPrompt:null});await first;
+ expect(open).not.toHaveBeenCalled();expect(signal.aborted).toBe(false);
+ const held=deferred<import("../../services/DialogueService").DialogueResult>();fetch.mockReturnValueOnce(held.promise).mockResolvedValue({lines:[],hasBranching:false,branchingPrompt:null});
+ const old=internal.handleActorClicked(actor);await vi.waitFor(()=>expect(fetch).toHaveBeenCalledTimes(2));
+ const oldSignal=fetch.mock.calls[1][1]!;
+ await internal.handleActorClicked(actor);expect(oldSignal.aborted).toBe(true);
+ held.resolve({lines:["Old"],hasBranching:false,branchingPrompt:null});await old;expect(open).not.toHaveBeenCalled();
+ });
+});

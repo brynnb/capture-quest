@@ -527,7 +527,7 @@ async function showDialogueAction(
 ): Promise<boolean> {
   let lines = action.lines ?? [];
   if (action.textConstant) {
-    const fetched = await fetchDialogue(action.textConstant);
+    const fetched = await fetchDialogue(action.textConstant, activeRunAbort?.signal);
     if (!isActiveRun(runId)) return false;
     if (fetched.length > 0) {
       lines = fetched;

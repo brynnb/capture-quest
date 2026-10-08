@@ -66,6 +66,8 @@ export class TileViewerInteractionController {
   private suppressNextWorldPointerUp = false;
   private instantWarpRequestGeneration = 0;
   private instantWarpActivation: AbortController | null = null;
+  private dialogueDemand: AbortController | null = null;
+  private actorInteractionGeneration = 0;
 
   isInstantWarpPending(): boolean { return this.instantWarpActivation !== null; }
   private instantWarpTargetUnsubscribe: (() => void) | null = null;
@@ -141,6 +143,9 @@ export class TileViewerInteractionController {
   }
 
   cleanup(): void {
+    this.actorInteractionGeneration += 1;
+    this.dialogueDemand?.abort();
+    this.dialogueDemand = null;
     this.instantWarpRequestGeneration += 1;
     this.instantWarpActivation?.abort();
     this.clearInstantWarpLoadError();
@@ -486,11 +491,18 @@ export class TileViewerInteractionController {
 
   private async handleActorClicked(actor: PhaserActor): Promise<void> {
     if (this.deps.isWorldInputFrozen()) return;
-    if (!(await this.ensureActorInteractionReachable(actor))) return;
-    await this.performActorInteraction(actor);
+    this.actorInteractionGeneration += 1;
+    this.dialogueDemand?.abort();
+    const demand=new AbortController();this.dialogueDemand=demand;
+    try {
+      if (!(await this.ensureActorInteractionReachable(actor)) || demand.signal.aborted) return;
+      await this.performActorInteraction(actor,demand.signal);
+    } catch(error) {
+      if(!demand.signal.aborted)console.warn("[TileViewer] Interaction could not complete:",error);
+    } finally {if(this.dialogueDemand===demand)this.dialogueDemand=null;}
   }
 
-  private async performActorInteraction(actor: PhaserActor): Promise<void> {
+  private async performActorInteraction(actor: PhaserActor, signal:AbortSignal): Promise<void> {
     if (this.isBikeShopClerk(actor)) {
       const startedScript = await PhaserNet.tryScriptedEventInteraction(actor.id);
       if (startedScript) return;
@@ -557,7 +569,13 @@ export class TileViewerInteractionController {
       `[TileViewer] Actor clicked: ${actor.name} (${actor.objectType}), text: ${actor.text}`,
     );
 
-    const result = await fetchDialogueWithBranching(actor.text);
+    const source={x:actor.x,y:actor.y,mapId:actor.mapId,text:actor.text};
+    const player=this.deps.playerMovementController().getCurrentPosition();
+    const displayedMap=this.deps.getDisplayedMapId();
+    const result = await fetchDialogueWithBranching(actor.text,signal);
+    const current=this.deps.currentActorById(actor.id);
+    const position=this.deps.playerMovementController().getCurrentPosition();
+    if(signal.aborted || this.deps.isWorldInputFrozen() || this.deps.getDisplayedMapId()!==displayedMap || position.x!==player.x || position.y!==player.y || !current || current.x!==source.x || current.y!==source.y || current.mapId!==source.mapId || current.text!==source.text)return;
     if (result.lines.length === 0) {
       console.warn(`[TileViewer] No dialogue found for ${actor.text}`);
       return;
@@ -723,6 +741,7 @@ export class TileViewerInteractionController {
       return true;
     }
 
+    const generation=this.actorInteractionGeneration;
     movement.requestInteractionPathToMovingTarget(
       () => {
         const latestActor = this.deps.currentActorById(actorId) ?? actor;
@@ -732,9 +751,8 @@ export class TileViewerInteractionController {
         return { x: latestActor.x, y: latestActor.y };
       },
       () => {
-        void this.performActorInteraction(
-          this.deps.currentActorById(actorId) ?? actor,
-        );
+        const current=this.deps.currentActorById(actorId);
+        if(current && generation===this.actorInteractionGeneration)void this.handleActorClicked(current);
       },
     );
     return false;

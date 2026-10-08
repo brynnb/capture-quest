@@ -4,6 +4,7 @@
 packages:
   - path: capturequest/internal/world
     type_mappings:
+      protocol.PhaserDialogueEntry: 'import("./protocol").PhaserDialogueEntry'
       pokebattle.BattleEvent: 'import("./battle_events").BattleEvent'
       scriptedactions.Action: 'import("./scriptedactions").Action'
       int32: number

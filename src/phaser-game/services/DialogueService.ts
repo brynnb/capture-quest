@@ -7,26 +7,12 @@
  */
 
 import { WorldSocket } from "@/net/index";
-import * as OpCodes from "@/net/generated/opcodes";
+import { correlatedRequest } from "./CorrelatedRequest";
+import * as PhaserNet from "./PhaserNetworkService";
+import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
+import useGameScreenStore from "@/stores/GameScreenStore";
 import { resolveDialoguePlaceholders } from "@/utils/dialoguePlaceholders";
 import { normalizeDialogueDisplayText } from "@/utils/dialogueText";
-
-interface DialogueEntry {
-  label: string;
-  sourceFile: string;
-  dialogue: string;
-  isTrainer: number;
-  mapName: string | null;
-}
-
-interface DialogueResponse {
-  success: boolean;
-  error?: string;
-  textConstant: string;
-  dialogueEntries: DialogueEntry[];
-  hasBranching?: boolean;
-  branchingPrompt?: string;
-}
 
 export interface DialogueResult {
   lines: string[];
@@ -38,65 +24,33 @@ export interface DialogueResult {
  * Fetch dialogue text for a TEXT_ constant from the server.
  * Returns parsed lines ready for the dialogue box.
  */
-export async function fetchDialogue(textConstant: string): Promise<string[]> {
-  const result = await fetchDialogueWithBranching(textConstant);
-  return result.lines;
+export async function fetchDialogue(textConstant: string, signal?:AbortSignal): Promise<string[]> {
+ return (await fetchDialogueWithBranching(textConstant,signal)).lines;
 }
 
-/**
- * Fetch dialogue text with branching (YES/NO) metadata.
- * Returns lines + whether a YES/NO choice should be shown after the dialogue.
- */
-export async function fetchDialogueWithBranching(
-  textConstant: string,
-): Promise<DialogueResult> {
-  const empty: DialogueResult = {
-    lines: [],
-    hasBranching: false,
-    branchingPrompt: null,
-  };
-
-  if (!WorldSocket.isConnected) {
-    console.warn("[DialogueService] Not connected");
-    return empty;
-  }
-
-  try {
-    const response = (await WorldSocket.sendJsonRequest(
-      OpCodes.PhaserDialogueRequest,
-      OpCodes.PhaserDialogueResponse,
-      { textConstant },
-      5000,
-    )) as DialogueResponse;
-
-    if (!response.success || !response.dialogueEntries?.length) {
-      console.warn(
-        `[DialogueService] No dialogue found for ${textConstant}`,
-        response.error,
-      );
-      return empty;
-    }
-
-    // Combine all dialogue entries (usually just one for signs/NPCs)
-    const rawText = response.dialogueEntries
-      .map((e) => e.dialogue)
-      .filter(Boolean)
-      .join("\n\n");
-
-    return {
-      lines: parseDialogueText(rawText),
-      hasBranching: response.hasBranching ?? false,
-      branchingPrompt: response.branchingPrompt
-        ? parseDialogueText(response.branchingPrompt)[0] ?? null
-        : null,
-    };
-  } catch (error) {
-    console.error(
-      `[DialogueService] Error fetching dialogue for ${textConstant}:`,
-      error,
-    );
-    return empty;
-  }
+// Each demand owns its subscription, cancellation and captured session identity.
+// Failures reject so a cutscene cannot substitute inline text for a failed read.
+export async function fetchDialogueWithBranching(textConstant:string,signal?:AbortSignal):Promise<DialogueResult> {
+ const characterId=usePlayerCharacterStore.getState().characterProfile.id;
+ if(!characterId)throw new Error("Dialogue requires an active character");
+ const screen=useGameScreenStore.getState().currentScreen;
+ if(screen!=="game")throw new Error("Dialogue requires an active game screen");
+ const generation=WorldSocket.sessionGeneration;
+ const controller=new AbortController();
+ const abort=()=>controller.abort();
+ signal?.addEventListener("abort",abort,{once:true});
+ if(signal?.aborted)abort();
+ const stops=[WorldSocket.subscribeSessionRetirement(abort),
+ usePlayerCharacterStore.subscribe(state=>{if(state.characterProfile.id!==characterId)abort();}),
+ useGameScreenStore.subscribe(state=>{if(state.currentScreen!==screen)abort();})];
+ try {
+ const response=await correlatedRequest<import("@/net/generated/protocol").PhaserDialogueResponse>(PhaserNet.onDialogueRead, requestId=>PhaserNet.requestDialogueRead(requestId,textConstant), controller.signal,5000);
+ if(controller.signal.aborted || generation!==WorldSocket.sessionGeneration)throw new DOMException("Request cancelled","AbortError");
+ if(response.characterId!==characterId || response.textConstant!==textConstant)throw new Error("Dialogue response identity mismatch");
+ if(!Array.isArray(response.dialogueEntries) || !response.dialogueEntries.every(entry=>entry && typeof entry.dialogue==="string" && typeof entry.label==="string" && typeof entry.sourceFile==="string" && Number.isSafeInteger(entry.isTrainer) && (entry.mapName===null || typeof entry.mapName==="string")) || typeof response.hasBranching!=="boolean" || (response.branchingPrompt!==null && typeof response.branchingPrompt!=="string") || (response.hasBranching && !response.branchingPrompt))throw new Error("Invalid dialogue response");
+ const raw=response.dialogueEntries.map(entry=>entry.dialogue).filter(Boolean).join("\n\n");
+ return {lines:parseDialogueText(raw),hasBranching:response.hasBranching,branchingPrompt:response.branchingPrompt ? parseDialogueText(response.branchingPrompt)[0]??null : null};
+ } finally {signal?.removeEventListener("abort",abort);stops.forEach(stop=>stop());}
 }
 
 /**
