@@ -28,6 +28,44 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Client tile update/view ordering (2026-10-08)
+
+The scene's world-tile handler applied every incoming map to its current renderer
+and let an older texture promise add a tile after a newer erase/paint. It now records
+cache invalidation first, then requires the current map/load-generation view before
+presentation. Per-coordinate active texture tokens suppress older completions;
+completed tokens are removed and scene shutdown clears them. Other-map updates can
+invalidate metadata without painting the current map. Unified-map identity uses
+the loaded map's explicit overworld property, not a newly invented ID range.
+
+`MapDataService` invalidates its bounded interior snapshots on committed updates
+and fences an in-flight tile read by a local update revision. An overtaken read
+retries once through shared correlation; continuing churn rejects rather than
+publishing older tiles. Interior arrival reads refresh tiles instead of reusing a
+cached character projection. Existing chunk revision/generation guards and streamed
+collision/lookup application remain. No mutation is retried, and no additional
+networking or inventory coordinator was introduced.
+
+31 focused checks passed across read lifetime, loader lifecycle and chunk stream,
+including snapshot invalidation/overtaken-read retry and map/load-generation leases.
+Typecheck passed. Three browser cases passed in 21.8 seconds in
+`/var/tmp/capturequest-rendered.joBaP7`: guest entry/reentry, movement recovery and
+an instrumented live-renderer ordering check. The latter captures a real source tile,
+holds its texture promise, sends a newer erase and verifies its renderer registry
+stays removed; it also verifies another-map updates leave the current registry
+unchanged. This proves the browser mutation boundary, not a pixel/screenshot claim.
+Production build and canonical asset validation passed (Vite 3.32 seconds); logs
+are retained at `/var/tmp/capturequest-tile-order-build.log`. Diff checks passed. No backend, schema or generated asset
+contract changed.
+
+Remaining: initial map-render/image-preparation versus updates, read/cache/stream
+revision scope and batching under sustained changes, missed notifications/reconnect,
+other legacy event/collision owners and dynamic previous-map recovery. The original
+restore timeout remains unattributed and all five roadmap areas remain active.
+Next: review the larger initial-render publication window before closing world-
+presentation coverage. This checkpoint is local only, without push, deployment
+or production mutation.
+
 ## Event-tile publication uses the same authoritative priority (2026-10-08)
 
 Publication tracing found `currentEventTileState` returning the first eligible

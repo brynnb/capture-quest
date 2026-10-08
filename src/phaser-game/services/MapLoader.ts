@@ -190,7 +190,7 @@ export class MapLoader {
       this.uiManager.setLoadingText("Loading tiles...");
 
       // Fetch tiles
-      const tiles = cached?.tiles ?? await this.mapDataService.fetchTiles(mapId, mapRequestAbort.signal);
+      const tiles = await this.mapDataService.fetchTiles(mapId, mapRequestAbort.signal);
       if (!this.isLoadCurrent(loadGeneration)) return;
 
       this.uiManager.setLoadingText("Loading tile images...");
@@ -730,6 +730,19 @@ export class MapLoader {
 
   invalidateOverworldTileAt(x: number, y: number): void {
     this.overworldChunkStream?.invalidateAt(x, y);
+  }
+
+  recordCommittedTileUpdates(mapId:number,updates:readonly CommittedOverworldTileUpdate[]):void {
+    this.mapDataService.recordCommittedTileUpdate();
+    if(mapId===UNIFIED_OVERWORLD_MAP_ID)this.applyCommittedOverworldTileUpdates(updates);
+  }
+
+  captureTilePresentationView(mapId:number):()=>boolean {
+    const generation=this.mapLoadGeneration;
+    return ()=>{
+      const map=this.getState().mapInfo;
+      return this.isLoadCurrent(generation) && !!map && (map.id===mapId || mapId===UNIFIED_OVERWORLD_MAP_ID && map.isOverworld===1);
+    };
   }
 
   applyCommittedOverworldTileUpdates(

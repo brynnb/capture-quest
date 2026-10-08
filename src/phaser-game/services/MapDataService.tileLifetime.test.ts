@@ -27,3 +27,12 @@ test("overworld keeps its 30-second timeout through the shared settlement primit
  await vi.advanceTimersByTimeAsync(29999);expect(net.listeners.size).toBe(1);
  await vi.advanceTimersByTimeAsync(1);await timed;expect(net.listeners.size).toBe(0);
 });
+
+test("committed update invalidates map snapshots and retries a read overtaken by the stream",async()=>{
+ const service=new MapDataService();service.setSnapshot(33,{tiles:[]} as never);
+ const run=service.fetchTiles(33);await Promise.resolve();await Promise.resolve();const first=net.send.mock.calls[0][0];
+ service.recordCommittedTileUpdate();expect(service.getSnapshot(33)).toBeUndefined();
+ receive(reply(first.requestId,33));await Promise.resolve();await Promise.resolve();
+ expect(net.send).toHaveBeenCalledTimes(2);const second=net.send.mock.calls[1][0];
+ expect(second.requestId).not.toBe(first.requestId);receive(reply(second.requestId,33));await run;expect(net.listeners.size).toBe(0);
+});

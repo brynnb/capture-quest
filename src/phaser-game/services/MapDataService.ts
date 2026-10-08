@@ -75,12 +75,20 @@ function normalizeCorrelatedTiles(data: PhaserTilesResponse): PhaserTile[] {
 export class MapDataService {
   private static readonly MAX_CACHED_OVERWORLD_CHUNKS = 18;
   // Cache of known tile image IDs from tiles
+  private tileReadRevision = 0;
   private knownTileImageIds: Set<number> = new Set();
   private snapshots = new MapSnapshotCache<MapDataSnapshot>(
     3,
     new Set([UNIFIED_OVERWORLD_MAP_ID]),
   );
   private overworldTileChunks = new Map<string, CachedTileChunk>();
+
+  recordCommittedTileUpdate(): void {
+    this.tileReadRevision++;
+    // At most three snapshots are retained. None may carry older character
+    // tile projection through a streamed change or a later map return.
+    this.snapshots.clear();
+  }
 
   getSnapshot(mapId: number): MapDataSnapshot | undefined {
     return this.snapshots.get(mapId);
@@ -213,12 +221,17 @@ export class MapDataService {
   private async requestTileBatch(mapId:number,options:Omit<PhaserTilesRequest,"mapId"|"requestId">,signal?:AbortSignal):Promise<TilePage>{
     await this.ensureRuntimeTileCatalogCurrent();
     const characterId=usePlayerCharacterStore.getState().characterProfile.id;
-    const response=await correlatedRequest<PhaserTilesResponse>(PhaserNet.onTiles,requestId=>PhaserNet.requestTiles({mapId,requestId,...options}),signal,mapId===UNIFIED_OVERWORLD_MAP_ID?OVERWORLD_TILE_REQUEST_TIMEOUT_MS:REQUEST_TIMEOUT_MS);
+    for(let attempt=0;attempt<2;attempt++){
+      const revision=this.tileReadRevision;
+      const response=await correlatedRequest<PhaserTilesResponse>(PhaserNet.onTiles,requestId=>PhaserNet.requestTiles({mapId,requestId,...options}),signal,mapId===UNIFIED_OVERWORLD_MAP_ID?OVERWORLD_TILE_REQUEST_TIMEOUT_MS:REQUEST_TIMEOUT_MS);
     if(signal?.aborted || usePlayerCharacterStore.getState().characterProfile.id!==characterId) throw new DOMException("Tile view retired","AbortError");
     if(response.mapId!==mapId || response.characterId!==characterId || !Number.isSafeInteger(response.nextAfterId) || response.nextAfterId<0 || typeof response.hasMore!=="boolean") throw new Error("Invalid owned tile response");
+    if(revision!==this.tileReadRevision)continue;
     const tiles=normalizeCorrelatedTiles(response);
     for(const tile of tiles)this.knownTileImageIds.add(tile.tileImageId);
     return {tiles,nextAfterId:response.nextAfterId,hasMore:response.hasMore};
+    }
+    throw new Error("Tiles changed during read; another owned read is required");
   }
 
   /**

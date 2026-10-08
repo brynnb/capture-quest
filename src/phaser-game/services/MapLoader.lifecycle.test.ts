@@ -291,3 +291,13 @@ it("retired map loads cannot project a late current position", async () => {
   expect(raw.playerMovementController.projectOwnedPosition).not.toHaveBeenCalled();
   expect(recovery.applyGameplaySnapshot).not.toHaveBeenCalled();
 });
+
+it("tile presentation lease rejects another map and retires with load generation",()=>{
+ const loader=Object.create(MapLoader.prototype) as MapLoader;
+ const raw=loader as unknown as {mapLoadGeneration:number;getState:()=>unknown};raw.mapLoadGeneration=3;
+ raw.getState=()=>({mapInfo:{id:50,isOverworld:0}});
+ const current=loader.captureTilePresentationView(50);expect(current()).toBe(true);
+ expect(loader.captureTilePresentationView(51)()).toBe(false);
+ raw.mapLoadGeneration++;expect(current()).toBe(false);
+ raw.getState=()=>({mapInfo:{id:0,isOverworld:1}});expect(loader.captureTilePresentationView(9999)()).toBe(true);
+});

@@ -8,7 +8,6 @@ import {
   FOLLOW_ZOOM,
   OVERWORLD_MODE,
   TILE_SIZE,
-  UNIFIED_OVERWORLD_MAP_ID,
 } from "../constants";
 import { CameraController } from "../controllers/CameraController";
 import { PlayerMovementController } from "../controllers/PlayerMovementController";
@@ -963,6 +962,7 @@ export class TileViewer extends Scene {
 
   // --- Tile Editor ---
 
+  private tileTextureUpdateTokens = new Map<string,symbol>();
   private worldTileUpdateHandler: ((e: Event) => void) | null = null;
   private tileEditorMutationRejectedHandler: ((e: Event) => void) | null = null;
   private tileEditorMutationAcceptedHandler: ((e: Event) => void) | null = null;
@@ -1117,17 +1117,24 @@ export class TileViewer extends Scene {
         mapId: number;
       };
       if (!payload || !Array.isArray(payload.tiles)) return;
-      if (payload.mapId === UNIFIED_OVERWORLD_MAP_ID) {
-        this.mapLoader.applyCommittedOverworldTileUpdates(payload.tiles);
-      }
+      this.mapLoader.recordCommittedTileUpdates(payload.mapId,payload.tiles);
+      const viewCurrent=this.mapLoader.captureTilePresentationView(payload.mapId);
+      if(!viewCurrent())return;
       for (const tile of payload.tiles) {
+        const key=`${tile.x},${tile.y}`;
+        this.tileTextureUpdateTokens.delete(key);
         if (tile.erased || tile.tileImageId === 0) {
           this.mapRenderer.removeTile(tile.x, tile.y);
           this.tileLookup.delete(`${tile.x},${tile.y}`);
           this.playerMovementController.updateCollisionTile(tile.x, tile.y, 0, true);
         } else {
+          const token=Symbol();this.tileTextureUpdateTokens.set(key,token);
           this.mapRenderer.loadTileTextureIfNeeded(tile.tileImageId).then(() => {
-            this.mapRenderer.addTile(tile.x, tile.y, tile.tileImageId);
+            if(viewCurrent() && this.tileTextureUpdateTokens.get(key)===token)this.mapRenderer.addTile(tile.x,tile.y,tile.tileImageId);
+          }).catch(error=>{
+            if(viewCurrent() && this.tileTextureUpdateTokens.get(key)===token)console.error("[WorldTiles] Texture update failed:",error);
+          }).finally(()=>{
+            if(this.tileTextureUpdateTokens.get(key)===token)this.tileTextureUpdateTokens.delete(key);
           });
           this.updateTileEditorLookup(
             tile.x,
@@ -1348,6 +1355,7 @@ export class TileViewer extends Scene {
     if (this.worldTileUpdateHandler) {
       window.removeEventListener("worldTileUpdate", this.worldTileUpdateHandler);
       this.worldTileUpdateHandler = null;
+      this.tileTextureUpdateTokens.clear();
     }
     if (this.tileEditorMutationRejectedHandler) {
       window.removeEventListener("tileEditorMutationRejected", this.tileEditorMutationRejectedHandler);
