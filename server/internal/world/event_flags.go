@@ -128,15 +128,15 @@ func (m *EventFlagManager) CheckFlag(charID int64, flagName string) bool {
 }
 
 // SetFlag persists a flag before refreshing its cached view.
-func (m *EventFlagManager) SetFlag(charID int64, flag string) error {
-	return m.writeFlags(charID, func(tx db.DBTX) error { return writeEventFlag(tx, charID, flag, true) })
+func (m *EventFlagManager) SetFlag(ctx context.Context, charID int64, flag string) error {
+	return m.writeFlags(ctx, charID, func(tx db.DBTX) error { return writeEventFlag(tx, charID, flag, true) })
 }
-func (m *EventFlagManager) ResetFlag(charID int64, flag string) error {
-	return m.writeFlags(charID, func(tx db.DBTX) error { return writeEventFlag(tx, charID, flag, false) })
+func (m *EventFlagManager) ResetFlag(ctx context.Context, charID int64, flag string) error {
+	return m.writeFlags(ctx, charID, func(tx db.DBTX) error { return writeEventFlag(tx, charID, flag, false) })
 }
-func (m *EventFlagManager) ToggleFlag(charID int64, flag string) (bool, error) {
+func (m *EventFlagManager) ToggleFlag(ctx context.Context, charID int64, flag string) (bool, error) {
 	var on bool
-	err := m.writeFlags(charID, func(tx db.DBTX) error {
+	err := m.writeFlags(ctx, charID, func(tx db.DBTX) error {
 		previous, err := queryEventFlag(tx, charID, flag)
 		if err != nil {
 			return err
@@ -146,8 +146,8 @@ func (m *EventFlagManager) ToggleFlag(charID int64, flag string) (bool, error) {
 	})
 	return on, err
 }
-func (m *EventFlagManager) writeFlags(charID int64, apply func(db.DBTX) error) error {
-	err := db.Transaction(context.Background(), m.db, func(tx db.DBTX) error {
+func (m *EventFlagManager) writeFlags(ctx context.Context, charID int64, apply func(db.DBTX) error) error {
+	err := db.Transaction(ctx, m.db, func(tx db.DBTX) error {
 		if err := db.LockCharacter(tx, charID); err != nil {
 			return err
 		}
@@ -156,7 +156,7 @@ func (m *EventFlagManager) writeFlags(charID int64, apply func(db.DBTX) error) e
 	if err != nil {
 		return err
 	}
-	return m.LoadFlags(charID)
+	return m.LoadFlagsContext(ctx, charID)
 }
 
 func queryEventFlag(database db.DBTX, charID int64, flag string) (bool, error) {
@@ -196,8 +196,8 @@ func (m *EventFlagManager) GetAllFlags(charID int64) []string {
 }
 
 // SetFlagBatch sets multiple flags at once (e.g., after defeating a trainer).
-func (m *EventFlagManager) SetFlagBatch(charID int64, flags []string) error {
-	return m.writeFlags(charID, func(tx db.DBTX) error {
+func (m *EventFlagManager) SetFlagBatch(ctx context.Context, charID int64, flags []string) error {
+	return m.writeFlags(ctx, charID, func(tx db.DBTX) error {
 		for _, flag := range flags {
 			if err := writeEventFlag(tx, charID, flag, true); err != nil {
 				return err

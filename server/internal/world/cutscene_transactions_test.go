@@ -122,7 +122,7 @@ func TestBattleScriptFailureRollsBackVictory(t *testing.T) {
 func TestEventFlagFailureDoesNotPoisonCacheAndBatchIsAtomic(t *testing.T) {
 	database, wh, _, _ := battleTestWorld(t)
 	testdb.Exec(t, database, `ALTER TABLE character_event_flags ADD CONSTRAINT reject_bad CHECK(flag_name<>'BAD')`)
-	if err := wh.EventFlags.SetFlagBatch(42, []string{"GOOD", "BAD"}); err == nil {
+	if err := wh.EventFlags.SetFlagBatch(context.Background(), 42, []string{"GOOD", "BAD"}); err == nil {
 		t.Fatal("accepted failed batch")
 	}
 	if wh.EventFlags.CheckFlag(42, "GOOD") || wh.EventFlags.CheckFlag(42, "BAD") {
@@ -133,7 +133,7 @@ func TestEventFlagFailureDoesNotPoisonCacheAndBatchIsAtomic(t *testing.T) {
 		t.Fatalf("partial flags=%d %v", count, err)
 	}
 	testdb.Exec(t, database, `ALTER TABLE character_event_flags DROP CONSTRAINT reject_bad`)
-	if err := wh.EventFlags.SetFlag(42, "BAD"); err != nil {
+	if err := wh.EventFlags.SetFlag(context.Background(), 42, "BAD"); err != nil {
 		t.Fatal(err)
 	}
 	var wg sync.WaitGroup
@@ -141,7 +141,7 @@ func TestEventFlagFailureDoesNotPoisonCacheAndBatchIsAtomic(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, err := wh.EventFlags.ToggleFlag(42, "BAD"); err != nil {
+			if _, err := wh.EventFlags.ToggleFlag(context.Background(), 42, "BAD"); err != nil {
 				t.Error(err)
 			}
 		}()

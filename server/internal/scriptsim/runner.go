@@ -400,7 +400,7 @@ func runSeafoamBoulderHole(scenario *Scenario, applied *AppliedFixture, initial 
 	if scenario.Trigger.HoleIndex <= 0 {
 		return nil, fmt.Errorf("seafoam_boulder_hole trigger requires holeIndex")
 	}
-	outcome, err := world.HandleSeafoamBoulderHole(applied.CharacterID, scenario.Trigger.MapName, scenario.Trigger.HoleIndex, efm)
+	outcome, err := world.HandleSeafoamBoulderHole(context.Background(), applied.CharacterID, scenario.Trigger.MapName, scenario.Trigger.HoleIndex, efm)
 	if err != nil {
 		return nil, err
 	}

@@ -1,6 +1,9 @@
 package world
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 const seafoamBoulderScriptLabel = "SeafoamBoulderHole"
 
@@ -44,7 +47,7 @@ func SeafoamBoulderHoleAt(mapName string, x, y int) (SeafoamBoulderHole, bool) {
 	return SeafoamBoulderHole{}, false
 }
 
-func HandleSeafoamBoulderHole(charID int64, mapName string, holeIndex int, efm *EventFlagManager) (SeafoamBoulderOutcome, error) {
+func HandleSeafoamBoulderHole(ctx context.Context, charID int64, mapName string, holeIndex int, efm *EventFlagManager) (SeafoamBoulderOutcome, error) {
 	hole, ok := SeafoamBoulderHoleForTrigger(mapName, holeIndex)
 	if !ok {
 		return SeafoamBoulderOutcome{}, fmt.Errorf("unknown Seafoam boulder hole %s #%d", mapName, holeIndex)
@@ -61,7 +64,7 @@ func HandleSeafoamBoulderHole(charID int64, mapName string, holeIndex int, efm *
 		outcome.AlreadySet = true
 		return outcome, nil
 	}
-	if err := efm.SetFlag(charID, hole.Flag); err != nil {
+	if err := efm.SetFlag(ctx, charID, hole.Flag); err != nil {
 		return SeafoamBoulderOutcome{}, err
 	}
 	outcome.Changed = true

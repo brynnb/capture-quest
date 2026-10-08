@@ -264,7 +264,7 @@ func HandleDebugSceneJumpRequest(ses *session.Session, payload []byte, wh *World
 	charID := int64(ses.Client.CharData().ID)
 	if req.ResetAll {
 		log.Printf("[DebugScene] Resetting player %d to fresh-world baseline", charID)
-		mapID, x, y, err := resetDebugCharacterToFreshStart(charID, wh)
+		mapID, x, y, err := resetDebugCharacterToFreshStart(ses.CommandContext(), charID, wh)
 		if err != nil {
 			log.Printf("[DebugScene] Failed to reset player %d: %v", charID, err)
 			ses.SendStreamJSON(map[string]interface{}{
@@ -301,7 +301,7 @@ func HandleDebugSceneJumpRequest(ses *session.Session, payload []byte, wh *World
 	}
 
 	log.Printf("[DebugScene] Applying scenario %s to player %d", scenario.Scenario.Name, charID)
-	mapID, x, y, err := applyDebugScenarioFixture(charID, scenario.Scenario.Fixture, wh)
+	mapID, x, y, err := applyDebugScenarioFixture(ses.CommandContext(), charID, scenario.Scenario.Fixture, wh)
 	if err != nil {
 		log.Printf("[DebugScene] Failed to apply %s: %v", scenario.Scenario.Name, err)
 		ses.SendStreamJSON(map[string]interface{}{
@@ -1045,7 +1045,7 @@ func debugSceneCategory(s debugScenario, scriptLabel string) string {
 	return ""
 }
 
-func applyDebugScenarioFixture(charID int64, f debugFixture, wh *WorldHandler) (int, int, int, error) {
+func applyDebugScenarioFixture(ctx context.Context, charID int64, f debugFixture, wh *WorldHandler) (int, int, int, error) {
 	if f.MapName == "" {
 		return 0, 0, 0, fmt.Errorf("fixture mapName is required")
 	}
@@ -1053,7 +1053,7 @@ func applyDebugScenarioFixture(charID int64, f debugFixture, wh *WorldHandler) (
 	if err != nil {
 		return 0, 0, 0, err
 	}
-	if err := resetDebugCharacterState(charID, wh); err != nil {
+	if err := resetDebugCharacterState(ctx, charID, wh); err != nil {
 		return 0, 0, 0, err
 	}
 	if _, err := db.GlobalWorldDB.DB.Exec(
@@ -1061,7 +1061,7 @@ func applyDebugScenarioFixture(charID int64, f debugFixture, wh *WorldHandler) (
 		mapID, x, y, charID); err != nil {
 		return 0, 0, 0, fmt.Errorf("set debug fixture position: %w", err)
 	}
-	if err := seedDebugFlags(charID, f.Flags, wh); err != nil {
+	if err := seedDebugFlags(ctx, charID, f.Flags, wh); err != nil {
 		return 0, 0, 0, err
 	}
 	for _, pokemon := range f.Party {
@@ -1306,8 +1306,8 @@ func sendDebugActiveBattle(ses *session.Session, wh *WorldHandler, charID int64,
 	return nil
 }
 
-func resetDebugCharacterToFreshStart(charID int64, wh *WorldHandler) (int, int, int, error) {
-	if err := resetDebugCharacterState(charID, wh); err != nil {
+func resetDebugCharacterToFreshStart(ctx context.Context, charID int64, wh *WorldHandler) (int, int, int, error) {
+	if err := resetDebugCharacterState(ctx, charID, wh); err != nil {
 		return 0, 0, 0, err
 	}
 
@@ -1354,7 +1354,7 @@ func resetDebugCharacterToFreshStart(charID int64, wh *WorldHandler) (int, int, 
 	return storedMapID, x, y, nil
 }
 
-func resetDebugCharacterState(charID int64, wh *WorldHandler) error {
+func resetDebugCharacterState(ctx context.Context, charID int64, wh *WorldHandler) error {
 	ClearBattleForCharacter(charID)
 	if wh != nil && wh.Safari != nil {
 		if err := wh.Safari.EndSession(context.Background(), charID); err != nil {
@@ -1363,7 +1363,7 @@ func resetDebugCharacterState(charID int64, wh *WorldHandler) error {
 	}
 	if wh != nil && wh.EventFlags != nil {
 		for _, flag := range wh.EventFlags.GetAllFlags(charID) {
-			if err := wh.EventFlags.ResetFlag(charID, flag); err != nil {
+			if err := wh.EventFlags.ResetFlag(ctx, charID, flag); err != nil {
 				return fmt.Errorf("reset debug flag %s: %w", flag, err)
 			}
 		}
@@ -1398,12 +1398,12 @@ func resetDebugCharacterState(charID int64, wh *WorldHandler) error {
 	return nil
 }
 
-func seedDebugFlags(charID int64, flags []string, wh *WorldHandler) error {
+func seedDebugFlags(ctx context.Context, charID int64, flags []string, wh *WorldHandler) error {
 	if len(flags) == 0 {
 		return nil
 	}
 	if wh != nil && wh.EventFlags != nil {
-		return wh.EventFlags.SetFlagBatch(charID, flags)
+		return wh.EventFlags.SetFlagBatch(ctx, charID, flags)
 	}
 	for _, flag := range flags {
 		if _, err := db.GlobalWorldDB.DB.Exec(

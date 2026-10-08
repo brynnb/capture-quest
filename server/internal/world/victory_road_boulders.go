@@ -1,10 +1,6 @@
 package world
 
-import (
-	"fmt"
-
-	"capturequest/internal/db"
-)
+import "capturequest/internal/db"
 
 type VictoryRoadBoulderTarget struct {
 	MapName               string
@@ -17,12 +13,6 @@ type VictoryRoadBoulderTarget struct {
 	DestinationObjectName string
 }
 
-type VictoryRoadBoulderOutcome struct {
-	Target     VictoryRoadBoulderTarget
-	AlreadySet bool
-	Changed    bool
-}
-
 func VictoryRoadBoulderTargetAt(mapName string, x, y int) (VictoryRoadBoulderTarget, bool) {
 	for _, target := range victoryRoadBoulderTargetsForLookup() {
 		if target.MapName == mapName && target.X == x && target.Y == y {
@@ -30,26 +20,6 @@ func VictoryRoadBoulderTargetAt(mapName string, x, y int) (VictoryRoadBoulderTar
 		}
 	}
 	return VictoryRoadBoulderTarget{}, false
-}
-
-func HandleVictoryRoadBoulderTarget(charID int64, target VictoryRoadBoulderTarget, efm *EventFlagManager) (VictoryRoadBoulderOutcome, error) {
-	if target.Flag == "" {
-		return VictoryRoadBoulderOutcome{}, fmt.Errorf("Victory Road boulder target missing flag at %s (%d,%d)", target.MapName, target.X, target.Y)
-	}
-	if efm == nil {
-		return VictoryRoadBoulderOutcome{}, fmt.Errorf("event flags unavailable")
-	}
-
-	outcome := VictoryRoadBoulderOutcome{Target: target}
-	if efm.CheckFlag(charID, target.Flag) {
-		outcome.AlreadySet = true
-		return outcome, nil
-	}
-	if err := efm.SetFlag(charID, target.Flag); err != nil {
-		return VictoryRoadBoulderOutcome{}, err
-	}
-	outcome.Changed = true
-	return outcome, nil
 }
 
 func victoryRoadBoulderTargetsForLookup() []VictoryRoadBoulderTarget {

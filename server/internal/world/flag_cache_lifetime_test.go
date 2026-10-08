@@ -128,3 +128,39 @@ func TestCommittedFlagRefreshUsesOwnerDeadline(t *testing.T) {
 		})
 	}
 }
+
+func TestFlagWriterCancellationWhileCharacterLockedDoesNotCommit(t *testing.T) {
+	database := testdb.Postgres(t)
+	testdb.Exec(t, database, `INSERT INTO character_data(id,name) VALUES(42,'flags')`)
+	lock, err := database.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Rollback()
+	if _, err := lock.Exec(`UPDATE character_data SET id=id WHERE id=42`); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewEventFlagManager(database)
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	finished := make(chan error, 1)
+	go func() { finished <- manager.SetFlagBatch(ctx, 42, []string{"ONE", "TWO"}) }()
+	select {
+	case err := <-finished:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("blocked writer escaped cancellation: %v", err)
+		}
+	case <-time.After(300 * time.Millisecond):
+		lock.Rollback()
+		<-finished
+		t.Fatal("flag mutation outlived caller deadline")
+	}
+	lock.Rollback()
+	var count int
+	if err := database.QueryRow(`SELECT count(*) FROM character_event_flags WHERE character_id=42`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("cancelled mutation persisted %d flags: %v", count, err)
+	}
+	if len(manager.GetAllFlags(42)) != 0 {
+		t.Fatal("cancelled mutation published cache")
+	}
+}

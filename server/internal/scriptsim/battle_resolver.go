@@ -30,7 +30,7 @@ func ResolveActiveBattle(charID int64, resolve ResolveBattle, efm *world.EventFl
 		postMapName = active.PostLoseMapName
 	}
 	if flag != "" {
-		if err := efm.SetFlag(charID, flag); err != nil {
+		if err := efm.SetFlag(context.Background(), charID, flag); err != nil {
 			return nil, err
 		}
 	}

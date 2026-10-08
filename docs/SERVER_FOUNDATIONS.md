@@ -28,6 +28,41 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Explicit flag-writer contexts and obsolete boulder path (2026-10-08)
+
+The writer inventory found `SetFlag`, `ResetFlag`, `ToggleFlag` and `SetFlagBatch`
+creating a background transaction and then a second background cache read. They
+now require the caller's context and use it for both the existing character-locked
+transaction and its refresh. Debug scene setup/reset passes the session command
+context through its helper chain. The remaining simulator battle and Seafoam
+fixture calls explicitly choose a background fixture context; they are not live
+command ownership or crash-recovery evidence. Broader simulator fixture atomicity
+and debug helpers' other global/background writes remain unaudited.
+
+`HandleVictoryRoadBoulderTarget` and its result type had no callers anywhere in the
+Go tree. That stale path decided a durable transition from cached flags and wrote
+only a flag, separate from object/movement state. It is removed. Live Victory Road
+pushes already use `pushBoulder` and its character transaction; target data and
+lookup APIs remain. The Seafoam flag-only helper still has a simulator caller and
+is explicitly retained for that fixture until its simulator migration.
+
+A PostgreSQL regression holds the actual character row lock while calling the
+batch writer with a 50ms deadline. Cancellation returns before lock release, and
+neither database flags nor cache state change. Existing batch rollback and
+concurrent-toggle checks remain. Focused world and simulator race tests passed
+in 1.861 and 1.068 seconds. Full world and simulator race suites passed in
+50.636 and 1.067 seconds; logs are retained at
+`/var/tmp/capturequest-flag-writers-full.log`. Diff checks passed. No wire,
+schema, frontend or generated-data contract changed, and no new rendered or
+production acceptance is claimed.
+
+Remaining: post-commit refresh failure semantics and cache publication ordering,
+simulator fixture migration, debug mutation atomicity/global dependencies and the
+other open rows in `SERVER_COMMAND_AUDIT.md`. The original restore timeout remains
+unattributed. Next: review whether cache refresh failure can make a committed flag
+write appear rejected, then move to preference reply/current-read recovery. This
+is a local checkpoint; no push or deployment is part of this continuation.
+
 ## Owned post-commit flag refresh (2026-10-08)
 
 The remaining live refresh inventory found battle, cutscene, Safari, escape/home
