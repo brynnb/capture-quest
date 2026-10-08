@@ -1,5 +1,5 @@
 import type { PlayerStepResponse, PlayerStepError } from "@/net/generated/protocol";
-import { requestPlayerFacing, requestPlayerStep, completePlayerStep, readOwnedPlayerPosition } from "../services/PlayerMovementService";
+import { requestBicycleState, requestPlayerFacing, requestPlayerStep, completePlayerStep, readOwnedPlayerPosition } from "../services/PlayerMovementService";
 import { CorrelatedResponseError } from "../services/CorrelatedRequest";
 import { Scene } from "phaser";
 import { PhaserActor, PhaserTile, PhaserWarp } from "@/net/generated/world_api";
@@ -10,6 +10,7 @@ import usePokemonDialogueStore from "@/stores/PokemonDialogueStore";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import useAudioActivityStore from "@/stores/AudioActivityStore";
+import useChatStore, { MessageType } from "@/stores/ChatStore";
 import useGameStatusStore from "@/stores/GameStatusStore";
 import { emitCaptureQuestTestEvent } from "@/testing/capturequestTestBridge";
 import type { MapRenderer } from "../renderers/MapRenderer";
@@ -117,6 +118,63 @@ export class PlayerMovementController {
   private facingRequestKey: string | null = null;
   private stepAbort: AbortController | null = null;
   private issuedStep: PlayerStepResponse | null = null;
+  private bicycleAbort: AbortController | null = null;
+  private bicycleRetired = false;
+
+  retireBicycleCommands(): void {
+    this.bicycleRetired = true;
+    this.bicycleAbort?.abort();
+  }
+
+  async changeBicyclePreference(instanceId: number): Promise<void> {
+    if (this.bicycleAbort || this.bicycleRetired) return;
+    const characterId = usePlayerCharacterStore.getState().characterProfile.id;
+    if (!characterId) return;
+    const abort = new AbortController();
+    this.bicycleAbort = abort;
+    const stopProfile = usePlayerCharacterStore.subscribe((state) => {
+      if (state.characterProfile.id !== characterId) abort.abort();
+    });
+    const current = () => !abort.signal.aborted && !this.bicycleRetired
+      && usePlayerCharacterStore.getState().characterProfile.id === characterId;
+    const apply = (reply: import("@/net/generated/world_api").BicycleStateResponse) => {
+      if (reply.characterId !== characterId || !Number.isSafeInteger(reply.bicycle?.revision)
+        || reply.bicycle.revision < 0 || typeof reply.bicycle.wantsRiding !== "boolean"
+        || typeof reply.bicycle.activeRiding !== "boolean"
+        || typeof reply.bicycle.forcedRiding !== "boolean") {
+        throw new Error("Invalid Bicycle state");
+      }
+      useAudioActivityStore.getState().setBicycleState(reply.bicycle);
+    };
+    try {
+      const before = await requestBicycleState(characterId, abort.signal);
+      if (!current()) return;
+      apply(before);
+      const result = await requestBicycleState(characterId, abort.signal, {
+        instanceId, wantsRiding: !before.bicycle.wantsRiding, revision: before.bicycle.revision,
+      });
+      if (current()) {
+        apply(result);
+        const bike = result.bicycle;
+        const message = bike.forcedRiding ? "You can't get off here."
+          : bike.wantsRiding ? (bike.activeRiding ? "You got on the Bicycle!"
+            : "You'll get on the Bicycle when you go outside.") : "You got off the Bicycle.";
+        useChatStore.getState().addMessage(message, MessageType.SYSTEM);
+      }
+    } catch {
+      if (!current()) return;
+      // An uncertain setter is reconciled by reading; never toggle or retry it.
+      try {
+        const owned = await requestBicycleState(characterId, abort.signal);
+        if (current()) apply(owned);
+      } catch {
+        if (current()) console.warn("[Movement] Bicycle state unavailable; reconnect before trying again.");
+      }
+    } finally {
+      stopProfile();
+      if (this.bicycleAbort === abort) this.bicycleAbort = null;
+    }
+  }
   private movementGeneration = 0;
   private isMoving: boolean = false;
   private activeMoveDestination: {

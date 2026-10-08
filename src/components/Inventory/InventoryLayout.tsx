@@ -236,6 +236,10 @@ const InventorySidebar: React.FC = () => {
       setSelectedItemPointer(null);
       return;
     }
+    if (item.item.shortName === "BICYCLE") {
+      window.dispatchEvent(new CustomEvent("cq:bicycleUse",{detail:{instanceId:item.instance.id}}));
+      setSelectedCQItem(null);setSelectedItemPointer(null);return;
+    }
     if (isDirectUseItem(item)) {
       WorldSocket.sendJsonMessage(OpCodes.CQItemUseRequest, {
         instanceId: item.instance.id,

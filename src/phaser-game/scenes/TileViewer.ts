@@ -126,6 +126,12 @@ export class TileViewer extends Scene {
   private actorsUnsubscribe: (() => void) | null = null;
   private gameStatusUnsubscribe: (() => void) | null = null;
   private battleInputFreezeUnsubscribe: (() => void) | null = null;
+  private readonly bicycleUseHandler = (event: Event) => {
+    const instanceId = (event as CustomEvent<{ instanceId: number }>).detail?.instanceId;
+    if (Number.isSafeInteger(instanceId) && instanceId > 0) {
+      void this.playerMovementController.changeBicyclePreference(instanceId);
+    }
+  };
   private bicycleStateUnsubscribe: (() => void) | null = null;
   private trainerEncounterUnsubscribe: (() => void) | null = null;
   private surfSuccessHandler: ((event: Event) => void) | null = null;
@@ -541,6 +547,7 @@ export class TileViewer extends Scene {
       }
       wasInBattle = state.isInBattle;
     });
+    window.addEventListener("cq:bicycleUse", this.bicycleUseHandler);
     this.bicycleStateUnsubscribe = useAudioActivityStore.subscribe((state) => {
       this.updateLocalPlayerBicycleSprite(state.isBicycleActive);
     });
@@ -2106,6 +2113,8 @@ export class TileViewer extends Scene {
   }
 
   cleanupResources() {
+    window.removeEventListener("cq:bicycleUse", this.bicycleUseHandler);
+    this.playerMovementController?.retireBicycleCommands();
     this.inventorySceneUnsubscribe?.();
     this.inventorySceneUnsubscribe = null;
     this.battleSceneUnsubscribe?.();

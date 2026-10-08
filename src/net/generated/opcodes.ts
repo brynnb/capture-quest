@@ -238,3 +238,5 @@ export const GameplayStateRequest: OpCode = 197;
 export const GameplayStateResponse: OpCode = 198;
 export const PokeBattleCloseResponse: OpCode = 199;
 export const ResourcesChangedNotify: OpCode = 200;
+export const BicycleStateRequest: OpCode = 201;
+export const BicycleStateResponse: OpCode = 202;

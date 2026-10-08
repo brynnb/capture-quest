@@ -30,6 +30,7 @@ type PlayerMovementState struct {
 	Path            []PathNode `json:"path"` // Remaining path to destination
 	IsSurfing       bool       `json:"isSurfing,omitempty"`
 	WantsBicycle    bool       `json:"wantsBicycle,omitempty"`
+	BicycleRevision int64      `json:"bicycleRevision"`
 	ForcedBicycle   bool       `json:"forcedBicycle,omitempty"`
 	LastMoveTime    time.Time  `json:"lastMoveTime"`
 	LastSaveTime    time.Time  `json:"lastSaveTime"` // Last time we persisted to DB
@@ -60,9 +61,10 @@ type playerMovementSnapshot struct {
 }
 
 type BicycleToggleState struct {
-	WantsRiding  bool `json:"wantsRiding"`
-	ActiveRiding bool `json:"activeRiding"`
-	ForcedRiding bool `json:"forcedRiding"`
+	Revision     int64 `json:"revision"`
+	WantsRiding  bool  `json:"wantsRiding"`
+	ActiveRiding bool  `json:"activeRiding"`
+	ForcedRiding bool  `json:"forcedRiding"`
 }
 
 // PathNode represents a single tile in a path
@@ -230,37 +232,33 @@ func (m *PlayerMovementManager) GetMoveSpeed(charID int) int {
 	return int(defaultPlayerMoveSpeed.Milliseconds())
 }
 
-// ToggleBicycle switches a player's bicycle preference. Riding is active only
-// on overworld maps; interiors temporarily use walking speed and walking sprite.
-func (m *PlayerMovementManager) ToggleBicycle(charID int) (BicycleToggleState, bool) {
+// Bicycle preference belongs to this registered movement session. Desired state
+// plus its revision prevents duplicate packets from toggling the preference back.
+func (m *PlayerMovementManager) bicycleStateForSession(sesID, charID int) (BicycleToggleState, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	state := m.players[charID]
+	if state == nil || state.SessionID != sesID {
+		return BicycleToggleState{}, false
+	}
+	return BicycleToggleState{Revision: state.BicycleRevision, WantsRiding: state.WantsBicycle, ActiveRiding: m.isBicycleActive(state), ForcedRiding: state.ForcedBicycle}, true
+}
+func (m *PlayerMovementManager) setBicycleForSession(sesID, charID int, wants bool, revision int64) (BicycleToggleState, bool) {
 	m.mu.Lock()
-	state, ok := m.players[charID]
-	if !ok {
+	state := m.players[charID]
+	if state == nil || state.SessionID != sesID || state.BicycleRevision != revision {
 		m.mu.Unlock()
 		return BicycleToggleState{}, false
 	}
 	if state.ForcedBicycle && m.isBicycleActive(state) {
-		result := BicycleToggleState{
-			WantsRiding:  true,
-			ActiveRiding: true,
-			ForcedRiding: true,
-		}
-		snapshot := m.snapshotForState(state, 0)
-		m.mu.Unlock()
-
-		m.broadcastSnapshot(snapshot, false)
-		return result, true
+		wants = state.WantsBicycle
 	}
-	state.WantsBicycle = !state.WantsBicycle
+	state.WantsBicycle = wants
+	state.BicycleRevision++
 	m.applyBicycleMapRules(state)
-	result := BicycleToggleState{
-		WantsRiding:  state.WantsBicycle,
-		ActiveRiding: m.isBicycleActive(state),
-		ForcedRiding: state.ForcedBicycle,
-	}
+	result := BicycleToggleState{Revision: state.BicycleRevision, WantsRiding: state.WantsBicycle, ActiveRiding: m.isBicycleActive(state), ForcedRiding: state.ForcedBicycle}
 	snapshot := m.snapshotForState(state, 0)
 	m.mu.Unlock()
-
 	m.broadcastSnapshot(snapshot, false)
 	return result, true
 }

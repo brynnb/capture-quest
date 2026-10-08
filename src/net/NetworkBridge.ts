@@ -95,6 +95,7 @@ export class NetworkBridge {
       case OpCodes.PokemonPCReleaseResponse:
       case OpCodes.PokemonPCSwitchBoxResponse:
       case OpCodes.CutsceneEndResponse:
+      case OpCodes.BicycleStateResponse:
       case OpCodes.GameplayStateResponse:
       case OpCodes.CQMerchantOpenResponse:
       case OpCodes.CQMerchantBuyResponse:
@@ -387,26 +388,6 @@ export class NetworkBridge {
           : i,
       );
       useCQInventoryStore.setState({ items });
-    }
-
-    const bicycle = data.bicycle as
-      | {
-          wantsRiding?: boolean;
-          activeRiding?: boolean;
-          forcedRiding?: boolean;
-          WantsRiding?: boolean;
-          ActiveRiding?: boolean;
-          ForcedRiding?: boolean;
-        }
-      | undefined;
-    if (bicycle) {
-      useAudioActivityStore
-        .getState()
-        .setBicycleState({
-          wantsRiding: Boolean(bicycle.wantsRiding ?? bicycle.WantsRiding),
-          activeRiding: Boolean(bicycle.activeRiding ?? bicycle.ActiveRiding),
-          forcedRiding: Boolean(bicycle.forcedRiding ?? bicycle.ForcedRiding),
-        });
     }
 
     if (data.message) {

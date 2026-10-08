@@ -35,3 +35,15 @@ export async function completeCutscene(scriptLabel: string, completionToken: str
     return complete();
   }
 }
+
+export function requestBicycleState(
+  characterId: number,
+  signal: AbortSignal,
+  command?: { instanceId: number; wantsRiding: boolean; revision: number },
+): Promise<import("@/net/generated/world_api").BicycleStateResponse> {
+  return correlatedRequest<import("@/net/generated/world_api").BicycleStateResponse>(
+    PhaserNet.onBicycleState,
+    requestId => PhaserNet.requestBicycleState({ requestId, characterId, ...command }),
+    signal,
+  );
+}

@@ -64,7 +64,8 @@ test("Bicycle can be toggled from inventory and pauses indoors", async ({
     )
     .toBe(true);
 
-  await page.getByRole("button", { name: "Done" }).click();
+  // The Bag toggle remains accessible when the item list overlaps Done.
+  await page.getByRole("button", { name: "Bag", exact: true }).click();
   await waitForInventoryOpen(page, false);
 
   await jumpToScenario(page, "debug_warp_reds_house_1f_exit_mat");

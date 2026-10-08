@@ -96,7 +96,7 @@ func TestServerMovementCommitFailureRetainsSourcePathAndDoesNotPublish(t *testin
 	// Bicycle metadata is an ordinary actor refresh, not a forced position that
 	// could retire the origin client's issued animation.
 	messages.streams = nil
-	m.ToggleBicycle(42)
+	m.setBicycleForSession(m.players[42].SessionID, 42, true, 0)
 	if len(messages.streams) != 1 || messages.streams[0].opcode != opcodes.PhaserActorPositionUpdate {
 		t.Fatalf("bicycle refresh became forced movement: %+v", messages.streams)
 	}

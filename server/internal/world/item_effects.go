@@ -43,24 +43,7 @@ func tryHandleFieldItemUse(ses *session.Session, wh *WorldHandler, found *cqitem
 		HandlePokeFishing(ses, payload, wh)
 		return true
 	case "BICYCLE":
-		result := BicycleToggleState{}
-		ok := false
-		if wh.PlayerMovement != nil {
-			result, ok = wh.PlayerMovement.ToggleBicycle(int(charID))
-		}
-		message := "You got off the Bicycle."
-		if ok && result.ForcedRiding {
-			message = "You can't get off here."
-		} else if ok && result.WantsRiding {
-			if result.ActiveRiding {
-				message = "You got on the Bicycle!"
-			} else {
-				message = "You'll get on the Bicycle when you go outside."
-			}
-		}
-		sendCQItemUseSuccess(ses, found, message, found.Instance.Quantity, map[string]interface{}{
-			"bicycle": result,
-		})
+		sendCQItemUseError(ses, "Use the current Bicycle command.")
 		return true
 	case "TOWN_MAP":
 		sendCQItemUseSuccess(ses, found, currentMapMessage(ses), found.Instance.Quantity)

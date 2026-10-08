@@ -225,4 +225,6 @@ const (
 	GameplayStateResponse         OpCode = 198
 	PokeBattleCloseResponse       OpCode = 199
 	ResourcesChangedNotify        OpCode = 200
+	BicycleStateRequest           OpCode = 201
+	BicycleStateResponse          OpCode = 202
 )

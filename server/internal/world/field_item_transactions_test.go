@@ -108,8 +108,8 @@ func TestBicycleDispatchRequiresOwnedInstanceAndReportsReadFailures(t *testing.T
 	testdb.Exec(t, database, `ALTER TABLE unavailable_items RENAME TO cq_items`)
 	messages.streams = nil
 	battleDispatch(t, wh, ses, opcodes.CQItemUseRequest, request)
-	if !wh.PlayerMovement.players[42].WantsBicycle {
-		t.Fatal("owned bicycle did not toggle")
+	if wh.PlayerMovement.players[42].WantsBicycle {
+		t.Fatal("retired bicycle packet changed preference")
 	}
 	owned, err := cqitems.NewStore(database).FindInventoryItemByInstanceID(42, instance)
 	if err != nil || owned.Instance.Quantity != 1 {

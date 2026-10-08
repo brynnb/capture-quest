@@ -1251,6 +1251,23 @@ export interface TrainerBattleStartRequest {
 
 
 //////////
+// source: handler_bicycle.go
+
+export interface BicycleStateRequest {
+  requestId: string;
+  characterId: number /* int64 */;
+  instanceId?: number /* int32 */;
+  wantsRiding?: boolean;
+  revision?: number /* int64 */;
+}
+export interface BicycleStateResponse {
+  success: true;
+  requestId: string;
+  characterId: number /* int64 */;
+  bicycle: BicycleToggleState;
+}
+
+//////////
 // source: in_game_trades.go
 
 
@@ -1362,12 +1379,14 @@ export interface PlayerMovementState {
   path: PathNode[]; // Remaining path to destination
   isSurfing?: boolean;
   wantsBicycle?: boolean;
+  bicycleRevision: number /* int64 */;
   forcedBicycle?: boolean;
   lastMoveTime: any /* time.Time */;
   lastSaveTime: any /* time.Time */; // Last time we persisted to DB
   moveSpeed: any /* time.Duration */; // Time per tile, including runtime movement effects
 }
 export interface BicycleToggleState {
+  revision: number /* int64 */;
   wantsRiding: boolean;
   activeRiding: boolean;
   forcedRiding: boolean;

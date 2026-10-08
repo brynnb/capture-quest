@@ -379,6 +379,7 @@ export function onInventoryCommand<T extends InventoryReply>(opcode: number, rec
 }
 
 const handlers = {
+  bicycleState: new Set<(data: import("@/net/generated/world_api").BicycleStateResponse | PlayerStepError) => void>(),
   gameplayState: new Set<(data: GameplayStateResponse | PlayerStepError) => void>(),
   cutsceneEnd: new Set<(data: CutsceneEndResponse | PlayerStepError) => void>(),
   ownedPlayerPosition: new Set<(data: OwnedPlayerPositionResponse | PlayerStepError) => void>(),
@@ -400,6 +401,13 @@ const handlers = {
   mapMusic: new Set<PhaserMapMusicHandler>(),
 };
 
+export function onBicycleState(handler: (data: import("@/net/generated/world_api").BicycleStateResponse | PlayerStepError) => void): () => void {
+  handlers.bicycleState.add(handler);
+  return () => handlers.bicycleState.delete(handler);
+}
+export function requestBicycleState(request: import("@/net/generated/world_api").BicycleStateRequest): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.BicycleStateRequest);
+}
 export function onGameplayState(handler: (data: GameplayStateResponse | PlayerStepError) => void): () => void {
   handlers.gameplayState.add(handler); return () => handlers.gameplayState.delete(handler);
 }
@@ -572,6 +580,9 @@ export function dispatchPhaserResponse(opcode: number, data: unknown): void {
       battleCommandHandlers.get(opcode)?.forEach(receive => receive(data as BattleCommandResponse | SafariBattleActionResponse | BattleCommandError));
       break;
 
+    case OpCodes.BicycleStateResponse:
+      handlers.bicycleState.forEach(handler => handler(data as import("@/net/generated/world_api").BicycleStateResponse | PlayerStepError));
+      break;
     case OpCodes.GameplayStateResponse:
       handlers.gameplayState.forEach(h => h(data as GameplayStateResponse | PlayerStepError));
       break;

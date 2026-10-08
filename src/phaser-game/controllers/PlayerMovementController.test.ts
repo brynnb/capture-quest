@@ -2,6 +2,7 @@ import { afterEach } from "vitest";
 import { CorrelatedResponseError } from "../services/CorrelatedRequest";
 import * as movement from "../services/PlayerMovementService";
 vi.mock("../services/PlayerMovementService", () => ({
+  requestBicycleState: vi.fn(),
   requestPlayerFacing: vi.fn(async () => ({ success: true, requestId: "face", mapId: 9999, x: 10, y: 0, direction: "LEFT" })),
   requestPlayerStep: vi.fn(async () => ({ success: true, requestId: "accepted", stepToken: "issued", mapId: 9999, x: 10, y: 2, direction: "DOWN", ledgeJump: true })),
   completePlayerStep: vi.fn(async () => ({ success: true, requestId: "complete", mapId: 9999, x: 10, y: 2, direction: "DOWN" })),
@@ -15,6 +16,8 @@ import type { PhaserTile } from "@/net/generated/world_api";
 import type { Scene } from "phaser";
 import type { MapRenderer } from "../renderers/MapRenderer";
 import { NetworkBridge } from "@/net/NetworkBridge";
+import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
+import useAudioActivityStore from "@/stores/AudioActivityStore";
 import useGameStatusStore from "@/stores/GameStatusStore";
 import * as OpCodes from "@/net/generated/opcodes";
 
@@ -70,6 +73,29 @@ function buildLedgeController() {
   );
   return { controller, updates, visualMovement: movementController, mapRenderer };
 }
+
+test("Bicycle uncertain replies read current preference without retrying the setter",async()=>{
+ const {controller}=buildLedgeController();
+ usePlayerCharacterStore.getState().setCharacterProfile({id:42});
+ const request=vi.mocked(movement.requestBicycleState);
+ request.mockResolvedValueOnce({success:true,requestId:"before",characterId:42,bicycle:{revision:0,wantsRiding:false,activeRiding:false,forcedRiding:false}});
+ request.mockRejectedValueOnce(new Error("timeout"));
+ request.mockResolvedValueOnce({success:true,requestId:"current",characterId:42,bicycle:{revision:1,wantsRiding:true,activeRiding:true,forcedRiding:false}});
+ await controller.changeBicyclePreference(7);
+ expect(request).toHaveBeenCalledTimes(3);
+ expect(request.mock.calls[1][2]).toEqual({instanceId:7,wantsRiding:true,revision:0});
+ expect(request.mock.calls[2][2]).toBeUndefined();
+ expect(useAudioActivityStore.getState().wantsBicycle).toBe(true);
+});
+
+test("retired movement controllers ignore late Bicycle state",async()=>{
+ const {controller}=buildLedgeController();usePlayerCharacterStore.getState().setCharacterProfile({id:42});
+ useAudioActivityStore.getState().resetTravelAudio();
+ let resolve!:(value:any)=>void;vi.mocked(movement.requestBicycleState).mockImplementationOnce(()=>new Promise(done=>{resolve=done}));
+ const pending=controller.changeBicyclePreference(7);controller.retireBicycleCommands();
+ resolve({success:true,requestId:"late",characterId:42,bicycle:{revision:1,wantsRiding:true,activeRiding:true,forcedRiding:false}});await pending;
+ expect(useAudioActivityStore.getState().wantsBicycle).toBe(false);
+});
 
 describe("PlayerMovementController ledges", () => {
   test("facing a source tile publishes its direction without changing location",()=>{

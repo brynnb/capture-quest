@@ -11,7 +11,7 @@ owned resource reads and character-scoped change notices; historical global
 bag/party application is retired.
 
 The latest field-command prerequisite is Escape Rope source fencing, recorded
-below; Bicycle/Escape Rope transport migration remains unfinished.
+below; Bicycle now has a movement-owned desired-state command. Escape Rope transport migration remains unfinished.
 The preceding PC migration and
 source-authorized PC commands and Indigo failure/restart acceptance (2026-10-07);
 PC permission/source retirement review is recorded below. This follows
@@ -26,7 +26,43 @@ implementation is `f118916` (per-command clerk authorization and source sale
 policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected menu
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
-branch's Git history. No push or production deployment is authorized by this goal.
+branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized a branch push for the stopping checkpoint on 2026-10-07; production deployment remains unauthorized.
+
+## Bicycle stopping checkpoint (2026-10-07)
+
+Bicycle now uses typed correlated requests (201/202) through the existing movement
+controller and correlated-request transport. A setter carries desired riding
+preference, owned item instance and the current movement-session revision. The
+movement manager checks session identity and revision under its lock; duplicate
+setters reject without flipping the preference again. Item ownership reads have a
+five-second deadline. Forced-riding maps preserve the existing preference.
+Preference is intentionally session-local and resets when the player registers;
+this is not a durable inventory mutation or a new command coordinator.
+
+The client reads current state before setting preference. An uncertain result
+triggers a current-state read, never a mutation retry. Character replacement and
+scene retirement abort pending work and suppress late application. The legacy
+Bicycle item-use branch and its global reply application are retired.
+
+Verification: the full world PostgreSQL race suite passed (41.872 seconds), all
+23 movement-controller client tests passed, and canonical wire generation,
+TypeScript and diff checks passed. Regression checks cover duplicate setters,
+wrong session ownership, unchanged Bicycle quantity, current-state recovery,
+uncertain setter replies without mutation retries, and retired-client suppression.
+The initial rendered run (`/var/tmp/capturequest-rendered.S5yXEA`) passed riding
+on/off/on, then stalled because the item list intercepted clicks on Done. The
+Bicycle test now closes through the existing Bag toggle without bypassing pointer
+checks. The covered Done button remains a separate UI defect; no UI layout fix is
+included in this checkpoint. The final rendered run passed (7.4 seconds) in
+`/var/tmp/capturequest-rendered.xTDl7Z`, including on/off/on, indoor pausing and
+outdoor resumption. Both isolated runners stopped their private runtime.
+Remaining: rendered duplicate/lost-reply and reentry fault acceptance, wider
+battle/admission review, Escape Rope stable command identity and lost-result
+recovery, and the remaining families in SERVER_COMMAND_AUDIT.md. The original
+restoreBattleOnLogin timeout is still unresolved. All five roadmap areas remain
+open. The recommended next step is to review this movement boundary and finish
+its fault acceptance before migrating Escape Rope. No production deployment or
+production mutation is part of this checkpoint.
 
 ## Field-command review and Escape Rope source fence (2026-10-07)
 
