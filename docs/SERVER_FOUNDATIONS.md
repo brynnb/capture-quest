@@ -28,6 +28,43 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Native Silph foot semantics and complete runtime corpus (2026-10-08)
+
+The Silph mismatch was an old whole-block collision expectation. Original
+`SilphCo2F.asm` installs closed block $54. Canonical block bytes are
+`08080808181818180101010101010101`; bottom-left foot samples for its four
+quadrants are $18/$18/$01/$01. Original `Facility_Coll` includes $01, excludes
+$18. The upper door is blocked while the lower floor remains walkable. The prior
+manual approximation marked the entire 32×32 block blocked.
+
+The corpus audit found exactly two lower closed-quadrant assertions with that old
+expectation, both in `silph_card_key_2f_door1_no_key`. They now assert collision 1
+from source, preserving the upper collision-0, closed-label, no-key flag and
+absent-battle assertions. No runtime collision or authorization was changed.
+A real PostgreSQL boundary regression proves the player can enter the lower floor,
+cannot path through the closed upper door, and can cross only after the existing
+Card Key transaction commits the open flag. Missing palette rows remain valid
+catalog metadata as established by the earlier shared-reader fix.
+
+Focused Silph tests passed (1.2s); final Silph/collision/owned-path race checks
+passed (1.6s), and diff checks pass. The canonical isolated `script-sim --all`
+runtime-expectation run completed all 484 scenarios successfully. Evidence is
+`/var/tmp/capturequest-silph-source-corpus.log` and
+`/var/tmp/capturequest-script-sim.524SOJ`; the private cluster is stopped. This
+closes the current runtime-expectation corpus run, not every simulation lifecycle
+or server roadmap requirement.
+
+Fixed text goldens still contain old labels/catalog numbers and need deliberate
+portable formatting/source review; full `--all --check`, rendered appearance and
+production acceptance are not claimed. Standalone manual rules/numeric identities,
+received-item dialogue hydration, Giovanni flag migration, simulator fixture/action
+writers, broader command recovery and lifecycle audits remain in the finite matrix.
+The original restore timeout and Repel click failure remain unattributed; all five
+goal areas remain active. Next: return to remaining server ownership/lifecycle and
+shared-boundary audits, using this verified corpus as the regression baseline and
+retaining the unresolved timeout investigation. This is a local checkpoint only,
+without push, deployment or production mutation.
+
 ## Explicit source-coordinate scenario frame (2026-10-08)
 
 Route 23 scenarios expressed original local coordinates as world coordinates.

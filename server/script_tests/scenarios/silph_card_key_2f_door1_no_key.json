@@ -19,8 +19,8 @@
     "tileStates": [
       { "x": 4, "y": 4, "source": {"mapName":"SilphCo2F","blockId":84,"position":0}, "collisionType": 0, "label": "SilphCardKeyDoor_2F_1_Closed_0_0" },
       { "x": 5, "y": 4, "source": {"mapName":"SilphCo2F","blockId":84,"position":1}, "collisionType": 0, "label": "SilphCardKeyDoor_2F_1_Closed_1_0" },
-      { "x": 4, "y": 5, "source": {"mapName":"SilphCo2F","blockId":84,"position":2}, "collisionType": 0, "label": "SilphCardKeyDoor_2F_1_Closed_0_1" },
-      { "x": 5, "y": 5, "source": {"mapName":"SilphCo2F","blockId":84,"position":3}, "collisionType": 0, "label": "SilphCardKeyDoor_2F_1_Closed_1_1" }
+      { "x": 4, "y": 5, "source": {"mapName":"SilphCo2F","blockId":84,"position":2}, "collisionType": 1, "label": "SilphCardKeyDoor_2F_1_Closed_0_1" },
+      { "x": 5, "y": 5, "source": {"mapName":"SilphCo2F","blockId":84,"position":3}, "collisionType": 1, "label": "SilphCardKeyDoor_2F_1_Closed_1_1" }
     ],
     "activeBattleAbsent": true
   }
