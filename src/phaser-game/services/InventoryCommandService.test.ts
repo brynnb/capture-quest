@@ -8,7 +8,7 @@ vi.mock("./PhaserNetworkService",()=>({isConnected:()=>true,onInventoryCommand:(
 vi.mock("./GameplayRecoveryService",()=>({readCurrentGameplayState:net.read}));
 vi.mock("@/services/audio/AudioManager",()=>({default:{playSFX:vi.fn()}}));
 import usePokemonPCStore from "@/stores/PokemonPCStore";
-import {depositPokemon,withdrawPokemon,releasePokemon,switchPokemonBox} from "./PCCommandService";
+import {openPokemonPC,depositPokemon,withdrawPokemon,releasePokemon,switchPokemonBox} from "./PCCommandService";
 import useCQInventoryStore from "@/stores/CQInventoryStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import {openShopForActor,buyShopItem,sellShopItem} from "./ShopCommandService";
@@ -28,7 +28,7 @@ const emit=(opcode:number,reply:any)=>net.listeners.get(opcode)?.forEach(receive
 beforeEach(()=>{
   vi.useFakeTimers();net.listeners.clear();net.send.mockReset().mockResolvedValue(undefined);net.read.mockReset();
   vi.mocked(AudioManager.playSFX).mockClear();
-  useGameStatusStore.setState({isInventoryOpen:true});
+  useGameStatusStore.setState({isInventoryOpen:true,playerTileContext:{mapId:50,x:7,y:8,direction:"UP"}});
   useCQInventoryStore.setState({items:[],money:1000,commandRevision:4,shopOpen:true,inventoryCommandPending:false});
   usePlayerCharacterStore.getState().setCharacterProfile({id:42,pokedollars:1000});
   usePokemonPartyStore.getState().setParty(party);
@@ -199,6 +199,39 @@ test.each(["pcDeposit","pcWithdraw","pcRelease","pcSwitch"] as const)("%s reconc
   expect(usePokemonPCStore.getState()).toMatchObject({isOpen:false,sourceId:null,currentBox:0});
   expect(useCQInventoryStore.getState()).toMatchObject({commandRevision:5,inventoryCommandPending:false});
   expect(AudioManager.playSFX).not.toHaveBeenCalled();
+});
+
+test.each(["pc","shop"])("delayed %s opening retires after leaving its source position",async kind=>{
+  usePokemonPCStore.getState().closePC();
+  useCQInventoryStore.getState().closeShop();
+  const pending=kind==="pc"?openPokemonPC(10):openShopForActor(1001);
+  const requestId=id();
+  useGameStatusStore.getState().setPlayerTileContext({mapId:50,x:8,y:8,direction:"RIGHT"});
+  await pending;
+  emit(kind==="pc"?109:95,{...reply(requestId),merchantId:1,name:"Shop",items:[],money:900});
+  expect(usePokemonPCStore.getState().isOpen).toBe(false);
+  expect(useCQInventoryStore.getState().shopOpen).toBe(false);
+  expect(useCQInventoryStore.getState().inventoryCommandPending).toBe(false);
+  expect(net.read).not.toHaveBeenCalled(); expect(AudioManager.playSFX).not.toHaveBeenCalled();
+});
+
+test("delayed PC opening is inert after scene replacement",async()=>{
+  usePokemonPCStore.getState().closePC();
+  const pending=openPokemonPC(10), requestId=id();
+  retire(); const next=bindInventoryScene();
+  emit(109,reply(requestId)); await pending;
+  expect(usePokemonPCStore.getState().isOpen).toBe(false);
+  expect(useCQInventoryStore.getState().money).toBe(1000);
+  expect(AudioManager.playSFX).not.toHaveBeenCalled(); next();
+});
+
+test("PC source movement preserves an already sent mutation's reconciliation",async()=>{
+  const pending=depositPokemon(7,0), requestId=id();
+  useGameStatusStore.getState().setPlayerTileContext({mapId:50,x:8,y:8,direction:"RIGHT"});
+  emit(111,reply(requestId)); await pending;
+  expect(usePokemonPCStore.getState().isOpen).toBe(false);
+  expect(useCQInventoryStore.getState().commandRevision).toBe(5);
+  expect(AudioManager.playSFX).not.toHaveBeenCalled(); expect(net.read).not.toHaveBeenCalled();
 });
 
 test("older scene cleanup cannot release a newer command",async()=>{

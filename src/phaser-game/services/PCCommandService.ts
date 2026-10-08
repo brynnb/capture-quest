@@ -4,13 +4,17 @@ import usePokemonPCStore, { validatePCSnapshot } from "@/stores/PokemonPCStore";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
 import useCQInventoryStore from "@/stores/CQInventoryStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
-import { runInventoryRequest } from "./InventoryCommandService";
+import { runInventoryRequest, watchInteractionPosition } from "./InventoryCommandService";
 import AudioManager from "@/services/audio/AudioManager";
 import { sfxPathForConstant } from "@/services/audio/pokemonMusic";
 
-const watchPC = (retire: () => void) => usePokemonPCStore.subscribe((state, previous) => {
-  if (previous.isOpen && !state.isOpen) retire();
-});
+const watchPC = (retire: () => void) => {
+  const stopPosition=watchInteractionPosition(()=>{retire();usePokemonPCStore.getState().closePC();});
+  const stopPanel=usePokemonPCStore.subscribe((state, previous) => {
+    if (previous.isOpen && !state.isOpen) retire();
+  });
+  return ()=>{stopPosition();stopPanel();};
+};
 
 function requestPC(opcode: number, responseOpcode: number, sourceId: number, payload: Record<string, number>, mutation: boolean): Promise<void> {
   const characterId = usePlayerCharacterStore.getState().characterProfile.id;

@@ -2,13 +2,17 @@ import { OpCodes } from "@/net";
 import type { CQMerchantOpenResponse, CQMerchantBuyResponse, CQMerchantSellResponse } from "@/net/generated/world_api";
 import useCQInventoryStore from "@/stores/CQInventoryStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
-import { runInventoryRequest } from "./InventoryCommandService";
+import { runInventoryRequest, watchInteractionPosition } from "./InventoryCommandService";
 import AudioManager from "@/services/audio/AudioManager";
 import { sfxPathForConstant } from "@/services/audio/pokemonMusic";
 
-const watchShop = (retire: () => void) => useCQInventoryStore.subscribe((state, previous) => {
-  if (!state.shopOpen && (previous.shopOpen || previous.shopItems !== state.shopItems)) retire();
-});
+const watchShop = (retire: () => void) => {
+  const stopPosition=watchInteractionPosition(()=>{retire();useCQInventoryStore.getState().closeShop();});
+  const stopPanel=useCQInventoryStore.subscribe((state, previous) => {
+    if (!state.shopOpen && (previous.shopOpen || previous.shopItems !== state.shopItems)) retire();
+  });
+  return ()=>{stopPosition();stopPanel();};
+};
 
 function sendShopCommand(opcode: number, responseOpcode: number, payload: Record<string, number>): Promise<void> {
   const {shopOpen, shopActorId: actorId} = useCQInventoryStore.getState();

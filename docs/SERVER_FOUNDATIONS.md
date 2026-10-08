@@ -22,6 +22,35 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. No push or production deployment is authorized by this goal.
 
+## Source-position retirement for delayed menus (2026-10-07)
+
+Review found that source-bound menu reads checked character/scene identity and
+store freshness but could still open after the player left the original
+interaction position. Shops and PCs now use one `watchInteractionPosition`
+primitive in the existing coordinator. A location change retires presentation
+and closes that source view. Read listeners abort; sent mutations keep their
+commit/current-state reconciliation and suppress late presentation effects.
+This watches map/X/Y, not facing or moving NPC visibility; those remain distinct
+permission-review considerations. Server mutation authorization still rechecks
+the current source, facing and ownership under the transaction.
+
+All 138 coordinator checks passed, including delayed shop/PC opening after
+movement, PC scene replacement and mutation reconciliation after leaving its
+source. A fixture initially retained an unrelated shop; the fixture now closes
+it before the PC-only read, preserving the no-reopening assertion. TypeScript
+and diff checks, frontend build and runtime asset validation passed. Four rendered cases passed in 24.3 seconds in
+`/var/tmp/capturequest-rendered.Fkxh4B`: withheld opening replies are delivered
+after walking away and after quit/reentry, and cannot reopen the PC; normal
+terminal/storage and NPC interaction checks still pass. A temporary subscribed
+observer proves each old packet actually reaches the client dispatcher, rather
+than assuming a dropped packet is inert. The owned runtime was stopped by its
+runner. No backend/data changes were made in this checkpoint.
+
+Next: finish the remaining facing/permission review and account for moving-source
+visibility before closing the PC family, then choose the next unaudited command
+family from the finite matrix. The full foundations roadmap and login timeout
+remain incomplete; no push or deployment was performed.
+
 ## PC failure/restart acceptance and obsolete API cleanup (2026-10-07)
 
 Three rendered cases at Indigo Plateau Lobby passed in 33.9 seconds in

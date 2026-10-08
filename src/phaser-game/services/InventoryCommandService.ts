@@ -37,6 +37,18 @@ function views() {
   return [bag.items, bag.money, bag.commandRevision, usePlayerCharacterStore.getState().characterProfile, usePokemonPartyStore.getState().party, pc.boxPokemon, pc.currentBox, pc.sources];
 }
 
+// Source-bound menus are a view of the interaction at one owned location.
+// Retiring presentation never cancels a sent mutation; the coordinator below
+// still reconciles its commit. Shops and PCs share this location watcher.
+export function watchInteractionPosition(retire: () => void): () => void {
+  const origin = useGameStatusStore.getState().playerTileContext;
+  let retired=false;
+  return useGameStatusStore.subscribe(state => {
+    const current = state.playerTileContext;
+    if (!retired && (current?.mapId !== origin?.mapId || current?.x !== origin?.x || current?.y !== origin?.y)) { retired=true; retire(); }
+  });
+}
+
 // One owner for admission, correlation, cancellation, stale replies and recovery.
 // Domain adapters validate/apply their projection and present effects; only this
 // layer applies the bag. Projection application outlives a closed presentation.
