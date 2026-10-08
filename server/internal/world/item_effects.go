@@ -171,7 +171,7 @@ func teleportPlayerTo(ses *session.Session, wh *WorldHandler, mapID int, x int, 
 func publishCommittedTeleport(ses *session.Session, wh *WorldHandler, mapID, x, y int) {
 	// The shared position transaction can end a Safari visit and clear its flags.
 	if ses != nil && ses.HasValidClient() {
-		refreshSafariFlags(wh, int64(ses.Client.CharData().ID))
+		refreshSafariFlags(ses, wh, int64(ses.Client.CharData().ID))
 	}
 	publishCommittedPlayerPosition(ses, wh, mapID, x, y, "DOWN")
 	sendCommittedWarpNotification(ses, mapID, x, y, "DOWN")

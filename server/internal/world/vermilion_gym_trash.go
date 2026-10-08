@@ -105,7 +105,7 @@ func handleVermilionGymTrashCan(ctx context.Context, database *sql.DB, charID in
 		return nil, err
 	}
 	if outcome.Changed && efm != nil {
-		if err := efm.LoadFlags(charID); err != nil {
+		if err := efm.LoadFlagsContext(ctx, charID); err != nil {
 			// The durable result has committed. Reporting rollback here would invite
 			// a retry of an already accepted click.
 			log.Printf("refresh committed Vermilion flags for character %d: %v", charID, err)

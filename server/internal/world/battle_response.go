@@ -67,12 +67,12 @@ func sendBattleCommitError(ses *session.Session, wh *WorldHandler, requestID str
 
 func publishBattleTurn(ses *session.Session, wh *WorldHandler, charID int64, battle *pokebattle.BattleState, result battleTurnResult, opcode opcodes.OpCode, requestID string) {
 	if len(result.Flags) > 0 && wh.EventFlags != nil {
-		if err := wh.EventFlags.LoadFlags(charID); err != nil {
+		if err := wh.EventFlags.LoadFlagsContext(ses.CommandContext(), charID); err != nil {
 			log.Printf("[PokeBattle] Refresh committed flags for character %d: %v", charID, err)
 		}
 	}
 	if result.Script != nil {
-		result.Script.publish(CutsceneActionContext{Session: ses, WorldHandler: wh, EventFlags: wh.EventFlags})
+		result.Script.publish(ses.CommandContext(), CutsceneActionContext{Session: ses, WorldHandler: wh, EventFlags: wh.EventFlags})
 	}
 	if result.WalletChanged {
 		ses.SendStreamJSON(map[string]interface{}{"characterId": charID, "pokedollars": result.Money}, opcodes.CharacterWallet)
@@ -95,7 +95,7 @@ func publishBattleTurn(ses *session.Session, wh *WorldHandler, charID int64, bat
 			end.LossMessage = result.LossMessage
 		}
 		if b := result.Blackout; b != nil {
-			refreshSafariFlags(wh, charID)
+			refreshSafariFlags(ses, wh, charID)
 			publishCommittedPlayerPosition(ses, wh, b.MapID, b.X, b.Y, "DOWN")
 			end.Money = b.NewMoney
 			end.MoneyLost = b.MoneyLost

@@ -28,6 +28,35 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Owned post-commit flag refresh (2026-10-08)
+
+The remaining live refresh inventory found battle, cutscene, Safari, escape/home
+warp, map load, item blackout and puzzle publication reaching `LoadFlags`, whose
+wrapper creates a background context. Their durable transactions already had
+owned contexts, but the follow-up cache query could continue waiting after command
+cancellation and delay session draining. These callers now use
+`LoadFlagsContext` with their existing session or execution context. The shared
+Safari refresh helper explicitly takes its owning session; cutscene publication
+explicitly takes the interpreter's execution context. No new lifetime owner or
+refresh implementation was introduced. A committed mutation remains committed
+when its cache refresh is cancelled; existing recovery reads remain authoritative.
+
+A real PostgreSQL regression leases the only database connection and invokes the
+Safari and cutscene refresh paths through `Session.ExecuteCommand`. Both return
+at the 50ms command deadline, with the pool wait counter proving contention.
+The regression releases its own lease and drains its callback on failure. Focused
+flag, cutscene, Safari and puzzle race tests passed in 4.303 seconds. Full world
+and simulator race suites passed in 48.233 and 1.069 seconds; evidence is retained
+at `/var/tmp/capturequest-owned-flag-refresh-full.log`. Diff checks passed. No frontend or wire behavior changed,
+and no new rendered or production acceptance is claimed.
+
+Remaining: background-context flag mutation APIs and their debug/simulator callers,
+unused legacy puzzle mutation paths, option reply/recovery lifetime and all open
+command-family rows. The original login restore timeout remains unattributed;
+this cancellation gap is established independently. Next: retire unused legacy
+flag mutation paths and audit the surviving writers' ownership before adding a
+new family. This checkpoint is local only; no push or deployment is authorized.
+
 ## Flag-cache lifetime and preference persistence checkpoint (2026-10-08)
 
 The flag loader held the shared cache mutex during database I/O and started its

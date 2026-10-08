@@ -52,9 +52,9 @@ func (m *cutsceneMutation) saveParty() error {
 	}
 	return nil
 }
-func (m *cutsceneMutation) publish(ctx CutsceneActionContext) {
+func (m *cutsceneMutation) publish(executionCtx context.Context, ctx CutsceneActionContext) {
 	if m.flagsChanged && ctx.EventFlags != nil {
-		if err := ctx.EventFlags.LoadFlags(m.characterID); err != nil {
+		if err := ctx.EventFlags.LoadFlagsContext(executionCtx, m.characterID); err != nil {
 			log.Printf("[Cutscene] Refresh flags for character %d: %v", m.characterID, err)
 		}
 	}
@@ -207,7 +207,7 @@ func runCutsceneMutation(executionCtx context.Context, ctx CutsceneActionContext
 	if err != nil {
 		return nil, false, err
 	}
-	mutation.publish(ctx)
+	mutation.publish(executionCtx, ctx)
 	return effects, completed, nil
 }
 

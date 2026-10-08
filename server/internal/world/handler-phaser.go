@@ -299,7 +299,7 @@ func setServerTeleportedPlayerPosition(ses *session.Session, wh *WorldHandler, m
 	if err := commitPlayerPosition(ses.CommandContext(), wh.database, int64(ses.Client.CharData().ID), normalizedMapID, x, y); err != nil {
 		return 0, err
 	}
-	refreshSafariFlags(wh, int64(ses.Client.CharData().ID))
+	refreshSafariFlags(ses, wh, int64(ses.Client.CharData().ID))
 	return publishCommittedPlayerPosition(ses, wh, mapID, x, y, direction), nil
 }
 

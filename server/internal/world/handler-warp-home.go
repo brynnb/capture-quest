@@ -44,7 +44,7 @@ func HandleWarpHomeRequest(ses *session.Session, _ []byte, wh *WorldHandler) boo
 		return false
 	}
 	forgetBattle(charID, previousBattle)
-	refreshSafariFlags(wh, charID)
+	refreshSafariFlags(ses, wh, charID)
 	publishCommittedPlayerPosition(ses, wh, mapID, x, y, direction)
 
 	sendCommittedWarpNotification(ses, mapID, x, y, direction)

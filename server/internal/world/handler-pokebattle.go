@@ -662,7 +662,7 @@ func sendStandaloneBlackout(ses *session.Session, wh *WorldHandler, charID int64
 }
 
 func publishStandaloneBlackout(ses *session.Session, wh *WorldHandler, charID int64, result BlackoutResult, party []*pokebattle.Pokemon) {
-	refreshSafariFlags(wh, charID)
+	refreshSafariFlags(ses, wh, charID)
 	publishCommittedPlayerPosition(ses, wh, result.MapID, result.X, result.Y, "DOWN")
 	ses.SendStreamJSON(model.CharacterWallet{CharacterID: uint32(charID), Pokedollars: uint32(result.NewMoney)}, opcodes.CharacterWallet)
 	ses.SendStreamJSON(BattleEndOutcome{PlayerWon: false, Blackout: true, Money: result.NewMoney, MoneyLost: result.MoneyLost, BlackoutMapID: result.MapID, BlackoutX: result.X, BlackoutY: result.Y}, opcodes.PokeBattleEndNotify)

@@ -85,7 +85,7 @@ func HandleSafariZoneEnter(ses *session.Session, payload []byte, wh *WorldHandle
 		safariStorageError(ses, charID, err, opcodes.SafariZoneEnterResponse)
 		return false
 	}
-	refreshSafariFlags(wh, charID)
+	refreshSafariFlags(ses, wh, charID)
 	if !result.Success {
 		ses.SendStreamJSON(map[string]interface{}{
 			"success": false,
@@ -289,16 +289,16 @@ func safariStorageError(ses *session.Session, charID int64, err error, opcode op
 	log.Printf("[Safari] Character %d: %v", charID, err)
 	ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Safari state could not be saved. Please try again.", "message": "Safari state is unavailable. Please try again."}, opcode)
 }
-func refreshSafariFlags(wh *WorldHandler, charID int64) {
+func refreshSafariFlags(ses *session.Session, wh *WorldHandler, charID int64) {
 	if wh != nil && wh.EventFlags != nil {
-		if err := wh.EventFlags.LoadFlags(charID); err != nil {
+		if err := wh.EventFlags.LoadFlagsContext(ses.CommandContext(), charID); err != nil {
 			log.Printf("[Safari] Refresh flags for %d: %v", charID, err)
 		}
 	}
 }
 
 func publishSafariExpiry(ses *session.Session, wh *WorldHandler, charID int64) {
-	refreshSafariFlags(wh, charID)
+	refreshSafariFlags(ses, wh, charID)
 	publishCommittedPlayerPosition(ses, wh, SafariZoneGateMapID, SafariZoneGateReturnX, SafariZoneGateReturnY, "DOWN")
 }
 

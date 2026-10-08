@@ -52,7 +52,7 @@ func HandleEscapeRopeUse(ses *session.Session, payload []byte, wh *WorldHandler)
 	}
 	// Refresh authoritative server ownership without an unsolicited client warp.
 	// The client command owner projects a coherent current read after settlement.
-	refreshSafariFlags(wh, int64(charID))
+	refreshSafariFlags(ses, wh, int64(charID))
 	publishCommittedPlayerPosition(ses, wh, result.MapID, result.X, result.Y, "DOWN")
 	ses.SendStreamJSON(EscapeRopeUseResponse{Success: true, RequestID: req.RequestID, CharacterID: int64(charID)}, opcodes.EscapeRopeUseResponse)
 	notifyResourceChange(ses)

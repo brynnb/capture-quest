@@ -86,3 +86,45 @@ func TestFlagLoadDeadlineAndCommittedPublicationOwnCacheView(t *testing.T) {
 		t.Fatal("failed read retained token")
 	}
 }
+
+func TestCommittedFlagRefreshUsesOwnerDeadline(t *testing.T) {
+	for _, publisher := range []string{"safari", "cutscene"} {
+		t.Run(publisher, func(t *testing.T) {
+			database, wh, ses, _ := battleTestWorld(t)
+			database.SetMaxOpenConns(1)
+			lease, err := database.Conn(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer lease.Close()
+			before := database.Stats().WaitCount
+			ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+			defer cancel()
+			finished := make(chan error, 1)
+			go func() {
+				finished <- ses.ExecuteCommand(ctx, func() {
+					if publisher == "safari" {
+						refreshSafariFlags(ses, wh, 42)
+					} else {
+						mutation := &cutsceneMutation{characterID: 42, flagsChanged: true}
+						mutation.publish(ses.CommandContext(), CutsceneActionContext{Session: ses, EventFlags: wh.EventFlags})
+					}
+				})
+			}()
+			select {
+			case err := <-finished:
+				if !errors.Is(err, context.DeadlineExceeded) {
+					t.Fatalf("owner deadline: %v", err)
+				}
+			case <-time.After(300 * time.Millisecond):
+				// Release our exact lease before reporting failure so the owner drains.
+				lease.Close()
+				<-finished
+				t.Fatal("committed refresh outlived owner deadline")
+			}
+			if database.Stats().WaitCount == before {
+				t.Fatal("refresh did not exercise database pool contention")
+			}
+		})
+	}
+}

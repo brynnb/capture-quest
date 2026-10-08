@@ -97,7 +97,7 @@ func handleSilphCardKeyDoor(ctx context.Context, database *sql.DB, charID int64,
 		return nil, err
 	}
 	if outcome.Changed && efm != nil {
-		if err := efm.LoadFlags(charID); err != nil {
+		if err := efm.LoadFlagsContext(ctx, charID); err != nil {
 			log.Printf("refresh committed Silph flags for character %d: %v", charID, err)
 		}
 	}
