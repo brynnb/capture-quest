@@ -147,7 +147,7 @@ func sendCharacterStateFromDB(ses *session.Session, wh *WorldHandler, characterN
 		charData.X = RecoverySpawnX
 		charData.Y = RecoverySpawnY
 		charData.Z = RecoverySpawnZ
-		if err := commitPlayerPosition(ctx, wh.database, int64(charData.ID), RecoverySpawnMap, int(RecoverySpawnX), int(RecoverySpawnY)); err != nil {
+		if err := commitRecoveryPlayerPosition(ctx, wh.database, int64(charData.ID), charData.Heading); err != nil {
 			return err
 		}
 
@@ -162,7 +162,7 @@ func sendCharacterStateFromDB(ses *session.Session, wh *WorldHandler, characterN
 	// Update last login and begin the active play interval from the same instant.
 	playStartedAt := time.Now()
 	charData.LastLogin = uint32(playStartedAt.Unix())
-	if err := db_character.UpdateCharacter(ses.CommandContext(), wh.database, charData, ses.AccountID); err != nil {
+	if err := db_character.SetCharacterLastLogin(ctx, wh.database, charData.ID, ses.AccountID, charData.LastLogin); err != nil {
 		return fmt.Errorf("update last login for %s: %w", characterName, err)
 	}
 	applyLocalCharacterPrivileges(charData)

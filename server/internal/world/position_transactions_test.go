@@ -64,6 +64,35 @@ func TestCharacterQuitDoesNotReplayCachedPosition(t *testing.T) {
 	}
 }
 
+func TestRecoveryPositionAndElevationCommitTogether(t *testing.T) {
+	database, wh, _, _ := battleTestWorld(t)
+	testdb.Exec(t, database, `UPDATE character_data SET map_id=50,x=0,y=0,z=3,heading=9,time_played=20 WHERE id=42`)
+	seedRoute(t, wh, []PathNode{{X: 8, Y: 8}})
+	testdb.Exec(t, database, `CREATE FUNCTION reject_recovery_z() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'reject recovery elevation'; END $$;
+ CREATE CONSTRAINT TRIGGER reject_recovery_z AFTER UPDATE ON character_data DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN(NEW.z IS DISTINCT FROM OLD.z) EXECUTE FUNCTION reject_recovery_z();`)
+	if err := commitRecoveryPlayerPosition(context.Background(), database, 42, 9); err == nil {
+		t.Fatal("late recovery failure accepted")
+	}
+	var mapID, x, y, z, heading, playtime int
+	if err := database.QueryRow(`SELECT map_id,x,y,z,heading,time_played FROM character_data WHERE id=42`).Scan(&mapID, &x, &y, &z, &heading, &playtime); err != nil || mapID != 50 || x != 0 || y != 0 || z != 3 || heading != 9 || playtime != 20 {
+		t.Fatalf("recovery partially committed: (%d,%d,%d,%d) %v", mapID, x, y, z, err)
+	}
+	var count int
+	if err := database.QueryRow(`SELECT count(*) FROM character_movement_routes WHERE character_id=42`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("recovery failure retired route: %d %v", count, err)
+	}
+	testdb.Exec(t, database, `DROP TRIGGER reject_recovery_z ON character_data`)
+	if err := commitRecoveryPlayerPosition(context.Background(), database, 42, 9); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRow(`SELECT map_id,x,y,z,heading,time_played FROM character_data WHERE id=42`).Scan(&mapID, &x, &y, &z, &heading, &playtime); err != nil || mapID != RecoverySpawnMap || x != int(RecoverySpawnX) || y != int(RecoverySpawnY) || z != int(RecoverySpawnZ) || heading != 9 || playtime != 20 {
+		t.Fatalf("recovered pose=(%d,%d,%d,%d) heading=%d playtime=%d %v", mapID, x, y, z, heading, playtime, err)
+	}
+	if err := database.QueryRow(`SELECT count(*) FROM character_movement_routes WHERE character_id=42`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("successful recovery retained old route: %d %v", count, err)
+	}
+}
+
 func TestTeleportCommitFailurePreservesSafariPositionAndPublication(t *testing.T) {
 	database, wh, ses, messages := battleTestWorld(t)
 	wh.Safari = NewSafariZoneManager(database)

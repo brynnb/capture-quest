@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+entry persists only last-login metadata and recovery preserves its full pose
+through the existing destination transaction, following `5939513`:
 camp no longer replays cached positions; trainer cards reuse the owned wallet
 reader and its established empty-wallet policy, following `267bd9d`:
 retirement of the deferred position saver after its movement-manager producer audit,
@@ -33,6 +35,41 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Entry metadata intent and recovery pose (2026-10-08)
+
+After camp retirement, the sole `UpdateCharacter` caller was entry's last-login
+update. Its SQL still rewrote `map_id`, `x`, `y`, `z` and `heading` from the loaded
+snapshot. The general save API is now retired. `SetCharacterLastLogin` accepts
+only identity, authenticated account and timestamp; it updates only `last_login`
+for a non-deleted character, through the existing bounded transaction and cache
+invalidation boundary. Entry passes its existing shared five-second context.
+
+Recovery inspection found that the shared destination primitive already resets
+`z=0` and `heading=0`. The old general save restored the snapshot heading afterward.
+The first new recovery test correctly failed with `heading=0` instead of saved
+`heading=9`; its assertion was preserved. The destination primitive now accepts
+an explicit heading through one shared implementation. Ordinary destinations
+retain zero heading; invalid-position entry supplies its post-drain saved heading.
+Recovery pose, route retirement and existing destination effects share one commit,
+with no later metadata write replaying those fields.
+
+The old SQLite general-save fixture is replaced by canonical PostgreSQL checks.
+They cover unchanged pose/playtime across repeated login updates, account/deletion
+guards, missing database/character rejection, late commit rollback, actual pool
+deadline and retry. Recovery checks inject a deferred elevation rejection and
+verify full pose/playtime and route preservation on rollback, then successful
+retry with the existing spawn coordinates/elevation and retained heading.
+Focused repository/entry/recovery checks passed (1.3s/1.6s), followed by full
+database repositories, world (55.0s), battle, session and server race suites.
+All Go packages compile and diff checks pass. Existing generated contracts remain
+unchanged; no rendered or process-death evidence is inferred from these checks.
+
+Next: complete the trainer-card/Pokédex read ownership, coherent snapshot and
+response-lifetime audit in the finite command matrix. All five roadmap areas
+remain open; the original restore timeout and Repel click remain unattributed.
+No schema, generated contract, asset or frontend behavior change. No push or
+deployment, and no new rendered acceptance is claimed for this persistence change.
 
 ## Camp position authority and playtime crash policy (2026-10-08)
 

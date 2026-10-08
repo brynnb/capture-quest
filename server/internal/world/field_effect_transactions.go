@@ -101,6 +101,10 @@ func useFly(ctx context.Context, database *sql.DB, charID int64, mapID, x, y int
 }
 
 func saveFieldDestinationIn(tx db.DBTX, charID int64, mapID, x, y int) error {
+	return saveFieldDestinationWithHeadingIn(tx, charID, mapID, x, y, 0)
+}
+
+func saveFieldDestinationWithHeadingIn(tx db.DBTX, charID int64, mapID, x, y int, heading float64) error {
 	if err := db.RequireTransaction(tx); err != nil {
 		return err
 	}
@@ -118,23 +122,29 @@ func saveFieldDestinationIn(tx db.DBTX, charID int64, mapID, x, y int) error {
 	if err := cancelCutsceneSourcesIn(tx, charID, mapID, x, y, ""); err != nil {
 		return err
 	}
-	_, err := tx.Exec(`UPDATE character_data SET map_id=$1,x=$2,y=$3,z=0,heading=0 WHERE id=$4`, mapID, x, y, charID)
+	_, err := tx.Exec(`UPDATE character_data SET map_id=$1,x=$2,y=$3,z=0,heading=$5 WHERE id=$4`, mapID, x, y, charID, heading)
 	return err
 }
 
 // Position writers share one bounded character transaction. The caller owns
 // the session gate; publication must follow successful return.
 func commitPlayerPosition(ctx context.Context, database *sql.DB, charID int64, mapID, x, y int) error {
-	return commitPosition(ctx, database, charID, mapID, x, y, false)
+	return commitPosition(ctx, database, charID, mapID, x, y, false, 0)
 }
 
 // Client coordinates must name a visible catalog tile. Trusted runtime destinations
 // retain their own source-specific validation before calling commitPlayerPosition.
 func commitClientPlayerPosition(ctx context.Context, database *sql.DB, charID int64, mapID, x, y int) error {
-	return commitPosition(ctx, database, charID, mapID, x, y, true)
+	return commitPosition(ctx, database, charID, mapID, x, y, true, 0)
 }
 
-func commitPosition(ctx context.Context, database *sql.DB, charID int64, mapID, x, y int, validateCatalog bool) error {
+// Invalid-position recovery uses the existing zero-elevation destination policy
+// and preserves entry's post-drain saved heading in the same position commit.
+func commitRecoveryPlayerPosition(ctx context.Context, database *sql.DB, charID int64, heading float64) error {
+	return commitPosition(ctx, database, charID, RecoverySpawnMap, int(RecoverySpawnX), int(RecoverySpawnY), false, heading)
+}
+
+func commitPosition(ctx context.Context, database *sql.DB, charID int64, mapID, x, y int, validateCatalog bool, heading float64) error {
 	return db.Transaction(ctx, database, func(tx db.DBTX) error {
 		if err := db.LockCharacter(tx, charID); err != nil {
 			return err
@@ -145,7 +155,7 @@ func commitPosition(ctx context.Context, database *sql.DB, charID int64, mapID, 
 			}
 		}
 
-		// A same-position persistence flush is not a new destination intent.
+		// Reapplying the stored destination is not a new movement intent.
 		// Preserve its cursor only when storage, cursor and requested pose agree.
 		route, err := loadMovementRouteIn(tx, charID)
 		if err != nil {
@@ -155,7 +165,7 @@ func commitPosition(ctx context.Context, database *sql.DB, charID int64, mapID, 
 		if err := tx.QueryRow(`SELECT map_id=$2 AND CAST(x AS INTEGER)=$3 AND CAST(y AS INTEGER)=$4 FROM character_data WHERE id=$1`, charID, mapID, x, y).Scan(&same); err != nil {
 			return err
 		}
-		if err := saveFieldDestinationIn(tx, charID, mapID, x, y); err != nil {
+		if err := saveFieldDestinationWithHeadingIn(tx, charID, mapID, x, y, heading); err != nil {
 			return err
 		}
 		if same && route != nil && route.MapID == mapID && route.X == x && route.Y == y {

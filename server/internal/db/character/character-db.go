@@ -95,8 +95,8 @@ func GetCharacterByID(id int32) (*model.CharacterData, error) {
 	return character, nil
 }
 
-// UpdateCharacter saves character data to the database.
-func UpdateCharacter(ctx context.Context, database *sql.DB, charData *model.CharacterData, accountID int64) error {
+// SetCharacterLastLogin records entry metadata without replaying gameplay state.
+func SetCharacterLastLogin(ctx context.Context, database *sql.DB, charID uint32, accountID int64, lastLogin uint32) error {
 	if database == nil {
 		return fmt.Errorf("character database is required")
 	}
@@ -106,30 +106,17 @@ func UpdateCharacter(ctx context.Context, database *sql.DB, charData *model.Char
 	err := db.Transaction(ctx, database, func(tx db.DBTX) error {
 		result, err := tx.Exec(`
 		UPDATE character_data
-		SET map_id = $1,
-		    x = $2,
-		    y = $3,
-		    z = $4,
-		    heading = $5,
-		    last_login = $6
-		WHERE id = $7`,
-			charData.MapID,
-			charData.X,
-			charData.Y,
-			charData.Z,
-			charData.Heading,
-			charData.LastLogin,
-			charData.ID,
-		)
+		SET last_login = $1
+		WHERE id = $2 AND account_id = $3 AND deleted_at IS NULL`, lastLogin, charID, accountID)
 		if err != nil {
-			return fmt.Errorf("failed to update character: %w", err)
+			return fmt.Errorf("set character last login: %w", err)
 		}
 		rows, err := result.RowsAffected()
 		if err != nil {
 			return err
 		}
 		if rows != 1 {
-			return fmt.Errorf("character %d: updated %d rows", charData.ID, rows)
+			return fmt.Errorf("last login character %d: updated %d rows", charID, rows)
 		}
 		return nil
 	})
