@@ -74,8 +74,9 @@ const (
 	PhaserItemDataResponse       OpCode = 63
 	PhaserHiddenObjectsRequest   OpCode = 64
 	PhaserHiddenObjectsResponse  OpCode = 65
-	PhaserMapMusicRequest        OpCode = 66
-	PhaserMapMusicResponse       OpCode = 67
+	// Reserved: map music is provided by the canonical browser audio manifest.
+	PhaserMapMusicRequest  OpCode = 66
+	PhaserMapMusicResponse OpCode = 67
 
 	// Battle and trainer opcodes.
 	PokeBattleStartRequest      OpCode = 68

@@ -24,3 +24,18 @@ func TestReadSnapshotBoundsNestedContextlessQuery(t *testing.T) {
 		t.Fatalf("nested query escaped snapshot: value=%d error=%v duration=%v", value, err, time.Since(started))
 	}
 }
+
+func TestReadSnapshotRejectsWritesAndReturnsNoPartialValue(t *testing.T) {
+	database := testdb.Postgres(t)
+	value, err := db.ReadSnapshot(context.Background(), database, func(_ context.Context, q db.ReadDBTX) (int, error) {
+		_, err := q.Exec(`INSERT INTO poke_classes(id,name,class_type) VALUES(77,'WRONG','TRAINER')`)
+		return 99, err
+	})
+	if err == nil || value != 0 {
+		t.Fatalf("read-only snapshot accepted mutation: %d %v", value, err)
+	}
+	var count int
+	if err := database.QueryRow(`SELECT count(*) FROM poke_classes WHERE id=77`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("snapshot mutation escaped: count=%d error=%v", count, err)
+	}
+}

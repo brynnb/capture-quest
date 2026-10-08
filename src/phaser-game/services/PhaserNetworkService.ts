@@ -147,33 +147,6 @@ export async function requestTrainerInteraction(
   }
 }
 
-export interface MapMusicResult {
-  success: boolean;
-  mapId?: number;
-  musicConstant?: string;
-  error?: string;
-}
-
-export async function requestMapMusic(
-  mapId: number,
-): Promise<MapMusicResult | null> {
-  if (!WorldSocket.isConnected) {
-    return null;
-  }
-
-  try {
-    return await WorldSocket.sendJsonRequest<MapMusicResult>(
-      OpCodes.PhaserMapMusicRequest,
-      OpCodes.PhaserMapMusicResponse,
-      { mapId },
-      2500,
-    );
-  } catch (err) {
-    console.warn("[PhaserNetwork] Map music request failed:", err);
-    return null;
-  }
-}
-
 export function sendTrainerBattleStart(trainerActorId: number): void {
   if (!WorldSocket.isConnected) return;
   NetworkBridge.send({ trainerActorId }, OpCodes.TrainerBattleStartRequest);
@@ -341,7 +314,6 @@ export type PhaserActorDespawnHandler = (data: { id: number }) => void;
 export type TrainerEncounterHandler = (
   data: TrainerEncounterNotifyPayload,
 ) => void;
-export type PhaserMapMusicHandler = (data: MapMusicResult) => void;
 
 type BattleCommandHandler = (data: BattleCommandResponse | SafariBattleActionResponse | BattleCommandError) => void;
 const battleCommandHandlers = new Map<number, Set<BattleCommandHandler>>([
@@ -392,7 +364,6 @@ const handlers = {
   actorUpdate: new Set<PhaserActorUpdateHandler>(),
   actorDespawn: new Set<PhaserActorDespawnHandler>(),
   trainerEncounter: new Set<TrainerEncounterHandler>(),
-  mapMusic: new Set<PhaserMapMusicHandler>(),
 };
 
 export function onEscapeRope(handler: (data: import("@/net/generated/world_api").EscapeRopeUseResponse | PlayerStepError) => void): () => void {
@@ -513,10 +484,7 @@ export function onTrainerEncounter(
   return () => handlers.trainerEncounter.delete(handler);
 }
 
-export function onMapMusic(handler: PhaserMapMusicHandler): () => void {
-  handlers.mapMusic.add(handler);
-  return () => handlers.mapMusic.delete(handler);
-}
+
 
 /**
  * Tell the server the local trainer approach animation has finished and battle can start.
@@ -674,9 +642,7 @@ export function dispatchPhaserResponse(opcode: number, data: unknown): void {
         h(data as TrainerEncounterNotifyPayload),
       );
       break;
-    case OpCodes.PhaserMapMusicResponse:
-      handlers.mapMusic.forEach((h) => h(data as MapMusicResult));
-      break;
+
   }
 }
 

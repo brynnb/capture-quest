@@ -31,10 +31,6 @@ type PhaserHiddenObjectsRequest struct {
 	MapID int `json:"mapId"`
 }
 
-type PhaserMapMusicRequest struct {
-	MapID int `json:"mapId"`
-}
-
 // --- Response types ---
 
 type PhaserDialogueEntry struct {
@@ -562,30 +558,10 @@ func HandlePhaserHiddenObjectsRequest(ses *session.Session, payload []byte, wh *
 	return false
 }
 
-// HandlePhaserMapMusicRequest returns the music constant for a map
+// This opcode remains reserved for stale clients. Runtime music comes from the
+// canonical generated browser manifest; never restore a second database path.
 func HandlePhaserMapMusicRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	var req PhaserMapMusicRequest
-	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("[Phaser] Invalid MapMusicRequest: %v", err)
-		return false
-	}
-
-	var musicConstant string
-	err := db.GlobalWorldDB.DB.QueryRow(`
-		SELECT music_constant FROM phaser_map_music WHERE map_id = $1`, req.MapID).Scan(&musicConstant)
-	if err != nil {
-		log.Printf("[Phaser] No music found for map %d: %v", req.MapID, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "no music for map"}, opcodes.PhaserMapMusicResponse)
-		return false
-	}
-
-	res := map[string]interface{}{
-		"success":       true,
-		"mapId":         req.MapID,
-		"musicConstant": musicConstant,
-	}
-	ses.SendStreamJSON(res, opcodes.PhaserMapMusicResponse)
-	log.Printf("[Phaser] Sent music for map %d: %s", req.MapID, musicConstant)
+	ses.SendStreamJSON(protocol.ErrorResponse{Error: "Map music query is no longer supported; reload the client."}, opcodes.PhaserMapMusicResponse)
 	return false
 }
 

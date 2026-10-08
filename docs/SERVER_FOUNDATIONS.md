@@ -28,6 +28,39 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Snapshot review and unused map-music query retirement (2026-10-08)
+
+The shared snapshot review now includes an attempted INSERT through its repository
+handle. PostgreSQL rejects it, no row persists and the helper returns no partial
+value. Existing commit/publication and nested-query deadline checks remain. The
+helper's missing-database error is named for the shared read boundary rather than
+its former content-only location.
+
+The complete caller search found no calls to `requestMapMusic` or `onMapMusic`.
+Actual playback is `AudioService` -> `musicTrackForMap` -> the canonical generated
+`pokemon_audio_manifest.json`. The extractor/schema and pipeline documentation
+confirm that browser manifest/audio lane. Instead of building another query
+framework around an unused path, the old global/background database handler,
+FIFO request, result type, subscriber collection and response dispatch are retired.
+Opcodes 66/67 remain reserved; the registered legacy handler returns explicit
+unsupported/reload rejection without reading any database. Imported source music
+metadata, generated manifests and the actual playback path remain unchanged.
+
+The reserved-query regression disables the global database and supplies no runtime
+pool, then verifies rejection. Four existing source-manifest music lookup checks
+passed. Focused world/database race checks passed in 1.021 and 1.199 seconds,
+including dispatcher and snapshot regressions. Canonical Tygo, typecheck, runtime
+asset validation, production build (Vite 3.48 seconds) and diff checks passed.
+Evidence is retained under `/var/tmp/capturequest-music-retirement-*`. No new
+rendered/listening or production audio claim follows from lookup/build checks.
+
+Remaining world-presentation work includes overworld/tile read lifetimes, actor
+publication/cached-view audit and dynamic previous-map recovery. Broader account,
+transport, script writers and the original unattributed restore timeout remain
+open; all five roadmap areas remain active. Next: inspect overworld-map and tile
+read cancellation/correlation through the established content and request layers.
+This checkpoint is local only, without push, deployment or production mutation.
+
 ## Warp presentation reads through the shared snapshot boundary (2026-10-08)
 
 Warp queries used the global database and resolved `LAST_MAP` destinations while

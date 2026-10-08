@@ -18,7 +18,7 @@ type ReadDBTX interface {
 func ReadSnapshot[T any](ctx context.Context, database *sql.DB, read func(context.Context, ReadDBTX) (T, error)) (T, error) {
 	var zero T
 	if database == nil {
-		return zero, fmt.Errorf("content database is required")
+		return zero, fmt.Errorf("read snapshot database is required")
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()

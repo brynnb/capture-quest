@@ -79,6 +79,9 @@ export const PhaserItemDataRequest: OpCode = 62;
 export const PhaserItemDataResponse: OpCode = 63;
 export const PhaserHiddenObjectsRequest: OpCode = 64;
 export const PhaserHiddenObjectsResponse: OpCode = 65;
+/**
+ * Reserved: map music is provided by the canonical browser audio manifest.
+ */
 export const PhaserMapMusicRequest: OpCode = 66;
 export const PhaserMapMusicResponse: OpCode = 67;
 /**

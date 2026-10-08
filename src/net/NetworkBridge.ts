@@ -126,7 +126,6 @@ export class NetworkBridge {
       case OpCodes.PhaserWarpsResponse:
       case OpCodes.PhaserActorPositionUpdate:
       case OpCodes.PhaserActorDespawn:
-      case OpCodes.PhaserMapMusicResponse:
       case OpCodes.TrainerEncounterNotify:
         // Delegate to Phaser network service
         import("@/phaser-game/services/PhaserNetworkService").then((module) =>

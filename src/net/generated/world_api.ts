@@ -795,9 +795,6 @@ export interface PhaserTrainerDataRequest {
 export interface PhaserHiddenObjectsRequest {
   mapId: number /* int */;
 }
-export interface PhaserMapMusicRequest {
-  mapId: number /* int */;
-}
 export interface PhaserDialogueEntry {
   label: string;
   sourceFile: string;
