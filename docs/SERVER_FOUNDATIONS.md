@@ -7,7 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-WebSocket setup uses the existing deadline and FIFO requests retire with transport,
+native transport setup/readers/writes are fenced to their captured owner,
+following `9e872ad`: WebSocket setup uses the existing deadline and FIFO requests retire with transport,
 following `849b797`: WebSocket attempts settle on retirement and callbacks use the owned instance,
 following `208c5a2`: owned reconnect timers and rendered informational process-replacement acceptance,
 following `82c87cc`: informational read boundary review rejects incomplete/wrong-kind data and
@@ -42,6 +43,45 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Native transport continuation and stream ownership (2026-10-08)
+
+The native path waited for an old transport to close itself before replacing it,
+used the mutable `webtransport` field across asynchronous setup, and let old
+closed/read callbacks operate on current state. Datagram queue callbacks also
+looked up the current writer at execution time, allowing an old queued payload
+to target a replacement writer.
+
+Setup now has one cancellable native attempt and captures its transport. The
+existing timeout helper also accepts retirement cancellation; hash fetch keeps
+its five-second limit and handshake/control setup retain eight-second limits.
+Superseded continuations settle without creating a transport or falling back
+over the replacement. Retirement closes the old transport directly, cancels
+readers, releases writers, clears physical-transport FIFO requests and resets
+the write queue. Control streams arriving after retirement are disposed. Old
+closed/read callbacks check instance ownership, including after synchronous
+dispatch. Queued datagrams capture writer/transport and reject if that owner
+retired, while later demand has an independent healthy queue. Pending native
+setup also blocks competing reconnect scheduling.
+
+Seven controlled-transport tests use real JavaScript streams and cover handshake
+replacement, old closure, queued control/datagram bytes after retirement, reader
+lock release, old queued writes, hash-fetch cancellation, late control streams
+and pending-setup retry exclusion. They do not prove real QUIC or certificate
+negotiation. Sixty-one related client checks passed before the final scheduler
+guard; the final native/WebSocket focused checks passed all 16 cases afterward.
+
+The shared cleanup's real WebSocket pending-view SIGKILL/reentry check still
+passed in 7.5s, with evidence at `/var/tmp/capturequest-rendered.ksEHbb`. That is
+WebSocket rendered evidence, not native WebTransport acceptance. No Go, wire,
+schema or generated asset change is included.
+Final frontend typechecking, production build, runtime asset validation and diff
+checks passed. Existing build warnings remain; no production endpoint was tested.
+
+Next: real native browser/QUIC acceptance and shared send-failure/FIFO association
+review before another family migration. Same-connection late untagged replies
+remain open. The original restore timeout and Repel click remain unattributed;
+all five roadmap areas remain active. No push or deployment.
 
 ## WebSocket setup deadline and FIFO transport retirement (2026-10-08)
 
