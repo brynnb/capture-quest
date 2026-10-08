@@ -121,6 +121,15 @@ func TestTileProjectionUsesCommittedFlagsAndRejectsUnavailableMetadata(t *testin
 	}
 	testdb.Exec(t, database, `INSERT INTO phaser_tiles(x,y,local_x,local_y,map_id,source_map_id,tile_image_id,collision_type,raw_foot_tile_id,is_native_game_data,coordinate_origin,content_origin) VALUES(1,1,1,1,50,50,1,1,1,true,'native','native'); INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'OPEN'); DELETE FROM phaser_tile_properties WHERE tile_image_id=3`)
 	projected = read()
+	if !projected.Success || len(projected.Tiles) != 1 || projected.Tiles[0].RawFootTileID == nil || *projected.Tiles[0].RawFootTileID != 3 {
+		t.Fatalf("valid imported image required an editor palette row: %+v", projected)
+	}
+	states, err = EventTileStatesForCharacter(context.Background(), database, 42, 50)
+	if err != nil || len(states) != 1 || states[0].TileImageID != 3 || states[0].RawFootTileID == nil || *states[0].RawFootTileID != 3 {
+		t.Fatalf("publication required editor palette: %+v %v", states, err)
+	}
+	testdb.Exec(t, database, `DELETE FROM phaser_tile_images WHERE id=3`)
+	projected = read()
 	var failed protocol.PlayerStepError
 	if err := json.Unmarshal(messages.streams[0].payload, &failed); err != nil || projected.Success || failed.Error == "" || !strings.Contains(failed.Error, "image=3") {
 		t.Fatalf("missing image metadata became base-tile success: %+v %v", failed, err)
@@ -168,7 +177,7 @@ func TestCharacterCollisionUsesCommittedRuleSelection(t *testing.T) {
 	if err != nil || collision[tileKey(1, 1)] != 1 {
 		t.Fatalf("rolled-back flags leaked into collision: %v %v", collision, err)
 	}
-	testdb.Exec(t, database, `INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'OPEN'); DELETE FROM phaser_tile_properties WHERE tile_image_id=2`)
+	testdb.Exec(t, database, `INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'OPEN'); DELETE FROM phaser_tile_images WHERE id=2`)
 	collision, raw, err = manager.characterCollision(context.Background(), database, 42, 9999, 0, 0, wh.EventFlags)
 	if err == nil || collision != nil || raw != nil {
 		t.Fatalf("missing winning metadata returned partial success: %v %v %v", collision, raw, err)

@@ -52,6 +52,17 @@ in the square do not determine terrain. The bundled extractor owns this rule;
 regenerate the atomic SQLite/art/contract family when it changes. Runtime
 movement and pathfinding consume that classification without per-map overrides.
 
+## Image metadata and editor properties
+
+`phaser_tile_images` is the imported catalog and owns image identity,
+`raw_foot_tile_id` and `talk_over_tile`, derived from the extractor's block data.
+`phaser_tile_properties` is a separate sparse editor table for names and collision
+preferences; the importer does not create one palette row per catalog image.
+Runtime metadata reads must start from the required image row and optionally join
+editor properties. A missing palette row is valid; a missing image row is a source
+error. Placed tiles and event rules retain their own explicit collision decision.
+The editor's absent collision preference retains its declared blocked default.
+
 ## Import Flow
 
 ```text

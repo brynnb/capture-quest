@@ -80,6 +80,9 @@ func tileRuntimePropertiesForTileImage(tileImageID int) tileRuntimeProperties {
 	return props
 }
 
+// Imported image metadata is authoritative. Palette properties are sparse editor
+// overrides; their absent row must not make a real catalog image unavailable.
+// Event rules carry their own collision; the editor default remains blocked.
 func tileRuntimePropertiesForTileImageContext(ctx context.Context, database db.ContextDBTX, tileImageID int) (tileRuntimeProperties, error) {
 	var (
 		collisionType int
@@ -88,9 +91,9 @@ func tileRuntimePropertiesForTileImageContext(ctx context.Context, database db.C
 	)
 	if err := database.QueryRowContext(ctx, `
 		SELECT COALESCE(tp.collision_type, 0), ti.raw_foot_tile_id, COALESCE(ti.talk_over_tile, FALSE)
-		FROM phaser_tile_properties tp
-		LEFT JOIN phaser_tile_images ti ON ti.id = tp.tile_image_id
-		WHERE tp.tile_image_id = $1`,
+		FROM phaser_tile_images ti
+		LEFT JOIN phaser_tile_properties tp ON tp.tile_image_id = ti.id
+		WHERE ti.id = $1`,
 		tileImageID,
 	).Scan(&collisionType, &rawFootTileID, &talkOverTile); err != nil {
 		return tileRuntimeProperties{}, err

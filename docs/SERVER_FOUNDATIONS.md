@@ -28,6 +28,52 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Runtime image metadata authority correction (2026-10-08)
+
+The apparent missing event metadata was a reader defect, not absent extractor
+output. The importer populates `phaser_tile_images.raw_foot_tile_id` and
+`talk_over_tile` from block data. `phaser_tile_properties` is a sparse editor table;
+normal imports do not populate a palette row for each image. The shared runtime
+reader nevertheless started its query from that editor table. Its earlier strict
+error propagation incorrectly made an optional palette record mandatory.
+
+The runtime query now starts from the required imported image and left-joins
+optional palette properties. Native foot/talk metadata remains authoritative;
+explicit event/placed collision remains unchanged, while the editor's optional
+collision preference retains its declared blocked default. Truly missing catalog
+images still fail. No guessed metadata, per-image exception, importer repair,
+manual generated-file edit or regeneration is introduced.
+
+The earlier missing-metadata fixture deleted a palette row. Schema/importer evidence
+shows that expectation was wrong. The regression now proves native metadata and
+event publication succeed without palette, then deletes the actual required image
+and still demands failure. Collision rejection likewise checks a missing image
+while its palette row remains. This corrects the producing assumption rather than
+weakening an unexplained failing assertion.
+
+Focused world checks passed (6.8s), full world (51.3s), simulator and importer suites
+passed, all Go packages compile and diff checks pass. Canonical SQLite contains
+complete 16-byte block data for image 50 (tileset 15/block 45/position 2) and image
+253 (tileset 3/block 80/position 1). In the matched private Postgres catalog their
+raw-foot IDs are 23 and 72, talk-over is false and both palette rows are absent.
+The repaired `vermilion_gym_trash_second_lock_success --check` golden passes.
+Evidence is retained under `/var/tmp/capturequest-image-metadata-*` and the private
+cluster `/var/tmp/capturequest-script-sim.NbhlOA`; that cluster is stopped.
+
+Full corpus acceptance remains unproven. The rerun now returns real Agatha tile
+states without metadata failure, then rejects the scenario's old numeric identity:
+(0,4) expects tile 261, current generated catalog uses 50. Tile IDs are catalog-local;
+156 scenario references to `tileImageId` warrant a corpus/source-aware expectation
+model rather than editing individual constants or suppressing assertions. No golden
+or expectation was changed here. Runtime art/contract/publication are untouched,
+and there is no rendered appearance or production deployment claim.
+
+All five roadmap areas remain active. The original restore timeout, pre-command
+Repel click failure, remaining simulator writers and other command rows stay open.
+Next: audit tile expectation identity against authoritative structured source and
+build a reusable catalog-aware assertion boundary before more command migration.
+This checkpoint is local only, without push or deployment.
+
 ## Shared simulator snapshot read boundary (2026-10-08)
 
 The shared snapshot reader no longer combines independent global queries with a
