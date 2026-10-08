@@ -14,6 +14,7 @@ const StaticDataGate = ({ children, fallback }: StaticDataGateProps) => {
   const {
     isLoaded,
     isLoading,
+    error,
     loadStaticData,
     areModelsPreloaded,
     setModelsPreloaded,
@@ -26,10 +27,10 @@ const StaticDataGate = ({ children, fallback }: StaticDataGateProps) => {
       return;
     }
 
-    if (!isLoaded && !isLoading) {
+    if (!isLoaded && !isLoading && !error) {
       loadStaticData();
     }
-  }, [isLoaded, isLoading, loadStaticData, setScreen]);
+  }, [isLoaded, isLoading, error, loadStaticData, setScreen]);
 
   // Mark models as preloaded immediately since we're using 2D now
   // The Phaser renderer will handle its own asset loading
@@ -57,6 +58,8 @@ const StaticDataGate = ({ children, fallback }: StaticDataGateProps) => {
     if (!WorldSocket.isConnected) {
       return <LoadingScreen message="Connecting..." isIndeterminate />;
     }
+
+    if (error && !isLoading) return <LoadingScreen message="Game data could not be loaded." onRetry={() => { void loadStaticData(); }} />;
 
     const message = !isLoaded ? "Loading Game Data..." : "Preparing...";
 

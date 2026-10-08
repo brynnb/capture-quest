@@ -133,17 +133,18 @@ const useGameStatusStore = create<GameStatusStore>()(
         setMusicVolume: (volume) => set({ musicVolume: volume }),
 
         initializeMaps: async (forceReload = false) => {
-          if (!forceReload && get().maps.length > 0) return;
-
           try {
             const staticDataStore = await import("./StaticDataStore");
             const staticData = staticDataStore.default.getState();
 
-            if (staticData.isLoaded && staticData.maps.length > 0) {
-              set({ maps: staticData.maps });
+            if (staticData.isLoaded) {
+              // The catalog owner may have changed after reconnect/login. A
+              // populated local view alone is not evidence it is still current.
+              if (forceReload || get().maps !== staticData.maps) set({ maps: staticData.maps });
               return;
             }
 
+            set({ maps: [] });
             console.warn(
               "[GameStatusStore] Static data not loaded yet, maps unavailable",
             );

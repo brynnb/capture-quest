@@ -376,6 +376,7 @@ export function onInventoryCommand<T extends InventoryReply>(opcode: number, rec
 
 const handlers = {
   escapeRope: new Set<(data: import("@/net/generated/world_api").EscapeRopeUseResponse | PlayerStepError) => void>(),
+  staticContent: new Set<(data: import("@/net/generated/world_api").StaticDataResponse | PlayerStepError) => void>(),
   preferences: new Set<(data: import("@/net/generated/world_api").PreferenceResponse | PlayerStepError) => void>(),
   bicycleState: new Set<(data: import("@/net/generated/world_api").BicycleStateResponse | PlayerStepError) => void>(),
   gameplayState: new Set<(data: GameplayStateResponse | PlayerStepError) => void>(),
@@ -405,6 +406,12 @@ export function onEscapeRope(handler: (data: import("@/net/generated/world_api")
 }
 export function requestEscapeRope(request: import("@/net/generated/world_api").EscapeRopeUseRequest): Promise<void> {
   return NetworkBridge.send(request, OpCodes.EscapeRopeUseRequest);
+}
+export function onStaticContent(handler: (data: import("@/net/generated/world_api").StaticDataResponse | PlayerStepError) => void): () => void {
+  handlers.staticContent.add(handler); return () => handlers.staticContent.delete(handler);
+}
+export function requestStaticContent(requestId: string, creation: boolean): Promise<void> {
+  return NetworkBridge.send({requestId}, creation ? OpCodes.CharCreateDataRequest : OpCodes.StaticDataRequest);
 }
 export function onPreferences(handler: (data: import("@/net/generated/world_api").PreferenceResponse | PlayerStepError) => void): () => void {
   handlers.preferences.add(handler); return () => handlers.preferences.delete(handler);
@@ -593,6 +600,10 @@ export function dispatchPhaserResponse(opcode: number, data: unknown): void {
 
     case OpCodes.EscapeRopeUseResponse:
       handlers.escapeRope.forEach(handler => handler(data as import("@/net/generated/world_api").EscapeRopeUseResponse | PlayerStepError));
+      break;
+    case OpCodes.StaticDataResponse:
+    case OpCodes.CharCreateDataResponse:
+      handlers.staticContent.forEach(handler => handler(data as import("@/net/generated/world_api").StaticDataResponse | PlayerStepError));
       break;
     case OpCodes.SetOption:
       handlers.preferences.forEach(handler => handler(data as import("@/net/generated/world_api").PreferenceResponse | PlayerStepError));

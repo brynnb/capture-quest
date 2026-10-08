@@ -96,6 +96,8 @@ export class NetworkBridge {
       case OpCodes.PokemonPCSwitchBoxResponse:
       case OpCodes.CutsceneEndResponse:
       case OpCodes.EscapeRopeUseResponse:
+      case OpCodes.StaticDataResponse:
+      case OpCodes.CharCreateDataResponse:
       case OpCodes.SetOption:
       case OpCodes.BicycleStateResponse:
       case OpCodes.GameplayStateResponse:

@@ -1892,7 +1892,11 @@ export interface HandlerRegistry {
 //////////
 // source: world-query-handlers.go
 
+export interface StaticDataRequest {
+  requestId: string;
+}
 export interface StaticDataResponse {
+  requestId: string;
   success: true;
   classes: import("./staticdata").ClassInfo[];
   factions: import("./staticdata").FactionInfo[];

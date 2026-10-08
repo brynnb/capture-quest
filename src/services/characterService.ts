@@ -1,7 +1,8 @@
 /**
  * Character Service - Static data, character creation, and character state mapping
  */
-import { WorldSocket, OpCodes } from "@/net";
+import { correlatedRequest } from "@/phaser-game/services/CorrelatedRequest";
+import * as PhaserNet from "@/phaser-game/services/PhaserNetworkService";
 
 // Static data types
 export interface FactionData {
@@ -43,7 +44,7 @@ export interface HomeTownData {
   sortOrder: number;
 }
 
-type StaticDataResponse = import("@/net/generated/world_api").StaticDataResponse | import("@/net/generated/protocol").ErrorResponse;
+type StaticDataResponse = import("@/net/generated/world_api").StaticDataResponse;
 function requireStaticLists(response: import("@/net/generated/world_api").StaticDataResponse): asserts response is import("@/net/generated/world_api").StaticDataResponse & { maps:MapData[] } {
  if (![response.maps,response.classes,response.factions,response.startCities].every(Array.isArray)) throw new Error("Incomplete static content response");
  for (const map of response.maps) {
@@ -55,26 +56,13 @@ function requireStaticLists(response: import("@/net/generated/world_api").Static
 /**
  * Get static game data.
  */
-export async function getStaticData(): Promise<{
+export async function getStaticData(signal?: AbortSignal): Promise<{
   classes: ClassData[];
   maps: MapData[];
   factions: FactionData[];
   startCities: HomeTownData[];
 }> {
-  if (!WorldSocket.isConnected) {
-    throw new Error("WorldSocket not connected");
-  }
-
-  const response = (await WorldSocket.sendJsonRequest(
-    OpCodes.StaticDataRequest,
-    OpCodes.StaticDataResponse,
-    {},
-  )) as StaticDataResponse;
-
-  if (!response.success) {
-    throw new Error(response.error || "Failed to load static data");
-  }
-
+  const response = await correlatedRequest<StaticDataResponse>(PhaserNet.onStaticContent, id => PhaserNet.requestStaticContent(id,false), signal);
   requireStaticLists(response);
   return { maps:response.maps, classes:response.classes, factions:response.factions, startCities:response.startCities };
 }
@@ -82,25 +70,13 @@ export async function getStaticData(): Promise<{
 /**
  * Get character creation data
  */
-export async function getCharCreateData(): Promise<{
+export async function getCharCreateData(signal?: AbortSignal): Promise<{
   factions: FactionData[];
   classes: ClassData[];
   homeTowns: HomeTownData[];
+  maps: MapData[];
 }> {
-  if (!WorldSocket.isConnected) {
-    throw new Error("WorldSocket not connected");
-  }
-
-  const response = (await WorldSocket.sendJsonRequest(
-    OpCodes.CharCreateDataRequest,
-    OpCodes.CharCreateDataResponse,
-    {},
-  )) as StaticDataResponse;
-
-  if (!response.success) {
-    throw new Error(response.error || "Failed to load character creation data");
-  }
-
+  const response = await correlatedRequest<StaticDataResponse>(PhaserNet.onStaticContent, id => PhaserNet.requestStaticContent(id,true), signal);
   requireStaticLists(response);
-  return { factions:response.factions, classes:response.classes, homeTowns:response.startCities };
+  return { maps:response.maps, factions:response.factions, classes:response.classes, homeTowns:response.startCities };
 }

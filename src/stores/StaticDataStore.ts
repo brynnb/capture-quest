@@ -1,3 +1,4 @@
+import { WorldSocket } from "@/net";
 import { create } from "zustand";
 import {
   getStaticData,
@@ -47,46 +48,8 @@ const useStaticDataStore = create<StaticDataStore>()((set, get) => ({
   setModelsPreloaded: (loaded: boolean) => set({ areModelsPreloaded: loaded }),
   setModelPreloadProgress: (progress: number) =>
     set({ modelPreloadProgress: progress }),
-  loadStaticData: async () => {
-    const { isLoaded, isLoading } = get();
-    if (isLoaded || isLoading) return;
-
-    set({ isLoading: true, error: null });
-
-    try {
-      const data = await getStaticData();
-      set({ isLoaded:true, isLoading:false, maps:data.maps, factions:data.factions, classes:data.classes, homeTowns:data.startCities });
-    } catch (error) {
-      // A failed read is retryable. Empty successful arrays come from the server;
-      // cancellation or missing content must not become a loaded empty catalog.
-      set({ isLoaded:false, isLoading:false, error:error instanceof Error ? error.message : "Static content unavailable" });
-    }
-  },
-
-  loadCharCreateData: async () => {
-    const { isCharCreateLoaded, isLoadingCharCreate } = get();
-    if (isCharCreateLoaded || isLoadingCharCreate) return;
-
-    set({ isLoadingCharCreate: true, error: null });
-
-    try {
-      const data = await getCharCreateData();
-
-      set({
-        isCharCreateLoaded: true,
-        isLoadingCharCreate: false,
-        ...data,
-      });
-
-      console.log(`[StaticData] Loaded Pokémon CharCreate theme`);
-    } catch (error) {
-      console.error("Failed to load character creation data:", error);
-      set({
-        isLoadingCharCreate: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
-    }
-  },
+  loadStaticData: () => loadCatalog(false),
+  loadCharCreateData: () => loadCatalog(true),
 
   getFactionById: (id: number) => {
     return get().factions.find((f) => f.id === id);
@@ -104,5 +67,39 @@ const useStaticDataStore = create<StaticDataStore>()((set, get) => ({
     displayLocationNameForMap(mapId, get().maps),
 
 }));
+
+type CatalogFlight = { controller: AbortController; generation: number; promise: Promise<void> };
+let flight: CatalogFlight | null = null;
+let lifetimeBound = false;
+function loadCatalog(creation: boolean): Promise<void> {
+  // Catalog data is shared across screens/characters. Retire it on transport or
+  // account replacement, not when one of several observing components unmounts.
+  if (!lifetimeBound) {
+    lifetimeBound = true;
+    WorldSocket.subscribeSessionRetirement(() => {
+      flight?.controller.abort(); flight = null;
+      useStaticDataStore.setState({isLoaded:false,isCharCreateLoaded:false,isLoading:false,isLoadingCharCreate:false,error:null,maps:[],classes:[],factions:[],homeTowns:[]});
+    });
+  }
+  if (flight) return flight.promise;
+  if (useStaticDataStore.getState().isLoaded) return Promise.resolve();
+  const owner: CatalogFlight = {controller:new AbortController(),generation:WorldSocket.sessionGeneration,promise:Promise.resolve()};
+  flight = owner;
+  owner.promise = (async () => {
+    try {
+      const data = creation ? await getCharCreateData(owner.controller.signal) : await getStaticData(owner.controller.signal);
+      if (flight!==owner || owner.controller.signal.aborted || WorldSocket.sessionGeneration!==owner.generation) return;
+      useStaticDataStore.setState({isLoaded:true,isCharCreateLoaded:true,maps:data.maps,classes:data.classes,factions:data.factions,homeTowns:"homeTowns" in data ? data.homeTowns : data.startCities});
+    } catch (error) {
+      if (flight===owner && !owner.controller.signal.aborted) useStaticDataStore.setState({error:error instanceof Error ? error.message : "Static content unavailable"});
+    } finally {
+      if (flight===owner) {flight=null;useStaticDataStore.setState({isLoading:false,isLoadingCharCreate:false});}
+    }
+  })();
+  // Publish loading only after the real shared promise exists, including for
+  // synchronous store subscribers that request the other endpoint.
+  useStaticDataStore.setState({isLoading:true,isLoadingCharCreate:true,error:null});
+  return owner.promise;
+}
 
 export default useStaticDataStore;

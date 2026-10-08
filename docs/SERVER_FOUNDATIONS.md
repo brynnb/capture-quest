@@ -28,6 +28,51 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Correlated catalog reads and shared client lifetime (2026-10-08)
+
+Both catalog endpoints now require and echo `requestId`, including rejection/read
+errors. The client uses the existing `correlatedRequest` settlement primitive and
+the ordinary response dispatcher; this family's opcode/FIFO `sendJsonRequest` path
+is retired. Late replies cannot settle another read, and timeout/abort removes its
+listener. The store coalesces static and creation callers onto one real promise
+and publishes their complete catalog together. Creation-first and static-first
+loads supply the same graph. Loading flags are published only after the shared
+promise exists, so synchronous observers cannot receive a placeholder settlement.
+
+The socket exposes a read-owner generation and retirement subscription. Connection
+attempts, close and the existing JWT authentication request path retire that owner;
+subscriber errors cannot prevent transport cleanup. The catalog store binds once,
+aborts pending work and invalidates its metadata on retirement. Flight identity,
+generation and abort checks prevent an older completion from overwriting a new
+catalog or its loading state. The catalog belongs to the application connection,
+so unmounting one observing screen does not cancel other consumers' shared read.
+`initializeMaps` now follows the current authoritative catalog instead of trusting
+its own populated map view; unavailable source metadata clears that view.
+
+The loading gate no longer automatically loops failed reads. Its existing loading
+screen and ActionButton expose an explicit Retry action. A rendered fault test
+holds the first reply until timeout, verifies one read and a visible Retry button,
+then injects an older modified catalog during retry. The old data is ignored; the
+current catalog supports creation and world entry. This and the normal guest flow
+passed in 17.5 seconds in `/var/tmp/capturequest-rendered.Z9Kflt`. Final map-view
+refinement is covered by its focused state test, not a new visual claim.
+
+Seven client regressions passed, including overlap/correlation, timeout/abort,
+coalescing in both directions, noncooperating late completion after retirement,
+socket close/auth generation and map-view replacement. PostgreSQL endpoint checks
+cover both request IDs, correlated failures and legacy request rejection. Full
+world/content race suites passed in 48.197 and 12.101 seconds. Typecheck, canonical
+Tygo regeneration, asset validation, production build (3.37 seconds) and diff checks
+passed. Logs are retained under `/var/tmp/capturequest-static-correlation-*`.
+
+Remaining: rendered transport reconnect/account replacement during a pending read,
+shared retirement-hook review and the wider account/transport family. This remains
+a verified implementation baseline rather than a closed whole-roadmap claim.
+The original restore timeout is unattributed, and all five areas remain active.
+Next: review the new shared retirement boundary and exercise those actual transport
+races before expanding to another family. This checkpoint is local only; no push,
+deployment or production mutation is part of this continuation.
+
 ## Static/creation content aggregate and typed replies (2026-10-08)
 
 The old static loader used process-global `sync.Once`, the global database and a

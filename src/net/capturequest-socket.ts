@@ -120,6 +120,20 @@ export class CaptureQuestSocket {
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   public latency = 0;
   public onPing: ((latency: number) => void) | null = null;
+  private ownerGeneration = 0;
+  private ownerRetireListeners = new Set<() => void>();
+  public get sessionGeneration(): number { return this.ownerGeneration; }
+  public subscribeSessionRetirement(receive: () => void): () => void {
+    this.ownerRetireListeners.add(receive); return () => this.ownerRetireListeners.delete(receive);
+  }
+  private retireSessionReads(): void {
+    this.ownerGeneration++;
+    // A view subscriber must not prevent transport cleanup or another owner
+    // from receiving retirement.
+    for (const receive of [...this.ownerRetireListeners]) {
+      try { receive(); } catch (error) { console.error("[Socket] Session read retirement failed:", error); }
+    }
+  }
   public onJson: ((opcode: OpCode, data: unknown) => void) | null = null;
 
   constructor(config: { maxRetries?: number; allowReconnect?: boolean } = {}) {
@@ -138,6 +152,7 @@ export class CaptureQuestSocket {
     port: number | string,
     onClose: () => void
   ): Promise<boolean> {
+    this.retireSessionReads();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const WT = (window as any).WebTransport as {
       new(url: string, opts?: WebTransportOptions): WebTransport;
@@ -331,6 +346,7 @@ export class CaptureQuestSocket {
     data: unknown,
     timeoutMs: number = 10000
   ): Promise<TRes> {
+    if (requestOpCode === OpCodes.JWTLogin) this.retireSessionReads();
     if (!this.isConnected || (!this.controlWriter && !this.useWebSocket)) {
       throw new Error("Not connected");
     }
@@ -392,6 +408,7 @@ export class CaptureQuestSocket {
 
 
   public close(scheduleReconnect: boolean = true) {
+    this.retireSessionReads();
     this.isClosing = true;
     this.isConnected = false;
 
