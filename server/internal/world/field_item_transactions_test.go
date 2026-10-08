@@ -216,3 +216,37 @@ func TestEscapeRopeOldCommandCannotConsumeAgainAfterReturningToSource(t *testing
 		t.Fatal("old command moved fresh owner")
 	}
 }
+
+func TestEscapeRopeRetiresExpiredStepButRejectsLiveAuthorization(t *testing.T) {
+	wh, ses, messages := setupIssuedStep(t)
+	testdb.Exec(t, wh.database, `INSERT INTO cq_items(id,name,short_name,is_usable) VALUES(29,'Escape Rope','ESCAPE_ROPE',true); INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(60,'EXIT',20,20,0); INSERT INTO phaser_warps(id,source_map_id,x,y,destination_map_id,destination_x,destination_y) VALUES(1,50,1,1,60,3,4)`)
+	instance, err := cqitems.NewStore(wh.database).AddItemToInventory(42, 29, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	step := issueStep(t, wh, ses, messages)
+	request := fmt.Sprintf(`{"requestId":"rope","command":{"characterId":42,"revision":0},"instanceId":%d,"mapId":50,"x":7,"y":8}`, instance)
+	messages.streams = nil
+	battleDispatch(t, wh, ses, opcodes.EscapeRopeUseRequest, request)
+	var response EscapeRopeUseResponse
+	if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &response) != nil || response.Success {
+		t.Fatal("live step ownership ignored")
+	}
+	snapshot, err := cqitems.NewStore(wh.database).GetCharacterSnapshot(context.Background(), 42)
+	if err != nil || snapshot.CommandRevision != 0 || snapshot.Items[0].Instance.Quantity != 2 {
+		t.Fatalf("live rejection changed bag: %+v %v", snapshot, err)
+	}
+	wh.PlayerMovement.players[42].pendingStep.issuedAt = time.Now().Add(-playerStepLifetime)
+	messages.streams = nil
+	battleDispatch(t, wh, ses, opcodes.EscapeRopeUseRequest, request)
+	if len(messages.streams) != 2 || json.Unmarshal(messages.streams[0].payload, &response) != nil || !response.Success {
+		t.Fatalf("expired step blocked Escape Rope: %+v", messages.streams)
+	}
+	messages.streams = nil
+	battleDispatch(t, wh, ses, opcodes.PlayerStepCompleteRequest, fmt.Sprintf(`{"requestId":"late","stepToken":%q}`, step.StepToken))
+	x, y, mapID, ok := wh.PlayerMovement.GetPosition(42)
+	snapshot, err = cqitems.NewStore(wh.database).GetCharacterSnapshot(context.Background(), 42)
+	if !ok || mapID != 60 || x != 3 || y != 4 || err != nil || snapshot.CommandRevision != 1 || snapshot.Items[0].Instance.Quantity != 1 {
+		t.Fatal("expired completion rewound escape or consumed twice")
+	}
+}

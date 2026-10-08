@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import * as OpCodes from "../../src/net/generated/opcodes";
 import type { EscapeRopeUseResponse } from "../../src/net/generated/world_api";
 import { createGuestCharacterAndEnterWorld, enterWorld, quitToCharacterSelect } from "./helpers/auth";
+import { pressMovement } from "./helpers/input";
 import { collectPageErrors } from "./helpers/errors";
 import { inventoryCommandFaults } from "./helpers/inventoryCommandFaults";
 import { isolatedCrashRuntime } from "./helpers/processRecovery";
@@ -95,7 +96,7 @@ test("failed Escape Rope recovery locks the owner until quit and fresh entry", a
   await page.getByRole("button", { name: "Bag", exact: true }).click();
   await waitForInventoryOpen(page, false);
   const stepRequests = errors.sentOpcodes.filter(o => o === OpCodes.PlayerStepRequest).length;
-  await page.keyboard.press("ArrowDown");
+  await pressMovement(page, "down");
   await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   expect(errors.sentOpcodes.filter(o => o === OpCodes.PlayerStepRequest)).toHaveLength(stepRequests);
   expect(faults.requests).toBe(1);
@@ -110,4 +111,35 @@ test("failed Escape Rope recovery locks the owner until quit and fresh entry", a
   await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   expect((await getGameState(page)).map.id).toBe(9999);
   errors.assertNoSevereErrors();
+});
+
+test("Escape Rope retires a lost step authorization after its deadline", async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors = collectPageErrors(page);
+  const lostStep = await inventoryCommandFaults(page, OpCodes.PlayerStepRequest, OpCodes.PlayerStepResponse, true);
+  await createGuestCharacterAndEnterWorld(page);
+  await jumpToScenario(page, "debug_escape_rope_ready");
+  await waitForPlayerTile(page, 9, 9);
+  await waitForInventoryItem(page, 29);
+  await waitForNoMapLoading(page);
+  await pressMovement(page, "right");
+  await expect.poll(() => lostStep.requests).toBe(1);
+  // Issuance is not a commit. Withhold both replacement acknowledgements and
+  // let the ordinary client timeout retire prediction without moving a tile.
+  await expect.poll(() => errors.consoleErrors.length, { timeout: 20_000 }).toBe(1);
+  expect(errors.consoleErrors[0]).toContain("[PlayerMovement] Movement request failed");
+  await waitForPlayerTile(page, 9, 9);
+  await page.getByRole("button", { name: "Bag", exact: true }).click();
+  await waitForInventoryOpen(page, true);
+  await page.getByTestId("inventory-item-escape-rope").click();
+  await expect.poll(async () => {
+    const state = await getGameState(page);
+    return [state.map.id, state.inventory.items.find(i => i.itemId === 29)?.quantity];
+  }, { timeout: 20_000 }).toEqual([9999, 1]);
+  lostStep.deliverReply(0);
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  expect(errors.sentOpcodes.filter(o => o === OpCodes.PlayerStepCompleteRequest)).toEqual([]);
+  expect((await getGameState(page)).map.id).toBe(9999);
+  expect(errors.consoleErrors).toHaveLength(1);
+  expect([...errors.pageErrors, ...errors.networkErrors, ...errors.retiredPositionPackets]).toEqual([]);
 });

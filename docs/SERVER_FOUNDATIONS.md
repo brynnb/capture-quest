@@ -28,6 +28,55 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized a branch push for the stopping checkpoint on 2026-10-07; production deployment remains unauthorized.
 
+## Outstanding-step expiry and catalog admission review (2026-10-07)
+
+The pending authorization lifetime was encoded twice: completion used
+`time.Since(issuedAt)>10s`, while facing used `<10s` and retired the pointer itself.
+Escape Rope required `pendingStep==nil` and could remain blocked after that
+same authorization was already too old to complete. The exact deadline edge also
+differed between facing and completion.
+
+`activePlayerStep(now)` now applies one existing ten-second lifetime and retires
+at `age>=lifetime` under the movement write lock. Completion, facing and Escape
+Rope use it only after session/source ownership checks. A live authorization
+continues to block facing/rope use; an expired pointer cannot block the field
+command or complete afterward. New issuance keeps the existing intentional
+replacement rule and its old-token regression, rather than changing cancellation
+or admission policy as part of this fix.
+
+Movement-map review confirms that a collision-cache hit authorizes animation
+intent, while `validateClientDestinationIn` inside the character transaction is
+the commit authority for catalog map/tile existence and erased state. No second
+map-validation implementation was added. New real PostgreSQL cases warm the
+collision cache, issue a step, then remove its map or erase its target tile.
+Both reject completion, preserve the source position and store no receipt.
+A separate boundary test proves live-step rope rejection, expiry retirement,
+one consumed rope/revision and no rewind after the old completion arrives.
+The exact lifetime edge is tested without a wall-clock sleep.
+
+Focused PostgreSQL checks passed (2.887 seconds), followed by the full world
+race suite (45.200 seconds). Final focused checks passed again (3.135 seconds).
+The first rendered run in `/var/tmp/capturequest-rendered.RUi3eH` passed six of
+seven cases, including normal/lost-result/crash Rope and walking recovery. The
+new expiry case failed before emitting a step intent; it used immediate key down/up.
+Phaser polls `cursors.right.isDown`; the test now uses the established
+`pressMovement` helper (focus blur and a held key) after map loading. The existing
+failed-recovery keyboard check uses the same helper so it exercises actual game
+input. No request-count, deadline, quantity or error assertion was weakened.
+Five final rendered Rope cases passed in 1.1 minutes in
+`/var/tmp/capturequest-rendered.LU5nV3`, including lost step issuance followed by
+expiry/escape, no late completion, failed recovery lock/reentry, and normal/
+timeout/process-death Rope recovery. The expected movement timeout is asserted
+explicitly as the single console error in the issuance-loss case; all other page,
+network and retired-coordinate errors must remain absent. The preceding run also
+passed walking lost-completion/reentry and issued/committed walking process-death
+acceptance. Both isolated runners stopped their private runtime. Diff checks
+passed. Frontend production behavior and wire schemas were unchanged; the
+isolated runner compiled the updated server. The broader roadmap, durable battle/cache and catalog/queue audits, and
+original login restore timeout remain open. Next: audit movement battle ownership
+at commit and the remaining forced-path/source policies before another family.
+No push, deployment or production mutation is part of this local checkpoint.
+
 ## Movement recovery boundary review (2026-10-07)
 
 Review found that `stopMovement(true)` assigned `stepRecoveryRequired=false`.

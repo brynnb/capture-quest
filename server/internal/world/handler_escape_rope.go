@@ -3,6 +3,7 @@ package world
 import (
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/session"
+	"time"
 )
 
 type EscapeRopeUseRequest struct {
@@ -36,10 +37,10 @@ func HandleEscapeRopeUse(ses *session.Session, payload []byte, wh *WorldHandler)
 	}
 	charID := int(ses.Client.CharData().ID)
 	m := wh.PlayerMovement
-	m.mu.RLock()
+	m.mu.Lock()
 	state := m.players[charID]
-	owned := state != nil && state.SessionID == ses.SessionID && state.MapID == req.MapID && state.CurrentX == *req.X && state.CurrentY == *req.Y && len(state.Path) == 0 && state.pendingStep == nil
-	m.mu.RUnlock()
+	owned := state != nil && state.SessionID == ses.SessionID && state.MapID == req.MapID && state.CurrentX == *req.X && state.CurrentY == *req.Y && len(state.Path) == 0 && state.activePlayerStep(time.Now()) == nil
+	m.mu.Unlock()
 	if !owned {
 		fail()
 		return false

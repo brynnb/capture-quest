@@ -310,3 +310,36 @@ func TestPlayerFacingPreservesAdjacentStrengthBoulderAndQueuedStep(t *testing.T)
 		t.Fatalf("queued step=%+v", path)
 	}
 }
+
+func TestPlayerStepLifetimeRetiresAtOneExactBoundary(t *testing.T) {
+	issuedAt := time.Now()
+	pending := &issuedPlayerStep{issuedAt: issuedAt}
+	state := &PlayerMovementState{pendingStep: pending}
+	if state.activePlayerStep(issuedAt.Add(playerStepLifetime-time.Nanosecond)) != pending {
+		t.Fatal("live authorization retired early")
+	}
+	if state.activePlayerStep(issuedAt.Add(playerStepLifetime)) != nil || state.pendingStep != nil {
+		t.Fatal("authorization survived its deadline")
+	}
+}
+
+func TestIssuedStepCannotCommitUnavailableMapOrErasedTileFromWarmCache(t *testing.T) {
+	for _, change := range []string{`DELETE FROM phaser_maps WHERE id=50`, `UPDATE phaser_tiles SET is_tile_erased=1 WHERE map_id=50 AND x=8 AND y=8`} {
+		t.Run(change, func(t *testing.T) {
+			wh, ses, messages := setupIssuedStep(t)
+			step := issueStep(t, wh, ses, messages)
+			testdb.Exec(t, wh.database, change)
+			messages.streams = nil
+			battleDispatch(t, wh, ses, opcodes.PlayerStepCompleteRequest, fmt.Sprintf(`{"requestId":"unavailable","stepToken":%q}`, step.StepToken))
+			var reply protocol.PlayerStepError
+			if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &reply) != nil || reply.Success || reply.Error == "" {
+				t.Fatal("unavailable catalog committed")
+			}
+			assertStepPosition(t, wh, ses, 7)
+			receipt, err := loadMovementReceipt(context.Background(), wh.database, 42, step.StepToken)
+			if err != nil || receipt != nil {
+				t.Fatalf("failed completion stored a receipt: %+v %v", receipt, err)
+			}
+		})
+	}
+}

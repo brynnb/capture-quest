@@ -29,6 +29,18 @@ type issuedPlayerStep struct {
 	sourceMapID             int
 }
 
+const playerStepLifetime = 10 * time.Second
+
+// Call with the movement manager write lock after checking session ownership
+// and any caller-provided source. Consumers retire expired authorization
+// at the same edge.
+func (state *PlayerMovementState) activePlayerStep(now time.Time) *issuedPlayerStep {
+	if state.pendingStep != nil && now.Sub(state.pendingStep.issuedAt) >= playerStepLifetime {
+		state.pendingStep = nil
+	}
+	return state.pendingStep
+}
+
 func decodePlayerMovement(payload []byte, target any) error {
 	decoder := json.NewDecoder(bytes.NewReader(payload))
 	decoder.DisallowUnknownFields()
@@ -238,14 +250,14 @@ func HandlePlayerStepCompleteRequest(ses *session.Session, payload []byte, wh *W
 
 func (m *PlayerMovementManager) completePlayerStep(ses *session.Session, token string) (*issuedPlayerStep, error) {
 	charID := int(ses.Client.CharData().ID)
-	m.mu.RLock()
+	m.mu.Lock()
 	state := m.players[charID]
 	var step *issuedPlayerStep
 	if state != nil && state.SessionID == ses.SessionID {
-		step = state.pendingStep
+		step = state.activePlayerStep(time.Now())
 	}
-	m.mu.RUnlock()
-	if step == nil || step.token != token || time.Since(step.issuedAt) > 10*time.Second || getBattle(int64(charID)) != nil {
+	m.mu.Unlock()
+	if step == nil || step.token != token || getBattle(int64(charID)) != nil {
 		return nil, fmt.Errorf("step is stale")
 	}
 	if err := waitPlayerStep(ses.CommandContext(), step.completeAfter); err != nil {
@@ -338,11 +350,10 @@ func (m *PlayerMovementManager) facePlayer(ses *session.Session, req protocol.Pl
 	charID := int(ses.Client.CharData().ID)
 	m.mu.Lock()
 	state := m.players[charID]
-	if state == nil || state.SessionID != ses.SessionID || state.MapID != req.MapID || state.CurrentX != *req.FromX || state.CurrentY != *req.FromY || len(state.Path) != 0 || (state.pendingStep != nil && time.Since(state.pendingStep.issuedAt) < 10*time.Second) {
+	if state == nil || state.SessionID != ses.SessionID || state.MapID != req.MapID || state.CurrentX != *req.FromX || state.CurrentY != *req.FromY || len(state.Path) != 0 || state.activePlayerStep(time.Now()) != nil {
 		m.mu.Unlock()
 		return ownedPlayerFacing{}, fmt.Errorf("facing source is stale or moving")
 	}
-	state.pendingStep = nil // Expired acceptance cannot later complete after a turn.
 	state.Direction = direction
 	x, y, mapID := state.CurrentX, state.CurrentY, state.MapID
 	m.mu.Unlock()
