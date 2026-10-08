@@ -190,7 +190,7 @@ export class MapLoader {
       this.uiManager.setLoadingText("Loading tiles...");
 
       // Fetch tiles
-      const tiles = await this.mapDataService.fetchTiles(mapId, mapRequestAbort.signal);
+      let tiles = await this.mapDataService.fetchTiles(mapId, mapRequestAbort.signal);
       if (!this.isLoadCurrent(loadGeneration)) return;
 
       this.uiManager.setLoadingText("Loading tile images...");
@@ -242,13 +242,7 @@ export class MapLoader {
         const allActors = await this.mapDataService.fetchActors(mapId, mapRequestAbort.signal);
         if (!this.isLoadCurrent(loadGeneration)) return;
         // Initialize with default if null, but preserve existing actors (like player)
-        if (!allActors) {
-          actors = prepareActors(actors);
-          this.setState({ tiles, items, warps, actors });
-          return;
-        }
 
-        // Preload actor sprites before rendering
         if (allActors.length > 0) {
           this.uiManager.setLoadingText(
             `Preloading ${allActors.length} actor sprites...`,
@@ -295,6 +289,9 @@ export class MapLoader {
         sceneAny.warpDestY = null;
       }
 
+      tiles=await this.prepareTilePresentation(mapId,tiles,mapRequestAbort.signal);
+      if(!this.isLoadCurrent(loadGeneration))return;
+      if(!this.mapDataService.isTileReadCurrent(tiles))throw new Error("Tile view changed before map publication");
       actors = prepareActors(actors);
 
       this.mapDataService.setSnapshot(mapId, {
@@ -306,10 +303,6 @@ export class MapLoader {
 
       // Update state with all loaded data
       this.setState({ tiles, items, warps, actors });
-
-      // Wait a short time for updates to arrive
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      if (!this.isLoadCurrent(loadGeneration)) return;
 
       // Render the map with all actors
       const mapBounds = this.mapRenderer.renderMap(tiles, items, warps, actors);
@@ -730,6 +723,22 @@ export class MapLoader {
 
   invalidateOverworldTileAt(x: number, y: number): void {
     this.overworldChunkStream?.invalidateAt(x, y);
+  }
+
+  private async prepareTilePresentation(mapId:number,tiles:PhaserTile[],signal:AbortSignal):Promise<PhaserTile[]>{
+    // Tile/image/actor preparation can be overtaken by a committed update.
+    // Re-read under the same owner; never publish a stale initialization array.
+    for(let attempt=0;attempt<2;attempt++){
+      if(signal.aborted)throw new DOMException("Map retired","AbortError");
+      if(this.mapDataService.isTileReadCurrent(tiles))return tiles;
+      tiles=await this.mapDataService.fetchTiles(mapId,signal);
+      const images=await this.mapDataService.fetchTileImages();
+      if(signal.aborted)throw new DOMException("Map retired","AbortError");
+      await this.tileManager.loadTileImages(images);
+    }
+    if(signal.aborted)throw new DOMException("Map retired","AbortError");
+    if(!this.mapDataService.isTileReadCurrent(tiles))throw new Error("Tiles changed during image preparation; retry map loading");
+    return tiles;
   }
 
   recordCommittedTileUpdates(mapId:number,updates:readonly CommittedOverworldTileUpdate[]):void {

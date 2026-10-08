@@ -36,3 +36,8 @@ test("committed update invalidates map snapshots and retries a read overtaken by
  expect(net.send).toHaveBeenCalledTimes(2);const second=net.send.mock.calls[1][0];
  expect(second.requestId).not.toBe(first.requestId);receive(reply(second.requestId,33));await run;expect(net.listeners.size).toBe(0);
 });
+
+test("a completed tile read retains its revision stamp across later asynchronous preparation",async()=>{
+ const service=new MapDataService();const run=service.fetchTiles(33);await Promise.resolve();await Promise.resolve();const request=net.send.mock.calls[0][0];receive(reply(request.requestId,33));const tiles=await run;
+ expect(service.isTileReadCurrent(tiles)).toBe(true);service.recordCommittedTileUpdate();expect(service.isTileReadCurrent(tiles)).toBe(false);
+});

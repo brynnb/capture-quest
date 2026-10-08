@@ -808,6 +808,9 @@ export class TileViewer extends Scene {
       this.preloadText.destroy();
     }
 
+    // Observe committed updates before any awaited initial map preparation.
+    this.setupWorldTileUpdates();
+
     if (destinationMapId !== null && destinationMapId !== undefined) {
       // We're coming from a warp, load the destination map
       const mapId = parseInt(destinationMapId.toString(), 10);
@@ -1073,43 +1076,8 @@ export class TileViewer extends Scene {
     });
   }
 
-  setupTileEditorListeners() {
-    this.tileEditorStoreUnsubscribe = useTileEditorStore.subscribe(
-      (state, previous) => {
-        if (
-          state.selectedTool === previous.selectedTool &&
-          state.selectedTileImageId === previous.selectedTileImageId &&
-          state.brushSize === previous.brushSize &&
-          state.selectedStamp === previous.selectedStamp
-        ) {
-          return;
-        }
-
-        if (state.selectedTileImageId !== previous.selectedTileImageId && state.selectedTileImageId) {
-          void this.mapRenderer.loadTileTextureIfNeeded(state.selectedTileImageId);
-        }
-        if (state.selectedStamp !== previous.selectedStamp && state.selectedStamp) {
-          const textureLoads = [...new Set(
-            state.selectedStamp.tileImageIds.flat().filter((tileImageId) => tileImageId > 0),
-          )].map((tileImageId) => this.mapRenderer.loadTileTextureIfNeeded(tileImageId));
-          void Promise.all(textureLoads).then(() => {
-            if (this.tileEditorLastPointerTile && useTileEditorStore.getState().selectedStamp === state.selectedStamp) {
-              this.updateTileEditorCursorPreview(
-                this.tileEditorLastPointerTile.x,
-                this.tileEditorLastPointerTile.y,
-              );
-            }
-          });
-        }
-        if (this.tileEditorLastPointerTile) {
-          this.updateTileEditorCursorPreview(
-            this.tileEditorLastPointerTile.x,
-            this.tileEditorLastPointerTile.y,
-          );
-        }
-      },
-    );
-
+  private setupWorldTileUpdates():void {
+    if(this.worldTileUpdateHandler)return;
     // Broadcast handler: committed world tile updates from the server
     this.worldTileUpdateHandler = (e: Event) => {
       const payload = (e as CustomEvent).detail as {
@@ -1156,6 +1124,46 @@ export class TileViewer extends Scene {
       }
     };
     window.addEventListener("worldTileUpdate", this.worldTileUpdateHandler);
+  }
+
+  setupTileEditorListeners() {
+    this.tileEditorStoreUnsubscribe = useTileEditorStore.subscribe(
+      (state, previous) => {
+        if (
+          state.selectedTool === previous.selectedTool &&
+          state.selectedTileImageId === previous.selectedTileImageId &&
+          state.brushSize === previous.brushSize &&
+          state.selectedStamp === previous.selectedStamp
+        ) {
+          return;
+        }
+
+        if (state.selectedTileImageId !== previous.selectedTileImageId && state.selectedTileImageId) {
+          void this.mapRenderer.loadTileTextureIfNeeded(state.selectedTileImageId);
+        }
+        if (state.selectedStamp !== previous.selectedStamp && state.selectedStamp) {
+          const textureLoads = [...new Set(
+            state.selectedStamp.tileImageIds.flat().filter((tileImageId) => tileImageId > 0),
+          )].map((tileImageId) => this.mapRenderer.loadTileTextureIfNeeded(tileImageId));
+          void Promise.all(textureLoads).then(() => {
+            if (this.tileEditorLastPointerTile && useTileEditorStore.getState().selectedStamp === state.selectedStamp) {
+              this.updateTileEditorCursorPreview(
+                this.tileEditorLastPointerTile.x,
+                this.tileEditorLastPointerTile.y,
+              );
+            }
+          });
+        }
+        if (this.tileEditorLastPointerTile) {
+          this.updateTileEditorCursorPreview(
+            this.tileEditorLastPointerTile.x,
+            this.tileEditorLastPointerTile.y,
+          );
+        }
+      },
+    );
+
+
 
     this.tileEditorMutationRejectedHandler = (e: Event) => {
       const detail = (e as CustomEvent).detail as { opcode?: number } | undefined;

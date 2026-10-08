@@ -301,3 +301,14 @@ it("tile presentation lease rejects another map and retires with load generation
  raw.mapLoadGeneration++;expect(current()).toBe(false);
  raw.getState=()=>({mapInfo:{id:0,isOverworld:1}});expect(loader.captureTilePresentationView(9999)()).toBe(true);
 });
+
+it("initial tile presentation rereads changes during image preparation before returning a current view",async()=>{
+ const loader=Object.create(MapLoader.prototype) as MapLoader;
+ const raw=loader as unknown as {mapDataService:unknown;tileManager:unknown;prepareTilePresentation:(mapId:number,tiles:unknown[],signal:AbortSignal)=>Promise<unknown[]>};
+ const old:unknown[]=[],first:unknown[]=[],current:unknown[]=[];let accepted:unknown[]=old;
+ const fetch=vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(current);
+ raw.mapDataService={isTileReadCurrent:(tiles:unknown[])=>tiles===accepted&&tiles!==old,fetchTiles:fetch,fetchTileImages:vi.fn(async()=>[])};
+ const images=vi.fn(async()=>{accepted=fetch.mock.calls.length===1?old:current});raw.tileManager={loadTileImages:images};
+ const result=await raw.prepareTilePresentation(50,old,new AbortController().signal);
+ expect(result).toBe(current);expect(fetch).toHaveBeenCalledTimes(2);expect(images).toHaveBeenCalledTimes(2);
+});

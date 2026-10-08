@@ -76,12 +76,15 @@ export class MapDataService {
   private static readonly MAX_CACHED_OVERWORLD_CHUNKS = 18;
   // Cache of known tile image IDs from tiles
   private tileReadRevision = 0;
+  private tileReadViews = new WeakMap<PhaserTile[],number>();
   private knownTileImageIds: Set<number> = new Set();
   private snapshots = new MapSnapshotCache<MapDataSnapshot>(
     3,
     new Set([UNIFIED_OVERWORLD_MAP_ID]),
   );
   private overworldTileChunks = new Map<string, CachedTileChunk>();
+
+  isTileReadCurrent(tiles: PhaserTile[]):boolean { return this.tileReadViews.get(tiles)===this.tileReadRevision; }
 
   recordCommittedTileUpdate(): void {
     this.tileReadRevision++;
@@ -228,6 +231,7 @@ export class MapDataService {
     if(response.mapId!==mapId || response.characterId!==characterId || !Number.isSafeInteger(response.nextAfterId) || response.nextAfterId<0 || typeof response.hasMore!=="boolean") throw new Error("Invalid owned tile response");
     if(revision!==this.tileReadRevision)continue;
     const tiles=normalizeCorrelatedTiles(response);
+    this.tileReadViews.set(tiles,revision);
     for(const tile of tiles)this.knownTileImageIds.add(tile.tileImageId);
     return {tiles,nextAfterId:response.nextAfterId,hasMore:response.hasMore};
     }

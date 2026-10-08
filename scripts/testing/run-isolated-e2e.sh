@@ -73,7 +73,9 @@ for attempt in $(seq 1 40); do
  if curl --max-time 1 --silent --fail "http://localhost:$VITE_DEV_PORT" >/dev/null; then break; fi
  sleep 0.25
 done
-if [[ -n "$shutdown_mode" || -n "$crash_recovery" ]]; then
+# SQL fixture tests need the same exact-run database/process identity guard,
+# without opting into process-death/restart acceptance.
+if [[ -n "$shutdown_mode" || -n "$crash_recovery" || "${CQ_E2E_DATABASE_FIXTURE:-}" == true ]]; then
  export E2E_ISOLATED_SERVER_PID="$app_pid" E2E_ISOLATED_RUN_DIR="$run_dir" E2E_ISOLATED_DATABASE_URL="$DATABASE_URL"
 fi
 echo "Running rendered check on http://localhost:$VITE_DEV_PORT"

@@ -28,6 +28,46 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Initial map rendering revalidates its tile view (2026-10-08)
+
+Initial interior loading could retain a tile array across image, item and actor
+preparation, publish that array, wait 300ms and render it after a newer committed
+update. Successful tile arrays now carry weakly held read-revision stamps. The
+loader revalidates immediately before the main snapshot/state/render/collision
+publication. Overtaken arrays are reread and any new images prepared under the
+same abort signal, with two bounded preparation attempts. Continuing churn fails
+rather than publishing old data. A final stamp check covers the async return gap.
+The fixed wait is retired; actor read-view preparation runs at final publication.
+An unreachable nullable-actor fallback, inconsistent with the typed actor reader,
+was removed. World-tile observation is explicitly installed before loading and is
+separate from later editor-input registration.
+
+The browser regression captures a real returned source tile, holds initial image
+preparation, erases that exact row in the isolated test database, delivers its
+committed-update event and releases preparation. It requires a second tile read
+and verifies the eventual live-renderer registry excludes the row. An initial
+failed run exposed revalidation mistakenly placed in the old nullable-actor branch;
+that placement was corrected in the actual publication path, not by weakening the
+assertion. Earlier listener-registration interpretation was not established as
+that failure's cause.
+
+SQL fixture access uses the runner's exact private database/server identity guard
+with `CQ_E2E_DATABASE_FIXTURE=true`. This does not opt into process-death acceptance;
+the crash lane still requires an actual restart and recovery evidence. Three
+browser cases passed in 8.5 seconds in `/var/tmp/capturequest-rendered.dh76UE`,
+including initial publication, delayed texture/update ordering and normal guest
+creation/entry. 33 focused view/lifecycle/chunk checks and typecheck passed. Production build
+and canonical asset validation passed (Vite 3.41 seconds); logs are retained at
+`/var/tmp/capturequest-tile-init-build.log`. Shell syntax and diff checks passed. No backend, schema or runtime-asset contract
+changed, and no screenshot/pixel or production claim follows from registry checks.
+
+Remaining: sustained revision churn/batching, missed notifications/reconnect,
+whole-map versus chunk revision policy, missing/erased base-state publication and
+other legacy event/collision owners. The original restore timeout is unattributed
+and all five roadmap areas remain active. Next: audit missed update recovery and
+cached chunk revisions before closing this presentation family. This checkpoint
+is local only, without push, deployment or production mutation.
+
 ## Client tile update/view ordering (2026-10-08)
 
 The scene's world-tile handler applied every incoming map to its current renderer
