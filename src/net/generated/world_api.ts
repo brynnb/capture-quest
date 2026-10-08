@@ -1032,7 +1032,16 @@ export interface PhaserTilesResponse {
  * PhaserActorsRequest is the request payload
  */
 export interface PhaserActorsRequest {
+  requestId: string;
+  characterId: number /* int64 */;
   mapId: number /* int */;
+}
+export interface PhaserActorsResponse {
+  success: true;
+  requestId: string;
+  characterId: number /* int64 */;
+  mapId: number /* int */;
+  actors: PhaserActor[];
 }
 /**
  * PhaserWarpsRequest is the request payload
@@ -1335,6 +1344,10 @@ export interface MapScriptManager {
 
 //////////
 // source: movement_receipt.go
+
+
+//////////
+// source: movement_routes.go
 
 
 //////////

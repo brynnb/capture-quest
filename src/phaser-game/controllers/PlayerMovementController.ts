@@ -120,6 +120,9 @@ export class PlayerMovementController {
   private facingRequestKey: string | null = null;
   private stepAbort: AbortController | null = null;
   private issuedStep: PlayerStepResponse | null = null;
+  private actorReconciler: (signal: AbortSignal) => Promise<void> = async () => {};
+  setActorReconciler(reconcile: (signal: AbortSignal) => Promise<void>): void { this.actorReconciler = reconcile; }
+  reconcileActors(signal: AbortSignal): Promise<void> { return this.actorReconciler(signal); }
   private fieldCommandAbort: AbortController | null = null;
   private fieldCommandsRetired = false;
 
@@ -1074,6 +1077,8 @@ export class PlayerMovementController {
         // outcomes require a current read, never a facing retry or error pose.
         this.movementRecoveryRequired = true;
         try {
+          await this.actorReconciler(abort.signal);
+          if (!current()) return;
           const snapshot = await readCurrentGameplayState(abort.signal, () => this.movementGeneration);
           if (!current()) return;
           applyGameplayResourceSnapshot(snapshot);

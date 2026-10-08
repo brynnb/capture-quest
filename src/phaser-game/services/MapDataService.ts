@@ -1,3 +1,4 @@
+import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import { correlatedRequest } from "./CorrelatedRequest";
 import type { PhaserMapInfo, PhaserMapInfoResponse, PhaserMapLoadResponse, PhaserWarpActivateResponse, PhaserInstantWarpResponse } from "@/net/generated/protocol";
 /**
@@ -334,29 +335,18 @@ export class MapDataService {
   /**
    * Fetch actors for a specific map (or all maps if mapId is omitted)
    */
-  async fetchActors(mapId?: number): Promise<PhaserActor[]> {
-    if (!PhaserNet.isConnected()) {
-      throw new Error("Not connected to server - please log in first");
-    }
-
-    // If no mapId provided, return empty - caller should use mapId
-    if (mapId === undefined) {
-      // console.warn("fetchActors called without mapId - returning empty array");
-      return [];
-    }
-
-    const dataPromise = new Promise<PhaserActor[]>((resolve) => {
-      const unsubscribe = PhaserNet.onActors((data) => {
-        unsubscribe();
-        resolve(data || []);
-      });
-      PhaserNet.requestActors(mapId);
-    });
-
-    return Promise.race([
-      dataPromise,
-      createTimeoutPromise<PhaserActor[]>(REQUEST_TIMEOUT_MS, `Timeout fetching actors for map ${mapId}`)
-    ]);
+  async fetchActors(mapId?: number, signal?: AbortSignal): Promise<PhaserActor[]> {
+    if (mapId === undefined) return [];
+    const characterId = usePlayerCharacterStore.getState().characterProfile.id;
+    if (!characterId) throw new Error("Actor view requires a selected character");
+    const response = await correlatedRequest<import("@/net/generated/world_api").PhaserActorsResponse>(
+      PhaserNet.onActors, requestId => PhaserNet.requestActors({ mapId, characterId, requestId }), signal,
+    );
+    if (signal?.aborted || usePlayerCharacterStore.getState().characterProfile.id !== characterId)
+      throw new DOMException("Actor owner retired", "AbortError");
+    if (response.characterId !== characterId || response.mapId !== mapId || !Array.isArray(response.actors))
+      throw new Error("Actor view ownership mismatch");
+    return response.actors;
   }
 
   /**

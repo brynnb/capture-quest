@@ -236,7 +236,7 @@ export class MapLoader {
       let actors = [...playerActors];
       try {
         // Fetch actors for this map (includes static and walking)
-        const allActors = await this.mapDataService.fetchActors(mapId);
+        const allActors = await this.mapDataService.fetchActors(mapId, mapRequestAbort.signal);
         if (!this.isLoadCurrent(loadGeneration)) return;
         // Initialize with default if null, but preserve existing actors (like player)
         if (!allActors) {
@@ -461,7 +461,7 @@ export class MapLoader {
       // Load actors and warps for the unified map
       const allActors = options.viewOnly && cached
         ? cached.actors
-        : await this.mapDataService.fetchActors(mapId);
+        : await this.mapDataService.fetchActors(mapId, mapRequestAbort.signal);
       if (!this.isLoadCurrent(loadGeneration)) return;
       const warps = cached?.warps ?? await this.mapDataService.fetchWarps(mapId);
       if (!this.isLoadCurrent(loadGeneration)) return;

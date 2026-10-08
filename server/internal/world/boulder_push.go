@@ -108,15 +108,23 @@ func boulderObjectsForCharacterContext(ctx context.Context, database db.ContextD
 }
 
 func ApplyCharacterObjectPositions(charID int64, actors []PhaserActor) []PhaserActor {
-	if len(actors) == 0 || charID == 0 {
-		return actors
-	}
-	positions, err := characterObjectPositions(charID)
+	result, err := applyCharacterObjectPositionsContext(context.Background(), db.GlobalWorldDB.DB, charID, actors)
 	if err != nil {
 		return actors
 	}
+	return result
+}
+
+func applyCharacterObjectPositionsContext(ctx context.Context, database db.ContextDBTX, charID int64, actors []PhaserActor) ([]PhaserActor, error) {
+	if len(actors) == 0 || charID == 0 {
+		return actors, nil
+	}
+	positions, err := characterObjectPositionsContext(ctx, database, charID)
+	if err != nil {
+		return nil, err
+	}
 	if len(positions) == 0 {
-		return actors
+		return actors, nil
 	}
 	for i := range actors {
 		pos, ok := positions[actors[i].DbID]
@@ -127,7 +135,7 @@ func ApplyCharacterObjectPositions(charID int64, actors []PhaserActor) []PhaserA
 		actors[i].X = &x
 		actors[i].Y = &y
 	}
-	return actors
+	return actors, nil
 }
 
 type objectPosition struct {

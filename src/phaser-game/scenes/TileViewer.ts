@@ -123,7 +123,6 @@ export class TileViewer extends Scene {
   private serverPlayerMovementUnsubscribe: (() => void) | null = null;
   private actorUpdateUnsubscribe: (() => void) | null = null;
   private actorDespawnUnsubscribe: (() => void) | null = null;
-  private actorsUnsubscribe: (() => void) | null = null;
   private gameStatusUnsubscribe: (() => void) | null = null;
   private battleInputFreezeUnsubscribe: (() => void) | null = null;
   private readonly bicycleUseHandler = (event: Event) => {
@@ -582,103 +581,7 @@ export class TileViewer extends Scene {
     this.eventBridge.register();
 
     // Subscribe to pushed actor lists (e.g. player spawn)
-    this.actorsUnsubscribe = PhaserNet.onActors((actors) => {
-      if (actors && actors.length > 0) {
-        console.log(
-          `[TileViewer] Received ${actors.length} actors via onActors broadcast`,
-        );
-        actors.forEach((incomingActor) => {
-          let actor = incomingActor as PhaserActor;
-          const isLocalPlayer = this.isLocalPlayerActor(actor);
-          const isFirstLocalSpawn = isLocalPlayer && !this.playerActor;
-
-          if (isLocalPlayer) {
-            if (isFirstLocalSpawn) {
-              // Initial map load or warp entry uses the saved/pending spawn.
-              this.warpManager.applyPendingWarpToActor(actor);
-            } else {
-              const current = this.playerMovementController.getCurrentPosition();
-              actor = {
-                ...actor,
-                x: current.x,
-                y: current.y,
-                mapId: this.playerMovementController.getCurrentMapId(),
-              };
-            }
-
-            // Store player separately so it's never lost during map clears
-            actor = this.cacheActor(actor);
-            this.playerActor = actor;
-
-            // Request party data on first spawn so the HUD is populated immediately
-            if (isFirstLocalSpawn) {
-              PhaserNet.sendPokemonPartyRequest();
-            }
-          } else {
-            actor = this.cacheActor(actor);
-          }
-
-          if (isLocalPlayer || this.actorBelongsToLoadedView(actor)) {
-            // Check if actor already exists
-            const existingIndex = this.actors.findIndex(
-              (a) => a.id === actor.id,
-            );
-            if (existingIndex !== -1) {
-              this.actors[existingIndex] = actor;
-            } else {
-              this.actors.push(actor);
-            }
-            this.playerMovementController.updateBlockingActor(actor);
-
-            // Skip sprite creation while a map load is in progress —
-            // renderMap handles all sprite creation to avoid timing issues
-            // with async texture loading and clear() destroying in-flight sprites.
-            if (this.mapLoadInProgress) {
-              return;
-            }
-
-            // Preload and render
-            this.actorManager.preloadActorSprites([actor]).then(() => {
-              // Re-check flag: map load may have started while we were preloading
-              if (this.mapLoadInProgress) {
-                return;
-              }
-              this.mapRenderer.renderActor(actor);
-
-              // Center camera on player once when they first appear
-              if (isLocalPlayer && isFirstLocalSpawn) {
-                console.log(
-                  `[TileViewer] Local player spawned/updated, centering camera`,
-                );
-                const actorX = actor.x ?? 0;
-                const actorY = actor.y ?? 0;
-                const posX = actorX * TILE_SIZE + TILE_SIZE / 2;
-                const posY = actorY * TILE_SIZE + TILE_SIZE / 2;
-                this.cameraController.centerOnMap(posX, posY);
-
-                // Also start following if enabled
-                this.updateCameraFollow();
-
-                // Register with player movement controller
-                const sprite = this.mapRenderer.getActorSprite(actor.id);
-                if (sprite) {
-                  this.playerMovementController.setPlayer(
-                    actor.id,
-                    actorX,
-                    actorY,
-                    actor.mapId,
-                    this.mapRenderer,
-                  );
-                }
-              }
-            });
-          }
-        });
-        emitCaptureQuestTestEvent("cq:actorsChanged", {
-          actors: this.actors.map((actor) => this.toTestActor(actor)),
-        });
-      }
-    });
+    this.playerMovementController.setActorReconciler(signal => this.reconcileActors(signal));
 
     // Check if we have data passed from resetScene
     let destinationMapId = null;
@@ -1783,6 +1686,38 @@ export class TileViewer extends Scene {
     this.flushTileEditorBatch();
   }
 
+  private async reconcileActors(signal: AbortSignal): Promise<void> {
+    const mapId = this.mapInfo?.id ?? this.playerMovementController.getCurrentMapId();
+    const characterId = usePlayerCharacterStore.getState().characterProfile.id;
+    const before = new Map(this.actorCache);
+    const current = () => !signal.aborted && this.sys.isActive()
+      && (this.mapInfo?.id ?? this.playerMovementController.getCurrentMapId()) === mapId
+      && usePlayerCharacterStore.getState().characterProfile.id === characterId;
+    const touched = new Set<number>();
+    const stopUpdates = PhaserNet.onActorUpdate(actor => touched.add(actor.id));
+    const stopDespawns = PhaserNet.onActorDespawn(actor => touched.add(actor.id));
+    let incoming: PhaserActor[];
+    try { incoming = await this.mapDataService.fetchActors(mapId, signal); }
+    finally { stopUpdates(); stopDespawns(); }
+    if (!current()) return;
+    const ids = new Set(incoming.map(actor => actor.id));
+    for (const [id, actor] of before) {
+      if (!touched.has(id) && !ids.has(id) && this.actorCache.get(id) === actor && !this.isLocalPlayerActor(actor)
+        && this.actorBelongsToLoadedView(actor)) this.handleActorDespawn(id);
+    }
+    // Preserve per-actor live updates/despawns that overtook this read; the
+    // immutable cache reference is the existing presentation identity.
+    const actors = incoming.filter(actor => !touched.has(actor.id) && before.get(actor.id) === this.actorCache.get(actor.id));
+    this.applyActorSnapshot(actors, current);
+  }
+
+  private applyActorSnapshot(actors: PhaserActor[], current: () => boolean): void {
+    for (const actor of actors) {
+      if (!current()) return;
+      this.handleActorUpdate({ actor });
+    }
+  }
+
   private isLocalPlayerActor(actor: PhaserActor): boolean {
     const localCharId = usePlayerCharacterStore.getState().characterProfile?.id;
     return actor.objectType === "player" && actor.internalId === localCharId;
@@ -1989,7 +1924,11 @@ export class TileViewer extends Scene {
       });
 
       // Preload the actor sprite and then render it
+      const characterId = usePlayerCharacterStore.getState().characterProfile.id;
       this.actorManager.preloadActorSprites([actor]).then(() => {
+        if (!this.sys.isActive() || this.actorCache.get(actor.id) !== actor
+          || usePlayerCharacterStore.getState().characterProfile.id !== characterId
+          || !this.shouldRenderActorInCurrentView(actor)) return;
         this.mapRenderer.renderActor(actor);
       });
     }
@@ -2161,10 +2100,6 @@ export class TileViewer extends Scene {
       this.actorDespawnUnsubscribe = null;
     }
 
-    if (this.actorsUnsubscribe) {
-      this.actorsUnsubscribe();
-      this.actorsUnsubscribe = null;
-    }
 
     if (this.gameStatusUnsubscribe) {
       this.gameStatusUnsubscribe();

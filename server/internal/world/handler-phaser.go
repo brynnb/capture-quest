@@ -119,7 +119,16 @@ type PhaserTilesResponse struct {
 
 // PhaserActorsRequest is the request payload
 type PhaserActorsRequest struct {
-	MapID int `json:"mapId"`
+	RequestID   string `json:"requestId"`
+	CharacterID int64  `json:"characterId"`
+	MapID       int    `json:"mapId"`
+}
+type PhaserActorsResponse struct {
+	Success     bool          `json:"success" tstype:"true"`
+	RequestID   string        `json:"requestId"`
+	CharacterID int64         `json:"characterId"`
+	MapID       int           `json:"mapId"`
+	Actors      []PhaserActor `json:"actors"`
 }
 
 // PhaserWarpsRequest is the request payload
@@ -544,19 +553,19 @@ func HandlePhaserOverworldMapsRequest(ses *session.Session, payload []byte, wh *
 
 // HandlePhaserActorsRequest returns actors for a specific map
 func HandlePhaserActorsRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	var req PhaserActorsRequest
-	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("[Phaser] Invalid ActorsRequest: %v", err)
+	if !ses.HasValidClient() {
 		return false
 	}
-
-	isOverworldTarget := req.MapID == UnifiedOverworldMapID
-
-	// Get character ID for filtering collected items
-	var charID int64
-	if ses.HasValidClient() {
-		charID = int64(ses.Client.CharData().ID)
+	var req PhaserActorsRequest
+	charID := int64(ses.Client.CharData().ID)
+	fail := func() {
+		sendInventoryCommandError(ses, req.RequestID, opcodes.PhaserActorsResponse, "Actor view unavailable.")
 	}
+	if decodePlayerMovement(payload, &req) != nil || req.RequestID == "" || len(req.RequestID) > 64 || req.CharacterID != charID || req.MapID <= 0 {
+		fail()
+		return false
+	}
+	isOverworldTarget := req.MapID == UnifiedOverworldMapID
 
 	query := `
 		SELECT po.id, COALESCE(po.x, po.local_x) as x, COALESCE(po.y, po.local_y) as y,
@@ -584,48 +593,65 @@ func HandlePhaserActorsRequest(ses *session.Session, payload []byte, wh *WorldHa
 		queryArgs = []interface{}{charID}
 	}
 
-	rows, err := db.GlobalWorldDB.DB.Query(query, queryArgs...)
-	if err != nil {
-		log.Printf("[Phaser] Error querying actors for map %d: %v", req.MapID, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.PhaserActorsResponse)
-		return false
-	}
-	defer rows.Close()
-
 	var actors []PhaserActor
-	for rows.Next() {
-		var n PhaserActor
-		if err := rows.Scan(&n.ID, &n.X, &n.Y, &n.MapID, &n.ObjectType, &n.SpriteName, &n.Name, &n.ActionType, &n.ActionDirection, &n.MovementType, &n.Text, &n.TrainerClass, &n.TrainerPartyIndex, &n.ItemID); err != nil {
-			log.Printf("[Phaser] Error scanning actor: %v", err)
-			continue
+	err := db.Transaction(ses.CommandContext(), wh.database, func(tx db.DBTX) error {
+		var locked int64
+		if err := tx.QueryRow(`SELECT id FROM character_data WHERE id=$1 FOR UPDATE`, charID).Scan(&locked); err != nil {
+			return err
 		}
-		// Set default move speed (300ms per tile for walking)
-		if n.ActionType != nil && *n.ActionType == "WALK" {
-			n.MoveSpeed = 300
-		} else {
-			n.MoveSpeed = 0 // Static actors don't need move speed
+		rows, err := tx.Query(query, queryArgs...)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		actors = make([]PhaserActor, 0)
+		for rows.Next() {
+			var n PhaserActor
+			if err := rows.Scan(&n.ID, &n.X, &n.Y, &n.MapID, &n.ObjectType, &n.SpriteName, &n.Name, &n.ActionType, &n.ActionDirection, &n.MovementType, &n.Text, &n.TrainerClass, &n.TrainerPartyIndex, &n.ItemID); err != nil {
+				return err
+			}
+			// Set default move speed (300ms per tile for walking)
+			if n.ActionType != nil && *n.ActionType == "WALK" {
+				n.MoveSpeed = 300
+			} else {
+				n.MoveSpeed = 0 // Static actors don't need move speed
+			}
+
+			// Store original DB ID before remapping
+			n.DbID = n.ID
+
+			// Use the registry to get a unified runtime ID
+			n.ID = wh.ActorRegistry.GetPhaserID(ActorTypeNPC, n.ID)
+			if wh.ActorManager != nil {
+				wh.ActorManager.applyRuntimeActorState(&n)
+			}
+
+			actors = append(actors, n)
 		}
 
-		// Store original DB ID before remapping
-		n.DbID = n.ID
-
-		// Use the registry to get a unified runtime ID
-		n.ID = wh.ActorRegistry.GetPhaserID(ActorTypeNPC, n.ID)
-		if wh.ActorManager != nil {
-			wh.ActorManager.applyRuntimeActorState(&n)
+		if err := rows.Err(); err != nil {
+			return err
 		}
+		if err := rows.Close(); err != nil {
+			return err
+		}
+		flags, err := eventFlagSnapshotIn(tx, charID)
+		if err != nil {
+			return err
+		}
+		actors, err = applyEventObjectVisibilityContext(ses.CommandContext(), tx.(db.ContextDBTX), charID, req.MapID, flags, actors)
+		if err != nil {
+			return err
+		}
+		actors, err = applyCharacterObjectPositionsContext(ses.CommandContext(), tx.(db.ContextDBTX), charID, actors)
+		return err
 
-		actors = append(actors, n)
-	}
-
-	actors, err = applyEventObjectVisibilityContext(ses.CommandContext(), wh.database, charID, req.MapID, wh.EventFlags, actors)
+	})
 	if err != nil {
-		log.Printf("[Phaser] Actor visibility for map %d: %v", req.MapID, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "actor visibility unavailable"}, opcodes.PhaserActorsResponse)
+		fail()
 		return false
 	}
-	actors = ApplyCharacterObjectPositions(charID, actors)
-
 	// Publish this command's map change before enumerating visible players.
 	ses.PublishPresence()
 	// Add all players on this map (or overworld if target is overworld)
@@ -644,7 +670,7 @@ func HandlePhaserActorsRequest(ses *session.Session, payload []byte, wh *WorldHa
 		}
 	})
 
-	ses.SendStreamJSON(StructToMap(actors), opcodes.PhaserActorsResponse)
+	ses.SendStreamJSON(PhaserActorsResponse{Success: true, RequestID: req.RequestID, CharacterID: charID, MapID: req.MapID, Actors: actors}, opcodes.PhaserActorsResponse)
 	log.Printf("[Phaser] Sent %d actors (including players) for map %d", len(actors), req.MapID)
 
 	// Broadcast this player's presence to other sessions so they see the new player immediately

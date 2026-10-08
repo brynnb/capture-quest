@@ -28,6 +28,64 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized a branch push for the stopping checkpoint on 2026-10-07; production deployment remains unauthorized.
 
+## Owned actor reads and lost-object reconciliation (2026-10-07)
+
+The actor read returned an uncorrelated array, queried the global pool, then
+applied object positions through another global read. `fetchActors` settled on
+any actor array; its timeout left the listener registered. TileViewer globally
+applied every array. These paths could not safely recover a boulder whose object
+notification was lost.
+
+`PhaserActorsRequest/Response` now carry request, character and map identity and
+an explicit typed actor array. The handler rejects old/malformed/foreign-owner
+requests and uses the injected pool's bounded character-locked transaction for
+object rows, collected-item filtering, flags, visibility and position overrides.
+Scan/read errors reject the whole view. Dynamic runtime actor state and player
+presence retain the existing runtime managers. The reflection response adapter
+is removed from this endpoint. Its startup/visibility publication behavior is
+otherwise preserved; broader presence side-effect review remains separate.
+
+`fetchActors` uses the existing correlated request primitive, whose timeout and
+abort remove the listener, then validates map and selected character. Map loading
+passes its abort signal. TileViewer's global array subscriber is retired; loaded
+map preparation already owns initial rendering. Unknown facing recovery and
+same-map Instant Warp now call the scene's actor reconciler. It reads current
+actors under captured character/map/lifetime, removes absent unchanged actors,
+and applies results through the existing actor-update renderer. Immutable cache
+references and a read-scoped set of live update/despawn IDs preserve newer events,
+including despawns of actors not yet cached. No world-wide quiescence or additional
+revision counter is required. Late sprite preload completion checks cache identity,
+selected character, active scene and current view before rendering.
+
+Facing recovery refreshes actors first, then uses the existing current gameplay
+reader to project resources/pose, avoiding an older pose captured before actor
+refresh. No mutation retry or global actor snapshot application remains. Player
+pose stays with the movement owner; actor refreshes preserve it.
+
+Verification: the injected PostgreSQL actor-read regression checks correlation,
+viewer/map identity and committed object overrides with the global database
+handle disabled. Invalid/old/foreign requests reject. The public DTO deliberately
+omits internal `DbID`, so the assertion checks its registry runtime ID. The full
+world race suite passed (46.800 seconds). All 77 focused map-data/movement tests
+and TypeScript checks passed, including actor success/correlation, timeout,
+cancellation and character replacement. Canonical wire generation and diff checks
+passed. Runtime-asset validation and the production build also passed.
+
+Eight rendered cases passed in 1.3 minutes in
+`/var/tmp/capturequest-rendered.e0w8gU`: boulder duplicates, lost reply, reply plus
+movement-notification loss, loss of object notifications as well, push-boundary
+process death, arrow activation and forced-route entry/mid-route process death.
+The all-notification-loss case recovers player (18,10) and boulder (18,9) through
+current owned reads, with no client step completion or second object move.
+The exact-process runner validated matched local assets and stopped its private
+runtime. No push, deployment or production mutation occurred.
+
+Remaining: dedicated late actor-read/stream-race rendered acceptance, initial map
+load actor ordering, actor/warp read-family and player-presence lifetime audits,
+route-data/source/writer reviews, the original login timeout and the wider five-area
+roadmap. Next: review this shared actor boundary's late-read behavior before
+migrating another query family. This checkpoint is local.
+
 ## Current recovery for unknown facing outcomes (2026-10-07)
 
 Facing can now commit a boulder mutation and movement cursor, so its old blanket

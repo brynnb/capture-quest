@@ -469,7 +469,7 @@ export class TileViewerInteractionController {
       }));
       if (movement.getCurrentMapId() === result.mapId) {
         useGameStatusStore.getState().setCameraFollowEnabled(true);
-        PhaserNet.requestActors(result.mapId);
+        await movement.reconcileActors(abort.signal);
       }
     } catch (error) {
       if (!abort.signal.aborted) {

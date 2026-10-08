@@ -207,12 +207,8 @@ export function requestOverworldMaps(): void {
 /**
  * Request actors for a specific map ID
  */
-export function requestActors(mapId: number): void {
-  if (!WorldSocket.isConnected) {
-    console.warn("[PhaserNetwork] Not connected - cannot request actors");
-    return;
-  }
-  NetworkBridge.send({ mapId: mapId }, OpCodes.PhaserActorsRequest);
+export function requestActors(request: import("@/net/generated/world_api").PhaserActorsRequest): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.PhaserActorsRequest);
 }
 
 /**
@@ -343,7 +339,7 @@ export type PhaserMapInfoHandler = (data: PhaserMapInfoResponse | PhaserMapReque
 export type PhaserMapLoadHandler = (data: PhaserMapLoadResponse | PhaserMapRequestError) => void;
 export type PhaserTilesHandler = (data: PhaserTilesResponse | PhaserTile[]) => void;
 export type PhaserOverworldMapsHandler = (data: PhaserMapInfo[]) => void;
-export type PhaserActorsHandler = (data: PhaserActor[]) => void;
+export type PhaserActorsHandler = (data: import("@/net/generated/world_api").PhaserActorsResponse | PlayerStepError) => void;
 export type PhaserWarpsHandler = (data: PhaserWarp[]) => void;
 export type PhaserActorUpdateHandler = (data: PhaserActor) => void;
 export type PhaserActorDespawnHandler = (data: { id: number }) => void;
@@ -642,7 +638,7 @@ export function dispatchPhaserResponse(opcode: number, data: unknown): void {
       break;
     case OpCodes.PhaserActorsResponse:
       handlers.actors.forEach((h) =>
-        h(normalizePhaserArrayPayload<PhaserActor>(data, "actors response")),
+        h(data as import("@/net/generated/world_api").PhaserActorsResponse | PlayerStepError),
       );
       break;
 
