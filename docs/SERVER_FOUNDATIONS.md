@@ -28,6 +28,47 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Static/creation content aggregate and typed replies (2026-10-08)
+
+The old static loader used process-global `sync.Once`, the global database and a
+second generic cache. A cancelled first load permanently poisoned subsequent
+requests. Faction/map/city query failures were printed and converted into partial
+success, and row-iteration errors were not checked. Both static and creation
+queries now use the existing content service's `readSnapshot`/`collect` primitives:
+one injected, bounded, repeatable-read snapshot, arrays for empty lists and no
+partial result on failure. A failed read can be retried. The global loader, once
+state, generic-cache path and duplicate scanners are retired; staticdata now holds
+the shared projection types. No new cache, loader framework or content coordinator
+was added. These small metadata lists are read for each request.
+
+Explicit camelCase JSON tags and a typed `StaticDataResponse` replace this family's
+`StructToMap` calls. Canonical Tygo generation produces `staticdata.ts` and the
+response contract. Both endpoints return the same complete snapshot, including
+maps; the creation consumer uses its existing class/faction/city subset. The client
+uses generated reply types, validates required lists/map fields, and retires snake-
+case aliases and missing-list defaults. Its store no longer declares failed fetches
+a loaded empty catalog, and the detached five-second Promise.race timer is removed;
+the existing transport timeout owns settlement. Matched frontend/backend rollout is
+required because the creation response now has the shared complete contract.
+
+PostgreSQL regressions disable the global database, cancel a real initial pool
+wait, retry successfully, force a mid-aggregate map-query failure, restore the
+source and verify a fresh read. Empty lists remain arrays. The client regression
+proves failed-load state remains retryable and a successful retry publishes data.
+Full content/world race suites passed in 12.222 and 52.627 seconds; typecheck passed.
+The rendered guest creation/entry/reentry flow passed in 4.4 seconds in
+`/var/tmp/capturequest-rendered.HXTXkB`. The production build and canonical asset
+validation passed (Vite build 3.37 seconds); logs are retained at
+`/var/tmp/capturequest-static-build.log`. Diff checks passed. No extractor, schema or generated runtime-asset contract changed.
+
+Remaining: this family still uses the legacy opcode/FIFO `sendJsonRequest` path.
+Correlation, read cancellation, stale/late replies, concurrent-store admission and
+account/screen retirement must be reviewed through the shared request primitive
+before closing the row. The original restore timeout remains unattributed and
+all five roadmap areas remain active. Next: review this content boundary, then
+finish the static/creation read lifetime. This is a local checkpoint; no push,
+deployment or production mutation is part of this continuation.
+
 ## Shared account-status authorization and slash corpus (2026-10-08)
 
 The production registration inventory contains exactly one slash command:

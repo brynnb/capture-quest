@@ -54,46 +54,12 @@ const useStaticDataStore = create<StaticDataStore>()((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
-      // Add timeout to prevent hanging forever
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Static data fetch timeout")), 5000),
-      );
-
-      // Always set loaded with Pokemon theme data (local fallback if server missing)
-      let serverData: Awaited<ReturnType<typeof getStaticData>> | null = null;
-      try {
-        serverData = await Promise.race([getStaticData(), timeoutPromise]);
-      } catch (fetchError) {
-        console.warn(
-          "[StaticData] Server fetch failed or timed out, using local data:",
-          fetchError,
-        );
-      }
-
-      set({
-        isLoaded: true,
-        isLoading: false,
-        maps: serverData?.maps || [],
-        factions: serverData?.factions || [],
-        classes: serverData?.classes || [],
-        homeTowns: serverData?.startCities || get().homeTowns,
-      });
-
-      console.log(
-        `[StaticData] Loaded theme: ${get().maps.length} maps, ${get().factions.length} factions, ${get().classes.length} classes`,
-      );
+      const data = await getStaticData();
+      set({ isLoaded:true, isLoading:false, maps:data.maps, factions:data.factions, classes:data.classes, homeTowns:data.startCities });
     } catch (error) {
-      console.error("Failed to load static data:", error);
-      // Still mark as loaded so the app can proceed
-      set({
-        isLoaded: true,
-        isLoading: false,
-        maps: [],
-        factions: [],
-        classes: [],
-        homeTowns: get().homeTowns,
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      // A failed read is retryable. Empty successful arrays come from the server;
+      // cancellation or missing content must not become a loaded empty catalog.
+      set({ isLoaded:false, isLoading:false, error:error instanceof Error ? error.message : "Static content unavailable" });
     }
   },
 

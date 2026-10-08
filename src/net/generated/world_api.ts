@@ -1890,6 +1890,17 @@ export interface HandlerRegistry {
 }
 
 //////////
+// source: world-query-handlers.go
+
+export interface StaticDataResponse {
+  success: true;
+  classes: import("./staticdata").ClassInfo[];
+  factions: import("./staticdata").FactionInfo[];
+  maps: import("./staticdata").MapInfo[];
+  startCities: import("./staticdata").StartCityInfo[];
+}
+
+//////////
 // source: world.go
 
 /**

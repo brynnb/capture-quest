@@ -43,27 +43,13 @@ export interface HomeTownData {
   sortOrder: number;
 }
 
-interface StaticDataResponse {
-  success: boolean;
-  error?: string;
-  maps?: Array<MapData & {
-    tileset_id?: number | null;
-    north_connection?: number | null;
-    south_connection?: number | null;
-    west_connection?: number | null;
-    east_connection?: number | null;
-  }>;
-  classes?: ClassData[];
-  factions?: FactionData[];
-  startCities?: HomeTownData[];
-}
-
-interface CharacterCreationResponse {
-  success: boolean;
-  error?: string;
-  factions?: FactionData[];
-  classes?: ClassData[];
-  startCities?: HomeTownData[];
+type StaticDataResponse = import("@/net/generated/world_api").StaticDataResponse | import("@/net/generated/protocol").ErrorResponse;
+function requireStaticLists(response: import("@/net/generated/world_api").StaticDataResponse): asserts response is import("@/net/generated/world_api").StaticDataResponse & { maps:MapData[] } {
+ if (![response.maps,response.classes,response.factions,response.startCities].every(Array.isArray)) throw new Error("Incomplete static content response");
+ for (const map of response.maps) {
+  if (!map || typeof map.name!=="string" || ![map.id,map.width,map.height].every(Number.isSafeInteger) || typeof map.isOverworld!=="boolean"
+   || (["tilesetId","northConnection","southConnection","westConnection","eastConnection"] as const).some(key=>map[key]!==null&&!Number.isSafeInteger(map[key]))) throw new Error(`Invalid static map ${map?.id}`);
+ }
 }
 
 /**
@@ -89,26 +75,8 @@ export async function getStaticData(): Promise<{
     throw new Error(response.error || "Failed to load static data");
   }
 
-  return {
-    maps: (response.maps || []).map((m) => ({
-      ...m,
-      tilesetId: m.tilesetId ?? m.tileset_id ?? null,
-      isOverworld: !!m.isOverworld,
-      northConnection: m.northConnection ?? m.north_connection ?? null,
-      southConnection: m.southConnection ?? m.south_connection ?? null,
-      westConnection: m.westConnection ?? m.west_connection ?? null,
-      eastConnection: m.eastConnection ?? m.east_connection ?? null,
-    })),
-    classes: (response.classes || []).map((c) => ({
-      ...c,
-    })),
-    factions: (response.factions || []).map((f) => ({
-      ...f,
-      isPlayable: !!f.isPlayable,
-      isStarting: !!f.isStarting,
-    })),
-    startCities: (response.startCities || []).map((sc) => ({ ...sc })),
-  };
+  requireStaticLists(response);
+  return { maps:response.maps, classes:response.classes, factions:response.factions, startCities:response.startCities };
 }
 
 /**
@@ -127,19 +95,12 @@ export async function getCharCreateData(): Promise<{
     OpCodes.CharCreateDataRequest,
     OpCodes.CharCreateDataResponse,
     {},
-  )) as CharacterCreationResponse;
+  )) as StaticDataResponse;
 
   if (!response.success) {
     throw new Error(response.error || "Failed to load character creation data");
   }
 
-  return {
-    factions: (response.factions || []).map((f) => ({
-      ...f,
-      isPlayable: !!f.isPlayable,
-      isStarting: !!f.isStarting,
-    })),
-    classes: (response.classes || []).map((c) => ({ ...c })),
-    homeTowns: (response.startCities || []).map((sc) => ({ ...sc })),
-  };
+  requireStaticLists(response);
+  return { factions:response.factions, classes:response.classes, homeTowns:response.startCities };
 }

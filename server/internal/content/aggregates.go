@@ -14,6 +14,9 @@ import (
 // It owns one operation budget and returns no partial result on load/commit failure.
 func readSnapshot[T any](ctx context.Context, database *sql.DB, read func(context.Context, db.ContextDBTX) (T, error)) (T, error) {
 	var zero T
+	if database == nil {
+		return zero, fmt.Errorf("content database is required")
+	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	tx, err := database.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
