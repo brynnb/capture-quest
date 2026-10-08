@@ -7,7 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-legacy FIFO timeout/send failure retires ambiguous transport and settles its caller,
+real local Chromium native QUIC login/movement/reentry and restart acceptance,
+following `91c6015`: legacy FIFO timeout/send failure retires ambiguous transport and settles its caller,
 following `aa0e219`: native transport setup/readers/writes are fenced to their captured owner,
 following `9e872ad`: WebSocket setup uses the existing deadline and FIFO requests retire with transport,
 following `849b797`: WebSocket attempts settle on retirement and callbacks use the owned instance,
@@ -44,6 +45,42 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Native Chromium/QUIC acceptance (2026-10-08)
+
+The existing isolated browser runner now supports opt-in
+`CQ_E2E_TRANSPORT=native`; default WebSocket behavior is unchanged, and unsupported
+mode values reject before launching services. Native mode disables forced
+WebSocket selection without disabling the application's fallback. The test must
+observe `{connected:true,websocket:false,native:true}`, so successful fallback
+cannot be misreported as native acceptance.
+
+Two real local Chromium checks passed in 17.2s using matched assets and private
+PostgreSQL. Native login/character creation, movement from tile `(3,6)` to `(4,6)`,
+trainer-card loading, quit and saved-position reentry passed. The second check
+killed the exact runner-owned server and reentered from the original browser;
+both before and after snapshots retained native mode. PID `2731681` exited `137`,
+replacement `2732143` served restart generation 1. The recovered card screenshot
+was inspected. Logs, screenshots and transport/restart receipt are retained at
+`/var/tmp/capturequest-rendered.Kv6UFp`.
+
+Run with:
+
+```bash
+CQ_E2E_TRANSPORT=native CQ_E2E_CRASH_RECOVERY=true \
+  bash scripts/testing/run-isolated-e2e.sh tests/e2e/native-transport.spec.ts
+```
+
+Typechecking, runner shell syntax and diff checks passed. This checkpoint adds
+test capability/evidence only; production application behavior, schemas and
+assets are unchanged, so a duplicate production build or Go suite was not run.
+It proves this local Chromium/QUIC path, not other browsers, production networking
+or every native failure/timeout variant.
+
+Next: audit remaining FIFO callers and migrate genuinely active command/read
+paths through existing identity primitives. Continue the finite command-family,
+domain/wire and lifecycle inventory; historical restore timeout and Repel click
+remain unattributed. All five roadmap areas remain active. No push or deployment.
 
 ## FIFO send failure and missing-response boundary (2026-10-08)
 

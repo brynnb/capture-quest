@@ -6,6 +6,8 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 shutdown_mode=${CQ_E2E_SHUTDOWN_MODE:-}
 crash_recovery=${CQ_E2E_CRASH_RECOVERY:-}
+transport_mode=${CQ_E2E_TRANSPORT:-websocket}
+case "$transport_mode" in websocket|native) ;; *) echo 'Invalid isolated transport mode'; exit 1;; esac
 case "$crash_recovery" in ""|true) ;; *) echo "Invalid crash recovery mode" >&2; exit 1;; esac
 [[ -z "$crash_recovery" || -z "$shutdown_mode" ]] || { echo 'Choose shutdown or crash recovery mode'; exit 1; }
 case "$shutdown_mode" in ""|success|failure) ;; *) echo "Invalid shutdown mode" >&2; exit 1;; esac
@@ -43,6 +45,7 @@ if [[ "$#" == 0 ]]; then
 fi
 eval "$(HTTP_PORT=18280 WT_PORT=18433 HASH_PORT=18100 VITE_DEV_PORT=15178 node scripts/dev-port-env.mjs)"
 export LOCAL=true CAPTUREQUEST_TEST_MODE=true VITE_TEST_MODE=true VITE_FORCE_WEBSOCKET=true VITE_LOCAL_DEV=true VITE_OFFLINE_ASSETS=false
+if [[ "$transport_mode" == native ]]; then export VITE_FORCE_WEBSOCKET=false; fi
 export GOMAXPROCS=4
 export DATABASE_URL="postgresql:///postgres?host=$run_dir&sslmode=disable"
 printf 'HTTP_PORT=%s\nVITE_DEV_PORT=%s\nWT_PORT=%s\n' "$HTTP_PORT" "$VITE_DEV_PORT" "$WT_PORT" > "$run_dir/ports"
