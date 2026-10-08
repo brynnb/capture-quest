@@ -15,6 +15,7 @@ func TestActorForCharacterHonorsOakLabSourceVisibility(t *testing.T) {
 
 	wh := &WorldHandler{
 		ActorRegistry: NewActorRegistry(),
+		database:      db.GlobalWorldDB.DB,
 	}
 	mgr := NewPhaserActorManager(wh)
 	wh.ActorManager = mgr
@@ -68,6 +69,7 @@ func TestLoadWalkingActorsPreservesOriginalObjectID(t *testing.T) {
 
 	wh := &WorldHandler{
 		ActorRegistry: NewActorRegistry(),
+		database:      db.GlobalWorldDB.DB,
 	}
 	mgr := NewPhaserActorManager(wh)
 	wh.ActorManager = mgr

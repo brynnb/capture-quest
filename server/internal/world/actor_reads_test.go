@@ -26,3 +26,43 @@ func TestActorReadIsCorrelatedInjectedAndIncludesOwnedOverrides(t *testing.T) {
 		}
 	}
 }
+
+func TestEntryPresencePublishesOnceAndActorReadsDoNotRebroadcast(t *testing.T) {
+	wh, fixture, _ := setupIssuedStep(t)
+	originMessages, peerMessages := &recordingMessenger{}, &recordingMessenger{}
+	origin := wh.sessionManager.CreateNextSession(originMessages, "", nil)
+	origin.Client, origin.Authenticated = fixture.Client, true
+	wh.PlayerMovement.RegisterPlayer(origin, 42, 7, 8, 50, "RIGHT")
+	peer := wh.sessionManager.CreateNextSession(peerMessages, "", nil)
+	peer.Authenticated, peer.MapID = true, 50
+	peer.PublishPresence()
+	SendPlayerSpawn(origin, wh)
+	if len(peerMessages.streams) != 1 || peerMessages.streams[0].opcode != opcodes.PhaserActorPositionUpdate || len(originMessages.streams) != 0 {
+		t.Fatal("entry did not publish single peer stream event")
+	}
+	peerMessages.streams = nil
+	battleDispatch(t, wh, origin, opcodes.PhaserActorsRequest, `{"requestId":"refresh","characterId":42,"mapId":50}`)
+	if len(peerMessages.streams) != 0 {
+		t.Fatal("actor read rebroadcast player entry")
+	}
+	origin.Close()
+	peer.Close()
+}
+
+func TestBoulderPublicationIsScopedToProducingCharacter(t *testing.T) {
+	wh, fixture, _ := setupIssuedStep(t)
+	ownerMessages, peerMessages := &recordingMessenger{}, &recordingMessenger{}
+	owner := wh.sessionManager.CreateNextSession(ownerMessages, "", nil)
+	owner.Client, owner.Authenticated = fixture.Client, true
+	wh.PlayerMovement.RegisterPlayer(owner, 42, 7, 8, 50, "RIGHT")
+	peer := wh.sessionManager.CreateNextSession(peerMessages, "", nil)
+	peer.Authenticated, peer.MapID = true, 50
+	peer.PublishPresence()
+	db.GlobalWorldDB = nil
+	wh.PlayerMovement.broadcastBoulderPushResult(42, BoulderPushResult{Success: true, ObjectID: 777, ObjectName: "Boulder", MapID: 50, ToX: 9, ToY: 8, Direction: "RIGHT"})
+	if len(ownerMessages.streams) != 1 || ownerMessages.streams[0].opcode != opcodes.PhaserActorPositionUpdate || len(peerMessages.streams) != 0 {
+		t.Fatal("character-private boulder update crossed viewer boundary")
+	}
+	owner.Close()
+	peer.Close()
+}

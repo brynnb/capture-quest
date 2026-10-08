@@ -1,6 +1,7 @@
 package world
 
 import (
+	"capturequest/internal/api/opcodes"
 	"capturequest/internal/session"
 	"database/sql"
 	"log"
@@ -86,25 +87,39 @@ func (m *PlayerMovementManager) broadcastBoulderPushResult(charID int64, result 
 		return
 	}
 
+	m.mu.RLock()
+	state := m.players[int(charID)]
+	if state == nil {
+		m.mu.RUnlock()
+		return
+	}
+	sessionID := state.SessionID
+	m.mu.RUnlock()
+	ses, ok := m.wh.sessionManager.GetSession(sessionID)
+	if !ok || !ses.HasValidClient() || int64(ses.Client.CharData().ID) != charID {
+		return
+	}
+
 	if result.ObjectID > 0 {
 		runtimeID := m.wh.ActorRegistry.GetPhaserID(ActorTypeNPC, result.ObjectID)
 		if result.Dropped {
-			m.actorManager.broadcastActorDespawn(runtimeID, result.MapID)
+			ses.SendStreamJSON(map[string]int{"id": runtimeID}, opcodes.PhaserActorDespawn)
 		} else {
 			actor := boulderActorFromPushResult(m.wh.ActorRegistry, result)
-			m.actorManager.broadcastActorUpdate(&actor, 0)
+			ses.SendStreamJSON(actor, opcodes.PhaserActorPositionUpdate)
 		}
 	}
 
 	seenMaps := map[int]bool{result.MapID: true}
 	for _, mapName := range result.AffectedMaps {
-		mapID, err := mapIDForBoulderMapName(mapName)
+		var mapID int
+		err := m.wh.database.QueryRowContext(ses.CommandContext(), `SELECT id FROM phaser_maps WHERE name=$1`, mapName).Scan(&mapID)
 		if err != nil || seenMaps[mapID] {
 			continue
 		}
 		seenMaps[mapID] = true
 
-		boulders, err := BoulderObjectsForCharacter(charID, mapID, m.wh.EventFlags)
+		boulders, err := boulderObjectsForCharacterContext(ses.CommandContext(), m.wh.database, charID, mapID, m.wh.EventFlags)
 		if err != nil {
 			log.Printf("[PlayerMovement] Failed to load affected boulders for map %s: %v", mapName, err)
 			continue
@@ -114,7 +129,7 @@ func (m *PlayerMovementManager) broadcastBoulderPushResult(charID int64, result 
 				continue
 			}
 			actor := boulderActorFromState(m.wh.ActorRegistry, boulder, result.Direction)
-			m.actorManager.broadcastActorUpdate(&actor, 0)
+			ses.SendStreamJSON(actor, opcodes.PhaserActorPositionUpdate)
 		}
 	}
 }

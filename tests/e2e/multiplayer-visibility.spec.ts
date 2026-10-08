@@ -1,7 +1,8 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import { createGuestCharacterAndEnterWorld, quitToCharacterSelect } from "./helpers/auth";
 import { collectPageErrors, type PageErrorCollector } from "./helpers/errors";
-import { clickTile } from "./helpers/input";
+import { jumpToScenario } from "./helpers/scenarioDebugger";
+import { clickTile, pressMovement } from "./helpers/input";
 import { activateWarpWithClick, tileBeforeWarp } from "./helpers/warps";
 import {
   getGameState,
@@ -116,4 +117,29 @@ test("players are removed from old map visibility when another player warps", as
     await playerA.context.close();
     await playerB.context.close();
   }
+});
+
+
+test("character-private boulder movement does not change another viewer's puzzle", async ({ browser }) => {
+  test.setTimeout(120_000);
+  const a = await newTestPage(browser), b = await newTestPage(browser);
+  try {
+    await enterAsGuest(a.page); await enterAsGuest(b.page);
+    for (const participant of [a, b]) {
+      await jumpToScenario(participant.page, "seafoam_1f_runtime_boulder_push_facing_update");
+      await waitForNoMapLoading(participant.page);
+    }
+    const position = async (page: Page) => {
+      const actor = (await getGameState(page)).visibleActors.find(actor => actor.name === "SeafoamIslands1F_NPC_1");
+      return actor && [actor.x, actor.y];
+    };
+    await expect.poll(() => position(a.page)).toEqual([18, 10]);
+    await expect.poll(() => position(b.page)).toEqual([18, 10]);
+    await pressMovement(a.page, "up");
+    await expect.poll(() => position(a.page)).toEqual([18, 9]);
+    // Allow the same streamed publication to be processed by both contexts.
+    await b.page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    expect(await position(b.page)).toEqual([18, 10]);
+    assertNoErrors(a.errors, b.errors);
+  } finally { await a.context.close(); await b.context.close(); }
 });

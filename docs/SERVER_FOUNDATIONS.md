@@ -28,6 +28,52 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized a branch push for the stopping checkpoint on 2026-10-07; production deployment remains unauthorized.
 
+## Entry presence and viewer-scoped actor publication (2026-10-07)
+
+The publisher inventory found three bare arrays still sent on
+`PhaserActorsResponse`: peer actor spawns, scripted object shows and an unused
+initial-player helper. That opcode now belongs exclusively to the typed correlated
+read. Those unsolicited arrays were ignored after retiring global application.
+Actor reads also republished player spawns on every refresh.
+
+All unsolicited spawn/show packets now use the existing single-actor update
+stream, which already renders unknown actors. Successful world entry publishes
+player presence once after character/flags/battle initialization. The entering
+player gets its own actor through the owned map snapshot. Actor queries only
+enumerate published presence; they neither refresh presence nor broadcast entry.
+The old initial-player array/recovery routine was retired rather than retained as
+a second entry path. Warps and disconnects keep their existing visibility owners.
+
+A second boundary issue was character-private boulder publication. Its object
+positions and puzzle flags are stored per character, but the producing actor's
+coordinates were broadcast to all viewers. A viewer without an override could
+receive the producer's moved coordinates. Boulder updates, drops and affected-map
+shows now target only the selected owning session, with post-commit state. Other
+viewers retain their own puzzle projection. Affected-map reads use the injected
+database and owned context. Shared actor projection likewise uses injected,
+cancellable visibility/position helpers and fails closed on read error; direct
+scripted shows use their session context. The obsolete global object loader was
+removed. Standalone visibility fixtures now explicitly inject their database.
+
+Focused tests prove one peer entry event, no origin snapshot push, no read-driven
+rebroadcast, and private boulder publication with the global database disabled.
+Existing visibility, boulder, entry and login checks passed; the full world race
+suite passed (55.964 seconds). Seven rendered cases passed in 1.4 minutes in
+`/var/tmp/capturequest-rendered.eYMtEN`: peer entry, warp departure/reentry,
+two-character boulder isolation, and the existing normal/lost-world/process-death
+boulder cases. The second viewer retains its boulder at (18,10) while the producer
+sees (18,9). The private runner compiled the updated server, validated matched
+local assets and stopped its runtime. A publisher search confirms only correlated
+success/error replies remain on `PhaserActorsResponse`. Frontend production code,
+wire DTO shapes and generated-data contracts were unchanged; diff checks passed.
+This checkpoint is committed locally, with no push or deployment.
+
+Remaining: broader player-presence/connection replacement and background publisher
+lifetime review, other world queries and global helpers, source/route/writer audits,
+the original login restore timeout and the rest of the five-area roadmap. Next:
+review the remaining presence projection and character handoff boundaries before
+migrating another query family. This checkpoint is local, with no push or deployment.
+
 ## Actor read-view race policy and acceptance (2026-10-07)
 
 Refresh reconciliation guarded live events received during its query, but initial

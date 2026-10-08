@@ -652,8 +652,6 @@ func HandlePhaserActorsRequest(ses *session.Session, payload []byte, wh *WorldHa
 		fail()
 		return false
 	}
-	// Publish this command's map change before enumerating visible players.
-	ses.PublishPresence()
 	// Add all players on this map (or overworld if target is overworld)
 	wh.sessionManager.ForEachSession(func(otherSes *session.Session) {
 		presence := otherSes.Presence()
@@ -672,15 +670,6 @@ func HandlePhaserActorsRequest(ses *session.Session, payload []byte, wh *WorldHa
 
 	ses.SendStreamJSON(PhaserActorsResponse{Success: true, RequestID: req.RequestID, CharacterID: charID, MapID: req.MapID, Actors: actors}, opcodes.PhaserActorsResponse)
 	log.Printf("[Phaser] Sent %d actors (including players) for map %d", len(actors), req.MapID)
-
-	// Broadcast this player's presence to other sessions so they see the new player immediately
-	if ses.HasValidClient() {
-		playerActor := createPlayerActor(ses, wh)
-		if playerActor != nil {
-			wh.ActorManager.broadcastActorSpawn(playerActor, ses.SessionID)
-			log.Printf("[Phaser] Broadcast player spawn for %s to other sessions", ses.Client.CharData().Name)
-		}
-	}
 
 	return false
 }
@@ -836,47 +825,16 @@ func broadcastCommittedPlayerStep(ses *session.Session, wh *WorldHandler, x, y, 
 
 // SendPlayerSpawn sends the player's initial position and sprite to the client
 // and broadcasts their presence to other players in the same map/overworld.
+// Successful world entry publishes presence once. Reads only enumerate it;
+// the entering player gets its own actor through the correlated map snapshot.
 func SendPlayerSpawn(ses *session.Session, wh *WorldHandler) {
-	if ses.Client == nil {
+	if ses == nil || !ses.HasValidClient() || ses.IsClosed() || wh == nil || wh.ActorManager == nil {
 		return
 	}
-	char := ses.Client.CharData()
-	if char == nil {
-		return
+	actor := createPlayerActor(ses, wh)
+	if actor != nil {
+		wh.ActorManager.broadcastActorSpawn(actor, ses.SessionID)
 	}
-	if _, err := recoverInvalidCharacterPosition(ses, wh); err != nil {
-		log.Printf("[Phaser] Recover position: %v", err)
-		return
-	}
-	char = ses.Client.CharData()
-	if char == nil {
-		return
-	}
-
-	// Ensure the session's map ID is synced with the character's map position
-	// before we create the actor or start broadcasting.
-	mapID := int(char.MapID)
-	if wh.ActorManager.IsOverworld(mapID) {
-		mapID = UnifiedOverworldMapID
-	}
-	ses.MapID = mapID
-
-	playerActor := createPlayerActor(ses, wh)
-	if playerActor == nil {
-		return
-	}
-	if playerActor.X != nil && playerActor.Y != nil {
-		ses.X = float32(*playerActor.X)
-		ses.Y = float32(*playerActor.Y)
-		ses.MapID = playerActor.MapID
-	}
-
-	// 1. Send to the player themselves
-	ses.SendStreamJSON(StructToMap([]PhaserActor{*playerActor}), opcodes.PhaserActorsResponse)
-	log.Printf("[Phaser] Sent player spawn for %s at (%d, %d)", char.Name, *playerActor.X, *playerActor.Y)
-
-	// 2. Broadcast to other players so they see this player immediately
-	wh.ActorManager.broadcastActorSpawn(playerActor, ses.SessionID)
 }
 
 // createPlayerActor creates a PhaserActor representation of the session's player

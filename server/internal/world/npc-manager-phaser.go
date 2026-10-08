@@ -3,6 +3,7 @@ package world
 import (
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
+	"capturequest/internal/logutil"
 	"capturequest/internal/session"
 	"container/heap"
 	"context"
@@ -125,10 +126,20 @@ func (m *PhaserActorManager) shouldSendActorToSessionMap(actor *PhaserActor, ses
 
 // Direct command callers own ses; cross-session broadcasts use Presence instead.
 func (m *PhaserActorManager) actorForSession(actor *PhaserActor, ses *session.Session) (PhaserActor, bool) {
-	if ses == nil {
+	if ses == nil || actor == nil || !m.shouldSendActorToSessionMap(actor, ses.MapID) {
 		return PhaserActor{}, false
 	}
-	return m.actorForPresence(actor, ses.PublishPresence())
+	if !eventVisibilityAppliesToActor(actor) {
+		return *actor, true
+	}
+	if !ses.HasValidClient() || m.wh == nil || m.wh.database == nil {
+		return PhaserActor{}, false
+	}
+	result, visible, err := m.actorForCharacterContext(ses.CommandContext(), m.wh.database, *actor, int64(ses.Client.CharData().ID))
+	if err != nil {
+		return PhaserActor{}, false
+	}
+	return result, visible
 }
 
 func (m *PhaserActorManager) actorForPresence(actor *PhaserActor, p session.Presence) (PhaserActor, bool) {
@@ -152,23 +163,42 @@ func eventVisibilityAppliesToActor(actor *PhaserActor) bool {
 }
 
 func (m *PhaserActorManager) actorForCharacter(actor PhaserActor, charID int64) (PhaserActor, bool) {
-	if eventVisibilityAppliesToActor(&actor) {
-		var efm *EventFlagManager
-		if m != nil && m.wh != nil {
-			efm = m.wh.EventFlags
-		}
-		visibleActors := ApplyEventObjectVisibilityToActors(charID, actor.MapID, efm, []PhaserActor{actor})
-		if len(visibleActors) == 0 {
-			return PhaserActor{}, false
-		}
-		actor = visibleActors[0]
-	}
-
-	actors := ApplyCharacterObjectPositions(charID, []PhaserActor{actor})
-	if len(actors) == 0 {
+	if m == nil || m.wh == nil || m.wh.database == nil {
 		return PhaserActor{}, false
 	}
-	return actors[0], true
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	result, visible, err := m.actorForCharacterContext(ctx, m.wh.database, actor, charID)
+	if err != nil {
+		logutil.Debugf("[Actors] Viewer %d projection for actor %d: %v", charID, actor.ID, err)
+		return PhaserActor{}, false
+	}
+	return result, visible
+}
+
+func (m *PhaserActorManager) actorForCharacterContext(ctx context.Context, database db.ContextDBTX, actor PhaserActor, charID int64) (PhaserActor, bool, error) {
+	if eventVisibilityAppliesToActor(&actor) {
+		var flags *EventFlagManager
+		if m.wh != nil {
+			flags = m.wh.EventFlags
+		}
+		visible, err := applyEventObjectVisibilityContext(ctx, database, charID, actor.MapID, flags, []PhaserActor{actor})
+		if err != nil {
+			return PhaserActor{}, false, err
+		}
+		if len(visible) == 0 {
+			return PhaserActor{}, false, nil
+		}
+		actor = visible[0]
+	}
+	actors, err := applyCharacterObjectPositionsContext(ctx, database, charID, []PhaserActor{actor})
+	if err != nil {
+		return PhaserActor{}, false, err
+	}
+	if len(actors) == 0 {
+		return PhaserActor{}, false, nil
+	}
+	return actors[0], true, nil
 }
 
 func cloneIntPtr(v *int) *int {
@@ -655,7 +685,7 @@ func (m *PhaserActorManager) broadcastActorSpawn(actor *PhaserActor, originSessi
 		}
 
 		if actorForSession, ok := m.actorForPresence(actor, presence); ok {
-			ses.SendStreamJSON(StructToMap([]PhaserActor{actorForSession}), opcodes.PhaserActorsResponse)
+			ses.SendStreamJSON(actorForSession, opcodes.PhaserActorPositionUpdate)
 		}
 	})
 }
@@ -684,7 +714,7 @@ func (m *PhaserActorManager) SendObjectActorToSession(objectID int, ses *session
 		return nil
 	}
 
-	actor, err := m.loadPhaserObjectActor(objectID)
+	actor, err := m.loadPhaserObjectActorContext(ses.CommandContext(), m.wh.database, objectID)
 	if err != nil {
 		return err
 	}
@@ -693,12 +723,8 @@ func (m *PhaserActorManager) SendObjectActorToSession(objectID int, ses *session
 		return nil
 	}
 
-	ses.SendStreamJSON(StructToMap([]PhaserActor{actor}), opcodes.PhaserActorsResponse)
+	ses.SendStreamJSON(actor, opcodes.PhaserActorPositionUpdate)
 	return nil
-}
-
-func (m *PhaserActorManager) loadPhaserObjectActor(objectID int) (PhaserActor, error) {
-	return m.loadPhaserObjectActorContext(context.Background(), db.GlobalWorldDB.DB, objectID)
 }
 
 func (m *PhaserActorManager) loadPhaserObjectActorContext(ctx context.Context, database db.ContextDBTX, objectID int) (PhaserActor, error) {

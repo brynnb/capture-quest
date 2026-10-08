@@ -107,6 +107,7 @@ func HandleEnterWorld(ses *session.Session, payload []byte, wh *WorldHandler) bo
 		}
 	}
 
+	SendPlayerSpawn(ses, wh)
 	return false
 }
 
