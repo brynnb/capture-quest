@@ -28,6 +28,43 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized a branch push for the stopping checkpoint on 2026-10-07; production deployment remains unauthorized.
 
+## Actor read-view race policy and acceptance (2026-10-07)
+
+Refresh reconciliation guarded live events received during its query, but initial
+map loading applied its actor array later, after additional sprite work, without
+that captured view. Both paths now use `ActorReadView`: immutable cached actor
+references identify newer moves/spawns, and despawn markers protect known and
+never-cached actors from resurrection. There is no world-wide revision or need
+for NPC streams to become quiet. Initial map loading captures the view before the
+actor fetch and uses it at final preparation; refresh captures and resolves the
+same policy before applying through the existing renderer. Scene cleanup clears
+its marker state. Removed actors and newer cache state retain their existing
+ownership/presentation handling.
+
+Focused policy tests prove unchanged updates/removals, newer moves/spawns through
+final projection, and known/never-cached despawn preservation. The map-loader
+fixture now supplies the capture callback. All 103 focused client tests, TypeScript, runtime-asset validation, production build and diff checks passed.
+Server code, wire contracts and generated assets were unchanged in this checkpoint.
+
+Ten rendered cases passed in 1.8 minutes in
+`/var/tmp/capturequest-rendered.XZdUIN`. A transport-held actor read containing
+boulder y=9 is overtaken by a second real owned push publishing y=8; release of the
+old read preserves y=8 while current pose recovers to (18,9). A separate held read
+is released after quit; fresh entry sees committed player (18,10) and boulder y=9,
+with no historical application. Neither case emits a client step completion for
+server-owned movement. The existing boulder duplicate/lost-world/crash cases and
+arrow/route entry/mid-route crash cases also pass. The harness uses the actual
+map ID from state instead of a guessed catalog constant. The runner validated
+matched local assets and stopped its private runtime.
+
+Remaining: broader actor/player-presence and cached-view lifetime review, remaining
+world query families, route-data/source/writer audits, the original login restore
+timeout and the five-area roadmap. The selected late refresh/update and retirement
+acceptance is verified; it is not a claim that every world-presentation race is
+closed. Next: audit actor-query presence side effects and remaining global read
+helpers, then continue the finite command-family matrix. This checkpoint is local;
+no push, deployment or production mutation occurred.
+
 ## Owned actor reads and lost-object reconciliation (2026-10-07)
 
 The actor read returned an uncorrelated array, queried the global pool, then

@@ -1,3 +1,4 @@
+import { ActorReadView } from "../services/ActorReadView";
 import { bindInventoryScene } from "@/phaser-game/services/InventoryCommandService";
 import { bindBattleScene } from "@/phaser-game/services/BattleCommandService";
 import type { PhaserMapInfo } from "@/net/generated/protocol";
@@ -116,6 +117,7 @@ export class TileViewer extends Scene {
   private mapInfo: PhaserMapInfo | null = null;
   private items: MapItem[] = [];
   private actors: PhaserActor[] = [];
+  private actorDespawnMarkers = new Map<number, object>();
   private actorCache: Map<number, PhaserActor> = new Map();
   private playerActor: PhaserActor | null = null; // Store player separately so it's never lost
   private warps: PhaserWarp[] = [];
@@ -725,8 +727,7 @@ export class TileViewer extends Scene {
         updateCameraFollow: () => this.updateCameraFollow(),
         removeMapLegend: () => this.debugOverlay.removeMapLegend(),
         createMapLegend: (maps) => this.debugOverlay.createMapLegend(maps),
-        prepareActorsForLoadedView: (actors) =>
-          this.prepareActorsForLoadedView(actors),
+        captureActorReadView: () => this.captureActorReadView(),
       },
     );
     this.installTestDiagnostics();
@@ -1689,26 +1690,17 @@ export class TileViewer extends Scene {
   private async reconcileActors(signal: AbortSignal): Promise<void> {
     const mapId = this.mapInfo?.id ?? this.playerMovementController.getCurrentMapId();
     const characterId = usePlayerCharacterStore.getState().characterProfile.id;
-    const before = new Map(this.actorCache);
+    const readView = new ActorReadView(this.actorCache, this.actorDespawnMarkers);
     const current = () => !signal.aborted && this.sys.isActive()
       && (this.mapInfo?.id ?? this.playerMovementController.getCurrentMapId()) === mapId
       && usePlayerCharacterStore.getState().characterProfile.id === characterId;
-    const touched = new Set<number>();
-    const stopUpdates = PhaserNet.onActorUpdate(actor => touched.add(actor.id));
-    const stopDespawns = PhaserNet.onActorDespawn(actor => touched.add(actor.id));
-    let incoming: PhaserActor[];
-    try { incoming = await this.mapDataService.fetchActors(mapId, signal); }
-    finally { stopUpdates(); stopDespawns(); }
+    const incoming = await this.mapDataService.fetchActors(mapId, signal);
     if (!current()) return;
-    const ids = new Set(incoming.map(actor => actor.id));
-    for (const [id, actor] of before) {
-      if (!touched.has(id) && !ids.has(id) && this.actorCache.get(id) === actor && !this.isLocalPlayerActor(actor)
-        && this.actorBelongsToLoadedView(actor)) this.handleActorDespawn(id);
+    const changes = readView.changes(incoming, this.actorCache, this.actorDespawnMarkers);
+    for (const actor of changes.removals) {
+      if (!this.isLocalPlayerActor(actor) && this.actorBelongsToLoadedView(actor)) this.handleActorDespawn(actor.id);
     }
-    // Preserve per-actor live updates/despawns that overtook this read; the
-    // immutable cache reference is the existing presentation identity.
-    const actors = incoming.filter(actor => !touched.has(actor.id) && before.get(actor.id) === this.actorCache.get(actor.id));
-    this.applyActorSnapshot(actors, current);
+    this.applyActorSnapshot(changes.updates, current);
   }
 
   private applyActorSnapshot(actors: PhaserActor[], current: () => boolean): void {
@@ -1752,28 +1744,23 @@ export class TileViewer extends Scene {
     return cached;
   }
 
-  private prepareActorsForLoadedView(actors: PhaserActor[]): PhaserActor[] {
-    const freshIds = new Set(actors.map((actor) => actor.id));
-    for (const [actorId, cachedActor] of this.actorCache.entries()) {
-      if (
-        !this.isLocalPlayerActor(cachedActor) &&
-        this.actorBelongsToLoadedView(cachedActor) &&
-        !freshIds.has(actorId)
-      ) {
-        this.actorCache.delete(actorId);
+  private captureActorReadView(): (actors: PhaserActor[]) => PhaserActor[] {
+    const readView = new ActorReadView(this.actorCache, this.actorDespawnMarkers);
+    return actors => {
+      const changes = readView.changes(actors, this.actorCache, this.actorDespawnMarkers);
+      for (const actor of changes.removals) {
+        if (!this.isLocalPlayerActor(actor) && this.actorBelongsToLoadedView(actor)) this.actorCache.delete(actor.id);
       }
-    }
-
-    actors.forEach((actor) => {
-      const cached = this.cacheActor(actor);
-      if (this.isLocalPlayerActor(cached)) this.playerActor = cached;
-    });
-    return Array.from(this.actorCache.values()).filter((actor) =>
-      this.shouldRenderActorInCurrentView(actor),
-    );
+      for (const actor of changes.updates) {
+        const cached = this.cacheActor(actor);
+        if (this.isLocalPlayerActor(cached)) this.playerActor = cached;
+      }
+      return [...this.actorCache.values()].filter(actor => this.shouldRenderActorInCurrentView(actor));
+    };
   }
 
   handleActorDespawn(actorId: number) {
+    this.actorDespawnMarkers.set(actorId, {});
     this.actorCache.delete(actorId);
     if (!this.mapRenderer || !this.sys.isActive()) return;
 
@@ -2057,6 +2044,7 @@ export class TileViewer extends Scene {
   }
 
   cleanupResources() {
+    this.actorDespawnMarkers.clear();
     window.removeEventListener("cq:bicycleUse", this.bicycleUseHandler);
     window.removeEventListener("cq:escapeRopeUse", this.escapeRopeUseHandler);
     this.playerMovementController?.retireFieldCommands();

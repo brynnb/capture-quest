@@ -3,7 +3,7 @@ import * as OpCodes from "../../../src/net/generated/opcodes";
 
 // Exercise each adapter through the same real transport fault boundary. Suppress
 // duplicate rejections so the first committed reply (or its timeout) settles it.
-export async function inventoryCommandFaults<T>(page: Page, requestOpcode: number, responseOpcode: number, loseReply: boolean, matchesRequest: (request: Record<string, unknown>) => boolean = () => true, dropResponse?: (opcode: number) => boolean) {
+export async function inventoryCommandFaults<T>(page: Page, requestOpcode: number, responseOpcode: number, loseReply: boolean, matchesRequest: (request: Record<string, unknown>) => boolean = () => true, dropResponse?: (opcode: number, message: string | Buffer, deliver: () => void) => boolean) {
   const evidence = {requests: 0, successes: 0, rejections: 0, replies: [] as T[], deliverReply: (_index: number) => {}};
   const deliveries: Array<() => void> = [];
   const faultedRequests = new Set<string>();
@@ -21,7 +21,7 @@ export async function inventoryCommandFaults<T>(page: Page, requestOpcode: numbe
       server.send(message);
     });
     server.onMessage(message => {
-      if (Buffer.isBuffer(message) && message.length >= 6 && dropResponse?.(message.readUInt16LE(4))) return;
+      if (Buffer.isBuffer(message) && message.length >= 6 && dropResponse?.(message.readUInt16LE(4), message, () => socket.send(message))) return;
       if (Buffer.isBuffer(message) && message.length >= 6 && evidence.requests > 0) {
         const opcode = message.readUInt16LE(4);
         if (opcode === OpCodes.CQInventoryResponse) return;

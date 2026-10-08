@@ -71,7 +71,7 @@ export class MapLoader {
   private updateCameraFollow: () => void;
   private removeMapLegend: () => void;
   private createMapLegend: (maps: PhaserMapInfo[]) => void;
-  private prepareActorsForLoadedView: (actors: PhaserActor[]) => PhaserActor[];
+  private captureActorReadView: () => (actors: PhaserActor[]) => PhaserActor[];
   private mapLoadGeneration = 0;
   private mapRequestAbort: AbortController | null = null;
   private overworldChunkStream: OverworldChunkStream | null = null;
@@ -95,7 +95,7 @@ export class MapLoader {
       updateCameraFollow: () => void;
       removeMapLegend: () => void;
       createMapLegend: (maps: PhaserMapInfo[]) => void;
-      prepareActorsForLoadedView: (actors: PhaserActor[]) => PhaserActor[];
+      captureActorReadView: () => (actors: PhaserActor[]) => PhaserActor[];
     },
   ) {
     this.scene = scene;
@@ -117,7 +117,7 @@ export class MapLoader {
     this.updateCameraFollow = callbacks.updateCameraFollow;
     this.removeMapLegend = callbacks.removeMapLegend;
     this.createMapLegend = callbacks.createMapLegend;
-    this.prepareActorsForLoadedView = callbacks.prepareActorsForLoadedView;
+    this.captureActorReadView = callbacks.captureActorReadView;
   }
 
   async loadMapData(mapId: number) {
@@ -233,6 +233,7 @@ export class MapLoader {
 
       this.uiManager.setLoadingText("Loading Actors...");
 
+      const prepareActors = this.captureActorReadView();
       let actors = [...playerActors];
       try {
         // Fetch actors for this map (includes static and walking)
@@ -240,7 +241,7 @@ export class MapLoader {
         if (!this.isLoadCurrent(loadGeneration)) return;
         // Initialize with default if null, but preserve existing actors (like player)
         if (!allActors) {
-          actors = this.prepareActorsForLoadedView(actors);
+          actors = prepareActors(actors);
           this.setState({ tiles, items, warps, actors });
           return;
         }
@@ -292,7 +293,7 @@ export class MapLoader {
         sceneAny.warpDestY = null;
       }
 
-      actors = this.prepareActorsForLoadedView(actors);
+      actors = prepareActors(actors);
 
       this.mapDataService.setSnapshot(mapId, {
         mapInfo,
@@ -459,6 +460,7 @@ export class MapLoader {
       this.uiManager.setLoadingText("Loading actors and warps...");
 
       // Load actors and warps for the unified map
+      const prepareActors = this.captureActorReadView();
       const allActors = options.viewOnly && cached
         ? cached.actors
         : await this.mapDataService.fetchActors(mapId, mapRequestAbort.signal);
@@ -507,7 +509,7 @@ export class MapLoader {
         sceneAnyOW.warpDestY = null;
       }
 
-      actors = this.prepareActorsForLoadedView(actors);
+      actors = prepareActors(actors);
 
       this.mapDataService.setSnapshot(mapId, {
         mapInfo,

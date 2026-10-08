@@ -136,7 +136,7 @@ function createFailedOverworldLoader() {
       hideLoadingText: vi.fn(),
     },
     getPlayerActor: () => null,
-    prepareActorsForLoadedView: (actors: unknown[]) => actors,
+    captureActorReadView: () => (actors: unknown[]) => actors,
     createMapLegend: vi.fn(),
     applyDestinationDirection: vi.fn(),
     updateCameraFollow: vi.fn(),
