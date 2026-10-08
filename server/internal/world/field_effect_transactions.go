@@ -17,10 +17,10 @@ type escapeRopeResult struct {
 
 // Keep item ownership, the authoritative exit and saved position inside the
 // same commit. The handler publishes movement only after this operation returns.
-func useEscapeRope(ctx context.Context, database *sql.DB, charID, instanceID int32, sourceMapID, sourceX, sourceY int, normalizeMap func(int) int) (escapeRopeResult, error) {
+func useEscapeRope(ctx context.Context, database *sql.DB, charID, instanceID int32, sourceMapID, sourceX, sourceY int, expectedRevision int64, normalizeMap func(int) int) (escapeRopeResult, error) {
 	var result escapeRopeResult
-	err := db.Transaction(ctx, database, func(tx db.DBTX) error {
-		if err := db.LockCharacter(tx, int64(charID)); err != nil {
+	_, err := cqitems.NewStore(database).ExecuteCommand(ctx, charID, expectedRevision, func(tx db.DBTX) error {
+		if err := requireNoOwnedBattleIn(tx, int64(charID)); err != nil {
 			return err
 		}
 		// Eligibility and exit choice must use the same source that ownership

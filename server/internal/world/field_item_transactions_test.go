@@ -36,7 +36,7 @@ func TestEscapeRopeRejectsSourceChangedBeforeCharacterLock(t *testing.T) {
 			defer cancel()
 			finished := make(chan error, 1)
 			go func() {
-				_, err := useEscapeRope(ctx, database, 42, instance, 50, 7, 8, func(id int) int { return id })
+				_, err := useEscapeRope(ctx, database, 42, instance, 50, 7, 8, 0, func(id int) int { return id })
 				finished <- err
 			}()
 			if _, err := lock.Exec(change); err != nil {
@@ -135,9 +135,9 @@ func TestEscapeRopeCommitFailureDoesNotConsumeMoveOrPublish(t *testing.T) {
 	wh.PlayerMovement = NewPlayerMovementManager(wh, nil)
 	wh.PlayerMovement.RegisterPlayer(ses, 42, 7, 8, 50, "UP")
 	db.GlobalWorldDB = nil
-	request := fmt.Sprintf(`{"instanceId":%d}`, instance)
-	battleDispatch(t, wh, ses, opcodes.CQItemUseRequest, request)
-	if len(messages.streams) != 1 || messages.streams[0].opcode != opcodes.CQItemUseResponse {
+	request := fmt.Sprintf(`{"requestId":"rope","command":{"characterId":42,"revision":0},"instanceId":%d,"mapId":50,"x":7,"y":8}`, instance)
+	battleDispatch(t, wh, ses, opcodes.EscapeRopeUseRequest, request)
+	if len(messages.streams) != 1 || messages.streams[0].opcode != opcodes.EscapeRopeUseResponse {
 		t.Fatalf("failed use published unexpected messages: %+v", messages.streams)
 	}
 	var response struct {
@@ -167,25 +167,52 @@ func TestEscapeRopeCommitFailureDoesNotConsumeMoveOrPublish(t *testing.T) {
 	}
 	testdb.Exec(t, database, `DROP TRIGGER reject_escape_commit ON character_data`)
 	messages.streams = nil
-	battleDispatch(t, wh, ses, opcodes.CQItemUseRequest, request)
+	battleDispatch(t, wh, ses, opcodes.EscapeRopeUseRequest, request)
 	assertPosition(60, 3, 4)
 	if _, err := cqitems.NewStore(database).FindInventoryItemByInstanceID(42, instance); err == nil {
 		t.Fatal("successful escape did not consume rope")
 	}
-	if len(messages.streams) != 2 || messages.streams[0].opcode != opcodes.WarpTileTeleportNotify || messages.streams[1].opcode != opcodes.CQItemUseResponse {
+	if len(messages.streams) != 2 || messages.streams[0].opcode != opcodes.EscapeRopeUseResponse || messages.streams[1].opcode != opcodes.ResourcesChangedNotify {
 		t.Fatalf("success messages: %+v", messages.streams)
 	}
-	var success struct {
-		Success bool
-		NewQty  uint16
-	}
-	if err := json.Unmarshal(messages.streams[1].payload, &success); err != nil || !success.Success || success.NewQty != 0 {
+	var success EscapeRopeUseResponse
+	if err := json.Unmarshal(messages.streams[0].payload, &success); err != nil || !success.Success || success.CharacterID != 42 {
 		t.Fatalf("success response %+v: %v", success, err)
 	}
 	messages.streams = nil
-	battleDispatch(t, wh, ses, opcodes.CQItemUseRequest, request)
+	battleDispatch(t, wh, ses, opcodes.EscapeRopeUseRequest, request)
 	assertPosition(60, 3, 4)
 	if len(messages.streams) != 1 {
 		t.Fatalf("stale instance replay published a teleport: %+v", messages.streams)
+	}
+}
+
+func TestEscapeRopeOldCommandCannotConsumeAgainAfterReturningToSource(t *testing.T) {
+	database, wh, ses, messages := battleTestWorld(t)
+	testdb.Exec(t, database, `INSERT INTO cq_items(id,name,short_name,is_usable) VALUES(29,'Escape Rope','ESCAPE_ROPE',true); INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(50,'CAVE',20,20,0),(60,'EXIT',20,20,0); INSERT INTO phaser_warps(id,source_map_id,x,y,destination_map_id,destination_x,destination_y) VALUES(1,50,1,1,60,3,4); UPDATE character_data SET map_id=50,x=7,y=8 WHERE id=42`)
+	instance, err := cqitems.NewStore(database).AddItemToInventory(42, 29, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wh.PlayerMovement = NewPlayerMovementManager(wh, nil)
+	wh.PlayerMovement.RegisterPlayer(ses, 42, 7, 8, 50, "UP")
+	request := fmt.Sprintf(`{"requestId":"rope","command":{"characterId":42,"revision":0},"instanceId":%d,"mapId":50,"x":7,"y":8}`, instance)
+	battleDispatch(t, wh, ses, opcodes.EscapeRopeUseRequest, request)
+	testdb.Exec(t, database, `UPDATE character_data SET map_id=50,x=7,y=8 WHERE id=42`)
+	// Fresh registration at the same source must not erase durable admission.
+	wh.PlayerMovement.RegisterPlayer(ses, 42, 7, 8, 50, "UP")
+	messages.streams = nil
+	battleDispatch(t, wh, ses, opcodes.EscapeRopeUseRequest, request)
+	var response struct{ Success bool }
+	if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &response) != nil || response.Success {
+		t.Fatal("old command replay accepted")
+	}
+	snapshot, err := cqitems.NewStore(database).GetCharacterSnapshot(context.Background(), 42)
+	if err != nil || snapshot.CommandRevision != 1 || len(snapshot.Items) != 1 || snapshot.Items[0].Instance.Quantity != 1 {
+		t.Fatalf("replay changed bag/revision: %+v %v", snapshot, err)
+	}
+	x, y, mapID, ok := wh.PlayerMovement.GetPosition(42)
+	if !ok || mapID != 50 || x != 7 || y != 8 {
+		t.Fatal("old command moved fresh owner")
 	}
 }

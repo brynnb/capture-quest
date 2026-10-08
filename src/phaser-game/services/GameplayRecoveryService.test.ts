@@ -172,3 +172,19 @@ test("an incomplete success packet rejects before clearing any owned store", () 
   expect(() => applyGameplaySnapshot(reply)).toThrow("Incomplete owned gameplay snapshot");
   expect(useCQInventoryStore.getState().money).toBe(99); expect(state.apply).not.toHaveBeenCalled(); expect(state.flags).not.toHaveBeenCalled();
 });
+
+
+test("an owned position change overtaking a current snapshot requires a fresh read", async () => {
+  let positionGeneration = 0;
+  const run = readCurrentGameplayState(undefined, () => positionGeneration);
+  const first = state.send.mock.calls[0][0];
+  positionGeneration++;
+  receive(snapshot(first.requestId));
+  await Promise.resolve(); await Promise.resolve();
+  expect(state.send).toHaveBeenCalledTimes(2);
+  expect(state.wallet).not.toHaveBeenCalled();
+  const current = snapshot(state.send.mock.calls[1][0].requestId);
+  current.position.x = 9;
+  receive(current);
+  expect((await run).position.x).toBe(9);
+});

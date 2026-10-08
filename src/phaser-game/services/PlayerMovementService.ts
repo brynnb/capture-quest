@@ -47,3 +47,9 @@ export function requestBicycleState(
     signal,
   );
 }
+
+export function requestEscapeRope(request: Omit<import("@/net/generated/world_api").EscapeRopeUseRequest, "requestId">, signal: AbortSignal): Promise<import("@/net/generated/world_api").EscapeRopeUseResponse> {
+  return correlatedRequest<import("@/net/generated/world_api").EscapeRopeUseResponse>(
+    PhaserNet.onEscapeRope, requestId => PhaserNet.requestEscapeRope({ ...request, requestId }), signal,
+  );
+}

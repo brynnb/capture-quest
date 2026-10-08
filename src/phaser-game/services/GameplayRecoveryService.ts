@@ -20,13 +20,16 @@ export async function readGameplayState(mapId: number, signal?: AbortSignal): Pr
 // Mutation recovery cannot assume the pre-command map after a committed blackout.
 // This uses the same locked snapshot without the position endpoint's independent
 // pending-plan redelivery. The caller still owns application and cancellation.
-export async function readCurrentGameplayState(signal?: AbortSignal): Promise<GameplayStateResponse> {
+export async function readCurrentGameplayState(signal?: AbortSignal, captureOwnerView?: () => unknown): Promise<GameplayStateResponse> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const before = captureGameplayViews();
+    const ownerBefore = captureOwnerView?.();
     const snapshot = await correlatedRequest<GameplayStateResponse>(PhaserNet.onGameplayState, requestId => PhaserNet.requestGameplayState({ current: true, requestId }), signal);
     if (signal?.aborted) throw new DOMException("Scene retired", "AbortError");
     validateGameplaySnapshot(snapshot);
-    if (gameplayViewsChanged(before)) continue;
+    // Movement owners can fence their own snaps without coupling resource reads
+    // to position changes for every consumer. Reuse the same bounded read retry.
+    if (gameplayViewsChanged(before) || captureOwnerView?.() !== ownerBefore) continue;
     return snapshot;
   }
   throw new Error("Gameplay changed during recovery; a new recovery read is required");

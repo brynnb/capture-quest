@@ -379,6 +379,7 @@ export function onInventoryCommand<T extends InventoryReply>(opcode: number, rec
 }
 
 const handlers = {
+  escapeRope: new Set<(data: import("@/net/generated/world_api").EscapeRopeUseResponse | PlayerStepError) => void>(),
   bicycleState: new Set<(data: import("@/net/generated/world_api").BicycleStateResponse | PlayerStepError) => void>(),
   gameplayState: new Set<(data: GameplayStateResponse | PlayerStepError) => void>(),
   cutsceneEnd: new Set<(data: CutsceneEndResponse | PlayerStepError) => void>(),
@@ -401,6 +402,13 @@ const handlers = {
   mapMusic: new Set<PhaserMapMusicHandler>(),
 };
 
+export function onEscapeRope(handler: (data: import("@/net/generated/world_api").EscapeRopeUseResponse | PlayerStepError) => void): () => void {
+  handlers.escapeRope.add(handler);
+  return () => handlers.escapeRope.delete(handler);
+}
+export function requestEscapeRope(request: import("@/net/generated/world_api").EscapeRopeUseRequest): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.EscapeRopeUseRequest);
+}
 export function onBicycleState(handler: (data: import("@/net/generated/world_api").BicycleStateResponse | PlayerStepError) => void): () => void {
   handlers.bicycleState.add(handler);
   return () => handlers.bicycleState.delete(handler);
@@ -580,6 +588,9 @@ export function dispatchPhaserResponse(opcode: number, data: unknown): void {
       battleCommandHandlers.get(opcode)?.forEach(receive => receive(data as BattleCommandResponse | SafariBattleActionResponse | BattleCommandError));
       break;
 
+    case OpCodes.EscapeRopeUseResponse:
+      handlers.escapeRope.forEach(handler => handler(data as import("@/net/generated/world_api").EscapeRopeUseResponse | PlayerStepError));
+      break;
     case OpCodes.BicycleStateResponse:
       handlers.bicycleState.forEach(handler => handler(data as import("@/net/generated/world_api").BicycleStateResponse | PlayerStepError));
       break;

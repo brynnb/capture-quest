@@ -3,9 +3,7 @@ package world
 import (
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"log"
 	"math"
 	"strings"
 
@@ -20,7 +18,7 @@ func tryHandleFieldItemUse(ses *session.Session, wh *WorldHandler, found *cqitem
 	item := found.Item
 	switch itemuse.ShortName(item) {
 	case "ESCAPE_ROPE":
-		handleCQEscapeRopeUse(ses, wh, found, charID)
+		sendCQItemUseError(ses, "Use the current Escape Rope command.")
 		return true
 	case "OLD_ROD", "GOOD_ROD", "SUPER_ROD":
 		fishingReq := map[string]interface{}{
@@ -70,26 +68,6 @@ func coinCaseMessage(coins int) string {
 		return "You have 1 coin."
 	}
 	return fmt.Sprintf("You have %d coins.", coins)
-}
-
-func handleCQEscapeRopeUse(ses *session.Session, wh *WorldHandler, found *cqitems.CQInventoryItem, charID int32) {
-	x, y, mapID := currentTilePosition(ses, wh)
-	result, err := useEscapeRope(ses.CommandContext(), wh.database, charID, found.Instance.ID, mapID, x, y, func(id int) int {
-		return normalizedVisiblePlayerMapID(wh, id)
-	})
-	if err != nil {
-		message := "Could not use the Escape Rope. Please try again."
-		var rejection *itemuse.Rejection
-		if errors.As(err, &rejection) {
-			message = rejection.Message
-		} else {
-			log.Printf("[CQItems] Escape Rope failed for character %d instance %d: %v", charID, found.Instance.ID, err)
-		}
-		sendCQItemUseError(ses, message)
-		return
-	}
-	publishCommittedTeleport(ses, wh, result.MapID, result.X, result.Y)
-	sendCQItemUseSuccess(ses, found, "You escaped from the dungeon.", result.NewQuantity)
 }
 
 func currentMapMessage(ses *session.Session) string {

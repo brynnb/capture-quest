@@ -2,12 +2,15 @@ import { afterEach } from "vitest";
 import { CorrelatedResponseError } from "../services/CorrelatedRequest";
 import * as movement from "../services/PlayerMovementService";
 vi.mock("../services/PlayerMovementService", () => ({
+  requestEscapeRope: vi.fn(),
   requestBicycleState: vi.fn(),
   requestPlayerFacing: vi.fn(async () => ({ success: true, requestId: "face", mapId: 9999, x: 10, y: 0, direction: "LEFT" })),
   requestPlayerStep: vi.fn(async () => ({ success: true, requestId: "accepted", stepToken: "issued", mapId: 9999, x: 10, y: 2, direction: "DOWN", ledgeJump: true })),
   completePlayerStep: vi.fn(async () => ({ success: true, requestId: "complete", mapId: 9999, x: 10, y: 2, direction: "DOWN" })),
   readOwnedPlayerPosition: vi.fn(async () => ({ success: true, requestId: "owned", mapId: 9999, x: 9, y: 0, direction: "LEFT", serverMovementPending: false })),
 }));
+vi.mock("../services/GameplayRecoveryService", () => ({ readCurrentGameplayState: vi.fn(), applyGameplayResourceSnapshot: vi.fn() }));
+import * as recovery from "../services/GameplayRecoveryService";
 afterEach(() => vi.clearAllMocks());
 import { describe, expect, test, vi } from "vitest";
 import { PlayerMovementController } from "./PlayerMovementController";
@@ -92,7 +95,7 @@ test("retired movement controllers ignore late Bicycle state",async()=>{
  const {controller}=buildLedgeController();usePlayerCharacterStore.getState().setCharacterProfile({id:42});
  useAudioActivityStore.getState().resetTravelAudio();
  let resolve!:(value:any)=>void;vi.mocked(movement.requestBicycleState).mockImplementationOnce(()=>new Promise(done=>{resolve=done}));
- const pending=controller.changeBicyclePreference(7);controller.retireBicycleCommands();
+ const pending=controller.changeBicyclePreference(7);controller.retireFieldCommands();
  resolve({success:true,requestId:"late",characterId:42,bicycle:{revision:1,wantsRiding:true,activeRiding:true,forcedRiding:false}});await pending;
  expect(useAudioActivityStore.getState().wantsBicycle).toBe(false);
 });
@@ -113,6 +116,33 @@ test("character replacement cancels Bicycle admission and ignores a late state",
   await pending;
   expect(request).toHaveBeenCalledTimes(1);
   expect(useAudioActivityStore.getState().wantsBicycle).toBe(false);
+});
+
+test("Escape Rope uncertain replies project a current coherent read without retry", async () => {
+  const { controller, mapRenderer } = buildLedgeController();
+  usePlayerCharacterStore.getState().setCharacterProfile({ id: 42 });
+  vi.mocked(movement.requestEscapeRope).mockRejectedValueOnce(new Error("timeout"));
+  const snapshot = { position: { mapId: 9999, x: 9, y: 0, direction: "LEFT" } } as import("@/net/generated/world_api").GameplayStateResponse;
+  vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce(snapshot);
+  await controller.useEscapeRope(7);
+  expect(movement.requestEscapeRope).toHaveBeenCalledTimes(1);
+  expect(recovery.readCurrentGameplayState).toHaveBeenCalledTimes(1);
+  expect(recovery.applyGameplayResourceSnapshot).toHaveBeenCalledWith(snapshot);
+  expect(mapRenderer.snapActorPosition).toHaveBeenCalledWith(1, 9, 0, "LEFT");
+});
+
+test("retired movement owners ignore late Escape Rope recovery", async () => {
+  const { controller } = buildLedgeController();
+  usePlayerCharacterStore.getState().setCharacterProfile({ id: 42 });
+  vi.mocked(movement.requestEscapeRope).mockResolvedValueOnce({ success: true, requestId: "rope", characterId: 42 });
+  let resolve!: (value: import("@/net/generated/world_api").GameplayStateResponse) => void;
+  vi.mocked(recovery.readCurrentGameplayState).mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+  const pending = controller.useEscapeRope(7);
+  await Promise.resolve();
+  controller.retireFieldCommands();
+  resolve({ position: { mapId: 59, x: 9, y: 9, direction: "DOWN" } } as import("@/net/generated/world_api").GameplayStateResponse);
+  await pending;
+  expect(recovery.applyGameplayResourceSnapshot).not.toHaveBeenCalled();
 });
 
 describe("PlayerMovementController ledges", () => {

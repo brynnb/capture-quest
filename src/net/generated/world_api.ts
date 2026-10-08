@@ -1268,6 +1268,27 @@ export interface BicycleStateResponse {
 }
 
 //////////
+// source: handler_escape_rope.go
+
+export interface EscapeRopeUseRequest {
+  requestId: string;
+  command?: InventoryCommandIdentity;
+  instanceId: number /* int32 */;
+  mapId: number /* int */;
+  x?: number /* int */;
+  y?: number /* int */;
+}
+/**
+ * This acknowledges commit only. Current position and resources are recovered
+ * together through GameplayStateRequest; historical replies never teleport.
+ */
+export interface EscapeRopeUseResponse {
+  success: true;
+  requestId: string;
+  characterId: number /* int64 */;
+}
+
+//////////
 // source: in_game_trades.go
 
 

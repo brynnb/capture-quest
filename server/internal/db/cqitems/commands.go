@@ -10,7 +10,7 @@ import (
 )
 
 // ExecuteCommand owns admission, the durable revision and the committed bag
-// projection for shop, party and Repel commands. A stale request is rejected;
+// projection for shop, party, Repel and consumptive field commands. A stale request is rejected;
 // clients recover current state without automatically resending the mutation.
 // Unlike repository helpers, this boundary cannot join a parent transaction:
 // returning a successful projection requires owning the final commit.

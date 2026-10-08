@@ -1,5 +1,5 @@
 import type { PlayerStepResponse, PlayerStepError } from "@/net/generated/protocol";
-import { requestBicycleState, requestPlayerFacing, requestPlayerStep, completePlayerStep, readOwnedPlayerPosition } from "../services/PlayerMovementService";
+import { requestEscapeRope, requestBicycleState, requestPlayerFacing, requestPlayerStep, completePlayerStep, readOwnedPlayerPosition } from "../services/PlayerMovementService";
 import { CorrelatedResponseError } from "../services/CorrelatedRequest";
 import { Scene } from "phaser";
 import { PhaserActor, PhaserTile, PhaserWarp } from "@/net/generated/world_api";
@@ -9,6 +9,8 @@ import { isWorldInputFrozen } from "../utils/worldInputGuard";
 import usePokemonDialogueStore from "@/stores/PokemonDialogueStore";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
+import { readCurrentGameplayState, applyGameplayResourceSnapshot } from "../services/GameplayRecoveryService";
+import useCQInventoryStore from "@/stores/CQInventoryStore";
 import useAudioActivityStore from "@/stores/AudioActivityStore";
 import useChatStore, { MessageType } from "@/stores/ChatStore";
 import useGameStatusStore from "@/stores/GameStatusStore";
@@ -118,62 +120,105 @@ export class PlayerMovementController {
   private facingRequestKey: string | null = null;
   private stepAbort: AbortController | null = null;
   private issuedStep: PlayerStepResponse | null = null;
-  private bicycleAbort: AbortController | null = null;
-  private bicycleRetired = false;
+  private fieldCommandAbort: AbortController | null = null;
+  private fieldCommandsRetired = false;
 
-  retireBicycleCommands(): void {
-    this.bicycleRetired = true;
-    this.bicycleAbort?.abort();
+  retireFieldCommands(): void {
+    this.fieldCommandsRetired = true;
+    this.fieldCommandAbort?.abort();
   }
 
-  async changeBicyclePreference(instanceId: number): Promise<void> {
-    if (this.bicycleAbort || this.bicycleRetired) return;
+  private async runOwnedFieldCommand(operation: (characterId: number, signal: AbortSignal, current: () => boolean) => Promise<void>): Promise<void> {
+    if (this.fieldCommandAbort || this.fieldCommandsRetired) return;
     const characterId = usePlayerCharacterStore.getState().characterProfile.id;
     if (!characterId) return;
     const abort = new AbortController();
-    this.bicycleAbort = abort;
-    const stopProfile = usePlayerCharacterStore.subscribe((state) => {
+    this.fieldCommandAbort = abort;
+    const stopProfile = usePlayerCharacterStore.subscribe(state => {
       if (state.characterProfile.id !== characterId) abort.abort();
     });
-    const current = () => !abort.signal.aborted && !this.bicycleRetired
+    const current = () => !abort.signal.aborted && !this.fieldCommandsRetired
       && usePlayerCharacterStore.getState().characterProfile.id === characterId;
-    const apply = (reply: import("@/net/generated/world_api").BicycleStateResponse) => {
-      if (reply.characterId !== characterId || !Number.isSafeInteger(reply.bicycle?.revision)
-        || reply.bicycle.revision < 0 || typeof reply.bicycle.wantsRiding !== "boolean"
-        || typeof reply.bicycle.activeRiding !== "boolean"
-        || typeof reply.bicycle.forcedRiding !== "boolean") {
-        throw new Error("Invalid Bicycle state");
-      }
-      useAudioActivityStore.getState().setBicycleState(reply.bicycle);
-    };
-    try {
-      const before = await requestBicycleState(characterId, abort.signal);
-      if (!current()) return;
-      apply(before);
-      const result = await requestBicycleState(characterId, abort.signal, {
-        instanceId, wantsRiding: !before.bicycle.wantsRiding, revision: before.bicycle.revision,
-      });
-      if (current()) {
-        apply(result);
-        const bike = result.bicycle;
-        const message = bike.forcedRiding ? "You can't get off here."
-          : bike.wantsRiding ? (bike.activeRiding ? "You got on the Bicycle!"
-            : "You'll get on the Bicycle when you go outside.") : "You got off the Bicycle.";
-        useChatStore.getState().addMessage(message, MessageType.SYSTEM);
-      }
-    } catch {
-      if (!current()) return;
-      // An uncertain setter is reconciled by reading; never toggle or retry it.
+    try { await operation(characterId, abort.signal, current); }
+    finally { stopProfile(); if (this.fieldCommandAbort === abort) this.fieldCommandAbort = null; }
+  }
+
+  async changeBicyclePreference(instanceId: number): Promise<void> {
+    return this.runOwnedFieldCommand(async (characterId, signal, current) => {
+      const apply = (reply: import("@/net/generated/world_api").BicycleStateResponse) => {
+        if (reply.characterId !== characterId || !Number.isSafeInteger(reply.bicycle?.revision)
+          || reply.bicycle.revision < 0 || typeof reply.bicycle.wantsRiding !== "boolean"
+          || typeof reply.bicycle.activeRiding !== "boolean"
+          || typeof reply.bicycle.forcedRiding !== "boolean") {
+          throw new Error("Invalid Bicycle state");
+        }
+        useAudioActivityStore.getState().setBicycleState(reply.bicycle);
+      };
       try {
-        const owned = await requestBicycleState(characterId, abort.signal);
-        if (current()) apply(owned);
+        const before = await requestBicycleState(characterId, signal);
+        if (!current()) return;
+        apply(before);
+        const result = await requestBicycleState(characterId, signal, {
+          instanceId, wantsRiding: !before.bicycle.wantsRiding, revision: before.bicycle.revision,
+        });
+        if (current()) {
+          apply(result);
+          const bike = result.bicycle;
+          const message = bike.forcedRiding ? "You can't get off here."
+            : bike.wantsRiding ? (bike.activeRiding ? "You got on the Bicycle!"
+              : "You'll get on the Bicycle when you go outside.") : "You got off the Bicycle.";
+          useChatStore.getState().addMessage(message, MessageType.SYSTEM);
+        }
       } catch {
-        if (current()) console.warn("[Movement] Bicycle state unavailable; reconnect before trying again.");
+        if (!current()) return;
+        // An uncertain setter is reconciled by reading; never toggle or retry it.
+        try {
+          const owned = await requestBicycleState(characterId, signal);
+          if (current()) apply(owned);
+        } catch {
+          if (current()) console.warn("[Movement] Bicycle state unavailable; reconnect before trying again.");
+        }
       }
-    } finally {
-      stopProfile();
-      if (this.bicycleAbort === abort) this.bicycleAbort = null;
-    }
+    });
+  }
+  async useEscapeRope(instanceId: number): Promise<void> {
+    if (this.getIsMoving()) return;
+    return this.runOwnedFieldCommand(async (characterId, signal, current) => {
+      const source = { mapId: this.currentMapId, x: this.currentTileX, y: this.currentTileY };
+      let accepted = false;
+      let rejection: string | undefined;
+      try {
+        const reply = await requestEscapeRope({ ...source, instanceId,
+          command: { characterId, revision: useCQInventoryStore.getState().commandRevision } }, signal);
+        if (reply.characterId !== characterId) throw new Error("Escape Rope owner mismatch");
+        accepted = true;
+      } catch (error) {
+        if (!current()) return;
+        if (error instanceof CorrelatedResponseError) rejection = error.message;
+        // The mutation may have committed. Recover once; never resend it.
+      }
+      try {
+        const snapshot = await readCurrentGameplayState(signal, () => this.movementGeneration);
+        if (!current()) return;
+        applyGameplayResourceSnapshot(snapshot);
+        const position = snapshot.position;
+        if (accepted) useChatStore.getState().addMessage("You escaped from the dungeon.", MessageType.SYSTEM);
+        else if (rejection) useChatStore.getState().addMessage(rejection, MessageType.SYSTEM);
+        this.stopMovement(true);
+        if (position.mapId === this.currentMapId) {
+          this.syncPosition(position.x, position.y);
+          this.syncDirection(position.direction);
+          if (this.playerId !== null) this.mapRenderer?.snapActorPosition(this.playerId, position.x, position.y, position.direction);
+        } else {
+          window.dispatchEvent(new CustomEvent("warpTileTeleport", { detail: { ...position, serverCommitted: true } }));
+        }
+      } catch {
+        if (current()) {
+          this.stepRecoveryRequired = true;
+          console.warn("[Movement] Escape Rope recovery unavailable; reconnect before moving.");
+        }
+      }
+    });
   }
   private movementGeneration = 0;
   private isMoving: boolean = false;
@@ -194,7 +239,7 @@ export class PlayerMovementController {
   private arrivalCallback: ((x: number, y: number) => boolean) | null = null;
   private inputFreezeProvider: () => boolean = () => isWorldInputFrozen();
   private stepRecoveryRequired = false;
-  private inputFrozenChecker = (): boolean => this.stepRecoveryRequired || this.inputFreezeProvider();
+  private inputFrozenChecker = (): boolean => this.stepRecoveryRequired || this.fieldCommandAbort !== null || this.inputFreezeProvider();
   private warpTileChecker: (x: number, y: number) => boolean = () => false;
   private warpAtProvider: (x: number, y: number) => PhaserWarp | null =
     () => null;

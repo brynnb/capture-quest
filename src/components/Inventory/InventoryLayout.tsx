@@ -240,6 +240,12 @@ const InventorySidebar: React.FC = () => {
       window.dispatchEvent(new CustomEvent("cq:bicycleUse",{detail:{instanceId:item.instance.id}}));
       setSelectedCQItem(null);setSelectedItemPointer(null);return;
     }
+    if (item.item.shortName === "ESCAPE_ROPE") {
+      window.dispatchEvent(new CustomEvent("cq:escapeRopeUse", { detail: { instanceId: item.instance.id } }));
+      setSelectedCQItem(null);
+      setSelectedItemPointer(null);
+      return;
+    }
     if (isDirectUseItem(item)) {
       WorldSocket.sendJsonMessage(OpCodes.CQItemUseRequest, {
         instanceId: item.instance.id,

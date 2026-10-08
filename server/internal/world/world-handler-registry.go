@@ -86,6 +86,7 @@ func NewWorldOpCodeRegistry() *HandlerRegistry {
 		opcodes.CQMerchantSellRequest:  HandleCQMerchantSellRequest,
 		opcodes.CQItemUseRequest:       HandleCQItemUse,
 		opcodes.BicycleStateRequest:    HandleBicycleState,
+		opcodes.EscapeRopeUseRequest:   HandleEscapeRopeUse,
 		opcodes.CQBattleItemUseRequest: HandleCQBattleItemUse,
 		opcodes.PokeFishingRequest:     HandlePokeFishing,
 		opcodes.PokeSurfingRequest:     HandlePokeSurfing,

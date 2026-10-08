@@ -7,11 +7,11 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-owned resource reads and character-scoped change notices; historical global
-bag/party application is retired.
+movement-owned Bicycle/Escape Rope commands, shared durable battle admission and
+current recovery, following owned resource reads and character-scoped notices.
 
 The latest field-command prerequisite is Escape Rope source fencing, recorded
-below; Bicycle now has a movement-owned desired-state command. Escape Rope transport migration remains unfinished.
+below; Bicycle now has a movement-owned desired-state command. Escape Rope transport now uses a correlated revision-fenced command and movement-owned current recovery.
 The preceding PC migration and
 source-authorized PC commands and Indigo failure/restart acceptance (2026-10-07);
 PC permission/source retirement review is recorded below. This follows
@@ -27,6 +27,69 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized a branch push for the stopping checkpoint on 2026-10-07; production deployment remains unauthorized.
+
+## Escape Rope command and movement-owned recovery (2026-10-07)
+
+Escape Rope now has a typed correlated command (203/204). It names the owned item
+instance, character/resource revision and advertised source map/X/Y. The movement
+manager requires matching session registration and source with no outstanding
+step or server path. The existing executor owns the final commit of revision,
+item ownership/decrement, source-fenced destination and full bag projection.
+It also applies the shared durable ordinary/terminal/Safari battle policy.
+The previous standalone transaction was replaced, not retained alongside it.
+A stale revision cannot consume another rope even after returning to the same
+source and registering a fresh movement owner. No new receipt table, counter,
+transaction engine or movement coordinator was introduced.
+
+The acknowledgement contains only success/request/character identity. Server
+ownership and visibility are refreshed after commit, with a resource-change
+notice; it does not send a global warp notification. The client movement owner
+always reads the existing locked current gameplay snapshot after settlement,
+including an uncertain reply or rejection, and projects its coherent resources
+and position. Its position generation also fences that read against an intervening
+authoritative snap through the existing reader's bounded retry; other resource
+consumers keep their current view policy. It never retries the mutation or applies
+a historical destination.
+The established server-committed warp event handles the resulting scene change.
+Bicycle and Escape Rope now share one movement-controller admission/abort/owner
+lifetime helper; retirement and character replacement suppress late application.
+Failed recovery engages the movement controller's existing input lock.
+The legacy Escape Rope item-use branch and its handler are retired.
+
+The existing destination selection policy is preserved: non-overworld maps
+choose the first eligible warp, preferring an outdoor exit. This checkpoint does
+not claim original cartridge Escape Rope destination fidelity; that is a separate
+source/content policy audit. The debug fixture's Mt Moon (9,9) tile was verified
+against the current source catalog and passed the canonical fixture collision
+check. It seeds two ropes so duplicate consumption is observable.
+
+Focused source/rollback/duplicate checks passed (2.458 seconds), followed by the
+full world PostgreSQL race suite (47.530 seconds). All 42 affected client tests,
+TypeScript and canonical wire generation checks passed. Current-recovery unit
+evidence includes no mutation retry, no late resource application after scene
+retirement, and re-reading when an owned position change overtakes a snapshot.
+
+The first rendered run in `/var/tmp/capturequest-rendered.whzI4o` failed because
+the new assertion read nonexistent `player.tileX/tileY` fields; the bridge exposes
+`player.x/y`. Database commit and rope quantity assertions had passed. The
+assertion now uses the actual bridge fields with the same expected coordinates
+and quantity; no production behavior or assertion threshold was weakened.
+Five final rendered cases passed in 1.2 minutes in
+`/var/tmp/capturequest-rendered.reNIrJ`: Escape Rope duplicate admission with
+normal and lost acknowledgement, exact-process death after commit/before reply,
+current bag/destination recovery and ordinary quit/reentry, plus Bicycle normal
+and duplicate/lost-reply/reentry acceptance after the shared owner extraction.
+The private SQL assertions verify revision 1, rope quantity 1 and the selected
+exit together. The crash receipt verifies the recorded server exited 137 and
+restarted against the unchanged private database. The runner stopped its private
+runtime after completion. The production build, runtime-asset validation and diff checks passed. The
+validated local family contains 826 tiles, 92 sprites and 561 compact audio files;
+no generated data family was changed or published. This checkpoint is committed
+locally; no additional push or production deployment was performed. Remaining: wider movement admission/catalog/queue review, other
+field actions and resource writers, the unresolved login restore timeout and the
+other five-area roadmap rows. This goal remains active. Next: review this shared
+command boundary before choosing another field family. No production mutation
+or deployment is part of this checkpoint.
 
 ## Bicycle boundary review and shared battle admission (2026-10-07)
 

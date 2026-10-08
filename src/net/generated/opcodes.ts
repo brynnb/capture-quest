@@ -240,3 +240,5 @@ export const PokeBattleCloseResponse: OpCode = 199;
 export const ResourcesChangedNotify: OpCode = 200;
 export const BicycleStateRequest: OpCode = 201;
 export const BicycleStateResponse: OpCode = 202;
+export const EscapeRopeUseRequest: OpCode = 203;
+export const EscapeRopeUseResponse: OpCode = 204;
