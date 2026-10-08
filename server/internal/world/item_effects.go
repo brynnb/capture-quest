@@ -90,8 +90,8 @@ func coinCaseMessage(coins int) string {
 }
 
 func handleCQEscapeRopeUse(ses *session.Session, wh *WorldHandler, found *cqitems.CQInventoryItem, charID int32) {
-	_, _, mapID := currentTilePosition(ses, wh)
-	result, err := useEscapeRope(ses.CommandContext(), wh.database, charID, found.Instance.ID, mapID, func(id int) int {
+	x, y, mapID := currentTilePosition(ses, wh)
+	result, err := useEscapeRope(ses.CommandContext(), wh.database, charID, found.Instance.ID, mapID, x, y, func(id int) int {
 		return normalizedVisiblePlayerMapID(wh, id)
 	})
 	if err != nil {

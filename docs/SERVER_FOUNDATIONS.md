@@ -9,6 +9,9 @@ describe historical checkpoints; they do not limit this renewed authorization.
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
 owned resource reads and character-scoped change notices; historical global
 bag/party application is retired.
+
+The latest field-command prerequisite is Escape Rope source fencing, recorded
+below; Bicycle/Escape Rope transport migration remains unfinished.
 The preceding PC migration and
 source-authorized PC commands and Indigo failure/restart acceptance (2026-10-07);
 PC permission/source retirement review is recorded below. This follows
@@ -24,6 +27,44 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. No push or production deployment is authorized by this goal.
+
+## Field-command review and Escape Rope source fence (2026-10-07)
+
+Inspection confirms Bicycle changes `PlayerMovementState.WantsBicycle` through
+`ToggleBicycle(charID)`, derives active/forced riding from movement-map rules and
+resets preference on player registration. It is a session-local movement
+preference, not item consumption. The current client still sends the legacy
+uncorrelated item-use packet and its reply handler applies bicycle/quantity fields
+globally. Exact duplicate toggles can undo each other. The next migration should
+express desired state under the current movement/session owner, with correlation
+and recovery; do not turn movement preference into an inventory-owned engine.
+
+Escape Rope already commits item ownership, decrement and destination together.
+Review found that exit eligibility used a source map captured before the
+transaction, without verifying that the character still occupied that source
+after its row lock was acquired. The existing atomic operation now receives the
+advertised owned map/X/Y and checks matching saved coordinates under the same
+character lock before item lookup, exit selection or decrement. A changed map
+or same-map tile produces an explicit rejection instead of applying an exit
+chosen for an obsolete source. No fallback destination or new transaction
+coordinator was added; publication remains after commit.
+
+Real PostgreSQL regressions stage a competing transaction holding the character
+lock and commit changed map or tile values before the rope operation acquires
+ownership. Both reject without consuming either rope or overwriting the competing
+position. Existing normal/commit-rejection rollback tests still pass. Focused
+field checks passed in 1.393 seconds and the full world race suite passed in
+46.095 seconds; the source assertions passed again in the focused rope run.
+Diff checks passed. This is database/source-boundary evidence, not new rendered
+or correlated-command acceptance. No client wire or presentation was changed.
+
+Remaining: desired-state Bicycle command admission/session correlation, Escape
+Rope stable command/source intent and lost-result recovery through the existing
+movement coordinator, retirement of their legacy global reply paths, and relevant
+rendered/duplicate/cancellation/reentry/crash acceptance. Preserve the rope's
+atomic membership/position primitive and map policy while migrating its transport.
+The full five-area roadmap and original login timeout remain incomplete. This
+checkpoint is local; no push, deployment or production mutation was performed.
 
 ## Resource notifications through current owned reconciliation (2026-10-07)
 

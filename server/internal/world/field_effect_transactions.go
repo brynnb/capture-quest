@@ -17,11 +17,20 @@ type escapeRopeResult struct {
 
 // Keep item ownership, the authoritative exit and saved position inside the
 // same commit. The handler publishes movement only after this operation returns.
-func useEscapeRope(ctx context.Context, database *sql.DB, charID, instanceID int32, sourceMapID int, normalizeMap func(int) int) (escapeRopeResult, error) {
+func useEscapeRope(ctx context.Context, database *sql.DB, charID, instanceID int32, sourceMapID, sourceX, sourceY int, normalizeMap func(int) int) (escapeRopeResult, error) {
 	var result escapeRopeResult
 	err := db.Transaction(ctx, database, func(tx db.DBTX) error {
 		if err := db.LockCharacter(tx, int64(charID)); err != nil {
 			return err
+		}
+		// Eligibility and exit choice must use the same source that ownership
+		// advertised before the lock wait, not a later committed teleport.
+		var savedMapID, savedX, savedY int
+		if err := tx.QueryRow(`SELECT map_id,CAST(x AS INTEGER),CAST(y AS INTEGER) FROM character_data WHERE id=$1`, charID).Scan(&savedMapID, &savedX, &savedY); err != nil {
+			return err
+		}
+		if savedMapID != sourceMapID || savedX != sourceX || savedY != sourceY {
+			return &itemuse.Rejection{Message: "Your position changed. Check your current location before using the Escape Rope."}
 		}
 		store := cqitems.NewStore(tx)
 		found, err := store.FindInventoryItemByInstanceID(charID, instanceID)

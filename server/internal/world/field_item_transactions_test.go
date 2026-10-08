@@ -1,9 +1,12 @@
 package world
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
@@ -11,6 +14,56 @@ import (
 	"capturequest/internal/itemuse"
 	"capturequest/internal/testdb"
 )
+
+func TestEscapeRopeRejectsSourceChangedBeforeCharacterLock(t *testing.T) {
+	for _, change := range []string{`UPDATE character_data SET map_id=60,x=3,y=4 WHERE id=42`, `UPDATE character_data SET x=8 WHERE id=42`} {
+		t.Run(change, func(t *testing.T) {
+			database, _, _, _ := battleTestWorld(t)
+			testdb.Exec(t, database, `INSERT INTO cq_items(id,name,short_name,is_usable) VALUES(29,'Escape Rope','ESCAPE_ROPE',true); INSERT INTO phaser_maps(id,name,width,height) VALUES(50,'CAVE',20,20),(60,'EXIT',20,20); INSERT INTO phaser_warps(id,source_map_id,x,y,destination_map_id,destination_x,destination_y) VALUES(1,50,1,1,60,3,4); UPDATE character_data SET map_id=50,x=7,y=8 WHERE id=42`)
+			instance, err := cqitems.NewStore(database).AddItemToInventory(42, 29, 2)
+			if err != nil {
+				t.Fatal(err)
+			}
+			lock, err := database.Begin()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer lock.Rollback()
+			if err := db.LockCharacter(lock, 42); err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			finished := make(chan error, 1)
+			go func() {
+				_, err := useEscapeRope(ctx, database, 42, instance, 50, 7, 8, func(id int) int { return id })
+				finished <- err
+			}()
+			if _, err := lock.Exec(change); err != nil {
+				t.Fatal(err)
+			}
+			var expectedMap, expectedX, expectedY int
+			if err := lock.QueryRow(`SELECT map_id,CAST(x AS INTEGER),CAST(y AS INTEGER) FROM character_data WHERE id=42`).Scan(&expectedMap, &expectedX, &expectedY); err != nil {
+				t.Fatal(err)
+			}
+			if err := lock.Commit(); err != nil {
+				t.Fatal(err)
+			}
+			var rejection *itemuse.Rejection
+			if err := <-finished; !errors.As(err, &rejection) {
+				t.Fatalf("source change accepted: %v", err)
+			}
+			owned, err := cqitems.NewStore(database).FindInventoryItemByInstanceID(42, instance)
+			if err != nil || owned.Instance.Quantity != 2 {
+				t.Fatalf("rope consumed: %+v %v", owned, err)
+			}
+			var savedMap, savedX, savedY int
+			if err := database.QueryRow(`SELECT map_id,CAST(x AS INTEGER),CAST(y AS INTEGER) FROM character_data WHERE id=42`).Scan(&savedMap, &savedX, &savedY); err != nil || savedMap != expectedMap || savedX != expectedX || savedY != expectedY {
+				t.Fatal("rejected rope overwrote the competing position")
+			}
+		})
+	}
+}
 
 func TestBicycleDispatchRequiresOwnedInstanceAndReportsReadFailures(t *testing.T) {
 	database, wh, ses, messages := battleTestWorld(t)
