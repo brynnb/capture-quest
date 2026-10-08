@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -84,17 +85,16 @@ func (q transactionQueries) Exec(query string, args ...any) (sql.Result, error) 
 // LockCharacter serializes durable operations for one character, including when
 // the wallet or inventory is empty. A no-op update takes a row lock on PostgreSQL
 // and also works in the offline SQLite simulator. Call only inside Transaction.
+// LockCharacter serializes the owner without manufacturing a character write.
+// A no-op UPDATE fires triggers and creates row versions even on restore reads.
 func LockCharacter(database DBTX, characterID int64) error {
-	result, err := database.Exec(`UPDATE character_data SET id = id WHERE id = $1`, characterID)
+	var id int64
+	err := database.QueryRow(`SELECT id FROM character_data WHERE id=$1 FOR UPDATE`, characterID).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("character %d does not exist", characterID)
+	}
 	if err != nil {
 		return fmt.Errorf("lock character %d: %w", characterID, err)
-	}
-	n, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n != 1 {
-		return fmt.Errorf("character %d does not exist", characterID)
 	}
 	return nil
 }

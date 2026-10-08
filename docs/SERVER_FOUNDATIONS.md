@@ -28,6 +28,50 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Character ownership lock without manufactured writes (2026-10-08)
+
+Returning to the original restore investigation exposed a concrete shared-boundary
+issue: `db.LockCharacter` used `UPDATE character_data SET id=id` to acquire ownership.
+Even empty battle restoration therefore issued a character write, firing UPDATE
+triggers and producing row versions. The primitive now uses `SELECT id ... FOR
+UPDATE`, preserving exclusive row ownership and missing-character rejection while
+avoiding that manufactured mutation. Six independent ID-only read locks in
+inventory, merchant, PC, actor reads, preferences and Bicycle are consolidated
+through the same primitive. Position reads that also fetch fields retain their
+single owned query.
+
+`ResumeBattle` errors identify character ownership, saved-state load, party restore
+and legacy identity upgrade while preserving underlying errors; begin/commit remain
+classified by the existing transaction wrapper. Real PostgreSQL checks install a
+rejecting UPDATE trigger and prove character locking and empty restore do not fire
+it. Held row/relation locks reach ownership, saved-state and party stages under the
+caller deadline; relation wait is observed in `pg_locks` before cancellation. The
+historical event is still unattributed: this demonstrates a defect/diagnostic
+boundary, not evidence that a trigger caused the original five-second timeout.
+
+The first broad checks exposed legacy SQLite mutation fixtures whose fake schema
+could not execute a PostgreSQL row lock. PC storage, boulder, fishing, trade and
+teleport fixture helpers now use the canonical private Postgres schema, preserving
+their behavioral assertions. No SQLite dialect fallback or test-only lock mode was
+added. Unrelated read/parser SQLite fixtures remain. Canonical not-null map metadata
+was supplied explicitly instead of weakening schema invariants.
+
+Final db/db repositories/economy/itemuse/battle/world race suites pass (world 58.8s).
+After read-lock consolidation, inventory/merchant/PC/preference/Bicycle/actor/recovery
+checks pass (world 10.5s), all Go packages compile and diff checks pass. Both Repel
+browser cases pass in 25.9s at `/var/tmp/capturequest-rendered.rEGhSI`, including
+verified exit 137/restart generation 1 and reentry. No restore-stage/deadline failure
+matched those retained server logs. A passing rerun does not close the original
+incident or the earlier pre-command UI click failure.
+
+Remaining: establish historical timeout attribution if reproducible, shared lock
+transaction/admission review, durable final-save and remaining lifecycle owners,
+other command matrix rows and prior source/golden gaps. All five areas remain
+active. Next: review the consolidated ownership boundary and continue the finite
+lifecycle/command audit, keeping restore-stage evidence distinct from root-cause
+attribution. No schema, assets, production database or release publication changed.
+This checkpoint is local only, without push or deployment.
+
 ## Native Silph foot semantics and complete runtime corpus (2026-10-08)
 
 The Silph mismatch was an old whole-block collision expectation. Original

@@ -90,8 +90,7 @@ func HandlePokemonPCOpen(ses *session.Session, payload []byte, wh *WorldHandler)
 	}
 	var result PokemonPCResponse
 	err := db.Transaction(ses.CommandContext(), wh.database, func(tx db.DBTX) error {
-		var lockedID int64
-		if err := tx.QueryRow(`SELECT id FROM character_data WHERE id=$1 FOR UPDATE`, charID).Scan(&lockedID); err != nil {
+		if err := db.LockCharacter(tx, int64(charID)); err != nil {
 			return err
 		}
 		mapID, err := authorizePCIn(tx, ses, wh, req.SourceID)

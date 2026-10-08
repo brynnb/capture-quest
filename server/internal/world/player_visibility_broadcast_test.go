@@ -1,7 +1,7 @@
 package world
 
 import (
-	"database/sql"
+	"capturequest/internal/testdb"
 	"encoding/json"
 	"testing"
 
@@ -110,39 +110,15 @@ func setupPlayerVisibilityWorld(t *testing.T, oldMapID, newMapID int) (*WorldHan
 func setupPlayerVisibilityTestDB(t *testing.T) {
 	t.Helper()
 
-	raw, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
+	raw := testdb.Postgres(t)
 	t.Cleanup(func() {
 		raw.Close()
 	})
 
 	if _, err := raw.Exec(`
-		CREATE TABLE character_data (
-			id INTEGER PRIMARY KEY,
-			map_id INTEGER NOT NULL,
-			x REAL NOT NULL,
-			y REAL NOT NULL,
-			z REAL NOT NULL DEFAULT 0,
-			heading REAL NOT NULL DEFAULT 0
-		);
-		CREATE TABLE phaser_maps(id INTEGER PRIMARY KEY);
-		CREATE TABLE phaser_tiles(map_id INTEGER,x INTEGER,y INTEGER,collision_type INTEGER DEFAULT 0,raw_foot_tile_id INTEGER,is_tile_erased INTEGER DEFAULT 0);
-		INSERT INTO phaser_maps(id) VALUES(63);
-		INSERT INTO phaser_tiles(map_id,x,y) VALUES(63,2,7);
-		CREATE TABLE character_movement_routes(character_id INTEGER PRIMARY KEY,map_id INTEGER NOT NULL,x INTEGER NOT NULL,y INTEGER NOT NULL,path_json TEXT NOT NULL);
-        CREATE TABLE character_safari_state(character_id INTEGER PRIMARY KEY,state_json TEXT NOT NULL,updated_at TEXT);
-        CREATE TABLE character_cutscene_plans (character_id INTEGER,completion_token TEXT,resolution TEXT,map_id INTEGER,x INTEGER,y INTEGER);
- CREATE TABLE character_trainer_encounters(character_id INTEGER PRIMARY KEY,resolution TEXT,map_id INTEGER,x INTEGER,y INTEGER,updated_at TEXT);
-		CREATE TABLE character_event_flags(character_id INTEGER,flag_name TEXT,PRIMARY KEY(character_id,flag_name));
-		CREATE TABLE character_daycare (
-			character_id INTEGER PRIMARY KEY,
-			pokemon_row_id INTEGER NOT NULL,
-			start_level INTEGER NOT NULL
-		);
-		INSERT INTO character_data (id, map_id, x, y, z, heading)
-		VALUES (7, 40, 4, 4, 0, 0);
+		INSERT INTO phaser_maps(id,name,width,height) VALUES(63,'DESTINATION',20,20);
+		INSERT INTO phaser_tiles(map_id,x,y,tile_image_id) VALUES(63,2,7,1);
+		INSERT INTO character_data (id,name,map_id,x,y,z,heading) VALUES(7,'viewer',40,4,4,0,0);
 	`); err != nil {
 		t.Fatalf("create test db schema: %v", err)
 	}

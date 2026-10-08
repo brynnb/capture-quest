@@ -1,6 +1,7 @@
 package world
 
 import (
+	"capturequest/internal/testdb"
 	"database/sql"
 	"testing"
 
@@ -259,112 +260,8 @@ func TestInGameTradeDialogueSets(t *testing.T) {
 func setupInGameTradeTestDB(t *testing.T, charID int64, includeSlowbro bool) *sql.DB {
 	t.Helper()
 
-	raw, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatal(err)
-	}
+	raw := testdb.Postgres(t)
 	if _, err := raw.Exec(`
-		CREATE TABLE character_data(id INTEGER PRIMARY KEY);
-		CREATE TABLE phaser_in_game_trades (
-			trade_key TEXT PRIMARY KEY,
-			text_constant TEXT NOT NULL UNIQUE,
-			map_name TEXT NOT NULL,
-			source_file TEXT NOT NULL,
-			script_label TEXT NOT NULL,
-			requested_pokemon_id INTEGER NOT NULL,
-			requested_pokemon_name TEXT NOT NULL,
-			offered_pokemon_id INTEGER NOT NULL,
-			offered_pokemon_name TEXT NOT NULL,
-			offered_nickname TEXT NOT NULL,
-			dialogue_set TEXT NOT NULL,
-			original_trade_index INTEGER
-		);
-		CREATE TABLE character_in_game_trades (
-			character_id INTEGER NOT NULL,
-			trade_key TEXT NOT NULL,
-			given_pokemon_id INTEGER NOT NULL,
-			received_pokemon_id INTEGER NOT NULL,
-			received_nickname TEXT NOT NULL,
-			completed_at TEXT DEFAULT CURRENT_TIMESTAMP,
-			PRIMARY KEY (character_id, trade_key)
-		);
-		CREATE TABLE phaser_pokemon (
-			id INTEGER PRIMARY KEY,
-			name TEXT NOT NULL,
-			hp INTEGER NOT NULL,
-			atk INTEGER NOT NULL,
-			def INTEGER NOT NULL,
-			spd INTEGER NOT NULL,
-			spc INTEGER NOT NULL,
-			type_1 TEXT NOT NULL,
-			type_2 TEXT,
-			catch_rate INTEGER NOT NULL,
-			base_exp INTEGER NOT NULL,
-			growth_rate TEXT NOT NULL DEFAULT 'MEDIUM_FAST',
-			default_move_1_id TEXT,
-			default_move_2_id TEXT,
-			default_move_3_id TEXT,
-			default_move_4_id TEXT,
-			base_cry INTEGER,
-			cry_pitch INTEGER,
-			cry_length INTEGER,
-			evolve_level INTEGER,
-			evolve_pokemon TEXT
-		);
-		CREATE TABLE phaser_pokemon_learnset (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			pokemon_id INTEGER NOT NULL,
-			pokemon_name TEXT NOT NULL,
-			level INTEGER NOT NULL,
-			move_name TEXT NOT NULL,
-			move_id INTEGER NOT NULL
-		);
-		CREATE TABLE character_pokemon (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			character_id INTEGER NOT NULL,
-			party_slot INTEGER,
-			box INTEGER NOT NULL DEFAULT -1,
-			box_slot INTEGER NOT NULL DEFAULT -1,
-			pokemon_id INTEGER NOT NULL,
-			nickname TEXT DEFAULT '',
-			level INTEGER NOT NULL DEFAULT 5,
-			exp INTEGER NOT NULL DEFAULT 0,
-			growth_rate TEXT NOT NULL DEFAULT 'MEDIUM_FAST',
-			cur_hp INTEGER NOT NULL,
-			max_hp INTEGER NOT NULL,
-			iv_atk INTEGER NOT NULL DEFAULT 0,
-			iv_def INTEGER NOT NULL DEFAULT 0,
-			iv_spd INTEGER NOT NULL DEFAULT 0,
-			iv_spc INTEGER NOT NULL DEFAULT 0,
-			ev_hp INTEGER NOT NULL DEFAULT 0,
-			ev_atk INTEGER NOT NULL DEFAULT 0,
-			ev_def INTEGER NOT NULL DEFAULT 0,
-			ev_spd INTEGER NOT NULL DEFAULT 0,
-			ev_spc INTEGER NOT NULL DEFAULT 0,
-			move1_id INTEGER NOT NULL DEFAULT 0,
-			move1_pp INTEGER NOT NULL DEFAULT 0,
-			move1_pp_up INTEGER NOT NULL DEFAULT 0,
-			move2_id INTEGER NOT NULL DEFAULT 0,
-			move2_pp INTEGER NOT NULL DEFAULT 0,
-			move2_pp_up INTEGER NOT NULL DEFAULT 0,
-			move3_id INTEGER NOT NULL DEFAULT 0,
-			move3_pp INTEGER NOT NULL DEFAULT 0,
-			move3_pp_up INTEGER NOT NULL DEFAULT 0,
-			move4_id INTEGER NOT NULL DEFAULT 0,
-			move4_pp INTEGER NOT NULL DEFAULT 0,
-			move4_pp_up INTEGER NOT NULL DEFAULT 0,
-			status INTEGER NOT NULL DEFAULT 0,
-			original_trainer_id INTEGER
-		);
-		CREATE TABLE character_pokedex (
-			character_id INTEGER NOT NULL,
-			pokemon_id INTEGER NOT NULL,
-			seen INTEGER NOT NULL DEFAULT 0,
-			caught INTEGER NOT NULL DEFAULT 0,
-			first_seen_at TEXT,
-			first_caught_at TEXT,
-			PRIMARY KEY (character_id, pokemon_id)
-		);
 		INSERT INTO phaser_pokemon (
 			id, name, hp, atk, def, spd, spc, type_1, type_2, catch_rate, base_exp, growth_rate
 		) VALUES
@@ -418,7 +315,7 @@ func setupInGameTradeTestDB(t *testing.T, charID int64, includeSlowbro bool) *sq
 		db.GlobalWorldDB = previous
 		raw.Close()
 	})
-	if _, err := raw.Exec(`INSERT INTO character_data(id) VALUES($1)`, charID); err != nil {
+	if _, err := raw.Exec(`INSERT INTO character_data(id,name) VALUES($1,'trade')`, charID); err != nil {
 		t.Fatal(err)
 	}
 	return raw

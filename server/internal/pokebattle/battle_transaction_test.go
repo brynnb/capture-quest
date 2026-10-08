@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"capturequest/internal/db"
 	"capturequest/internal/testdb"
@@ -225,5 +227,77 @@ func TestLegacyBattleIdentityUpgradeOnResumeIsAtomicAndStable(t *testing.T) {
 	saved, err := ResumeBattle(context.Background(), database, 42)
 	if err != nil || saved.persistedVersion != 2 || saved.BattleID != committed.BattleID || saved.Revision != 2 {
 		t.Fatalf("new version restore: %+v %v", saved, err)
+	}
+}
+
+func TestResumeReadDoesNotWriteCharacterAndClassifiesBlockedOwnership(t *testing.T) {
+	database := partyDatabase(t)
+	testdb.Exec(t, database, `CREATE FUNCTION reject_resume_update() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'resume updated character'; END $$; CREATE TRIGGER reject_resume_update BEFORE UPDATE ON character_data FOR EACH ROW EXECUTE FUNCTION reject_resume_update()`)
+	battle, err := ResumeBattle(context.Background(), database, 42)
+	if err != nil || battle != nil {
+		t.Fatalf("empty restore manufactured character write: %+v %v", battle, err)
+	}
+	holder, err := database.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer holder.Rollback()
+	if err = db.LockCharacter(holder, 42); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	battle, err = ResumeBattle(ctx, database, 42)
+	if battle != nil || err == nil || !strings.Contains(err.Error(), "resume character ownership") || ctx.Err() != context.DeadlineExceeded {
+		t.Fatalf("resume lock stage lost: %+v %v", battle, err)
+	}
+}
+
+func TestResumeBlockedReadReportsExactStage(t *testing.T) {
+	for _, stage := range []struct{ table, label string }{{"character_battle_state", "resume saved state"}, {"character_pokemon", "resume party"}} {
+		t.Run(stage.label, func(t *testing.T) {
+			database := partyDatabase(t)
+			if stage.table == "character_pokemon" {
+				if _, err := StartBattle(context.Background(), database, 42, NewWildBattle(nil, &Pokemon{ID: 7, CurHP: 20, MaxHP: 20}), nil); err != nil {
+					t.Fatal(err)
+				}
+			}
+			holder, err := database.Begin()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer holder.Rollback()
+			if _, err = holder.Exec("LOCK TABLE " + stage.table + " IN ACCESS EXCLUSIVE MODE"); err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+			defer cancel()
+			type result struct {
+				battle *BattleState
+				err    error
+			}
+			done := make(chan result, 1)
+			go func() { battle, err := ResumeBattle(ctx, database, 42); done <- result{battle, err} }()
+			deadline := time.Now().Add(150 * time.Millisecond)
+			for {
+				var blocked bool
+				if err := database.QueryRow(`SELECT EXISTS(SELECT 1 FROM pg_locks WHERE relation=$1::regclass AND NOT granted)`, stage.table).Scan(&blocked); err != nil {
+					t.Fatal(err)
+				}
+				if blocked {
+					break
+				}
+				if time.Now().After(deadline) {
+					holder.Rollback()
+					<-done
+					t.Fatal("resume did not reach expected PostgreSQL relation wait")
+				}
+				time.Sleep(5 * time.Millisecond)
+			}
+			resumed := <-done
+			if resumed.battle != nil || resumed.err == nil || !strings.Contains(resumed.err.Error(), stage.label) || ctx.Err() != context.DeadlineExceeded {
+				t.Fatalf("resume stage misclassified: %+v %v", resumed.battle, resumed.err)
+			}
+		})
 	}
 }

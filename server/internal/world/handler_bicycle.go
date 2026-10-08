@@ -49,8 +49,7 @@ func HandleBicycleState(ses *session.Session, payload []byte, wh *WorldHandler) 
 		// Reuse the durable ownership policy without making this session-local
 		// preference an inventory revision or publishing before read commit.
 		err := db.Transaction(ses.CommandContext(), wh.database, func(tx db.DBTX) error {
-			var lockedID int64
-			if err := tx.QueryRow(`SELECT id FROM character_data WHERE id=$1 FOR UPDATE`, charID).Scan(&lockedID); err != nil {
+			if err := db.LockCharacter(tx, int64(charID)); err != nil {
 				return err
 			}
 			if err := requireNoOwnedBattleIn(tx, int64(charID)); err != nil {

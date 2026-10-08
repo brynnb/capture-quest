@@ -21,8 +21,7 @@ type MerchantMenu struct {
 func (s *Service) Open(ctx context.Context, charID, mapID, merchantID int32) (MerchantMenu, error) {
 	var result MerchantMenu
 	err := db.Transaction(ctx, s.database, func(tx db.DBTX) error {
-		var lockedID int32
-		if err := tx.QueryRow(`SELECT id FROM character_data WHERE id=$1 FOR UPDATE`, charID).Scan(&lockedID); err != nil {
+		if err := db.LockCharacter(tx, int64(charID)); err != nil {
 			return fmt.Errorf("lock merchant reader character: %w", err)
 		}
 		store := cqitems.NewStore(tx)

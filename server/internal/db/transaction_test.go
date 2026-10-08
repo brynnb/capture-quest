@@ -101,3 +101,14 @@ func TestTransactionFailureStageAndRecovery(t *testing.T) {
 		})
 	}
 }
+
+func TestCharacterLockDoesNotFireUpdateTrigger(t *testing.T) {
+	database := testdb.Postgres(t)
+	testdb.Exec(t, database, `INSERT INTO character_data(id,name) VALUES(1,'owner'); CREATE FUNCTION reject_lock_write() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'lock issued update'; END $$; CREATE TRIGGER reject_lock_write BEFORE UPDATE ON character_data FOR EACH ROW EXECUTE FUNCTION reject_lock_write()`)
+	if err := Transaction(context.Background(), database, func(tx DBTX) error { return LockCharacter(tx, 1) }); err != nil {
+		t.Fatal(err)
+	}
+	if err := Transaction(context.Background(), database, func(tx DBTX) error { return LockCharacter(tx, 2) }); err == nil || !strings.Contains(err.Error(), "does not exist") {
+		t.Fatalf("missing owner accepted: %v", err)
+	}
+}

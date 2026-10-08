@@ -1,6 +1,7 @@
 package world
 
 import (
+	"capturequest/internal/testdb"
 	"database/sql"
 	"testing"
 
@@ -96,87 +97,10 @@ func TestVictoryRoadBoulderTargetLookupPrefersDatabaseRows(t *testing.T) {
 func setupBoulderPushDB(t *testing.T, includeBoulder bool) {
 	t.Helper()
 
-	raw, err := sql.Open("sqlite", "file:boulder_push_test?mode=memory&cache=shared")
-	if err != nil {
-		t.Fatal(err)
-	}
+	raw := testdb.Postgres(t)
 	if _, err := raw.Exec(`
-        CREATE TABLE character_data(id INTEGER PRIMARY KEY,map_id INTEGER,x REAL,y REAL);
-        INSERT INTO character_data VALUES(1,59,10,-44);
-        CREATE TABLE phaser_maps(id INTEGER PRIMARY KEY,name TEXT);
-        INSERT INTO phaser_maps VALUES(59,'TEST_MAP');
-        CREATE TABLE character_event_flags(character_id INTEGER,flag_name TEXT);
-        CREATE TABLE character_battle_state(character_id INTEGER PRIMARY KEY,battle_json TEXT);
-        CREATE TABLE character_safari_state(character_id INTEGER PRIMARY KEY,state_json TEXT);
-        CREATE TABLE character_movement_routes(character_id INTEGER PRIMARY KEY,map_id INTEGER,x INTEGER,y INTEGER,path_json TEXT);
-		CREATE TABLE phaser_objects (
-			id INTEGER PRIMARY KEY,
-			map_id INTEGER,
-			x INTEGER,
-			y INTEGER,
-			local_x INTEGER,
-			local_y INTEGER,
-			name TEXT,
-			text TEXT,
-			sprite_name TEXT
-		);
-		CREATE TABLE character_object_positions (
-			character_id INTEGER,
-			object_id INTEGER,
-			x INTEGER,
-			y INTEGER
-		);
-		CREATE TABLE phaser_event_object_visibility (
-			id INTEGER PRIMARY KEY,
-			map_id INTEGER,
-			object_name TEXT,
-			visible INTEGER,
-			requires_flag TEXT,
-			requires_flag_absent TEXT,
-			label TEXT
-		);
-		CREATE TABLE character_object_visibility_overrides (
-			character_id INTEGER,
-			object_id INTEGER,
-			visible INTEGER,
-			source TEXT
-		);
-		CREATE TABLE character_pokemon (
-			id INTEGER,
-			character_id INTEGER,
-			party_slot INTEGER,
-			box INTEGER,
-			pokemon_id INTEGER,
-			nickname TEXT,
-			level INTEGER,
-			exp INTEGER,
-			growth_rate TEXT,
-			cur_hp INTEGER,
-			max_hp INTEGER,
-			iv_atk INTEGER,
-			iv_def INTEGER,
-			iv_spd INTEGER,
-			iv_spc INTEGER,
-			ev_hp INTEGER,
-			ev_atk INTEGER,
-			ev_def INTEGER,
-			ev_spd INTEGER,
-			ev_spc INTEGER,
-			move1_id INTEGER,
-			move1_pp INTEGER,
-			move2_id INTEGER,
-			move2_pp INTEGER,
-			move3_id INTEGER,
-			move3_pp INTEGER,
-			move4_id INTEGER,
-			move4_pp INTEGER,
-			move1_pp_up INTEGER,
-			move2_pp_up INTEGER,
-			move3_pp_up INTEGER,
-			move4_pp_up INTEGER,
-			status INTEGER,
-			original_trainer_id INTEGER
-		);
+        INSERT INTO character_data(id,name,map_id,x,y) VALUES(1,'boulder',59,10,-44);
+        INSERT INTO phaser_maps(id,name,width,height) VALUES(59,'TEST_MAP',20,20);
 	`); err != nil {
 		raw.Close()
 		t.Fatal(err)

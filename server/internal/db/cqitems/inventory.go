@@ -15,8 +15,7 @@ func (s *Store) GetCharacterSnapshot(ctx context.Context, charID int32) (CQInven
 	err := db.Transaction(ctx, s.database, func(tx db.DBTX) error {
 		// Snapshot reads must not fire UPDATE triggers or perform even a no-op
 		// character write. PostgreSQL takes the same ownership lock with SELECT.
-		var lockedID int32
-		if err := tx.QueryRow(`SELECT id FROM character_data WHERE id=$1 FOR UPDATE`, charID).Scan(&lockedID); err != nil {
+		if err := db.LockCharacter(tx, int64(charID)); err != nil {
 			return fmt.Errorf("lock inventory snapshot character %d: %w", charID, err)
 		}
 		store := NewStore(tx)

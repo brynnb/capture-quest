@@ -63,8 +63,7 @@ func HandleSetOption(ses *session.Session, payload []byte, wh *WorldHandler) boo
 	if req.Current {
 		err = db.Transaction(ses.CommandContext(), wh.database, func(tx db.DBTX) error {
 			// This read shares the character lock without firing UPDATE triggers.
-			var id int64
-			if err := tx.QueryRow(`SELECT id FROM character_data WHERE id=$1 FOR UPDATE`, charID).Scan(&id); err != nil {
+			if err := db.LockCharacter(tx, int64(charID)); err != nil {
 				return err
 			}
 			var err error

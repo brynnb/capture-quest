@@ -124,14 +124,17 @@ func ResumeBattle(ctx context.Context, database *sql.DB, charID int64) (*BattleS
 	var battle *BattleState
 	err := db.Transaction(ctx, database, func(tx db.DBTX) (err error) {
 		if err := db.LockCharacter(tx, charID); err != nil {
-			return err
+			return fmt.Errorf("resume character ownership: %w", err)
 		}
 		battle, err = LoadBattleState(tx, charID)
-		if err != nil || battle == nil {
-			return err
+		if err != nil {
+			return fmt.Errorf("resume saved state: %w", err)
+		}
+		if battle == nil {
+			return nil
 		}
 		if err := battle.RestoreParty(tx, charID); err != nil {
-			return err
+			return fmt.Errorf("resume party: %w", err)
 		}
 		// Version zero predates durable command identity. Upgrade exactly that
 		// supported format before advertising a playable battle, under the same lock.
@@ -140,7 +143,7 @@ func ResumeBattle(ctx context.Context, database *sql.DB, charID int64) (*BattleS
 			battle.BattleID = uuid.NewString()
 			battle.Revision = 1
 			if err := SaveBattleState(tx, charID, battle); err != nil {
-				return err
+				return fmt.Errorf("resume legacy identity: %w", err)
 			}
 			battle.persistedVersion = 2
 			battle.playerVolatile = make([]playerVolatileState, 0, len(battle.PlayerParty))
