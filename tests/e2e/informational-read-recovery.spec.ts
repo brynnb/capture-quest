@@ -19,6 +19,54 @@ async function observeReadDelivery(page:Page,receive:(opcode:number,requestId:st
   },[OpCodes.TrainerCardResponse,OpCodes.PokedexListResponse,OpCodes.PokedexStatusResponse]);
 }
 
+test("pending informational view retires across SIGKILL and a replacement transport",async({page,context},testInfo)=>{
+  test.skip(process.env.CQ_E2E_CRASH_RECOVERY!=="true","Requires the exact-process crash runner");
+  test.setTimeout(120000);
+  const {sql,crash,record}=await isolatedCrashRuntime();
+  let held:Record<string,unknown>|undefined;let hold=true;
+  await context.routeWebSocket("**/ws",socket=>{
+    const server=socket.connectToServer();socket.onMessage(message=>server.send(message));
+    server.onMessage(message=>{
+      if(hold && Buffer.isBuffer(message) && message.length>=6 && message.readUInt16LE(4)===OpCodes.TrainerCardResponse){
+        const reply=JSON.parse(message.subarray(6).toString());
+        if(reply.success && reply.requestId){held=reply;return;}
+      }
+      socket.send(message);
+    });
+  });
+  const character=await createGuestCharacterAndEnterWorld(page);
+  await expect.poll(async()=>(await getGameState(page)).player.internalId??0).toBeGreaterThan(0);
+  const id=(await getGameState(page)).player.internalId!;
+  await page.getByRole("button",{name:"Trainer",exact:true}).click();
+  await expect.poll(()=>Boolean(held)).toBe(true);
+  const receipt=await crash();hold=false;
+  await expect(page.getByRole("button",{name:"PLAY AS GUEST"})).toBeVisible({timeout:20000});
+  const retired=await page.evaluate(async()=>{
+    const path="/src/stores/PokedexStore.ts";
+    const {default:store}=await import(path) as typeof import("../../src/stores/PokedexStore");
+    const state=store.getState();return {card:state.trainerCard,statusCount:state.statusMap.size,catalogLoaded:state.isLoaded};
+  });
+  expect(retired).toEqual({card:null,statusCount:0,catalogLoaded:false});
+  await sql(`INSERT INTO character_wallet(character_id,pokedollars) VALUES(${id},400) ON CONFLICT(character_id) DO UPDATE SET pokedollars=400`);
+  await page.getByRole("button",{name:"PLAY AS GUEST"}).click();
+  await expect(page.getByRole("heading",{name:"SELECT A CHARACTER"})).toBeVisible();
+  await enterWorld(page,character);await waitForNoMapLoading(page);
+  await page.getByRole("button",{name:"Trainer",exact:true}).click();
+  const money=page.getByText("Money",{exact:true}).locator("..").getByText("¥400",{exact:true});
+  await expect(money).toBeVisible();
+  // A dead transport cannot deliver bytes. Replay its captured historical
+  // envelope at the current dispatcher to verify the application fence too.
+  await page.evaluate(async({opcode,payload})=>{
+    const path="/src/net/index.ts";
+    const {WorldSocket}=await import(path) as typeof import("../../src/net/index");
+    WorldSocket.onJson?.(opcode,payload);
+  },{opcode:OpCodes.TrainerCardResponse,payload:held!});
+  await expect(money).toBeVisible();
+  await page.screenshot({path:testInfo.outputPath("trainer-after-process-replacement.png")});
+  await record({family:"informational-read",id,receipt,retired,historicalRequestId:held!.requestId,currentMoney:400});
+  await page.keyboard.press("Escape");await quitToCharacterSelect(page);
+});
+
 test("trainer-card timeout retries with a fresh identity and ignores its late reply",async({page,context})=>{
   test.skip(process.env.CQ_E2E_DATABASE_FIXTURE!=="true","Requires the private database runner");
   test.setTimeout(60000);

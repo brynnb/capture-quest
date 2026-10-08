@@ -7,7 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-informational read boundary review rejects incomplete/wrong-kind data and
+owned reconnect timers and rendered informational process-replacement acceptance,
+following `82c87cc`: informational read boundary review rejects incomplete/wrong-kind data and
 suppresses same-turn abandoned dispatch, following `6600612`:
 Pokédex/trainer client reads reuse shared correlation and transport retirement,
 following `eb5baf4`: Pokédex/trainer responses share bounded repair and coherent read snapshots,
@@ -39,6 +40,44 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Pending informational read across server replacement (2026-10-08)
+
+The real SIGKILL check held a completed card response while its client request
+remained pending. Retirement cleared card/status and invalidated the species
+catalog, but the first reentry failed: the restarted server logged authenticated
+session 1, then another socket/session 2, and session 1 later timed out without
+heartbeats. A socket regression reproduced manual connection succeeding followed
+by a queued reconnect creating a second WebSocket one second later.
+
+The existing socket class now owns its reconnect timer. Manual connect and close
+cancel queued retries; duplicate schedules coalesce, and a queued callback cannot
+replace an established connection. This fixes the verified queued-retry case;
+already-running connection attempts, stale close/open callbacks and native
+WebTransport replacement remain a separate ownership audit, not a claimed fix.
+
+Rendered acceptance then passed in 6.4s. Runner-owned PID `2674558` exited `137`,
+replacement PID `2674894` served restart generation 1, and the original browser
+returned through guest login/reentry without a page reload. Private informational
+state was `{card:null,statusCount:0,catalogLoaded:false}` after disconnect. The
+replacement card showed ¥400; its screenshot was inspected. The dead transport's
+captured historical envelope was replayed explicitly at the current dispatcher
+and did not rewind the card. This is an application-fence check, not a claim that
+a dead connection delivered bytes. Receipt, logs and protocol/state evidence are
+in `/var/tmp/capturequest-rendered.qYqUNm`; the replacement log shows one new
+session for the successful entry, with no observed ghost session or heartbeat
+timeout in this run.
+Forty-nine related network/read/preference/character tests passed; the final four
+socket-lifetime tests also pass, including explicit-close cancellation and
+duplicate schedule coalescing. Frontend typecheck, production build, runtime
+asset validation and diff checks passed. Existing build warnings remain. No
+unrelated Go suite was rerun for this client-only change.
+
+Next: review in-flight transport attempts and callback ownership before another
+family migration, then continue the finite command matrix and acquisition-writer
+audits. The historical restore timeout and Repel click are still unattributed.
+All five roadmap areas remain open. No Go/wire/schema/assets changed; no push,
+deployment or production acceptance.
 
 ## Informational boundary review and timeout retry (2026-10-08)
 

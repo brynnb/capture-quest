@@ -118,6 +118,7 @@ export class CaptureQuestSocket {
 
   // Heartbeat
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   public latency = 0;
   public onPing: ((latency: number) => void) | null = null;
   private ownerGeneration = 0;
@@ -152,6 +153,7 @@ export class CaptureQuestSocket {
     port: number | string,
     onClose: () => void
   ): Promise<boolean> {
+    this.clearReconnectTimer();
     this.isConnected = false;
     this.retireSessionReads();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -409,6 +411,7 @@ export class CaptureQuestSocket {
 
 
   public close(scheduleReconnect: boolean = true) {
+    this.clearReconnectTimer();
     // Observers must see an unavailable connection before retirement can
     // synchronously trigger another read.
     this.isClosing = true;
@@ -663,7 +666,12 @@ export class CaptureQuestSocket {
     })();
   }
 
+  private clearReconnectTimer() {
+    if(this.reconnectTimer!==null){clearTimeout(this.reconnectTimer);this.reconnectTimer=null;}
+  }
+
   private scheduleReconnect() {
+    if(this.reconnectTimer!==null || this.isConnected)return;
     if (
       this.retryCount >= this.maxRetries ||
       !this.onClose
@@ -682,7 +690,11 @@ export class CaptureQuestSocket {
     }
     const delay = Math.min(2 ** this.retryCount * 1000, 30_000);
     this.retryCount++;
-    setTimeout(async () => {
+    this.reconnectTimer=setTimeout(async () => {
+      this.reconnectTimer=null;
+      // A user connection owns authentication. A queued retry must never
+      // replace it with a second, unauthenticated transport.
+      if(this.isConnected)return;
       let ok: boolean;
       if (this.useWebSocket) {
         ok = await this.connectWebSocket(this.onClose!);
