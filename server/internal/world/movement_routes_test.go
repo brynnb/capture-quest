@@ -62,16 +62,14 @@ func TestMovementRouteProgressRollbackFreshOwnerAndCompletion(t *testing.T) {
 	}
 }
 
-func TestMovementRouteFlushPreservesButTeleportAndBattleRetire(t *testing.T) {
-	for _, operation := range []string{"flush", "same-tile teleport", "battle"} {
+func TestMovementRouteRetirementPreservesButTeleportAndBattleClear(t *testing.T) {
+	for _, operation := range []string{"retire projection", "same-tile teleport", "battle"} {
 		t.Run(operation, func(t *testing.T) {
 			wh, ses, _ := setupIssuedStep(t)
 			seedRoute(t, wh, []PathNode{{X: 8, Y: 8}})
 			switch operation {
-			case "flush":
-				if err := wh.PlayerMovement.FlushPlayerPosition(context.Background(), 42); err != nil {
-					t.Fatal(err)
-				}
+			case "retire projection":
+				wh.PlayerMovement.unregisterPlayer(42)
 			case "same-tile teleport":
 				if err := db.Transaction(context.Background(), wh.database, func(tx db.DBTX) error {
 					if err := db.LockCharacter(tx, 42); err != nil {
@@ -88,7 +86,7 @@ func TestMovementRouteFlushPreservesButTeleportAndBattleRetire(t *testing.T) {
 				}
 			}
 			route, err := readMovementRoute(context.Background(), wh.database, 42)
-			if err != nil || (operation == "flush") != (route != nil) {
+			if err != nil || (operation == "retire projection") != (route != nil) {
 				t.Fatalf("cursor lifetime wrong: %+v %v", route, err)
 			}
 		})

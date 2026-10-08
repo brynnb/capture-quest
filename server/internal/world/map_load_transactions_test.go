@@ -297,7 +297,6 @@ func TestCurrentMapLoadCommitsOwnedMovementAndPreservesPath(t *testing.T) {
 			state.Path = []PathNode{{X: 201, Y: 300}, {X: 202, Y: 300}}
 			state.IsSurfing = true
 			state.PreviousMapID = 192
-			state.positionDirty = true
 			beforeSave := state.LastSaveTime
 			char := ses.Client.CharData()
 			char.MapID = 192
@@ -338,7 +337,7 @@ func TestCurrentMapLoadCommitsOwnedMovementAndPreservesPath(t *testing.T) {
 			if err != nil || !on || !wh.EventFlags.CheckFlag(42, "EVENT_IN_SEAFOAM_ISLANDS") {
 				t.Fatal("current load partially committed effect")
 			}
-			if char.MapID != 192 || ses.MapID != 192 || state.MapID != 9999 || state.CurrentX != 200 || state.CurrentY != 300 || !state.positionDirty || !state.LastSaveTime.Equal(beforeSave) {
+			if char.MapID != 192 || ses.MapID != 192 || state.MapID != 9999 || state.CurrentX != 200 || state.CurrentY != 300 || !state.LastSaveTime.Equal(beforeSave) {
 				t.Fatal("failed load replaced live state")
 			}
 			testdb.Exec(t, database, `DROP TRIGGER reject_current_load_commit ON character_data`)
@@ -350,7 +349,7 @@ func TestCurrentMapLoadCommitsOwnedMovementAndPreservesPath(t *testing.T) {
 			if err := database.QueryRow(`SELECT map_id,x,y FROM character_data WHERE id=42`).Scan(&mapID, &x, &y); err != nil || mapID != 9999 || x != 200 || y != 300 {
 				t.Fatal("owned arrival did not persist position")
 			}
-			if char.MapID != 9999 || char.X != 200 || char.Y != 300 || ses.MapID != 9999 || ses.X != 200 || ses.Y != 300 || state.positionDirty || wh.EventFlags.CheckFlag(42, "EVENT_IN_SEAFOAM_ISLANDS") {
+			if char.MapID != 9999 || char.X != 200 || char.Y != 300 || ses.MapID != 9999 || ses.X != 200 || ses.Y != 300 || wh.EventFlags.CheckFlag(42, "EVENT_IN_SEAFOAM_ISLANDS") {
 				t.Fatal("owned arrival projections disagree")
 			}
 			if len(state.Path) != 2 || state.Path[0] != (PathNode{X: 201, Y: 300}) || state.Direction != "LEFT" || !state.IsSurfing || state.PreviousMapID != 192 {

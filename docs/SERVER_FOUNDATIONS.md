@@ -7,8 +7,9 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-committed teleport projection and retirement of headless position staging,
-following `c5c8f5f` (sealed shutdown reconciliation) and `c58118e`:
+retirement of the deferred position saver after its complete producer audit,
+following `6367929` (committed teleport/headless staging retirement),
+`c5c8f5f` (sealed shutdown reconciliation) and `c58118e`:
 failed-cleanup recovery behind the existing character admission barrier, with
 idempotent cumulative playtime saves, following `a343ac5` (clean position rewrite
 retirement), shared character-lock enforcement and native source consolidation.
@@ -30,6 +31,51 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Retire obsolete deferred position persistence (2026-10-08)
+
+The preceding caller audit removed every runtime position-staging producer.
+Ordinary steps, forced-route progress, SURF, map arrival and teleports commit
+through their existing transactions before publishing live state. The remaining
+dirty assignment was on a detached planning candidate and never represented an
+unsaved live position. Keeping a timer flush and disconnect replay for it retained
+a second persistence path with no authoritative producer.
+
+`FlushPlayerPosition`, `positionDirty`, `lastSaveAttempt`, idle dirty-retry admission
+and final-position recovery are now retired. Disconnect unregisters the projection;
+it cannot rewrite a newer durable pose or mutate the durable remaining route.
+The existing position/route transactions and reconnect reads remain authoritative.
+The public committed-position timestamp remains unchanged in the wire type.
+Character-owner recovery now retains only frozen cumulative playtime, which still
+has a real unpersisted interval between periodic saves.
+
+Tests of the retired flush API, artificially dirty snapshots and mixed
+position/playtime final saves are removed with that API. This is not a relaxed
+failure guarantee: the replacement has no deferred position save to fail. Existing
+transaction rollback/cancellation, map-arrival publication, movement ownership and
+route-recovery checks remain. A real cleanup regression holds the only pool
+connection, retires a stale projection without acquiring storage, and proves the
+newer durable pose and stored route remain unchanged. Same-tile teleport still
+clears pending intent/path without a storage read. Playtime failed handoff,
+unknown-commit retry, normal reentry and sealed shutdown checks remain.
+Focused position/route/map-load/cleanup/playtime checks passed (5.7s), followed
+by full world (53.4s), battle, session and simulator race suites. All Go packages
+compile and diff checks pass. No new rendered or process-death run is claimed;
+prior committed-position/route restart evidence remains its existing baseline.
+
+Next: resolve the remaining playtime process-death policy and acceptance, then
+continue the finite command/lifecycle inventory. Playtime is persisted every
+minute under normal operation; process death loses the interval since the last
+successful durable save. Failed persistence can extend that interval, so the
+existing timer is not a universal one-minute loss bound. Memory-only recovery
+callbacks cannot survive process death. No new filesystem journal, broker or
+event-sourcing system is introduced. All five roadmap areas remain open, including
+the unattributed restore timeout and Repel click failure. No push or deployment.
+The current consumer audit finds playtime only in character loading/tracking and
+the trainer-card/sidebar display (`handler-pokedex.go`, `TrainerCard.tsx`,
+`StatInfoSidebar.tsx`); no gameplay eligibility/reward reader was found. This is
+evidence for evaluating an explicit metric persistence policy, not proof of a
+new crash guarantee or authorization to weaken other gameplay durability.
 
 ## Committed teleport projection; retire headless staging (2026-10-08)
 

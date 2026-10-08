@@ -14,29 +14,13 @@ import (
 	"capturequest/internal/testdb"
 )
 
-// stageTestPlayerPosition deliberately creates an unsaved fixture obligation.
-// Runtime teleports project an already committed position and never stage saves.
-func stageTestPlayerPosition(m *PlayerMovementManager, charID, x, y, mapID int, direction string) {
-	m.mu.Lock()
-	before := m.players[charID].LastSaveTime
-	m.mu.Unlock()
-	m.projectCommittedTeleport(charID, x, y, mapID, direction)
-	m.mu.Lock()
-	m.players[charID].positionDirty = true
-	m.players[charID].LastSaveTime = before
-	m.mu.Unlock()
-}
-
-func TestCommittedTeleportProjectionDoesNotCreateFinalSaveObligation(t *testing.T) {
+func TestSameTileCommittedTeleportRetiresPathWithoutStorageRead(t *testing.T) {
 	database, wh, ses, _ := battleTestWorld(t)
 	m := NewPlayerMovementManager(wh, nil)
 	wh.PlayerMovement = m
 	m.RegisterPlayer(ses, 42, 7, 8, 50, "UP")
-	m.players[42].Path = []PathNode{{X: 9, Y: 8}}
-	m.projectCommittedTeleport(42, 7, 8, 50, "RIGHT")
-	if m.players[42].positionDirty || len(m.players[42].Path) != 0 || m.players[42].Direction != "RIGHT" {
-		t.Fatal("committed same-tile teleport retained path or staged a save")
-	}
+	m.players[42].Path = []PathNode{{X: 8, Y: 8}}
+	m.players[42].pendingStep = &issuedPlayerStep{}
 	database.SetMaxOpenConns(1)
 	lease, err := database.Conn(context.Background())
 	if err != nil {
@@ -44,10 +28,16 @@ func TestCommittedTeleportProjectionDoesNotCreateFinalSaveObligation(t *testing.
 	}
 	defer lease.Close()
 	before := database.Stats().WaitCount
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
-	if err := m.FlushPlayerPosition(ctx, 42); err != nil || database.Stats().WaitCount != before {
-		t.Fatalf("teleport projection manufactured storage work: %v", err)
+	done := make(chan struct{})
+	go func() { m.projectCommittedTeleport(42, 7, 8, 50, "RIGHT"); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("committed teleport waited for storage")
+	}
+	state := m.players[42]
+	if len(state.Path) != 0 || state.pendingStep != nil || state.Direction != "RIGHT" || database.Stats().WaitCount != before {
+		t.Fatal("same-tile teleport retained movement intent or entered storage")
 	}
 }
 
@@ -109,7 +99,7 @@ func TestMapLoadRejectsLatePersistenceFailure(t *testing.T) {
  CREATE FUNCTION reject_arrival_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'late arrival failure'; END $$;
  CREATE CONSTRAINT TRIGGER reject_arrival_commit AFTER UPDATE ON character_data DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN(NEW.map_id=60) EXECUTE FUNCTION reject_arrival_commit();`)
 	db.GlobalWorldDB = nil
-	stageTestPlayerPosition(wh.PlayerMovement, 42, 3, 4, 60, "UP")
+	wh.PlayerMovement.projectCommittedTeleport(42, 3, 4, 60, "UP")
 	battleDispatch(t, wh, ses, opcodes.PhaserMapLoadRequest, `{"mapId":60,"requestId":"arrival"}`)
 	x, y, mapID, ok := wh.PlayerMovement.GetPosition(42)
 	if !ok || x != 3 || y != 4 || mapID != 60 || ses.MapID != 50 || ses.Client.CharData().MapID != 50 {
@@ -127,35 +117,6 @@ func TestMapLoadRejectsLatePersistenceFailure(t *testing.T) {
 	}
 	if err := database.QueryRow(`SELECT x,y,map_id FROM character_data WHERE id=42`).Scan(&x, &y, &mapID); err != nil || x != 7 || y != 8 || mapID != 50 {
 		t.Fatalf("failed arrival changed durable position: %d %d %d %v", x, y, mapID, err)
-	}
-}
-
-func TestMovementSaveFailureKeepsDirtyStateForRetry(t *testing.T) {
-	database, wh, ses, _ := battleTestWorld(t)
-	m := NewPlayerMovementManager(wh, nil)
-	wh.PlayerMovement = m
-	m.RegisterPlayer(ses, 42, 1, 2, 50, "UP")
-	stageTestPlayerPosition(m, 42, 7, 8, 50, "UP")
-	before := m.players[42].LastSaveTime
-	testdb.Exec(t, database, `CREATE FUNCTION reject_flush_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'late flush failure'; END $$;
- CREATE CONSTRAINT TRIGGER reject_flush_commit AFTER UPDATE ON character_data DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_flush_commit();`)
-	db.GlobalWorldDB = nil
-	if err := m.FlushPlayerPosition(context.Background(), 42); err == nil {
-		t.Fatal("flush ignored commit failure")
-	}
-	if !m.players[42].positionDirty || !m.players[42].LastSaveTime.Equal(before) {
-		t.Fatal("failed flush marked saved")
-	}
-	testdb.Exec(t, database, `DROP TRIGGER reject_flush_commit ON character_data`)
-	if err := m.FlushPlayerPosition(context.Background(), 42); err != nil {
-		t.Fatal(err)
-	}
-	if m.players[42].positionDirty || !m.players[42].LastSaveTime.After(before) {
-		t.Fatal("retry did not record commit")
-	}
-	var x, y int
-	if err := database.QueryRow(`SELECT x,y FROM character_data WHERE id=42`).Scan(&x, &y); err != nil || x != 7 || y != 8 {
-		t.Fatalf("retry saved %d %d %v", x, y, err)
 	}
 }
 
@@ -177,55 +138,6 @@ func TestMapDestinationCommitIsNotOverwrittenByInvalidSavedPositionRecovery(t *t
 	}
 	if ses.Client.CharData().X != 3 || ses.Client.CharData().Y != 4 || ses.MapID != 60 {
 		t.Fatal("live destination disagrees with committed position")
-	}
-}
-
-func TestBlockedMovementFlushReleasesGlobalLockAndDoesNotMarkNewSnapshotSaved(t *testing.T) {
-	database, wh, ses, _ := battleTestWorld(t)
-	m := NewPlayerMovementManager(wh, nil)
-	wh.PlayerMovement = m
-	m.RegisterPlayer(ses, 42, 1, 2, 50, "UP")
-	stageTestPlayerPosition(m, 42, 7, 8, 50, "UP")
-	before := m.players[42].LastSaveTime
-	lock, err := database.Begin()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer lock.Rollback()
-	if _, err := lock.Exec(`UPDATE character_data SET id=id WHERE id=42`); err != nil {
-		t.Fatal(err)
-	}
-	done := make(chan error, 1)
-	go func() { done <- m.FlushPlayerPosition(context.Background(), 42) }()
-	deadline := time.Now().Add(time.Second)
-	for database.Stats().InUse < 2 {
-		if time.Now().After(deadline) {
-			t.Fatal("flush did not enter its transaction")
-		}
-		runtime.Gosched()
-	}
-	available := make(chan struct{})
-	go func() { stageTestPlayerPosition(m, 42, 9, 10, 50, "UP"); close(available) }()
-	select {
-	case <-available:
-	case <-time.After(time.Second):
-		t.Fatal("database wait held movement lock")
-	}
-	if err := lock.Rollback(); err != nil {
-		t.Fatal(err)
-	}
-	if err := <-done; err != nil {
-		t.Fatal(err)
-	}
-	if !m.players[42].positionDirty || !m.players[42].LastSaveTime.Equal(before) {
-		t.Fatal("old flush marked newer snapshot committed")
-	}
-	if err := m.FlushPlayerPosition(context.Background(), 42); err != nil {
-		t.Fatal(err)
-	}
-	var x, y int
-	if err := database.QueryRow(`SELECT x,y FROM character_data WHERE id=42`).Scan(&x, &y); err != nil || x != 9 || y != 10 {
-		t.Fatalf("new snapshot=%d %d %v", x, y, err)
 	}
 }
 
@@ -296,31 +208,5 @@ func TestDisconnectCancelsIssuedStepTransactionBeforeCleanup(t *testing.T) {
 	}
 	if ses.Client.CharData().X != 7 || ses.Client.CharData().Y != 8 {
 		t.Fatal("cancelled position changed live state")
-	}
-}
-
-func TestCleanCommittedPositionFlushDoesNotRewriteStorage(t *testing.T) {
-	database, wh, ses, _ := battleTestWorld(t)
-	manager := NewPlayerMovementManager(wh, nil)
-	wh.PlayerMovement = manager
-	manager.RegisterPlayer(ses, 42, 7, 8, 50, "UP")
-	manager.projectCommittedPosition(42, 8, 8, 50, "RIGHT", false)
-	if manager.players[42].positionDirty {
-		t.Fatal("committed projection manufactured dirty state")
-	}
-	database.SetMaxOpenConns(1)
-	lease, err := database.Conn(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer lease.Close()
-	before := database.Stats().WaitCount
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
-	if err := manager.FlushPlayerPosition(ctx, 42); err != nil {
-		t.Fatalf("clean flush borrowed storage: %v", err)
-	}
-	if database.Stats().WaitCount != before {
-		t.Fatal("clean flush entered transaction")
 	}
 }

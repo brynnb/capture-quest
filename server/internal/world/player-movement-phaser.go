@@ -37,8 +37,6 @@ type PlayerMovementState struct {
 	LastMoveTime    time.Time  `json:"lastMoveTime"`
 	LastSaveTime    time.Time  `json:"lastSaveTime"` // Last time we persisted to DB
 	pendingStep     *issuedPlayerStep
-	positionDirty   bool
-	lastSaveAttempt time.Time
 	MoveSpeed       time.Duration `json:"moveSpeed"` // Time per tile, including runtime movement effects
 }
 
@@ -173,36 +171,11 @@ func (m *PlayerMovementManager) applyBicycleMapRules(state *PlayerMovementState)
 	m.updateMovementSpeed(state)
 }
 
-// FlushPlayerPosition immediately saves a player's current position to the database
-// Useful when a player disconnects or warp/teleport happens
-func (m *PlayerMovementManager) FlushPlayerPosition(ctx context.Context, charID int) error {
-	m.mu.Lock()
-	state := m.players[charID]
-	if state == nil || !state.positionDirty {
-		m.mu.Unlock()
-		return nil
-	}
-	snapshot := *state
-	state.lastSaveAttempt = time.Now()
-	m.mu.Unlock()
-	if err := commitPlayerPosition(ctx, m.wh.database, int64(charID), snapshot.MapID, snapshot.CurrentX, snapshot.CurrentY); err != nil {
-		log.Printf("[PlayerMovement] Save position for %d: %v", charID, err)
-		return err
-	}
-	m.mu.Lock()
-	if current := m.players[charID]; current == state && current.CurrentX == snapshot.CurrentX && current.CurrentY == snapshot.CurrentY && current.MapID == snapshot.MapID {
-		current.LastSaveTime = time.Now()
-		current.positionDirty = false
-	}
-	m.mu.Unlock()
-	return nil
-}
 func (m *PlayerMovementManager) markPositionCommitted(charID, x, y, mapID int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if state := m.players[charID]; state != nil && state.CurrentX == x && state.CurrentY == y && state.MapID == mapID {
 		state.LastSaveTime = time.Now()
-		state.positionDirty = false
 	}
 }
 
@@ -293,18 +266,12 @@ func (m *PlayerMovementManager) IsSurfing(charID int) bool {
 	return ok && state.IsSurfing
 }
 
-// retirePosition removes the live writer and retains only a dirty final pose.
-// Recovery runs behind character admission, so it cannot overwrite a new owner.
-func (m *PlayerMovementManager) retirePosition(charID int) *playerMovementSnapshot {
+// unregisterPlayer retires the live projection. All position producers commit
+// before publishing, so disconnect never persists this potentially stale view.
+func (m *PlayerMovementManager) unregisterPlayer(charID int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	state := m.players[charID]
 	delete(m.players, charID)
-	if state == nil || !state.positionDirty {
-		return nil
-	}
-	snapshot := m.snapshotForState(state, 0)
-	return &snapshot
 }
 
 // StopMovement clears any queued server-driven path for a player.
@@ -378,7 +345,6 @@ func (m *PlayerMovementManager) projectCommittedTeleport(charID int, x, y, mapID
 		}
 	}
 	state.pendingStep = nil
-	state.positionDirty = false
 	state.LastSaveTime = time.Now()
 	state.CurrentX = x
 	state.CurrentY = y
@@ -404,7 +370,6 @@ func (m *PlayerMovementManager) projectCommittedPosition(charID int, x, y, mapID
 	}
 
 	// This is a committed result, not a deferred save obligation.
-	state.positionDirty = false
 	state.LastSaveTime = time.Now()
 	state.IsSurfing = surfing
 	if state.CurrentX == x && state.CurrentY == y && state.MapID == mapID {
@@ -487,7 +452,7 @@ func (m *PlayerMovementManager) processTick() {
 	m.mu.RLock()
 	candidates := make([]candidate, 0, len(m.players))
 	for id, state := range m.players {
-		if len(state.Path) != 0 || state.positionDirty {
+		if len(state.Path) != 0 {
 			candidates = append(candidates, candidate{id, state.SessionID, state})
 		}
 	}
@@ -522,11 +487,7 @@ func (m *PlayerMovementManager) processCharacterTick(ctx context.Context, charac
 	}
 	now := time.Now()
 	if len(state.Path) == 0 || now.Sub(state.LastMoveTime) < state.MoveSpeed {
-		retry := state.positionDirty && now.Sub(state.lastSaveAttempt) >= 5*time.Second
 		m.mu.Unlock()
-		if retry {
-			_ = m.FlushPlayerPosition(ctx, characterID)
-		}
 		return
 	}
 	planned := *state
@@ -637,8 +598,7 @@ func (m *PlayerMovementManager) processCharacterTick(ctx context.Context, charac
 	if !effects.Teleport {
 		state.IsSurfing, state.ForcedBicycle, state.MoveSpeed = effects.Surfing, planned.ForcedBicycle, planned.MoveSpeed
 	}
-	state.positionDirty = false
-	state.LastSaveTime, state.lastSaveAttempt = now, now
+	state.LastSaveTime = now
 	update.state = state
 	m.mu.Unlock()
 	if !effects.Teleport {
@@ -678,7 +638,6 @@ func (m *PlayerMovementManager) planCharacterStep(ctx context.Context, state *Pl
 	state.CurrentX = nextTile.X
 	state.CurrentY = nextTile.Y
 	state.LastMoveTime = now
-	state.positionDirty = true
 	m.applyBicycleMapRules(state)
 	if state.IsSurfing {
 		if m.actorManager == nil || m.wh == nil || m.wh.database == nil {

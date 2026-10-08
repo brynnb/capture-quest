@@ -3,7 +3,6 @@ package world
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"log"
 	"sync"
@@ -180,28 +179,19 @@ func (wh *WorldHandler) cleanupCharacterSession(ctx context.Context, ses *sessio
 	if !wh.characterOwners.owns(int64(charID), ses) {
 		return nil
 	}
-	log.Printf("[WORLD] Flushing position for character %d (%s) from session %d", charID, char.Name, ses.SessionID)
-	position := wh.PlayerMovement.retirePosition(charID)
+	log.Printf("[WORLD] Retiring character %d (%s) from session %d", charID, char.Name, ses.SessionID)
+	wh.PlayerMovement.unregisterPlayer(charID)
 	playtimeID, playtimeTotal := ses.FinishPlaytime(time.Now())
 	accountID := ses.AccountID
-	// Capture values, never the retired session/client or mutable movement state.
-	// Both writes are repeatable after unknown commit outcomes. Successful partial
-	// saves may be replayed while admission prevents any newer character writer.
+	// Retain only the frozen cumulative total, never a retired session/client.
 	recovery = func(ctx context.Context) error {
-		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		defer cancel()
-		var positionErr, playtimeErr error
-		if position != nil {
-			if err := commitPlayerPosition(ctx, wh.database, int64(charID), position.MapID, position.CurrentX, position.CurrentY); err != nil {
-				positionErr = fmt.Errorf("final position: %w", err)
-			}
+		if playtimeID == 0 {
+			return nil
 		}
-		if playtimeID != 0 {
-			if err := db_character.SaveCharacterPlaytime(ctx, wh.database, playtimeID, accountID, playtimeTotal); err != nil {
-				playtimeErr = fmt.Errorf("final playtime: %w", err)
-			}
+		if err := db_character.SaveCharacterPlaytime(ctx, wh.database, playtimeID, accountID, playtimeTotal); err != nil {
+			return fmt.Errorf("final playtime: %w", err)
 		}
-		return errors.Join(positionErr, playtimeErr)
+		return nil
 	}
 	result = recovery(ctx)
 	wh.TrainerEncounter.ClearPlayer(int64(charID))

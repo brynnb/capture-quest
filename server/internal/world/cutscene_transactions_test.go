@@ -299,7 +299,7 @@ func TestIssuedCutsceneMovementUsesCapturedSourceAndCommitsOnce(t *testing.T) {
 	}
 	request := fmt.Sprintf(`{"requestId":"completion-test","scriptLabel":"IssuedMove","completionToken":%q}`, issued.CompletionToken)
 	// A later location cannot become the starting point for the old relative plan.
-	stageTestPlayerPosition(wh.PlayerMovement, 42, 8, 8, 50, "RIGHT")
+	wh.PlayerMovement.projectCommittedTeleport(42, 8, 8, 50, "RIGHT")
 	battleDispatch(t, wh, ses, opcodes.CutsceneEndRequest, request)
 	var x, count int
 	if err := wh.database.QueryRow(`SELECT x FROM character_data WHERE id=42`).Scan(&x); err != nil || x != 7 {
@@ -308,7 +308,7 @@ func TestIssuedCutsceneMovementUsesCapturedSourceAndCommitsOnce(t *testing.T) {
 	if err := wh.database.QueryRow(`SELECT count(*) FROM cq_character_inventory WHERE character_id=42`).Scan(&count); err != nil || count != 0 {
 		t.Fatal("stale event granted reward")
 	}
-	stageTestPlayerPosition(wh.PlayerMovement, 42, 7, 8, 50, "UP")
+	wh.PlayerMovement.projectCommittedTeleport(42, 7, 8, 50, "UP")
 	// A durable location changed by another writer also invalidates the source,
 	// even if the live owner has not yet refreshed its cache.
 	testdb.Exec(t, wh.database, `UPDATE character_data SET x=8 WHERE id=42`)
@@ -343,7 +343,7 @@ func TestHeadlessCutsceneCommitCannotStageLiveCharacterPosition(t *testing.T) {
 	if err := wh.database.QueryRow(`SELECT x FROM character_data WHERE id=42`).Scan(&x); err != nil || x != 8 {
 		t.Fatalf("headless committed position=%d error=%v", x, err)
 	}
-	if x, _, _, ok := wh.PlayerMovement.GetPosition(42); !ok || x != 7 || ses.Client.CharData().X != 7 || wh.PlayerMovement.players[42].positionDirty {
+	if x, _, _, ok := wh.PlayerMovement.GetPosition(42); !ok || x != 7 || ses.Client.CharData().X != 7 {
 		t.Fatal("headless publication changed another live owner or manufactured a dirty save")
 	}
 }

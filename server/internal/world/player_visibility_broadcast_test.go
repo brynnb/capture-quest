@@ -35,7 +35,7 @@ func TestRetiredPositionReportsPreservePositionAndVisibility(t *testing.T) {
 	}
 	x, y, mapID, ok := wh.PlayerMovement.GetPosition(7)
 	direction, _ := wh.PlayerMovement.GetDirection(7)
-	if !ok || x != 4 || y != 4 || mapID != 40 || direction != "DOWN" || wh.PlayerMovement.players[7].positionDirty || wh.PlayerMovement.players[7].pendingStep != nil || len(wh.PlayerMovement.players[7].Path) != 0 {
+	if !ok || x != 4 || y != 4 || mapID != 40 || direction != "DOWN" || wh.PlayerMovement.players[7].pendingStep != nil || len(wh.PlayerMovement.players[7].Path) != 0 {
 		t.Fatal("retired setter changed owned movement")
 	}
 	char := origin.Client.CharData()
