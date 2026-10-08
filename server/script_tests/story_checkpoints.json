@@ -738,6 +738,13 @@
       "e2eMode": "interactive",
       "driver": "stateOnly"
     },
+    "debug_pc_indigo_ready": {
+      "chapter": "99_debug_fixtures",
+      "storyOrder": 99006001,
+      "kind": "debug",
+      "e2eMode": "interactive",
+      "driver": "stateOnly"
+    },
     "debug_warp_cerulean_trashed_house_upper_exit": {
       "chapter": "99_debug_fixtures",
       "storyOrder": 99005115,

@@ -48,6 +48,7 @@ export async function runInventoryRequest<T extends Reply>(options: {
   apply?: (reply: T) => void;
   present: (reply: T) => void;
   readError?: string;
+  recoveryMessage?: string;
 }): Promise<void> {
   if (active || !scene) return;
   const owner = scene;
@@ -104,7 +105,7 @@ export async function runInventoryRequest<T extends Reply>(options: {
       usePokemonPartyStore.getState().setParty(snapshot.party);
       usePokemonPCStore.getState().applySnapshot(snapshot.pc, snapshot.party);
       useCQInventoryStore.getState().setPendingTMHM(null);
-      useChatStore.getState().addMessage(error instanceof CorrelatedResponseError ? error.message : "Inventory state refreshed. Check your bag and party before trying again.", MessageType.SYSTEM);
+      useChatStore.getState().addMessage(error instanceof CorrelatedResponseError ? error.message : (options.recoveryMessage ?? "Inventory state refreshed. Check your bag and party before trying again."), MessageType.SYSTEM);
     } catch {
       if (current()) reportError("Could not restore inventory state. Please reconnect.");
     }

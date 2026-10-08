@@ -7,8 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-source-authorized PC commands through the shared boundary (2026-10-07); PC
-lost-reply/crash and additional source-location acceptance remain open. This follows
+source-authorized PC commands and Indigo failure/restart acceptance (2026-10-07);
+final PC source/scene review remains open. This follows
 stable row-ID storage primitives and coherent PC recovery, and center healing through the shared scripted-event
 boundary and its rendered/recovery acceptance plus shared issuance/visibility
 fixes (`4d18056`, `58b3d53`), following `0d6b640`
@@ -21,6 +21,52 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. No push or production deployment is authorized by this goal.
+
+## PC failure/restart acceptance and obsolete API cleanup (2026-10-07)
+
+Three rendered cases at Indigo Plateau Lobby passed in 33.9 seconds in
+`/var/tmp/capturequest-rendered.wB3phS`. The source terminal is `(15,7)`, accessed
+from `(15,8)` on map 174, outside the former hardcoded center list and coordinates.
+The fixture's starting/access tiles were checked against extractor collision data.
+Tests use the existing inventory-command fault injector and exact-process runner,
+not another PC recovery mechanism.
+
+Every deposit packet is duplicated. Exactly one succeeds and one rejects, with
+stable party/box row identities and revision one. The timeout case withholds the
+success, recovers current PC/party state without resending, then performs a real
+withdrawal. Delivering the historical deposit after that distinct second command
+does not restore old box membership or rewind party state. Reentry preserves the
+result and revision. The crash case closes the pending listener before timeout
+recovery, then kills the exact owned server after commit and before its withheld
+acknowledgement. Receipt: PID 1142285, replacement 1144050, exit 137. The unchanged
+private database and fresh browser/session recover the same deposited row (23),
+remaining party row (24) and revision one. Evidence records the private character
+and row IDs; no production data is involved. Inspected screenshots show the
+recovered Indigo PC box and remaining party.
+
+The earlier two-case run in `/var/tmp/capturequest-rendered.FBPvtl` passed in 28.0
+seconds but killed the server after timeout recovery, so it proves persistence
+across restart rather than death during an unacknowledged result. The later
+three-case run is the stronger evidence. The test adds an explicit duplicate
+rejection wait before closing the crash page; the same duplicate count was already
+observed in the passing run. The runner stopped its owned processes/database.
+
+Production `DepositToPC`, `WithdrawFromPC`, `ReleasePokemon` and their private slot
+resolvers are removed. Storage fixtures now capture stable target identities and
+own transactions around the same authoritative primitives. Focused PostgreSQL
+storage/PC checks passed (pokebattle 2.087 seconds, world 2.078 seconds); the cqitems
+package compiled in that filtered run but had no matching tests. Existing SQLite
+storage and fixture usable-tile checks passed. TypeScript and diff checks passed.
+PC timeout presentation now asks users to check their box/party through an explicit
+message option on the shared coordinator; other consumers retain their wording.
+
+Remaining PC review: delayed opening after source/scene retirement, non-deposit
+reply-loss variants where the shared consumer matrix does not suffice, and the
+shared routing/permission/projection audit before expanding to another family.
+Normal operations, source permission, rollback, current-state timeout recovery,
+late history, actual pre-acknowledgement death, nonstandard source access and
+obsolete API retirement have current evidence. The broader roadmap and original
+login timeout remain incomplete. No push or production deployment was performed.
 
 ## PC command and source migration (2026-10-07)
 

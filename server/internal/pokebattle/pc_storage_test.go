@@ -1,6 +1,8 @@
 package pokebattle
 
 import (
+	"capturequest/internal/db"
+	"context"
 	"database/sql"
 	"testing"
 
@@ -13,7 +15,7 @@ func TestDepositToPCMovesPokemonAndCompactsParty(t *testing.T) {
 	seedPCPokemon(t, db, 42, 1, BoxParty, 1, 4)
 	seedPCPokemon(t, db, 42, 2, BoxParty, 2, 7)
 
-	boxSlot, err := DepositToPC(db, 42, 1, 0)
+	boxSlot, err := commitFixturePCDeposit(db, 42, fixturePokemonID(t, db, 42, 4), 0)
 	if err != nil {
 		t.Fatalf("DepositToPC failed: %v", err)
 	}
@@ -32,7 +34,7 @@ func TestWithdrawFromPCUsesFirstOpenPartySlot(t *testing.T) {
 	seedPCPokemon(t, db, 42, 2, BoxParty, 2, 4)
 	seedPCPokemon(t, db, 42, 0, 0, 0, 7)
 
-	partySlot, err := WithdrawFromPC(db, 42, 0, 0)
+	partySlot, err := commitFixturePCWithdrawal(db, 42, fixturePokemonID(t, db, 42, 7), 0)
 	if err != nil {
 		t.Fatalf("WithdrawFromPC failed: %v", err)
 	}
@@ -49,7 +51,7 @@ func TestWithdrawFromPCRejectsFullParty(t *testing.T) {
 	}
 	seedPCPokemon(t, db, 42, 0, 0, 0, 7)
 
-	if _, err := WithdrawFromPC(db, 42, 0, 0); err == nil {
+	if _, err := commitFixturePCWithdrawal(db, 42, fixturePokemonID(t, db, 42, 7), 0); err == nil {
 		t.Fatal("expected full party error")
 	}
 }
@@ -58,7 +60,9 @@ func TestReleasePokemonRequiresExistingPCPokemon(t *testing.T) {
 	db := openPCTestDB(t)
 	seedPCPokemon(t, db, 42, 0, 0, 0, 7)
 
-	if err := ReleasePokemon(db, 42, 0, 0); err != nil {
+	target := fixturePokemonID(t, db, 42, 7)
+
+	if err := commitFixturePCRelease(db, 42, target, 0); err != nil {
 		t.Fatalf("ReleasePokemon failed: %v", err)
 	}
 	var count int
@@ -69,7 +73,7 @@ func TestReleasePokemonRequiresExistingPCPokemon(t *testing.T) {
 		t.Fatalf("released pokemon count = %d, want 0", count)
 	}
 
-	if err := ReleasePokemon(db, 42, 0, 0); err == nil {
+	if err := commitFixturePCRelease(db, 42, target, 0); err == nil {
 		t.Fatal("expected missing pokemon error")
 	}
 }
@@ -207,4 +211,42 @@ func assertPokemonStorage(t *testing.T, db *sql.DB, charID int64, speciesID int,
 			wantBoxSlot,
 		)
 	}
+}
+
+// Fixture transactions exercise the stable-ID primitive; they never implement
+// slot intent or resolve a live target after admission.
+func fixturePokemonID(t *testing.T, database DBTX, charID int64, species int) int64 {
+	t.Helper()
+	var id int64
+	if err := database.QueryRow(`SELECT id FROM character_pokemon WHERE character_id=$1 AND pokemon_id=$2 ORDER BY id LIMIT 1`, charID, species).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+func commitFixturePCDeposit(database DBTX, charID, rowID int64, box int) (int, error) {
+	slot := -1
+	err := db.Transaction(context.Background(), database, func(tx db.DBTX) error {
+		var err error
+		slot, err = DepositPokemonToPCInTransaction(tx, charID, rowID, box)
+		return err
+	})
+	if err != nil {
+		return -1, err
+	}
+	return slot, nil
+}
+func commitFixturePCWithdrawal(database DBTX, charID, rowID int64, box int) (int, error) {
+	slot := -1
+	err := db.Transaction(context.Background(), database, func(tx db.DBTX) error {
+		var err error
+		slot, err = WithdrawPokemonFromPCInTransaction(tx, charID, rowID, box)
+		return err
+	})
+	if err != nil {
+		return -1, err
+	}
+	return slot, nil
+}
+func commitFixturePCRelease(database DBTX, charID, rowID int64, box int) error {
+	return db.Transaction(context.Background(), database, func(tx db.DBTX) error { return ReleasePokemonFromPCInTransaction(tx, charID, rowID, box) })
 }

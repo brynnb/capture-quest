@@ -39,6 +39,7 @@ function requestPC(opcode: number, responseOpcode: number, sourceId: number, pay
       if(sound) void AudioManager.playSFX(sound,0.7);
     },
     readError: "Interact with an available PC terminal again.",
+    recoveryMessage: "PC storage refreshed. Check the box and party before trying again.",
   });
 }
 

@@ -54,31 +54,6 @@ func withCharacterTransaction(database DBTX, characterID int64, operation func(D
 	})
 }
 
-// DepositToPC moves a party Pokémon to the first available slot in the given box.
-// Returns the box_slot assigned, or -1 if the box is full.
-func DepositToPC(database DBTX, characterID int64, partySlot int, box int) (int, error) {
-	result := -1
-	err := withCharacterTransaction(database, characterID, func(tx DBTX) (err error) {
-		result, err = depositToPC(tx, characterID, partySlot, box)
-		return err
-	})
-	if err != nil {
-		return -1, err
-	}
-	return result, nil
-}
-
-func depositToPC(tx DBTX, characterID int64, partySlot int, box int) (int, error) {
-	if partySlot < 0 || partySlot >= 6 {
-		return -1, fmt.Errorf("invalid party slot %d", partySlot)
-	}
-	var rowID int64
-	if err := tx.QueryRow(`SELECT id FROM character_pokemon WHERE character_id=$1 AND party_slot=$2 AND box=-1`, characterID, partySlot).Scan(&rowID); err != nil {
-		return -1, err
-	}
-	return DepositPokemonToPCInTransaction(tx, characterID, rowID, box)
-}
-
 // DepositPokemonToPCInTransaction selects the exact owned Pokemon, never the
 // occupant of a stale slot. The caller owns the final commit and its projection.
 func DepositPokemonToPCInTransaction(tx DBTX, characterID, rowID int64, box int) (int, error) {
@@ -161,31 +136,6 @@ func DepositPokemonToPCInTransaction(tx DBTX, characterID, rowID int64, box int)
 	return freeSlot, nil
 }
 
-// WithdrawFromPC moves a PC Pokémon to the party at the next available slot.
-// Returns the party_slot assigned, or -1 if the party is full.
-func WithdrawFromPC(database DBTX, characterID int64, box int, boxSlot int) (int, error) {
-	result := -1
-	err := withCharacterTransaction(database, characterID, func(tx DBTX) (err error) {
-		result, err = withdrawFromPC(tx, characterID, box, boxSlot)
-		return err
-	})
-	if err != nil {
-		return -1, err
-	}
-	return result, nil
-}
-
-func withdrawFromPC(tx DBTX, characterID int64, box int, boxSlot int) (int, error) {
-	if err := validatePCSlot(box, boxSlot); err != nil {
-		return -1, err
-	}
-	var rowID int64
-	if err := tx.QueryRow(`SELECT id FROM character_pokemon WHERE character_id=$1 AND box=$2 AND box_slot=$3`, characterID, box, boxSlot).Scan(&rowID); err != nil {
-		return -1, err
-	}
-	return WithdrawPokemonFromPCInTransaction(tx, characterID, rowID, box)
-}
-
 // WithdrawPokemonFromPCInTransaction requires current membership in the named
 // box. A later Pokemon reusing the old slot cannot become this command's target.
 func WithdrawPokemonFromPCInTransaction(tx DBTX, characterID, rowID int64, box int) (int, error) {
@@ -218,20 +168,6 @@ func WithdrawPokemonFromPCInTransaction(tx DBTX, characterID, rowID int64, box i
 	}
 
 	return partySlot, nil
-}
-
-// ReleasePokemon permanently deletes a Pokémon from PC storage.
-func ReleasePokemon(database DBTX, characterID int64, box int, boxSlot int) error {
-	if err := validatePCSlot(box, boxSlot); err != nil {
-		return err
-	}
-	return withCharacterTransaction(database, characterID, func(tx DBTX) error {
-		var rowID int64
-		if err := tx.QueryRow(`SELECT id FROM character_pokemon WHERE character_id=$1 AND box=$2 AND box_slot=$3`, characterID, box, boxSlot).Scan(&rowID); err != nil {
-			return err
-		}
-		return ReleasePokemonFromPCInTransaction(tx, characterID, rowID, box)
-	})
 }
 
 // ReleasePokemonFromPCInTransaction cannot release a party/day-care/foreign

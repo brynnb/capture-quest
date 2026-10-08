@@ -179,7 +179,7 @@ func TestStorageDepositRollsBackWhenCompactionFails(t *testing.T) {
 	database := partyDatabase(t)
 	seedPCPokemon(t, database, 42, 2, BoxParty, 2, 7)
 	testdb.Exec(t, database, `ALTER TABLE character_pokemon ADD CONSTRAINT reject_compaction CHECK(NOT(pokemon_id=7 AND box=-1 AND party_slot=1))`)
-	if slot, err := DepositToPC(database, 42, 1, 0); err == nil || slot != -1 {
+	if slot, err := commitFixturePCDeposit(database, 42, fixturePokemonID(t, database, 42, 4), 0); err == nil || slot != -1 {
 		t.Fatalf("reported partially committed deposit: slot=%d err=%v", slot, err)
 	}
 	assertPokemonStorage(t, database, 42, 4, sql.NullInt64{Int64: 1, Valid: true}, BoxParty, 1)
@@ -188,13 +188,14 @@ func TestStorageDepositRollsBackWhenCompactionFails(t *testing.T) {
 
 func TestConcurrentStorageCannotRemoveLastPartyPokemon(t *testing.T) {
 	database := partyDatabase(t)
+	target := fixturePokemonID(t, database, 42, 1)
 	var successes atomic.Int32
 	var wg sync.WaitGroup
 	for range 4 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, err := DepositToPC(database, 42, 0, 0); err == nil {
+			if _, err := commitFixturePCDeposit(database, 42, target, 0); err == nil {
 				successes.Add(1)
 			}
 		}()
@@ -204,10 +205,10 @@ func TestConcurrentStorageCannotRemoveLastPartyPokemon(t *testing.T) {
 		t.Fatalf("concurrent deposits: %d successes", successes.Load())
 	}
 	for _, box := range []int{BoxParty, BoxDayCare, 12} {
-		if err := ReleasePokemon(database, 42, box, 0); err == nil {
+		if err := commitFixturePCRelease(database, 42, target, box); err == nil {
 			t.Fatalf("PC release accepted box=%d", box)
 		}
-		if _, err := WithdrawFromPC(database, 42, box, 0); err == nil {
+		if _, err := commitFixturePCWithdrawal(database, 42, target, box); err == nil {
 			t.Fatalf("PC withdrawal accepted box=%d", box)
 		}
 	}
