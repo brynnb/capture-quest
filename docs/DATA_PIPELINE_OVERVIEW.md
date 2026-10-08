@@ -52,6 +52,15 @@ in the square do not determine terrain. The bundled extractor owns this rule;
 regenerate the atomic SQLite/art/contract family when it changes. Runtime
 movement and pathfinding consume that classification without per-map overrides.
 
+## Shared tileset blocksets
+
+Catalog rows retain their original tileset identity when graphics/blocksets are
+shared. The extractor's `TILESET_BLOCKSET_ALIASES` defines MART→POKECENTER,
+DOJO→GYM, REDS_HOUSE_2→REDS_HOUSE_1, and FOREST_GATE/MUSEUM→GATE. The Go compiler
+and importer share `phaserdata.BlocksetTilesetID` for that contract. Do not join
+catalog rows to blocksets by direct tileset-ID equality: alias rows have no data
+under that ID and would disappear or lose native foot metadata.
+
 ## Image metadata and editor properties
 
 `phaser_tile_images` is the imported catalog and owns image identity,

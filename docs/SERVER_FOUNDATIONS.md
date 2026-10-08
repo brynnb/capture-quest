@@ -28,6 +28,51 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Shared-graphics tile identity and importer metadata (2026-10-08)
+
+Original `LancesRoom.asm` selects blocks $31/$32 for the open entrance and
+$72/$73 for the closed entrance, at block coordinates (6,2)/(6,3). The structured
+candidate agrees. The catalog contains those images, but stores GYM-shared images
+under the DOJO identity 5 while their block/2bpp data belongs to GYM 7. The compiler
+signature index joined blocksets directly on image.tileset_id, dropping these rows;
+its existing partial map only covered MART and DOJO. The importer had the same
+join assumption and could persist null raw-foot metadata for shared images.
+
+Compiler resolution, catalog indexing and imported foot metadata now use one
+`phaserdata.BlocksetTilesetID` mapping derived from the authoritative extractor
+config: 2→6, 5→7, 4→1, 9→12 and 10→12. Catalog identity stays original; only source
+data lookup follows the shared blockset. All five aliases were included after the
+first broader check exposed image 279 under another alias; that failed check was
+not accepted or hidden. No Lance-specific image, coordinate, collision fallback
+or hand-edited artifact was introduced.
+
+Regressions prove a DOJO image participates in decoded signature lookup and the
+Postgres importer preserves its original tileset ID while obtaining native foot
+metadata from GYM. Alias mapping tests cover the complete source alias corpus.
+Focused importer/compiler/data race checks passed (5.2s/2.5s/1.1s); full importer,
+compiler, data and world suites pass (world 52.3s), all Go packages compile and
+diff checks pass. Canonical generation plus `import-script-candidates --check`
+passes: all 25 tile candidates are supported, rules increase from 48 to 64 and
+Lance contributes 16. The old tile unsupported diagnostic is gone; no budget was
+relaxed. Output was regenerated through the locked publication tooling.
+
+The canonical private importer/corpus run completed 258 scenarios, including both
+Lance entrance cases, then stopped at `pokemon_mansion_1f_switch_tiles_off` on an
+existing numeric identity assertion: (12,24), expected image 167. Evidence is
+`/var/tmp/capturequest-alias-final-corpus.log` and private data at
+`/var/tmp/capturequest-script-sim.FIAN7j`; the cluster is stopped. This is runtime
+state/contract evidence, not rendered art or complete corpus acceptance. No
+production import or publication occurred. Future deployment of compiler/importer
+and generated-rule changes requires the full-data lane and its backup/contract
+verification.
+
+Remaining: unmapped numeric expectations/text goldens, received-item text hydration,
+Giovanni legacy flag migration, simulator writers and the remaining command matrix.
+The original restore timeout and Repel click failure remain unattributed, and all
+five goal areas stay active. Next: resolve the Mansion expectation through native
+source identity and review the shared received-item producer before more command
+migration. This is a local checkpoint only, without push or deployment.
+
 ## Source-owned gym rewards and shared map-script selection (2026-10-08)
 
 The Lt. Surge label mismatch reflected duplicate ownership: the scenario named a

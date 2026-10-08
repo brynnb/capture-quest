@@ -1,6 +1,10 @@
 package scriptcandidateimport
 
-import "testing"
+import (
+	"context"
+	"database/sql"
+	"testing"
+)
 
 func TestNativeIdentitySurvivesCatalogRenumberingAndRejectsWrongSource(t *testing.T) {
 	data := make([]byte, 16)
@@ -33,5 +37,29 @@ func TestNativeIdentitySurvivesCatalogRenumberingAndRejectsWrongSource(t *testin
 	}
 	if err := external.VerifyCatalogIdentity(50, 0, 58, 0); err == nil {
 		t.Fatal("mismatched runtime catalog accepted")
+	}
+}
+
+func TestCatalogSignaturesIncludeSharedGraphicsAliasRows(t *testing.T) {
+	source, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	if _, err = source.Exec(`CREATE TABLE tile_images(id INTEGER,tileset_id INTEGER,block_index INTEGER,position INTEGER); INSERT INTO tile_images VALUES(77,5,49,0)`); err != nil {
+		t.Fatal(err)
+	}
+	blocks := map[int]map[int][]byte{7: {49: make([]byte, 16)}}
+	tiles := map[int]map[int][]byte{7: {0: make([]byte, 16)}}
+	catalog, err := loadTileImageSignatures(context.Background(), source, blocks, tiles)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signature, err := renderTileQuadrantSignature(blocks[7][49], 0, 7, tiles)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if catalog[signature] != 77 {
+		t.Fatal("DOJO catalog row dropped because its data belongs to GYM")
 	}
 }

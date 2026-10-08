@@ -118,7 +118,7 @@ func newTileOverrideResolver(ctx context.Context, db *sql.DB) (*tileOverrideReso
 	if resolver.collisionTiles, err = loadSourceCollisionTiles(ctx, db); err != nil {
 		return nil, err
 	}
-	if resolver.tileImageIDBySignature, err = loadTileImageSignatures(ctx, db, resolver.tilesetTiles); err != nil {
+	if resolver.tileImageIDBySignature, err = loadTileImageSignatures(ctx, db, resolver.blocksets, resolver.tilesetTiles); err != nil {
 		return nil, err
 	}
 	return resolver, nil
@@ -177,7 +177,7 @@ func (resolver *tileOverrideResolver) resolveTile(mapName string, blockID, posit
 	if position < 0 || position > 3 {
 		return 0, fmt.Errorf("invalid quadrant %d", position)
 	}
-	blockset := sourceBlocksetTilesetID(meta.TilesetID)
+	blockset := int(phaserdata.BlocksetTilesetID(int64(meta.TilesetID)))
 	data := resolver.blocksets[blockset][blockID]
 	if len(data) != 16 {
 		return 0, fmt.Errorf("map %s missing block %d", mapName, blockID)
@@ -209,7 +209,7 @@ func (resolver *tileOverrideResolver) MapCandidate(candidate tileOverrideCandida
 	if !ok {
 		return nil, fmt.Errorf("unknown map %s", mapName)
 	}
-	blocksetID := sourceBlocksetTilesetID(meta.TilesetID)
+	blocksetID := int(phaserdata.BlocksetTilesetID(int64(meta.TilesetID)))
 	rules := []scriptedevents.EventTileOverrideRule{}
 	for _, replacement := range candidate.Replacements {
 		if replacement.LabelPrefix == "" {
@@ -391,12 +391,10 @@ func loadSourceCollisionTiles(ctx context.Context, db *sql.DB) (map[int]map[int]
 	return result, nil
 }
 
-func loadTileImageSignatures(ctx context.Context, db *sql.DB, tilesetTiles map[int]map[int][]byte) (map[string]int, error) {
+func loadTileImageSignatures(ctx context.Context, db *sql.DB, blocksets map[int]map[int][]byte, tilesetTiles map[int]map[int][]byte) (map[string]int, error) {
 	rows, err := db.QueryContext(ctx, `
-		SELECT ti.id, ti.tileset_id, ti.position, bs.block_data
+		SELECT ti.id, ti.tileset_id, ti.position, ti.block_index
 		FROM tile_images ti
-		JOIN blocksets bs
-		  ON bs.tileset_id = ti.tileset_id AND bs.block_index = ti.block_index
 		ORDER BY ti.id`)
 	if err != nil {
 		return nil, fmt.Errorf("query tile image signatures: %w", err)
@@ -405,12 +403,13 @@ func loadTileImageSignatures(ctx context.Context, db *sql.DB, tilesetTiles map[i
 
 	result := map[string]int{}
 	for rows.Next() {
-		var id, tilesetID, position int
-		var blockData []byte
-		if err := rows.Scan(&id, &tilesetID, &position, &blockData); err != nil {
+		var id, tilesetID, position, blockIndex int
+		if err := rows.Scan(&id, &tilesetID, &position, &blockIndex); err != nil {
 			return nil, fmt.Errorf("scan tile image signature: %w", err)
 		}
-		signature, err := renderTileQuadrantSignature(blockData, position, tilesetID, tilesetTiles)
+		sourceID := int(phaserdata.BlocksetTilesetID(int64(tilesetID)))
+		blockData := blocksets[sourceID][blockIndex]
+		signature, err := renderTileQuadrantSignature(blockData, position, sourceID, tilesetTiles)
 		if err != nil {
 			return nil, fmt.Errorf("tile image %d: %w", id, err)
 		}
@@ -487,17 +486,6 @@ func quadrantSubTileIndices(position int) []int {
 		return []int{10, 11, 14, 15}
 	default:
 		return nil
-	}
-}
-
-func sourceBlocksetTilesetID(tilesetID int) int {
-	switch tilesetID {
-	case 2:
-		return 6
-	case 5:
-		return 7
-	default:
-		return tilesetID
 	}
 }
 
