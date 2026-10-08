@@ -28,6 +28,40 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized a branch push for the stopping checkpoint on 2026-10-07; production deployment remains unauthorized.
 
+## Boulder duplicate, lost-reply and process-death acceptance (2026-10-07)
+
+Three rendered cases passed in 23.1 seconds in
+`/var/tmp/capturequest-rendered.0BB8Gn`, using the existing transport fault and
+exact-process crash harnesses. All use the source Seafoam facing fixture at
+(18,11), with its boulder initially at (18,10). One client facing request is
+transmitted twice. The first commits one object move to (18,9) and one player
+follow-up cursor; the duplicate rejects while that source is owned/moving.
+
+Normal and lost-reply cases finish at player (18,10), retain exactly one object
+override at (18,9), and have no remaining cursor. The lost acknowledgement is
+recovered through the existing server-movement notification, which retires the
+pending facing listener. Re-delivering its historical success cannot rewind the
+player or restart movement. Quit/reentry preserves both committed positions.
+No client ordinary-step completion is sent for the timer-owned follow-up.
+
+The process-death case freezes only the recorded private server at its successful
+pending-movement acknowledgement. SQL verifies the moved object and one-point
+cursor together while the player is still at the source. The shell kills/reaps
+that child with exit 137 and restarts against the unchanged private database.
+Fresh entry resumes the remaining player point, deletes the cursor and leaves the
+boulder at (18,9). The crash receipt is retained in the run directory. The runner
+compiled the current server, validated matched local assets and stopped its
+private runtime after completion. Diff checks passed. Production code and wire
+schemas were unchanged in this acceptance checkpoint; no push or deployment was
+performed.
+
+Remaining: combined loss of facing reply and movement notifications is not covered
+by these cases. Facing's old timeout path still describes turning as position-free,
+although a boulder turn can now commit a movement cursor. Next: review/reconcile
+that unknown-outcome path through current owned state before closing the selected
+family. Wider source, route-data and writer audits, the unresolved login timeout
+and the full five-area roadmap remain open.
+
 ## Atomic boulder push and initial movement handoff (2026-10-07)
 
 The old push performed separate global writes for Strength activation, object
