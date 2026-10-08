@@ -101,6 +101,14 @@ func setupBoulderPushDB(t *testing.T, includeBoulder bool) {
 		t.Fatal(err)
 	}
 	if _, err := raw.Exec(`
+        CREATE TABLE character_data(id INTEGER PRIMARY KEY,map_id INTEGER,x REAL,y REAL);
+        INSERT INTO character_data VALUES(1,59,10,-44);
+        CREATE TABLE phaser_maps(id INTEGER PRIMARY KEY,name TEXT);
+        INSERT INTO phaser_maps VALUES(59,'TEST_MAP');
+        CREATE TABLE character_event_flags(character_id INTEGER,flag_name TEXT);
+        CREATE TABLE character_battle_state(character_id INTEGER PRIMARY KEY,battle_json TEXT);
+        CREATE TABLE character_safari_state(character_id INTEGER PRIMARY KEY,state_json TEXT);
+        CREATE TABLE character_movement_routes(character_id INTEGER PRIMARY KEY,map_id INTEGER,x INTEGER,y INTEGER,path_json TEXT);
 		CREATE TABLE phaser_objects (
 			id INTEGER PRIMARY KEY,
 			map_id INTEGER,

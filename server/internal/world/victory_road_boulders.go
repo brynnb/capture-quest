@@ -64,7 +64,12 @@ func queryVictoryRoadBoulderTargets() ([]VictoryRoadBoulderTarget, bool) {
 	if db.GlobalWorldDB == nil || db.GlobalWorldDB.DB == nil {
 		return nil, false
 	}
-	rows, err := db.GlobalWorldDB.DB.Query(`
+	rows, err := victoryRoadBoulderTargetsIn(db.GlobalWorldDB.DB)
+	return rows, err == nil
+}
+
+func victoryRoadBoulderTargetsIn(database db.DBTX) ([]VictoryRoadBoulderTarget, error) {
+	rows, err := database.Query(`
 		SELECT map_name, x, y, flag, drops_through_hole,
 		       COALESCE(source_object_name, ''),
 		       COALESCE(destination_map_name, ''),
@@ -73,7 +78,7 @@ func queryVictoryRoadBoulderTargets() ([]VictoryRoadBoulderTarget, bool) {
 		WHERE target_family = 'victory_road'
 		ORDER BY map_name, x, y`)
 	if err != nil {
-		return nil, false
+		return nil, err
 	}
 	defer rows.Close()
 
@@ -90,14 +95,14 @@ func queryVictoryRoadBoulderTargets() ([]VictoryRoadBoulderTarget, bool) {
 			&target.DestinationMapName,
 			&target.DestinationObjectName,
 		); err != nil {
-			return nil, false
+			return nil, err
 		}
 		targets = append(targets, target)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, false
+		return nil, err
 	}
-	return targets, true
+	return targets, nil
 }
 
 var victoryRoadBoulderTargets = []VictoryRoadBoulderTarget{

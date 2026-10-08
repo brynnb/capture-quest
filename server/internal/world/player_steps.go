@@ -378,7 +378,11 @@ func (m *PlayerMovementManager) facePlayer(ses *session.Session, req protocol.Pl
 	state.Direction = direction
 	x, y, mapID := state.CurrentX, state.CurrentY, state.MapID
 	m.mu.Unlock()
-	if result, attempted := m.tryPushBoulderFromFacingAttempt(charID, mapID, x, y, direction); attempted && result.Success {
+	result, attempted, err := m.tryPushBoulderFromFacingAttempt(ses, charID, mapID, x, y, direction)
+	if err != nil {
+		return ownedPlayerFacing{}, err
+	}
+	if attempted && result.Success {
 		m.queueStepAfterBoulderPush(charID, x, y, mapID, result)
 	}
 	m.mu.RLock()

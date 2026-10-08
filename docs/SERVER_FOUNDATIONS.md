@@ -28,6 +28,49 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized a branch push for the stopping checkpoint on 2026-10-07; production deployment remains unauthorized.
 
+## Atomic boulder push and initial movement handoff (2026-10-07)
+
+The old push performed separate global writes for Strength activation, object
+position, hole/switch flags and override removal, then queued the player step in
+memory after publication. The operation now uses one injected, bounded character
+transaction. Saved source position, durable battle availability, pending route,
+owned object visibility and Strength permission are checked on that handle.
+Object relocation, puzzle flags and the initial movement cursor commit together.
+A pending cursor rejects a duplicate source push before another object change.
+
+The original permission, visibility, tile-override, Seafoam-hole and Victory Road
+target rules remain the domain authority. Shared tile/target query helpers now
+accept the transaction. Victory Road lookup errors propagate in the mutation
+instead of choosing reconstructed fallback targets. The obsolete standalone
+object writers and target-walkability wrapper were removed. Simulator callers
+retain the public API but delegate to the same operation; the runtime supplies
+its session context and database directly. Flags enter the cache and actor
+publication occurs only after successful return. The existing movement timer
+executes the already committed cursor, including after a fresh registration.
+
+A PostgreSQL regression rejects the final cursor insert at commit and proves no
+Strength, object, puzzle flag, cursor or cached flag escapes. Success commits the
+cursor at the source, updates the flag cache, and a duplicate cannot move the
+object twice. The test disables the global database handle. The older standalone
+SQLite tests were extended with required ownership/schema tables, with their
+permission and non-boulder assertions unchanged. Focused checks passed in 2.664
+seconds; the full world race suite passed in 55.690 seconds and scriptsim package
+checks passed in 1.069 seconds. The existing rendered Strength-facing and
+server-follow-up interaction passed in 5.8 seconds in
+`/var/tmp/capturequest-rendered.Ajgofz`, with before/after screenshots retained.
+The canonical isolated simulator accepted `seafoam_1f_boulder_push_into_hole` in
+`/var/tmp/capturequest-script-sim.OoAH31`, including flag and object-state
+expectations. Both runners validated the local matched asset family and stopped
+their private runtime. Wire payloads and frontend production code were unchanged;
+diff checks passed. This checkpoint is locally committed, with no push or release.
+
+Remaining: boulder transport/rejection/reentry and process-death acceptance at the
+new push boundary, wider field-action source/data/writer audits, the original login
+restore timeout and the rest of the five-area roadmap. Next: review this shared
+push boundary and complete its failure/reentry acceptance before migrating a new
+family. No new push, deployment or production mutation is part of this local
+checkpoint.
+
 ## Durable forced-route progress and loaded-position recovery (2026-10-07)
 
 `character_movement_routes` is one current, versioned movement cursor per character:

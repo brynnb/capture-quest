@@ -1,6 +1,7 @@
 package world
 
 import (
+	"capturequest/internal/session"
 	"database/sql"
 	"log"
 	"strings"
@@ -43,19 +44,20 @@ func directionFromAdjacentDestination(dx, dy int) string {
 	}
 }
 
-func (m *PlayerMovementManager) tryPushBoulderFromFacingAttempt(charID int, mapID, playerX, playerY int, direction string) (BoulderPushResult, bool) {
+func (m *PlayerMovementManager) tryPushBoulderFromFacingAttempt(ses *session.Session, charID int, mapID, playerX, playerY int, direction string) (BoulderPushResult, bool, error) {
 	if m.wh == nil || m.wh.EventFlags == nil {
-		return BoulderPushResult{}, false
+		return BoulderPushResult{}, false, nil
 	}
-	result, attempted, err := TryPushBoulderFromFacingAttempt(int64(charID), mapID, playerX, playerY, direction, true, m.wh.EventFlags)
+	result, err := pushBoulder(ses.CommandContext(), m.wh.database, int64(charID), mapID, playerX, playerY, direction, true, m.wh.EventFlags)
+	attempted := result.Message != boulderNoBoulderMessage
 	if err != nil {
 		log.Printf("[PlayerMovement] Boulder push from facing attempt failed for player %d: %v", charID, err)
-		return result, attempted
+		return result, attempted, err
 	}
 	if attempted && result.Success {
 		m.broadcastBoulderPushResult(int64(charID), result)
 	}
-	return result, attempted
+	return result, attempted, nil
 }
 
 func (m *PlayerMovementManager) queueStepAfterBoulderPush(charID, startX, startY, mapID int, result BoulderPushResult) {

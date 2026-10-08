@@ -2,7 +2,6 @@ package world
 
 import (
 	"context"
-	"database/sql"
 	"strings"
 
 	"capturequest/internal/db"
@@ -42,91 +41,10 @@ type BoulderObjectState struct {
 	Label    string
 }
 
-func TryPushBoulder(charID int64, mapID int, playerX, playerY int, direction string, activateStrength bool, efm *EventFlagManager) (BoulderPushResult, error) {
-	result := BoulderPushResult{
-		MapID:     mapID,
-		MapName:   mapNameForBoulderMapID(mapID),
-		Direction: normalizeBoulderDirection(direction),
-	}
-	if result.Direction == "" {
-		result.Message = "Unknown push direction."
-		return result, nil
-	}
-
-	dx, dy := boulderDirectionDelta(result.Direction)
-	frontX, frontY := playerX+dx, playerY+dy
-	targetX, targetY := frontX+dx, frontY+dy
-
-	boulders, err := BoulderObjectsForCharacter(charID, mapID, efm)
-	if err != nil {
-		return result, err
-	}
-	boulder, ok := visibleBoulderAt(boulders, frontX, frontY, 0)
-	if !ok {
-		result.Message = boulderNoBoulderMessage
-		return result, nil
-	}
-	result.ObjectID = boulder.ObjectID
-	result.ObjectName = boulder.Name
-	result.FromX = boulder.X
-	result.FromY = boulder.Y
-	result.ToX = targetX
-	result.ToY = targetY
-
-	if activateStrength {
-		used := TryUseFieldMove(charID, mapID, "STRENGTH", efm)
-		result.StrengthUsed = &used
-		if !used.Success {
-			result.Message = used.Message
-			return result, nil
-		}
-	}
-	if !IsFieldMoveActive(charID, mapID, "STRENGTH") {
-		result.Message = BoulderNeedsStrengthMessage
-		return result, nil
-	}
-
-	if !boulderTargetWalkable(charID, mapID, targetX, targetY, efm) {
-		result.Message = "The boulder won't budge."
-		return result, nil
-	}
-	if _, occupied := visibleBoulderAt(boulders, targetX, targetY, boulder.ObjectID); occupied {
-		result.Message = "The boulder won't budge."
-		return result, nil
-	}
-
-	if err := setCharacterObjectPosition(charID, boulder.ObjectID, mapID, targetX, targetY); err != nil {
-		return result, err
-	}
-
-	if hole, ok := SeafoamBoulderHoleAt(result.MapName, targetX, targetY); ok {
-		outcome, err := HandleSeafoamBoulderHole(charID, result.MapName, hole.HoleIndex, efm)
-		if err != nil {
-			return result, err
-		}
-		_ = clearCharacterObjectPosition(charID, boulder.ObjectID)
-		result.Dropped = true
-		result.FlagSet = outcome.Hole.Flag
-		result.AffectedMaps = append(result.AffectedMaps, outcome.Hole.DestinationMapName)
-	}
-	if target, ok := VictoryRoadBoulderTargetAt(result.MapName, targetX, targetY); ok {
-		outcome, err := HandleVictoryRoadBoulderTarget(charID, target, efm)
-		if err != nil {
-			return result, err
-		}
-		if outcome.Target.DropsThroughHole {
-			_ = clearCharacterObjectPosition(charID, boulder.ObjectID)
-			result.Dropped = true
-		}
-		result.FlagSet = outcome.Target.Flag
-		if outcome.Target.DestinationMapName != "" {
-			result.AffectedMaps = append(result.AffectedMaps, outcome.Target.DestinationMapName)
-		}
-	}
-
-	result.Success = true
-	result.Message = "The boulder moved."
-	return result, nil
+// Simulator callers retain the public entry point; runtime supplies its owned
+// context and database directly. Both use the same transaction/domain operation.
+func TryPushBoulder(charID int64, mapID, playerX, playerY int, direction string, activateStrength bool, efm *EventFlagManager) (BoulderPushResult, error) {
+	return pushBoulder(context.Background(), db.GlobalWorldDB.DB, charID, mapID, playerX, playerY, direction, activateStrength, efm)
 }
 
 func BoulderObjectsForCharacter(charID int64, mapID int, efm *EventFlagManager) ([]BoulderObjectState, error) {
@@ -243,32 +161,6 @@ func characterObjectPositionsContext(ctx context.Context, database db.ContextDBT
 	return positions, rows.Err()
 }
 
-func setCharacterObjectPosition(charID int64, objectID, mapID, x, y int) error {
-	_, err := db.GlobalWorldDB.DB.Exec(`
-		INSERT INTO character_object_positions (character_id, object_id, map_id, x, y)
-		VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT (character_id, object_id) DO UPDATE SET
-			map_id = EXCLUDED.map_id,
-			x = EXCLUDED.x,
-			y = EXCLUDED.y`,
-		charID,
-		objectID,
-		mapID,
-		x,
-		y,
-	)
-	return err
-}
-
-func clearCharacterObjectPosition(charID int64, objectID int) error {
-	_, err := db.GlobalWorldDB.DB.Exec(
-		`DELETE FROM character_object_positions WHERE character_id = $1 AND object_id = $2`,
-		charID,
-		objectID,
-	)
-	return err
-}
-
 func visibleBoulderAt(boulders []BoulderObjectState, x, y, excludeObjectID int) (BoulderObjectState, bool) {
 	for _, boulder := range boulders {
 		if !boulder.Visible || boulder.ObjectID == excludeObjectID {
@@ -279,30 +171,6 @@ func visibleBoulderAt(boulders []BoulderObjectState, x, y, excludeObjectID int) 
 		}
 	}
 	return BoulderObjectState{}, false
-}
-
-func boulderTargetWalkable(charID int64, mapID, x, y int, efm *EventFlagManager) bool {
-	state, err := baseEventTileState(mapID, x, y)
-	if err != nil {
-		return false
-	}
-	if overrides := EventTileCollisionOverrides(charID, mapID, efm); len(overrides) > 0 {
-		if collisionType, ok := overrides[tileKey(x, y)]; ok {
-			return collisionType > 0
-		}
-	}
-	return state.CollisionType > 0
-}
-
-func mapNameForBoulderMapID(mapID int) string {
-	var name sql.NullString
-	if err := db.GlobalWorldDB.DB.QueryRow(`SELECT name FROM phaser_maps WHERE id = $1`, mapID).Scan(&name); err != nil {
-		return ""
-	}
-	if !name.Valid {
-		return ""
-	}
-	return name.String
 }
 
 func normalizeBoulderDirection(direction string) string {

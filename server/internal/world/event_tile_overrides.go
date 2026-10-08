@@ -159,6 +159,10 @@ func currentEventTileState(charID int64, mapID int, efm *EventFlagManager, x, y 
 }
 
 func baseEventTileState(mapID, x, y int) (EventTileState, error) {
+	return baseEventTileStateIn(db.GlobalWorldDB.DB, mapID, x, y)
+}
+
+func baseEventTileStateIn(database db.DBTX, mapID, x, y int) (EventTileState, error) {
 	query := `SELECT tile_image_id, collision_type, raw_foot_tile_id, talk_over_tile FROM phaser_tiles WHERE map_id = $1 AND x = $2 AND y = $3 AND is_tile_erased = 0 LIMIT 1`
 	args := []interface{}{mapID, x, y}
 	if mapID == UnifiedOverworldMapID {
@@ -168,7 +172,7 @@ func baseEventTileState(mapID, x, y int) (EventTileState, error) {
 
 	state := EventTileState{X: x, Y: y}
 	var rawFootTileID sql.NullInt64
-	if err := db.GlobalWorldDB.DB.QueryRow(query, args...).Scan(&state.TileImageID, &state.CollisionType, &rawFootTileID, &state.TalkOverTile); err != nil {
+	if err := database.QueryRow(query, args...).Scan(&state.TileImageID, &state.CollisionType, &rawFootTileID, &state.TalkOverTile); err != nil {
 		return EventTileState{}, err
 	}
 	if rawFootTileID.Valid {
