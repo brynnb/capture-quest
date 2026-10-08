@@ -289,6 +289,19 @@ export function buyPrize(prizeId: number): void {
   NetworkBridge.send({ prizeId }, OpCodes.GameCornerPrizeBuyRequest);
 }
 
+export type PokedexReadReply = import("@/net/generated/protocol").TrainerCardResponse | import("@/net/generated/protocol").PokedexListResponse | import("@/net/generated/protocol").PokedexStatusResponse | import("@/net/generated/protocol").PokedexReadError;
+const pokedexReadHandlers = new Map<number, Set<(reply: PokedexReadReply) => void>>([
+ OpCodes.TrainerCardResponse,OpCodes.PokedexListResponse,OpCodes.PokedexStatusResponse,
+].map(opcode=>[opcode,new Set()]));
+export function onPokedexRead(opcode:number,receive:(reply:PokedexReadReply)=>void):()=>void {
+ const listeners=pokedexReadHandlers.get(opcode);
+ if(!listeners) throw new Error("Unsupported Pokedex response opcode");
+ listeners.add(receive);return()=>listeners.delete(receive);
+}
+export function requestPokedexRead(opcode:OpCodes.OpCode,requestId:string):Promise<void> {
+ return NetworkBridge.send({requestId},opcode);
+}
+
 // Response handler registration
 export type PhaserMapInfoHandler = (data: PhaserMapInfoResponse | PhaserMapRequestError) => void;
 export type PhaserMapLoadHandler = (data: PhaserMapLoadResponse | PhaserMapRequestError) => void;
@@ -519,6 +532,12 @@ export function normalizePhaserArrayPayload<T>(
 // Internal: dispatch incoming Phaser responses
 export function dispatchPhaserResponse(opcode: number, data: unknown): void {
   switch (opcode) {
+    case OpCodes.TrainerCardResponse:
+    case OpCodes.PokedexListResponse:
+    case OpCodes.PokedexStatusResponse:
+      pokedexReadHandlers.get(opcode)?.forEach(receive=>receive(data as PokedexReadReply));
+      break;
+
     case OpCodes.CQItemUseResponse:
     case OpCodes.CQMerchantOpenResponse:
     case OpCodes.CQMerchantBuyResponse:

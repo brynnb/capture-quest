@@ -3,7 +3,7 @@ import styled from "styled-components";
 import usePokedexStore from "@/stores/PokedexStore";
 import type { PokedexSpeciesEntry } from "@/net/generated/protocol";
 import useGameStatusStore from "@stores/GameStatusStore";
-import { WorldSocket, OpCodes } from "@/net";
+import { refreshPokedex } from "@/phaser-game/services/PokedexReadService";
 import AudioManager from "@/services/audio/AudioManager";
 import { cryPathForPokemon } from "@/services/audio/pokemonMusic";
 import { getPokedexPresentation } from "./pokedexPresentation";
@@ -273,17 +273,15 @@ const EmptyDetail = styled.div`
 `;
 
 const Pokedex: React.FC = () => {
-  const { species, isLoaded, statusMap } = usePokedexStore();
+  const { species, statusMap } = usePokedexStore();
   const { togglePokedex } = useGameStatusStore();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!isLoaded) {
-      WorldSocket.sendJsonMessage(OpCodes.PokedexListRequest, {});
-    } else {
-      WorldSocket.sendJsonMessage(OpCodes.PokedexStatusRequest, {});
-    }
+    const controller=new AbortController();
+    void refreshPokedex(controller.signal);
+    return()=>controller.abort();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleClose = useCallback(() => {

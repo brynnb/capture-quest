@@ -7,7 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-Pokédex/trainer responses share bounded repair and coherent read snapshots,
+Pokédex/trainer client reads reuse shared correlation and transport retirement,
+following `eb5baf4`: Pokédex/trainer responses share bounded repair and coherent read snapshots,
 following `3ddac87`: entry persists only last-login metadata and recovery preserves its full pose
 through the existing destination transaction, following `5939513`:
 camp no longer replays cached positions; trainer cards reuse the owned wallet
@@ -36,6 +37,62 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Correlated informational views and owned application (2026-10-08)
+
+Three UI callers sent untagged reads, and `NetworkBridge` applied replies through
+global asynchronous store callbacks. A delayed old-character or old-view reply
+could therefore overwrite a later view. Cutscene badge completion also pushed a
+full unrequested trainer card.
+
+The generated family now shares request/character identity on successes and
+errors. One client adapter uses existing `CorrelatedRequest` settlement, timeout
+and subscription cleanup and the socket's existing retirement generation. Card
+and Pokédex channels supersede older reads; application checks the current
+character, screen, transport generation, request identity and response kind.
+Component cleanup and hidden-view transitions cancel pending reads. Quit/character
+change clears private card/status data; transport replacement also invalidates
+species catalog data. Full list publication is one atomic store update.
+
+The global bridge application callbacks and component-specific raw sends are
+retired. Cutscene completion uses the existing character-scoped resource notice;
+visible informational views request current snapshots instead of receiving a
+historical unsolicited card. The existing inventory reconciliation consumer of
+that notice remains. Unused independent card/species/status store setters are
+retired; owned replies use the single aggregate publication method. No inventory
+command policy is imposed on these reads.
+
+Legacy empty request IDs remain supported on the server for the coordinated
+transition; new clients never apply uncorrelated responses. Retire that request
+lane after coordinated frontend/backend activation and stale-client verification.
+The canonical type generator was run; the script-action/data contract is unchanged.
+
+Client checks cover tagged success, ignored untagged/duplicate replies, superseded
+reads, timeout/retry, send failure, unmount cancellation, wrong character, quit and
+same-character reentry, resolved-response transport retirement, resource notices,
+malformed response kind and atomic list publication. Go wire checks require exact
+identity-bearing error fields and preserve unrelated strict error-shape checks.
+
+Rendered acceptance holds a real trainer-card reply across quit/same-character
+reentry, delivers it at the actual browser socket boundary and verifies the
+current card stays at ¥200. It then refreshes Pokédex status from Seen 6/Caught 6
+to Seen 7/Caught 6 and replays the previous full-list reply; the newer counters
+remain. The final run passed in 4.3s with inspected screenshots and evidence at
+`/var/tmp/capturequest-rendered.Bof1ah`. Native frame events are unavailable for
+routed sockets, so the test observes the real JSON dispatch boundary while
+preserving its production dispatcher. No response or assertion is suppressed.
+Nineteen focused client/bridge/store checks passed, as did frontend typechecking,
+the final production build and runtime asset validation. Focused PostgreSQL wire
+checks passed (1.7s), then full world (52.0s), protocol, session and server race
+suites passed. All Go packages compile, canonical generated types are current
+and diff checks pass. The build retains static/dynamic import and chunk-size
+warnings; no production endpoint was exercised.
+
+Remaining: rendered timeout/disconnect/process-replacement variants and wider
+acquisition/source writer audits, plus the rest of the finite command matrix.
+The original restore timeout and Repel click remain unattributed. All five roadmap
+areas remain active. No push, deployment or production acceptance. Activation of
+the new client read protocol requires the matching backend.
 
 ## Owned Pokédex repair and response snapshots (2026-10-08)
 

@@ -2,7 +2,7 @@ import React, { useEffect, useCallback } from "react";
 import styled from "styled-components";
 import usePokedexStore from "@/stores/PokedexStore";
 import useGameStatusStore from "@stores/GameStatusStore";
-import { WorldSocket, OpCodes } from "@/net";
+import { refreshTrainerCard } from "@/phaser-game/services/PokedexReadService";
 import { BadgeAtlasIcon } from "./BadgeAtlasIcon";
 import { BADGE_FLAGS, BADGE_NAMES } from "./badgeAtlasData";
 
@@ -152,7 +152,9 @@ const TrainerCard: React.FC = () => {
   const { toggleTrainerCard } = useGameStatusStore();
 
   useEffect(() => {
-    WorldSocket.sendJsonMessage(OpCodes.TrainerCardRequest, {});
+    const controller=new AbortController();
+    void refreshTrainerCard(controller.signal);
+    return()=>controller.abort();
   }, []);
 
   const handleClose = useCallback(() => {

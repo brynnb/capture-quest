@@ -406,6 +406,17 @@ export interface TrainerEncounterReadyRequest {
 //////////
 // source: pokedex.go
 
+export interface PokedexReadRequest {
+  requestId: string;
+}
+export interface PokedexReadIdentity {
+  requestId: string;
+  characterId: number /* int64 */;
+}
+export interface PokedexReadError extends PokedexReadIdentity {
+  success: false;
+  error: string;
+}
 export interface PokedexSpeciesEntry {
   id: number /* int */;
   name: string;
@@ -425,7 +436,7 @@ export interface PokedexStatusEntry {
   seen: boolean;
   caught: boolean;
 }
-export interface TrainerCardResponse {
+export interface TrainerCardResponse extends PokedexReadIdentity {
   success: true;
   name: string;
   money: number /* int */;
@@ -438,12 +449,12 @@ export interface TrainerCardResponse {
 /**
  * PokedexListResponse publishes complete species and character status arrays.
  */
-export interface PokedexListResponse {
+export interface PokedexListResponse extends PokedexReadIdentity {
   success: true;
   species: PokedexSpeciesEntry[];
   status: PokedexStatusEntry[];
 }
-export interface PokedexStatusResponse {
+export interface PokedexStatusResponse extends PokedexReadIdentity {
   success: true;
   status: PokedexStatusEntry[];
 }

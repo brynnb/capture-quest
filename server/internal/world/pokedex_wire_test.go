@@ -22,8 +22,29 @@ func TestPrivatePokedexReadsRejectZeroCharacterIdentity(t *testing.T) {
 	if len(messages.streams) != 2 {
 		t.Fatal("invalid character identity omitted failure")
 	}
-	assertQueryWireFailure(t, messages.streams[0], opcodes.PokedexStatusResponse)
-	assertQueryWireFailure(t, messages.streams[1], opcodes.TrainerCardResponse)
+	assertPokedexWireFailure(t, messages.streams[0], opcodes.PokedexStatusResponse, 0)
+	assertPokedexWireFailure(t, messages.streams[1], opcodes.TrainerCardResponse, 0)
+}
+
+func TestPokedexReadRepliesEchoRequestAndSelectedCharacter(t *testing.T) {
+	database, wh, ses, messages := battleTestWorld(t)
+	for _, opcode := range []opcodes.OpCode{opcodes.PokedexListRequest, opcodes.PokedexStatusRequest, opcodes.TrainerCardRequest} {
+		battleDispatch(t, wh, ses, opcode, `{"requestId":"pokedex:owned"}`)
+		var reply struct {
+			RequestID   string `json:"requestId"`
+			CharacterID int64  `json:"characterId"`
+			Success     bool   `json:"success"`
+		}
+		if err := json.Unmarshal(messages.streams[len(messages.streams)-1].payload, &reply); err != nil || !reply.Success || reply.RequestID != "pokedex:owned" || reply.CharacterID != 42 {
+			t.Fatalf("read identity=%+v error=%v", reply, err)
+		}
+	}
+	testdb.Exec(t, database, `DROP TABLE character_wallet`)
+	battleDispatch(t, wh, ses, opcodes.TrainerCardRequest, `{"requestId":"pokedex:failed"}`)
+	var failure protocol.PokedexReadError
+	if err := json.Unmarshal(messages.streams[len(messages.streams)-1].payload, &failure); err != nil || failure.Success || failure.RequestID != "pokedex:failed" || failure.CharacterID != 42 || failure.Error == "" {
+		t.Fatalf("failed identity=%+v error=%v", failure, err)
+	}
 }
 
 func TestTrainerCardKeepsOneSnapshotAcrossConcurrentPublication(t *testing.T) {
@@ -81,7 +102,7 @@ func TestPokedexRepairCommitFailureRejectsResponseAndRollsBack(t *testing.T) {
 	if len(messages.streams) != 1 {
 		t.Fatal("repair failure omitted response")
 	}
-	assertQueryWireFailure(t, messages.streams[0], opcodes.PokedexStatusResponse)
+	assertPokedexWireFailure(t, messages.streams[0], opcodes.PokedexStatusResponse, 42)
 	var count int
 	if err := database.QueryRow(`SELECT count(*) FROM character_pokedex WHERE character_id=42`).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("repair partially committed: count=%d error=%v", count, err)
@@ -126,7 +147,7 @@ func TestPokedexStatusCancellationDoesNotWaitForPoolOrRepair(t *testing.T) {
 	if len(messages.streams) != 1 {
 		t.Fatal("cancelled read omitted terminal response")
 	}
-	assertQueryWireFailure(t, messages.streams[0], opcodes.PokedexStatusResponse)
+	assertPokedexWireFailure(t, messages.streams[0], opcodes.PokedexStatusResponse, 42)
 	var count int
 	if err := database.QueryRow(`SELECT count(*) FROM character_pokedex WHERE character_id=42`).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("cancelled read repaired pokedex: count=%d error=%v", count, err)
@@ -150,7 +171,7 @@ func TestTrainerCardUsesOwnedEmptyWalletPolicyAndPreservesSQLFailure(t *testing.
 	if len(messages.streams) != 2 {
 		t.Fatal("wallet SQL failure omitted terminal response")
 	}
-	assertQueryWireFailure(t, messages.streams[1], opcodes.TrainerCardResponse)
+	assertPokedexWireFailure(t, messages.streams[1], opcodes.TrainerCardResponse, 42)
 }
 
 func TestPokedexAndTrainerCardWireContracts(t *testing.T) {
@@ -218,21 +239,21 @@ func TestPokedexAndTrainerCardWireContracts(t *testing.T) {
 
 	testdb.Exec(t, database, `ALTER TABLE phaser_pokemon RENAME TO unavailable_pokemon`)
 	battleDispatch(t, wh, ses, opcodes.PokedexListRequest, `{}`)
-	assertQueryWireFailure(t, messages.streams[3], opcodes.PokedexListResponse)
+	assertPokedexWireFailure(t, messages.streams[3], opcodes.PokedexListResponse, 42)
 	// A scan error after a valid species must not publish a shortened success list.
 	testdb.Exec(t, database, `ALTER TABLE unavailable_pokemon RENAME TO phaser_pokemon;
   ALTER TABLE phaser_pokemon ALTER COLUMN name DROP NOT NULL;
   UPDATE phaser_pokemon SET name=NULL WHERE id=129`)
 	battleDispatch(t, wh, ses, opcodes.PokedexListRequest, `{}`)
-	assertQueryWireFailure(t, messages.streams[4], opcodes.PokedexListResponse)
+	assertPokedexWireFailure(t, messages.streams[4], opcodes.PokedexListResponse, 42)
 	testdb.Exec(t, database, `UPDATE phaser_pokemon SET name='MAGIKARP' WHERE id=129;
   ALTER TABLE character_wallet RENAME TO unavailable_wallet`)
 	battleDispatch(t, wh, ses, opcodes.TrainerCardRequest, `{}`)
-	assertQueryWireFailure(t, messages.streams[5], opcodes.TrainerCardResponse)
+	assertPokedexWireFailure(t, messages.streams[5], opcodes.TrainerCardResponse, 42)
 	// Reconciliation failure must not masquerade as an empty status snapshot.
 	testdb.Exec(t, database, `DROP TABLE character_pokedex`)
 	battleDispatch(t, wh, ses, opcodes.PokedexStatusRequest, `{}`)
-	assertQueryWireFailure(t, messages.streams[6], opcodes.PokedexStatusResponse)
+	assertPokedexWireFailure(t, messages.streams[6], opcodes.PokedexStatusResponse, 42)
 }
 
 func assertQueryWireFailure(t *testing.T, message recordedStreamMessage, opcode opcodes.OpCode) {
@@ -244,5 +265,17 @@ func assertQueryWireFailure(t *testing.T, message recordedStreamMessage, opcode 
 	explanation, ok := failure["error"].(string)
 	if message.opcode != opcode || failure["success"] != false || !ok || explanation == "" || len(failure) != 2 {
 		t.Fatalf("query failure=%v opcode=%d", failure, message.opcode)
+	}
+}
+
+func assertPokedexWireFailure(t *testing.T, message recordedStreamMessage, opcode opcodes.OpCode, characterID int64) {
+	t.Helper()
+	var failure map[string]any
+	if err := json.Unmarshal(message.payload, &failure); err != nil {
+		t.Fatal(err)
+	}
+	explanation, ok := failure["error"].(string)
+	if message.opcode != opcode || failure["success"] != false || !ok || explanation == "" || failure["requestId"] != "" || failure["characterId"] != float64(characterID) || len(failure) != 4 {
+		t.Fatalf("correlated query failure=%v opcode=%d", failure, message.opcode)
 	}
 }

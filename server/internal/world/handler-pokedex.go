@@ -104,12 +104,37 @@ func readPokedexStatus(q db.DBTX, charID int64) ([]protocol.PokedexStatusEntry, 
 	return status, nil
 }
 
+func pokedexReadIdentity(ses *session.Session, payload []byte) (protocol.PokedexReadIdentity, error) {
+	var req protocol.PokedexReadRequest
+	var identity protocol.PokedexReadIdentity
+	if ses.HasValidClient() {
+		identity.CharacterID = int64(ses.Client.CharData().ID)
+	}
+	if len(payload) > 0 {
+		err := decodePlayerMovement(payload, &req)
+		identity.RequestID = req.RequestID
+		if err != nil {
+			return identity, err
+		}
+	}
+	identity.RequestID = req.RequestID
+	if req.RequestID != "" && !validBattleRequestID(req.RequestID) {
+		return identity, fmt.Errorf("invalid pokedex request identity")
+	}
+	return identity, nil
+}
+func sendPokedexReadError(ses *session.Session, identity protocol.PokedexReadIdentity, opcode opcodes.OpCode, err error) {
+	ses.SendStreamJSON(protocol.PokedexReadError{PokedexReadIdentity: identity, Error: err.Error()}, opcode)
+}
+
 // HandlePokedexListRequest retains character-select catalog access with no status.
 func HandlePokedexListRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	var charID int64
-	if ses.HasValidClient() {
-		charID = int64(ses.Client.CharData().ID)
+	identity, err := pokedexReadIdentity(ses, payload)
+	if err != nil {
+		sendPokedexReadError(ses, identity, opcodes.PokedexListResponse, err)
+		return false
 	}
+	charID := identity.CharacterID
 	result, err := readPokedexSnapshot(ses.CommandContext(), wh.database, charID, func(_ context.Context, q db.ReadDBTX) (protocol.PokedexListResponse, error) {
 		species, err := readPokedexSpecies(q)
 		if err != nil {
@@ -122,16 +147,22 @@ func HandlePokedexListRequest(ses *session.Session, payload []byte, wh *WorldHan
 		return protocol.PokedexListResponse{Success: true, Species: species, Status: status}, nil
 	})
 	if err != nil {
-		ses.SendStreamJSON(protocol.ErrorResponse{Error: err.Error()}, opcodes.PokedexListResponse)
+		sendPokedexReadError(ses, identity, opcodes.PokedexListResponse, err)
 		return false
 	}
+	result.PokedexReadIdentity = identity
 	ses.SendStreamJSON(result, opcodes.PokedexListResponse)
 	return false
 }
 
 func HandlePokedexStatusRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
+	identity, err := pokedexReadIdentity(ses, payload)
+	if err != nil {
+		sendPokedexReadError(ses, identity, opcodes.PokedexStatusResponse, err)
+		return false
+	}
 	if !ses.HasValidClient() || ses.Client.CharData().ID == 0 {
-		ses.SendStreamJSON(protocol.ErrorResponse{Error: "not logged in"}, opcodes.PokedexStatusResponse)
+		sendPokedexReadError(ses, identity, opcodes.PokedexStatusResponse, fmt.Errorf("not logged in"))
 		return false
 	}
 	charID := int64(ses.Client.CharData().ID)
@@ -140,21 +171,27 @@ func HandlePokedexStatusRequest(ses *session.Session, payload []byte, wh *WorldH
 		return protocol.PokedexStatusResponse{Success: true, Status: status}, err
 	})
 	if err != nil {
-		ses.SendStreamJSON(protocol.ErrorResponse{Error: err.Error()}, opcodes.PokedexStatusResponse)
+		sendPokedexReadError(ses, identity, opcodes.PokedexStatusResponse, err)
 		return false
 	}
+	result.PokedexReadIdentity = identity
 	ses.SendStreamJSON(result, opcodes.PokedexStatusResponse)
 	return false
 }
 
 func HandleTrainerCardRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	sendTrainerCardResponse(ses, wh)
+	sendTrainerCardResponse(ses, payload, wh)
 	return false
 }
 
-func sendTrainerCardResponse(ses *session.Session, wh *WorldHandler) {
+func sendTrainerCardResponse(ses *session.Session, payload []byte, wh *WorldHandler) {
+	identity, err := pokedexReadIdentity(ses, payload)
+	if err != nil {
+		sendPokedexReadError(ses, identity, opcodes.TrainerCardResponse, err)
+		return
+	}
 	if !ses.HasValidClient() || ses.Client.CharData().ID == 0 {
-		ses.SendStreamJSON(protocol.ErrorResponse{Error: "not logged in"}, opcodes.TrainerCardResponse)
+		sendPokedexReadError(ses, identity, opcodes.TrainerCardResponse, fmt.Errorf("not logged in"))
 		return
 	}
 	char := ses.Client.CharData()
@@ -182,9 +219,10 @@ func sendTrainerCardResponse(ses *session.Session, wh *WorldHandler) {
 		return card, nil
 	})
 	if err != nil {
-		ses.SendStreamJSON(protocol.ErrorResponse{Error: err.Error()}, opcodes.TrainerCardResponse)
+		sendPokedexReadError(ses, identity, opcodes.TrainerCardResponse, err)
 		return
 	}
+	result.PokedexReadIdentity = identity
 	ses.SendStreamJSON(result, opcodes.TrainerCardResponse)
 }
 

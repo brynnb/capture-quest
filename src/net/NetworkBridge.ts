@@ -154,6 +154,7 @@ export class NetworkBridge {
         break;
 
       case OpCodes.ResourcesChangedNotify:
+        import("@/phaser-game/services/PokedexReadService").then(module=>module.acceptPokedexResourceChange(data));
         import("@/phaser-game/services/InventoryCommandService").then(module=>module.acceptResourceChangeNotification(data));
         break;
       case OpCodes.CQItemUseResponse:
@@ -234,13 +235,9 @@ export class NetworkBridge {
 
       // Pokédex & UI (Phase 10)
       case OpCodes.PokedexListResponse:
-        this.handlePokedexListResponse(data as ProtocolTypes.PokedexListResponse | ProtocolTypes.ErrorResponse);
-        break;
       case OpCodes.PokedexStatusResponse:
-        this.handlePokedexStatusResponse(data as ProtocolTypes.PokedexStatusResponse | ProtocolTypes.ErrorResponse);
-        break;
       case OpCodes.TrainerCardResponse:
-        this.handleTrainerCardResponse(data as ProtocolTypes.TrainerCardResponse | ProtocolTypes.ErrorResponse);
+        import("@/phaser-game/services/PhaserNetworkService").then(module=>module.dispatchPhaserResponse(opcode,data));
         break;
 
       // Debug Scene Debugger
@@ -627,28 +624,6 @@ export class NetworkBridge {
     import("@/phaser-game/services/CutsceneService").then(({ handleCutsceneStart }) => {
       this.playSourceSFX("SFX_PRESS_AB", 0.45);
       handleCutsceneStart(data as unknown as import("@/phaser-game/services/CutsceneService").CutsceneStartPayload);
-    });
-  }
-
-  private handlePokedexListResponse(data: ProtocolTypes.PokedexListResponse | ProtocolTypes.ErrorResponse) {
-    if (!data.success) return;
-    import("@/stores/PokedexStore").then(({ default: usePokedexStore }) => {
-      usePokedexStore.getState().setSpecies(data.species);
-      usePokedexStore.getState().setStatus(data.status);
-    });
-  }
-
-  private handlePokedexStatusResponse(data: ProtocolTypes.PokedexStatusResponse | ProtocolTypes.ErrorResponse) {
-    if (!data.success) return;
-    import("@/stores/PokedexStore").then(({ default: usePokedexStore }) => {
-      usePokedexStore.getState().setStatus(data.status);
-    });
-  }
-
-  private handleTrainerCardResponse(data: ProtocolTypes.TrainerCardResponse | ProtocolTypes.ErrorResponse) {
-    if (!data.success) return;
-    import("@/stores/PokedexStore").then(({ default: usePokedexStore }) => {
-      usePokedexStore.getState().setTrainerCard(data);
     });
   }
 

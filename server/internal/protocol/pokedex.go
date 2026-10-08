@@ -1,5 +1,20 @@
 package protocol
 
+type PokedexReadRequest struct {
+	RequestID string `json:"requestId"`
+}
+
+type PokedexReadIdentity struct {
+	RequestID   string `json:"requestId"`
+	CharacterID int64  `json:"characterId"`
+}
+
+type PokedexReadError struct {
+	PokedexReadIdentity `tstype:",extends"`
+	Success             bool   `json:"success" tstype:"false"`
+	Error               string `json:"error"`
+}
+
 type PokedexSpeciesEntry struct {
 	ID          int     `json:"id"`
 	Name        string  `json:"name"`
@@ -22,24 +37,27 @@ type PokedexStatusEntry struct {
 }
 
 type TrainerCardResponse struct {
-	Success       bool     `json:"success" tstype:"true"`
-	Name          string   `json:"name"`
-	Money         int      `json:"money"`
-	TimePlayed    int      `json:"timePlayed"`
-	Badges        []string `json:"badges"`
-	BadgeCount    int      `json:"badgeCount"`
-	PokedexSeen   int      `json:"pokedexSeen"`
-	PokedexCaught int      `json:"pokedexCaught"`
+	PokedexReadIdentity `tstype:",extends"`
+	Success             bool     `json:"success" tstype:"true"`
+	Name                string   `json:"name"`
+	Money               int      `json:"money"`
+	TimePlayed          int      `json:"timePlayed"`
+	Badges              []string `json:"badges"`
+	BadgeCount          int      `json:"badgeCount"`
+	PokedexSeen         int      `json:"pokedexSeen"`
+	PokedexCaught       int      `json:"pokedexCaught"`
 }
 
 // PokedexListResponse publishes complete species and character status arrays.
 type PokedexListResponse struct {
-	Success bool                  `json:"success" tstype:"true"`
-	Species []PokedexSpeciesEntry `json:"species"`
-	Status  []PokedexStatusEntry  `json:"status"`
+	PokedexReadIdentity `tstype:",extends"`
+	Success             bool                  `json:"success" tstype:"true"`
+	Species             []PokedexSpeciesEntry `json:"species"`
+	Status              []PokedexStatusEntry  `json:"status"`
 }
 
 type PokedexStatusResponse struct {
-	Success bool                 `json:"success" tstype:"true"`
-	Status  []PokedexStatusEntry `json:"status"`
+	PokedexReadIdentity `tstype:",extends"`
+	Success             bool                 `json:"success" tstype:"true"`
+	Status              []PokedexStatusEntry `json:"status"`
 }

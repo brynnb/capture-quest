@@ -1,6 +1,6 @@
 import React, { useEffect } from "react";
 import styled from "styled-components";
-import { OpCodes, WorldSocket } from "@/net";
+import { refreshTrainerCard } from "@/phaser-game/services/PokedexReadService";
 import { BadgeAtlasIcon } from "@/components/Interface/BadgeAtlasIcon";
 import {
   BADGE_FLAGS,
@@ -167,7 +167,9 @@ const StatInfoBar: React.FC = () => {
   const party = usePokemonPartyStore((state) => state.party);
 
   useEffect(() => {
-    WorldSocket.sendJsonMessage(OpCodes.TrainerCardRequest, {});
+    const controller=new AbortController();
+    void refreshTrainerCard(controller.signal);
+    return()=>controller.abort();
   }, []);
 
   if (!characterProfile?.name) {

@@ -76,7 +76,7 @@ func HandleCutsceneEndRequest(ses *session.Session, payload []byte, wh *WorldHan
 	if completed && !completion.Replayed {
 		sendEventTileStatesForSession(ses, charID, cs.MapName, wh)
 		if cutsceneAffectsTrainerCard(&cs) {
-			sendTrainerCardResponse(ses, wh)
+			notifyResourceChange(ses)
 		}
 	}
 
