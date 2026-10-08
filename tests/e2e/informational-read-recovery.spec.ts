@@ -1,8 +1,60 @@
-import {expect,test} from "@playwright/test";
+import {expect,test,type Page} from "@playwright/test";
 import * as OpCodes from "../../src/net/generated/opcodes";
 import {createGuestCharacterAndEnterWorld,enterWorld,quitToCharacterSelect} from "./helpers/auth";
 import {isolatedCrashRuntime} from "./helpers/processRecovery";
 import {getGameState,waitForNoMapLoading} from "./helpers/state";
+
+// Routed sockets have no native frame events. Observe the production parser,
+// preserving dispatch, so replay checks prove browser receipt before assertions.
+async function observeReadDelivery(page:Page,receive:(opcode:number,requestId:string)=>void){
+  await page.exposeFunction("observeReadDelivery",receive);
+  await page.evaluate(async opcodes=>{
+    const path="/src/net/index.ts";
+    const {WorldSocket}=await import(path) as typeof import("../../src/net/index");
+    const dispatch=WorldSocket.onJson;
+    WorldSocket.onJson=(opcode,data)=>{
+      if(opcodes.includes(opcode) && data && typeof(data as {requestId?:unknown}).requestId==="string")void(window as unknown as {observeReadDelivery:(opcode:number,id:string)=>Promise<void>}).observeReadDelivery(opcode,(data as {requestId:string}).requestId);
+      dispatch?.(opcode,data);
+    };
+  },[OpCodes.TrainerCardResponse,OpCodes.PokedexListResponse,OpCodes.PokedexStatusResponse]);
+}
+
+test("trainer-card timeout retries with a fresh identity and ignores its late reply",async({page,context})=>{
+  test.skip(process.env.CQ_E2E_DATABASE_FIXTURE!=="true","Requires the private database runner");
+  test.setTimeout(60000);
+  const {sql}=await isolatedCrashRuntime();
+  const requests:string[]=[];const held:Array<{id:string;deliver:()=>void}>=[];let hold=true;let delivered=0;
+  await context.routeWebSocket("**/ws",socket=>{
+    const server=socket.connectToServer();
+    socket.onMessage(message=>{
+      if(Buffer.isBuffer(message) && message.length>=6 && message.readUInt16LE(4)===OpCodes.TrainerCardRequest)requests.push(JSON.parse(message.subarray(6).toString()).requestId);
+      server.send(message);
+    });
+    server.onMessage(message=>{
+      if(hold && Buffer.isBuffer(message) && message.length>=6 && message.readUInt16LE(4)===OpCodes.TrainerCardResponse){
+        const reply=JSON.parse(message.subarray(6).toString());
+        if(reply.success && reply.requestId){held.push({id:reply.requestId,deliver:()=>socket.send(message)});return;}
+      }
+      socket.send(message);
+    });
+  });
+  await createGuestCharacterAndEnterWorld(page);
+  await expect.poll(async()=>(await getGameState(page)).player.internalId??0).toBeGreaterThan(0);
+  const id=(await getGameState(page)).player.internalId!;
+  await observeReadDelivery(page,(opcode,requestId)=>{if(opcode===OpCodes.TrainerCardResponse && held.some(reply=>reply.id===requestId))delivered++;});
+  await page.getByRole("button",{name:"Trainer",exact:true}).click();
+  await expect.poll(()=>held.length).toBeGreaterThan(0);
+  const error=page.getByText("Trainer information could not be refreshed. Close and reopen the view to retry.",{exact:true});
+  await expect(error).toBeAttached({timeout:20000});
+  await page.keyboard.press("Escape");await expect(error).toBeVisible();
+  const beforeRetry=requests.length;hold=false;
+  await sql(`INSERT INTO character_wallet(character_id,pokedollars) VALUES(${id},300) ON CONFLICT(character_id) DO UPDATE SET pokedollars=300`);
+  await page.getByRole("button",{name:"Trainer",exact:true}).click();
+  const money=page.getByText("Money",{exact:true}).locator("..").getByText("¥300",{exact:true});
+  await expect(money).toBeVisible();expect(requests).toHaveLength(beforeRetry+1);expect(new Set(requests).size).toBe(requests.length);
+  held.forEach(reply=>reply.deliver());await expect.poll(()=>delivered).toBe(held.length);await expect(money).toBeVisible();
+  await page.keyboard.press("Escape");await quitToCharacterSelect(page);
+});
 
 test("retired trainer-card response cannot rewind same-character reentry",async({page,context},testInfo)=>{
   test.skip(process.env.CQ_E2E_DATABASE_FIXTURE!=="true","Requires the private database runner");
@@ -30,18 +82,7 @@ test("retired trainer-card response cannot rewind same-character reentry",async(
   const character=await createGuestCharacterAndEnterWorld(page);
   await expect.poll(async()=>(await getGameState(page)).player.internalId??0).toBeGreaterThan(0);
   const id=(await getGameState(page)).player.internalId!;
-  // Routed WebSockets do not expose native frame events. Observe delivery at
-  // the actual socket JSON boundary while preserving the production dispatcher.
-  await page.exposeFunction("observeInfoDelivery",(opcode:number,requestId:string)=>{if(opcode===OpCodes.TrainerCardResponse && requestId===oldId)delivered++;if(opcode===OpCodes.PokedexListResponse && requestId===oldListId)listDelivered++;});
-  await page.evaluate(async()=>{
-    const modulePath="/src/net/index.ts";
-    const {WorldSocket}=await import(modulePath) as typeof import("../../src/net/index");
-    const dispatch=WorldSocket.onJson;
-    WorldSocket.onJson=(opcode:number,data:unknown)=>{
-      void (window as unknown as {observeInfoDelivery:(opcode:number,id:string)=>Promise<void>}).observeInfoDelivery(opcode,(data as {requestId:string}).requestId);
-      dispatch?.(opcode,data);
-    };
-  });
+  await observeReadDelivery(page,(opcode,requestId)=>{if(opcode===OpCodes.TrainerCardResponse && requestId===oldId)delivered++;if(opcode===OpCodes.PokedexListResponse && requestId===oldListId)listDelivered++;});
   await page.getByRole("button",{name:"Trainer",exact:true}).click();
   await expect.poll(()=>Boolean(releaseOld)).toBe(true);
   await page.keyboard.press("Escape");

@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+informational read boundary review rejects incomplete/wrong-kind data and
+suppresses same-turn abandoned dispatch, following `6600612`:
 Pokédex/trainer client reads reuse shared correlation and transport retirement,
 following `eb5baf4`: Pokédex/trainer responses share bounded repair and coherent read snapshots,
 following `3ddac87`: entry persists only last-login metadata and recovery preserves its full pose
@@ -37,6 +39,46 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Informational boundary review and timeout retry (2026-10-08)
+
+Review reproduced two application defects: a success packet containing only
+identity and `badges: []` became a card snapshot despite missing presentation
+fields, and a status packet carrying list fields could replace the species
+catalog. Both regressions failed before the fix. The shared adapter now validates
+the requested response kind and required card/status/catalog fields before the
+single store publication. Missing data is rejected; no defaults are fabricated.
+
+Rendered retry investigation also observed two different request IDs at the same
+timestamp on every card mount. `src/main.tsx` uses React StrictMode, whose cleanup
+and remount abandoned the first demand after immediate dispatch. The adapter now
+yields one microtask before dispatch and checks its existing current-owner guard.
+Cleanup or supersession in that turn sends no abandoned request. The shared
+correlation/timeout implementation is unchanged. Unit checks separately retain
+coverage of older requests that were already sent.
+
+The browser fault test holds all card responses during the timeout phase, because
+holding only the first response lets a valid superseding refresh complete. It
+requires the real timeout message, then one fresh read on reopen with a distinct
+identity, current money and no rewind after browser receipt of every held reply.
+Both informational browser cases reuse one observation helper at the actual
+socket JSON boundary; its production dispatcher is preserved. Retry cardinality
+is asserted rather than relaxed to accept duplicate abandoned sends.
+Both rendered checks passed in 17.5s (`/var/tmp/capturequest-rendered.jYTF1Q`).
+The timeout case verifies the visible retry message, exactly one fresh request
+on reopen, distinct request identity, ¥300 current money and no rewind after
+delivery of all held responses. The reentry/card and old-list/new-status case
+still passes with the strengthened validators and deferred dispatch.
+Twenty-two focused client/store/shared-boundary tests, frontend typecheck,
+production build, runtime asset validation and diff checks passed. This checkpoint
+changes no Go runtime or wire contract; its preceding PostgreSQL/Go evidence is
+retained without an unnecessary broad rerun. Existing build warnings remain.
+
+Remaining: rendered disconnect/process-replacement cases, broader acquisition
+writer and prerequisite audits, and the rest of the finite command matrix. The
+original restore timeout and Repel click remain unattributed. The legacy empty-ID
+server lane still needs retirement after coordinated release verification. All
+five roadmap areas remain active. No push or deployment.
 
 ## Correlated informational views and owned application (2026-10-08)
 

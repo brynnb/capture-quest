@@ -12,6 +12,27 @@ type Success = Exclude<PhaserNet.PokedexReadReply, {success:false}>;
 type Channel = "card" | "pokedex";
 const active = new Map<Channel, AbortController>();
 
+function validateReply(request:OpCodes.OpCode,reply:Success):void {
+  if(request===OpCodes.TrainerCardRequest){
+    if(!("badges" in reply) || "species" in reply || "status" in reply)throw new Error("Invalid trainer-card response kind");
+    if(typeof reply.name!=="string" || !Array.isArray(reply.badges) || !reply.badges.every(flag=>typeof flag==="string"))throw new Error("Invalid trainer-card fields");
+    for(const key of ["money","timePlayed","badgeCount","pokedexSeen","pokedexCaught"] as const){
+      if(!Number.isSafeInteger(reply[key]) || reply[key]<0)throw new Error(`Invalid trainer-card ${key}`);
+    }
+    if(reply.badgeCount!==reply.badges.length)throw new Error("Invalid trainer-card badge count");
+    return;
+  }
+  if(!("status" in reply) || "badges" in reply || !Array.isArray(reply.status))throw new Error("Invalid Pokedex response kind");
+  if(!reply.status.every(entry=>entry && Number.isSafeInteger(entry.pokemonId) && entry.pokemonId>0 && typeof entry.seen==="boolean" && typeof entry.caught==="boolean"))throw new Error("Invalid Pokedex status fields");
+  if(request===OpCodes.PokedexStatusRequest){
+    if("species" in reply)throw new Error("Status response cannot replace the catalog");
+    return;
+  }
+  if(!("species" in reply) || !Array.isArray(reply.species))throw new Error("Missing Pokedex catalog");
+  const nullableString=(value:unknown)=>value===null || typeof value==="string";
+  if(!reply.species.every(entry=>entry && Number.isSafeInteger(entry.id) && entry.id>0 && typeof entry.name==="string" && typeof entry.type1==="string" && nullableString(entry.type2) && nullableString(entry.pokedexType) && nullableString(entry.height) && nullableString(entry.pokedexText) && nullableString(entry.iconImage) && (entry.weight===null || Number.isSafeInteger(entry.weight))))throw new Error("Invalid Pokedex catalog fields");
+}
+
 function retire() {
   for (const controller of active.values()) controller.abort();
   active.clear();
@@ -49,11 +70,14 @@ async function read(channel:Channel, request:OpCodes.OpCode,response:OpCodes.OpC
   signal?.addEventListener("abort",abort,{once:true});
   const current=()=>!controller.signal.aborted && active.get(channel)===controller && WorldSocket.sessionGeneration===generation && useGameScreenStore.getState().currentScreen==="game" && usePlayerCharacterStore.getState().characterProfile.id===characterId;
   try {
+    // Effect cleanup/remount and same-turn replacement can retire demand before
+    // dispatch. Do not send an already abandoned read (notably in StrictMode).
+    await Promise.resolve();
+    if(!current())return;
     const reply=await correlatedRequest<Success>(receive=>PhaserNet.onPokedexRead(response,receive),requestId=>PhaserNet.requestPokedexRead(request,requestId),controller.signal);
     if(!current())return;
     if(reply.characterId!==characterId)throw new Error("Pokedex response belongs to another character");
-    if(request===OpCodes.TrainerCardRequest ? !("badges" in reply && Array.isArray(reply.badges)) : !("status" in reply && Array.isArray(reply.status)))throw new Error("Invalid trainer information response");
-    if(request===OpCodes.PokedexListRequest && !("species" in reply && Array.isArray(reply.species)))throw new Error("Invalid Pokedex catalog response");
+    validateReply(request,reply);
     usePokedexStore.getState().applyRead(reply);
   } catch(error) {
     if(current() && !(error instanceof DOMException && error.name==="AbortError"))useChatStore.getState().addMessage("Trainer information could not be refreshed. Close and reopen the view to retry.",MessageType.SYSTEM_ERROR);
