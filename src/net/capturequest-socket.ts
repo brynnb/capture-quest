@@ -152,6 +152,7 @@ export class CaptureQuestSocket {
     port: number | string,
     onClose: () => void
   ): Promise<boolean> {
+    this.isConnected = false;
     this.retireSessionReads();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const WT = (window as any).WebTransport as {
@@ -408,9 +409,11 @@ export class CaptureQuestSocket {
 
 
   public close(scheduleReconnect: boolean = true) {
-    this.retireSessionReads();
+    // Observers must see an unavailable connection before retirement can
+    // synchronously trigger another read.
     this.isClosing = true;
     this.isConnected = false;
+    this.retireSessionReads();
 
     // Clean up WebTransport
     this.datagramWriter?.releaseLock();

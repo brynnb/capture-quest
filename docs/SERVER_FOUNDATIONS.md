@@ -28,6 +28,46 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Catalog retirement review and rendered replacement acceptance (2026-10-08)
+
+Review found `close()` notifying retirement observers while `isConnected` was
+still true. A synchronous observer could attempt a read through the connection
+being cleaned up. Close and connection-attempt admission now mark the connection
+unavailable before notifying read owners. The regression verifies observers see
+that state and that one throwing observer cannot prevent notification/cleanup.
+No additional retirement coordinator or observer layer was added.
+
+Rendered acceptance holds a catalog reply while the browser remains pending,
+then replaces its account on the same WebSocket or closes that exact test socket
+and lets the ordinary reconnect path establish another connection. An older
+modified reply is injected during the next read and cannot publish its catalog.
+Both paths proceed through character creation and entry. The account case then
+switches back to the original account and verifies the new character is absent,
+proving actual account replacement rather than only a local generation change.
+These two cases and the existing timeout/explicit-retry case passed in 21.9 seconds
+in `/var/tmp/capturequest-rendered.CvVfmt`. Seven focused client checks and typecheck
+passed. Production build and canonical asset validation passed (Vite build 3.34
+seconds); evidence is retained at `/var/tmp/capturequest-catalog-retirement-build.log`.
+Diff checks passed. No backend, schema, wire or asset
+contract changed in this review; prior backend snapshot/correlation evidence is
+reused rather than rerunning unrelated suites.
+
+The static/creation read-family coverage now includes authenticated admission,
+injected coherent storage, complete typed replies, correlated overlap, safe
+read retry, timeout, cancellation, explicit UI recovery, coalescing, late-view
+suppression and real account/connection retirement. Transactional gameplay
+rollback, mutation duplicate receipts and process-death reward recovery are
+inapplicable: these endpoints only read a read-only snapshot and write no player
+state. Catalog content is application-wide, so one screen's unmount does not retire
+other observing consumers. Matched wire rollout and legacy-request rejection are
+recorded in the preceding checkpoints. This closes the selected read-family audit;
+it does not close the broader account/transport audit or prove production rollout.
+
+The original restore timeout remains unattributed and all five roadmap areas
+remain active. Next: audit the remaining world-presentation query contracts and
+read ownership against the same primitives. This is a local checkpoint; no push,
+deployment or production mutation is part of this continuation.
+
 ## Correlated catalog reads and shared client lifetime (2026-10-08)
 
 Both catalog endpoints now require and echo `requestId`, including rejection/read
