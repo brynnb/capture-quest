@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+dialogue text, durable flags, trade completion and branch eligibility share one
+bounded read snapshot, following `310be88`:
 dialogue entries, conditional overrides and trade fallback reads use the injected
 database and caller cancellation, following `b6d3ce3`:
 conditional dialogue rejects malformed conditions and load failures,
@@ -49,6 +51,34 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Coherent dialogue response snapshot (2026-10-08)
+
+The live dialogue handler now assembles text, conditional overrides, trade
+completion and branch eligibility through the existing bounded read-only,
+repeatable-read `db.ReadSnapshot`. All reads retain the same query handle and
+session cancellation budget. Required flags come from durable state, not the
+possibly stale session flag cache. Cutscene ownership still uses the server's
+loaded script registry; this is a catalog policy, not a second player-state read.
+
+Branch/trade query errors reject the response; absent definitions remain valid
+no-branch results. Three unused global branch wrappers and the global trade
+loader are retired. The simulator still consumes `ResolveDialogueChoice`; its
+separate global fixture/execution migration remains explicitly open. Normal
+successful dialogue reads no longer emit a production log line.
+
+PostgreSQL dispatcher evidence covers a stale cache disagreeing with durable
+flags, concurrent text/flag publication while the owned read waits on a table
+lock, the complete next publication, and branch-query failure returning no
+partial dialogue. Snapshot pool cancellation/retry and existing trade/script
+ownership checks also pass (focused race run: 1.4s). Full PostgreSQL world
+(54.4s), simulator (1.5s) and session (1.1s) race suites passed. All Go packages
+compile; `git diff --check` passes. No rendered dialogue acceptance is inferred.
+
+Next: generated response identity, client shared correlation and actor/cutscene
+request lifetime, then rendered timeout/stale/reentry acceptance. The dialogue
+family and all five roadmap areas remain incomplete. No schema/assets, push or
+production deployment this checkpoint.
 
 ## Dialogue reader ownership prerequisite (2026-10-08)
 

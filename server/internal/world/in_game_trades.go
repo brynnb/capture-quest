@@ -71,22 +71,25 @@ func resolveInGameTradeDialogueEntries(ctx context.Context, database db.ContextD
 	}}, nil
 }
 
-func checkInGameTradeBranchingDialogue(textConstant string, charID int64) *BranchingDialogue {
+func checkInGameTradeBranchingDialogue(ctx context.Context, database db.ContextDBTX, textConstant string, charID int64) (*BranchingDialogue, error) {
 	if charID == 0 {
-		return nil
+		return nil, nil
 	}
-	trade, err := loadInGameTradeDefinitionByText(textConstant)
+	trade, err := queryInGameTradeDefinitionByTextContext(ctx, database, textConstant)
+	if errors.Is(err, errInGameTradeNotFound) {
+		return nil, nil
+	}
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	completed, err := characterCompletedInGameTrade(db.GlobalWorldDB.DB, charID, trade.TradeKey)
-	if err != nil || completed {
-		return nil
+	var completed bool
+	if err := database.QueryRowContext(ctx, inGameTradeCompletionQuery, charID, trade.TradeKey).Scan(&completed); err != nil {
+		return nil, err
 	}
-	return &BranchingDialogue{
-		PromptTextConstant: textConstant,
-		PromptText:         trade.promptDialogue(),
+	if completed {
+		return nil, nil
 	}
+	return &BranchingDialogue{PromptTextConstant: textConstant, PromptText: trade.promptDialogue()}, nil
 }
 
 func handleInGameTradeDialogueChoice(ctx context.Context, ses *session.Session, req DialogueChoiceRequest, wh *WorldHandler, mapName string) bool {
@@ -143,13 +146,6 @@ func handleInGameTradeDialogueChoice(ctx context.Context, ses *session.Session, 
 	log.Printf("[InGameTrade] Dialogue choice %s choice=%t traded=%t wrongPokemon=%t",
 		trade.TradeKey, req.Choice, outcome.Traded, outcome.WrongPokemon)
 	return true
-}
-
-func loadInGameTradeDefinitionByText(textConstant string) (inGameTradeDefinition, error) {
-	if db.GlobalWorldDB == nil || db.GlobalWorldDB.DB == nil {
-		return inGameTradeDefinition{}, errInGameTradeNotFound
-	}
-	return queryInGameTradeDefinitionByText(db.GlobalWorldDB.DB, textConstant)
 }
 
 func queryInGameTradeDefinitionByText(myDB pokebattle.DBTX, textConstant string) (inGameTradeDefinition, error) {

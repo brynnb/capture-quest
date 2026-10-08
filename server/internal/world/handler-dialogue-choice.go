@@ -44,13 +44,6 @@ type DialogueChoiceResult struct {
 	Actions              json.RawMessage `json:"actions"`
 }
 
-// GetBranchingDialogue fetches branching dialogue data for a text constant
-func GetBranchingDialogue(textConstant string) (*BranchingDialogue, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	return getBranchingDialogueContext(ctx, db.GlobalWorldDB.DB, textConstant)
-}
-
 func getBranchingDialogueContext(ctx context.Context, database db.ContextDBTX, textConstant string) (*BranchingDialogue, error) {
 	var bd BranchingDialogue
 	var yesActions, noActions sql.NullString
@@ -229,32 +222,19 @@ func fetchDialogueTextContext(ctx context.Context, database db.ContextDBTX, text
 	return dialogue, err
 }
 
-// CheckForBranchingDialogue checks if a text constant has YES/NO branching.
-// If the branching requires an event flag, charID must be provided to check it.
-// Pass charID=0 and efm=nil to skip the flag check (e.g., from the dialogue response handler).
-func CheckForBranchingDialogue(textConstant string) *BranchingDialogue {
-	bd, err := GetBranchingDialogue(textConstant)
-	if err != nil {
-		return nil
+// Branch prerequisites are evaluated against the caller's flag snapshot.
+func checkBranchingDialogueWithFlags(ctx context.Context, database db.ContextDBTX, textConstant string, charID int64, efm *EventFlagManager) (*BranchingDialogue, error) {
+	bd, err := getBranchingDialogueContext(ctx, database, textConstant)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
 	}
-	return bd
-}
-
-// CheckForBranchingDialogueWithFlags checks if a text constant has YES/NO branching
-// and verifies the player meets the requires_event_flag condition.
-func CheckForBranchingDialogueWithFlags(textConstant string, charID int64, efm *EventFlagManager) *BranchingDialogue {
-	bd, err := GetBranchingDialogue(textConstant)
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	// If branching requires an event flag, check it
 	if bd.RequiresEventFlag.Valid && bd.RequiresEventFlag.String != "" {
-		if efm == nil || charID == 0 {
-			return nil // Can't check — skip branching
-		}
-		if !efm.CheckFlag(charID, bd.RequiresEventFlag.String) {
-			return nil // Player doesn't have the required flag
+		if efm == nil || charID == 0 || !efm.CheckFlag(charID, bd.RequiresEventFlag.String) {
+			return nil, nil
 		}
 	}
-	return bd
+	return bd, nil
 }

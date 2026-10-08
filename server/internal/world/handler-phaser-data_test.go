@@ -1,9 +1,15 @@
 package world
 
 import (
+	"capturequest/internal/api/opcodes"
+	"capturequest/internal/testdb"
 	"context"
 	"database/sql"
+	"encoding/json"
+	"errors"
+	"runtime"
 	"testing"
+	"time"
 
 	"capturequest/internal/db"
 
@@ -11,7 +17,7 @@ import (
 )
 
 func TestBranchingDialogueForResponseSuppressesLegacyBranchForScriptOwnedClick(t *testing.T) {
-	setupBranchingDialogueTestDB(t, "TEXT_CELADONMARTROOF_LITTLE_GIRL")
+	raw := setupBranchingDialogueTestDB(t, "TEXT_CELADONMARTROOF_LITTLE_GIRL")
 
 	cutscenes := NewCutsceneManager(nil)
 	cutscenes.mu.Lock()
@@ -26,19 +32,22 @@ func TestBranchingDialogueForResponseSuppressesLegacyBranchForScriptOwnedClick(t
 		Cutscenes:  cutscenes,
 		EventFlags: &EventFlagManager{},
 	}
-	if got := branchingDialogueForResponse("TEXT_CELADONMARTROOF_LITTLE_GIRL", 42, wh); got != nil {
+	if got, err := branchingDialogueForResponse(context.Background(), raw, "TEXT_CELADONMARTROOF_LITTLE_GIRL", 42, wh.EventFlags, wh.Cutscenes); got != nil || err != nil {
 		t.Fatalf("branching dialogue = %#v, want nil for script-owned text constant", got)
 	}
 }
 
 func TestBranchingDialogueForResponseAllowsLegacyBranchWithoutScriptOwner(t *testing.T) {
-	setupBranchingDialogueTestDB(t, "TEXT_POKEMONMANSION1F_SWITCH")
+	raw := setupBranchingDialogueTestDB(t, "TEXT_POKEMONMANSION1F_SWITCH")
 
 	wh := &WorldHandler{
 		Cutscenes:  NewCutsceneManager(nil),
 		EventFlags: &EventFlagManager{},
 	}
-	got := branchingDialogueForResponse("TEXT_POKEMONMANSION1F_SWITCH", 42, wh)
+	got, err := branchingDialogueForResponse(context.Background(), raw, "TEXT_POKEMONMANSION1F_SWITCH", 42, wh.EventFlags, wh.Cutscenes)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got == nil {
 		t.Fatal("branching dialogue = nil, want legacy branch")
 	}
@@ -85,7 +94,7 @@ func TestResolvePhaserDialogueEntriesAppliesGeneratedConditionalDialogue(t *test
 	}
 }
 
-func setupBranchingDialogueTestDB(t *testing.T, textConstant string) {
+func setupBranchingDialogueTestDB(t *testing.T, textConstant string) *sql.DB {
 	t.Helper()
 
 	raw, err := sql.Open("sqlite", ":memory:")
@@ -140,6 +149,7 @@ func setupBranchingDialogueTestDB(t *testing.T, textConstant string) {
 		db.GlobalWorldDB = previous
 		raw.Close()
 	})
+	return raw
 }
 
 func setupGeneratedConditionalDialogueResolverTestDB(t *testing.T) *sql.DB {
@@ -216,5 +226,100 @@ func TestResolveDialogueRejectsScanFailureWithoutPartialEntries(t *testing.T) {
 	entries, err := resolvePhaserDialogueEntries(context.Background(), raw, "TEXT_OAKSLAB_RIVAL", 42, NewEventFlagManager(nil))
 	if err == nil || entries != nil {
 		t.Fatalf("entries=%v error=%v", entries, err)
+	}
+}
+
+func TestDialogueResponseUsesDurableFlagsAndOnePublication(t *testing.T) {
+	database, wh, ses, messages := battleTestWorld(t)
+	db.GlobalWorldDB = nil
+	wh.EventFlags.flags[42] = map[string]bool{"READY": true}
+	testdb.Exec(t, database, `INSERT INTO phaser_text_pointers(map_name,text_constant,local_label,dialogue_label) VALUES('ROOM','PROMPT','Local','Base');
+ INSERT INTO phaser_dialogue_text(label,source_file,dialogue) VALUES('Base','fixture','Before');
+ INSERT INTO phaser_conditional_dialogue(text_constant,requires_flag,override_dialogue) VALUES('PROMPT','READY','Ready');
+ INSERT INTO phaser_branching_dialogue(prompt_text_constant,prompt_text,requires_event_flag) VALUES('PROMPT','Choose?','READY')`)
+	writer, err := database.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Rollback()
+	if _, err := writer.Exec(`LOCK TABLE phaser_text_pointers IN ACCESS EXCLUSIVE MODE`); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		battleDispatch(t, wh, ses, opcodes.PhaserDialogueRequest, `{"textConstant":"PROMPT"}`)
+	}()
+	deadline := time.Now().Add(time.Second)
+	for {
+		var waiting bool
+		if err := database.QueryRow(`SELECT EXISTS(SELECT 1 FROM pg_locks WHERE relation='phaser_text_pointers'::regclass AND NOT granted)`).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting {
+			break
+		}
+		if time.Now().After(deadline) {
+			writer.Rollback()
+			<-done
+			t.Fatal("dialogue did not reach text read")
+		}
+		runtime.Gosched()
+	}
+	if _, err := writer.Exec(`UPDATE phaser_dialogue_text SET dialogue='After' WHERE label='Base'; INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'READY')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	<-done
+	check := func(want string, branch bool) {
+		t.Helper()
+		var reply struct {
+			Success bool                  `json:"success"`
+			Entries []PhaserDialogueEntry `json:"dialogueEntries"`
+			Branch  bool                  `json:"hasBranching"`
+		}
+		if len(messages.streams) == 0 {
+			t.Fatal("missing response")
+		}
+		if err := json.Unmarshal(messages.streams[len(messages.streams)-1].payload, &reply); err != nil {
+			t.Fatal(err)
+		}
+		if !reply.Success || len(reply.Entries) != 1 || reply.Entries[0].Dialogue != want || reply.Branch != branch {
+			t.Fatalf("response=%+v want=%q branch=%v", reply, want, branch)
+		}
+	}
+	check("Before", false)
+	battleDispatch(t, wh, ses, opcodes.PhaserDialogueRequest, `{"textConstant":"PROMPT"}`)
+	check("Ready", true)
+	testdb.Exec(t, database, `DROP TABLE phaser_branching_dialogue`)
+	battleDispatch(t, wh, ses, opcodes.PhaserDialogueRequest, `{"textConstant":"PROMPT"}`)
+	var failure map[string]any
+	if err := json.Unmarshal(messages.streams[len(messages.streams)-1].payload, &failure); err != nil {
+		t.Fatal(err)
+	}
+	if failure["success"] != false || failure["dialogueEntries"] != nil {
+		t.Fatalf("partial response=%v", failure)
+	}
+}
+
+func TestDialogueSnapshotCancelsHeldPoolAndRetries(t *testing.T) {
+	database, _, _, _ := battleTestWorld(t)
+	database.SetMaxOpenConns(1)
+	held, err := database.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	defer cancel()
+	result, err := readPhaserDialogue(ctx, database, "ABSENT", 42, nil)
+	if !errors.Is(err, context.DeadlineExceeded) || result.entries != nil || result.branch != nil {
+		t.Fatalf("result=%+v err=%v", result, err)
+	}
+	held.Close()
+	if _, err := readPhaserDialogue(context.Background(), database, "ABSENT", 42, nil); err != nil {
+		t.Fatal(err)
 	}
 }

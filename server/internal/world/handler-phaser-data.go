@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"time"
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
@@ -123,13 +122,7 @@ func HandlePhaserDialogueRequest(ses *session.Session, payload []byte, wh *World
 	if ses.HasValidClient() {
 		charID = int64(ses.Client.CharData().ID)
 	}
-	var efm *EventFlagManager
-	if wh != nil {
-		efm = wh.EventFlags
-	}
-	ctx, cancel := context.WithTimeout(ses.CommandContext(), 5*time.Second)
-	defer cancel()
-	entries, err := resolvePhaserDialogueEntries(ctx, wh.database, req.TextConstant, charID, efm)
+	result, err := readPhaserDialogue(ses.CommandContext(), wh.database, req.TextConstant, charID, wh.Cutscenes)
 	if err != nil {
 		log.Printf("[Phaser] Error querying dialogue for %s: %v", req.TextConstant, err)
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.PhaserDialogueResponse)
@@ -139,17 +132,16 @@ func HandlePhaserDialogueRequest(ses *session.Session, payload []byte, wh *World
 	res := map[string]interface{}{
 		"success":         true,
 		"textConstant":    req.TextConstant,
-		"dialogueEntries": StructToMap(entries),
+		"dialogueEntries": StructToMap(result.entries),
 	}
 
 	// Check for branching dialogue (YES/NO choices) with event flag gating.
-	if bd := branchingDialogueForResponse(req.TextConstant, charID, wh); bd != nil {
+	if bd := result.branch; bd != nil {
 		res["hasBranching"] = true
 		res["branchingPrompt"] = bd.PromptText
 	}
 
 	ses.SendStreamJSON(res, opcodes.PhaserDialogueResponse)
-	log.Printf("[Phaser] Sent %d dialogue entries for %s", len(entries), req.TextConstant)
 	return false
 }
 
@@ -215,23 +207,44 @@ func resolvePhaserDialogueEntries(ctx context.Context, database db.ContextDBTX, 
 	return entries, nil
 }
 
-func branchingDialogueForResponse(textConstant string, charID int64, wh *WorldHandler) *BranchingDialogue {
-	if bd := checkInGameTradeBranchingDialogue(textConstant, charID); bd != nil {
-		return bd
-	}
+type phaserDialogueRead struct {
+	entries []PhaserDialogueEntry
+	branch  *BranchingDialogue
+}
 
-	var (
-		cutscenes *CutsceneManager
-		efm       *EventFlagManager
-	)
-	if wh != nil {
-		cutscenes = wh.Cutscenes
-		efm = wh.EventFlags
+// Text, conditions, trade completion and prompt eligibility must describe one
+// durable publication; session flag caches may lag committed gameplay effects.
+func readPhaserDialogue(ctx context.Context, database *sql.DB, textConstant string, charID int64, cutscenes *CutsceneManager) (phaserDialogueRead, error) {
+	return db.ReadSnapshot(ctx, database, func(ctx context.Context, q db.ReadDBTX) (phaserDialogueRead, error) {
+		var flags *EventFlagManager
+		var err error
+		if charID > 0 {
+			flags, err = eventFlagSnapshotIn(q, charID)
+			if err != nil {
+				return phaserDialogueRead{}, err
+			}
+		}
+		entries, err := resolvePhaserDialogueEntries(ctx, q, textConstant, charID, flags)
+		if err != nil {
+			return phaserDialogueRead{}, err
+		}
+		branch, err := branchingDialogueForResponse(ctx, q, textConstant, charID, flags, cutscenes)
+		if err != nil {
+			return phaserDialogueRead{}, err
+		}
+		return phaserDialogueRead{entries: entries, branch: branch}, nil
+	})
+}
+
+func branchingDialogueForResponse(ctx context.Context, database db.ContextDBTX, textConstant string, charID int64, flags *EventFlagManager, cutscenes *CutsceneManager) (*BranchingDialogue, error) {
+	bd, err := checkInGameTradeBranchingDialogue(ctx, database, textConstant, charID)
+	if err != nil || bd != nil {
+		return bd, err
 	}
 	if cutscenes != nil && cutscenes.HasClickCutsceneForTriggerLabel(textConstant) {
-		return nil
+		return nil, nil
 	}
-	return CheckForBranchingDialogueWithFlags(textConstant, charID, efm)
+	return checkBranchingDialogueWithFlags(ctx, database, textConstant, charID, flags)
 }
 
 // HandlePhaserWildEncountersRequest returns wild encounters + slot probabilities for a map

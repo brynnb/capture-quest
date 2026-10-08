@@ -48,7 +48,7 @@ func TestResolveScriptDialogueFallbackEntriesRoute18Gate2FYoungsterAfterTrade(t 
 	if entries[0].Dialogue != "Isn't my old\nLICKITUNG great?" {
 		t.Fatalf("dialogue = %q", entries[0].Dialogue)
 	}
-	if bd := checkInGameTradeBranchingDialogue(route18Gate2FYoungsterTextConstant, 42); bd != nil {
+	if bd, err := checkInGameTradeBranchingDialogue(context.Background(), raw, route18Gate2FYoungsterTextConstant, 42); bd != nil || err != nil {
 		t.Fatalf("branching dialogue after completed trade = %#v", bd)
 	}
 }
