@@ -41,6 +41,29 @@ func TestSameTileCommittedTeleportRetiresPathWithoutStorageRead(t *testing.T) {
 	}
 }
 
+func TestCharacterQuitDoesNotReplayCachedPosition(t *testing.T) {
+	database, wh, ses, _ := battleTestWorld(t)
+	wh.sessionManager = session.NewSessionManager()
+	wh.ActorRegistry = NewActorRegistry()
+	wh.ActorManager = NewPhaserActorManager(wh)
+	wh.PlayerMovement = NewPlayerMovementManager(wh, wh.ActorManager)
+	wh.TrainerEncounter = NewTrainerEncounterManager(wh)
+	wh.PlayerMovement.RegisterPlayer(ses, 42, 7, 8, 50, "UP")
+	ses.Client.CharData().MapID, ses.Client.CharData().X, ses.Client.CharData().Y = 50, 7, 8
+	if err := wh.characterOwners.acquire(context.Background(), 42, ses, nil); err != nil {
+		t.Fatal(err)
+	}
+	testdb.Exec(t, database, `UPDATE character_data SET x=9,y=8,map_id=50 WHERE id=42`)
+	battleDispatch(t, wh, ses, opcodes.CharacterQuitRequest, `{}`)
+	var x int
+	if err := database.QueryRow(`SELECT x FROM character_data WHERE id=42`).Scan(&x); err != nil || x != 9 {
+		t.Fatalf("camp rewound durable position=%d error=%v", x, err)
+	}
+	if ses.HasValidClient() || wh.characterOwners.owns(42, ses) {
+		t.Fatal("camp did not retire character")
+	}
+}
+
 func TestTeleportCommitFailurePreservesSafariPositionAndPublication(t *testing.T) {
 	database, wh, ses, messages := battleTestWorld(t)
 	wh.Safari = NewSafariZoneManager(database)

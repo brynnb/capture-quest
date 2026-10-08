@@ -7,7 +7,9 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-retirement of the deferred position saver after its complete producer audit,
+camp no longer replays cached positions; trainer cards reuse the owned wallet
+reader and its established empty-wallet policy, following `267bd9d`:
+retirement of the deferred position saver after its movement-manager producer audit,
 following `6367929` (committed teleport/headless staging retirement),
 `c5c8f5f` (sealed shutdown reconciliation) and `c58118e`:
 failed-cleanup recovery behind the existing character admission barrier, with
@@ -31,6 +33,65 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Camp position authority and playtime crash policy (2026-10-08)
+
+Following the movement-manager audit, the general character repository caller
+inventory found a separate stale-pose writer: `CharacterQuitRequest` called
+`UpdateCharacter` before cleanup. A real dispatcher regression showed durable
+`x=9` becoming cached `x=7` on camp. Camp now retires the character and persists
+final playtime through the existing cleanup owner, without replaying coordinates.
+The sole remaining runtime `UpdateCharacter` caller is entry's last-login update;
+narrowing that intent and checking recovery-spawn Z persistence remain next work.
+
+The browser crash check also found that a newly created character's trainer card
+failed with `sql: no rows in result set` because it duplicated the wallet query.
+The authoritative currency reader already defines an absent wallet row as a zero
+balance until the first currency change. It now accepts an injected query owner
+and context, and the trainer card reuses that reader. Missing wallet tables and
+other SQL failures still reject the response; they do not become zero balances.
+The remaining card reconciliation/count reads and snapshot/lifetime audit are
+not closed by this wallet fix.
+
+Rendered process-death acceptance passed in 10.9s using the existing isolated
+runner: baseline `120`, trainer-card active total `121`, rejected final save,
+actual server exit `137`, restart generation `1`, and fresh entry baseline `120`.
+The stored position remained `38,3,6`. Exact owned PIDs were `2565800` and
+`2566235`; receipt, protocol evidence and logs are retained at
+`/var/tmp/capturequest-rendered.4nKsy2`. The original server log confirms
+`Camp cleanup: final playtime: commit transaction` with the injected rejection.
+This verifies the metric limitation and unchanged stored position; it is not
+new coverage of every gameplay mutation or a production test.
+
+Earlier test iterations exposed an initial state-stream readiness assumption,
+the genuine empty-wallet defect, and a test click blocked by the open trainer-card
+overlay. The test now waits for a valid streamed identity and closes the modal
+using its existing Escape handler. Its assertions were retained. The empty-wallet
+wire regression covers both valid zero balance and missing-table SQL failure;
+the owned reader also has a held-pool cancellation check. Camp's stale-position
+regression failed at `x=7` before the fix and passes with durable `x=9` afterward.
+Focused camp/reentry/shutdown checks passed (1.6s), then trainer-card/camp wire
+checks passed (1.3s). Full world (56.9s), server, session, currency and character
+repository race suites passed, including the new held-pool wallet deadline check.
+All Go packages compile and diff checks pass. Generated contracts are unchanged.
+
+Retained playtime policy: it is a display metric, not an eligibility or reward
+input in the audited runtime consumers. Entry starts from the durable cumulative
+total; active elapsed seconds can appear before persistence. Periodic/final saves
+are bounded, monotonic and repeatable after unknown commit acknowledgements.
+While the process lives, failed final saves fence reentry and are retried by the
+existing owner; shutdown reports unresolved saves. Process death preserves the
+last committed total and loses an uncommitted interval or memory-only pending
+save. No offline time or guessed crash interval is credited. Healthy periodic
+persistence normally limits that interval to the existing minute schedule, but
+database failure can extend it. This explicitly retained metric limitation does
+not relax durable gameplay command/position/route guarantees or close the broad
+goal. No new journal or parallel accounting architecture is introduced.
+
+Next: narrow entry's last-login write and finish the trainer-card/Pokédex owned
+read audit, then continue the finite command matrix. Original restore-timeout
+and Repel-click attribution remain open. No push, deployment, schema or generated
+asset change.
 
 ## Retire obsolete deferred position persistence (2026-10-08)
 

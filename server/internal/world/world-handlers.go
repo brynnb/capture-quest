@@ -27,11 +27,8 @@ func HandleCharacterQuitRequest(ses *session.Session, payload []byte, wh *WorldH
 		return false
 	}
 
-	charData := ses.Client.CharData()
-
-	if err := db_character.UpdateCharacter(ses.CommandContext(), wh.database, charData, ses.AccountID); err != nil {
-		log.Printf("failed to save player data on camp: %v", err)
-	}
+	// Gameplay position changes have already committed through their owners.
+	// Replaying cached character coordinates here can undo an uncertain commit.
 	if err := wh.cleanupCharacterSession(ses.CommandContext(), ses); err != nil {
 		log.Printf("[WORLD] Camp cleanup: %v", err)
 	}

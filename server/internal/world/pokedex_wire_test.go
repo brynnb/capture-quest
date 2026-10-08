@@ -9,6 +9,26 @@ import (
 	"capturequest/internal/testdb"
 )
 
+func TestTrainerCardUsesOwnedEmptyWalletPolicyAndPreservesSQLFailure(t *testing.T) {
+	database, wh, ses, messages := battleTestWorld(t)
+	testdb.Exec(t, database, `DELETE FROM character_wallet WHERE character_id=42`)
+	db.GlobalWorldDB = nil
+	battleDispatch(t, wh, ses, opcodes.TrainerCardRequest, `{}`)
+	var card struct {
+		Success bool `json:"success"`
+		Money   int  `json:"money"`
+	}
+	if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &card) != nil || !card.Success || card.Money != 0 {
+		t.Fatal("empty wallet did not return a zero-balance trainer card")
+	}
+	testdb.Exec(t, database, `DROP TABLE character_wallet`)
+	battleDispatch(t, wh, ses, opcodes.TrainerCardRequest, `{}`)
+	if len(messages.streams) != 2 {
+		t.Fatal("wallet SQL failure omitted terminal response")
+	}
+	assertQueryWireFailure(t, messages.streams[1], opcodes.TrainerCardResponse)
+}
+
 func TestPokedexAndTrainerCardWireContracts(t *testing.T) {
 	database, wh, ses, messages := battleTestWorld(t)
 	ses.Client.CharData().Name = "Red"

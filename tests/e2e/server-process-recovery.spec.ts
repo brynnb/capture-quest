@@ -10,6 +10,62 @@ import { pressMovement, pressSpace } from "./helpers/input";
 import { jumpToScenario } from "./helpers/scenarioDebugger";
 import { getGameState, waitForMap, waitForNoMapLoading, waitForPlayerIdle, waitForPlayerTile } from "./helpers/state";
 
+test("failed final playtime remains at its durable baseline after SIGKILL", async ({ page }) => {
+  test.skip(process.env.CQ_E2E_CRASH_RECOVERY !== "true", "Requires the owned isolated crash runner");
+  test.setTimeout(120000);
+  const { sql, crash, record } = await isolatedCrashRuntime();
+  const cards: number[] = [];
+  const entries: number[] = [];
+  page.on("websocket", socket => socket.on("framereceived", frame => {
+    const bytes = frame.payload;
+    if (!Buffer.isBuffer(bytes) || bytes.length < 6) return;
+    const opcode = bytes.readUInt16LE(4);
+    if (opcode === OpCodes.TrainerCardResponse || opcode === OpCodes.CharacterData) {
+      const payload = JSON.parse(bytes.subarray(6).toString());
+      if (opcode === OpCodes.TrainerCardResponse && payload.success) cards.push(payload.timePlayed);
+      if (opcode === OpCodes.CharacterData) entries.push(payload.timePlayed);
+    }
+  }));
+  const character = await createGuestCharacterAndEnterWorld(page);
+  // EnterWorld can render the scene before the character state stream arrives.
+  await expect.poll(async () => (await getGameState(page)).player.internalId ?? 0).toBeGreaterThan(0);
+  const id = (await getGameState(page)).player.internalId!;
+  expect(Number.isSafeInteger(id) && id > 0).toBe(true);
+  await quitToCharacterSelect(page);
+  // Seed only the metric in the verified private fixture, before entry loads it.
+  const baseline = 120;
+  await sql(`UPDATE character_data SET time_played=${baseline} WHERE id=${id}`);
+  await enterWorld(page, character);
+  await expect.poll(() => entries.at(-1)).toBe(baseline);
+  const positionQuery = `SELECT map_id || ',' || x || ',' || y FROM character_data WHERE id=${id}`;
+  const position = await sql(positionQuery);
+  await sql(`CREATE FUNCTION reject_crash_playtime() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'isolated failed final playtime'; END $$;
+    CREATE CONSTRAINT TRIGGER reject_crash_playtime AFTER UPDATE ON character_data DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+    WHEN (OLD.id=${id} AND NEW.time_played IS DISTINCT FROM OLD.time_played) EXECUTE FUNCTION reject_crash_playtime();`);
+  // Observe a real whole active second through the rendered trainer-card request.
+  await page.waitForTimeout(1100);
+  const cardCount = cards.length;
+  await page.getByRole("button", {name:"Trainer", exact:true}).click();
+  await expect.poll(() => cards.length).toBeGreaterThan(cardCount);
+  const active = cards.at(-1)!;
+  expect(active).toBeGreaterThan(baseline);
+  await page.keyboard.press("Escape");
+  await quitToCharacterSelect(page); // freezes final playtime; commit is rejected
+  expect(await sql(`SELECT time_played FROM character_data WHERE id=${id}`)).toBe(String(baseline));
+  const receipt = await crash();
+  await sql(`DROP TRIGGER reject_crash_playtime ON character_data`);
+  await page.reload();
+  await page.getByRole("button", {name:"PLAY AS GUEST"}).click();
+  await expect(page.getByRole("heading", {name:"SELECT A CHARACTER"})).toBeVisible();
+  const entryCount = entries.length;
+  await enterWorld(page, character);
+  expect(entries.length).toBeGreaterThan(entryCount);
+  expect(entries.at(-1)).toBe(baseline);
+  expect(await sql(positionQuery)).toBe(position);
+  await record({family:"playtime", id, baseline, active, recoveredBaseline:entries.at(-1), position, receipt});
+  await quitToCharacterSelect(page);
+});
+
 for (const outcome of ["run", "party", "pc"] as const) {
   test(`committed Safari ${outcome} survives SIGKILL and a fresh server/client`, async ({ page, context }) => {
     test.skip(process.env.CQ_E2E_CRASH_RECOVERY !== "true", "Requires the isolated runner crash recovery mode");

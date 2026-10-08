@@ -8,6 +8,7 @@ import (
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
+	db_currency "capturequest/internal/db/currency"
 	"capturequest/internal/db/pokedex"
 	"capturequest/internal/pokebattle"
 	"capturequest/internal/protocol"
@@ -189,14 +190,14 @@ func sendTrainerCardResponse(ses *session.Session, wh *WorldHandler) {
 		TimePlayed: int(ses.CurrentPlaytime(time.Now())),
 	}
 
-	err := wh.database.QueryRow(`
-		SELECT COALESCE(pokedollars, 0) FROM character_wallet WHERE character_id = $1`, charData.ID).Scan(&card.Money)
+	wallet, err := db_currency.GetCharacterWalletContext(ses.CommandContext(), wh.database, charData.ID)
 	if err != nil {
 		log.Printf("[TrainerCard] Error querying money for char %d: %v", charID, err)
 		ses.SendStreamJSON(protocol.ErrorResponse{Error: err.Error()}, opcodes.TrainerCardResponse)
 		return
 	}
 
+	card.Money = int(wallet.Pokedollars)
 	// Get badges from event flags
 	if wh.EventFlags != nil {
 		for _, flag := range badgeFlags {
