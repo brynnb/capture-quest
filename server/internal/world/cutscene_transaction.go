@@ -352,7 +352,7 @@ func (m *cutsceneMutation) movePlayer(ctx CutsceneActionContext, mapID, x, y int
 	m.publishActions = append(m.publishActions, func(p CutsceneActionContext) error {
 		// This updates the existing movement/world owner only after its durable
 		// position has committed. Publication never issues another database write.
-		setCutscenePlayerPosition(p.Session, p.WorldHandler, m.characterID, mapID, x, y, direction)
+		publishCommittedPlayerPosition(p.Session, p.WorldHandler, mapID, x, y, direction)
 		if warp {
 			sendCommittedWarpNotification(p.Session, mapID, x, y, direction)
 		}

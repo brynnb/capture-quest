@@ -341,7 +341,7 @@ func publishCommittedPlayerPosition(ses *session.Session, wh *WorldHandler, mapI
 		if _, _, _, ok := wh.PlayerMovement.GetPosition(charID); !ok {
 			wh.PlayerMovement.RegisterPlayer(ses, charID, x, y, normalizedMapID, normalizedDirection)
 		}
-		wh.PlayerMovement.UpdatePosition(charID, x, y, normalizedMapID, normalizedDirection)
+		wh.PlayerMovement.projectCommittedTeleport(charID, x, y, normalizedMapID, normalizedDirection)
 	}
 	publishCommittedPlayerLocation(ses, wh, normalizedMapID, x, y)
 

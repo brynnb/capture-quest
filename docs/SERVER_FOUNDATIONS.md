@@ -7,7 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-sealed shutdown reconciliation of pending cleanup, following `c58118e`:
+committed teleport projection and retirement of headless position staging,
+following `c5c8f5f` (sealed shutdown reconciliation) and `c58118e`:
 failed-cleanup recovery behind the existing character admission barrier, with
 idempotent cumulative playtime saves, following `a343ac5` (clean position rewrite
 retirement), shared character-lock enforcement and native source consolidation.
@@ -29,6 +30,50 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Committed teleport projection; retire headless staging (2026-10-08)
+
+The complete `UpdatePosition` caller inventory found two runtime calls. Ordinary
+teleport publication called it after committing, then cleared its dirty flag in
+a separate publication call. The cutscene fallback called it without a valid
+session, even though `cutsceneMutation.movePlayer` had already committed. A real
+transaction regression reproduced a headless cutscene altering an unrelated live
+movement registration and marking that committed pose as unsaved.
+
+The fallback and its redundant helper are retired. Cutscene publication uses the
+existing committed-position publisher, which requires a valid session before
+touching live projections. Teleport projection is now named
+`projectCommittedTeleport` and records clean state in its own locked update,
+including same-tile teleports, while retaining path cancellation and map rules.
+No intermediate dirty window exists between teleport publication calls. The
+generic production `UpdatePosition` API is retired; existing failure fixtures now
+use one explicit test-only staging helper without weakening dirty-save assertions.
+
+The remaining production `positionDirty=true` assignment is in
+`planCharacterStep`, operating on the detached candidate made by its sole runtime
+caller. After the transaction commits, the installed live state is explicitly
+clean. Thus the audited live position producers do not create deferred final-save
+obligations; durable step/route/teleport recovery remains authoritative. Defensive
+dirty-state flush/cleanup checks stay intact. This audit does not close every
+movement/field authorization or presentation gate in the command matrix.
+
+The headless regression failed before the fix, then passed alongside teleport
+projection and preserved dirty failure/retry checks (1.5s). Full world (65.7s),
+simulator and session race suites passed. The canonical private-bootstrap
+`route23_earth_badge_blocked` CLI scenario passed its runtime expectations,
+including native-coordinate movement from `(-46,-173)` to `(-46,-172)`; evidence
+is `/var/tmp/capturequest-script-sim.BecgUg`. This is a scenario/runtime expectation
+check, not a text-golden or full-corpus rerun. All Go packages compile and diff
+checks pass.
+
+Next: address playtime process-death policy and remaining lifecycle boundaries,
+and reassess defensive staging machinery now that its runtime producers are gone.
+Playtime still has the
+existing one-minute periodic persistence interval and can lose time accumulated
+since the last durable save after process death. Pending cleanup callbacks are
+still memory-only. The original restore timeout and Repel click failure remain
+unattributed. No rendered/production acceptance, push, deployment, schema or asset
+change is claimed; all five roadmap areas remain open.
 
 ## Shutdown reconciles previously failed cleanup (2026-10-08)
 

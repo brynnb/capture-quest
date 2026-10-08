@@ -169,7 +169,7 @@ func TestMovementStepSafariExpiryAndDaycareRollbackTogether(t *testing.T) {
 			testdb.Exec(t, wh.database, `UPDATE phaser_maps SET id=220 WHERE id=50; UPDATE phaser_tiles SET map_id=220 WHERE map_id=50; UPDATE character_data SET map_id=220 WHERE id=42;`)
 			wh.ActorManager = NewPhaserActorManager(wh)
 			wh.PlayerMovement.actorManager = wh.ActorManager
-			wh.PlayerMovement.UpdatePosition(42, 7, 8, 220, "RIGHT")
+			stageTestPlayerPosition(wh.PlayerMovement, 42, 7, 8, 220, "RIGHT")
 			ses.Client.CharData().MapID = 220
 			ses.MapID = 220
 			if forced {

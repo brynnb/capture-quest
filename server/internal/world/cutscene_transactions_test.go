@@ -299,7 +299,7 @@ func TestIssuedCutsceneMovementUsesCapturedSourceAndCommitsOnce(t *testing.T) {
 	}
 	request := fmt.Sprintf(`{"requestId":"completion-test","scriptLabel":"IssuedMove","completionToken":%q}`, issued.CompletionToken)
 	// A later location cannot become the starting point for the old relative plan.
-	wh.PlayerMovement.UpdatePosition(42, 8, 8, 50, "RIGHT")
+	stageTestPlayerPosition(wh.PlayerMovement, 42, 8, 8, 50, "RIGHT")
 	battleDispatch(t, wh, ses, opcodes.CutsceneEndRequest, request)
 	var x, count int
 	if err := wh.database.QueryRow(`SELECT x FROM character_data WHERE id=42`).Scan(&x); err != nil || x != 7 {
@@ -308,7 +308,7 @@ func TestIssuedCutsceneMovementUsesCapturedSourceAndCommitsOnce(t *testing.T) {
 	if err := wh.database.QueryRow(`SELECT count(*) FROM cq_character_inventory WHERE character_id=42`).Scan(&count); err != nil || count != 0 {
 		t.Fatal("stale event granted reward")
 	}
-	wh.PlayerMovement.UpdatePosition(42, 7, 8, 50, "UP")
+	stageTestPlayerPosition(wh.PlayerMovement, 42, 7, 8, 50, "UP")
 	// A durable location changed by another writer also invalidates the source,
 	// even if the live owner has not yet refreshed its cache.
 	testdb.Exec(t, wh.database, `UPDATE character_data SET x=8 WHERE id=42`)
@@ -330,6 +330,21 @@ func TestIssuedCutsceneMovementUsesCapturedSourceAndCommitsOnce(t *testing.T) {
 	assertStepPosition(t, wh, ses, 9)
 	if err := wh.database.QueryRow(`SELECT sum(quantity) FROM cq_item_instances WHERE owner_id=42 AND item_id=1`).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("reward=%d %v", count, err)
+	}
+}
+
+func TestHeadlessCutsceneCommitCannotStageLiveCharacterPosition(t *testing.T) {
+	wh, ses, _ := setupIssuedStep(t)
+	_, done, err := ApplyCutsceneActionList(context.Background(), CutsceneActionContext{Database: wh.database, WorldHandler: wh}, "ROOM", json.RawMessage(`[{"type":"movePlayer","movements":["RIGHT"]}]`), 42)
+	if err != nil || !done {
+		t.Fatalf("headless mutation done=%v error=%v", done, err)
+	}
+	var x int
+	if err := wh.database.QueryRow(`SELECT x FROM character_data WHERE id=42`).Scan(&x); err != nil || x != 8 {
+		t.Fatalf("headless committed position=%d error=%v", x, err)
+	}
+	if x, _, _, ok := wh.PlayerMovement.GetPosition(42); !ok || x != 7 || ses.Client.CharData().X != 7 || wh.PlayerMovement.players[42].positionDirty {
+		t.Fatal("headless publication changed another live owner or manufactured a dirty save")
 	}
 }
 

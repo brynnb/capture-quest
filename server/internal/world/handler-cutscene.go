@@ -481,25 +481,6 @@ func currentCutscenePlayerPosition(ses *session.Session, charID int64) (int, int
 	return x, y, mapID, nil
 }
 
-func setCutscenePlayerPosition(ses *session.Session, wh *WorldHandler, charID int64, mapID, x, y int, direction string) {
-	if direction == "" {
-		direction = "DOWN"
-	}
-
-	sessionMapID := mapID
-	if wh != nil && wh.ActorManager != nil && wh.ActorManager.IsOverworld(mapID) {
-		sessionMapID = UnifiedOverworldMapID
-	}
-	if ses == nil || !ses.HasValidClient() {
-		if wh != nil && wh.PlayerMovement != nil {
-			wh.PlayerMovement.UpdatePosition(int(charID), x, y, sessionMapID, direction)
-		}
-		return
-	}
-
-	publishCommittedPlayerPosition(ses, wh, mapID, x, y, direction)
-}
-
 func sendCutsceneSystemMessage(ses *session.Session, message string) {
 	if ses != nil {
 		SendSystemMessage(ses, message)

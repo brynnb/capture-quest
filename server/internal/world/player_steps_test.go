@@ -111,7 +111,7 @@ func TestIssuedPlayerStepRejectsTeleportReplacementAndDynamicBlocker(t *testing.
 			step := issueStep(t, wh, ses, messages)
 			switch kind {
 			case "same-position teleport":
-				wh.PlayerMovement.UpdatePosition(42, 7, 8, 50, "UP")
+				stageTestPlayerPosition(wh.PlayerMovement, 42, 7, 8, 50, "UP")
 			case "replaced connection":
 				wh.PlayerMovement.RegisterPlayer(&session.Session{SessionID: ses.SessionID + 1}, 42, 7, 8, 50, "UP")
 			case "NPC arrives":

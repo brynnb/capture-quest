@@ -110,7 +110,7 @@ func TestFailedFinalSavesRejectCharacterHandoffAndRetireOldConnection(t *testing
 			old.StartPlaytime(time.Now().Add(-3*time.Second), 0, 42)
 			wh.PlayerMovement.RegisterPlayer(old, 42, 7, 8, 50, "UP")
 			if dirty {
-				wh.PlayerMovement.UpdatePosition(42, 8, 8, 50, "UP")
+				stageTestPlayerPosition(wh.PlayerMovement, 42, 8, 8, 50, "UP")
 			}
 			if err := wh.characterOwners.acquire(context.Background(), 42, old, nil); err != nil {
 				t.Fatal(err)
@@ -177,7 +177,7 @@ func TestCleanupPartialCommitRecoveryDoesNotDoubleCountPlaytime(t *testing.T) {
 	wh.TrainerEncounter = NewTrainerEncounterManager(wh)
 	old.StartPlaytime(time.Now().Add(-3*time.Second), 0, 42)
 	wh.PlayerMovement.RegisterPlayer(old, 42, 7, 8, 50, "UP")
-	wh.PlayerMovement.UpdatePosition(42, 8, 8, 50, "UP")
+	stageTestPlayerPosition(wh.PlayerMovement, 42, 8, 8, 50, "UP")
 	if err := wh.characterOwners.acquire(context.Background(), 42, old, nil); err != nil {
 		t.Fatal(err)
 	}

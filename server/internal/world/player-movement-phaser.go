@@ -353,8 +353,10 @@ func (m *PlayerMovementManager) UpdateMapID(charID int, mapID int) {
 	}
 }
 
-// UpdatePosition directly sets a player's position (for warps, spawns, etc.)
-func (m *PlayerMovementManager) UpdatePosition(charID int, x, y, mapID int, direction string) {
+// projectCommittedTeleport replaces the owner's position after a committed
+// warp/cutscene. Unlike an ordinary step, it always retires the current path.
+// It must never manufacture a deferred position write between publication calls.
+func (m *PlayerMovementManager) projectCommittedTeleport(charID int, x, y, mapID int, direction string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -376,7 +378,8 @@ func (m *PlayerMovementManager) UpdatePosition(charID int, x, y, mapID int, dire
 		}
 	}
 	state.pendingStep = nil
-	state.positionDirty = true
+	state.positionDirty = false
+	state.LastSaveTime = time.Now()
 	state.CurrentX = x
 	state.CurrentY = y
 	state.MapID = mapID

@@ -14,6 +14,43 @@ import (
 	"capturequest/internal/testdb"
 )
 
+// stageTestPlayerPosition deliberately creates an unsaved fixture obligation.
+// Runtime teleports project an already committed position and never stage saves.
+func stageTestPlayerPosition(m *PlayerMovementManager, charID, x, y, mapID int, direction string) {
+	m.mu.Lock()
+	before := m.players[charID].LastSaveTime
+	m.mu.Unlock()
+	m.projectCommittedTeleport(charID, x, y, mapID, direction)
+	m.mu.Lock()
+	m.players[charID].positionDirty = true
+	m.players[charID].LastSaveTime = before
+	m.mu.Unlock()
+}
+
+func TestCommittedTeleportProjectionDoesNotCreateFinalSaveObligation(t *testing.T) {
+	database, wh, ses, _ := battleTestWorld(t)
+	m := NewPlayerMovementManager(wh, nil)
+	wh.PlayerMovement = m
+	m.RegisterPlayer(ses, 42, 7, 8, 50, "UP")
+	m.players[42].Path = []PathNode{{X: 9, Y: 8}}
+	m.projectCommittedTeleport(42, 7, 8, 50, "RIGHT")
+	if m.players[42].positionDirty || len(m.players[42].Path) != 0 || m.players[42].Direction != "RIGHT" {
+		t.Fatal("committed same-tile teleport retained path or staged a save")
+	}
+	database.SetMaxOpenConns(1)
+	lease, err := database.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.Close()
+	before := database.Stats().WaitCount
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if err := m.FlushPlayerPosition(ctx, 42); err != nil || database.Stats().WaitCount != before {
+		t.Fatalf("teleport projection manufactured storage work: %v", err)
+	}
+}
+
 func TestTeleportCommitFailurePreservesSafariPositionAndPublication(t *testing.T) {
 	database, wh, ses, messages := battleTestWorld(t)
 	wh.Safari = NewSafariZoneManager(database)
@@ -72,7 +109,7 @@ func TestMapLoadRejectsLatePersistenceFailure(t *testing.T) {
  CREATE FUNCTION reject_arrival_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'late arrival failure'; END $$;
  CREATE CONSTRAINT TRIGGER reject_arrival_commit AFTER UPDATE ON character_data DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN(NEW.map_id=60) EXECUTE FUNCTION reject_arrival_commit();`)
 	db.GlobalWorldDB = nil
-	wh.PlayerMovement.UpdatePosition(42, 3, 4, 60, "UP")
+	stageTestPlayerPosition(wh.PlayerMovement, 42, 3, 4, 60, "UP")
 	battleDispatch(t, wh, ses, opcodes.PhaserMapLoadRequest, `{"mapId":60,"requestId":"arrival"}`)
 	x, y, mapID, ok := wh.PlayerMovement.GetPosition(42)
 	if !ok || x != 3 || y != 4 || mapID != 60 || ses.MapID != 50 || ses.Client.CharData().MapID != 50 {
@@ -98,7 +135,7 @@ func TestMovementSaveFailureKeepsDirtyStateForRetry(t *testing.T) {
 	m := NewPlayerMovementManager(wh, nil)
 	wh.PlayerMovement = m
 	m.RegisterPlayer(ses, 42, 1, 2, 50, "UP")
-	m.UpdatePosition(42, 7, 8, 50, "UP")
+	stageTestPlayerPosition(m, 42, 7, 8, 50, "UP")
 	before := m.players[42].LastSaveTime
 	testdb.Exec(t, database, `CREATE FUNCTION reject_flush_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'late flush failure'; END $$;
  CREATE CONSTRAINT TRIGGER reject_flush_commit AFTER UPDATE ON character_data DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_flush_commit();`)
@@ -148,7 +185,7 @@ func TestBlockedMovementFlushReleasesGlobalLockAndDoesNotMarkNewSnapshotSaved(t 
 	m := NewPlayerMovementManager(wh, nil)
 	wh.PlayerMovement = m
 	m.RegisterPlayer(ses, 42, 1, 2, 50, "UP")
-	m.UpdatePosition(42, 7, 8, 50, "UP")
+	stageTestPlayerPosition(m, 42, 7, 8, 50, "UP")
 	before := m.players[42].LastSaveTime
 	lock, err := database.Begin()
 	if err != nil {
@@ -168,7 +205,7 @@ func TestBlockedMovementFlushReleasesGlobalLockAndDoesNotMarkNewSnapshotSaved(t 
 		runtime.Gosched()
 	}
 	available := make(chan struct{})
-	go func() { m.UpdatePosition(42, 9, 10, 50, "UP"); close(available) }()
+	go func() { stageTestPlayerPosition(m, 42, 9, 10, 50, "UP"); close(available) }()
 	select {
 	case <-available:
 	case <-time.After(time.Second):
