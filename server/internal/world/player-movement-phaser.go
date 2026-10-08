@@ -293,11 +293,18 @@ func (m *PlayerMovementManager) IsSurfing(charID int) bool {
 	return ok && state.IsSurfing
 }
 
-// UnregisterPlayer removes a player from movement tracking
-func (m *PlayerMovementManager) UnregisterPlayer(charID int) {
+// retirePosition removes the live writer and retains only a dirty final pose.
+// Recovery runs behind character admission, so it cannot overwrite a new owner.
+func (m *PlayerMovementManager) retirePosition(charID int) *playerMovementSnapshot {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	state := m.players[charID]
 	delete(m.players, charID)
+	if state == nil || !state.positionDirty {
+		return nil
+	}
+	snapshot := m.snapshotForState(state, 0)
+	return &snapshot
 }
 
 // StopMovement clears any queued server-driven path for a player.

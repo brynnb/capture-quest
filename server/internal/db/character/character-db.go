@@ -140,10 +140,12 @@ func UpdateCharacter(ctx context.Context, database *sql.DB, charData *model.Char
 	return nil
 }
 
-// AddCharacterPlaytime atomically persists active play seconds without
-// overwriting position or another session's increment.
-func AddCharacterPlaytime(ctx context.Context, database *sql.DB, charID int32, accountID int64, seconds uint32) error {
-	if seconds == 0 {
+// SaveCharacterPlaytime persists a cumulative total from the exclusive character
+// owner. Entry must load the durable baseline after the prior owner drains.
+// Repeated or older totals cannot double-count an uncertain commit or rewind it.
+// This is not an API for independently accumulating concurrent play intervals.
+func SaveCharacterPlaytime(ctx context.Context, database *sql.DB, charID int32, accountID int64, totalSeconds uint32) error {
+	if totalSeconds == 0 {
 		return nil
 	}
 	if database == nil {
@@ -154,10 +156,10 @@ func AddCharacterPlaytime(ctx context.Context, database *sql.DB, charID int32, a
 	err := db.Transaction(ctx, database, func(tx db.DBTX) error {
 		result, err := tx.Exec(`
 		UPDATE character_data
-		SET time_played = time_played + $1
-		WHERE id = $2`, seconds, charID)
+		SET time_played = CASE WHEN time_played < $1 THEN $1 ELSE time_played END
+		WHERE id = $2`, totalSeconds, charID)
 		if err != nil {
-			return fmt.Errorf("add character playtime: %w", err)
+			return fmt.Errorf("save character playtime: %w", err)
 		}
 		rows, err := result.RowsAffected()
 		if err != nil {

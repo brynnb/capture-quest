@@ -7,9 +7,9 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-`a343ac5`, skipping clean committed-position rewrites while preserving dirty-save
-failure checks, following shared character-lock transaction enforcement and native
-source/simulator consolidation.
+failed-cleanup recovery behind the existing character admission barrier, with
+idempotent cumulative playtime saves, following `a343ac5` (clean position rewrite
+retirement), shared character-lock enforcement and native source consolidation.
 
 The latest field-command prerequisite is Escape Rope source fencing, recorded
 below; Bicycle now has a movement-owned desired-state command. Escape Rope transport now uses a correlated revision-fenced command and movement-owned current recovery.
@@ -28,6 +28,50 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Failed-cleanup admission recovery (2026-10-08)
+
+The failure inventory established two connected defects. `cleanupCharacterSession`
+released character ownership, discarded registered position and called
+`StopPlaytime` even when final saves failed. The first replacement received an
+error, but a subsequent acquire could enter without those obligations. Separately,
+the sole runtime playtime writer added an interval to `time_played`; a committed
+write whose acknowledgement was lost could count the interval twice on retry.
+
+Playtime now saves a cumulative character total, monotonically preserving a
+higher durable total. This policy relies on the existing exclusive character
+owner and post-drain entry reload; it does not aggregate independent concurrent
+sessions. The additive repository API is retired. General character saves still
+leave playtime untouched. Final cleanup freezes the total before storage work,
+so a disconnected session cannot accumulate recovery-wait time.
+
+Movement retirement atomically removes the live writer and captures only an
+outstanding dirty pose. The existing character-owner entry retains an immutable
+recovery callback on save failure. Every subsequent acquire retries it behind
+the same handoff barrier before admitting a replacement and reloading durable
+state. Cancellation/failure retains the obligation; success removes it. Neither
+the retired client nor mutable movement state is retained. Both final writes can
+be repeated after partial/unknown commits while replacement writers remain fenced.
+
+Verification covers committed-but-unacknowledged playtime, repeated/later totals,
+post-drain baseline progression, clean/dirty repeated rejection and recovery,
+partial position failure with committed playtime, disconnect-originated recovery,
+retired-tracker freezing, concurrent admission and cancellation/retry. These are
+PostgreSQL/state-boundary checks, not rendered or production acceptance. A real
+`EnterWorld` dispatcher test proves recovery precedes the replacement's durable
+baseline reload and playtime tracker initialization. Full world (51.4s), session,
+character repository and battle race suites passed. The final added focused
+checks passed (1.7s; normal entry 1.1s), all Go packages compile and diff checks pass.
+
+Remaining: pending obligations are held in server memory. Process death during a
+genuine final-save failure can still lose the pending dirty pose or unsaved time.
+Shutdown also needs an explicit audit of failures retained before draining began,
+including retry and failure reporting. Complete these lifecycle policies and
+rendered/restart recovery acceptance before treating final-save recovery as closed.
+The historical restore timeout and Repel click failure remain unattributed, and
+all five roadmap areas remain open. No new push or deployment is authorized by
+this continuation; this is a local implementation checkpoint with no schema or
+generated asset change.
 
 ## Requested branch handoff (2026-10-08)
 

@@ -13,6 +13,9 @@ var errCharacterHandoff = errors.New("character connection handoff already in pr
 type characterOwner struct {
 	session *session.Session
 	handoff bool
+	// Failed final saves outlive the retired session. Only acquire may retry
+	// them, behind the same admission barrier and before any replacement loads.
+	cleanup func(context.Context) error
 }
 
 // characterOwners arbitrates authenticated character entry. Never hold mu while
@@ -43,10 +46,15 @@ func (o *characterOwners) acquire(ctx context.Context, id int64, next *session.S
 	}
 	e.handoff = true
 	previous := e.session
+	recovery := e.cleanup
 	o.mu.Unlock()
 
 	var err error
-	if previous != nil {
+	if recovery != nil {
+		err = recovery(ctx)
+	}
+	recovered := recovery != nil && err == nil
+	if err == nil && previous != nil {
 		previous.Close()
 		var cleanupErr error
 		err = previous.DrainCommandsContext(ctx, func() { cleanupErr = cleanup(ctx, previous) })
@@ -63,10 +71,13 @@ func (o *characterOwners) acquire(ctx context.Context, id int64, next *session.S
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	e.handoff = false
+	if recovered {
+		e.cleanup = nil
+	}
 	if err == nil {
 		e.session = next
 	}
-	if e.session == nil {
+	if e.session == nil && e.cleanup == nil {
 		delete(o.entries, id)
 	}
 	return err
@@ -84,7 +95,21 @@ func (o *characterOwners) release(id int64, s *session.Session) {
 	defer o.mu.Unlock()
 	if e := o.entries[id]; e != nil && e.session == s {
 		e.session = nil
-		if !e.handoff {
+		if !e.handoff && e.cleanup == nil {
+			delete(o.entries, id)
+		}
+	}
+}
+
+func (o *characterOwners) retire(id int64, s *session.Session, recovery func(context.Context) error, err error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if e := o.entries[id]; e != nil && e.session == s {
+		e.session = nil
+		if err != nil {
+			e.cleanup = recovery
+		}
+		if !e.handoff && e.cleanup == nil {
 			delete(o.entries, id)
 		}
 	}

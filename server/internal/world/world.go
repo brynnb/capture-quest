@@ -164,7 +164,7 @@ func (wh *WorldHandler) RemoveSession(sessionID int) {
 	})
 }
 
-func (wh *WorldHandler) cleanupCharacterSession(ctx context.Context, ses *session.Session) error {
+func (wh *WorldHandler) cleanupCharacterSession(ctx context.Context, ses *session.Session) (result error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	ses.GameCorner.Clear()
@@ -173,6 +173,7 @@ func (wh *WorldHandler) cleanupCharacterSession(ctx context.Context, ses *sessio
 	}
 	char := ses.Client.CharData()
 	charID := int(char.ID)
+	var recovery func(context.Context) error
 	// A delayed disconnect may retire its local client, but must never evict
 	// state belonging to a replacement connection.
 	defer func() {
@@ -181,35 +182,49 @@ func (wh *WorldHandler) cleanupCharacterSession(ctx context.Context, ses *sessio
 		ses.Client = nil
 		ses.CharacterName = ""
 		ses.MapID = -1
-		wh.characterOwners.release(int64(charID), ses)
+		wh.characterOwners.retire(int64(charID), ses, recovery, result)
 	}()
 	if !wh.characterOwners.owns(int64(charID), ses) {
 		return nil
 	}
 	log.Printf("[WORLD] Flushing position for character %d (%s) from session %d", charID, char.Name, ses.SessionID)
-	positionErr := wh.PlayerMovement.FlushPlayerPosition(ctx, charID)
-	wh.PlayerMovement.UnregisterPlayer(charID)
+	position := wh.PlayerMovement.retirePosition(charID)
+	playtimeID, playtimeTotal := ses.FinishPlaytime(time.Now())
+	accountID := ses.AccountID
+	// Capture values, never the retired session/client or mutable movement state.
+	// Both writes are repeatable after unknown commit outcomes. Successful partial
+	// saves may be replayed while admission prevents any newer character writer.
+	recovery = func(ctx context.Context) error {
+		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		var positionErr, playtimeErr error
+		if position != nil {
+			if err := commitPlayerPosition(ctx, wh.database, int64(charID), position.MapID, position.CurrentX, position.CurrentY); err != nil {
+				positionErr = fmt.Errorf("final position: %w", err)
+			}
+		}
+		if playtimeID != 0 {
+			if err := db_character.SaveCharacterPlaytime(ctx, wh.database, playtimeID, accountID, playtimeTotal); err != nil {
+				playtimeErr = fmt.Errorf("final playtime: %w", err)
+			}
+		}
+		return errors.Join(positionErr, playtimeErr)
+	}
+	result = recovery(ctx)
 	wh.TrainerEncounter.ClearPlayer(int64(charID))
 	wh.EventFlags.UnloadFlags(int64(charID))
 	saveBattleOnDisconnect(int64(charID))
-	playtimeErr := wh.persistSessionPlaytime(ctx, ses, time.Now())
 
 	// Notify other Phaser clients to remove this actor.
 	phaserID := wh.ActorRegistry.GetPhaserID(ActorTypePlayer, charID)
 	log.Printf("[WORLD] Despawning Phaser actor %d for character %s", phaserID, char.Name)
 	wh.ActorManager.broadcastActorDespawn(phaserID, ses.MapID)
-	if positionErr != nil {
-		positionErr = fmt.Errorf("final position: %w", positionErr)
-	}
-	if playtimeErr != nil {
-		playtimeErr = fmt.Errorf("final playtime: %w", playtimeErr)
-	}
-	return errors.Join(positionErr, playtimeErr)
+	return result
 }
 
 func (wh *WorldHandler) persistSessionPlaytime(ctx context.Context, ses *session.Session, now time.Time) error {
-	_, err := ses.PersistPlaytime(now, func(characterID int32, seconds uint32) error {
-		return db_character.AddCharacterPlaytime(ctx, wh.database, characterID, ses.AccountID, seconds)
+	_, err := ses.PersistPlaytime(now, func(characterID int32, totalSeconds uint32) error {
+		return db_character.SaveCharacterPlaytime(ctx, wh.database, characterID, ses.AccountID, totalSeconds)
 	})
 	return err
 }

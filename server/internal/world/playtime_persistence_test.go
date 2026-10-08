@@ -8,10 +8,53 @@ import (
 	"testing"
 	"time"
 
+	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
+	db_character "capturequest/internal/db/character"
 	"capturequest/internal/session"
 	"capturequest/internal/testdb"
 )
+
+func TestPlaytimeUnknownCommitRetryUsesCumulativeOwnedTotal(t *testing.T) {
+	database, wh, ses, _ := battleTestWorld(t)
+	testdb.Exec(t, database, `UPDATE character_data SET time_played=20 WHERE id=42`)
+	started := time.Now()
+	ses.StartPlaytime(started, 20, 42)
+	unknown := errors.New("commit acknowledgement lost")
+	_, err := ses.PersistPlaytime(started.Add(3*time.Second), func(id int32, total uint32) error {
+		if err := db_character.SaveCharacterPlaytime(context.Background(), database, id, ses.AccountID, total); err != nil {
+			t.Fatal(err)
+		}
+		// The durable commit happened, but the session did not learn that fact.
+		return unknown
+	})
+	if !errors.Is(err, unknown) || ses.CurrentPlaytime(started.Add(3*time.Second)) != 23 {
+		t.Fatalf("unknown save=%v current=%d", err, ses.CurrentPlaytime(started.Add(3*time.Second)))
+	}
+	for _, seconds := range []int{3, 3, 5} {
+		if err := wh.persistSessionPlaytime(context.Background(), ses, started.Add(time.Duration(seconds)*time.Second)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var total uint32
+	if err := database.QueryRow(`SELECT time_played FROM character_data WHERE id=42`).Scan(&total); err != nil || total != 25 {
+		t.Fatalf("retried total=%d error=%v", total, err)
+	}
+	// A subsequent owner starts from the post-drain durable total.
+	ses.StopPlaytime()
+	next := &session.Session{}
+	next.StartPlaytime(started.Add(10*time.Second), total, 42)
+	if err := wh.persistSessionPlaytime(context.Background(), next, started.Add(12*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	// An older cumulative save cannot rewind that owner's contribution.
+	if err := db_character.SaveCharacterPlaytime(context.Background(), database, 42, ses.AccountID, 23); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRow(`SELECT time_played FROM character_data WHERE id=42`).Scan(&total); err != nil || total != 27 {
+		t.Fatalf("next owner total=%d error=%v", total, err)
+	}
+}
 
 func TestPlaytimeCancellationKeepsIntervalForRetryOnCapturedDatabase(t *testing.T) {
 	database, wh, ses, _ := battleTestWorld(t)
@@ -89,8 +132,111 @@ func TestFailedFinalSavesRejectCharacterHandoffAndRetireOldConnection(t *testing
 			if err := database.QueryRow(`SELECT time_played FROM character_data WHERE id=42`).Scan(&seconds); err != nil || seconds != 0 {
 				t.Fatalf("failed final save changed playtime=%d %v", seconds, err)
 			}
+			frozen := old.CurrentPlaytime(time.Now().Add(time.Hour))
+			if frozen < 3 || frozen != old.CurrentPlaytime(time.Now()) {
+				t.Fatalf("retired playtime continued accumulating: %d", frozen)
+			}
+			// A second attempt must recover the same obligations, not silently
+			// enter after the failed owner's client and movement were discarded.
+			if err := wh.characterOwners.acquire(context.Background(), 42, next, wh.cleanupCharacterSession); err == nil || !strings.Contains(err.Error(), "final playtime") {
+				t.Fatalf("repeated failed admission=%v", err)
+			}
+			if wh.characterOwners.owns(42, next) {
+				t.Fatal("replacement bypassed pending cleanup")
+			}
+			testdb.Exec(t, database, `DROP TRIGGER reject_final_save ON character_data`)
+			if err := wh.characterOwners.acquire(context.Background(), 42, next, wh.cleanupCharacterSession); err != nil {
+				t.Fatal(err)
+			}
+			if err := database.QueryRow(`SELECT time_played FROM character_data WHERE id=42`).Scan(&seconds); err != nil || seconds != int(frozen) {
+				t.Fatalf("recovered final total=%d want=%d error=%v", seconds, frozen, err)
+			}
+			if dirty {
+				var x, y, mapID int
+				if err := database.QueryRow(`SELECT CAST(x AS INTEGER),CAST(y AS INTEGER),map_id FROM character_data WHERE id=42`).Scan(&x, &y, &mapID); err != nil || x != 8 || y != 8 || mapID != 50 {
+					t.Fatalf("recovered position=(%d,%d,%d) error=%v", x, y, mapID, err)
+				}
+			}
+			if err := wh.cleanupCharacterSession(context.Background(), old); err != nil || !wh.characterOwners.owns(42, next) {
+				t.Fatalf("late retired cleanup=%v removed replacement", err)
+			}
+			wh.characterOwners.release(42, next)
+			if len(wh.characterOwners.entries) != 0 {
+				t.Fatal("successful recovery retained pending obligations")
+			}
 		})
 	}
+}
+
+func TestCleanupPartialCommitRecoveryDoesNotDoubleCountPlaytime(t *testing.T) {
+	database, wh, old, _ := battleTestWorld(t)
+	wh.sessionManager = session.NewSessionManager()
+	wh.ActorRegistry = NewActorRegistry()
+	wh.ActorManager = NewPhaserActorManager(wh)
+	wh.PlayerMovement = NewPlayerMovementManager(wh, wh.ActorManager)
+	wh.TrainerEncounter = NewTrainerEncounterManager(wh)
+	old.StartPlaytime(time.Now().Add(-3*time.Second), 0, 42)
+	wh.PlayerMovement.RegisterPlayer(old, 42, 7, 8, 50, "UP")
+	wh.PlayerMovement.UpdatePosition(42, 8, 8, 50, "UP")
+	if err := wh.characterOwners.acquire(context.Background(), 42, old, nil); err != nil {
+		t.Fatal(err)
+	}
+	testdb.Exec(t, database, `CREATE FUNCTION reject_position_save() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+ IF NEW.x IS DISTINCT FROM OLD.x THEN RAISE EXCEPTION 'reject position save'; END IF; RETURN NEW; END $$;
+ CREATE CONSTRAINT TRIGGER reject_position_save AFTER UPDATE ON character_data DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_position_save();`)
+	// Disconnect cleanup, rather than acquire's handoff callback, must also
+	// retain the obligation in the existing admission owner.
+	if err := wh.cleanupCharacterSession(context.Background(), old); err == nil || !strings.Contains(err.Error(), "final position") || strings.Contains(err.Error(), "final playtime") {
+		t.Fatalf("partial cleanup=%v", err)
+	}
+	frozen := old.CurrentPlaytime(time.Now())
+	var total uint32
+	if err := database.QueryRow(`SELECT time_played FROM character_data WHERE id=42`).Scan(&total); err != nil || total != frozen {
+		t.Fatalf("partial commit total=%d want=%d error=%v", total, frozen, err)
+	}
+	testdb.Exec(t, database, `DROP TRIGGER reject_position_save ON character_data`)
+	next := &session.Session{}
+	if err := wh.characterOwners.acquire(context.Background(), 42, next, wh.cleanupCharacterSession); err != nil {
+		t.Fatal(err)
+	}
+	var x int
+	if err := database.QueryRow(`SELECT time_played,CAST(x AS INTEGER) FROM character_data WHERE id=42`).Scan(&total, &x); err != nil || total != frozen || x != 8 {
+		t.Fatalf("partial recovery total=%d want=%d x=%d error=%v", total, frozen, x, err)
+	}
+}
+
+func TestEnterWorldRecoversFailedDisconnectBeforeLoadingPlaytimeBaseline(t *testing.T) {
+	database, wh, old, _ := battleTestWorld(t)
+	testdb.Exec(t, database, `UPDATE character_data SET x=7,y=8,map_id=50 WHERE id=42`)
+	wh.sessionManager = session.NewSessionManager()
+	wh.ActorRegistry = NewActorRegistry()
+	wh.ActorManager = NewPhaserActorManager(wh)
+	wh.PlayerMovement = NewPlayerMovementManager(wh, wh.ActorManager)
+	wh.TrainerEncounter = NewTrainerEncounterManager(wh)
+	wh.WildEncounter = NewWildEncounterManager(wh, wh.database)
+	old.StartPlaytime(time.Now().Add(-3*time.Second), 0, 42)
+	wh.PlayerMovement.RegisterPlayer(old, 42, 7, 8, 50, "UP")
+	if err := wh.characterOwners.acquire(context.Background(), 42, old, nil); err != nil {
+		t.Fatal(err)
+	}
+	testdb.Exec(t, database, `CREATE FUNCTION reject_playtime_save() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'reject playtime'; END $$;
+ CREATE CONSTRAINT TRIGGER reject_playtime_save AFTER UPDATE ON character_data DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_playtime_save();`)
+	if err := wh.cleanupCharacterSession(context.Background(), old); err == nil {
+		t.Fatal("failed disconnect did not report persistence error")
+	}
+	frozen := old.CurrentPlaytime(time.Now())
+	testdb.Exec(t, database, `DROP TRIGGER reject_playtime_save ON character_data`)
+	next := &session.Session{Authenticated: true, AccountID: old.AccountID, Messenger: &recordingMessenger{}}
+	battleDispatch(t, wh, next, opcodes.EnterWorld, `{"name":"battle"}`)
+	if !next.HasValidClient() || next.Client.CharData().TimePlayed != frozen || next.CurrentPlaytime(time.Now()) < frozen || !wh.characterOwners.owns(42, next) {
+		t.Fatal("entry did not reload the recovered playtime baseline before starting its tracker")
+	}
+	next.Close()
+	next.DrainCommands(func() {
+		if err := wh.cleanupCharacterSession(context.Background(), next); err != nil {
+			t.Error(err)
+		}
+	})
 }
 
 func TestCharacterHandoffReturnsPersistenceFailure(t *testing.T) {

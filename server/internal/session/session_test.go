@@ -107,9 +107,9 @@ func TestSessionPlaytimeTracksAndClaimsWholeSeconds(t *testing.T) {
 	if got := session.CurrentPlaytime(started.Add(2500 * time.Millisecond)); got != 14 {
 		t.Fatalf("CurrentPlaytime = %d, want 14", got)
 	}
-	got, err := session.PersistPlaytime(started.Add(2500*time.Millisecond), func(characterID int32, seconds uint32) error {
-		if characterID != 9 || seconds != 2 {
-			t.Fatalf("persist = (%d, %d), want (9, 2)", characterID, seconds)
+	got, err := session.PersistPlaytime(started.Add(2500*time.Millisecond), func(characterID int32, totalSeconds uint32) error {
+		if characterID != 9 || totalSeconds != 14 {
+			t.Fatalf("persist = (%d, %d), want (9, 14)", characterID, totalSeconds)
 		}
 		return nil
 	})
@@ -149,5 +149,24 @@ func TestSessionPlaytimeStopsAtCharacterSelect(t *testing.T) {
 
 	if got := session.CurrentPlaytime(started.Add(time.Hour)); got != 11 {
 		t.Fatalf("CurrentPlaytime while stopped = %d, want 11", got)
+	}
+}
+
+func TestFinishPlaytimeFreezesUnacknowledgedInterval(t *testing.T) {
+	var session Session
+	started := time.Unix(4000, 0)
+	session.StartPlaytime(started, 20, 9)
+	id, total := session.FinishPlaytime(started.Add(3500 * time.Millisecond))
+	if id != 9 || total != 23 || session.CurrentPlaytime(started.Add(time.Hour)) != 23 {
+		t.Fatalf("final=(%d,%d) current=%d", id, total, session.CurrentPlaytime(started.Add(time.Hour)))
+	}
+	if _, err := session.PersistPlaytime(started.Add(time.Hour), func(int32, uint32) error {
+		t.Fatal("retired tracker attempted persistence")
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if id, _ := session.FinishPlaytime(started.Add(time.Hour)); id != 0 {
+		t.Fatal("retired interval was claimed twice")
 	}
 }

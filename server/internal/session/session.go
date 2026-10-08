@@ -70,12 +70,13 @@ func (s *Session) CurrentPlaytime(now time.Time) uint32 {
 	return s.playtimePersisted + elapsedWholeSeconds(s.playtimeStartedAt, now)
 }
 
-// PersistPlaytime writes and then advances the whole-second persistence
-// boundary while holding the per-session playtime lock. Quit and periodic
-// flushes therefore cannot claim the same interval or race a rollback.
+// PersistPlaytime writes the cumulative character total, then advances the
+// whole-second boundary. The exclusively owned character was loaded after the
+// previous owner drained. A cumulative write is safe to repeat even when a
+// commit succeeded but its acknowledgement was lost; an additive write is not.
 func (s *Session) PersistPlaytime(
 	now time.Time,
-	persist func(characterID int32, seconds uint32) error,
+	persist func(characterID int32, totalSeconds uint32) error,
 ) (uint32, error) {
 	s.playtimeMu.Lock()
 	defer s.playtimeMu.Unlock()
@@ -83,7 +84,7 @@ func (s *Session) PersistPlaytime(
 	if seconds == 0 || s.playtimeCharacter == 0 {
 		return 0, nil
 	}
-	if err := persist(s.playtimeCharacter, seconds); err != nil {
+	if err := persist(s.playtimeCharacter, s.playtimePersisted+seconds); err != nil {
 		return 0, err
 	}
 	s.playtimeStartedAt = s.playtimeStartedAt.Add(time.Duration(seconds) * time.Second)
@@ -97,6 +98,22 @@ func (s *Session) StopPlaytime() {
 	s.playtimeStartedAt = time.Time{}
 	s.playtimeCharacter = 0
 	s.playtimeMu.Unlock()
+}
+
+// FinishPlaytime retires the tracker and returns an immutable final cumulative
+// save. A disconnected owner's retry must not accrue time while waiting to recover.
+func (s *Session) FinishPlaytime(now time.Time) (characterID int32, totalSeconds uint32) {
+	s.playtimeMu.Lock()
+	defer s.playtimeMu.Unlock()
+	seconds := elapsedWholeSeconds(s.playtimeStartedAt, now)
+	if seconds > 0 {
+		characterID = s.playtimeCharacter
+	}
+	s.playtimePersisted += seconds
+	totalSeconds = s.playtimePersisted
+	s.playtimeStartedAt = time.Time{}
+	s.playtimeCharacter = 0
+	return
 }
 
 func elapsedWholeSeconds(start, now time.Time) uint32 {

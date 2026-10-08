@@ -92,6 +92,44 @@ func TestCharacterHandoffCancellationRetainsOldOwnerUntilCleanup(t *testing.T) {
 	}
 }
 
+func TestCharacterCleanupRecoverySerializesAdmissionAndRetainsCancellation(t *testing.T) {
+	var owners characterOwners
+	old, next := &session.Session{}, &session.Session{}
+	if err := owners.acquire(context.Background(), 42, old, nil); err != nil {
+		t.Fatal(err)
+	}
+	entered := make(chan struct{}, 1)
+	finish := make(chan struct{})
+	owners.retire(42, old, func(ctx context.Context) error {
+		entered <- struct{}{}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-finish:
+			return nil
+		}
+	}, errors.New("failed final save"))
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- owners.acquire(ctx, 42, next, nil) }()
+	<-entered
+	if err := owners.acquire(context.Background(), 42, &session.Session{}, nil); !errors.Is(err, errCharacterHandoff) {
+		t.Fatalf("parallel recovery=%v", err)
+	}
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) || owners.owns(42, next) {
+		t.Fatalf("cancelled recovery=%v", err)
+	}
+	close(finish)
+	if err := owners.acquire(context.Background(), 42, next, nil); err != nil || !owners.owns(42, next) {
+		t.Fatalf("recovery retry=%v", err)
+	}
+	owners.release(42, next)
+	if len(owners.entries) != 0 {
+		t.Fatal("recovered character tombstone retained")
+	}
+}
+
 func TestLateCharacterCleanupCannotEvictReplacementState(t *testing.T) {
 	wh := &WorldHandler{}
 	next := &session.Session{}

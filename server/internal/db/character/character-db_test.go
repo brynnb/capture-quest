@@ -11,7 +11,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-func TestPlaytimeIncrementSurvivesGeneralCharacterSave(t *testing.T) {
+func TestCumulativePlaytimeSurvivesGeneralCharacterSaveAndRepeatedTotals(t *testing.T) {
 	database, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -37,8 +37,10 @@ func TestPlaytimeIncrementSurvivesGeneralCharacterSave(t *testing.T) {
 	db.GlobalWorldDB = &db.WorldDB{DB: database}
 	t.Cleanup(func() { db.GlobalWorldDB = previous })
 
-	if err := AddCharacterPlaytime(context.Background(), database, 9, 7, 5); err != nil {
-		t.Fatal(err)
+	for _, total := range []uint32{15, 15, 12} {
+		if err := SaveCharacterPlaytime(context.Background(), database, 9, 7, total); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := UpdateCharacter(context.Background(), database, &model.CharacterData{
 		ID:         9,
@@ -58,8 +60,8 @@ func TestPlaytimeIncrementSurvivesGeneralCharacterSave(t *testing.T) {
 	if seconds != 15 {
 		t.Fatalf("time_played = %d, want 15", seconds)
 	}
-	if err := AddCharacterPlaytime(context.Background(), database, 404, 7, 5); err == nil {
-		t.Fatal("missing character accepted a playtime increment")
+	if err := SaveCharacterPlaytime(context.Background(), database, 404, 7, 5); err == nil {
+		t.Fatal("missing character accepted a playtime save")
 	}
 	if err := UpdateCharacter(context.Background(), database, &model.CharacterData{ID: 404}, 7); err == nil {
 		t.Fatal("missing character accepted a general save")
