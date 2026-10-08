@@ -165,3 +165,13 @@ func TestEnterWorldHandoffReloadsAfterOldCommandCommits(t *testing.T) {
 	next.Close()
 	next.DrainCommands(func() { wh.cleanupCharacterSession(context.Background(), next) })
 }
+
+func TestEntryInvalidOptionsClosesPartialOwnerWithoutPresence(t *testing.T) {
+	database, wh, _, messages := battleTestWorld(t)
+	testdb.Exec(t, database, `UPDATE character_data SET x=7,y=8,map_id=50,options='[]' WHERE id=42`)
+	ses := &session.Session{Authenticated: true, Messenger: messages}
+	battleDispatch(t, wh, ses, opcodes.EnterWorld, `{"name":"battle"}`)
+	if !ses.IsClosed() || ses.HasValidClient() || ses.Presence().CharacterID != 0 || wh.characterOwners.owns(42, ses) {
+		t.Fatal("invalid option read left partial visible character owner")
+	}
+}

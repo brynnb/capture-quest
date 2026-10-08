@@ -31,7 +31,7 @@ func HandleEnterWorld(ses *session.Session, payload []byte, wh *WorldHandler) bo
 	}
 	name := req.Name
 	log.Printf("[WORLD] Session %d entering world as character %q (account %d)", ses.SessionID, name, ses.AccountID)
-	if accountMatch, err := AccountHasCharacterName(ses.CommandContext(), ses.AccountID, name); err != nil || !accountMatch {
+	if accountMatch, err := AccountHasCharacterName(ses.CommandContext(), wh.database, ses.AccountID, name); err != nil || !accountMatch {
 		log.Printf("[WORLD] Session %d: Tried to log in unsuccessfully from account %d with character %q: %v", ses.SessionID, ses.AccountID, name, err)
 		return false
 	}
@@ -55,8 +55,10 @@ func HandleEnterWorld(ses *session.Session, payload []byte, wh *WorldHandler) bo
 	// Load event flags for this character
 	if ses.HasValidClient() {
 		charID := int64(ses.Client.CharData().ID)
-		if err := wh.EventFlags.LoadFlags(charID); err != nil {
+		if err := wh.EventFlags.LoadFlagsContext(ses.CommandContext(), charID); err != nil {
 			log.Printf("[WORLD] Failed to load event flags for char %d: %v", charID, err)
+			ses.Close()
+			return false
 		}
 	}
 

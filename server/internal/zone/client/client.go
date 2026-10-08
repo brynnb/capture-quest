@@ -2,8 +2,8 @@ package client
 
 import (
 	"context"
-	"log"
 
+	"capturequest/internal/db"
 	db_character "capturequest/internal/db/character"
 	model "capturequest/internal/db/models"
 	entity "capturequest/internal/zone/interface"
@@ -26,11 +26,10 @@ type Client struct {
 	OnStateUpdate    func()
 }
 
-func NewClient(charData *model.CharacterData, onSystemMessage func(string), onSpecialMessage func(string, string), onStateUpdate func()) (entity.Client, error) {
-	opts, err := db_character.LoadOptions(context.Background(), int32(charData.ID))
+func NewClient(ctx context.Context, database db.ContextDBTX, charData *model.CharacterData, onSystemMessage func(string), onSpecialMessage func(string, string), onStateUpdate func()) (entity.Client, error) {
+	opts, err := db_character.LoadOptionsFrom(ctx, database, int32(charData.ID))
 	if err != nil {
-		log.Printf("failed to load options for character %d, using defaults: %v", charData.ID, err)
-		opts = db_character.DefaultOptions()
+		return nil, err
 	}
 
 	return &Client{

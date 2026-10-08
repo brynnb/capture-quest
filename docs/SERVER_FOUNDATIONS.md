@@ -28,6 +28,46 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized a branch push for the stopping checkpoint on 2026-10-07; production deployment remains unauthorized.
 
+## Remaining entry options, account and flag dependencies (2026-10-07)
+
+Entry dependency tracing found `NewClient` loading options through the global pool
+and `context.Background()`, then constructing default preferences after any read
+failure. `LoadOptions` also silently defaulted malformed stored JSON and missing
+characters. Entry used the background event-flag wrapper and continued after its
+failure; its account/name predicate still selected the global pool. The last-login
+save likewise logged failure and continued initialization.
+
+The sole client-construction caller now supplies the entry context and injected
+query handle. `LoadOptionsFrom` is the shared read/parser used by the constructor
+and legacy wrapper. Unset options and missing object keys keep established defaults;
+missing characters, non-object JSON, invalid recognized fields, read failures and
+cancellation return errors. Unknown option keys remain extensible. The constructor
+cannot convert such errors into default state. Account/name validation now uses
+the injected handle. Event flags use the existing `LoadFlagsContext` with the
+entry lifetime and fail entry on error. A failed last-login save also stops entry.
+The existing failure path closes/drains partial ownership instead of publishing
+an incompletely initialized character.
+
+PostgreSQL regressions exercise unset/default and malformed option values, missing
+characters, actual single-connection pool contention, injected construction with
+the global database disabled, cancellation without client creation and failed
+entry without client/presence/lease. Focused checks passed, followed by complete
+character (1.276 seconds), client (1.093 seconds) and world race suites (45.509
+seconds). Three rendered cases passed in 47.5 seconds in
+`/var/tmp/capturequest-rendered.hnHynd`: walking lost-result/reentry, multiplayer
+warp visibility and character-private boulder isolation. The isolated runner
+compiled the current server, validated matched local assets and stopped its
+private runtime. Diff checks passed. No wire, schema or frontend production
+contract changed. This checkpoint is committed locally, with no push or release.
+
+The original restore-timeout attribution remains unproven. These are established
+entry budget/initialization defects, not evidence that they caused that particular
+five-second event. Event-flag cache mutex contention and remaining legacy option
+save/rival-name reads still require their own audit; passing reentry does not close
+the timeout investigation. Next: inspect cache-lock wait and option writer lifetime
+through the same authoritative boundaries. The broader five-area roadmap remains
+active. No push, deployment or production mutation is part of this local checkpoint.
+
 ## Character entry read ownership and cancellation (2026-10-07)
 
 Presence/character-handoff review confirms the existing owner barrier closes and

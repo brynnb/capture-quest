@@ -203,12 +203,12 @@ func sendCharacterStateFromDB(ses *session.Session, wh *WorldHandler, characterN
 	playStartedAt := time.Now()
 	charData.LastLogin = uint32(playStartedAt.Unix())
 	if err := db_character.UpdateCharacter(ses.CommandContext(), wh.database, charData, ses.AccountID); err != nil {
-		log.Printf("sendCharacterStateFromDB: failed to update last login for %s: %v", characterName, err)
+		return fmt.Errorf("update last login for %s: %w", characterName, err)
 	}
 	applyLocalCharacterPrivileges(charData)
 
 	// Create client for this character (loads inventory, etc.)
-	ses.Client, err = client.NewClient(charData, func(text string) {
+	ses.Client, err = client.NewClient(ses.CommandContext(), wh.database, charData, func(text string) {
 		SendSystemMessage(ses, text)
 	}, func(text string, msgType string) {
 		SendSpecialMessage(ses, text, msgType)

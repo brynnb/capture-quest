@@ -324,10 +324,10 @@ func CountAccountCharacters(ctx context.Context, accountID int64) (int, error) {
 	return count, nil
 }
 
-func AccountHasCharacterName(ctx context.Context, accountID int64, charName string) (bool, error) {
+func AccountHasCharacterName(ctx context.Context, database db.ContextDBTX, accountID int64, charName string) (bool, error) {
 	// Never cache this - always keep up to date
 	var exists bool
-	if err := db.GlobalWorldDB.DB.QueryRowContext(ctx, `
+	if err := database.QueryRowContext(ctx, `
 		SELECT EXISTS (
 			SELECT 1
 			FROM character_data

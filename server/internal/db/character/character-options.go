@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 	"unicode"
 
@@ -64,14 +63,15 @@ func NormalizeRivalName(name string) string {
 
 // LoadOptions loads character options from the database
 func LoadOptions(ctx context.Context, charID int32) (*CharacterOptions, error) {
+	return LoadOptionsFrom(ctx, db.GlobalWorldDB.DB, charID)
+}
+
+func LoadOptionsFrom(ctx context.Context, database db.ContextDBTX, charID int32) (*CharacterOptions, error) {
 	query := `SELECT options FROM character_data WHERE id = $1`
 
 	var optionsJSON sql.NullString
-	err := db.GlobalWorldDB.DB.QueryRowContext(ctx, query, charID).Scan(&optionsJSON)
+	err := database.QueryRowContext(ctx, query, charID).Scan(&optionsJSON)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return DefaultOptions(), nil
-		}
 		return nil, fmt.Errorf("failed to load options for character %d: %w", charID, err)
 	}
 
@@ -80,10 +80,12 @@ func LoadOptions(ctx context.Context, charID int32) (*CharacterOptions, error) {
 		return DefaultOptions(), nil
 	}
 
+	if !strings.HasPrefix(strings.TrimSpace(optionsJSON.String), "{") {
+		return nil, fmt.Errorf("options for character %d must be an object", charID)
+	}
 	opts := DefaultOptions() // Start with defaults so missing fields get default values
 	if err := json.Unmarshal([]byte(optionsJSON.String), opts); err != nil {
-		log.Printf("Warning: failed to parse options JSON for character %d, using defaults: %v", charID, err)
-		return DefaultOptions(), nil
+		return nil, fmt.Errorf("parse options for character %d: %w", charID, err)
 	}
 	opts.RivalName = NormalizeRivalName(opts.RivalName)
 
