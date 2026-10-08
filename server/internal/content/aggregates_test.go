@@ -14,7 +14,7 @@ func TestAggregateReadSnapshotAndFailureBoundaries(t *testing.T) {
 	database := testdb.Postgres(t)
 	testdb.Exec(t, database, `INSERT INTO phaser_map_scripts(map_name,script_index,script_label,script_constant,raw_asm) VALUES('TEST',0,'OLD_SCRIPT','CONST','old');
   INSERT INTO phaser_event_flags(map_name,flag_name,operation) VALUES('TEST','OLD_FLAG','set')`)
-	_, err := readSnapshot(context.Background(), database, func(ctx context.Context, snapshot db.ContextDBTX) (int, error) {
+	_, err := db.ReadSnapshot(context.Background(), database, func(ctx context.Context, snapshot db.ReadDBTX) (int, error) {
 		var name string
 		if err := snapshot.QueryRowContext(ctx, `SELECT script_label FROM phaser_map_scripts WHERE map_name='TEST'`).Scan(&name); err != nil {
 			return 0, err
@@ -39,7 +39,7 @@ func TestAggregateReadSnapshotAndFailureBoundaries(t *testing.T) {
 	commitCtx, cancelCommit := context.WithCancel(context.Background())
 	defer cancelCommit()
 	loaded := false
-	value, commitErr := readSnapshot(commitCtx, database, func(ctx context.Context, snapshot db.ContextDBTX) (int, error) {
+	value, commitErr := db.ReadSnapshot(commitCtx, database, func(ctx context.Context, snapshot db.ReadDBTX) (int, error) {
 		var count int
 		if err := snapshot.QueryRowContext(ctx, `SELECT COUNT(*) FROM phaser_map_scripts`).Scan(&count); err != nil {
 			return 0, err

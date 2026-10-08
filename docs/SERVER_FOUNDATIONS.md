@@ -28,6 +28,52 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Warp presentation reads through the shared snapshot boundary (2026-10-08)
+
+Warp queries used the global database and resolved `LAST_MAP` destinations while
+the catalog cursor remained open. That nested query needed another pool connection,
+and scan/resolution errors were silently omitted from a partial reply. The existing
+content snapshot primitive is mechanically centralized as `db.ReadSnapshot`; content
+aggregates and warp reads share its injected, bounded, repeatable-read transaction.
+Its query wrapper also binds legacy `QueryRow`/`Query` calls to the owned deadline.
+Warp rows are fully consumed and closed before dynamic resolution, using that same
+transaction and the existing resolver. Any scan/resolution/commit failure returns
+no partial catalog. Empty successful catalogs are arrays. Eligibility filters,
+imported coordinates and normal-warp activation policy remain unchanged.
+
+Warp replies now carry request/map/character identity and explicit typed arrays;
+this reflection reply and global array normalization are retired. The client uses
+`correlatedRequest`, validates its view, and accepts the MapLoader abort signal in
+both interior and unified-map paths. Timeout is rejection, not an empty list;
+map loading delegates failure to its existing error boundary. Resolved warps are
+fetched on each arrival rather than reused from a map-only cache, because their
+previous-map context can differ on return to the same map. No inventory coordinator
+or additional read executor was introduced.
+
+PostgreSQL regressions disable the global database and resolve two viewers' dynamic
+destinations on a one-connection pool, prove pool-wait cancellation, reject an
+unresolved destination without partial success and preserve empty arrays. Existing
+aggregate publication/commit-failure checks exercise the centralized primitive.
+43 focused client checks passed, including overlapping warp reads, abort/late reply,
+timeout and existing actor/map request checks. Full database, content and world
+race suites passed in 1.619, 12.165 and 49.412 seconds. Ten rendered door/stair/gate,
+movement-recovery and reentry cases passed in 1.3 minutes in
+`/var/tmp/capturequest-rendered.N6Hqit`. The additional database regression passed
+(1.136 seconds), proving a nested contextless pg_sleep query stops at its 50ms
+owner deadline and returns no partial value. Production build and canonical asset
+validation passed (Vite build 3.40 seconds). Logs are retained under
+`/var/tmp/capturequest-warps-*`; diff checks passed. Canonical Tygo and typecheck passed; no extractor/schema/runtime
+asset contract changed.
+
+Remaining: review the shared read primitive before another migration; audit dynamic
+previous-map context across fresh entry/same-map changes, visibility/catalog/source
+ordering and warp-read fault acceptance. Other presentation queries, especially
+music's global background read, remain open. The original login restore timeout
+is still unattributed; fixing this independent nested-query defect does not prove
+its cause. Next: review snapshot deadline behavior and remaining world-presentation
+reads. The full five-area goal remains active. This checkpoint is local only,
+without push, deployment or production mutation.
+
 ## Catalog retirement review and rendered replacement acceptance (2026-10-08)
 
 Review found `close()` notifying retirement observers while `isConnected` was

@@ -225,9 +225,11 @@ export class MapLoader {
       let warps: PhaserWarp[] = [];
       try {
         // Fetch warps for this map
-        warps = cached?.warps ?? await this.mapDataService.fetchWarps(mapId);
+        warps = await this.mapDataService.fetchWarps(mapId, mapRequestAbort.signal);
       } catch (warpError) {
-        console.error("Error loading warps:", warpError);
+        // A failed owned read is not an empty warp catalog. Let the existing
+        // map-load failure boundary own retry/retirement.
+        throw warpError;
       }
       if (!this.isLoadCurrent(loadGeneration)) return;
 
@@ -465,7 +467,7 @@ export class MapLoader {
         ? cached.actors
         : await this.mapDataService.fetchActors(mapId, mapRequestAbort.signal);
       if (!this.isLoadCurrent(loadGeneration)) return;
-      const warps = cached?.warps ?? await this.mapDataService.fetchWarps(mapId);
+      const warps = await this.mapDataService.fetchWarps(mapId, mapRequestAbort.signal);
       if (!this.isLoadCurrent(loadGeneration)) return;
 
       // Preload actor sprites before rendering

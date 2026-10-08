@@ -21,7 +21,6 @@ import type {
   PhaserTilesRequest,
   PhaserTilesResponse,
   PhaserActor,
-  PhaserWarp,
 } from "@/net/generated/world_api";
 
 /**
@@ -214,12 +213,8 @@ export function requestActors(request: import("@/net/generated/world_api").Phase
 /**
  * Request warps for a specific map ID
  */
-export function requestWarps(mapId: number): void {
-  if (!WorldSocket.isConnected) {
-    console.warn("[PhaserNetwork] Not connected - cannot request warps");
-    return;
-  }
-  NetworkBridge.send({ mapId: mapId }, OpCodes.PhaserWarpsRequest);
+export function requestWarps(request: import("@/net/generated/world_api").PhaserWarpsRequest): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.PhaserWarpsRequest);
 }
 
 /**
@@ -340,7 +335,7 @@ export type PhaserMapLoadHandler = (data: PhaserMapLoadResponse | PhaserMapReque
 export type PhaserTilesHandler = (data: PhaserTilesResponse | PhaserTile[]) => void;
 export type PhaserOverworldMapsHandler = (data: PhaserMapInfo[]) => void;
 export type PhaserActorsHandler = (data: import("@/net/generated/world_api").PhaserActorsResponse | PlayerStepError) => void;
-export type PhaserWarpsHandler = (data: PhaserWarp[]) => void;
+export type PhaserWarpsHandler = (data: import("@/net/generated/world_api").PhaserWarpsResponse | PlayerStepError) => void;
 export type PhaserActorUpdateHandler = (data: PhaserActor) => void;
 export type PhaserActorDespawnHandler = (data: { id: number }) => void;
 export type TrainerEncounterHandler = (
@@ -665,7 +660,7 @@ export function dispatchPhaserResponse(opcode: number, data: unknown): void {
 
     case OpCodes.PhaserWarpsResponse:
       handlers.warps.forEach((h) =>
-        h(normalizePhaserArrayPayload<PhaserWarp>(data, "warps response")),
+        h(data as import("@/net/generated/world_api").PhaserWarpsResponse | PlayerStepError),
       );
       break;
     case OpCodes.PhaserActorPositionUpdate:

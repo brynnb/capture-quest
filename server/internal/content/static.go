@@ -10,7 +10,7 @@ import (
 // StaticData shares the same coherent, bounded aggregate read as the other
 // content projections. No process-global cache can retain a cancelled first load.
 func (s *Service) StaticData(ctx context.Context) (*staticdata.StaticData, error) {
-	return readSnapshot(ctx, s.database, func(ctx context.Context, q db.ContextDBTX) (*staticdata.StaticData, error) {
+	return db.ReadSnapshot(ctx, s.database, func(ctx context.Context, q db.ReadDBTX) (*staticdata.StaticData, error) {
 		data := &staticdata.StaticData{}
 		var err error
 		data.Classes, err = collect(ctx, q, `SELECT id,name,class_type,lore FROM poke_classes ORDER BY id`, func(rows *sql.Rows, c *staticdata.ClassInfo) error {

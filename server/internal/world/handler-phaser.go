@@ -133,7 +133,8 @@ type PhaserActorsResponse struct {
 
 // PhaserWarpsRequest is the request payload
 type PhaserWarpsRequest struct {
-	MapID int `json:"mapId"`
+	RequestID string `json:"requestId"`
+	MapID     int    `json:"mapId"`
 }
 
 // HandlePhaserMapInfoRequest only reads catalog metadata. Legacy destination
@@ -675,17 +676,35 @@ func HandlePhaserActorsRequest(ses *session.Session, payload []byte, wh *WorldHa
 }
 
 // HandlePhaserWarpsRequest returns warps for a specific map
+type PhaserWarpsResponse struct {
+	Success     bool         `json:"success" tstype:"true"`
+	RequestID   string       `json:"requestId"`
+	CharacterID int64        `json:"characterId"`
+	MapID       int          `json:"mapId"`
+	Warps       []PhaserWarp `json:"warps"`
+}
+
 func HandlePhaserWarpsRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
 	var req PhaserWarpsRequest
-	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("[Phaser] Invalid WarpsRequest: %v", err)
+	fail := func(message string) bool {
+		ses.SendStreamJSON(protocol.PlayerStepError{RequestID: req.RequestID, Error: message}, opcodes.PhaserWarpsResponse)
 		return false
 	}
-
+	if decodePlayerMovement(payload, &req) != nil || !validBattleRequestID(req.RequestID) || !ses.HasValidClient() {
+		return fail("Invalid warp read")
+	}
+	warps, err := readPlayerWarps(ses.CommandContext(), wh.database, req.MapID, ses.PreviousMapID)
+	if err != nil {
+		return fail("Warp data unavailable; retry the read")
+	}
+	ses.SendStreamJSON(PhaserWarpsResponse{Success: true, RequestID: req.RequestID, CharacterID: int64(ses.Client.CharData().ID), MapID: req.MapID, Warps: warps}, opcodes.PhaserWarpsResponse)
+	return false
+}
+func readPlayerWarps(ctx context.Context, database *sql.DB, mapID, previousMapID int) ([]PhaserWarp, error) {
 	query := `
 		SELECT id, source_map_id, x, y, destination_map_id, destination_map,
 		       destination_x, destination_y, destination_kind,
-		       destination_warp_id, warp_type, warp_direction
+		       destination_warp_id, COALESCE(warp_type,'door'), warp_direction
 		FROM phaser_warps
 		WHERE source_map_id = $1
 		  AND COALESCE(warp_type, 'door') NOT IN ('elevator', 'inactive')
@@ -697,15 +716,15 @@ func HandlePhaserWarpsRequest(ses *session.Session, payload []byte, wh *WorldHan
 				AND destination_y IS NOT NULL
 			)
 		  )`
-	queryArgs := []interface{}{req.MapID}
+	queryArgs := []interface{}{mapID}
 
-	if req.MapID == UnifiedOverworldMapID {
+	if mapID == UnifiedOverworldMapID {
 		// Overworld warps have global coordinates baked in by the importer.
 		query = `
 			SELECT pw.id, pw.source_map_id, pw.x, pw.y, pw.destination_map_id,
 			       pw.destination_map, pw.destination_x, pw.destination_y,
 			       pw.destination_kind, pw.destination_warp_id,
-			       pw.warp_type, pw.warp_direction
+			       COALESCE(pw.warp_type,'door'), pw.warp_direction
 			FROM phaser_warps pw
 			JOIN phaser_maps pm ON pw.source_map_id = pm.id
 			WHERE pm.is_overworld = 1
@@ -716,36 +735,39 @@ func HandlePhaserWarpsRequest(ses *session.Session, payload []byte, wh *WorldHan
 		queryArgs = nil
 	}
 
-	rows, err := db.GlobalWorldDB.DB.Query(query, queryArgs...)
-	if err != nil {
-		log.Printf("[Phaser] Error querying warps for map %d: %v", req.MapID, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.PhaserWarpsResponse)
-		return false
-	}
-	defer rows.Close()
-
-	var warps []PhaserWarp
-	for rows.Next() {
-		var w PhaserWarp
-		if err := rows.Scan(&w.ID, &w.SourceMapID, &w.X, &w.Y, &w.DestinationMapID, &w.DestinationMap, &w.DestinationX, &w.DestinationY, &w.DestinationKind, &w.DestinationWarpID, &w.WarpType, &w.WarpDirection); err != nil {
-			log.Printf("[Phaser] Error scanning warp: %v", err)
-			continue
-		}
-		w, err = resolvePhaserWarpForPlayer(db.GlobalWorldDB.DB, ses.PreviousMapID, w)
+	return db.ReadSnapshot(ctx, database, func(ctx context.Context, q db.ReadDBTX) ([]PhaserWarp, error) {
+		rows, err := q.Query(query, queryArgs...)
 		if err != nil {
-			log.Printf("[Phaser] Dynamic warp %d unresolved for session %d: %v", w.ID, ses.SessionID, err)
-			continue
+			return nil, err
 		}
-		warps = append(warps, w)
-	}
-
-	ses.SendStreamJSON(StructToMap(warps), opcodes.PhaserWarpsResponse)
-	log.Printf("[Phaser] Sent %d warps for map %d", len(warps), req.MapID)
-	return false
+		defer rows.Close()
+		warps := make([]PhaserWarp, 0)
+		for rows.Next() {
+			var w PhaserWarp
+			if err := rows.Scan(&w.ID, &w.SourceMapID, &w.X, &w.Y, &w.DestinationMapID, &w.DestinationMap, &w.DestinationX, &w.DestinationY, &w.DestinationKind, &w.DestinationWarpID, &w.WarpType, &w.WarpDirection); err != nil {
+				return nil, err
+			}
+			warps = append(warps, w)
+		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		if err := rows.Close(); err != nil {
+			return nil, err
+		}
+		// Resolve only after consuming/closing the catalog cursor, through the SAME
+		// snapshot and deadline. Never open a second pool connection for LAST_MAP.
+		for i, w := range warps {
+			resolved, err := resolvePhaserWarpForPlayer(q, previousMapID, w)
+			if err != nil {
+				return nil, fmt.Errorf("resolve warp %d: %w", w.ID, err)
+			}
+			warps[i] = resolved
+		}
+		return warps, nil
+	})
 }
 
-// A LAST_MAP row with a complete destination was deterministically resolved
-// during import. Only genuinely ambiguous entrances need per-session context.
 func shouldResolveLastMapForPlayer(w PhaserWarp) bool {
 	return w.DestinationKind == "last-map" &&
 		(w.DestinationMapID == nil || w.DestinationX == nil || w.DestinationY == nil)

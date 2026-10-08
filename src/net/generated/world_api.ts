@@ -1047,7 +1047,18 @@ export interface PhaserActorsResponse {
  * PhaserWarpsRequest is the request payload
  */
 export interface PhaserWarpsRequest {
+  requestId: string;
   mapId: number /* int */;
+}
+/**
+ * HandlePhaserWarpsRequest returns warps for a specific map
+ */
+export interface PhaserWarpsResponse {
+  success: true;
+  requestId: string;
+  characterId: number /* int64 */;
+  mapId: number /* int */;
+  warps: PhaserWarp[];
 }
 
 //////////

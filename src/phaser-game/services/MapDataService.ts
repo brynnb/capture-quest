@@ -352,29 +352,12 @@ export class MapDataService {
   /**
    * Fetch warps for a specific map (or empty if mapId is omitted)
    */
-  async fetchWarps(mapId?: number): Promise<PhaserWarp[]> {
-    if (!PhaserNet.isConnected()) {
-      throw new Error("Not connected to server - please log in first");
-    }
-
-    // If no mapId provided, return empty - caller should use mapId
-    if (mapId === undefined) {
-      console.warn("fetchWarps called without mapId - returning empty array");
-      return [];
-    }
-
-    const dataPromise = new Promise<PhaserWarp[]>((resolve) => {
-      const unsubscribe = PhaserNet.onWarps((data) => {
-        unsubscribe();
-        resolve(data || []);
-      });
-      PhaserNet.requestWarps(mapId);
-    });
-
-    return Promise.race([
-      dataPromise,
-      createTimeoutPromise<PhaserWarp[]>(REQUEST_TIMEOUT_MS, `Timeout fetching warps for map ${mapId}`)
-    ]);
+  async fetchWarps(mapId: number, signal?: AbortSignal): Promise<PhaserWarp[]> {
+    const characterId=usePlayerCharacterStore.getState().characterProfile.id;
+    const response=await correlatedRequest<import("@/net/generated/world_api").PhaserWarpsResponse>(PhaserNet.onWarps,id=>PhaserNet.requestWarps({mapId,requestId:id}),signal);
+    if (signal?.aborted || usePlayerCharacterStore.getState().characterProfile.id!==characterId) throw new DOMException("Warp view retired","AbortError");
+    if(response.mapId!==mapId || response.characterId!==characterId || !Array.isArray(response.warps)) throw new Error("Invalid owned warp view");
+    return response.warps;
   }
 
   /**

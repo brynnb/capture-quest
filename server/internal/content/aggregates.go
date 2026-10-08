@@ -4,35 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"time"
 
 	"capturequest/internal/db"
 	"capturequest/internal/protocol"
 )
-
-// readSnapshot prevents an aggregate from mixing publications across its queries.
-// It owns one operation budget and returns no partial result on load/commit failure.
-func readSnapshot[T any](ctx context.Context, database *sql.DB, read func(context.Context, db.ContextDBTX) (T, error)) (T, error) {
-	var zero T
-	if database == nil {
-		return zero, fmt.Errorf("content database is required")
-	}
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	tx, err := database.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
-	if err != nil {
-		return zero, err
-	}
-	defer tx.Rollback()
-	result, err := read(ctx, tx)
-	if err != nil {
-		return zero, err
-	}
-	if err := tx.Commit(); err != nil {
-		return zero, err
-	}
-	return result, nil
-}
 
 // collect closes each result before the next query, including on scan failure.
 // Empty successful lists are arrays, while any failure discards the partial list.
@@ -57,7 +32,7 @@ func collect[T any](ctx context.Context, database db.ContextDBTX, query string, 
 }
 
 func (s *Service) MapScripts(ctx context.Context, mapName string) (protocol.PhaserMapScriptsResponse, error) {
-	return readSnapshot(ctx, s.database, func(ctx context.Context, database db.ContextDBTX) (protocol.PhaserMapScriptsResponse, error) {
+	return db.ReadSnapshot(ctx, s.database, func(ctx context.Context, database db.ReadDBTX) (protocol.PhaserMapScriptsResponse, error) {
 		result := protocol.PhaserMapScriptsResponse{MapName: mapName}
 		var err error
 		result.Scripts, err = collect(ctx, database, `SELECT script_index,script_label,script_constant,raw_asm FROM phaser_map_scripts WHERE map_name=$1 ORDER BY script_index,id`, func(rows *sql.Rows, v *protocol.PhaserMapScript) error {
@@ -88,7 +63,7 @@ func (s *Service) MapScripts(ctx context.Context, mapName string) (protocol.Phas
 }
 
 func (s *Service) Learnset(ctx context.Context, pokemonID int) (protocol.PhaserLearnsetResponse, error) {
-	return readSnapshot(ctx, s.database, func(ctx context.Context, database db.ContextDBTX) (protocol.PhaserLearnsetResponse, error) {
+	return db.ReadSnapshot(ctx, s.database, func(ctx context.Context, database db.ReadDBTX) (protocol.PhaserLearnsetResponse, error) {
 		result := protocol.PhaserLearnsetResponse{PokemonID: pokemonID}
 		var err error
 		result.Learnset, err = collect(ctx, database, `SELECT level,move_name,move_id FROM phaser_pokemon_learnset WHERE pokemon_id=$1 ORDER BY level,id`, func(rows *sql.Rows, v *protocol.PhaserLearnsetEntry) error {
