@@ -127,9 +127,10 @@ func newTileOverrideResolver(ctx context.Context, db *sql.DB) (*tileOverrideReso
 // TileIdentityResolver shares native artwork identity with event compilation.
 // Every external consumer must negotiate the extractor contract before resolving.
 type TileIdentityResolver struct {
-	resolver *tileOverrideResolver
-	catalog  map[int][3]int
-	Contract extractorcontract.Context
+	coordinates *coordinateResolver
+	resolver    *tileOverrideResolver
+	catalog     map[int][3]int
+	Contract    extractorcontract.Context
 }
 
 func NewTileIdentityResolver(ctx context.Context, source *sql.DB, release string) (*TileIdentityResolver, error) {
@@ -157,7 +158,28 @@ func NewTileIdentityResolver(ctx context.Context, source *sql.DB, release string
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return &TileIdentityResolver{resolver: resolver, Contract: contract, catalog: catalog}, nil
+	coordinates, err := newCoordinateResolver(ctx, source)
+	if err != nil {
+		return nil, err
+	}
+	return &TileIdentityResolver{resolver: resolver, Contract: contract, catalog: catalog, coordinates: coordinates}, nil
+}
+
+// ResolveCoordinate shares the compiler's source-to-world mapping, with strict
+// missing-map/offset rejection for assertion consumers.
+func (r *TileIdentityResolver) ResolveCoordinate(mapName string, x, y int) (int, int, error) {
+	name := mapNameToUpperSnake(mapName)
+	meta, ok := r.coordinates.maps[name]
+	if !ok {
+		return 0, 0, fmt.Errorf("unknown coordinate source map %s", name)
+	}
+	if meta.Overworld {
+		if _, ok := r.coordinates.offsets[name]; !ok {
+			return 0, 0, fmt.Errorf("missing coordinate source offset for %s", name)
+		}
+	}
+	result := r.coordinates.Normalize([]scriptedevents.EventCoordinate{{MapName: name, X: x, Y: y}}, name)
+	return result[0].X, result[0].Y, nil
 }
 func (r *TileIdentityResolver) VerifyCatalogIdentity(id, tileset, block, position int) error {
 	value, ok := r.catalog[id]

@@ -10,12 +10,13 @@ import (
 )
 
 type Scenario struct {
-	Name          string          `json:"name"`
-	Description   string          `json:"description"`
-	Fixture       Fixture         `json:"fixture"`
-	Trigger       Trigger         `json:"trigger"`
-	ResolveBattle *ResolveBattle  `json:"resolveBattle"`
-	Expect        ExpectedOutcome `json:"expect"`
+	CoordinateSpace string          `json:"coordinateSpace,omitempty"`
+	Name            string          `json:"name"`
+	Description     string          `json:"description"`
+	Fixture         Fixture         `json:"fixture"`
+	Trigger         Trigger         `json:"trigger"`
+	ResolveBattle   *ResolveBattle  `json:"resolveBattle"`
+	Expect          ExpectedOutcome `json:"expect"`
 }
 
 type ResolveBattle struct {
@@ -358,6 +359,9 @@ func LoadScenario(path string) (*Scenario, error) {
 	var scenario Scenario
 	if err := json.Unmarshal(data, &scenario); err != nil {
 		return nil, fmt.Errorf("parse scenario %s: %w", path, err)
+	}
+	if scenario.CoordinateSpace != "" && scenario.CoordinateSpace != "world" && scenario.CoordinateSpace != "source" {
+		return nil, fmt.Errorf("unsupported coordinateSpace %q", scenario.CoordinateSpace)
 	}
 	if scenario.Name == "" {
 		scenario.Name = trimScenarioExt(filepath.Base(path))

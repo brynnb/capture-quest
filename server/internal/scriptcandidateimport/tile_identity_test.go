@@ -63,3 +63,22 @@ func TestCatalogSignaturesIncludeSharedGraphicsAliasRows(t *testing.T) {
 		t.Fatal("DOJO catalog row dropped because its data belongs to GYM")
 	}
 }
+
+func TestSourceCoordinateResolverSharesTranslationAndRejectsMissingOffsets(t *testing.T) {
+	resolver := &TileIdentityResolver{coordinates: &coordinateResolver{maps: map[string]sourceMapMeta{"ROUTE_23": {ID: 34, Overworld: true}, "ROOM": {ID: 38}}, offsets: map[string]coordinateOffset{"ROUTE_23": {X: -50, Y: -208}}}}
+	x, y, err := resolver.ResolveCoordinate("ROUTE_23", 8, 136)
+	if err != nil || x != -42 || y != -72 {
+		t.Fatalf("source trigger translation: %d,%d %v", x, y, err)
+	}
+	x, y, err = resolver.ResolveCoordinate("ROOM", 3, 6)
+	if err != nil || x != 3 || y != 6 {
+		t.Fatal("interior coordinate changed")
+	}
+	delete(resolver.coordinates.offsets, "ROUTE_23")
+	if _, _, err = resolver.ResolveCoordinate("ROUTE_23", 8, 136); err == nil {
+		t.Fatal("missing native offset guessed")
+	}
+	if _, _, err = resolver.ResolveCoordinate("UNKNOWN", 0, 0); err == nil {
+		t.Fatal("unknown source map accepted")
+	}
+}

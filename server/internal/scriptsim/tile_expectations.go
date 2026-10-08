@@ -17,6 +17,39 @@ func ResolveTileExpectations(ctx context.Context, database *sql.DB, resolver *sc
 	if run != contract.RunID || revision != contract.SourceRevision || tree != contract.SourceTreeSHA256 || release != contract.ReleaseCode {
 		return fmt.Errorf("tile expectation source differs from imported extractor contract")
 	}
+	var fixtureX, fixtureY, triggerX, triggerY, finalX, finalY int
+	nativeCoordinates := scenario.CoordinateSpace == "source"
+	if scenario.CoordinateSpace != "" && scenario.CoordinateSpace != "world" && !nativeCoordinates {
+		return fmt.Errorf("unsupported scenario coordinateSpace %q", scenario.CoordinateSpace)
+	}
+	if nativeCoordinates {
+		if scenario.Trigger.Type != "coord" {
+			return fmt.Errorf("source coordinates currently require coord trigger")
+		}
+		var err error
+		fixtureX, fixtureY, err = resolver.ResolveCoordinate(scenario.Fixture.MapName, scenario.Fixture.X, scenario.Fixture.Y)
+		if err != nil {
+			return err
+		}
+		triggerX, triggerY, err = resolver.ResolveCoordinate(scenario.Trigger.MapName, scenario.Trigger.X, scenario.Trigger.Y)
+		if err != nil {
+			return err
+		}
+		mapName := scenario.Fixture.MapName
+		if scenario.Expect.FinalMapName != "" {
+			mapName = scenario.Expect.FinalMapName
+		}
+		offsetX, offsetY, err := resolver.ResolveCoordinate(mapName, 0, 0)
+		if err != nil {
+			return err
+		}
+		if scenario.Expect.FinalX != nil {
+			finalX = *scenario.Expect.FinalX + offsetX
+		}
+		if scenario.Expect.FinalY != nil {
+			finalY = *scenario.Expect.FinalY + offsetY
+		}
+	}
 	resolved := map[int]int{}
 	for i := range scenario.Expect.TileStates {
 		expected := &scenario.Expect.TileStates[i]
@@ -44,6 +77,17 @@ func ResolveTileExpectations(ctx context.Context, database *sql.DB, resolver *sc
 	}
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	if nativeCoordinates {
+		scenario.Fixture.X, scenario.Fixture.Y = fixtureX, fixtureY
+		scenario.Trigger.X, scenario.Trigger.Y = triggerX, triggerY
+		if scenario.Expect.FinalX != nil {
+			scenario.Expect.FinalX = &finalX
+		}
+		if scenario.Expect.FinalY != nil {
+			scenario.Expect.FinalY = &finalY
+		}
+		scenario.CoordinateSpace = "world"
 	}
 	for i, id := range resolved {
 		scenario.Expect.TileStates[i].TileImageID = id

@@ -28,6 +28,44 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Explicit source-coordinate scenario frame (2026-10-08)
+
+Route 23 scenarios expressed original local coordinates as world coordinates.
+The Cascade guard fixture/trigger uses (8,136), but canonical tiles establish a
+single offset (-50,-208); the generated trigger correctly uses (-42,-72). The
+simulator looked for an eligible trigger at the untranslated fixture value.
+
+Scenarios can now declare `coordinateSpace: "source"`. Fourteen Route 23 badge
+cases do so; their coordinate literals and gameplay assertions stay unchanged.
+Before fixture mutation, the already-negotiated source resolver translates fixture,
+coordinate trigger and expected final position using the existing compiler
+coordinate translator. Interior coordinates remain unchanged. Unknown maps,
+missing offsets, unsupported frames and unsupported source trigger types reject;
+there is no Route 23 offset constant or runtime location exception. Unmarked/world
+scenarios retain their current interpretation. Resolved updates publish only after
+source/contract checks succeed, and the in-memory frame becomes world to prevent
+double translation.
+
+Regressions verify the exact Route 23 translation, unchanged interior values and
+missing-source rejection. Focused compiler/simulator checks passed (2.6s/1.5s),
+full compiler/simulator/world race suites passed (world 48.9s), all Go packages
+compile and diff checks pass. The canonical private corpus completes 395 scenarios,
+including the Route 23 blocked/pass cases, then fails
+`silph_card_key_2f_door1_no_key` on (4,5)/image 167/collision 0 while native output
+reports that bottom quadrant as collision 1. Its assertion was not changed.
+Evidence is `/var/tmp/capturequest-source-coordinate-corpus.log` and
+`/var/tmp/capturequest-script-sim.5qpubj`; the private cluster is stopped. This is
+headless source-coordinate/runtime selection evidence, not rendered actor/art or
+complete golden acceptance.
+
+Remaining: source-foot collision provenance versus old manual whole-block
+expectations at Silph, standalone tile rules/text goldens, received-item text
+hydration, Giovanni flag migration, simulator writers and other command rows.
+The original restore timeout and Repel click failure remain unattributed; all five
+areas stay active. Next: audit Silph collision semantics through original passable
+lists and the shared compiler before more command migration. This checkpoint is
+local only, without push, deployment or production mutation.
+
 ## Retire covered manual block tile overrides (2026-10-08)
 
 The Mansion mismatch was a competing producing path. Native source expectations

@@ -77,10 +77,13 @@ func runScenario(ctx context.Context, scenarioPath string, opts runOptions) erro
 	if err != nil {
 		return fmt.Errorf("load scenario failed: %w", err)
 	}
+	needsSource := scenario.CoordinateSpace == "source"
 	for _, expected := range scenario.Expect.TileStates {
-		if expected.Source == nil {
-			continue
+		if expected.Source != nil {
+			needsSource = true
 		}
+	}
+	if needsSource {
 		if *opts.resolver == nil {
 			var release string
 			if err := db.GlobalWorldDB.DB.QueryRowContext(ctx, `SELECT release_code FROM phaser_import_metadata WHERE singleton=true`).Scan(&release); err != nil {
@@ -105,7 +108,6 @@ func runScenario(ctx context.Context, scenarioPath string, opts runOptions) erro
 		if err := scriptsim.ResolveTileExpectations(ctx, db.GlobalWorldDB.DB, *opts.resolver, scenario); err != nil {
 			return err
 		}
-		break
 	}
 	result, err := scriptsim.Run(ctx, db.GlobalWorldDB.DB, scenario)
 	output := ""
