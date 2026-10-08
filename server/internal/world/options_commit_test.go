@@ -6,6 +6,7 @@ import (
 	"capturequest/internal/testdb"
 	"capturequest/internal/zone/client"
 	"context"
+	"encoding/json"
 	"fmt"
 	"testing"
 )
@@ -58,5 +59,46 @@ func TestPreferenceRevisionRejectsDuplicateAndOldCharacterWrites(t *testing.T) {
 	battleDispatch(t, wh, ses, opcodes.SetOption, `{"requestId":"pref:read","characterId":42,"current":true}`)
 	if err := wh.database.QueryRow(`SELECT (options->>'preferenceRevision')::int FROM character_data WHERE id=42`).Scan(&revision); err != nil || revision != 2 {
 		t.Fatalf("current read mutated revision=%d: %v", revision, err)
+	}
+}
+
+func TestPreferenceCommitDoesNotDependOnAnotherTransaction(t *testing.T) {
+	wh, ses, messages := setupIssuedStep(t)
+	actual, err := client.NewClient(context.Background(), wh.database, ses.Client.CharData(), nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ses.Client = actual
+	wh.database.SetMaxOpenConns(1)
+	// The deferred trigger changes only the NEXT transaction's default. This
+	// write commits, while any follow-up SELECT FOR UPDATE would fail read-only.
+	testdb.Exec(t, wh.database, `CREATE FUNCTION preference_next_readonly() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM set_config('default_transaction_read_only','on',false); RETURN NEW; END $$; CREATE CONSTRAINT TRIGGER preference_next_readonly AFTER UPDATE ON character_data DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION preference_next_readonly();`)
+	defer wh.database.Exec(`SET default_transaction_read_only=off`)
+	messages.streams = nil
+	battleDispatch(t, wh, ses, opcodes.SetOption, `{"requestId":"pref:commit","characterId":42,"revision":0,"optionId":13,"value":0}`)
+	var readOnly string
+	if err := wh.database.QueryRow(`SHOW default_transaction_read_only`).Scan(&readOnly); err != nil || readOnly != "on" {
+		t.Fatalf("commit trap inactive: %s %v", readOnly, err)
+	}
+	if len(messages.streams) != 1 {
+		t.Fatalf("unexpected publication: %+v", messages.streams)
+	}
+	var response PreferenceResponse
+	if err := json.Unmarshal(messages.streams[0].payload, &response); err != nil || !response.Success || response.Revision != 1 || response.ShowNetworkStats {
+		t.Fatalf("committed preference reported failure: %+v %v", response, err)
+	}
+	if ses.Client.ShowNetworkStatsEnabled() || ses.Client.Options().PreferenceRevision != 1 {
+		t.Fatal("committed preference cache stayed stale")
+	}
+	// Prove the failure condition, rather than merely assuming the trigger would
+	// reject the old handler's second transaction.
+	messages.streams = nil
+	battleDispatch(t, wh, ses, opcodes.SetOption, `{"requestId":"pref:read","characterId":42,"current":true}`)
+	var failed BattleCommandError
+	if len(messages.streams) != 1 {
+		t.Fatal("missing current-read rejection")
+	}
+	if err := json.Unmarshal(messages.streams[0].payload, &failed); err != nil || failed.Success || failed.Error == "" {
+		t.Fatalf("follow-up read unexpectedly succeeded: %+v %v", failed, err)
 	}
 }

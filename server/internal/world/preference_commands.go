@@ -39,6 +39,8 @@ func HandleSetOption(ses *session.Session, payload []byte, wh *WorldHandler) boo
 	if req.CharacterID != charID {
 		return fail("Preference character changed")
 	}
+	var opts *db_character.CharacterOptions
+	var err error
 	if !req.Current {
 		var key string
 		switch req.OptionID {
@@ -52,24 +54,26 @@ func HandleSetOption(ses *session.Session, payload []byte, wh *WorldHandler) boo
 		if req.Value != 0 && req.Value != 1 {
 			return fail("Invalid preference value")
 		}
-		if err := db_character.SetBooleanOption(ses.CommandContext(), wh.database, int32(charID), key, req.Value == 1, req.Revision); err != nil {
+		opts, err = db_character.SetBooleanOption(ses.CommandContext(), wh.database, int32(charID), key, req.Value == 1, req.Revision)
+		if err != nil {
 			log.Printf("[Options] Character %d: %v", charID, err)
 			return fail("Preference could not be saved; read current preferences")
 		}
 	}
-	var opts *db_character.CharacterOptions
-	err := db.Transaction(ses.CommandContext(), wh.database, func(tx db.DBTX) error {
-		// This read shares the character lock without firing UPDATE triggers.
-		var id int64
-		if err := tx.QueryRow(`SELECT id FROM character_data WHERE id=$1 FOR UPDATE`, charID).Scan(&id); err != nil {
+	if req.Current {
+		err = db.Transaction(ses.CommandContext(), wh.database, func(tx db.DBTX) error {
+			// This read shares the character lock without firing UPDATE triggers.
+			var id int64
+			if err := tx.QueryRow(`SELECT id FROM character_data WHERE id=$1 FOR UPDATE`, charID).Scan(&id); err != nil {
+				return err
+			}
+			var err error
+			opts, err = db_character.LoadOptionsFrom(ses.CommandContext(), tx.(db.ContextDBTX), int32(charID))
 			return err
+		})
+		if err != nil {
+			return fail("Current preferences unavailable; recover their current state")
 		}
-		var err error
-		opts, err = db_character.LoadOptionsFrom(ses.CommandContext(), tx.(db.ContextDBTX), int32(charID))
-		return err
-	})
-	if err != nil {
-		return fail("Current preferences unavailable; recover their current state")
 	}
 	if cached := ses.Client.Options(); cached != nil {
 		cached.PreferenceRevision = opts.PreferenceRevision

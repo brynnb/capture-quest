@@ -98,11 +98,12 @@ func LoadOptionsFrom(ctx context.Context, database db.ContextDBTX, charID int32)
 
 // SetBooleanOption owns one desired preference key. Newer center/story keys and
 // unknown options remain in the same authoritative JSON object.
-func SetBooleanOption(ctx context.Context, database *sql.DB, charID int32, key string, enabled bool, expectedRevision int64) error {
+func SetBooleanOption(ctx context.Context, database *sql.DB, charID int32, key string, enabled bool, expectedRevision int64) (*CharacterOptions, error) {
 	if key != "showNetworkStats" && key != "allowTrainerRebattles" {
-		return fmt.Errorf("unsupported preference key %q", key)
+		return nil, fmt.Errorf("unsupported preference key %q", key)
 	}
-	return db.Transaction(ctx, database, func(tx db.DBTX) error {
+	var snapshot *CharacterOptions
+	err := db.Transaction(ctx, database, func(tx db.DBTX) error {
 		if err := db.LockCharacter(tx, int64(charID)); err != nil {
 			return err
 		}
@@ -116,6 +117,21 @@ func SetBooleanOption(ctx context.Context, database *sql.DB, charID int32, key s
 			return fmt.Errorf("preference revision changed; read current preferences")
 		}
 		_, err = tx.Exec(`UPDATE character_data SET options=COALESCE(options,'{}'::jsonb)||jsonb_build_object($2::text,$3::boolean,'preferenceRevision',$4::bigint) WHERE id=$1`, charID, key, enabled, expectedRevision+1)
-		return err
+		if err != nil {
+			return err
+		}
+		opts.PreferenceRevision = expectedRevision + 1
+		if key == "showNetworkStats" {
+			opts.ShowNetworkStats = enabled
+		} else {
+			opts.AllowTrainerRebattles = enabled
+		}
+		snapshot = opts
+		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
+	// Never return a pre-commit snapshot when the owning transaction fails.
+	return snapshot, nil
 }

@@ -28,6 +28,37 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Preference boundary review: publish the committed snapshot (2026-10-08)
+
+Review found the preference handler starting a second transaction after the write
+committed. Failure in that follow-up read could leave the live client's cached
+preference unchanged even though PostgreSQL had accepted the write. The existing
+`SetBooleanOption` transaction now returns its private snapshot only after commit
+succeeds. The handler publishes that snapshot immediately; only explicit `current`
+requests perform the character-locked read. Failure returns no committed snapshot.
+This follows the reviewed flag-writer commit/publication rule and removes a database
+round trip without introducing another coordinator or transaction helper.
+
+The regression uses a deferred PostgreSQL trigger to change the next transaction's
+default to read-only. It observes successful preference publication/cache update,
+then explicitly verifies a separate current-read transaction fails. This proves
+the old second-transaction dependency, rather than assuming cancellation timing.
+The repository regression also asserts committed snapshots contain the new value
+and revision and rejected commits return no snapshot. Focused character/world
+race checks passed in 1.097 and 1.272 seconds; logs are retained at
+`/var/tmp/capturequest-preference-commit-boundary.log`. Both rendered preference
+cases passed in 21.5 seconds: normal persistence/reentry and dropped-reply current
+recovery/reentry. Evidence is retained in `/var/tmp/capturequest-rendered.wNCuVe`.
+The runner compiled the changed backend and stopped its private runtime. Diff
+checks passed. No frontend, wire, schema or generated-asset
+contract changed in this review, so no new frontend build is required.
+
+Remaining: independent-owner cache ordering, legacy option/story writers and the
+open command matrix. The original login timeout remains unattributed. Next: audit
+chat persistence cancellation, rate-limit retirement and heartbeat handling through
+the existing session gate. The broad goal remains active; no push or deployment is
+part of this local checkpoint.
+
 ## Preference command and current-state recovery (2026-10-08)
 
 The client changed `allowTrainerRebattles` before sending an uncorrelated
