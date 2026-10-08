@@ -151,7 +151,7 @@ func sendCharacterStateFromDB(ses *session.Session, wh *WorldHandler, characterN
 	if ses.HasValidClient() {
 		return fmt.Errorf("session already has a character")
 	}
-	charData, err := db_character.GetCharacterByName(characterName)
+	charData, err := db_character.GetCharacterByNameContext(ses.CommandContext(), wh.database, characterName)
 	if err != nil {
 		return err
 	}
@@ -171,7 +171,7 @@ func sendCharacterStateFromDB(ses *session.Session, wh *WorldHandler, characterN
 	}()
 	// The previous owner may have flushed position/playtime during the handoff.
 	// Loading before that barrier would resurrect stale character state.
-	charData, err = db_character.GetCharacterByName(characterName)
+	charData, err = db_character.GetCharacterByNameContext(ctx, wh.database, characterName)
 	if err != nil {
 		return err
 	}

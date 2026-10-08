@@ -62,8 +62,13 @@ func scanCharacterData(scanner rowScanner) (*model.CharacterData, error) {
 
 // GetCharacterByName loads character data from the database.
 func GetCharacterByName(name string) (*model.CharacterData, error) {
-	ctx := context.Background()
-	character, err := scanCharacterData(db.GlobalWorldDB.DB.QueryRowContext(ctx, `
+	return GetCharacterByNameContext(context.Background(), db.GlobalWorldDB.DB, name)
+}
+
+// Runtime entry owns the database and cancellation for both pre-handoff identity
+// and post-drain reload. The legacy wrapper remains for un-migrated callers.
+func GetCharacterByNameContext(ctx context.Context, database db.ContextDBTX, name string) (*model.CharacterData, error) {
+	character, err := scanCharacterData(database.QueryRowContext(ctx, `
 		SELECT `+characterDataRuntimeColumns+`
 		FROM character_data
 		WHERE name = $1

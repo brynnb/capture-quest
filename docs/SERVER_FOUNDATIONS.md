@@ -28,6 +28,47 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized a branch push for the stopping checkpoint on 2026-10-07; production deployment remains unauthorized.
 
+## Character entry read ownership and cancellation (2026-10-07)
+
+Presence/character-handoff review confirms the existing owner barrier closes and
+drains the previous connection before replacement, reloads committed state after
+that barrier, and prevents delayed cleanup from evicting replacement state. Closed
+sessions return empty presence immediately; successful entry owns spawn publication.
+The review found a separate concrete cancellation gap: both entry character loads
+called `GetCharacterByName`, whose implementation used the global pool and
+`context.Background()`.
+
+`GetCharacterByNameContext` now accepts the runtime database and cancellation
+context. Entry uses the session context for initial identity and the owned handoff
+context for the post-drain reload. The established reload/account/identity checks
+remain. The legacy wrapper delegates to that read for callers still awaiting their
+own migration; no duplicate scanner or new entry coordinator was added.
+
+A real PostgreSQL regression disables the global database, loads the selected row
+through the injected pool, then holds its only connection. A 50ms caller deadline
+terminates the blocked read with `context.DeadlineExceeded`, and the pool's wait
+counter proves actual contention was exercised. Existing handoff/late-cleanup/
+presence checks passed. Full character tests passed (1.143 seconds), session checks
+passed, and the world race suite passed (47.763 seconds). Three rendered cases
+passed in 45.5 seconds in `/var/tmp/capturequest-rendered.SzutCy`: walking lost-reply
+and character reentry, multiplayer warp visibility and private boulder isolation.
+The runner compiled the updated server, validated matched local assets and stopped
+its private runtime. Diff checks passed. No wire, schema, frontend or generated-
+asset contract changed. This checkpoint is committed locally, with no push or
+production deployment.
+
+This fixes an established way entry reads could outlive their command budget and
+consume time before battle restoration. It does **not** establish attribution for
+the original five-second `restoreBattleOnLogin` event. That issue remains open;
+existing failure diagnostics and query/pool/stage evidence must still establish
+its actual cause. Passing reentry runs alone do not close it.
+
+Remaining: other entry global/background reads, failed-entry/final-save recovery,
+remaining lifecycle and query families, source/writer audits and the full five-area
+roadmap. Next: audit remaining entry dependencies against the same cancellation
+and injected-storage boundary, while retaining the original timeout investigation.
+No push, deployment or production mutation is part of this local checkpoint.
+
 ## Entry presence and viewer-scoped actor publication (2026-10-07)
 
 The publisher inventory found three bare arrays still sent on
