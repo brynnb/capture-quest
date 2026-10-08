@@ -28,6 +28,43 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Retire covered manual block tile overrides (2026-10-08)
+
+The Mansion mismatch was a competing producing path. Native source expectations
+resolved floor block $0e correctly, but tracked manual palettes painted the same
+cells with catalog-specific image 758. The compiler deliberately skipped any native
+candidate overlapping manual ownership, leaving those approximations authoritative.
+Original `PokemonMansion1F.asm` and structured candidate data describe the same
+switch block coordinates and source blocks $0e/$2d.
+
+The full manual block corpus contains 70 declarations. Every label has an
+unambiguous structured native replacement; all coordinates and required/absent
+flags match exactly. Those covered declarations and their now-unused numeric
+palettes are retired as one data change. The 20 standalone tile rules remain for
+separate provenance review. This removes shadow ownership across Mansion, Silph
+and Victory Road instead of repairing image constants individually. No assertion,
+collision expectation or runtime renderer was relaxed.
+
+Canonical generation and `import-script-candidates --check` pass. Native event
+tile output grows from 64 to 344 rules; diagnostic decisions move to 440 generated
+and one remaining manual skip, with no unsupported increase. Sync/compiler/world
+race suites passed (world 48.0s), all Go packages compile and diff checks pass.
+The canonical isolated corpus completes 331 scenarios, including Mansion native
+switch states, then fails selecting a Route 23 coordinate cutscene at (8,136).
+Evidence is `/var/tmp/capturequest-native-block-retirement-corpus.log` and
+`/var/tmp/capturequest-script-sim.9glJsr`; the private cluster is stopped. This is
+runtime data/contract evidence, not rendered tile-art or complete text-golden
+acceptance.
+
+Remaining: establish source-coordinate provenance for the Route 23 trigger failure,
+standalone numeric tile rules/expectations, portable goldens, received-item text
+hydration, Giovanni legacy flag migration and other roadmap rows. The original
+restore timeout and Repel click failure remain unattributed, and all five goal
+areas stay active. Next: audit the Route 23 source-to-world coordinate boundary
+through its existing translators before another family migration. Manual override
+retirement and generated output require the full-data lane for any future release;
+no push, deployment or production mutation occurred. This checkpoint is local only.
+
 ## Shared-graphics tile identity and importer metadata (2026-10-08)
 
 Original `LancesRoom.asm` selects blocks $31/$32 for the open entrance and
