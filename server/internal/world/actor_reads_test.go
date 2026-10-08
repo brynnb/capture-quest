@@ -160,3 +160,36 @@ func TestEntrySurfPreparationFailurePreservesMovementState(t *testing.T) {
 		})
 	}
 }
+
+func TestPeerActorPresenceRequiresMatchingMovementOwner(t *testing.T) {
+	wh, ses, _ := setupIssuedStep(t)
+	wh.PlayerMovement.players[42].Direction = "LEFT"
+	presence := ses.PublishPresence()
+	actor := createPlayerActorFromPresence(presence, wh)
+	if actor == nil || actor.ActionDirection == nil || *actor.ActionDirection != "LEFT" {
+		t.Fatal("matching presence did not use actual movement direction")
+	}
+	next := wh.sessionManager.CreateNextSession(&recordingMessenger{}, "", nil)
+	next.Client = ses.Client
+	next.Authenticated = true
+	wh.PlayerMovement.RegisterPlayer(next, 42, 7, 8, 50, "UP")
+	wh.PlayerMovement.players[42].IsSurfing = true
+	wh.PlayerMovement.players[42].MoveSpeed = 123 * time.Millisecond
+	if actor := createPlayerActorFromPresence(presence, wh); actor != nil {
+		t.Fatal("old session presence combined with replacement movement state")
+	}
+	next.X, next.Y, next.MapID = 7, 8, 50
+	current := next.PublishPresence()
+	actor = createPlayerActorFromPresence(current, wh)
+	if actor == nil || actor.ActionDirection == nil || *actor.ActionDirection != "UP" || actor.MoveSpeed != 123 || actor.SpriteName == nil || *actor.SpriteName != playerSpriteName(current.Gender, false, true) {
+		t.Fatalf("replacement snapshot incoherent: %+v", actor)
+	}
+	wh.PlayerMovement.projectCommittedPosition(42, 8, 8, 50, "RIGHT", false)
+	if actor := createPlayerActorFromPresence(current, wh); actor != nil {
+		t.Fatal("older position combined with newer movement metadata")
+	}
+	next.Close()
+	if next.Presence().CharacterID != 0 {
+		t.Fatal("closed replacement retained presence")
+	}
+}

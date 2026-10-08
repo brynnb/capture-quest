@@ -892,13 +892,18 @@ func createPlayerActorFromPresence(p session.Presence, wh *WorldHandler) *Phaser
 		}
 	}
 
-	ridingBicycle := wh.PlayerMovement != nil && wh.PlayerMovement.IsBicycleActive(int(p.CharacterID))
-	surfing := wh.PlayerMovement != nil && wh.PlayerMovement.IsSurfing(int(p.CharacterID))
-	spriteName := playerSpriteName(p.Gender, ridingBicycle, surfing)
+	if wh.PlayerMovement == nil {
+		return nil
+	}
+	movement, current := wh.PlayerMovement.snapshotForPresence(p, mapID, spawnX, spawnY)
+	if !current {
+		return nil
+	}
+	spriteName := playerSpriteName(p.Gender, movement.Bicycle, movement.Surfing)
 
 	objectType := "player"
 	stay := "STAY"
-	direction := initialPlayerDirection(storedMapID, spawnX, spawnY)
+	direction := movement.Direction
 	both := "BOTH"
 
 	return &PhaserActor{
@@ -913,7 +918,7 @@ func createPlayerActorFromPresence(p session.Presence, wh *WorldHandler) *Phaser
 		ActionType:      &stay,
 		ActionDirection: &direction,
 		MovementType:    &both,
-		MoveSpeed:       wh.PlayerMovement.GetMoveSpeed(int(p.CharacterID)),
+		MoveSpeed:       int(movement.MoveSpeed.Milliseconds()),
 	}
 }
 

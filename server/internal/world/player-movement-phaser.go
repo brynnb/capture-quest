@@ -222,6 +222,18 @@ func (m *PlayerMovementManager) snapshotForState(state *PlayerMovementState, mov
 	}
 }
 
+// Peer actor reads join immutable presence to one matching movement snapshot.
+// Character ID alone is insufficient after a session replaces its registration.
+func (m *PlayerMovementManager) snapshotForPresence(p session.Presence, mapID, x, y int) (playerMovementSnapshot, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	state := m.players[int(p.CharacterID)]
+	if state == nil || state.SessionID != p.SessionID || state.MapID != mapID || state.CurrentX != x || state.CurrentY != y {
+		return playerMovementSnapshot{}, false
+	}
+	return m.snapshotForState(state, 0), true
+}
+
 // GetMoveSpeed returns a player's current movement speed in milliseconds.
 // Returns the default if the player is not registered.
 func (m *PlayerMovementManager) GetMoveSpeed(charID int) int {

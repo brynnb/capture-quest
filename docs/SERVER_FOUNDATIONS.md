@@ -28,6 +28,49 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Peer actor metadata joins one matching movement snapshot (2026-10-08)
+
+The query-free actor constructor still combined immutable presence position/name
+with separate bicycle, surfing and speed reads keyed only by character ID. A
+session replacement could therefore supply the new registration's metadata to an
+older presence value; ordinary movement could also overtake the captured position.
+Facing used the entry-direction rule rather than current movement facing.
+
+Immutable `session.Presence` now carries its publishing session ID. Actor
+construction obtains one existing `playerMovementSnapshot` under the movement
+lock, requiring matching session, map and coordinates. Retired registrations and
+overtaken positions are omitted instead of mixing frames or guessing defaults.
+Sprite, speed and facing come from that same snapshot. The existing presence and
+movement systems remain authoritative; no shadow actor store or SQL is added.
+
+The private PostgreSQL regression captures old presence, replaces the movement
+registration with another session, and proves the old value cannot construct an
+actor. Matching replacement state supplies its actual facing, speed and surfing
+sprite together; movement overtaking the captured position rejects it. Closed
+sessions still return empty presence through the existing session boundary. This
+is registration/snapshot evidence, not a new real-transport retirement test.
+Focused actor/presence/tick checks passed (1.7s), full world (64.2s), session and
+script-simulator race suites passed, all Go packages compile and diff checks pass.
+The combined browser run at `/var/tmp/capturequest-rendered.hk2YSo` passed the
+ordinary Repel duplicate/reentry case and house exit, but its lost-reply case
+captured no successful reply before the crash phase. Retained trace inspection
+shows zero `RepelUseRequest` (143) frames and two `TrainerCardRequest` (150) frames;
+the UI snapshot shows the Trainer panel. One bounded isolated reproduction passed
+unchanged in 20.9s at `/var/tmp/capturequest-rendered.ALCfjk`, including verified
+exit 137/restart generation 1 and reentry. The initial UI interaction failure
+remains unattributed; the rerun does not explain it or close the original restore
+timeout. This is entry/reentry evidence, not a late peer-transport regression or
+proof of sprite pixel appearance.
+
+Remaining: peer stream/read publication ordering during close/reentry, source
+ownership across transport retirement, local/simulator/startup/dormant collision
+APIs, reconnect/idle resident recovery and the wider command matrix. The original
+restore timeout remains unattributed, and all five roadmap areas stay active.
+Next: prove late peer actor reads cannot resurrect a retired/replaced registration
+through the actual transport/client boundary, and retain the pre-command UI click
+failure for bounded interaction diagnosis. This checkpoint is local only,
+without push or deployment.
+
 ## Entry prepares surfing; actor presentation performs no collision SQL (2026-10-08)
 
 `createPlayerActorFromPresence` previously inferred a surfing sprite by reading

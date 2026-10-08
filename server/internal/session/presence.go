@@ -3,6 +3,7 @@ package session
 // Presence is the immutable projection used by other players and world timers.
 // It contains values only, never a pointer into the mutable character model.
 type Presence struct {
+	SessionID              int
 	Authenticated          bool
 	MapID                  int
 	X, Y                   float32
@@ -16,7 +17,7 @@ type Presence struct {
 // PublishPresence must run inside the session gate (or before exposing a new
 // session). Intermediate mutations remain private until publication.
 func (s *Session) PublishPresence() Presence {
-	p := Presence{Authenticated: s.Authenticated, MapID: s.MapID, X: s.X, Y: s.Y}
+	p := Presence{SessionID: s.SessionID, Authenticated: s.Authenticated, MapID: s.MapID, X: s.X, Y: s.Y}
 	if s.HasValidClient() {
 		c := s.Client.CharData()
 		p.CharacterID, p.Name, p.Gender = c.ID, c.Name, c.Gender
