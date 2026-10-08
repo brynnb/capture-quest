@@ -1,10 +1,13 @@
 package world
 
 import (
+	"capturequest/internal/db"
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"capturequest/internal/testdb"
 )
@@ -55,4 +58,156 @@ func TestActorPreloadFailurePreservesActorsAndCollisionRetry(t *testing.T) {
 	if m.rawFootTileMapForMap(40)["2,3"] != 7 {
 		t.Fatal("collision retry lost foot-tile provenance")
 	}
+}
+
+func TestCollisionLoadDoesNotBlockInvalidationOrPublishOvertakenRead(t *testing.T) {
+	database, wh, _, _ := battleTestWorld(t)
+	manager := NewPhaserActorManager(wh)
+	testdb.Exec(t, database, `INSERT INTO phaser_maps(id,name,width,height) VALUES(40,'ROOM',4,4); INSERT INTO phaser_tiles(map_id,x,y,tile_image_id,collision_type,raw_foot_tile_id) VALUES(40,2,3,1,1,7)`)
+	holder, err := database.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer holder.Rollback()
+	if _, err = holder.Exec(`LOCK TABLE phaser_tiles IN ACCESS EXCLUSIVE MODE`); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { _, _, err := manager.baseCollision(ctx, database, 40, true); done <- err }()
+	deadline := time.Now().Add(time.Second)
+	for {
+		var waiting bool
+		if err := database.QueryRow(`SELECT EXISTS(SELECT 1 FROM pg_locks WHERE relation='phaser_tiles'::regclass AND NOT granted)`).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("collision query did not reach held relation lock")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	invalidated := make(chan struct{})
+	go func() { manager.InvalidateCollisionMap(40); close(invalidated) }()
+	select {
+	case <-invalidated:
+	case <-time.After(200 * time.Millisecond):
+		holder.Rollback()
+		<-done
+		<-invalidated
+		t.Fatal("collision I/O held actor lock")
+	}
+	if _, err = holder.Exec(`UPDATE phaser_tiles SET collision_type=0,raw_foot_tile_id=9 WHERE map_id=40`); err != nil {
+		t.Fatal(err)
+	}
+	if err = holder.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err = <-done; err == nil || !strings.Contains(err.Error(), "invalidated") {
+		t.Fatalf("overtaken collision read accepted: %v", err)
+	}
+	if _, exists := manager.collisionMap[40]; exists {
+		t.Fatal("overtaken read warmed cache")
+	}
+	collision, raw, err := manager.baseCollision(context.Background(), database, 40, true)
+	if err != nil || collision["2,3"] != 0 || raw["2,3"] != 9 {
+		t.Fatalf("fresh collision retry: %v %v %v", collision, raw, err)
+	}
+}
+
+func TestCollisionTransactionReadDoesNotWarmSharedCache(t *testing.T) {
+	database, wh, _, _ := battleTestWorld(t)
+	manager := NewPhaserActorManager(wh)
+	testdb.Exec(t, database, `INSERT INTO phaser_maps(id,name,width,height) VALUES(40,'ROOM',4,4)`)
+	rollback := errors.New("reject gameplay transaction")
+	err := db.Transaction(context.Background(), database, func(tx db.DBTX) error {
+		if _, err := tx.Exec(`INSERT INTO phaser_tiles(map_id,x,y,tile_image_id,collision_type) VALUES(40,2,3,1,1)`); err != nil {
+			return err
+		}
+		collision, _, err := manager.characterCollision(context.Background(), tx.(db.ReadDBTX), 42, 40, 0, 0, nil)
+		if err != nil || collision["2,3"] != 1 {
+			t.Fatalf("transaction-local collision: %v %v", collision, err)
+		}
+		return rollback
+	})
+	if !errors.Is(err, rollback) {
+		t.Fatal(err)
+	}
+	if _, exists := manager.collisionMap[40]; exists {
+		t.Fatal("transaction populated shared collision cache")
+	}
+	collision, _, err := manager.baseCollision(context.Background(), database, 40, true)
+	if err != nil || len(collision) != 0 {
+		t.Fatalf("rolled-back tile escaped: %v %v", collision, err)
+	}
+}
+
+func TestCollisionInvalidationRetiresAllOverworldAliases(t *testing.T) {
+	manager := NewPhaserActorManager(nil)
+	manager.overworldMapIds[5] = true
+	for _, id := range []int{0, 5, 9999, 40} {
+		manager.collisionMap[id] = map[string]int{"2,3": 1}
+		manager.rawFootTileMap[id] = map[string]int{"2,3": 7}
+	}
+	manager.InvalidateCollisionMap(5)
+	for _, id := range []int{0, 5, 9999} {
+		if _, ok := manager.collisionMap[id]; ok {
+			t.Fatalf("overworld alias %d retained collision", id)
+		}
+		if _, ok := manager.rawFootTileMap[id]; ok {
+			t.Fatalf("overworld alias %d retained raw-foot data", id)
+		}
+	}
+	if manager.collisionMap[40]["2,3"] != 1 {
+		t.Fatal("interior cache removed by overworld edit")
+	}
+}
+
+func TestCollisionRejectsSnapshotThatPredatesInvalidation(t *testing.T) {
+	database, wh, _, _ := battleTestWorld(t)
+	manager := NewPhaserActorManager(wh)
+	testdb.Exec(t, database, `INSERT INTO phaser_maps(id,name,width,height) VALUES(40,'ROOM',4,4); INSERT INTO phaser_tiles(map_id,x,y,tile_image_id,collision_type) VALUES(40,2,3,1,1)`)
+	revision := manager.collisionRevision
+	_, err := db.ReadSnapshot(context.Background(), database, func(ctx context.Context, q db.ReadDBTX) (bool, error) {
+		var count int
+		if err := q.QueryRow(`SELECT count(*) FROM phaser_tiles`).Scan(&count); err != nil {
+			return false, err
+		}
+		testdb.Exec(t, database, `UPDATE phaser_tiles SET collision_type=0 WHERE map_id=40`)
+		manager.InvalidateCollisionMap(40)
+		_, _, err := manager.characterCollisionIn(ctx, q, 42, 40, 0, 0, nil, true, revision)
+		return false, err
+	})
+	if err == nil || !strings.Contains(err.Error(), "snapshot retired") {
+		t.Fatalf("old snapshot accepted newer cache generation: %v", err)
+	}
+	if _, ok := manager.collisionMap[40]; ok {
+		t.Fatal("old snapshot repopulated invalidated cache")
+	}
+}
+
+func TestCollisionColdReadCancelsWhileRelationLocked(t *testing.T) {
+	database, wh, _, _ := battleTestWorld(t)
+	manager := NewPhaserActorManager(wh)
+	holder, err := database.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer holder.Rollback()
+	if _, err = holder.Exec(`LOCK TABLE phaser_tiles IN ACCESS EXCLUSIVE MODE`); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	_, _, err = manager.baseCollision(ctx, database, 40, true)
+	if err == nil || ctx.Err() != context.DeadlineExceeded {
+		t.Fatalf("cold query escaped caller deadline: %v", err)
+	}
+	if _, ok := manager.collisionMap[40]; ok {
+		t.Fatal("cancelled read warmed cache")
+	}
+	manager.InvalidateCollisionMap(40)
 }

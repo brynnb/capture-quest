@@ -28,6 +28,46 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Base collision cache ownership review (2026-10-08)
+
+The runtime lazy loader held the shared actor mutex while querying collision rows.
+A relation lock or slow SQL therefore blocked actor access and cache invalidation.
+Runtime loading now stages complete immutable collision/raw-foot maps outside that
+mutex, using the same row reader as private startup staging. Publication checks
+caller cancellation and a conservative manager-wide collision revision before
+replacing cache entries. Invalidated reads reject rather than publishing partial
+or old data. Successful startup replacement also advances that revision.
+
+The owned character snapshot captures the revision before opening its transaction:
+otherwise an old snapshot could read flags before an edit, reach the cold base
+cache after invalidation, and publish old rows under the new revision. Both cold
+cache publication and completed snapshot delivery are fenced. Cold reads inside
+caller-owned gameplay transactions remain local and cannot warm the shared cache
+with uncommitted rows. Existing immutable cached base entries remain reusable;
+this does not turn ordinary steps into full-world queries.
+
+Overworld aliases (including map 0, unified map 9999 and catalog overworld IDs)
+query the same `map_id IS NULL` tile corpus. Invalidation now removes all their
+collision and raw-foot entries together while retaining interior caches. The
+revision is intentionally conservative: an edit can retire another map's pending
+read, which rejects and requires a new owned read instead of guessing freshness.
+
+Private PostgreSQL checks hold a real relation lock, observe the blocked read,
+and prove invalidation can proceed before SQL completes. They verify overtaken
+publication rejection, fresh retry with changed collision/feet, cancelled cold
+reads, old-snapshot rejection, transaction rollback without cache leakage, and
+alias invalidation. Existing concurrent retry/preload failure tests still pass.
+Focused race-enabled checks passed; full world (49.6s) and script-simulator race
+suites passed, all Go packages compile and diff checks pass. No new rendered,
+process-death or production acceptance follows from these headless checks.
+
+Remaining: global/background collision/pathfinding callers, runtime cache batching
+under sustained edits, reconnect/idle resident recovery and the remaining command
+matrix. The original login restore timeout remains unattributed and all five areas
+stay active. Next: finish the collision caller/lifetime inventory and address
+remaining background-context reads before another family migration. This is a local
+checkpoint only, without push or deployment.
+
 ## Collision rule snapshot alignment (2026-10-08)
 
 Review of the remaining collision reader found a concrete divergence from tile
