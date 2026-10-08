@@ -129,15 +129,15 @@ func (m *phaserWarpManager) warpByID(id int) *phaserMapWarp {
 	return m.byID[id]
 }
 
-func (m *phaserWarpManager) directionalWarpForFacingAttempt(mapID, x, y int, direction string, actorManager *PhaserActorManager) *phaserMapWarp {
-	if warp := m.warpAt(mapID, x, y); warp != nil && warp.canActivateByDirection(mapID, x, y, direction, actorManager) {
+func (m *phaserWarpManager) directionalWarpForFacingAttempt(mapID, x, y int, direction string, actorManager *PhaserActorManager, collision map[string]int) *phaserMapWarp {
+	if warp := m.warpAt(mapID, x, y); warp != nil && warp.canActivateByDirection(mapID, x, y, direction, actorManager, collision) {
 		return warp
 	}
 	dx, dy, ok := warpDirectionDelta(direction)
 	if !ok {
 		return nil
 	}
-	if warp := m.warpAt(mapID, x+dx, y+dy); warp != nil && warp.canActivateByDirection(mapID, x, y, direction, actorManager) {
+	if warp := m.warpAt(mapID, x+dx, y+dy); warp != nil && warp.canActivateByDirection(mapID, x, y, direction, actorManager, collision) {
 		return warp
 	}
 	return nil
@@ -151,7 +151,7 @@ func (w *phaserMapWarp) isCarpet() bool {
 	return normalizeWarpType(w.WarpType) == "carpet"
 }
 
-func (w *phaserMapWarp) canActivateByClick(playerMapID, playerX, playerY int, actorManager *PhaserActorManager) bool {
+func (w *phaserMapWarp) canActivateByClick(playerMapID, playerX, playerY int, actorManager *PhaserActorManager, collision map[string]int) bool {
 	if !w.matchesPlayerMap(playerMapID, actorManager) {
 		return false
 	}
@@ -160,7 +160,7 @@ func (w *phaserMapWarp) canActivateByClick(playerMapID, playerX, playerY int, ac
 		if distance == 0 {
 			return true
 		}
-		return distance == 1 && w.blockedWarpHasWalkableEntry(playerMapID, playerX, playerY, actorManager)
+		return distance == 1 && w.blockedWarpHasWalkableEntry(playerX, playerY, collision)
 	}
 	return distance <= 1
 }
@@ -175,7 +175,7 @@ func (w *phaserMapWarp) canActivateForRequestedDestination(playerMapID, playerX,
 	return destX == w.X && destY == w.Y
 }
 
-func (w *phaserMapWarp) canActivateByDirection(playerMapID, playerX, playerY int, direction string, actorManager *PhaserActorManager) bool {
+func (w *phaserMapWarp) canActivateByDirection(playerMapID, playerX, playerY int, direction string, actorManager *PhaserActorManager, collision map[string]int) bool {
 	if !w.matchesPlayerMap(playerMapID, actorManager) {
 		return false
 	}
@@ -188,7 +188,7 @@ func (w *phaserMapWarp) canActivateByDirection(playerMapID, playerX, playerY int
 		w.Y == playerY+dy &&
 		// Normal doors activate from the adjacent facing tile even when their tile
 		// is walkable. Carpets retain the blocked-entry collision rule.
-		(w.isDoor() || w.blockedWarpHasWalkableEntry(playerMapID, playerX, playerY, actorManager))
+		(w.isDoor() || w.blockedWarpHasWalkableEntry(playerX, playerY, collision))
 }
 
 func (w *phaserMapWarp) canActivateOnPathDestination(playerMapID int, actorManager *PhaserActorManager) bool {
@@ -208,25 +208,15 @@ func (w *phaserMapWarp) matchesPlayerMap(playerMapID int, actorManager *PhaserAc
 	return playerMapID == UnifiedOverworldMapID && actorManager != nil && actorManager.IsOverworld(w.SourceMapID)
 }
 
-func (w *phaserMapWarp) blockedWarpHasWalkableEntry(playerMapID, entryX, entryY int, actorManager *PhaserActorManager) bool {
-	if actorManager == nil {
-		return false
-	}
-
-	collisionMapID := w.SourceMapID
-	if playerMapID == UnifiedOverworldMapID && actorManager.IsOverworld(w.SourceMapID) {
-		collisionMapID = UnifiedOverworldMapID
-	}
-	warpCollision, warpExists := actorManager.CollisionTypeAt(collisionMapID, w.X, w.Y)
+// Eligibility uses one immutable collision view supplied by its owning read.
+// It must never borrow a second database connection from inside a transaction.
+func (w *phaserMapWarp) blockedWarpHasWalkableEntry(entryX, entryY int, collision map[string]int) bool {
+	warpCollision, warpExists := collision[tileKey(w.X, w.Y)]
 	if warpExists && warpCollision == collisionLand {
 		return false
 	}
-
-	entryCollision, entryExists := actorManager.CollisionTypeAt(collisionMapID, entryX, entryY)
-	if !entryExists || entryCollision != collisionLand {
-		return false
-	}
-	return true
+	entryCollision, entryExists := collision[tileKey(entryX, entryY)]
+	return entryExists && entryCollision == collisionLand
 }
 
 func (w *phaserMapWarp) activationFacingDirection(playerMapID, playerX, playerY int, fallback string, actorManager *PhaserActorManager) string {

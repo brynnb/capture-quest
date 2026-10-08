@@ -28,6 +28,43 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Warp eligibility uses one owned collision view (2026-10-08)
+
+Normal warp activation already owns a bounded transaction, but adjacent carpet
+eligibility called the independent collision convenience reader twice. A cold
+cache could borrow another connection inside that transaction, and the mat/entry
+checks could observe different cache generations. Eligibility now consumes one
+immutable collision map supplied by the owning transaction/context. Its rules are
+pure lookups; they no longer perform SQL or reload cached state. Door and standing-
+on-mat rules retain their existing behavior without adding a tile query.
+
+The adjacent carpet read uses the shared base-collision primitive and remains
+local to the transaction. Source read errors reject the warp and roll back position
+rather than being mistaken for normal ineligibility. Click and keyboard policies
+use the same view, preserving direction, source-map and catalog authority.
+
+Private PostgreSQL regressions use no global database and a cold cache. With a
+one-connection pool, a blocked mat activates while a walkable mat rejects; missing
+source leaves position unchanged. A real relation lock reaches the caller deadline
+without borrowing another connection or committing position. The pool counter is
+captured immediately after the operation: a later verification query can wait for
+cancelled-transaction cleanup and must not be counted as eligibility I/O. Existing
+rule checks were mechanically updated to supply their actual collision fixtures.
+
+Final focused warp checks passed (2.0s), full world (56.1s) and script-simulator race
+suites passed, all Go packages compile and diff checks pass. Two rendered routing
+cases passed in 15.5s: the house exit chain and Underground Path Route 6 mat.
+Evidence is retained at `/var/tmp/capturequest-rendered.sVUfM6`. This verifies
+browser routing, not screenshot/pixel appearance or new process-death recovery.
+
+Remaining: map-load/peer actor construction still reads collision to infer the surf
+sprite; prepare that decision through the existing entry/map-load owner instead
+of independent presentation SQL. Other local/simulator/startup/dormant API entries,
+reconnect/idle recovery and command-family gaps remain as inventoried. The original
+login timeout remains unattributed, and all five goal areas stay active. Next:
+review entry/map-load surfing ownership and remove the collision read from actor
+presentation. This is a local checkpoint only, without push or deployment.
+
 ## Owned water preflight reads (2026-10-08)
 
 Fishing facing-water and targeted SURF preflight now require the caller context

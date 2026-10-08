@@ -102,10 +102,20 @@ func commitNormalWarp(ctx context.Context, database db.DBTX, charID int64, req p
 			warpDirection = *catalog.WarpDirection
 		}
 		warp := phaserMapWarp{ID: catalog.ID, SourceMapID: catalog.SourceMapID, X: catalog.X, Y: catalog.Y, WarpType: catalog.WarpType, WarpDirection: warpDirection}
-		allowed := warp.canActivateByClick(eligibilityMap, x, y, actorManager)
+		var collision map[string]int
+		if warp.isCarpet() && abs(warp.X-x)+abs(warp.Y-y) == 1 {
+			if actorManager == nil {
+				return fmt.Errorf("warp collision service unavailable")
+			}
+			collision, _, err = actorManager.baseCollision(ctx, tx.(db.ContextDBTX), mapID, false)
+			if err != nil {
+				return err
+			}
+		}
+		allowed := warp.canActivateByClick(eligibilityMap, x, y, actorManager, collision)
 		direction := normalizeWarpDirection(req.Direction)
 		if req.InputSource == "keyboard" {
-			allowed = allowed && ((x == warp.X && y == warp.Y) || warp.canActivateByDirection(eligibilityMap, x, y, direction, actorManager))
+			allowed = allowed && ((x == warp.X && y == warp.Y) || warp.canActivateByDirection(eligibilityMap, x, y, direction, actorManager, collision))
 			if required := normalizeWarpDirection(warp.WarpDirection); required != "" && required != direction {
 				allowed = false
 			}

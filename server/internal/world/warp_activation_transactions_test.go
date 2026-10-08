@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
@@ -195,5 +196,70 @@ func TestNormalWarpChecksKeyboardDirectionAndSafariVisit(t *testing.T) {
 	var success protocol.PhaserWarpActivateResponse
 	if json.Unmarshal(messages.streams[len(messages.streams)-1].payload, &success) != nil || !success.Success || char.MapID != 220 {
 		t.Fatal("eligible Safari warp rejected")
+	}
+}
+
+func TestWarpEligibilityUsesOwnedColdCollisionView(t *testing.T) {
+	for _, mode := range []string{"blocked-mat", "walkable-mat", "missing-source", "cancel-read"} {
+		t.Run(mode, func(t *testing.T) {
+			database, wh, _, _ := battleTestWorld(t)
+			manager := NewPhaserActorManager(wh)
+			collision := 0
+			if mode == "walkable-mat" {
+				collision = 1
+			}
+			testdb.Exec(t, database, `UPDATE character_data SET map_id=50,x=7,y=8 WHERE id=42;
+ INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(50,'ROOM',20,20,0),(60,'OTHER',20,20,0);
+ INSERT INTO phaser_tiles(map_id,x,y,tile_image_id,collision_type) VALUES(50,7,8,1,1),(50,7,9,1,0),(60,3,4,1,1);
+ INSERT INTO phaser_warps(id,source_map_id,x,y,destination_map_id,destination_x,destination_y,warp_type,warp_direction) VALUES(1,50,7,9,60,3,4,'carpet','DOWN')`)
+			testdb.Exec(t, database, `UPDATE phaser_tiles SET collision_type=$1 WHERE map_id=50 AND x=7 AND y=9`, collision)
+			old := db.GlobalWorldDB
+			db.GlobalWorldDB = nil
+			t.Cleanup(func() { db.GlobalWorldDB = old })
+			database.SetMaxOpenConns(1)
+			ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+			defer cancel()
+			if mode == "missing-source" {
+				testdb.Exec(t, database, `ALTER TABLE phaser_tiles RENAME TO unavailable_tiles`)
+			}
+			if mode == "cancel-read" {
+				database.SetMaxOpenConns(2)
+				holder, err := database.Begin()
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer holder.Rollback()
+				if _, err = holder.Exec(`LOCK TABLE phaser_tiles IN ACCESS EXCLUSIVE MODE`); err != nil {
+					t.Fatal(err)
+				}
+				owned, retire := context.WithTimeout(context.Background(), 50*time.Millisecond)
+				defer retire()
+				ctx = owned
+			}
+			before := database.Stats().WaitCount
+			result, err := commitNormalWarp(ctx, database, 42, protocol.PhaserWarpActivateRequest{WarpID: 1, InputSource: "keyboard", Direction: "DOWN"}, 50, 7, 8, -1, manager, false)
+			waitDuringCommit := database.Stats().WaitCount
+			if mode == "blocked-mat" {
+				if err != nil || !result.Success || result.PlayerMapID != 60 || result.X != 3 || result.Y != 4 {
+					t.Fatalf("blocked-mat activation: %+v %v", result, err)
+				}
+			} else {
+				if err == nil || result.Success {
+					t.Fatalf("invalid/failed collision accepted warp: %+v %v", result, err)
+				}
+				var mapID, x, y int
+				if queryErr := database.QueryRow(`SELECT map_id,x,y FROM character_data WHERE id=42`).Scan(&mapID, &x, &y); queryErr != nil || mapID != 50 || x != 7 || y != 8 {
+					t.Fatalf("failed warp changed durable position: %d,%d,%d %v", mapID, x, y, queryErr)
+				}
+				if mode == "cancel-read" && ctx.Err() != context.DeadlineExceeded {
+					t.Fatalf("collision did not reach caller deadline: %v", err)
+				}
+			}
+			// Inspect only the operation. A later assertion query can wait for
+			// PostgreSQL to finish cleaning up the cancelled transaction.
+			if waitDuringCommit != before {
+				t.Fatalf("warp eligibility borrowed a second connection: before=%d during=%d", before, waitDuringCommit)
+			}
+		})
 	}
 }

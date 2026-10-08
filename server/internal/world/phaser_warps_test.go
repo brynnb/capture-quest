@@ -15,14 +15,14 @@ func TestPhaserMapWarpActivationRules(t *testing.T) {
 		Y:           11,
 		WarpType:    "door",
 	}
-	if !door.canActivateByClick(40, 4, 10, nil) {
+	if !door.canActivateByClick(40, 4, 10, nil, nil) {
 		t.Fatalf("door warp should activate from an adjacent clicked destination")
 	}
-	if door.canActivateByClick(40, 4, 9, nil) {
+	if door.canActivateByClick(40, 4, 9, nil, nil) {
 		t.Fatalf("door warp should not activate from two tiles away")
 	}
 
-	if !door.canActivateByDirection(40, 4, 10, "DOWN", nil) || door.canActivateByDirection(40, 4, 10, "UP", nil) {
+	if !door.canActivateByDirection(40, 4, 10, "DOWN", nil, nil) || door.canActivateByDirection(40, 4, 10, "UP", nil, nil) {
 		t.Fatal("adjacent door must activate only in its facing direction")
 	}
 	carpet := &phaserMapWarp{
@@ -32,16 +32,16 @@ func TestPhaserMapWarpActivationRules(t *testing.T) {
 		WarpType:      "carpet",
 		WarpDirection: "DOWN",
 	}
-	if !carpet.canActivateByClick(40, 4, 11, nil) {
+	if !carpet.canActivateByClick(40, 4, 11, nil, nil) {
 		t.Fatalf("clicked carpet warp should activate from the mat tile")
 	}
-	if carpet.canActivateByClick(40, 4, 10, nil) {
+	if carpet.canActivateByClick(40, 4, 10, nil, nil) {
 		t.Fatalf("clicked carpet warp should not activate from an adjacent tile")
 	}
-	if carpet.canActivateByDirection(40, 4, 11, "UP", nil) {
+	if carpet.canActivateByDirection(40, 4, 11, "UP", nil, nil) {
 		t.Fatalf("carpet warp should not activate from the wrong direction")
 	}
-	if !carpet.canActivateByDirection(40, 4, 11, "DOWN", nil) {
+	if !carpet.canActivateByDirection(40, 4, 11, "DOWN", nil, nil) {
 		t.Fatalf("carpet warp should activate when standing on the mat and pressing its direction")
 	}
 
@@ -53,13 +53,13 @@ func TestPhaserMapWarpActivationRules(t *testing.T) {
 			},
 		},
 	}
-	if !carpet.canActivateByClick(40, 4, 10, actorManager) {
+	if !carpet.canActivateByClick(40, 4, 10, actorManager, actorManager.collisionMap[40]) {
 		t.Fatalf("blocked directional carpet should activate by click from the walkable tile before it")
 	}
-	if !carpet.canActivateByDirection(40, 4, 10, "DOWN", actorManager) {
+	if !carpet.canActivateByDirection(40, 4, 10, "DOWN", actorManager, actorManager.collisionMap[40]) {
 		t.Fatalf("blocked directional carpet should activate by pressing its direction from the walkable tile before it")
 	}
-	if carpet.canActivateByDirection(40, 4, 10, "UP", actorManager) {
+	if carpet.canActivateByDirection(40, 4, 10, "UP", actorManager, actorManager.collisionMap[40]) {
 		t.Fatalf("blocked directional carpet should not activate from the wrong direction")
 	}
 }
@@ -122,7 +122,7 @@ func TestPhaserMapWarpBlockedEntryRequiresBlockedWarpTile(t *testing.T) {
 			},
 		},
 	}
-	if carpet.canActivateByClick(40, 4, 10, actorManager) {
+	if carpet.canActivateByClick(40, 4, 10, actorManager, actorManager.collisionMap[40]) {
 		t.Fatalf("walkable carpet mat should still require standing on the mat")
 	}
 }
@@ -197,10 +197,10 @@ func TestDirectionalWarpForFacingAttemptChecksBlockedFrontTile(t *testing.T) {
 		},
 	}
 
-	if got := manager.directionalWarpForFacingAttempt(71, 3, 6, "DOWN", actorManager); got != warp {
+	if got := manager.directionalWarpForFacingAttempt(71, 3, 6, "DOWN", actorManager, actorManager.collisionMap[71]); got != warp {
 		t.Fatalf("facing attempt warp = %#v, want blocked front-tile warp", got)
 	}
-	if got := manager.directionalWarpForFacingAttempt(71, 3, 6, "UP", actorManager); got != nil {
+	if got := manager.directionalWarpForFacingAttempt(71, 3, 6, "UP", actorManager, actorManager.collisionMap[71]); got != nil {
 		t.Fatalf("wrong-direction facing attempt warp = %#v, want nil", got)
 	}
 }
@@ -225,13 +225,13 @@ func TestDirectionalWarpForFacingAttemptAllowsBlockedStairsWithDestinationDirect
 		},
 	}
 
-	if !warp.canActivateByClick(119, 4, 4, actorManager) {
+	if !warp.canActivateByClick(119, 4, 4, actorManager, actorManager.collisionMap[119]) {
 		t.Fatalf("blocked stair warp should activate by click from an adjacent walkable tile")
 	}
-	if got := manager.directionalWarpForFacingAttempt(119, 4, 4, "RIGHT", actorManager); got != warp {
+	if got := manager.directionalWarpForFacingAttempt(119, 4, 4, "RIGHT", actorManager, actorManager.collisionMap[119]); got != warp {
 		t.Fatalf("facing attempt warp = %#v, want blocked stair warp", got)
 	}
-	if got := manager.directionalWarpForFacingAttempt(119, 4, 4, "UP", actorManager); got != nil {
+	if got := manager.directionalWarpForFacingAttempt(119, 4, 4, "UP", actorManager, actorManager.collisionMap[119]); got != nil {
 		t.Fatalf("non-facing direction warp = %#v, want nil", got)
 	}
 }
@@ -255,10 +255,10 @@ func TestDirectionalWarpForFacingAttemptAllowsBlockedDoorStairs(t *testing.T) {
 		},
 	}
 
-	if got := manager.directionalWarpForFacingAttempt(119, 4, 4, "RIGHT", actorManager); got != warp {
+	if got := manager.directionalWarpForFacingAttempt(119, 4, 4, "RIGHT", actorManager, actorManager.collisionMap[119]); got != warp {
 		t.Fatalf("facing attempt door warp = %#v, want blocked stair warp", got)
 	}
-	if got := manager.directionalWarpForFacingAttempt(119, 4, 4, "UP", actorManager); got != nil {
+	if got := manager.directionalWarpForFacingAttempt(119, 4, 4, "UP", actorManager, actorManager.collisionMap[119]); got != nil {
 		t.Fatalf("non-facing direction door warp = %#v, want nil", got)
 	}
 }
