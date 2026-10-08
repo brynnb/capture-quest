@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"runtime"
 	"testing"
 	"time"
 
@@ -211,10 +212,89 @@ func TestTrainerClickAndBattleStartRequireReachableVisibleActor(t *testing.T) {
 	}
 	testdb.Exec(t, database, `DELETE FROM character_object_visibility_overrides`)
 	request(opcodes.TrainerInteractRequest, true)
+	testdb.Exec(t, database, `UPDATE phaser_trainer_headers SET after_battle_text_label='POST'; INSERT INTO phaser_dialogue_text(label,source_file,dialogue) VALUES('POST','test','Done'); INSERT INTO character_defeated_trainers(character_id,trainer_object_id) VALUES(42,10)`)
+	checkStatus := func(defeated, battle bool, text string) {
+		t.Helper()
+		request(opcodes.TrainerInteractRequest, true)
+		var reply TrainerInteractResponse
+		if err := json.Unmarshal(messages.streams[0].payload, &reply); err != nil || reply.Defeated != defeated || reply.ShouldBattle != battle || reply.Dialogue != text {
+			t.Fatalf("trainer status=%+v error=%v", reply, err)
+		}
+	}
+	checkStatus(true, false, "Done") // Durable history wins over an empty cache.
+	request(opcodes.TrainerBattleStartRequest, false)
+	testdb.Exec(t, database, `DELETE FROM character_defeated_trainers`)
+	wh.EventFlags.flags[42] = map[string]bool{"WIN": true}
+	checkStatus(false, true, "Battle!") // A stale cached flag cannot suppress a fresh trainer.
+	testdb.Exec(t, database, `INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'WIN')`)
+	wh.EventFlags.flags[42] = map[string]bool{}
+	checkStatus(true, false, "Done")
+	request(opcodes.TrainerBattleStartRequest, false)
+	testdb.Exec(t, database, `DELETE FROM character_event_flags`)
+	testdb.Exec(t, database, `ALTER TABLE character_defeated_trainers RENAME TO unavailable_trainer_history`)
+	request(opcodes.TrainerInteractRequest, false)
+	testdb.Exec(t, database, `ALTER TABLE unavailable_trainer_history RENAME TO character_defeated_trainers`)
+	database.SetMaxOpenConns(1)
+	held, err := database.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	reply, err := readTrainerInteraction(ctx, ses, wh, actorID)
+	cancel()
+	held.Close()
+	database.SetMaxOpenConns(0)
+	if !errors.Is(err, context.DeadlineExceeded) || reply.Success {
+		t.Fatalf("cancelled trainer=%+v error=%v", reply, err)
+	}
+	checkStatus(false, true, "Battle!")
+	holder, err := database.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer holder.Rollback()
+	if _, err := holder.Exec(`SELECT id FROM character_data WHERE id=42 FOR UPDATE`); err != nil {
+		t.Fatal(err)
+	}
+	started := make(chan struct{})
+	messages.streams = nil
+	go func() {
+		defer close(started)
+		battleDispatch(t, wh, ses, opcodes.TrainerBattleStartRequest, fmt.Sprintf(`{"trainerActorId":%d}`, actorID))
+	}()
+	deadline := time.Now().Add(time.Second)
+	for {
+		var waiting bool
+		if err := database.QueryRow(`SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%FROM character_data%FOR UPDATE%')`).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting {
+			break
+		}
+		if time.Now().After(deadline) {
+			holder.Rollback()
+			<-started
+			t.Fatal("battle start did not reach character lock")
+		}
+		runtime.Gosched()
+	}
+	if _, err := holder.Exec(`INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'WIN')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := holder.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	<-started
+	var rejected map[string]any
+	if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &rejected) != nil || rejected["success"] != false || getBattle(42) != nil {
+		t.Fatalf("concurrent defeat started battle: reply=%v", rejected)
+	}
+	testdb.Exec(t, database, `DELETE FROM character_event_flags`)
 	// The battle-start request must recheck reach after the dialogue was shown.
 	ses.Client.CharData().X = 8
 	request(opcodes.TrainerBattleStartRequest, false)
 	ses.Client.CharData().X = 0
+	wh.EventFlags.flags[42] = map[string]bool{"WIN": true} // A stale cached win cannot deny an eligible direct start.
 	request(opcodes.TrainerBattleStartRequest, true)
 	if err := database.QueryRow(`SELECT COUNT(*) FROM character_battle_state`).Scan(&count); err != nil || count != 1 || getBattle(42) == nil {
 		t.Fatalf("authorized battle count=%d err=%v", count, err)

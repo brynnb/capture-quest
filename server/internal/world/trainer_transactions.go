@@ -70,12 +70,18 @@ func (m *TrainerEncounterManager) loadEncounterIn(q db.DBTX, charID int64) (*pen
 	return nil, fmt.Errorf("pending trainer identity missing or changed: character=%d object=%d native_map=%d class=%s party=%d", charID, t.ObjectID, t.MapID, t.TrainerClass, t.PartyIndex)
 }
 
+func trainerDefeatedIn(q db.DBTX, charID int64, objectID int) (bool, error) {
+	var defeated bool
+	err := q.QueryRow(`SELECT EXISTS(SELECT 1 FROM character_defeated_trainers WHERE character_id=$1 AND trainer_object_id=$2)`, charID, objectID).Scan(&defeated)
+	return defeated, err
+}
+
 func trainerEligibleIn(q db.DBTX, charID int64, t *trainerSightData, flags *EventFlagManager) (bool, error) {
 	if meta, ok := gymLeaderMetadataForMap(t.MapID); ok && gymLeaderDefeatedForCharacter(charID, meta, flags) {
 		return false, nil
 	}
-	var defeated bool
-	if err := q.QueryRow(`SELECT EXISTS(SELECT 1 FROM character_defeated_trainers WHERE character_id=$1 AND trainer_object_id=$2)`, charID, t.ObjectID).Scan(&defeated); err != nil {
+	defeated, err := trainerDefeatedIn(q, charID, t.ObjectID)
+	if err != nil {
 		return false, err
 	}
 	if !defeated {

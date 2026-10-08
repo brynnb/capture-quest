@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+trainer read status uses a durable snapshot and direct battle eligibility joins
+the existing battle transaction, following `25b2678`:
 rendered ordinary dialogue timeout/retry and same-character reentry acceptance,
 following `4f26963`:
 dialogue reads use generated identity, shared client correlation and actor/cutscene
@@ -55,6 +57,56 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Trainer eligibility boundary and facing-policy audit (2026-10-08)
+
+The rendered reentry direction `DOWN` follows the existing server policy:
+`facePlayer` updates the movement owner's `Direction` without persisting it;
+`RegisterPlayerForMovement` calls `initialPlayerDirection`, which returns `UP`
+only at the upstairs default spawn and `DOWN` elsewhere. The shared gameplay
+recovery read then projects that new owner's direction. Existing PostgreSQL
+facing tests install a rejecting character-update trigger and still require the
+facing command to succeed. Cardinal facing is therefore temporary owner state,
+not the legacy `character_data.heading` field. A comment now makes this policy
+explicit; no persistent-facing behavior was introduced. The earlier rendered
+receipt is not evidence of a lost durable heading.
+
+Trainer read audit found cached defeat history/event flags selecting `defeated`,
+`shouldBattle` and pre/post battle dialogue independently of durable state. The
+live read now uses one bounded context across source authorization and the
+existing read-only repeatable-read snapshot for catalog metadata, flags, history
+and dialogue. Source reach/visibility remains the existing runtime boundary;
+this informational read does not issue a battle. Typed session rebattle options
+retain the existing direct-click policy.
+
+The same audit found direct battle start checking cached defeat state before its
+transaction. Its eligibility now runs after `LockCharacter`, through the same
+query handle as battle preparation. A committed defeat while the command waits
+for that lock must reject the start. Read and mutation reuse the authoritative
+direct-trainer status policy and existing defeat-history query; sight encounters
+retain their distinct eligibility policy. Unused cached direct-defeat and
+gym wrapper paths are retired; gym metadata tests use the same flag-snapshot
+primitive as runtime. The existing scripted battle primitive
+accepts the direct command's authorization inside its transaction; script/debug
+issuance policies remain their own callers' responsibility. No parallel battle
+coordinator or persistence layer was added.
+
+Focused dispatcher PostgreSQL checks prove durable history/flags win over stale
+caches in both directions, missing history rejects reads, held-pool cancellation
+and retry, and the existing source/reach/visibility/duplicate-start checks. The
+integration test additionally holds the character lock, commits a defeat flag
+and verifies the waiting real start rejects without a live battle publication.
+Full PostgreSQL world (54.9s), battle (4.5s) and simulator (1.5s) race suites
+passed; all Go packages compile and `git diff --check` passes. No rendered
+trainer acceptance is inferred from these checks.
+
+Remaining: trainer request/response identity, client FIFO retirement, actor
+lifetime checks through trainer dialogue/completion and rendered acceptance.
+Further battle/source/issued-plan races remain in the command matrix; this
+checkpoint does not complete the trainer family or any of the five goal areas.
+Next: correlate the trainer read using the existing client request and actor
+lifetime boundaries, after reviewing this shared mutation change. No wire/schema,
+assets, push or deployment this checkpoint.
 
 ## Rendered ordinary dialogue read acceptance (2026-10-08)
 

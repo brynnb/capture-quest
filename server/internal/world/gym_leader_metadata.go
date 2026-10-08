@@ -86,12 +86,12 @@ func gymLeaderMetadataForMap(mapID int) (gymLeaderBattleMetadata, bool) {
 	return gymLeaderBattleMetadata{}, false
 }
 
-func trainerBattleSuppressedByGymLeaderDefeat(charID int64, t *trainerSightData, wh *WorldHandler) bool {
-	if t == nil || t.IsGymLeader || wh == nil || wh.EventFlags == nil {
+func trainerBattleSuppressedByGymLeaderFlags(charID int64, t *trainerSightData, flags *EventFlagManager) bool {
+	if t == nil || t.IsGymLeader || flags == nil {
 		return false
 	}
 	meta, ok := gymLeaderMetadataForMap(t.MapID)
-	return ok && gymLeaderDefeatedForCharacter(charID, meta, wh.EventFlags)
+	return ok && gymLeaderDefeatedForCharacter(charID, meta, flags)
 }
 
 func gymLeaderDefeatedForCharacter(charID int64, meta gymLeaderBattleMetadata, efm *EventFlagManager) bool {

@@ -92,34 +92,33 @@ func TestTrainerBattleSuppressedByGymLeaderDefeat(t *testing.T) {
 		"EVENT_BEAT_BROCK":                 true,
 		"EVENT_BEAT_VIRIDIAN_GYM_GIOVANNI": true,
 	}
-	wh := &WorldHandler{EventFlags: efm}
 
-	if !trainerBattleSuppressedByGymLeaderDefeat(charID, &trainerSightData{
+	if !trainerBattleSuppressedByGymLeaderFlags(charID, &trainerSightData{
 		MapID:        54,
 		TrainerClass: "JR_TRAINER_M",
-	}, wh) {
+	}, efm) {
 		t.Fatal("Pewter gym trainer should be suppressed after Brock is defeated")
 	}
 
-	if trainerBattleSuppressedByGymLeaderDefeat(charID, &trainerSightData{
+	if trainerBattleSuppressedByGymLeaderFlags(charID, &trainerSightData{
 		MapID:        54,
 		TrainerClass: "BROCK",
 		IsGymLeader:  true,
-	}, wh) {
+	}, efm) {
 		t.Fatal("gym leader should not be suppressed by the non-leader helper")
 	}
 
-	if trainerBattleSuppressedByGymLeaderDefeat(charID, &trainerSightData{
+	if trainerBattleSuppressedByGymLeaderFlags(charID, &trainerSightData{
 		MapID:        59,
 		TrainerClass: "YOUNGSTER",
-	}, wh) {
+	}, efm) {
 		t.Fatal("non-gym trainer should not be suppressed by Brock's flag")
 	}
 
-	if !trainerBattleSuppressedByGymLeaderDefeat(charID, &trainerSightData{
+	if !trainerBattleSuppressedByGymLeaderFlags(charID, &trainerSightData{
 		MapID:        45,
 		TrainerClass: "COOLTRAINER_M",
-	}, wh) {
+	}, efm) {
 		t.Fatal("Viridian gym trainer should be suppressed after Giovanni is defeated")
 	}
 }
@@ -128,12 +127,11 @@ func TestTrainerBattleSuppressedByLegacyGiovanniFlag(t *testing.T) {
 	charID := int64(42)
 	efm := NewEventFlagManager(nil)
 	efm.flags[charID] = map[string]bool{"EVENT_BEAT_GIOVANNI_GYM": true}
-	wh := &WorldHandler{EventFlags: efm}
 
-	if !trainerBattleSuppressedByGymLeaderDefeat(charID, &trainerSightData{
+	if !trainerBattleSuppressedByGymLeaderFlags(charID, &trainerSightData{
 		MapID:        45,
 		TrainerClass: "COOLTRAINER_M",
-	}, wh) {
+	}, efm) {
 		t.Fatal("Viridian gym trainer should be suppressed by the legacy Giovanni gym flag")
 	}
 }

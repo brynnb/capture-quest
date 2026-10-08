@@ -62,11 +62,22 @@ type BattlePokemonSummary struct {
 }
 
 func StartScriptedTrainerBattle(ctx context.Context, database *sql.DB, charID int64, spec ScriptedTrainerBattleSpec) (*pokebattle.BattleState, []pokebattle.BattleEvent, error) {
+	return startScriptedTrainerBattle(ctx, database, charID, spec, nil)
+}
+
+// Authorization joins preparation under the same character lock. Script/debug
+// callers retain their own issuance policies; direct clicks supply eligibility.
+func startScriptedTrainerBattle(ctx context.Context, database *sql.DB, charID int64, spec ScriptedTrainerBattleSpec, authorize func(db.DBTX) error) (*pokebattle.BattleState, []pokebattle.BattleEvent, error) {
 	var battle *pokebattle.BattleState
 	var events []pokebattle.BattleEvent
 	err := db.Transaction(ctx, database, func(tx db.DBTX) (err error) {
 		if err := db.LockCharacter(tx, charID); err != nil {
 			return err
+		}
+		if authorize != nil {
+			if err := authorize(tx); err != nil {
+				return err
+			}
 		}
 		battle, events, err = prepareScriptedTrainerBattle(tx, charID, spec)
 		return err

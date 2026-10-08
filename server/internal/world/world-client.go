@@ -116,6 +116,9 @@ func ApplyDefaultSpawn(p *CharacterCreateProfile) {
 	p.Z = DefaultSpawnZ
 }
 
+// Cardinal facing belongs to the live movement owner; PlayerFacingRequest does
+// not persist it into character_data.heading. Entry intentionally starts a fresh
+// facing owner, with the source upstairs spawn as the only initial-direction rule.
 func initialPlayerDirection(mapID, x, y int) string {
 	if mapID == DefaultSpawnMap && x == int(DefaultSpawnX) && y == int(DefaultSpawnY) {
 		return DefaultSpawnDirection
