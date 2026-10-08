@@ -824,25 +824,6 @@ func (m *PlayerMovementManager) playerActorForSnapshot(snapshot playerMovementSn
 	return ses, &playerActor, true
 }
 
-// findPath delegates to the shared A* implementation on PhaserActorManager.
-func (m *PlayerMovementManager) findPath(charID int, mapID, startX, startY, endX, endY int) []PathNode {
-	logutil.Debugf("[PlayerMovement] Finding path from (%d,%d) to (%d,%d) on map %d",
-		startX, startY, endX, endY, mapID)
-	if m.wh != nil && m.wh.EventFlags != nil {
-		return m.actorManager.FindPathForCharacterWithOptions(
-			int64(charID),
-			mapID,
-			startX,
-			startY,
-			endX,
-			endY,
-			m.wh.EventFlags,
-			pathfindOptions{AllowWater: m.isPlayerSurfing(charID)},
-		)
-	}
-	return m.actorManager.FindPath(mapID, startX, startY, endX, endY)
-}
-
 func (m *PlayerMovementManager) isPlayerSurfing(charID int) bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

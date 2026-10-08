@@ -603,3 +603,74 @@ func TestIssuedWalkingStartsSourceSpinRouteOnlyAfterCommit(t *testing.T) {
 		t.Fatal("duplicate completion restarted route")
 	}
 }
+
+func TestMovementTrainerPlanningUsesOwnedColdCollisionRead(t *testing.T) {
+	for _, mode := range []string{"clear", "wall", "unavailable"} {
+		t.Run(mode, func(t *testing.T) {
+			wh, _, _, _ := stepEffectFixture(t, false)
+			wh.TrainerEncounter = NewTrainerEncounterManager(wh)
+			wh.TrainerEncounter.byMap[50] = []*trainerSightData{{ObjectID: 77, MapID: 50, X: 8, Y: 6, Direction: "DOWN", SightRange: 2, RuntimeActorID: 707, Name: "TEST"}}
+			collision := 1
+			if mode == "wall" {
+				collision = 0
+			}
+			testdb.Exec(t, wh.database, `INSERT INTO phaser_tiles(map_id,x,y,tile_image_id,collision_type) VALUES(50,8,7,1,$1)`, collision)
+			wh.ActorManager.InvalidateCollisionMap(50)
+			if mode == "unavailable" {
+				testdb.Exec(t, wh.database, `ALTER TABLE phaser_tiles RENAME TO unavailable_tiles`)
+			}
+			old := db.GlobalWorldDB
+			db.GlobalWorldDB = nil
+			t.Cleanup(func() { db.GlobalWorldDB = old })
+			wh.database.SetMaxOpenConns(1)
+			before := wh.database.Stats().WaitCount
+			ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+			defer cancel()
+			result, err := commitMovementStep(ctx, wh, 42, movementStepCandidate{SourceMap: 50, SourceX: 7, SourceY: 8, MapID: 50, X: 8, Y: 8, Direction: "RIGHT"})
+			if mode == "unavailable" {
+				if err == nil {
+					t.Fatal("missing collision source authorized movement")
+				}
+				var x, y int
+				if readErr := wh.database.QueryRow(`SELECT x,y FROM character_data WHERE id=42`).Scan(&x, &y); readErr != nil || x != 7 || y != 8 {
+					t.Fatalf("failed collision committed movement: %d,%d %v", x, y, readErr)
+				}
+			} else {
+				if err != nil {
+					t.Fatal(err)
+				}
+				if (result.Trainer != nil) != (mode == "clear") {
+					t.Fatalf("trainer selection for %s: %+v", mode, result.Trainer)
+				}
+			}
+			if wh.database.Stats().WaitCount != before {
+				t.Fatal("trainer collision opened a second connection inside movement transaction")
+			}
+		})
+	}
+}
+
+func TestMovementSurfRouteUsesOwnedColdCollisionRead(t *testing.T) {
+	wh, _, _, _ := stepEffectFixture(t, false)
+	testdb.Exec(t, wh.database, `UPDATE phaser_tiles SET collision_type=2 WHERE map_id=50 AND x=8 AND y=8`)
+	wh.ActorManager.InvalidateCollisionMap(50)
+	old := db.GlobalWorldDB
+	db.GlobalWorldDB = nil
+	t.Cleanup(func() { db.GlobalWorldDB = old })
+	wh.database.SetMaxOpenConns(1)
+	before := wh.database.Stats().WaitCount
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	result, err := commitMovementStep(ctx, wh, 42, movementStepCandidate{SourceMap: 50, SourceX: 7, SourceY: 8, MapID: 50, X: 8, Y: 8, Direction: "RIGHT", Surfing: true, Forced: true, RemainingPath: []PathNode{{X: 9, Y: 8}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var route *movementRoute
+	err = db.Transaction(context.Background(), wh.database, func(tx db.DBTX) error { var err error; route, err = loadMovementRouteIn(tx, 42); return err })
+	if err != nil || route == nil || !route.Surfing || result.X != 8 {
+		t.Fatalf("committed surf route: %+v %+v %v", route, result, err)
+	}
+	if wh.database.Stats().WaitCount != before {
+		t.Fatal("surf route opened a second connection inside movement transaction")
+	}
+}

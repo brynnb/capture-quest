@@ -257,6 +257,7 @@ func (m *TrainerEncounterManager) planPositionEncounter(ctx context.Context, q d
 	if existing := getBattle(charID); existing != nil && !existing.IsOver() {
 		return nil, nil
 	}
+	var collision map[string]int
 	for _, t := range trainers {
 		if !m.canAutoTriggerBySight(t) {
 			continue
@@ -277,10 +278,22 @@ func (m *TrainerEncounterManager) planPositionEncounter(ctx context.Context, q d
 		if !m.isInSightLine(t, playerX, playerY) {
 			continue
 		}
+		// This operation already owns a movement transaction. A cold collision
+		// cache must use that handle, never wait for a second pool connection.
+		if collision == nil {
+			if m.wh == nil || m.wh.ActorManager == nil {
+				return nil, fmt.Errorf("trainer collision service unavailable")
+			}
+			var err error
+			collision, _, err = m.wh.ActorManager.baseCollision(ctx, q.(db.ContextDBTX), mapID, false)
+			if err != nil {
+				return nil, err
+			}
+		}
 		dx, dy, _ := trainerSightDirectionDelta(t.Direction)
 		clear := true
 		for x, y := t.X+dx, t.Y+dy; x != playerX || y != playerY; x, y = x+dx, y+dy {
-			if m.isTrainerSightBlockedByTile(t.MapID, x, y) {
+			if value, exists := collision[tileKey(x, y)]; !exists || value == collisionBlocked {
 				clear = false
 				break
 			}

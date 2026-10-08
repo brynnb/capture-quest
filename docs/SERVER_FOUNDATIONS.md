@@ -28,6 +28,44 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Collision caller inventory and transaction reuse (2026-10-08)
+
+The finite collision consumer inventory is now recorded in
+`SERVER_COMMAND_AUDIT.md`. It distinguishes live player admission, transaction
+planning, background movement, warp/map presentation, local fixtures, simulator
+ownership and dormant diagnostic APIs. The unused player `findPath` wrapper is
+removed; no live gameplay route used it.
+
+Two live transaction callers still crossed back into the independently bounded
+base reader. Trainer planning during `commitMovementStep` used the cache helper;
+when cold, it could try to borrow another connection while the movement transaction
+held the only available one. Surf-route persistence made the same crossing through
+`isSurfableWaterTile`. They now read through the existing base-collision primitive
+using the caller's transaction and context. Trainer planning propagates unavailable
+source errors rather than treating a failed cache read as a clear sight line. Water
+checks retain the existing shared water/warp predicate, while the transactional
+variant reports source/service failure. No alternate collision store or mutation
+coordinator was introduced.
+
+Real PostgreSQL movement regressions use a cold cache, one connection and no global
+database. They prove clear sight selects a trainer, a wall prevents selection,
+unavailable collision source rolls position back, and a surfing route persists.
+The pool wait counter verifies these reads never request a second connection.
+Focused trainer/movement checks passed. Full world (55.9s) and script-simulator
+race suites passed for the trainer change; after the surf-route addition, the final
+movement/trainer/water/issued-step race checks passed (7.8s). All Go packages compile
+and diff checks pass. No rendered or process-death acceptance is claimed here.
+This establishes another independent connection-ownership defect, not attribution
+for the original five-second login restore timeout.
+
+Remaining: background-context reads in forced movement, fishing/surf preflight,
+registration, warp entry and map-load presentation, plus local/simulator/startup
+and dormant API audit entries. Reconnect/idle tile recovery, other matrix rows and
+the unattributed login timeout remain open; all five areas stay active. Next:
+propagate existing command/tick owners through the live nontransactional collision
+callers and verify cancellation without hiding read failure as ineligibility.
+This follow-up is committed locally only; no push or deployment.
+
 ## Base collision cache ownership review (2026-10-08)
 
 The runtime lazy loader held the shared actor mutex while querying collision rows.

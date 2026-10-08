@@ -102,7 +102,13 @@ func commitMovementStep(ctx context.Context, wh *WorldHandler, charID int64, c m
 				if len(result.ForcedPath) > 0 {
 					path = result.ForcedPath
 				}
-				err = saveMovementRouteIn(tx, charID, result.MapID, result.X, result.Y, path, c.Surfing && isSurfableWaterTile(wh, result.MapID, result.X, result.Y))
+				surfing := false
+				if c.Surfing {
+					surfing, err = isSurfableWaterTileIn(ctx, tx.(db.ContextDBTX), wh, result.MapID, result.X, result.Y)
+				}
+				if err == nil {
+					err = saveMovementRouteIn(tx, charID, result.MapID, result.X, result.Y, path, surfing)
+				}
 			}
 			if err == nil && result.FlagsChanged {
 				var final *EventFlagManager

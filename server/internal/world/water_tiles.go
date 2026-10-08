@@ -1,10 +1,32 @@
 package world
 
+import (
+	"capturequest/internal/db"
+	"context"
+	"fmt"
+)
+
 func isSurfableWaterTile(wh *WorldHandler, mapID, x, y int) bool {
 	if wh == nil || wh.ActorManager == nil {
 		return false
 	}
 	collisionType, exists := wh.ActorManager.CollisionTypeAt(mapID, x, y)
+	return surfableWaterCollision(wh, mapID, x, y, collisionType, exists)
+}
+
+func isSurfableWaterTileIn(ctx context.Context, q db.ContextDBTX, wh *WorldHandler, mapID, x, y int) (bool, error) {
+	if wh == nil || wh.ActorManager == nil {
+		return false, fmt.Errorf("water collision service unavailable")
+	}
+	collision, _, err := wh.ActorManager.baseCollision(ctx, q, mapID, false)
+	if err != nil {
+		return false, err
+	}
+	value, exists := collision[tileKey(x, y)]
+	return surfableWaterCollision(wh, mapID, x, y, value, exists), nil
+}
+
+func surfableWaterCollision(wh *WorldHandler, mapID, x, y, collisionType int, exists bool) bool {
 	if !exists || collisionType != collisionWater {
 		return false
 	}
