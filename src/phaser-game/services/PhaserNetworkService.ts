@@ -111,40 +111,10 @@ export async function tryScriptedEventInteraction(
   }
 }
 
-export interface TrainerInteractResult {
-  success: boolean;
-  error?: string;
-  trainerActorId?: number;
-  trainerName?: string;
-  trainerClass?: string;
-  dialogue?: string;
-  shouldBattle?: boolean;
-  defeated?: boolean;
-}
-
-export async function requestTrainerInteraction(
-  actorId: number,
-): Promise<TrainerInteractResult | null> {
-  if (!WorldSocket.isConnected) {
-    return null;
-  }
-
-  try {
-    const response = await WorldSocket.sendJsonRequest<TrainerInteractResult>(
-      OpCodes.TrainerInteractRequest,
-      OpCodes.TrainerInteractResponse,
-      { actorId },
-      2500,
-    );
-    if (!response.success && response.error) {
-      console.warn("[PhaserNetwork] Trainer interaction failed:", response.error);
-    }
-    return response;
-  } catch (err) {
-    console.warn("[PhaserNetwork] Trainer interaction request failed:", err);
-    return null;
-  }
-}
+export type TrainerInteractReply = import("@/net/generated/protocol").TrainerInteractResponse | import("@/net/generated/protocol").TrainerInteractError;
+const trainerInteractHandlers=new Set<(reply:TrainerInteractReply)=>void>();
+export function onTrainerInteraction(receive:(reply:TrainerInteractReply)=>void):()=>void{trainerInteractHandlers.add(receive);return()=>trainerInteractHandlers.delete(receive);}
+export function requestTrainerInteraction(requestId:string,actorId:number):Promise<void>{return NetworkBridge.send({requestId,actorId},OpCodes.TrainerInteractRequest);}
 
 export function sendTrainerBattleStart(trainerActorId: number): void {
   if (!WorldSocket.isConnected) return;
@@ -542,6 +512,8 @@ export function normalizePhaserArrayPayload<T>(
 // Internal: dispatch incoming Phaser responses
 export function dispatchPhaserResponse(opcode: number, data: unknown): void {
   switch (opcode) {
+    case OpCodes.TrainerInteractResponse:
+      trainerInteractHandlers.forEach(receive=>receive(data as TrainerInteractReply));break;
     case OpCodes.PhaserDialogueResponse:
       dialogueReadHandlers.forEach(receive=>receive(data as DialogueReadReply));break;
     case OpCodes.ValidateNameResponse:

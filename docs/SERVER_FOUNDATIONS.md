@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+trainer reads use generated identity and the shared character/actor lifetime
+boundary, following `84703cb`:
 trainer read status uses a durable snapshot and direct battle eligibility joins
 the existing battle transaction, following `25b2678`:
 rendered ordinary dialogue timeout/retry and same-character reentry acceptance,
@@ -57,6 +59,52 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Trainer read identity and shared character lifetime (2026-10-08)
+
+Trainer requests and success/errors now use the shared generated Go/TypeScript
+protocol with request ID, character ID and runtime trainer actor ID. Invalid and
+failed reads return tagged terminal errors. The old handwritten optional-field
+client interface and trainer FIFO adapter are retired. Empty IDs remain accepted
+only for coordinated legacy-client activation; new clients never consume them.
+
+TrainerInteractionService reuses CorrelatedRequest. Dialogue and trainer reads
+now share `readForCurrentCharacter`, a small lifetime wrapper around that existing
+request primitive: it captures character/game-screen/transport ownership,
+combines caller cancellation and releases all subscriptions on every outcome.
+Per-domain identity/shape validation stays in each service. The trainer deadline
+is five seconds, matching dialogue and the server's bounded read budget. It no
+longer times out through a FIFO slot that would require disconnecting the whole
+transport to disambiguate a late untagged response.
+
+The actor controller owns one demand and source predicate for ordinary and
+trainer reads. A moved/replaced source, changed player tile/view, new interaction,
+character/screen/transport retirement or cleanup prevents old presentation.
+The trainer completion callback rechecks that same source before sending battle
+start, so a completed read does not grant permission to a later stale callback.
+Script interaction replies also recheck source before falling through to another
+legacy action. Expected read cancellation stays quiet. No automatic mutation
+retry was introduced; battle-start acknowledgement/recovery remains a distinct
+command-boundary audit.
+
+Focused PostgreSQL dispatcher checks pass for trainer success/error identity,
+invalid requests, and the previous durable-status, concurrent-defeat and dialogue
+snapshot boundaries. All Go packages compile. The shared client read matrix
+covers both dialogue and trainer out-of-order/untagged responses, timeout/retry,
+caller cancellation, retirement, character/screen changes, identity/shape errors
+and failed writes. Actor checks prove moved trainer replies cannot open dialogue
+and stale completion callbacks cannot send a battle command. The broader client
+service suite passes: 23 files, 357 tests; focused actor checks pass after the
+final source fence. Typecheck, canonical tygo generation, runtime asset validation
+and production build pass, retaining existing chunk warnings.
+
+The two existing rendered ordinary-dialogue timeout/reentry cases also pass
+(18.3s, `/var/tmp/capturequest-rendered.Qc3DJq`) after extracting the shared
+character lifetime. This proves the previously migrated consumer still works;
+it is not rendered trainer acceptance. Next: real trainer read timeout/stale
+response/reentry and dialogue-completion acceptance, plus review of direct-start
+response identity and recovery. All five goal areas remain incomplete. No schema,
+asset publication, push or deployment this checkpoint.
 
 ## Trainer eligibility boundary and facing-policy audit (2026-10-08)
 

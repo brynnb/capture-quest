@@ -517,3 +517,28 @@ export interface ErrorResponse {
   success: false;
   error: string;
 }
+
+//////////
+// source: trainer.go
+
+export interface TrainerInteractRequest {
+  requestId: string;
+  actorId: number /* int */;
+}
+export interface TrainerInteractIdentity {
+  requestId: string;
+  characterId: number /* int64 */;
+  trainerActorId: number /* int */;
+}
+export interface TrainerInteractResponse extends TrainerInteractIdentity {
+  success: true;
+  trainerName: string;
+  trainerClass: string;
+  dialogue: string;
+  shouldBattle: boolean;
+  defeated: boolean;
+}
+export interface TrainerInteractError extends TrainerInteractIdentity {
+  success: false;
+  error: string;
+}

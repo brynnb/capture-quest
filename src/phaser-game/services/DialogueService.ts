@@ -6,11 +6,8 @@
  * via text_pointers + dialogue_text → returns dialogue string → parsed into lines.
  */
 
-import { WorldSocket } from "@/net/index";
-import { correlatedRequest } from "./CorrelatedRequest";
+import { correlatedRequest, readForCurrentCharacter } from "./CorrelatedRequest";
 import * as PhaserNet from "./PhaserNetworkService";
-import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
-import useGameScreenStore from "@/stores/GameScreenStore";
 import { resolveDialoguePlaceholders } from "@/utils/dialoguePlaceholders";
 import { normalizeDialogueDisplayText } from "@/utils/dialogueText";
 
@@ -31,26 +28,13 @@ export async function fetchDialogue(textConstant: string, signal?:AbortSignal): 
 // Each demand owns its subscription, cancellation and captured session identity.
 // Failures reject so a cutscene cannot substitute inline text for a failed read.
 export async function fetchDialogueWithBranching(textConstant:string,signal?:AbortSignal):Promise<DialogueResult> {
- const characterId=usePlayerCharacterStore.getState().characterProfile.id;
- if(!characterId)throw new Error("Dialogue requires an active character");
- const screen=useGameScreenStore.getState().currentScreen;
- if(screen!=="game")throw new Error("Dialogue requires an active game screen");
- const generation=WorldSocket.sessionGeneration;
- const controller=new AbortController();
- const abort=()=>controller.abort();
- signal?.addEventListener("abort",abort,{once:true});
- if(signal?.aborted)abort();
- const stops=[WorldSocket.subscribeSessionRetirement(abort),
- usePlayerCharacterStore.subscribe(state=>{if(state.characterProfile.id!==characterId)abort();}),
- useGameScreenStore.subscribe(state=>{if(state.currentScreen!==screen)abort();})];
- try {
- const response=await correlatedRequest<import("@/net/generated/protocol").PhaserDialogueResponse>(PhaserNet.onDialogueRead, requestId=>PhaserNet.requestDialogueRead(requestId,textConstant), controller.signal,5000);
- if(controller.signal.aborted || generation!==WorldSocket.sessionGeneration)throw new DOMException("Request cancelled","AbortError");
+ return readForCurrentCharacter(async(characterId,ownedSignal)=>{
+ const response=await correlatedRequest<import("@/net/generated/protocol").PhaserDialogueResponse>(PhaserNet.onDialogueRead, requestId=>PhaserNet.requestDialogueRead(requestId,textConstant), ownedSignal,5000);
  if(response.characterId!==characterId || response.textConstant!==textConstant)throw new Error("Dialogue response identity mismatch");
  if(!Array.isArray(response.dialogueEntries) || !response.dialogueEntries.every(entry=>entry && typeof entry.dialogue==="string" && typeof entry.label==="string" && typeof entry.sourceFile==="string" && Number.isSafeInteger(entry.isTrainer) && (entry.mapName===null || typeof entry.mapName==="string")) || typeof response.hasBranching!=="boolean" || (response.branchingPrompt!==null && typeof response.branchingPrompt!=="string") || (response.hasBranching && !response.branchingPrompt))throw new Error("Invalid dialogue response");
  const raw=response.dialogueEntries.map(entry=>entry.dialogue).filter(Boolean).join("\n\n");
  return {lines:parseDialogueText(raw),hasBranching:response.hasBranching,branchingPrompt:response.branchingPrompt ? parseDialogueText(response.branchingPrompt)[0]??null : null};
- } finally {signal?.removeEventListener("abort",abort);stops.forEach(stop=>stop());}
+ },signal);
 }
 
 /**

@@ -11,50 +11,40 @@ import (
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
+	"capturequest/internal/protocol"
 	"capturequest/internal/session"
 )
 
-type TrainerInteractRequest struct {
-	ActorID int `json:"actorId"`
-}
-
-type TrainerInteractResponse struct {
-	Success        bool   `json:"success"`
-	Error          string `json:"error,omitempty"`
-	TrainerActorID int    `json:"trainerActorId,omitempty"`
-	TrainerName    string `json:"trainerName,omitempty"`
-	TrainerClass   string `json:"trainerClass,omitempty"`
-	Dialogue       string `json:"dialogue,omitempty"`
-	ShouldBattle   bool   `json:"shouldBattle"`
-	Defeated       bool   `json:"defeated"`
-}
+type TrainerInteractResponse = protocol.TrainerInteractResponse
 
 type TrainerBattleStartRequest struct {
 	TrainerActorID int `json:"trainerActorId"`
 }
 
 func HandleTrainerInteractRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	if !ses.HasValidClient() {
+	var req protocol.TrainerInteractRequest
+	err := json.Unmarshal(payload, &req)
+	var charID int64
+	if ses.HasValidClient() {
+		charID = int64(ses.Client.CharData().ID)
+	}
+	identity := protocol.TrainerInteractIdentity{RequestID: req.RequestID, CharacterID: charID, TrainerActorID: req.ActorID}
+	reject := func(message string) {
+		ses.SendStreamJSON(protocol.TrainerInteractError{TrainerInteractIdentity: identity, Error: message}, opcodes.TrainerInteractResponse)
+	}
+	if err != nil || charID == 0 || req.ActorID <= 0 {
+		reject("invalid trainer interaction request")
 		return false
 	}
-
-	var req TrainerInteractRequest
-	if err := json.Unmarshal(payload, &req); err != nil {
-		ses.SendStreamJSON(TrainerInteractResponse{
-			Success: false,
-			Error:   "invalid request",
-		}, opcodes.TrainerInteractResponse)
-		return false
-	}
-
 	result, err := readTrainerInteraction(ses.CommandContext(), ses, wh, req.ActorID)
 	if err != nil {
 		if !errors.Is(err, errScriptInteractionDenied) {
 			log.Printf("[TrainerInteract] Failed to read trainer actor %d: %v", req.ActorID, err)
 		}
-		ses.SendStreamJSON(TrainerInteractResponse{Error: "trainer interaction unavailable"}, opcodes.TrainerInteractResponse)
+		reject("trainer interaction unavailable")
 		return false
 	}
+	result.TrainerInteractIdentity = identity
 	ses.SendStreamJSON(result, opcodes.TrainerInteractResponse)
 	return false
 }
@@ -93,7 +83,7 @@ func readTrainerInteraction(ctx context.Context, ses *session.Session, wh *World
 		if err != nil {
 			return TrainerInteractResponse{}, err
 		}
-		return TrainerInteractResponse{Success: true, TrainerActorID: actorID, TrainerName: trainer.Name, TrainerClass: trainer.TrainerClass, Dialogue: dialogue, ShouldBattle: shouldBattle, Defeated: defeated}, nil
+		return TrainerInteractResponse{Success: true, TrainerInteractIdentity: protocol.TrainerInteractIdentity{TrainerActorID: actorID}, TrainerName: trainer.Name, TrainerClass: trainer.TrainerClass, Dialogue: dialogue, ShouldBattle: shouldBattle, Defeated: defeated}, nil
 	})
 }
 

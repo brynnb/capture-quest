@@ -1,3 +1,6 @@
+import {WorldSocket} from "@/net/index";
+import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
+import useGameScreenStore from "@/stores/GameScreenStore";
 import * as PhaserNet from "./PhaserNetworkService";
 
 interface CorrelatedErrorResponse { success: false; requestId: string; error: string }
@@ -52,3 +55,21 @@ export function correlatedRequest<T extends { success: true; requestId: string }
   });
 }
 
+
+
+// Reads owned by the active character share one retirement boundary. Resource
+// caches and source-specific presentation remain their domain callers' policy.
+export async function readForCurrentCharacter<T>(read:(characterId:number,signal:AbortSignal)=>Promise<T>,signal?:AbortSignal):Promise<T>{
+ const characterId=usePlayerCharacterStore.getState().characterProfile.id;
+ if(!characterId || useGameScreenStore.getState().currentScreen!=="game")throw new Error("Read requires an active character and game screen");
+ const generation=WorldSocket.sessionGeneration;
+ const controller=new AbortController();const abort=()=>controller.abort();
+ signal?.addEventListener("abort",abort,{once:true});if(signal?.aborted)abort();
+ const stops=[WorldSocket.subscribeSessionRetirement(abort),usePlayerCharacterStore.subscribe(state=>{if(state.characterProfile.id!==characterId)abort();}),useGameScreenStore.subscribe(state=>{if(state.currentScreen!=="game")abort();})];
+ try {
+ if(controller.signal.aborted)throw new DOMException("Request cancelled","AbortError");
+ const result=await read(characterId,controller.signal);
+ if(controller.signal.aborted || WorldSocket.sessionGeneration!==generation)throw new DOMException("Request cancelled","AbortError");
+ return result;
+ } finally {signal?.removeEventListener("abort",abort);stops.forEach(stop=>stop());}
+}

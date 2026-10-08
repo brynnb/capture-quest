@@ -185,13 +185,16 @@ func TestTrainerClickAndBattleStartRequireReachableVisibleActor(t *testing.T) {
 	request := func(opcode opcodes.OpCode, want bool) {
 		t.Helper()
 		messages.streams = nil
-		battleDispatch(t, wh, ses, opcode, fmt.Sprintf(`{"actorId":%d,"trainerActorId":%d}`, actorID, actorID))
+		battleDispatch(t, wh, ses, opcode, fmt.Sprintf(`{"requestId":"trainer:owned","actorId":%d,"trainerActorId":%d}`, actorID, actorID))
 		if len(messages.streams) != 1 {
 			t.Fatalf("trainer responses=%d", len(messages.streams))
 		}
 		var response map[string]any
 		if err := json.Unmarshal(messages.streams[0].payload, &response); err != nil {
 			t.Fatal(err)
+		}
+		if opcode == opcodes.TrainerInteractRequest && (response["requestId"] != "trainer:owned" || response["characterId"] != float64(42) || response["trainerActorId"] != float64(actorID)) {
+			t.Fatalf("trainer identity=%v", response)
 		}
 		if response["success"] != want {
 			t.Fatalf("trainer response=%v want=%v", response, want)
@@ -303,5 +306,14 @@ func TestTrainerClickAndBattleStartRequireReachableVisibleActor(t *testing.T) {
 	request(opcodes.TrainerBattleStartRequest, false)
 	if getBattle(42) != current {
 		t.Fatal("duplicate request replaced the active battle")
+	}
+}
+
+func TestTrainerInvalidReadReturnsTaggedFailure(t *testing.T) {
+	_, wh, ses, messages := battleTestWorld(t)
+	battleDispatch(t, wh, ses, opcodes.TrainerInteractRequest, `{"requestId":"trainer:bad","actorId":"invalid"}`)
+	var response map[string]any
+	if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &response) != nil || response["success"] != false || response["requestId"] != "trainer:bad" || response["characterId"] != float64(42) || response["error"] == nil {
+		t.Fatalf("invalid trainer=%v", response)
 	}
 }

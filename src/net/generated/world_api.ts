@@ -1240,19 +1240,7 @@ export interface PokeSurfingRequestPayload {
 //////////
 // source: handler-trainer-interact.go
 
-export interface TrainerInteractRequest {
-  actorId: number /* int */;
-}
-export interface TrainerInteractResponse {
-  success: boolean;
-  error?: string;
-  trainerActorId?: number /* int */;
-  trainerName?: string;
-  trainerClass?: string;
-  dialogue?: string;
-  shouldBattle: boolean;
-  defeated: boolean;
-}
+export type TrainerInteractResponse = import("./protocol").TrainerInteractResponse;
 export interface TrainerBattleStartRequest {
   trainerActorId: number /* int */;
 }

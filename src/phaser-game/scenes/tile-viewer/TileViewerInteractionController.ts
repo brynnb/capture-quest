@@ -1,4 +1,8 @@
 import { Scene } from "phaser";
+import {WorldSocket} from "@/net/index";
+import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
+import useGameScreenStore from "@/stores/GameScreenStore";
+import {readTrainerInteraction} from "../../services/TrainerInteractionService";
 import { PhaserActor } from "@/net/generated/world_api";
 import usePokemonPCStore from "@/stores/PokemonPCStore";
 import type { PCInteractionSource } from "@/net/generated/world_api";
@@ -66,7 +70,7 @@ export class TileViewerInteractionController {
   private suppressNextWorldPointerUp = false;
   private instantWarpRequestGeneration = 0;
   private instantWarpActivation: AbortController | null = null;
-  private dialogueDemand: AbortController | null = null;
+  private actorInteractionDemand: AbortController | null = null;
   private actorInteractionGeneration = 0;
 
   isInstantWarpPending(): boolean { return this.instantWarpActivation !== null; }
@@ -144,8 +148,8 @@ export class TileViewerInteractionController {
 
   cleanup(): void {
     this.actorInteractionGeneration += 1;
-    this.dialogueDemand?.abort();
-    this.dialogueDemand = null;
+    this.actorInteractionDemand?.abort();
+    this.actorInteractionDemand = null;
     this.instantWarpRequestGeneration += 1;
     this.instantWarpActivation?.abort();
     this.clearInstantWarpLoadError();
@@ -492,20 +496,32 @@ export class TileViewerInteractionController {
   private async handleActorClicked(actor: PhaserActor): Promise<void> {
     if (this.deps.isWorldInputFrozen()) return;
     this.actorInteractionGeneration += 1;
-    this.dialogueDemand?.abort();
-    const demand=new AbortController();this.dialogueDemand=demand;
+    this.actorInteractionDemand?.abort();
+    const demand=new AbortController();this.actorInteractionDemand=demand;
     try {
       if (!(await this.ensureActorInteractionReachable(actor)) || demand.signal.aborted) return;
       await this.performActorInteraction(actor,demand.signal);
     } catch(error) {
-      if(!demand.signal.aborted)console.warn("[TileViewer] Interaction could not complete:",error);
-    } finally {if(this.dialogueDemand===demand)this.dialogueDemand=null;}
+      if(!demand.signal.aborted && !(error instanceof DOMException && error.name==="AbortError"))console.warn("[TileViewer] Interaction could not complete:",error);
+    } finally {if(this.actorInteractionDemand===demand)this.actorInteractionDemand=null;}
   }
 
   private async performActorInteraction(actor: PhaserActor, signal:AbortSignal): Promise<void> {
+    const source={x:actor.x,y:actor.y,mapId:actor.mapId,text:actor.text,trainerClass:actor.trainerClass,party:actor.trainerPartyIndex};
+    const player=this.deps.playerMovementController().getCurrentPosition();
+    const displayedMap=this.deps.getDisplayedMapId();
+    const interactionGeneration=this.actorInteractionGeneration;
+    const transportGeneration=WorldSocket.sessionGeneration;
+    const characterId=usePlayerCharacterStore.getState().characterProfile.id;
+    const screen=useGameScreenStore.getState().currentScreen;
+    const current=()=>{
+      const target=this.deps.currentActorById(actor.id);
+      const position=this.deps.playerMovementController().getCurrentPosition();
+      return !signal.aborted && this.actorInteractionGeneration===interactionGeneration && WorldSocket.sessionGeneration===transportGeneration && usePlayerCharacterStore.getState().characterProfile.id===characterId && useGameScreenStore.getState().currentScreen===screen && this.deps.getDisplayedMapId()===displayedMap && position.x===player.x && position.y===player.y && !!target && target.x===source.x && target.y===source.y && target.mapId===source.mapId && target.text===source.text && target.trainerClass===source.trainerClass && target.trainerPartyIndex===source.party;
+    };
     if (this.isBikeShopClerk(actor)) {
       const startedScript = await PhaserNet.tryScriptedEventInteraction(actor.id);
-      if (startedScript) return;
+      if (startedScript || !current()) return;
 
       console.warn("[TileViewer] Bike Shop clerk has no eligible scripted event");
       return;
@@ -513,7 +529,7 @@ export class TileViewerInteractionController {
 
     if (actor.spriteName === "SPRITE_CLERK") {
       const startedScript = await PhaserNet.tryScriptedEventInteraction(actor.id);
-      if (startedScript) return;
+      if (startedScript || !current()) return;
 
       console.log(`[TileViewer] Clerk clicked on map ${actor.mapId}, opening shop`);
       await PhaserNet.sendCQMerchantOpen(actor.id);
@@ -528,16 +544,17 @@ export class TileViewerInteractionController {
     }
 
     const startedScript = await PhaserNet.tryScriptedEventInteraction(actor.id);
-    if (startedScript) return;
+    if (startedScript || !current()) return;
 
     if (actor.trainerClass && actor.trainerPartyIndex !== undefined) {
-      const trainer = await PhaserNet.requestTrainerInteraction(actor.id);
+      const trainer = await readTrainerInteraction(actor.id,signal);
+      if(!current() || this.deps.isWorldInputFrozen())return;
       if (trainer?.success) {
         const lines = trainer.dialogue
           ? parseDialogueText(trainer.dialogue)
           : [];
         const startBattle = () => {
-          if (trainer.shouldBattle) {
+          if (current() && trainer.shouldBattle) {
             PhaserNet.sendTrainerBattleStart(actor.id);
           }
         };
@@ -569,13 +586,8 @@ export class TileViewerInteractionController {
       `[TileViewer] Actor clicked: ${actor.name} (${actor.objectType}), text: ${actor.text}`,
     );
 
-    const source={x:actor.x,y:actor.y,mapId:actor.mapId,text:actor.text};
-    const player=this.deps.playerMovementController().getCurrentPosition();
-    const displayedMap=this.deps.getDisplayedMapId();
     const result = await fetchDialogueWithBranching(actor.text,signal);
-    const current=this.deps.currentActorById(actor.id);
-    const position=this.deps.playerMovementController().getCurrentPosition();
-    if(signal.aborted || this.deps.isWorldInputFrozen() || this.deps.getDisplayedMapId()!==displayedMap || position.x!==player.x || position.y!==player.y || !current || current.x!==source.x || current.y!==source.y || current.mapId!==source.mapId || current.text!==source.text)return;
+    if(!current() || this.deps.isWorldInputFrozen())return;
     if (result.lines.length === 0) {
       console.warn(`[TileViewer] No dialogue found for ${actor.text}`);
       return;

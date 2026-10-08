@@ -234,6 +234,7 @@ export class NetworkBridge {
         break;
 
       // Pokédex & UI (Phase 10)
+      case OpCodes.TrainerInteractResponse:
       case OpCodes.PhaserDialogueResponse:
       case OpCodes.ValidateNameResponse:
       case OpCodes.PokedexListResponse:

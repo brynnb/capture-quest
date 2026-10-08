@@ -315,3 +315,25 @@ describe("actor dialogue demand ownership",()=>{
  held.resolve({lines:["Old"],hasBranching:false,branchingPrompt:null});await old;expect(open).not.toHaveBeenCalled();
  });
 });
+
+describe("trainer dialogue source ownership",()=>{
+ afterEach(()=>vi.restoreAllMocks());
+ it("rejects late moved-source replies and fences the later battle callback",async()=>{
+ const trainer=await import("../../services/TrainerInteractionService");
+ const net=await import("../../services/PhaserNetworkService");
+ const store=(await import("@/stores/PokemonDialogueStore")).default;
+ vi.spyOn(net,"tryScriptedEventInteraction").mockResolvedValue(false);
+ const send=vi.spyOn(net,"sendTrainerBattleStart").mockImplementation(()=>{});
+ const open=vi.spyOn(store.getState(),"openDialogue").mockImplementation(()=>{});
+ const actor={id:7,x:1,y:0,mapId:1,text:"TEXT",objectType:"npc",trainerClass:"YOUNGSTER",trainerPartyIndex:1};
+ const reply={success:true as const,requestId:"owned",characterId:42,trainerActorId:7,trainerName:"Trainer",trainerClass:"YOUNGSTER",dialogue:"Battle!",shouldBattle:true,defeated:false};
+ const pending=deferred<typeof reply>();const read=vi.spyOn(trainer,"readTrainerInteraction").mockReturnValueOnce(pending.promise).mockResolvedValue(reply);
+ const controller=new TileViewerInteractionController({isWorldInputFrozen:()=>false,currentActorById:()=>actor,getDisplayedMapId:()=>1,playerMovementController:()=>({getCurrentPosition:()=>({x:0,y:0})})} as never);
+ const internal=controller as unknown as {ensureActorInteractionReachable:()=>Promise<boolean>;handleActorClicked:(actor:unknown)=>Promise<void>};
+ vi.spyOn(internal,"ensureActorInteractionReachable").mockResolvedValue(true);
+ const first=internal.handleActorClicked(actor);await vi.waitFor(()=>expect(read).toHaveBeenCalledOnce());actor.x=3;pending.resolve(reply);await first;expect(open).not.toHaveBeenCalled();
+ actor.x=1;await internal.handleActorClicked(actor);const stale=open.mock.calls.at(-1)![3]!;actor.x=3;stale();expect(send).not.toHaveBeenCalled();
+ actor.x=1;await internal.handleActorClicked(actor);const current=open.mock.calls.at(-1)![3]!;current();expect(send).toHaveBeenCalledTimes(1);expect(send).toHaveBeenCalledWith(7);
+ await internal.handleActorClicked(actor);current();expect(send).toHaveBeenCalledTimes(1);
+ });
+});
