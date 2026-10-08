@@ -329,9 +329,18 @@ export class CaptureQuestSocket {
       concatUint8(new Uint8Array(op), payload)
     );
 
+    const socket=this.ws,transport=this.webtransport,writer=this.controlWriter;
+    const websocket=this.useWebSocket;
+    const owns=()=>websocket ? this.ws===socket : this.webtransport===transport;
+    let pendingRequest:PendingRequest<Uint8Array>;
+    const remove=()=>{
+      const queue=this.pendingRequests.get(responseOpCode);
+      if(queue){const index=queue.indexOf(pendingRequest);if(index!==-1)queue.splice(index,1);if(queue.length===0)this.pendingRequests.delete(responseOpCode);}
+      clearTimeout(pendingRequest.timeout);
+    };
     // Create promise for response
     const responsePromise = new Promise<TRes>((resolve, reject) => {
-      const pendingRequest: PendingRequest<Uint8Array> = {
+      pendingRequest = {
         resolve: (buf: Uint8Array) => {
           try {
             const text = new TextDecoder().decode(buf);
@@ -344,14 +353,13 @@ export class CaptureQuestSocket {
         },
         reject,
         timeout: setTimeout(() => {
-          // Remove this specific request from the queue on timeout
           const queue = this.pendingRequests.get(responseOpCode);
-          if (queue) {
-            const idx = queue.indexOf(pendingRequest);
-            if (idx !== -1) queue.splice(idx, 1);
-            if (queue.length === 0) this.pendingRequests.delete(responseOpCode);
-          }
+          if(!queue?.includes(pendingRequest))return;
+          remove();
           reject(new Error(`Request timeout for opcode ${responseOpCode}`));
+          // Untagged replies cannot be associated safely after a missing reply.
+          // Retire this connection rather than guessing on a later request.
+          if(owns())this.close(false);
         }, timeoutMs),
       };
 
@@ -361,11 +369,24 @@ export class CaptureQuestSocket {
       this.pendingRequests.set(responseOpCode, queue);
     });
 
-    // Send the request
-    if (this.useWebSocket) {
-      this.sendWsFrame(frame);
-    } else {
-      await this.controlWriter!.write(frame);
+    const sendFailed=(error:unknown)=>{
+      if(!this.pendingRequests.get(responseOpCode)?.includes(pendingRequest))return;
+      remove();pendingRequest.reject(error instanceof Error ? error : new Error(String(error)));
+      // A write failure may be ambiguous, but must not tear down a replacement.
+      if(owns())this.close(false);
+    };
+    try {
+      if(websocket){
+        if(!socket || !owns() || socket.readyState!==WebSocket.OPEN)throw new Error("WebSocket owner is unavailable");
+        socket.send(frame);
+      } else {
+        if(!writer || !owns())throw new Error("Control stream owner is unavailable");
+        // Response timeout/retirement must settle even if backpressure leaves
+        // the write pending. Its failure settles only this still-pending request.
+        void writer.write(frame).catch(sendFailed);
+      }
+    } catch(error) {
+      sendFailed(error);
     }
 
     return responsePromise;

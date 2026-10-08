@@ -7,7 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-native transport setup/readers/writes are fenced to their captured owner,
+legacy FIFO timeout/send failure retires ambiguous transport and settles its caller,
+following `aa0e219`: native transport setup/readers/writes are fenced to their captured owner,
 following `9e872ad`: WebSocket setup uses the existing deadline and FIFO requests retire with transport,
 following `849b797`: WebSocket attempts settle on retirement and callbacks use the owned instance,
 following `208c5a2`: owned reconnect timers and rendered informational process-replacement acceptance,
@@ -43,6 +44,41 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## FIFO send failure and missing-response boundary (2026-10-08)
+
+Review reproduced two defects: FIFO timeout left its connection available for a
+new same-opcode request, and synchronous send failure left the already-created
+slot and timer behind. A delayed untagged reply could then resolve a newer slot.
+These regressions failed before the fix.
+
+The legacy API now treats timeout or write failure as an ambiguous association
+boundary and retires its captured connection through the existing close path.
+The triggering request keeps its timeout/write error; other pending requests
+settle as retired, and timers/slots are removed. No mutation is automatically
+retried. The existing reconnect/login/reentry flow recovers current durable state.
+This deliberately changes legacy timeout recovery from continued use of an
+ambiguous stream to fail-closed retirement. Tagged read coordinators retain their
+own timeout/recovery policy and do not close their stream merely on read timeout.
+
+Native request settlement no longer waits behind a backpressured write: response
+timeout and retirement can reject while that write is still pending. Write
+completion/failure targets only its captured, still-pending slot. A late failure
+cannot close a replacement or invalidate an already confirmed reply. Controlled
+stream tests cover blocked writes and delayed failures after replacement.
+
+The actual WebSocket pending-view SIGKILL/reentry case passed in 6.7s at
+`/var/tmp/capturequest-rendered.2TNC9a`; owned PID `2721226` exited `137` and
+replacement `2721555` served generation 1. Sixty-six related client tests,
+typecheck, production build, runtime asset validation and diff checks passed.
+Existing build warnings remain. Native stream tests are not QUIC acceptance.
+
+Next: real native QUIC/browser acceptance and migration of remaining FIFO callers
+(`authService`, `questApi`, `DialogueService`) to explicit identities where still
+used. Normal-operation unsolicited/out-of-order response association is not
+solved by failing closed on missing replies. The original restore timeout and
+Repel click remain unattributed. All five roadmap areas remain open. No Go/wire/
+schema change, push, deployment or production acceptance.
 
 ## Native transport continuation and stream ownership (2026-10-08)
 

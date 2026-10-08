@@ -109,3 +109,18 @@ test("WebSocket setup expires at the existing transport deadline and fences a la
  await vi.advanceTimersByTimeAsync(8000);expect(result).toBe(false);
  open();expect(socket.isConnected).toBe(false);expect(created[0].close).toHaveBeenCalledOnce();expect(vi.getTimerCount()).toBe(0);
 });
+
+test("FIFO timeout retires the ambiguous connection instead of accepting a late reply",async()=>{
+ vi.useFakeTimers();const created=fakeWebSockets();const socket=new CaptureQuestSocket({allowReconnect:false});
+ const connect=socket.connect("localhost",4433,()=>{});created[0].onopen!();await connect;
+ const reply=socket.sendJsonRequest(OpCodes.ValidateNameRequest,OpCodes.ValidateNameResponse,{},100).catch(error=>String(error));
+ await vi.advanceTimersByTimeAsync(100);expect(await reply).toContain("timeout");expect(socket.isConnected).toBe(false);expect(created[0].close).toHaveBeenCalledOnce();
+});
+
+test("synchronous FIFO write failure removes its pending slot and timer",async()=>{
+ vi.useFakeTimers();const created=fakeWebSockets();const socket=new CaptureQuestSocket({allowReconnect:false});
+ const connect=socket.connect("localhost",4433,()=>{});created[0].onopen!();await connect;
+ created[0].send.mockImplementationOnce(()=>{throw new Error("write failed")});
+ await expect(socket.sendJsonRequest(OpCodes.ValidateNameRequest,OpCodes.ValidateNameResponse,{})).rejects.toThrow("write failed");
+ expect(vi.getTimerCount()).toBe(0);expect(socket.isConnected).toBe(false);
+});

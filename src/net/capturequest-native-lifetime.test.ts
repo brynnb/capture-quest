@@ -2,7 +2,7 @@ import {afterEach,expect,test,vi} from "vitest";
 import {CaptureQuestSocket} from "./capturequest-socket";
 import * as OpCodes from "./generated/opcodes";
 
-function deferred<T>(){let resolve!:(value:T)=>void;const promise=new Promise<T>(r=>{resolve=r});return {promise,resolve};}
+function deferred<T>(){let resolve!:(value:T)=>void;let reject!:(error:unknown)=>void;const promise=new Promise<T>((r,j)=>{resolve=r;reject=j});return {promise,resolve,reject};}
 function nativeFixture(){
  vi.useFakeTimers();vi.spyOn(navigator,"userAgent","get").mockReturnValue("Chrome");
  vi.stubGlobal("fetch",vi.fn().mockResolvedValue({text:async()=>btoa(String.fromCharCode(...new Uint8Array(32)))}));
@@ -12,7 +12,8 @@ function nativeFixture(){
   datagramController!:ReadableStreamDefaultController<Uint8Array>;controlController!:ReadableStreamDefaultController<Uint8Array>;
   write=vi.fn();
   datagrams={readable:new ReadableStream<Uint8Array>({start:c=>{this.datagramController=c}}),writable:new WritableStream<Uint8Array>({write:bytes=>this.write(bytes)})};
-  control={readable:new ReadableStream<Uint8Array>({start:c=>{this.controlController=c}}),writable:new WritableStream<Uint8Array>()};
+  controlWrite=vi.fn();
+  control={readable:new ReadableStream<Uint8Array>({start:c=>{this.controlController=c}}),writable:new WritableStream<Uint8Array>({write:bytes=>this.controlWrite(bytes)})};
   close=vi.fn(()=>this.closedStage.resolve({closeCode:0}));
   createBidirectionalStream=vi.fn(async()=>this.control);
   constructor(){created.push(this)}
@@ -82,4 +83,23 @@ test("reconnect scheduling cannot compete with pending native setup",async()=>{
  (socket as unknown as {scheduleReconnect:()=>void}).scheduleReconnect();
  expect(vi.getTimerCount()).toBe(1); // the owning handshake deadline only
  socket.close(false);await vi.advanceTimersByTimeAsync(0);expect(await connect).toBe(false);expect(vi.getTimerCount()).toBe(0);
+});
+
+test("FIFO deadline settles under native write backpressure",async()=>{
+ const created=nativeFixture();const socket=new CaptureQuestSocket({allowReconnect:false});
+ const connect=socket.connect("localhost",4433,()=>{});await vi.advanceTimersByTimeAsync(0);created[0].readyStage.resolve();await vi.advanceTimersByTimeAsync(0);await connect;
+ const write=deferred<void>();created[0].controlWrite.mockReturnValueOnce(write.promise);
+ const response=socket.sendJsonRequest(OpCodes.ValidateNameRequest,OpCodes.ValidateNameResponse,{},100).catch(error=>String(error));
+ await vi.advanceTimersByTimeAsync(100);expect(await response).toContain("timeout");expect(socket.isConnected).toBe(false);
+ write.resolve();await vi.advanceTimersByTimeAsync(0);
+});
+
+test("late native write failure cannot close a replacement transport",async()=>{
+ const created=nativeFixture();const socket=new CaptureQuestSocket({allowReconnect:false});
+ const connect=socket.connect("localhost",4433,()=>{});await vi.advanceTimersByTimeAsync(0);created[0].readyStage.resolve();await vi.advanceTimersByTimeAsync(0);await connect;
+ const write=deferred<void>();created[0].controlWrite.mockReturnValueOnce(write.promise);
+ const old=socket.sendJsonRequest(OpCodes.ValidateNameRequest,OpCodes.ValidateNameResponse,{}).catch(error=>String(error));await vi.advanceTimersByTimeAsync(0);
+ const next=socket.connect("localhost",4433,()=>{});await vi.advanceTimersByTimeAsync(0);created[1].readyStage.resolve();await vi.advanceTimersByTimeAsync(0);await next;
+ expect(await old).toContain("retired");write.reject(new Error("old write failed"));await vi.advanceTimersByTimeAsync(0);
+ expect(socket.isConnected).toBe(true);expect(created[1].close).not.toHaveBeenCalled();socket.close(false);
 });
