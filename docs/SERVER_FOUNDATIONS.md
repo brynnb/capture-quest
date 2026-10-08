@@ -28,6 +28,40 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Explicit erased-base event publication (2026-10-08)
+
+The actor-cache interaction audit confirms `ActorReadView` captures the scene's
+independent actor cache/despawn markers, not the cleared tile snapshots. The
+publication audit found a concrete remaining omission: with no eligible override,
+an explicitly erased base row was excluded by the base query, treated as missing
+and never published. A client could retain an older override at that coordinate.
+
+The publisher now distinguishes an existing `is_tile_erased=1` row from a genuinely
+absent source record, within its authoritative snapshot. The erased case produces
+an explicit erased tile state and uses the existing broadcast erase field. Missing
+source or required properties still reject with no partial result; neither becomes
+a guessed removal. The simulator's tile-state output preserves the same marker.
+No generated image, coordinate or tile-ID identity changed.
+
+The PostgreSQL regression verifies the state reader and actual packet carry erase,
+then deletes the source row and proves that missing data remains an error. Existing
+stale-cache, priority and missing-properties checks remain; their fixture restores
+the base row before testing property failure, so the producing layer is isolated.
+Full world/simulator race suites passed in 48.015 and 1.069 seconds. Final focused
+checks passed in 1.150 seconds for world; simulator compiled successfully. Canonical
+Tygo, typecheck, asset validation, production build (Vite 3.33 seconds) and diff checks
+passed. Evidence is retained under `/var/tmp/capturequest-event-erase-*`. Existing
+browser erase handling is reused; no new rendered/pixel or production acceptance
+is claimed here.
+
+Remaining: general resident-view missed notification recovery, publication notices/
+revision ordering, sustained churn, legacy collision owners and dynamic previous-
+map recovery. This fixes explicit erase omission, not all live missed updates.
+The original restore timeout is unattributed and all five roadmap areas remain
+active. Next: define current-view reconciliation at existing owned command/read
+settlement points before closing world-presentation coverage. This checkpoint is
+local only, without push, deployment or production mutation.
+
 ## Fresh tile-view ownership discards missed-update caches (2026-10-08)
 
 The chunk audit found the eighteen-entry exact cache returning retained arrays as

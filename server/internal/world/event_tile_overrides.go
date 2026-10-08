@@ -3,6 +3,7 @@ package world
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 
@@ -19,6 +20,7 @@ type EventTileState struct {
 	RawFootTileID *int
 	TalkOverTile  bool
 	Label         string
+	Erased        bool `json:"erased,omitempty"`
 }
 
 type eventTileOverride struct {
@@ -148,7 +150,7 @@ func eventTileStatesIn(ctx context.Context, q db.ReadDBTX, charID int64, mapID i
 			}
 			state = EventTileState{X: chosen.X, Y: chosen.Y, TileImageID: chosen.TileImageID, CollisionType: chosen.CollisionType, RawFootTileID: props.RawFootTileID, TalkOverTile: props.TalkOverTile, Label: nullStringValue(chosen.Label)}
 		} else {
-			state, err = baseEventTileStateIn(q, mapID, rule.X, rule.Y)
+			state, err = publishedBaseEventTileStateIn(q, mapID, rule.X, rule.Y)
 			if err != nil {
 				return nil, fmt.Errorf("base event tile map=%d coordinate=(%d,%d): %w", mapID, rule.X, rule.Y, err)
 			}
@@ -156,6 +158,29 @@ func eventTileStatesIn(ctx context.Context, q db.ReadDBTX, charID int64, mapID i
 		states = append(states, state)
 	}
 	return states, nil
+}
+
+// An explicitly erased base row is a real removal. An absent source record is
+// still an error; it must not be disguised as an erase or silently skipped.
+func publishedBaseEventTileStateIn(q db.DBTX, mapID, x, y int) (EventTileState, error) {
+	state, err := baseEventTileStateIn(q, mapID, x, y)
+	if !errors.Is(err, sql.ErrNoRows) {
+		return state, err
+	}
+	query := `SELECT EXISTS(SELECT 1 FROM phaser_tiles WHERE map_id=$1 AND x=$2 AND y=$3 AND is_tile_erased=1)`
+	args := []interface{}{mapID, x, y}
+	if mapID == UnifiedOverworldMapID {
+		query = `SELECT EXISTS(SELECT 1 FROM phaser_tiles WHERE map_id IS NULL AND x=$1 AND y=$2 AND is_tile_erased=1)`
+		args = []interface{}{x, y}
+	}
+	var erased bool
+	if queryErr := q.QueryRow(query, args...).Scan(&erased); queryErr != nil {
+		return EventTileState{}, queryErr
+	}
+	if !erased {
+		return EventTileState{}, err
+	}
+	return EventTileState{X: x, Y: y, Erased: true}, nil
 }
 
 func baseEventTileStateIn(database db.DBTX, mapID, x, y int) (EventTileState, error) {
@@ -215,6 +240,7 @@ func sendEventTileStatesForSession(ses *session.Session, charID int64, mapName s
 			CollisionType: state.CollisionType,
 			RawFootTileID: state.RawFootTileID,
 			TalkOverTile:  state.TalkOverTile,
+			Erased:        state.Erased,
 		})
 	}
 	if wh.ActorManager != nil {

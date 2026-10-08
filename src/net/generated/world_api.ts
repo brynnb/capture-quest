@@ -302,6 +302,7 @@ export interface EventTileState {
   rawFootTileId?: number /* int */;
   talkOverTile: boolean;
   label: string;
+  erased?: boolean;
 }
 
 //////////

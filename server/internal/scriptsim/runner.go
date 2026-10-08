@@ -754,6 +754,7 @@ func eventTileStates(applied *AppliedFixture, efm *world.EventFlagManager) ([]Ti
 			TileImageID:   state.TileImageID,
 			CollisionType: state.CollisionType,
 			Label:         state.Label,
+			Erased:        state.Erased,
 		})
 	}
 	return tileStates, nil

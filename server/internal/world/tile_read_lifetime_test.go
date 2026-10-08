@@ -101,7 +101,25 @@ func TestTileProjectionUsesCommittedFlagsAndRejectsUnavailableMetadata(t *testin
 	if !projected.Success || projected.Tiles[0].TileImageID != 1 {
 		t.Fatalf("stale positive flag granted override: %+v", projected)
 	}
-	testdb.Exec(t, database, `INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'OPEN'); DELETE FROM phaser_tile_properties WHERE tile_image_id=3`)
+	testdb.Exec(t, database, `UPDATE phaser_tiles SET is_tile_erased=1 WHERE map_id=50 AND x=1 AND y=1`)
+	states, err = EventTileStatesForCharacter(context.Background(), database, 42, 50)
+	if err != nil || len(states) != 1 || !states[0].Erased {
+		t.Fatalf("erased base did not resolve to removal: %+v %v", states, err)
+	}
+	messages.streams = nil
+	sendEventTileStatesForSession(ses, 42, "GATE", wh)
+	if len(messages.streams) != 1 {
+		t.Fatal("erased base update was silently omitted")
+	}
+	publication = TileEditorBroadcastPayload{}
+	if err := json.Unmarshal(messages.streams[0].payload, &publication); err != nil || len(publication.Tiles) != 1 || !publication.Tiles[0].Erased {
+		t.Fatalf("missing explicit erase publication: %+v %v", publication, err)
+	}
+	testdb.Exec(t, database, `DELETE FROM phaser_tiles WHERE map_id=50 AND x=1 AND y=1`)
+	if states, err := EventTileStatesForCharacter(context.Background(), database, 42, 50); err == nil || states != nil {
+		t.Fatalf("missing base disguised as removal: %+v %v", states, err)
+	}
+	testdb.Exec(t, database, `INSERT INTO phaser_tiles(x,y,local_x,local_y,map_id,source_map_id,tile_image_id,collision_type,raw_foot_tile_id,is_native_game_data,coordinate_origin,content_origin) VALUES(1,1,1,1,50,50,1,1,1,true,'native','native'); INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'OPEN'); DELETE FROM phaser_tile_properties WHERE tile_image_id=3`)
 	projected = read()
 	var failed protocol.PlayerStepError
 	if err := json.Unmarshal(messages.streams[0].payload, &failed); err != nil || projected.Success || failed.Error == "" || !strings.Contains(failed.Error, "image=3") {

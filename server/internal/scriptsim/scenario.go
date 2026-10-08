@@ -276,6 +276,7 @@ type TileState struct {
 	TileImageID   int    `json:"tileImageId"`
 	CollisionType int    `json:"collisionType"`
 	Label         string `json:"label,omitempty"`
+	Erased        bool   `json:"erased,omitempty"`
 }
 
 type ObjectState struct {
