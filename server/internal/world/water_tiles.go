@@ -6,12 +6,16 @@ import (
 	"fmt"
 )
 
-func isSurfableWaterTile(wh *WorldHandler, mapID, x, y int) bool {
+func isSurfableWaterTile(ctx context.Context, wh *WorldHandler, mapID, x, y int) (bool, error) {
 	if wh == nil || wh.ActorManager == nil {
-		return false
+		return false, fmt.Errorf("water collision service unavailable")
 	}
-	collisionType, exists := wh.ActorManager.CollisionTypeAt(mapID, x, y)
-	return surfableWaterCollision(wh, mapID, x, y, collisionType, exists)
+	collision, _, err := wh.ActorManager.baseCollision(ctx, wh.database, mapID, true)
+	if err != nil {
+		return false, err
+	}
+	value, exists := collision[tileKey(x, y)]
+	return surfableWaterCollision(wh, mapID, x, y, value, exists), nil
 }
 
 func isSurfableWaterTileIn(ctx context.Context, q db.ContextDBTX, wh *WorldHandler, mapID, x, y int) (bool, error) {

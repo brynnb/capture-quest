@@ -28,6 +28,42 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Owned water preflight reads (2026-10-08)
+
+Fishing facing-water and targeted SURF preflight now require the caller context
+and return read errors separately from ordinary ineligibility. Both commands pass
+their session command context to the existing injected base-collision reader.
+The live and transaction water helpers retain the same water/warp predicate;
+there is no background-context water wrapper. The shared base reader preserves
+its five-second maximum while respecting a shorter caller deadline. Missing cold
+read storage returns an explicit source error instead of dereferencing a nil pool;
+valid cached immutable entries remain usable by existing deterministic fixtures.
+
+A failed read produces an explicit failure response rather than claiming that
+water is absent or that nothing bit. Concise local debug diagnostics include map,
+position/target and the cause; production logging stays quiet. No mutation retry
+or new command coordinator is introduced.
+
+Private PostgreSQL packet-boundary tests cover both commands with an actually held
+connection pool and an unavailable source table. They prove deadline cancellation,
+one failure packet, distinct read-error text, unchanged position, no battle and
+no poisoned cache. Existing direction/water/warp-mat behavior is retained. Focused
+preflight/fishing/SURF/collision checks passed (2.2s), full world (53.4s) and script-
+simulator race suites passed, all Go packages compile and diff checks pass. No
+rendered, process-death or production acceptance is claimed for this checkpoint.
+
+This does not close the field-action family: source inspection shows
+`fishingPlayerPosition` still accepts request `mapId`/`x`/`y` in place of the owned
+position, rod selection trusts request identity, and later encounter/party reads
+still use the global database. Those facts are recorded in the finite command
+audit for source authorization and battle/read ownership work. Other live collision
+caller gates are warp-entry coherence/cancellation and map-load surf presentation;
+local/simulator/startup/dormant APIs remain as inventoried. The original login
+restore timeout is unattributed, and all five roadmap areas remain active.
+Next: migrate warp-entry and map-load collision reads through their existing owner
+contexts before expanding another mutation family. This checkpoint is local only,
+without push or deployment.
+
 ## Forced-step cancellation and committed projection (2026-10-08)
 
 Forced-step preparation now passes its existing tick/character context to the

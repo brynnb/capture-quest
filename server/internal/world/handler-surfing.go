@@ -7,6 +7,7 @@ import (
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
+	"capturequest/internal/logutil"
 	"capturequest/internal/pokebattle"
 	"capturequest/internal/session"
 )
@@ -237,7 +238,13 @@ func handlePokeSurfingTarget(
 		return false
 	}
 
-	if !isSurfableWaterTile(wh, targetMapID, targetX, targetY) {
+	surfable, err := isSurfableWaterTile(ses.CommandContext(), wh, targetMapID, targetX, targetY)
+	if err != nil {
+		logutil.Debugf("[Surfing] Water read map=%d target=(%d,%d): %v", targetMapID, targetX, targetY, err)
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Unable to read water."}, opcodes.PokeSurfingResponse)
+		return false
+	}
+	if !surfable {
 		ses.SendStreamJSON(map[string]interface{}{
 			"success": false,
 			"error":   "You can't SURF here.",

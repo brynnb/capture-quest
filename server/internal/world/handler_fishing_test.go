@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"testing"
@@ -52,16 +53,16 @@ func TestFishingRequiresWaterInFacingTile(t *testing.T) {
 	}
 	wh := &WorldHandler{ActorManager: actorManager}
 
-	if !isFacingFishableWater(wh, 1, 5, 5, "UP") {
+	if fishable, err := isFacingFishableWater(context.Background(), wh, 1, 5, 5, "UP"); err != nil || !fishable {
 		t.Fatalf("expected fishing to be allowed when facing water")
 	}
-	if isFacingFishableWater(wh, 1, 5, 5, "DOWN") {
+	if fishable, err := isFacingFishableWater(context.Background(), wh, 1, 5, 5, "DOWN"); err != nil || fishable {
 		t.Fatalf("expected fishing to be blocked when facing land")
 	}
-	if isFacingFishableWater(wh, 1, 5, 5, "LEFT") {
+	if fishable, err := isFacingFishableWater(context.Background(), wh, 1, 5, 5, "LEFT"); err != nil || fishable {
 		t.Fatalf("expected fishing to be blocked when facing blocked tile")
 	}
-	if isFacingFishableWater(wh, 1, 5, 5, "RIGHT") {
+	if fishable, err := isFacingFishableWater(context.Background(), wh, 1, 5, 5, "RIGHT"); err != nil || fishable {
 		t.Fatalf("expected fishing to be blocked when facing missing tile")
 	}
 }

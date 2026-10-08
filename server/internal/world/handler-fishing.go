@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"math/rand"
@@ -8,6 +9,7 @@ import (
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
+	"capturequest/internal/logutil"
 	"capturequest/internal/pokebattle"
 	"capturequest/internal/session"
 )
@@ -67,7 +69,13 @@ func HandlePokeFishing(ses *session.Session, payload []byte, wh *WorldHandler) b
 	if direction == "" {
 		direction = directionFromCharacterHeading(charData.Heading)
 	}
-	if !isFacingFishableWater(wh, mapID, playerX, playerY, direction) {
+	fishable, err := isFacingFishableWater(ses.CommandContext(), wh, mapID, playerX, playerY, direction)
+	if err != nil {
+		logutil.Debugf("[Fishing] Water read map=%d position=(%d,%d) direction=%s: %v", mapID, playerX, playerY, direction, err)
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Unable to read fishing water."}, opcodes.PokeFishingResponse)
+		return false
+	}
+	if !fishable {
 		ses.SendStreamJSON(map[string]interface{}{
 			"success": false,
 			"error":   "You can't fish here.",
@@ -212,15 +220,12 @@ func fishingPlayerPosition(ses *session.Session, wh *WorldHandler, req PokeFishi
 	return mapID, x, y
 }
 
-func isFacingFishableWater(wh *WorldHandler, mapID, playerX, playerY int, direction string) bool {
-	if wh == nil || wh.ActorManager == nil {
-		return false
-	}
+func isFacingFishableWater(ctx context.Context, wh *WorldHandler, mapID, playerX, playerY int, direction string) (bool, error) {
 	targetX, targetY, ok := fishingTargetTile(playerX, playerY, direction)
 	if !ok {
-		return false
+		return false, nil
 	}
-	return isSurfableWaterTile(wh, mapID, targetX, targetY)
+	return isSurfableWaterTile(ctx, wh, mapID, targetX, targetY)
 }
 
 func fishingTargetTile(playerX, playerY int, direction string) (int, int, bool) {

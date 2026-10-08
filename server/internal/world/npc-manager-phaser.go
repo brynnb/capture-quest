@@ -397,6 +397,12 @@ func (m *PhaserActorManager) ensureWalkableMapLoadedLockedIn(ctx context.Context
 // Bootstrap calls the same row reader on a private staging manager. Runtime
 // readers never hold the shared actor lock during database I/O.
 func loadBaseCollision(ctx context.Context, database db.ContextDBTX, mapID int, overworld bool) (map[string]int, map[string]int, error) {
+	if database == nil {
+		return nil, nil, fmt.Errorf("collision database unavailable")
+	}
+	if pool, ok := database.(*sql.DB); ok && pool == nil {
+		return nil, nil, fmt.Errorf("collision database unavailable")
+	}
 	collisions := make(map[string]int)
 	feet := make(map[string]int)
 
@@ -450,6 +456,8 @@ func loadBaseCollision(ctx context.Context, database db.ContextDBTX, mapID int, 
 }
 
 func (m *PhaserActorManager) baseCollision(ctx context.Context, database db.ContextDBTX, mapID int, publish bool, snapshotRevision ...uint64) (map[string]int, map[string]int, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	m.mu.RLock()
 	collision, exists := m.collisionMap[mapID]
 	raw := m.rawFootTileMap[mapID]
