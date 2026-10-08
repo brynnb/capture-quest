@@ -18,7 +18,7 @@ interface CutsceneSpriteControllerDeps {
   syncPlayerMovement: (x: number, y: number, direction: string) => void;
   setInputLocked: (locked: boolean) => void;
   onHideObject: (actorId: number) => void;
-  onReconcile: (position: CutsceneOwnedPosition) => Promise<void>;
+  onReconcile: (position: CutsceneOwnedPosition,signal:AbortSignal) => Promise<void>;
 }
 
 export class CutsceneSpriteController {

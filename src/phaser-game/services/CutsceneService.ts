@@ -95,7 +95,7 @@ let onHideActor: HideActorCallback | null = null;
 let onHideObject: HideObjectCallback | null = null;
 let onFace: FaceCallback | null = null;
 let onInputLock: InputLockCallback | null = null;
-let onReconcile: ((position: CutsceneOwnedPosition) => Promise<void>) | null = null;
+let onReconcile: ((position: CutsceneOwnedPosition,signal:AbortSignal) => Promise<void>) | null = null;
 let onCancelPlayback: (() => void) | null = null;
 
 // --- Public API ---
@@ -108,7 +108,7 @@ export function registerCutsceneCallbacks(callbacks: {
   onHideObject?: HideObjectCallback;
   onFace: FaceCallback;
   onInputLock: InputLockCallback;
-  onReconcile?: (position: CutsceneOwnedPosition) => Promise<void>;
+  onReconcile?: (position: CutsceneOwnedPosition,signal:AbortSignal) => Promise<void>;
   onCancelPlayback?: () => void;
 }): void {
   onMove = callbacks.onMove;
@@ -248,7 +248,7 @@ export async function handleCutsceneStart(
     }
     if (!isActiveRun(runId)) return;
     if (!onReconcile) throw new Error("Cutscene position projection unavailable");
-    await onReconcile(position);
+    await onReconcile(position,abort.signal);
     if (!isActiveRun(runId)) return;
     reconciled = true;
   } catch (error) {

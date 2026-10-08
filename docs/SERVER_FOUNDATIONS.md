@@ -28,6 +28,43 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Resident interior reconciliation at cutscene settlement (2026-10-08)
+
+Cutscene completion already owns an input lock through correlated commit/position
+reconciliation. That existing callback now also carries its AbortSignal and reads
+the resident interior tile view before unlocking. The scene validates map/load
+identity, character and retirement, prepares required images and requires a current
+tile-read stamp. A retired or overtaken view rejects rather than reporting successful
+recovery. Changed/missing coordinates are projected through the existing world-tile
+update path, including explicit erases; actors and resource/movement coordinators
+retain their own responsibilities. No polling loop, broker, new notice stream or
+inventory-specific executor was introduced.
+
+The interior read compares authoritative rows with the actual live tile lookup,
+so a lost erase event can be recovered even when the initial scene array is older
+than streamed updates. Unified chunks deliberately retain their separate bounded
+stream owner and are not loaded as one enormous interior array. This is the first
+owned settlement integration, not universal idle/live world synchronization.
+
+17 focused cutscene/sprite/tile lifetime checks passed, preserving position values
+and now asserting signal delivery. Existing failure tests keep input locked. Four
+normal guest/scripted/texture-order browser cases passed in 20.6 seconds. A separate
+private-database fault case erases a real resident source row without sending any
+event, proves it remains in the renderer, invokes the same scene-owned reconciliation
+and verifies removal. That and both scripted-event cases passed in 18.4 seconds in
+`/var/tmp/capturequest-rendered.6V3YP5`. This proves the browser mutation registry,
+not screenshot/pixel appearance. Typecheck, canonical asset validation, production
+build (Vite 3.30 seconds) and diff checks passed. Evidence is retained under
+`/var/tmp/capturequest-tile-recovery-*`. No backend/schema/runtime-asset contract
+changed; no new process-death or production claim follows from these checks.
+
+Remaining: unified resident chunks, other settlement points and idle/missed shared
+world notifications, sustained churn/revision scope and legacy collision owners.
+The original restore timeout is unattributed and all five roadmap areas remain
+active. Next: review this owned callback boundary and add bounded unified-chunk
+reconciliation through its existing stream owner. This checkpoint is local only,
+without push, deployment or production mutation.
+
 ## Explicit erased-base event publication (2026-10-08)
 
 The actor-cache interaction audit confirms `ActorReadView` captures the scene's

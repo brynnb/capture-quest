@@ -24,7 +24,7 @@ test("input remains locked through commit response and projection", async () => 
   await vi.waitFor(() => expect(requests.complete).toHaveBeenCalledOnce());
   expect(lock).not.toHaveBeenCalledWith(false); expect(isCutscenePlaying()).toBe(true);
   completion.resolve({ ...owned, success: true, requestId: "id", completed: true });
-  await vi.waitFor(() => expect(reconcile).toHaveBeenCalledWith(expect.objectContaining(owned)));
+  await vi.waitFor(() => expect(reconcile).toHaveBeenCalledWith(expect.objectContaining(owned),expect.any(AbortSignal)));
   expect(lock).not.toHaveBeenCalledWith(false);
   projection.resolve(); await run;
   expect(getLastCompletedCutsceneScriptLabel()).toBe("Confirmed"); expect(isCutscenePlaying()).toBe(false); expect(lock).toHaveBeenLastCalledWith(false);
@@ -32,14 +32,14 @@ test("input remains locked through commit response and projection", async () => 
 test("late failure reconciles owned source without claiming completion", async () => {
   requests.complete.mockRejectedValue(new CorrelatedResponseError({ ...owned, success: false, requestId: "id", error: "rolled back" }));
   await handleCutsceneStart(event("Failed"));
-  expect(reconcile).toHaveBeenCalledWith(expect.objectContaining(owned)); expect(requests.read).not.toHaveBeenCalled(); expect(getLastCompletedCutsceneScriptLabel()).not.toBe("Failed"); expect(lock).toHaveBeenLastCalledWith(false);
+  expect(reconcile).toHaveBeenCalledWith(expect.objectContaining(owned),expect.any(AbortSignal)); expect(requests.read).not.toHaveBeenCalled(); expect(getLastCompletedCutsceneScriptLabel()).not.toBe("Failed"); expect(lock).toHaveBeenLastCalledWith(false);
 });
 test("unknown commit outcome reads owned position before unlocking", async () => {
   const recovery = deferred<unknown>(); requests.complete.mockRejectedValue(new Error("Timeout")); requests.read.mockReturnValue(recovery.promise);
   const run = handleCutsceneStart(event("Unknown"));
   await vi.waitFor(() => expect(requests.read).toHaveBeenCalledOnce()); expect(lock).not.toHaveBeenCalledWith(false);
   recovery.resolve({ ...owned, x: 9, success: true, requestId: "read" }); await run;
-  expect(reconcile).toHaveBeenCalledWith(expect.objectContaining({ x: 9 })); expect(lock).toHaveBeenLastCalledWith(false);
+  expect(reconcile).toHaveBeenCalledWith(expect.objectContaining({ x: 9 }),expect.any(AbortSignal)); expect(lock).toHaveBeenLastCalledWith(false);
 });
 test("failed recovery keeps input locked until explicit retirement", async () => {
   requests.complete.mockRejectedValue(new Error("Timeout")); requests.read.mockRejectedValue(new Error("disconnected"));

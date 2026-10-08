@@ -780,7 +780,11 @@ export class TileViewer extends Scene {
     this.warpManager.setupKeyboardWarpHandlers();
 
     this.cutsceneController = new CutsceneSpriteController({
-      onReconcile: (position) => this.warpEvents.reconcileOwnedPosition(position),
+      onReconcile: async (position,signal) => {
+        await this.warpEvents.reconcileOwnedPosition(position);
+        if(signal.aborted || !this.sys.isActive())throw new DOMException("World view retired","AbortError");
+        await this.reconcileResidentInteriorTiles(signal);
+      },
       scene: this,
       mapContainer: () => this.mapContainer,
       actorManager: () => this.actorManager,
@@ -1701,6 +1705,29 @@ export class TileViewer extends Scene {
     this.tileEditorDragBatchNew = [];
     this.applyTileEditorAction(tileX, tileY);
     this.flushTileEditorBatch();
+  }
+
+  private async reconcileResidentInteriorTiles(signal:AbortSignal):Promise<void>{
+    const map=this.mapInfo;
+    // Exact unified chunks retain their own bounded stream owner. Do not load
+    // the whole overworld or force it through the interior renderer.
+    if(!map || map.isOverworld===1)return;
+    const characterId=usePlayerCharacterStore.getState().characterProfile.id;
+    const viewCurrent=this.mapLoader.captureTilePresentationView(map.id);
+    const current=()=>!signal.aborted && this.sys.isActive() && viewCurrent() && usePlayerCharacterStore.getState().characterProfile.id===characterId;
+    const tiles=await this.mapDataService.fetchTiles(map.id,signal);
+    const images=await this.mapDataService.fetchTileImages();if(!current())throw new DOMException("Tile recovery view retired","AbortError");
+    await this.tileManager.loadTileImages(images);if(!current())throw new DOMException("Tile recovery view retired","AbortError");
+    if(!this.mapDataService.isTileReadCurrent(tiles))throw new Error("Tile recovery overtaken; retry current view before unlocking");
+    const next=new Map(tiles.map(tile=>[`${tile.x},${tile.y}`,tile]));
+    const edits: {x:number;y:number;tileImageId:number;collisionType:number;rawFootTileId?:number;talkOverTile?:boolean;erased?:boolean}[]=[];
+    for(const [key,tile] of this.tileLookup){if(!next.has(key))edits.push({x:tile.x,y:tile.y,tileImageId:0,collisionType:0,erased:true});}
+    for(const tile of tiles){
+      const old=this.tileLookup.get(`${tile.x},${tile.y}`);
+      if(!old || old.tileImageId!==tile.tileImageId || old.collisionType!==tile.collisionType || old.rawFootTileId!==tile.rawFootTileId || old.talkOverTile!==tile.talkOverTile)edits.push({x:tile.x,y:tile.y,tileImageId:tile.tileImageId,collisionType:tile.collisionType,rawFootTileId:tile.rawFootTileId,talkOverTile:tile.talkOverTile});
+    }
+    if(edits.length)this.worldTileUpdateHandler?.(new CustomEvent("worldTileUpdate",{detail:{mapId:map.id,tiles:edits}}));
+    if(current())this.tiles=tiles;
   }
 
   private async reconcileActors(signal: AbortSignal): Promise<void> {
