@@ -32,8 +32,6 @@ type WorldHandler struct {
 	shutdownOnce     sync.Once
 	shutdownDone     chan struct{}
 	shutdownErr      error
-	cleanupDraining  bool
-	cleanupErrors    error
 	cleanupMu        sync.Mutex
 	cleanupWG        sync.WaitGroup
 	ActorManager     *PhaserActorManager       `json:"actorManager,omitempty"`
@@ -154,11 +152,6 @@ func (wh *WorldHandler) RemoveSession(sessionID int) {
 	log.Printf("[WORLD] Removing session %d", sessionID)
 	ses.DrainCommands(func() {
 		if err := wh.cleanupCharacterSession(context.Background(), ses); err != nil {
-			wh.cleanupMu.Lock()
-			if wh.cleanupDraining {
-				wh.cleanupErrors = errors.Join(wh.cleanupErrors, fmt.Errorf("session %d: %w", ses.SessionID, err))
-			}
-			wh.cleanupMu.Unlock()
 			log.Printf("[WORLD] Session %d cleanup persistence failed: %v", ses.SessionID, err)
 		}
 	})
@@ -255,9 +248,7 @@ func (wh *WorldHandler) ShutdownContext(ctx context.Context) error {
 }
 
 func (wh *WorldHandler) shutdown() {
-	wh.cleanupMu.Lock()
-	wh.cleanupDraining = true
-	wh.cleanupMu.Unlock()
+	wh.characterOwners.seal()
 	wh.sessionManager.Seal()
 	wh.sessionManager.ForEachSession(func(ses *session.Session) { ses.Close() })
 	wh.timeoutWorker.stop()
@@ -272,9 +263,12 @@ func (wh *WorldHandler) shutdown() {
 	wh.cleanupMu.Lock()
 	wh.cleanupMu.Unlock()
 	wh.cleanupWG.Wait()
-	wh.cleanupMu.Lock()
-	wh.shutdownErr = wh.cleanupErrors
-	wh.cleanupMu.Unlock()
+	// Include failures retained before shutdown began, whose sessions are no
+	// longer in the registry. Return unresolved obligations, not historical
+	// errors that this final bounded recovery successfully repaired.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	wh.shutdownErr = wh.characterOwners.recoverPending(ctx)
 }
 
 func (wh *WorldHandler) StartSessionTimeoutChecker() {

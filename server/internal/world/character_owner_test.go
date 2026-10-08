@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -127,6 +128,68 @@ func TestCharacterCleanupRecoverySerializesAdmissionAndRetainsCancellation(t *te
 	owners.release(42, next)
 	if len(owners.entries) != 0 {
 		t.Fatal("recovered character tombstone retained")
+	}
+}
+
+func TestSealedCharacterCleanupRecoveryRetainsOnlyUnresolvedSaves(t *testing.T) {
+	var owners characterOwners
+	if err := owners.recoverPending(context.Background()); err == nil {
+		t.Fatal("recovery bypassed admission sealing")
+	}
+	for _, id := range []int64{42, 43} {
+		old := &session.Session{}
+		if err := owners.acquire(context.Background(), id, old, nil); err != nil {
+			t.Fatal(err)
+		}
+		owners.retire(id, old, func(ctx context.Context) error {
+			if owners.owns(id, old) {
+				t.Error("retired owner survived recovery")
+			}
+			if id == 42 {
+				return ctx.Err()
+			}
+			return nil
+		}, errors.New("save failure"))
+	}
+	owners.seal()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := owners.recoverPending(ctx); !errors.Is(err, context.Canceled) || !strings.Contains(err.Error(), "character 42") {
+		t.Fatalf("cancelled sealed recovery=%v", err)
+	}
+	if len(owners.entries) != 1 || owners.entries[42] == nil {
+		t.Fatal("recovery discarded failure or retained completed save")
+	}
+	if err := owners.acquire(context.Background(), 42, &session.Session{}, nil); !errors.Is(err, session.ErrSessionClosed) {
+		t.Fatalf("sealed admission=%v", err)
+	}
+	if err := owners.recoverPending(context.Background()); err != nil || len(owners.entries) != 0 {
+		t.Fatalf("sealed recovery retry=%v entries=%d", err, len(owners.entries))
+	}
+}
+
+func TestSealingDuringCleanupRecoveryPreventsReplacementAdmission(t *testing.T) {
+	var owners characterOwners
+	old, next := &session.Session{}, &session.Session{}
+	if err := owners.acquire(context.Background(), 42, old, nil); err != nil {
+		t.Fatal(err)
+	}
+	entered, finish := make(chan struct{}), make(chan struct{})
+	owners.retire(42, old, func(context.Context) error {
+		close(entered)
+		<-finish
+		return nil
+	}, errors.New("failed save"))
+	done := make(chan error, 1)
+	go func() { done <- owners.acquire(context.Background(), 42, next, nil) }()
+	<-entered
+	owners.seal()
+	close(finish)
+	if err := <-done; !errors.Is(err, session.ErrSessionClosed) || owners.owns(42, next) {
+		t.Fatalf("handoff crossed shutdown seal=%v", err)
+	}
+	if len(owners.entries) != 0 {
+		t.Fatal("successful save retained after sealed handoff")
 	}
 }
 

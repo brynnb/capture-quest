@@ -3,6 +3,8 @@ package world
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sort"
 	"sync"
 
 	"capturequest/internal/session"
@@ -13,8 +15,8 @@ var errCharacterHandoff = errors.New("character connection handoff already in pr
 type characterOwner struct {
 	session *session.Session
 	handoff bool
-	// Failed final saves outlive the retired session. Only acquire may retry
-	// them, behind the same admission barrier and before any replacement loads.
+	// Failed final saves outlive the retired session. Admission or sealed shutdown
+	// retries them behind the same barrier, before any replacement can load.
 	cleanup func(context.Context) error
 }
 
@@ -24,10 +26,15 @@ type characterOwner struct {
 type characterOwners struct {
 	mu      sync.Mutex
 	entries map[int64]*characterOwner
+	sealed  bool
 }
 
 func (o *characterOwners) acquire(ctx context.Context, id int64, next *session.Session, cleanup func(context.Context, *session.Session) error) error {
 	o.mu.Lock()
+	if o.sealed {
+		o.mu.Unlock()
+		return session.ErrSessionClosed
+	}
 	if o.entries == nil {
 		o.entries = make(map[int64]*characterOwner)
 	}
@@ -74,6 +81,9 @@ func (o *characterOwners) acquire(ctx context.Context, id int64, next *session.S
 	if recovered {
 		e.cleanup = nil
 	}
+	if err == nil && o.sealed {
+		err = session.ErrSessionClosed
+	}
 	if err == nil {
 		e.session = next
 	}
@@ -81,6 +91,63 @@ func (o *characterOwners) acquire(ctx context.Context, id int64, next *session.S
 		delete(o.entries, id)
 	}
 	return err
+}
+
+func (o *characterOwners) seal() {
+	o.mu.Lock()
+	o.sealed = true
+	o.mu.Unlock()
+}
+
+// recoverPending runs after the sealed session registry and its claimed cleanup
+// work have drained. Storage stays open until this pass completes. Never hold
+// the registry mutex across I/O; the handoff marker fences each recovery.
+func (o *characterOwners) recoverPending(ctx context.Context) error {
+	o.mu.Lock()
+	if !o.sealed {
+		o.mu.Unlock()
+		return errors.New("character cleanup recovery requires sealed admissions")
+	}
+	ids := make([]int64, 0, len(o.entries))
+	for id := range o.entries {
+		ids = append(ids, id)
+	}
+	o.mu.Unlock()
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	var result error
+	for _, id := range ids {
+		o.mu.Lock()
+		e := o.entries[id]
+		if e == nil {
+			o.mu.Unlock()
+			continue
+		}
+		if e.handoff || e.session != nil {
+			o.mu.Unlock()
+			result = errors.Join(result, fmt.Errorf("character %d: owner drain unfinished", id))
+			continue
+		}
+		if e.cleanup == nil {
+			delete(o.entries, id)
+			o.mu.Unlock()
+			continue
+		}
+		e.handoff = true
+		recovery := e.cleanup
+		o.mu.Unlock()
+		err := recovery(ctx)
+		o.mu.Lock()
+		e.handoff = false
+		if err == nil {
+			e.cleanup = nil
+			delete(o.entries, id)
+		}
+		o.mu.Unlock()
+		if err != nil {
+			result = errors.Join(result, fmt.Errorf("character %d: %w", id, err))
+		}
+	}
+	return result
 }
 
 func (o *characterOwners) owns(id int64, s *session.Session) bool {

@@ -7,6 +7,7 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+sealed shutdown reconciliation of pending cleanup, following `c58118e`:
 failed-cleanup recovery behind the existing character admission barrier, with
 idempotent cumulative playtime saves, following `a343ac5` (clean position rewrite
 retirement), shared character-lock enforcement and native source consolidation.
@@ -28,6 +29,38 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Shutdown reconciles previously failed cleanup (2026-10-08)
+
+A PostgreSQL regression reproduced a missing shutdown boundary: after
+`RemoveSession` retained a failed playtime save, shutdown returned success without
+retrying or reporting it. Removing the failure still left `time_played=0` instead
+of the frozen three-second total. The session-only drain could not see retired
+owners; its separate error list only recorded failures after draining began.
+
+Shutdown now seals character admission, joins the existing session/worker cleanup,
+then reconciles the existing owner registry with one shared five-second recovery
+budget while storage remains open. Failed saves retain their immutable obligations
+and return errors naming the character. Successful recovery removes the obligation
+and no longer reports its historical failure as unresolved. The separate
+`cleanupErrors`/`cleanupDraining` state is retired. A handoff already running when
+shutdown seals admissions cannot publish a replacement afterward.
+
+Coverage includes failed cleanup before shutdown, successful recovery after the
+failure disappears, persistent failure, concurrent handoff sealing, cancellation
+with retained obligations and repeated sealed recovery. A held-pool regression
+also checks that a caller deadline leaves the same drain running with storage
+open, then joins its successful recovery after the pool becomes available.
+The pre-fix regression failed both persistent-failure reporting and recovery.
+After the fix, focused shutdown/entry/owner checks passed (2.1s), full world
+(53.2s), server, session and character-repository race suites passed, and the final
+held-pool/sealing checks passed (1.3s). All Go packages compile and diff checks pass.
+
+Next: audit the remaining staged-position producer and define process-death
+durability for genuinely unsaved final state. Pending callbacks are still in
+memory; this does not establish recovery after server death, rendered acceptance
+or production behavior. All five roadmap areas remain open. No push, deployment,
+schema or generated asset change.
 
 ## Failed-cleanup admission recovery (2026-10-08)
 
