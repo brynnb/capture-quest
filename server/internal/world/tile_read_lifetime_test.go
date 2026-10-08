@@ -192,3 +192,45 @@ func TestCharacterCollisionHonorsPoolWaitCancellation(t *testing.T) {
 		t.Fatalf("collision escaped owned pool wait: %v %v %v", collision, raw, err)
 	}
 }
+
+func TestOwnedPathfindingSeparatesReadFailureFromNoRoute(t *testing.T) {
+	database, _, _, _ := battleTestWorld(t)
+	manager := NewPhaserActorManager(nil)
+	old := db.GlobalWorldDB
+	db.GlobalWorldDB = nil
+	t.Cleanup(func() { db.GlobalWorldDB = old })
+	testdb.Exec(t, database, `INSERT INTO phaser_maps(id,name,width,height) VALUES(50,'ROOM',10,10); INSERT INTO phaser_tiles(map_id,x,y,tile_image_id,collision_type) VALUES(50,7,8,1,1),(50,8,8,1,1)`)
+	path, err := manager.FindPathForCharacter(context.Background(), database, 42, 50, 7, 8, 8, 8, nil)
+	if err != nil || len(path) != 1 || path[0].X != 8 {
+		t.Fatalf("owned route: %v %v", path, err)
+	}
+	testdb.Exec(t, database, `UPDATE phaser_tiles SET collision_type=0 WHERE map_id=50 AND x=8 AND y=8`)
+	manager.InvalidateCollisionMap(50)
+	path, err = manager.FindPathForCharacter(context.Background(), database, 42, 50, 7, 8, 8, 8, nil)
+	if err != nil || len(path) != 0 {
+		t.Fatalf("legitimate no route: %v %v", path, err)
+	}
+	testdb.Exec(t, database, `ALTER TABLE phaser_tiles RENAME TO unavailable_tiles`)
+	manager.InvalidateCollisionMap(50)
+	path, err = manager.FindPathForCharacter(context.Background(), database, 42, 50, 7, 8, 8, 8, nil)
+	if err == nil || path != nil {
+		t.Fatalf("source failure disguised as no route: %v %v", path, err)
+	}
+}
+
+func TestOwnedPathfindingHonorsPoolWaitDeadline(t *testing.T) {
+	database, _, _, _ := battleTestWorld(t)
+	database.SetMaxOpenConns(1)
+	lease, err := database.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	before := database.Stats().WaitCount
+	path, err := NewPhaserActorManager(nil).FindPathForCharacter(ctx, database, 42, 50, 7, 8, 8, 8, nil)
+	if !errors.Is(err, context.DeadlineExceeded) || path != nil || database.Stats().WaitCount <= before {
+		t.Fatalf("owned pathfinding escaped pool deadline: %v %v", path, err)
+	}
+}

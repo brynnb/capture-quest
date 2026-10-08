@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v4"
 )
 
-func InitDB() error {
+func InitDB(ctx context.Context) error {
 	// Simulator initialization syncs scripts and fixtures replace character
 	// state. Never inherit a server target from DATABASE_URL or local config.
 	// Use the same explicit disposable-database boundary as Go integration tests.
@@ -23,10 +23,10 @@ func InitDB() error {
 		// Parser errors can include the supplied URL and credentials.
 		return fmt.Errorf("invalid CAPTUREQUEST_TEST_DATABASE_URL")
 	}
-	if err := db.InitWorldDB(context.Background(), "pgx", dsn); err != nil {
+	if err := db.InitWorldDB(ctx, "pgx", dsn); err != nil {
 		return err
 	}
-	if err := scriptedevents.SyncDefault(context.Background(), db.GlobalWorldDB.DB); err != nil {
+	if err := scriptedevents.SyncDefault(ctx, db.GlobalWorldDB.DB); err != nil {
 		return fmt.Errorf("sync scripted events: %w", err)
 	}
 	return nil

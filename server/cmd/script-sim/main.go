@@ -2,12 +2,15 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
+	"syscall"
 
 	"capturequest/internal/scriptsim"
 )
@@ -25,6 +28,8 @@ func main() {
 	update := flag.Bool("update", false, "write output to golden file")
 	verbose := flag.Bool("verbose", false, "print output even when --check passes")
 	flag.Parse()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	if *all && *scenarioName != "" {
 		log.Fatal("use either --scenario or --all, not both")
@@ -32,7 +37,7 @@ func main() {
 	if !*all && *scenarioName == "" {
 		log.Fatal("--scenario or --all is required")
 	}
-	if err := scriptsim.InitDB(); err != nil {
+	if err := scriptsim.InitDB(ctx); err != nil {
 		log.Fatalf("database init failed: %v", err)
 	}
 
@@ -47,24 +52,24 @@ func main() {
 		}
 		sort.Strings(paths)
 		for _, path := range paths {
-			if err := runScenario(path, opts); err != nil {
+			if err := runScenario(ctx, path, opts); err != nil {
 				log.Fatal(err)
 			}
 		}
 		return
 	}
 
-	if err := runScenario(scriptsim.ScenarioPath(*scenarioName), opts); err != nil {
+	if err := runScenario(ctx, scriptsim.ScenarioPath(*scenarioName), opts); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func runScenario(scenarioPath string, opts runOptions) error {
+func runScenario(ctx context.Context, scenarioPath string, opts runOptions) error {
 	scenario, err := scriptsim.LoadScenario(scenarioPath)
 	if err != nil {
 		return fmt.Errorf("load scenario failed: %w", err)
 	}
-	result, err := scriptsim.Run(scenario)
+	result, err := scriptsim.Run(ctx, scenario)
 	output := ""
 	if result != nil {
 		output = scriptsim.FormatResult(result)

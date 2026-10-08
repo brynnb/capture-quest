@@ -849,26 +849,26 @@ func (m *PhaserActorManager) loadPhaserObjectActorContext(ctx context.Context, d
 	return actor, nil
 }
 
-func (m *PhaserActorManager) FindPathForCharacter(charID int64, mapID, startX, startY, endX, endY int, efm *EventFlagManager) []PathNode {
-	return m.FindPathForCharacterWithOptions(charID, mapID, startX, startY, endX, endY, efm, pathfindOptions{})
+func (m *PhaserActorManager) FindPathForCharacter(ctx context.Context, database db.ReadDBTX, charID int64, mapID, startX, startY, endX, endY int, efm *EventFlagManager) ([]PathNode, error) {
+	return m.FindPathForCharacterWithOptions(ctx, database, charID, mapID, startX, startY, endX, endY, efm, pathfindOptions{})
 }
 
-func (m *PhaserActorManager) FindPathForCharacterWithOptions(charID int64, mapID, startX, startY, endX, endY int, efm *EventFlagManager, opts pathfindOptions) []PathNode {
-	var database db.ReadDBTX
-	if m.wh != nil && m.wh.database != nil {
-		database = m.wh.database
-	} else if db.GlobalWorldDB != nil {
-		database = db.GlobalWorldDB.DB
-	}
+func (m *PhaserActorManager) FindPathForCharacterWithOptions(ctx context.Context, database db.ReadDBTX, charID int64, mapID, startX, startY, endX, endY int, efm *EventFlagManager, opts pathfindOptions) ([]PathNode, error) {
 	if database == nil {
-		return nil
+		return nil, fmt.Errorf("pathfinding database is required")
 	}
-	collisionMap, rawFootTileMap, err := m.characterCollision(context.Background(), database, charID, mapID, startX, startY, efm)
+	collisionMap, rawFootTileMap, err := m.characterCollision(ctx, database, charID, mapID, startX, startY, efm)
 	if err != nil {
-		log.Printf("[ActorManager] Character collision: %v", err)
-		return nil
+		return nil, err
 	}
-	return findPathOnCollisionMapWithOptions(collisionMap, rawFootTileMap, startX, startY, endX, endY, opts)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	path := findPathOnCollisionMapWithOptions(collisionMap, rawFootTileMap, startX, startY, endX, endY, opts)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return path, nil
 }
 
 // characterCollision is shared by pathfinding and issued player steps. A failed

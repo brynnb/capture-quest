@@ -1,6 +1,8 @@
 package scriptsim
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 
 	"capturequest/internal/world"
@@ -12,7 +14,7 @@ type PathfindSummary struct {
 	Path   []world.PathNode
 }
 
-func runPathfind(scenario *Scenario, applied *AppliedFixture, initial *Snapshot, efm *world.EventFlagManager) (*Result, error) {
+func runPathfind(ctx context.Context, database *sql.DB, scenario *Scenario, applied *AppliedFixture, initial *Snapshot, efm *world.EventFlagManager) (*Result, error) {
 	startX, startY := triggerOrFixturePosition(scenario)
 	endX, endY := scenario.Trigger.DestX, scenario.Trigger.DestY
 	if endX == 0 && endY == 0 {
@@ -20,7 +22,10 @@ func runPathfind(scenario *Scenario, applied *AppliedFixture, initial *Snapshot,
 	}
 
 	actorManager := world.NewPhaserActorManager(nil)
-	path := actorManager.FindPathForCharacter(applied.CharacterID, applied.MapID, startX, startY, endX, endY, efm)
+	path, err := actorManager.FindPathForCharacter(ctx, database, applied.CharacterID, applied.MapID, startX, startY, endX, endY, efm)
+	if err != nil {
+		return nil, fmt.Errorf("pathfind character %d map %d: %w", applied.CharacterID, applied.MapID, err)
+	}
 	summary := &PathfindSummary{
 		Found:  len(path) > 0 || (startX == endX && startY == endY),
 		Length: len(path),

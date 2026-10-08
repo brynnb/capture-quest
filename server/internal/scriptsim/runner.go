@@ -131,18 +131,21 @@ type RepelSummary struct {
 	ItemID           int
 }
 
-func Run(scenario *Scenario) (*Result, error) {
+func Run(ctx context.Context, scenario *Scenario) (*Result, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	applied, err := ApplyFixture(scenario.Fixture)
 	if err != nil {
 		return nil, err
 	}
 
 	efm := world.NewEventFlagManager(db.GlobalWorldDB.DB)
-	if err := efm.LoadFlags(applied.CharacterID); err != nil {
+	if err := efm.LoadFlagsContext(ctx, applied.CharacterID); err != nil {
 		return nil, err
 	}
 	cutscenes := world.NewCutsceneManager(db.GlobalWorldDB.DB)
-	if err := cutscenes.Load(context.Background()); err != nil {
+	if err := cutscenes.Load(ctx); err != nil {
 		return nil, fmt.Errorf("load cutscenes: %w", err)
 	}
 
@@ -208,7 +211,7 @@ func Run(scenario *Scenario) (*Result, error) {
 		return runRuntimeBoulderPush(scenario, applied, initial, efm)
 	}
 	if scenario.Trigger.Type == "pathfind" {
-		return runPathfind(scenario, applied, initial, efm)
+		return runPathfind(ctx, db.GlobalWorldDB.DB, scenario, applied, initial, efm)
 	}
 	if scenario.Trigger.Type == "vermilion_gym_trash" {
 		return runVermilionGymTrash(scenario, applied, initial, efm)

@@ -1,6 +1,7 @@
 package scriptsim
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -15,7 +16,7 @@ func TestSimulatorRejectsApplicationDatabaseBeforeInitialization(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://application-target.invalid/capturequest")
 	for _, target := range []string{"", " \t\n"} {
 		t.Setenv("CAPTUREQUEST_TEST_DATABASE_URL", target)
-		err := InitDB()
+		err := InitDB(context.Background())
 		if err == nil || !strings.Contains(err.Error(), "CAPTUREQUEST_TEST_DATABASE_URL") {
 			t.Fatalf("default target accepted: %v", err)
 		}
@@ -31,7 +32,7 @@ func TestSimulatorRejectsMalformedExplicitTargetWithoutLeakingCredentials(t *tes
 	sentinel := &db.WorldDB{}
 	db.GlobalWorldDB = sentinel
 	t.Setenv("CAPTUREQUEST_TEST_DATABASE_URL", "postgres://user:fixture-secret@%invalid/capturequest")
-	err := InitDB()
+	err := InitDB(context.Background())
 	if err == nil || strings.Contains(err.Error(), "fixture-secret") {
 		t.Fatalf("invalid target error=%v", err)
 	}

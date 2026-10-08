@@ -28,6 +28,45 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Owned standalone pathfinding queries and explicit simulator failure (2026-10-08)
+
+`FindPathForCharacter` and its options variant previously chose a database through
+manager/global fallback, started a background-context collision read and converted
+its error into an empty path. The simulator then treated that as a successful
+`Found=false` result. Both APIs now require the caller context and query handle,
+return `([]PathNode, error)` and distinguish source/deadline failure from a valid
+blocked route. Context checks before/after planning reject retired results; no
+new planner, cache or mutation coordinator is introduced.
+
+The simulator pathfinding call supplies its initialized private database and
+propagates errors before producing a result. The CLI owns an interrupt/SIGTERM
+context through initialization, scenario dispatch, initial flag/script loads and
+pathfinding. Initialization still requires the explicit disposable database DSN;
+application-database fallback remains forbidden. Already-cancelled scenario runs
+reject before starting fixture application. This does not imply that every legacy
+fixture write or simulator action is now cancellable.
+
+Real PostgreSQL checks use no global database and prove a valid route, legitimate
+no route, missing collision source failure and actual held-pool deadline. CUT
+permission/path tests now supply their source explicitly and assert query success.
+The simulator error test cannot return a successful not-found result when the tile
+source is unavailable. Focused checks passed (1.4s world, 1.1s simulator), full
+world (49.0s) and script-simulator race suites passed, all Go packages compile and
+diff checks pass. Canonical `npm run tygo` produces no generated wire change.
+The existing `seafoam_1f_pathfind_avoids_visible_boulder` CLI golden passed in the
+canonical isolated runner at `/var/tmp/capturequest-script-sim.94FFGS`.
+
+Remaining simulator boundaries include global/unowned fixture application and
+initial/final `CaptureSnapshot` reads (including the final pathfinding snapshot),
+and other action helpers still using background contexts. The options planner's
+query boundary is owned; the entire simulator run is not yet a closed lifecycle
+audit. Local debug collision reads and dormant trainer diagnostic wrappers remain
+as inventoried. The original restore timeout and pre-command Repel click failure
+remain unattributed; all five roadmap areas stay active. Next: migrate the shared
+simulator snapshot/read model with coherent injected caller ownership before
+claiming wider simulator cancellation, then finish diagnostic-only wrappers.
+This checkpoint is local only, without push or deployment.
+
 ## Dormant actor path retirement and shared overworld cache installation (2026-10-08)
 
 Repository-wide caller/write inventory confirms `RequestActorMove` was the only
