@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"testing"
@@ -35,7 +36,7 @@ func TestDiscordChatUsesGlobalBroadcastAndOutboundSink(t *testing.T) {
 	var bridged ChatMessageBroadcast
 	wh.SetPublicChatSink(func(message ChatMessageBroadcast) { bridged = message })
 
-	if err := wh.BroadcastExternalChat("Tester[Discord]", " hello   CaptureQuest "); err != nil {
+	if err := wh.BroadcastExternalChat(context.Background(), "Tester[Discord]", " hello   CaptureQuest "); err != nil {
 		t.Fatal(err)
 	}
 	if len(messenger.datagrams) != 1 || messenger.datagrams[0].opcode != opcodes.ChatMessageBroadcast {

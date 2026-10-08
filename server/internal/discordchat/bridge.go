@@ -21,7 +21,7 @@ import (
 
 const maxRequestBytes = 4 * 1024
 
-type PublishFunc func(senderName, text string) error
+type PublishFunc func(context.Context, string, string) error
 
 type Message struct {
 	SenderName string `json:"senderName"`
@@ -111,7 +111,7 @@ func (b *Bridge) handle(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Sender and message are required", http.StatusBadRequest)
 		return
 	}
-	if err := b.publish(message.SenderName, message.Text); err != nil {
+	if err := b.publish(r.Context(), message.SenderName, message.Text); err != nil {
 		log.Printf("[DiscordChat] rejected inbound message: %v", err)
 		http.Error(w, "Could not publish message", http.StatusServiceUnavailable)
 		return

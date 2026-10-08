@@ -28,6 +28,48 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Chat and heartbeat ownership baseline (2026-10-08)
+
+Chat persistence started a new background context after admission, so a pool wait
+could outlive connection cancellation. Player messages now use `CommandContext`;
+the verified Discord HTTP publisher carries `r.Context()` through the same bounded
+persistence helper. Cancellation/deadline failure stops publication. Other history
+storage failures retain the established best-effort live-chat policy, with one
+error log and no automatic resend. Chat is not an exactly-once gameplay mutation:
+no receipt, resource revision, inventory coordinator or durable delivery workflow
+is added. Disconnect/crash can lose a live message; committed history is separate
+from live delivery and does not authorize retry.
+
+The global `chatRateLimits` map had no retirement path. Its existing 500ms throttle
+now lives on the connection's Session, so session-ID reuse cannot inherit entries
+and collection needs no global cleanup job. A short mutex preserves `time.Now`'s
+monotonic clock. Player text now uses the same 256-character bound as the external
+chat path, preventing byte truncation from splitting Unicode. Existing source
+whitespace policies and censorship remain. Heartbeats require a valid nonnegative
+numeric timestamp; malformed/null/missing timestamps no longer refresh liveness.
+The current socket sends that numeric timestamp, including before login; the
+existing session gate still permits guest keepalive and rejects closed owners.
+
+Focused regressions cover actual pool-wait cancellation with no persisted or
+published chat, identical Unicode-safe stored/broadcast text, rapid duplicate
+throttling, session-ID reuse/close, malformed and valid heartbeat replies, and
+HTTP request-context propagation. No new rendered or production evidence is
+claimed; no frontend, schema or generated asset changed. Full world, session,
+Discord and server race suites passed in 47.391, 1.065, 1.008 and 1.219 seconds.
+After the final monotonic-throttle refinement, focused session/world checks passed
+in 1.006 and 1.299 seconds and Discord checks reused their passing cache. Evidence
+is retained in `/var/tmp/capturequest-chat-full.log` and
+`/var/tmp/capturequest-chat-final.log`. Diff checks passed.
+
+The options/chat/liveness row remains open: `getAccountStatus` and slash-command
+writers still use legacy global/uncancellable queries. Remaining slash mutation
+source authorization, independent bridge shutdown and stale-client audits must
+not disappear because ordinary chat passes. The original login restore timeout
+remains unattributed and all five roadmap areas remain active. Next: trace slash
+commands and their shared account-status authorization query through the same
+owned context before selecting another family. This checkpoint is local only;
+no push, deployment or production mutation is part of this turn.
+
 ## Preference boundary review: publish the committed snapshot (2026-10-08)
 
 Review found the preference handler starting a second transaction after the write

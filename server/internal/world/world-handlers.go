@@ -43,15 +43,16 @@ func HandleCharacterQuitRequest(ses *session.Session, payload []byte, wh *WorldH
 func HandleHeartbeat(ses *session.Session, payload []byte, wh *WorldHandler) bool {
 	// Parse request to get timestamp for latency calculation
 	var req struct {
-		Timestamp float64 `json:"timestamp"`
+		Timestamp *float64 `json:"timestamp"`
 	}
-	// Ignore error, if empty payload timestamp will be 0
-	_ = json.Unmarshal(payload, &req)
+	if decodePlayerMovement(payload, &req) != nil || req.Timestamp == nil || *req.Timestamp < 0 || ses.IsClosed() || ses.CommandContext().Err() != nil {
+		return false
+	}
 
 	// Record heartbeat time for disconnect detection
 	ses.RecordHeartbeat(time.Now())
 
-	ses.SendStreamJSON(map[string]interface{}{"status": "ok", "timestamp": req.Timestamp}, opcodes.Heartbeat)
+	ses.SendStreamJSON(map[string]interface{}{"status": "ok", "timestamp": *req.Timestamp}, opcodes.Heartbeat)
 	return false
 }
 

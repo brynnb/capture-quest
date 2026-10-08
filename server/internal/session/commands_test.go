@@ -198,3 +198,22 @@ func TestCloseCancelsPeriodicOwnerBeforeCleanup(t *testing.T) {
 		t.Fatal("cleanup did not drain")
 	}
 }
+
+func TestChatThrottleBelongsToSessionAndRetiresWithIt(t *testing.T) {
+	first, replacement := &Session{SessionID: 7}, &Session{SessionID: 7}
+	now := time.Unix(1, 0)
+	interval := 500 * time.Millisecond
+	if !first.AllowChatMessage(now, interval) || first.AllowChatMessage(now.Add(interval/2), interval) {
+		t.Fatal("chat throttle did not bound first session")
+	}
+	if !replacement.AllowChatMessage(now, interval) {
+		t.Fatal("replacement inherited reused session ID's limit")
+	}
+	if !first.AllowChatMessage(now.Add(interval), interval) {
+		t.Fatal("throttle did not expire")
+	}
+	first.Close()
+	if first.AllowChatMessage(now.Add(time.Second), interval) {
+		t.Fatal("closed session admitted chat")
+	}
+}

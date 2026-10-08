@@ -39,6 +39,8 @@ type Session struct {
 	closedMu      sync.RWMutex
 	controlStream io.ReadWriteCloser // protected by closedMu; attached once
 	lastHeartbeat atomic.Int64
+	chatMu        sync.Mutex
+	lastChatSent  time.Time
 
 	playtimeMu        sync.Mutex
 	playtimeStartedAt time.Time
@@ -302,4 +304,21 @@ func (sm *SessionManager) ForEachSession(fn func(*Session)) {
 	for _, session := range snapshot {
 		fn(session)
 	}
+}
+
+// AllowChatMessage stores throttle state on its connection owner; replacing a
+// session cannot inherit a reused numeric session ID's timestamp.
+func (s *Session) AllowChatMessage(now time.Time, interval time.Duration) bool {
+	if s.IsClosed() {
+		return false
+	}
+	s.chatMu.Lock()
+	defer s.chatMu.Unlock()
+	// Retain time.Now's monotonic clock, as the original throttle did. Unix
+	// timestamps could block chat after a wall-clock adjustment.
+	if !s.lastChatSent.IsZero() && now.Sub(s.lastChatSent) < interval {
+		return false
+	}
+	s.lastChatSent = now
+	return true
 }

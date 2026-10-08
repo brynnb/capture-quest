@@ -1,6 +1,7 @@
 package discordchat
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -29,7 +30,7 @@ func signedRequest(t *testing.T, secret string, body string, timestamp time.Time
 func TestSignedIngressPublishesMessage(t *testing.T) {
 	secret := strings.Repeat("s", 32)
 	var got Message
-	bridge := &Bridge{secret: secret, publish: func(senderName, text string) error {
+	bridge := &Bridge{secret: secret, publish: func(_ context.Context, senderName, text string) error {
 		got = Message{SenderName: senderName, Text: text}
 		return nil
 	}}
@@ -43,7 +44,7 @@ func TestSignedIngressPublishesMessage(t *testing.T) {
 
 func TestIngressRejectsInvalidOrStaleSignature(t *testing.T) {
 	secret := strings.Repeat("s", 32)
-	bridge := &Bridge{secret: secret, publish: func(string, string) error { return nil }}
+	bridge := &Bridge{secret: secret, publish: func(context.Context, string, string) error { return nil }}
 	body := `{"senderName":"Tester","text":"hello"}`
 	for _, request := range []*http.Request{
 		signedRequest(t, "wrong"+secret, body, time.Now()),
@@ -60,7 +61,7 @@ func TestIngressRejectsInvalidOrStaleSignature(t *testing.T) {
 func TestEnvironmentConfigurationIsAllOrNothing(t *testing.T) {
 	t.Setenv("DISCORD_CHAT_SHARED_SECRET", "")
 	t.Setenv("DISCORD_CHAT_WEBHOOK_URL", "")
-	publish := func(string, string) error { return nil }
+	publish := func(context.Context, string, string) error { return nil }
 
 	bridge, err := NewFromEnvironment(publish)
 	if err != nil || bridge != nil {
@@ -88,7 +89,7 @@ func lifecycleBridge(t *testing.T, endpoint string) *Bridge {
 	t.Helper()
 	t.Setenv("DISCORD_CHAT_SHARED_SECRET", strings.Repeat("s", 32))
 	t.Setenv("DISCORD_CHAT_WEBHOOK_URL", endpoint)
-	b, err := NewFromEnvironment(func(string, string) error { return nil })
+	b, err := NewFromEnvironment(func(context.Context, string, string) error { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,5 +176,19 @@ func TestCloseCancelsRetryDelayWithoutAnotherAttempt(t *testing.T) {
 	}
 	if attempts != 1 {
 		t.Fatalf("shutdown retried %d times", attempts)
+	}
+}
+
+func TestSignedIngressPropagatesRequestCancellation(t *testing.T) {
+	secret := strings.Repeat("s", 32)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var got error
+	bridge := &Bridge{secret: secret, publish: func(ctx context.Context, _ string, _ string) error { got = ctx.Err(); return got }}
+	request := signedRequest(t, secret, `{"senderName":"Tester","text":"hello"}`, time.Now()).WithContext(ctx)
+	response := httptest.NewRecorder()
+	bridge.Handler().ServeHTTP(response, request)
+	if got != context.Canceled || response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("request cancellation lost: %v status=%d", got, response.Code)
 	}
 }

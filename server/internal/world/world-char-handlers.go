@@ -3,10 +3,10 @@ package world
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
-	"sync"
 	"time"
 
 	"capturequest/internal/api/opcodes"
@@ -165,11 +165,6 @@ const maxChatMessageLength = 256
 const chatRateLimitMs = 500
 const generalChatMessageType = "general"
 
-var (
-	chatRateLimits   = make(map[int]time.Time)
-	chatRateLimitsMu sync.Mutex
-)
-
 type SendChatMessageRequest struct {
 	Text string `json:"text"`
 }
@@ -214,43 +209,49 @@ func (wh *WorldHandler) broadcastGeneralChat(message ChatMessageBroadcast) {
 
 // BroadcastExternalChat inserts a verified Discord message into CaptureQuest's
 // authoritative global player-chat stream.
-func (wh *WorldHandler) BroadcastExternalChat(senderName, text string) error {
+func (wh *WorldHandler) BroadcastExternalChat(ctx context.Context, senderName, text string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	senderName = strings.Join(strings.Fields(senderName), " ")
 	text = strings.Join(strings.Fields(text), " ")
 	if senderName == "" || text == "" {
 		return fmt.Errorf("sender and message are required")
 	}
-	textRunes := []rune(text)
-	if len(textRunes) > maxChatMessageLength {
-		text = string(textRunes[:maxChatMessageLength])
-	}
+	text = boundedChatText(text)
+
 	senderName = CensorMessage(senderName)
 	text = CensorMessage(text)
 	message := ChatMessageBroadcast{
 		SenderName: senderName, Text: text, MessageType: generalChatMessageType,
 	}
 	log.Printf("[Chat] %s: %s (source: discord)", senderName, text)
-	wh.persistChatMessage(0, senderName, text, nil)
+	if err := wh.persistChatMessage(ctx, 0, senderName, text, nil); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return err
+		}
+		log.Printf("[Chat] History persistence failed: %v", err)
+	}
 	wh.broadcastGeneralChat(message)
 	return nil
 }
 
 func HandleSendChatMessage(ses *session.Session, payload []byte, wh *WorldHandler) bool {
+	if !ses.HasValidClient() || ses.CommandContext().Err() != nil {
+		return false
+	}
 	var req SendChatMessageRequest
-	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("failed to unmarshal SendChatMessage JSON: %v", err)
+	if err := decodePlayerMovement(payload, &req); err != nil {
 		return false
 	}
 
 	// Validation: trim and reject empty
-	req.Text = strings.TrimSpace(req.Text)
+	req.Text = boundedChatText(req.Text)
 	if req.Text == "" {
 		return false
-	}
-
-	// Validation: enforce max length
-	if len(req.Text) > maxChatMessageLength {
-		req.Text = req.Text[:maxChatMessageLength]
 	}
 
 	senderName := "Unknown"
@@ -260,16 +261,9 @@ func HandleSendChatMessage(ses *session.Session, payload []byte, wh *WorldHandle
 		charID = int(ses.Client.CharData().ID)
 	}
 
-	// Rate limiting: 1 message per 500ms per session
-	chatRateLimitsMu.Lock()
-	if lastSent, ok := chatRateLimits[ses.SessionID]; ok {
-		if time.Since(lastSent) < time.Duration(chatRateLimitMs)*time.Millisecond {
-			chatRateLimitsMu.Unlock()
-			return false
-		}
+	if !ses.AllowChatMessage(time.Now(), time.Duration(chatRateLimitMs)*time.Millisecond) {
+		return false
 	}
-	chatRateLimits[ses.SessionID] = time.Now()
-	chatRateLimitsMu.Unlock()
 
 	// Check for slash commands before broadcasting
 	if HandleChatCommand(ses, req.Text, wh) {
@@ -282,7 +276,14 @@ func HandleSendChatMessage(ses *session.Session, payload []byte, wh *WorldHandle
 	log.Printf("[Chat] %s: %s", senderName, req.Text)
 
 	// Persist within this command so its lifecycle includes the database write.
-	wh.persistChatMessage(charID, senderName, req.Text, ses.MapID)
+	if err := wh.persistChatMessage(ses.CommandContext(), charID, senderName, req.Text, ses.MapID); err != nil {
+		if ses.CommandContext().Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return false
+		}
+		// Chat history remains best effort. A non-cancellation storage failure
+		// does not suppress a live message or invite an automatic resend.
+		log.Printf("[Chat] History persistence failed: %v", err)
+	}
 
 	wh.broadcastGeneralChat(ChatMessageBroadcast{
 		SenderID: charID, SenderName: senderName, Text: req.Text, MessageType: generalChatMessageType,
@@ -291,20 +292,32 @@ func HandleSendChatMessage(ses *session.Session, payload []byte, wh *WorldHandle
 	return false
 }
 
-func (wh *WorldHandler) persistChatMessage(characterID int, name, text string, mapID any) {
+func (wh *WorldHandler) persistChatMessage(ctx context.Context, characterID int, name, text string, mapID any) error {
 	if wh.database == nil {
-		return
+		return nil
 	}
 	// Keep persistence in the owning command so disconnect/shutdown drains it.
 	// Its query deadline bounds a slow database without detached goroutines.
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	if _, err := wh.database.ExecContext(ctx,
 		"INSERT INTO chat_messages (character_id, character_name, message_type, text, map_id) VALUES ($1, $2, $3, $4, $5)",
 		characterID, name, generalChatMessageType, text, mapID,
 	); err != nil {
-		log.Printf("[Chat] failed to persist message: %v", err)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return err
 	}
+	return nil
+}
+
+func boundedChatText(text string) string {
+	runes := []rune(strings.TrimSpace(text))
+	if len(runes) > maxChatMessageLength {
+		runes = runes[:maxChatMessageLength]
+	}
+	return string(runes)
 }
 
 func SendSystemMessage(ses *session.Session, text string) {
