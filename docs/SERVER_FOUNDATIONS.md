@@ -28,6 +28,42 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Forced-step cancellation and committed projection (2026-10-08)
+
+Forced-step preparation now passes its existing tick/character context to the
+base collision reader, instead of using the background-context convenience API.
+A failed read returns an error before the detached candidate can publish or
+commit; the live source, path and surfing state remain unchanged. No new timer
+or independent owner was added.
+
+Inspection also corrected the caller inventory: `RegisterPlayer` performs no
+collision SQL. The read was in `UpdateReportedPosition`, called after ordinary
+step/SURF commit while holding the player mutex. That method is replaced by the
+pure `projectCommittedPosition`, which receives the committed surfing decision.
+The movement transaction returns that decision alongside position, using the same
+water/warp rule already needed for route persistence; validated SURF entry remains
+surfing until a committed teleport. Ordinary, forced and SURF projection consume
+the same result. The obsolete reported-position method is retired, and its queued
+same-tile/different-tile projection checks are retained. Durable receipt and client
+wire formats are unchanged; duplicate receipts still acknowledge history without
+replaying or rewinding live state.
+
+Private PostgreSQL regressions occupy the actual connection pool: forced-step
+collision preparation reaches the caller deadline and preserves live source/path,
+while committed projection completes without any connection request and applies
+the supplied surfing state. The route regression also checks the returned committed
+surfing decision. Focused movement/player-step/SURF checks passed (7.0s), full world
+(63.9s) and script-simulator race suites passed, all Go packages compile and diff
+checks pass. No new rendered or process-death acceptance is claimed.
+
+Remaining live caller gates are fishing/surf preflight, warp-entry collision and
+map-load surf presentation, followed by the local/simulator/startup/dormant API
+entries in the finite inventory. Reconnect/idle tile recovery and other command
+rows remain open. The original restore timeout is unattributed and the full
+five-area goal stays active. Next: use existing command/map-load contexts for the
+remaining live reads, preserving errors separately from ordinary ineligibility.
+This is a local checkpoint only, with no push or deployment.
+
 ## Collision caller inventory and transaction reuse (2026-10-08)
 
 The finite collision consumer inventory is now recorded in

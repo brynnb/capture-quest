@@ -53,8 +53,9 @@ closed audit of the entire row. “Queued” means it still needs that explicit 
 | Issued step admission/completion and SURF commit | `characterCollision` uses the injected owner or existing transaction; snapshot/cache regression checkpoints apply. |
 | Trainer selection during movement commit | `planPositionEncounter` now reads base collision through the movement transaction and propagates source failure. Single-pool cold-cache clear/wall/rollback checks cover it. |
 | Surf-route persistence during movement commit | The water check now uses the same transaction, retaining the shared water/warp rule. Cold-cache single-pool persistence regression covers this call. |
-| Forced movement planning | `planCharacterStep` calls `CollisionTypeAt` for surf exit. Lazy reads remain bounded but use background context; propagate the existing tick/character owner. |
-| Fishing, surf-entry preflight and player registration | `isSurfableWaterTile` retains the bounded base read; propagate the caller context and distinguish source failure from ineligible water where the consumer requires it. |
+| Forced movement planning | `planCharacterStep` now passes the existing tick/character context to base collision loading and rejects read failure before publishing its detached candidate. Actual held-pool deadline regression verifies live source/path preservation. |
+| Fishing and surf-entry preflight | `isSurfableWaterTile` retains the bounded base read; propagate the caller context and distinguish source failure from ineligible water where the consumer requires it. |
+| Committed position projection and registration | Registration performs no collision query. Ordinary completion and SURF now project the committed surfing value without a second read or SQL under the player mutex; held-pool regression verifies projection needs no connection. |
 | Warp entry collision checks | `blockedWarpHasWalkableEntry` uses two base reads. Audit caller lifetime and coherent cache-generation handling. |
 | Map-load surf presentation | `handler-phaser.go` reads base collision for the sprite. Propagate the map-load owner and retain source-error reporting. |
 | Local debug warp fixture selection | `debugWarpTileIsWalkable` uses bounded base collision. Retain local gating and audit fixture cancellation. |

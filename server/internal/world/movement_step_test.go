@@ -667,7 +667,7 @@ func TestMovementSurfRouteUsesOwnedColdCollisionRead(t *testing.T) {
 	}
 	var route *movementRoute
 	err = db.Transaction(context.Background(), wh.database, func(tx db.DBTX) error { var err error; route, err = loadMovementRouteIn(tx, 42); return err })
-	if err != nil || route == nil || !route.Surfing || result.X != 8 {
+	if err != nil || route == nil || !route.Surfing || !result.Surfing || result.X != 8 {
 		t.Fatalf("committed surf route: %+v %+v %v", route, result, err)
 	}
 	if wh.database.Stats().WaitCount != before {

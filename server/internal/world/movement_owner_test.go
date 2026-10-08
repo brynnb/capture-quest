@@ -5,6 +5,7 @@ import (
 	"capturequest/internal/protocol"
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -101,4 +102,63 @@ func TestServerMovementCommitFailureRetainsSourcePathAndDoesNotPublish(t *testin
 		t.Fatalf("bicycle refresh became forced movement: %+v", messages.streams)
 	}
 	ses.Close()
+}
+
+func TestForcedStepCollisionHonorsOwnerCancellation(t *testing.T) {
+	wh, _, _ := setupIssuedStep(t)
+	m := wh.PlayerMovement
+	state := m.players[42]
+	state.IsSurfing = true
+	state.Path = []PathNode{{X: 8, Y: 8}}
+	state.LastMoveTime = time.Time{}
+	planned := *state
+	planned.Path = append([]PathNode(nil), state.Path...)
+	wh.ActorManager.InvalidateCollisionMap(50)
+	wh.database.SetMaxOpenConns(1)
+	lease, err := wh.database.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.Close()
+	before := wh.database.Stats().WaitCount
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	_, moved, err := m.planCharacterStep(ctx, &planned, time.Now())
+	if !errors.Is(err, context.DeadlineExceeded) || moved {
+		t.Fatalf("forced collision escaped owner deadline: %v moved=%v", err, moved)
+	}
+	if wh.database.Stats().WaitCount <= before {
+		t.Fatal("collision did not wait on held pool")
+	}
+	if state.CurrentX != 7 || len(state.Path) != 1 || !state.IsSurfing {
+		t.Fatal("failed preparation changed live source/path/surfing")
+	}
+}
+
+func TestCommittedPositionProjectionDoesNotBorrowDatabaseConnection(t *testing.T) {
+	wh, _, _ := setupIssuedStep(t)
+	wh.database.SetMaxOpenConns(1)
+	lease, err := wh.database.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.Close()
+	wh.ActorManager.InvalidateCollisionMap(50)
+	before := wh.database.Stats().WaitCount
+	done := make(chan struct{})
+	go func() { wh.PlayerMovement.projectCommittedPosition(42, 8, 8, 50, "RIGHT", true); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(200 * time.Millisecond):
+		lease.Close()
+		<-done
+		t.Fatal("committed projection performed a second database read")
+	}
+	state := wh.PlayerMovement.players[42]
+	if state.CurrentX != 8 || state.CurrentY != 8 || !state.IsSurfing {
+		t.Fatal("committed projection lost supplied position/surfing")
+	}
+	if wh.database.Stats().WaitCount != before {
+		t.Fatal("committed projection borrowed a connection")
+	}
 }

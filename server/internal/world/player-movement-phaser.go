@@ -367,8 +367,8 @@ func (m *PlayerMovementManager) UpdatePosition(charID int, x, y, mapID int, dire
 	m.applyBicycleMapRules(state)
 }
 
-// UpdateReportedPosition syncs the latest client-reported position.
-func (m *PlayerMovementManager) UpdateReportedPosition(charID int, x, y, mapID int, direction string) {
+// projectCommittedPosition applies the committed result without database I/O.
+func (m *PlayerMovementManager) projectCommittedPosition(charID int, x, y, mapID int, direction string, surfing bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -381,7 +381,9 @@ func (m *PlayerMovementManager) UpdateReportedPosition(charID int, x, y, mapID i
 		state.Direction = normalizedDirection
 	}
 
+	state.IsSurfing = surfing
 	if state.CurrentX == x && state.CurrentY == y && state.MapID == mapID {
+		m.applyBicycleMapRules(state)
 		return
 	}
 
@@ -409,7 +411,6 @@ func (m *PlayerMovementManager) UpdateReportedPosition(charID int, x, y, mapID i
 	state.CurrentY = y
 	state.MapID = mapID
 	state.Path = nil
-	state.IsSurfing = isSurfableWaterTile(m.wh, mapID, x, y)
 	m.applyBicycleMapRules(state)
 }
 
@@ -552,7 +553,11 @@ func (m *PlayerMovementManager) processCharacterTick(ctx context.Context, charac
 			}
 		}
 	}
-	update, moved := m.planCharacterStep(&planned, now)
+	update, moved, err := m.planCharacterStep(ctx, &planned, now)
+	if err != nil {
+		logutil.Debugf("[PlayerMovement] Read forced-step collision for %d: %v", characterID, err)
+		return
+	}
 	if !moved {
 		return
 	}
@@ -606,7 +611,7 @@ func (m *PlayerMovementManager) processCharacterTick(ctx context.Context, charac
 		state.Path = effects.ForcedPath
 	}
 	if !effects.Teleport {
-		state.IsSurfing, state.ForcedBicycle, state.MoveSpeed = planned.IsSurfing, planned.ForcedBicycle, planned.MoveSpeed
+		state.IsSurfing, state.ForcedBicycle, state.MoveSpeed = effects.Surfing, planned.ForcedBicycle, planned.MoveSpeed
 	}
 	state.positionDirty = false
 	state.LastSaveTime, state.lastSaveAttempt = now, now
@@ -620,14 +625,14 @@ func (m *PlayerMovementManager) processCharacterTick(ctx context.Context, charac
 
 // planCharacterStep plans a detached candidate under the owner gate.
 // It does not publish or persist the candidate.
-func (m *PlayerMovementManager) planCharacterStep(state *PlayerMovementState, now time.Time) (playerMovementStep, bool) {
+func (m *PlayerMovementManager) planCharacterStep(ctx context.Context, state *PlayerMovementState, now time.Time) (playerMovementStep, bool, error) {
 	if len(state.Path) == 0 {
-		return playerMovementStep{}, false
+		return playerMovementStep{}, false, nil
 	}
 
 	// Check if enough time has passed for next move
 	if now.Sub(state.LastMoveTime) < state.MoveSpeed {
-		return playerMovementStep{}, false
+		return playerMovementStep{}, false, nil
 	}
 
 	// Pop next tile from path
@@ -651,8 +656,15 @@ func (m *PlayerMovementManager) planCharacterStep(state *PlayerMovementState, no
 	state.LastMoveTime = now
 	state.positionDirty = true
 	m.applyBicycleMapRules(state)
-	if state.IsSurfing && m.actorManager != nil {
-		if collisionType, exists := m.actorManager.CollisionTypeAt(state.MapID, state.CurrentX, state.CurrentY); exists && collisionType != collisionWater {
+	if state.IsSurfing {
+		if m.actorManager == nil || m.wh == nil || m.wh.database == nil {
+			return playerMovementStep{}, false, fmt.Errorf("forced collision service unavailable")
+		}
+		collision, _, err := m.actorManager.baseCollision(ctx, m.wh.database, state.MapID, true)
+		if err != nil {
+			return playerMovementStep{}, false, err
+		}
+		if collisionType, exists := collision[tileKey(state.CurrentX, state.CurrentY)]; exists && collisionType != collisionWater {
 			state.IsSurfing = false
 		}
 	}
@@ -662,7 +674,7 @@ func (m *PlayerMovementManager) planCharacterStep(state *PlayerMovementState, no
 		isPathDestination: len(state.Path) == 0,
 		movementSeq:       nextTile.ClientSeq,
 	}
-	return update, true
+	return update, true, nil
 }
 
 func (m *PlayerMovementManager) isSafariEntryWarpBlocked(ctx context.Context, charID int64, sourceMapID, destMapID int, ses *session.Session) bool {
@@ -712,10 +724,9 @@ func (m *PlayerMovementManager) SurfTo(ctx context.Context, ses *session.Session
 	if err != nil {
 		return movementStepResult{}, err
 	}
-	m.UpdateReportedPosition(charID, result.X, result.Y, result.MapID, result.Direction)
+	m.projectCommittedPosition(charID, result.X, result.Y, result.MapID, result.Direction, result.Surfing)
 	m.mu.Lock()
 	if current := m.players[charID]; current == state {
-		current.IsSurfing = !result.Teleport
 		current.Path = nil
 		current.pendingStep = nil
 		m.applyBicycleMapRules(current)

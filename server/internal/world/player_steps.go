@@ -312,7 +312,7 @@ func (m *PlayerMovementManager) completePlayerStep(ses *session.Session, token s
 	// Consume the issued token even when recovery returns to the same source tile.
 	// The owning session gate excludes command/tick position writers across commit.
 	m.rejectPlayerStep(ses, token)
-	m.UpdateReportedPosition(charID, step.x, step.y, step.mapID, step.direction)
+	m.projectCommittedPosition(charID, step.x, step.y, step.mapID, step.direction, effects.Surfing)
 	publishCommittedPlayerLocation(ses, m.wh, step.mapID, step.x, step.y)
 	if len(effects.ForcedPath) > 0 {
 		m.mu.Lock()

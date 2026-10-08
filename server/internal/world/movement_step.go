@@ -34,6 +34,7 @@ type movementStepResult struct {
 	Wild                             wildStepResult
 	ForcedPath                       []PathNode
 	StopPath, Teleport, FlagsChanged bool
+	Surfing                          bool
 	SafariEntryBlocked               bool
 	Flags                            map[string]bool
 }
@@ -102,11 +103,12 @@ func commitMovementStep(ctx context.Context, wh *WorldHandler, charID int64, c m
 				if len(result.ForcedPath) > 0 {
 					path = result.ForcedPath
 				}
-				surfing := false
-				if c.Surfing {
+				surfing := c.SurfEntry && !result.Teleport
+				if c.Surfing && !result.Teleport {
 					surfing, err = isSurfableWaterTileIn(ctx, tx.(db.ContextDBTX), wh, result.MapID, result.X, result.Y)
 				}
 				if err == nil {
+					result.Surfing = surfing
 					err = saveMovementRouteIn(tx, charID, result.MapID, result.X, result.Y, path, surfing)
 				}
 			}
