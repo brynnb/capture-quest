@@ -17,7 +17,6 @@ import { WorldSocket } from "@/net/index";
 import { NetworkBridge } from "@/net/NetworkBridge";
 import * as OpCodes from "@/net/generated/opcodes";
 import type {
-  PhaserTile,
   PhaserTilesRequest,
   PhaserTilesResponse,
   PhaserActor,
@@ -155,12 +154,8 @@ export function sendTrainerBattleStart(trainerActorId: number): void {
 /**
  * Request tiles for a specific map ID
  */
-export function requestTiles(request: PhaserTilesRequest): void {
-  if (!WorldSocket.isConnected) {
-    console.warn("[PhaserNetwork] Not connected - cannot request tiles");
-    return;
-  }
-  NetworkBridge.send(request, OpCodes.PhaserTilesRequest);
+export function requestTiles(request: PhaserTilesRequest): Promise<void> {
+ return NetworkBridge.send(request,OpCodes.PhaserTilesRequest);
 }
 
 /**
@@ -297,7 +292,7 @@ export function buyPrize(prizeId: number): void {
 // Response handler registration
 export type PhaserMapInfoHandler = (data: PhaserMapInfoResponse | PhaserMapRequestError) => void;
 export type PhaserMapLoadHandler = (data: PhaserMapLoadResponse | PhaserMapRequestError) => void;
-export type PhaserTilesHandler = (data: PhaserTilesResponse | PhaserTile[]) => void;
+export type PhaserTilesHandler = (data: PhaserTilesResponse | PlayerStepError) => void;
 export type PhaserActorsHandler = (data: import("@/net/generated/world_api").PhaserActorsResponse | PlayerStepError) => void;
 export type PhaserWarpsHandler = (data: import("@/net/generated/world_api").PhaserWarpsResponse | PlayerStepError) => void;
 export type PhaserActorUpdateHandler = (data: PhaserActor) => void;
@@ -593,7 +588,7 @@ export function dispatchPhaserResponse(opcode: number, data: unknown): void {
       handlers.mapLoad.forEach((h) => h(data as PhaserMapLoadResponse | PhaserMapRequestError));
       break;
     case OpCodes.PhaserTilesResponse:
-      handlers.tiles.forEach((h) => h(data as PhaserTilesResponse | PhaserTile[]));
+      handlers.tiles.forEach((h) => h(data as PhaserTilesResponse | PlayerStepError));
       break;
 
     case OpCodes.PhaserActorsResponse:

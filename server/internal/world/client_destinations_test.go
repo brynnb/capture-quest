@@ -107,30 +107,17 @@ func TestOverworldMapListCannotClaimPresenceOrUseGlobalDatabase(t *testing.T) {
 	if len(messages.streams) != 1 || messages.streams[0].opcode != opcodes.PhaserOverworldMapsResponse {
 		t.Fatal("unexpected list response/publication")
 	}
-	var maps []protocol.PhaserMapInfo
-	if err := json.Unmarshal(messages.streams[0].payload, &maps); err != nil || len(maps) != 1 || maps[0].Name != "PALLET_TOWN" {
-		t.Fatalf("list wire contract: %+v %v", maps, err)
+	for _, mutation := range []string{`DELETE FROM phaser_maps`, `DROP TABLE phaser_maps CASCADE`} {
+		testdb.Exec(t, database, mutation)
+		battleDispatch(t, wh, ses, opcodes.PhaserOverworldMapsRequest, `{}`)
 	}
-	var listFields []map[string]json.RawMessage
-	if err := json.Unmarshal(messages.streams[0].payload, &listFields); err != nil {
-		t.Fatal(err)
-	}
-	for _, key := range []string{"tilesetId", "tileMinX", "tileMinY", "tileMaxX", "tileMaxY"} {
-		if _, present := listFields[0][key]; present {
-			t.Fatalf("list emitted absent optional field %s", key)
+	for _, message := range messages.streams {
+		var failure protocol.ErrorResponse
+		if err := json.Unmarshal(message.payload, &failure); err != nil || failure.Success || failure.Error == "" {
+			t.Fatal("reserved list request accepted")
 		}
 	}
-	testdb.Exec(t, database, `DELETE FROM phaser_maps`)
-	battleDispatch(t, wh, ses, opcodes.PhaserOverworldMapsRequest, `{}`)
-	if string(messages.streams[1].payload) != "[]" {
-		t.Fatalf("empty list wire contract: %s", messages.streams[1].payload)
-	}
-	testdb.Exec(t, database, `DROP TABLE phaser_maps CASCADE`)
-	battleDispatch(t, wh, ses, opcodes.PhaserOverworldMapsRequest, `{}`)
-	var failure protocol.ErrorResponse
-	if err := json.Unmarshal(messages.streams[2].payload, &failure); err != nil || failure.Success || failure.Error == "" {
-		t.Fatal("query failure accepted as partial list")
-	}
+
 	if ses.MapID != 50 {
 		t.Fatal("failed metadata query changed presence")
 	}

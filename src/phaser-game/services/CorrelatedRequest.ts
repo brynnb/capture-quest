@@ -17,6 +17,7 @@ export function correlatedRequest<T extends { success: true; requestId: string }
   subscribe: (receive: (response: T | CorrelatedErrorResponse) => void) => () => void,
   send: (requestId: string) => void | Promise<void>,
   signal?: AbortSignal,
+  timeoutMs: number = REQUEST_TIMEOUT_MS,
 ): Promise<T> {
   if (!PhaserNet.isConnected()) return Promise.reject(new Error("Not connected to server - please log in first"));
   if (signal?.aborted) return Promise.reject(new DOMException("Request cancelled", "AbortError"));
@@ -46,7 +47,7 @@ export function correlatedRequest<T extends { success: true; requestId: string }
     if (settled) { unsubscribe(); return; }
     signal?.addEventListener("abort", abort, { once: true });
     if (signal?.aborted) { abort(); return; }
-    timeout = setTimeout(() => finish(new CorrelatedRequestTimeoutError()), REQUEST_TIMEOUT_MS);
+    timeout = setTimeout(() => finish(new CorrelatedRequestTimeoutError()), timeoutMs);
     try { Promise.resolve(send(requestId)).catch((error) => finish(error instanceof Error ? error : new Error(String(error)))); } catch (error) { finish(error instanceof Error ? error : new Error(String(error))); }
   });
 }

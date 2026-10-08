@@ -1018,6 +1018,8 @@ export interface PhaserTilesRequest {
   limit?: number /* int */;
 }
 export interface PhaserTilesResponse {
+  success: true;
+  characterId: number /* int64 */;
   mapId: number /* int */;
   requestId: string;
   tiles: PhaserTile[];

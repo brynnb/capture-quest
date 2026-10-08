@@ -190,7 +190,7 @@ export class MapLoader {
       this.uiManager.setLoadingText("Loading tiles...");
 
       // Fetch tiles
-      const tiles = cached?.tiles ?? await this.mapDataService.fetchTiles(mapId);
+      const tiles = cached?.tiles ?? await this.mapDataService.fetchTiles(mapId, mapRequestAbort.signal);
       if (!this.isLoadCurrent(loadGeneration)) return;
 
       this.uiManager.setLoadingText("Loading tile images...");

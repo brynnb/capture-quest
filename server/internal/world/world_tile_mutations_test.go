@@ -275,12 +275,14 @@ func TestPhaserTilesRequestReturnsEditedTilesAndHidesErasedOriginals(t *testing.
 	messenger := &recordingMessenger{}
 	ses := session.NewSessionManager().CreateSession(messenger, 1, "test", nil)
 	ses.Authenticated = true
-	payload, err := json.Marshal(PhaserTilesRequest{MapID: UnifiedOverworldMapID})
+	ses.Client = &testSessionClient{char: &model.CharacterData{ID: 99}}
+	payload, err := json.Marshal(PhaserTilesRequest{MapID: UnifiedOverworldMapID, RequestID: "tiles:test"})
 	if err != nil {
 		t.Fatalf("marshal tiles request: %v", err)
 	}
 
-	HandlePhaserTilesRequest(ses, payload, nil)
+	ses.Client = &testSessionClient{char: &model.CharacterData{ID: 99}}
+	HandlePhaserTilesRequest(ses, payload, &WorldHandler{database: raw})
 
 	if len(messenger.streams) != 1 {
 		t.Fatalf("messages = %d, want one tile response", len(messenger.streams))
@@ -295,10 +297,11 @@ func TestPhaserTilesRequestReturnsEditedTilesAndHidesErasedOriginals(t *testing.
 	if !strings.Contains(responseJSON, `"tileImageId":`) || !strings.Contains(responseJSON, `"isNativeGameData":`) {
 		t.Fatalf("tile response does not use the camelCase wire contract: %s", responseJSON)
 	}
-	var tiles []PhaserTile
-	if err := json.Unmarshal(messenger.streams[0].payload, &tiles); err != nil {
+	var response PhaserTilesResponse
+	if err := json.Unmarshal(messenger.streams[0].payload, &response); err != nil {
 		t.Fatalf("decode tiles response: %v", err)
 	}
+	tiles := response.Tiles
 	byCoord := make(map[tileCoord]PhaserTile, len(tiles))
 	for _, tile := range tiles {
 		byCoord[tileCoord{X: tile.X, Y: tile.Y}] = tile
@@ -337,7 +340,8 @@ func TestPhaserTilesRequestSupportsBoundedCorrelatedPages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal bounded tiles request: %v", err)
 	}
-	HandlePhaserTilesRequest(ses, payload, nil)
+	ses.Client = &testSessionClient{char: &model.CharacterData{ID: 99}}
+	HandlePhaserTilesRequest(ses, payload, &WorldHandler{database: raw})
 
 	if len(messenger.streams) != 1 {
 		t.Fatalf("messages = %d, want one", len(messenger.streams))
@@ -364,7 +368,8 @@ func TestPhaserTilesRequestSupportsBoundedCorrelatedPages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal second tiles request: %v", err)
 	}
-	HandlePhaserTilesRequest(ses, payload, nil)
+	ses.Client = &testSessionClient{char: &model.CharacterData{ID: 99}}
+	HandlePhaserTilesRequest(ses, payload, &WorldHandler{database: raw})
 	var second PhaserTilesResponse
 	if err := json.Unmarshal(messenger.streams[0].payload, &second); err != nil {
 		t.Fatalf("decode second response: %v", err)
@@ -375,7 +380,7 @@ func TestPhaserTilesRequestSupportsBoundedCorrelatedPages(t *testing.T) {
 }
 
 func TestPhaserTilesRequestEncodesEmptyCorrelatedChunkAsArray(t *testing.T) {
-	setupWorldTileMutationDB(t)
+	raw := setupWorldTileMutationDB(t)
 	messenger := &recordingMessenger{}
 	ses := session.NewSessionManager().CreateSession(messenger, 1, "test", nil)
 	requestID := "empty-chunk"
@@ -388,7 +393,8 @@ func TestPhaserTilesRequestEncodesEmptyCorrelatedChunkAsArray(t *testing.T) {
 		t.Fatalf("marshal empty chunk request: %v", err)
 	}
 
-	HandlePhaserTilesRequest(ses, payload, nil)
+	ses.Client = &testSessionClient{char: &model.CharacterData{ID: 99}}
+	HandlePhaserTilesRequest(ses, payload, &WorldHandler{database: raw})
 
 	if len(messenger.streams) != 1 {
 		t.Fatalf("messages = %d, want one", len(messenger.streams))
@@ -474,8 +480,9 @@ func TestTileEditorBroadcastsLiveChangesAndLaterJoinLoadsPersistedMap(t *testing
 
 	later := sessionManager.CreateSession(laterMessenger, 3, "later", nil)
 	later.Authenticated = true
+	later.Client = &testSessionClient{char: &model.CharacterData{ID: 99}}
 	later.MapID = UnifiedOverworldMapID
-	requestPayload, err := json.Marshal(PhaserTilesRequest{MapID: UnifiedOverworldMapID})
+	requestPayload, err := json.Marshal(PhaserTilesRequest{MapID: UnifiedOverworldMapID, RequestID: "tiles:test"})
 	if err != nil {
 		t.Fatalf("marshal tiles request: %v", err)
 	}
@@ -499,6 +506,7 @@ func TestTileEditorRawEditRequiresAdmin(t *testing.T) {
 	messenger := &recordingMessenger{}
 	ses := session.NewSessionManager().CreateSession(messenger, 1, "test", nil)
 	ses.Authenticated = true
+	ses.Client = &testSessionClient{char: &model.CharacterData{ID: 99}}
 	ses.AccountID = 1
 	ses.Client = &testSessionClient{char: &model.CharacterData{ID: 99, Name: "Player", Gm: 0}}
 
@@ -556,11 +564,11 @@ func phaserTilesResponseFromMessenger(t *testing.T, messenger *recordingMessenge
 		if stream.opcode != opcodes.PhaserTilesResponse {
 			continue
 		}
-		var tiles []PhaserTile
-		if err := json.Unmarshal(stream.payload, &tiles); err != nil {
+		var response PhaserTilesResponse
+		if err := json.Unmarshal(stream.payload, &response); err != nil {
 			t.Fatalf("decode phaser tiles response: %v", err)
 		}
-		return tiles
+		return response.Tiles
 	}
 	t.Fatalf("missing PhaserTilesResponse in %d stream messages", len(messenger.streams))
 	return nil

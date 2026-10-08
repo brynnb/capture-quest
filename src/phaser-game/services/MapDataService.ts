@@ -66,9 +66,6 @@ export interface CachedTileChunk {
 
 function normalizeCorrelatedTiles(data: PhaserTilesResponse): PhaserTile[] {
   const tiles = (data as { tiles?: unknown }).tiles;
-  // Go's encoding/json represents an uninitialized empty slice as null. Older
-  // servers can therefore send null for a valid sparse chunk.
-  if (tiles === null) return [];
   if (!Array.isArray(tiles)) {
     throw new Error("Invalid tile response: tiles must be an array");
   }
@@ -83,7 +80,6 @@ export class MapDataService {
     3,
     new Set([UNIFIED_OVERWORLD_MAP_ID]),
   );
-  private tileRequestSequence = 0;
   private overworldTileChunks = new Map<string, CachedTileChunk>();
 
   getSnapshot(mapId: number): MapDataSnapshot | undefined {
@@ -202,86 +198,27 @@ export class MapDataService {
   /**
    * Fetch tiles for a specific map
    */
-  async fetchTiles(mapId: number): Promise<PhaserTile[]> {
-    return (await this.requestTileBatch(mapId, {})).tiles;
+  async fetchTiles(mapId: number, signal?: AbortSignal): Promise<PhaserTile[]> {
+    return (await this.requestTileBatch(mapId, {}, signal)).tiles;
   }
 
-  async fetchTilesInBounds(mapId: number, bounds: TileBoundsRequest): Promise<PhaserTile[]> {
-    return (await this.requestTileBatch(mapId, bounds)).tiles;
+  async fetchTilesInBounds(mapId: number, bounds: TileBoundsRequest, signal?: AbortSignal): Promise<PhaserTile[]> {
+    return (await this.requestTileBatch(mapId, bounds, signal)).tiles;
   }
 
-  async fetchTilePage(mapId: number, afterId: number, limit: number): Promise<TilePage> {
-    return this.requestTileBatch(mapId, { afterId, limit });
+  async fetchTilePage(mapId: number, afterId: number, limit: number, signal?: AbortSignal): Promise<TilePage> {
+    return this.requestTileBatch(mapId, { afterId, limit }, signal);
   }
 
-  private async requestTileBatch(
-    mapId: number,
-    options: Omit<PhaserTilesRequest, "mapId" | "requestId">,
-  ): Promise<TilePage> {
+  private async requestTileBatch(mapId:number,options:Omit<PhaserTilesRequest,"mapId"|"requestId">,signal?:AbortSignal):Promise<TilePage>{
     await this.ensureRuntimeTileCatalogCurrent();
-    if (!PhaserNet.isConnected()) {
-      throw new Error("Not connected to server - please log in first");
-    }
-
-    const requestId = `tiles-${++this.tileRequestSequence}`;
-    const timeoutMs = mapId === UNIFIED_OVERWORLD_MAP_ID
-      ? OVERWORLD_TILE_REQUEST_TIMEOUT_MS
-      : REQUEST_TIMEOUT_MS;
-
-    return new Promise<TilePage>((resolve, reject) => {
-      const unsubscribe = PhaserNet.onTiles((data) => {
-        // A raw array is the backward-compatible response from a server that
-        // predates request correlation and paging.
-        if (Array.isArray(data)) {
-          cleanup();
-          cacheTileImageIds(data);
-          resolve({ tiles: data, nextAfterId: 0, hasMore: false });
-          return;
-        }
-        if (data === null || typeof data !== "object") {
-          return;
-        }
-        const response = data as PhaserTilesResponse;
-        if (response.requestId !== requestId) {
-          return;
-        }
-        if (response.error) {
-          cleanup();
-          reject(new Error(response.error));
-          return;
-        }
-        let tiles: PhaserTile[];
-        try {
-          tiles = normalizeCorrelatedTiles(response);
-        } catch (error) {
-          cleanup();
-          reject(error);
-          return;
-        }
-        cleanup();
-        cacheTileImageIds(tiles);
-        resolve({
-          tiles,
-          nextAfterId: response.nextAfterId,
-          hasMore: response.hasMore,
-        });
-      });
-      const cacheTileImageIds = (tiles: PhaserTile[]) => {
-        for (const tile of tiles) {
-          this.knownTileImageIds.add(tile.tileImageId);
-        }
-      };
-      const cleanup = () => {
-        unsubscribe();
-        clearTimeout(timeoutId);
-      };
-
-      const timeoutId = setTimeout(() => {
-        cleanup();
-        reject(new Error(`Timeout fetching tiles for map ${mapId}`));
-      }, timeoutMs);
-      PhaserNet.requestTiles({ mapId, requestId, ...options });
-    });
+    const characterId=usePlayerCharacterStore.getState().characterProfile.id;
+    const response=await correlatedRequest<PhaserTilesResponse>(PhaserNet.onTiles,requestId=>PhaserNet.requestTiles({mapId,requestId,...options}),signal,mapId===UNIFIED_OVERWORLD_MAP_ID?OVERWORLD_TILE_REQUEST_TIMEOUT_MS:REQUEST_TIMEOUT_MS);
+    if(signal?.aborted || usePlayerCharacterStore.getState().characterProfile.id!==characterId) throw new DOMException("Tile view retired","AbortError");
+    if(response.mapId!==mapId || response.characterId!==characterId || !Number.isSafeInteger(response.nextAfterId) || response.nextAfterId<0 || typeof response.hasMore!=="boolean") throw new Error("Invalid owned tile response");
+    const tiles=normalizeCorrelatedTiles(response);
+    for(const tile of tiles)this.knownTileImageIds.add(tile.tileImageId);
+    return {tiles,nextAfterId:response.nextAfterId,hasMore:response.hasMore};
   }
 
   /**

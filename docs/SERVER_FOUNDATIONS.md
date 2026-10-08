@@ -28,6 +28,52 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Active tile reads share correlation and owner cancellation (2026-10-08)
+
+Tile reads had per-service `tiles-N` IDs, shared listeners and a separate promise/
+timeout implementation. Two service instances could mint the same ID. They now
+use `correlatedRequest`'s global sequence, single settlement and cleanup, with an
+explicit timeout argument preserving the existing 10-second interior/30-second
+unified-overworld policy. Send rejection settles immediately. The old per-instance
+counter, detached tile timer and raw-array response acceptance are retired.
+
+Tile replies have typed success/request/map/character identity and pagination.
+The client validates its view, pagination and array payload before caching image
+IDs. Interior loaders pass their map abort signal; chunk streams own a controller
+that is aborted on stop and renewed on initialize. Deliberate stale/retired plans
+return quietly instead of logging an abort as a new loading failure. Cached chunk
+revision/generation guards remain. The runtime-asset contract check and versioned
+tile URL helper are unchanged.
+
+The server requires a correlated selected-character read, uses the injected pool
+and command context, rejects scan failures instead of skipping malformed rows,
+and closes the result before projection. Empty successful chunks remain arrays.
+Old array fixtures were migrated to the explicit wire contract while retaining
+paint/erase/provenance/paging checks. One stale overworld-list expectation from the
+preceding retirement was also corrected to explicit rejection; its presence/global-
+database invariants remain. Matched frontend/backend rollout is required.
+
+Regressions prove distinct IDs across service instances, overlap isolation,
+abort/late-response cleanup, immediate send-failure cleanup, 30-second timeout
+policy, stream-stop cancellation without error logs and real injected-pool wait
+cancellation. 61 focused client checks and typecheck passed. The corrected full
+world race suite passed in 50.415 seconds; database/content suites passed in 1.812
+and 12.424 seconds in the preceding broad run, whose only failure was the obsolete
+retired-list expectation. Evidence is retained under `/var/tmp/capturequest-tiles-*`.
+Eleven rendered guest/interior/overworld/warp/reentry cases passed in 1.4 minutes
+in `/var/tmp/capturequest-rendered.y6I7f5`. The production build and canonical asset
+validation passed (Vite 3.37 seconds); logs are at
+`/var/tmp/capturequest-tiles-build.log`. Diff checks passed. No new production
+availability claim follows from these local checks.
+
+Remaining: review the shared timeout policy and caller retirement before expanding;
+auditing authoritative event-flag tile projection, cached-view revisions, world
+query source ordering and dynamic previous-map recovery remains open. The original
+login restore timeout is unattributed, and all five roadmap areas remain active.
+Next: review and exercise the tile boundary's fault/scene races, then audit its
+flag projection against authoritative storage. This checkpoint is local only,
+without push, deployment or production mutation.
+
 ## Unused overworld-list retirement and active tile audit (2026-10-08)
 
 The complete caller search found no consumers of `fetchOverworldMaps`, its network

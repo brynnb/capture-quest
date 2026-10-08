@@ -65,7 +65,7 @@ function createHarness(viewOnly = false) {
   let nextTileId = 1;
 
   const fetchTilesInBounds = vi.fn(
-    async (mapId: number, bounds: InclusiveTileBounds) => {
+    async (mapId: number, bounds: InclusiveTileBounds, _signal?: AbortSignal) => {
       expect(mapId).toBe(UNIFIED_OVERWORLD_MAP_ID);
       const key = chunkKeyForBounds(bounds);
       events.push(`fetch:${key}`);
@@ -674,4 +674,16 @@ describe("OverworldChunkStream", () => {
       Promise.all([first, second, obsoleteQueued, latest]),
     ).resolves.toEqual([false, false, false, true]);
   });
+});
+
+test("stopping the stream aborts its owned pending tile query without an error log",async()=>{
+ const harness=createHarness();let signal:AbortSignal|undefined;
+ harness.fetchTilesInBounds.mockImplementation((_map,bounds,owned)=>{
+  void bounds;signal=owned;
+  return new Promise((_,reject)=>owned?.addEventListener("abort",()=>reject(new DOMException("retired","AbortError")),{once:true}));
+ });
+ const log=vi.spyOn(console,"error").mockImplementation(()=>{});
+ const load=harness.stream.initialize(tileCamera(7,7));
+ await vi.waitFor(()=>expect(signal).toBeDefined());harness.stream.stop();await load;
+ expect(signal?.aborted).toBe(true);expect(log).not.toHaveBeenCalled();log.mockRestore();
 });

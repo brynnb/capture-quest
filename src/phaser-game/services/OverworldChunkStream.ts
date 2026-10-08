@@ -83,6 +83,7 @@ export class OverworldChunkStream {
   private lastPlan: OverworldChunkPlan | null = null;
   private lastMode: "exact" | "overview" = "exact";
   private stopped = false;
+  private tileReadLifetime = new AbortController();
   private overviewChunkKeys: string[] = [];
   private queuedCameraUpdate: CameraWorldView | null = null;
   private updateDrainRunning = false;
@@ -94,6 +95,7 @@ export class OverworldChunkStream {
 
   async initialize(camera: CameraWorldView): Promise<void> {
     this.stopped = false;
+    if(this.tileReadLifetime.signal.aborted)this.tileReadLifetime=new AbortController();
     await this.applyCamera(camera, true);
   }
 
@@ -237,6 +239,7 @@ export class OverworldChunkStream {
 
   stop(): void {
     this.stopped = true;
+    this.tileReadLifetime.abort();
     this.requestGeneration += 1;
     this.queuedCameraUpdate = null;
     for (const queued of this.exactFetchQueue.splice(0)) {
@@ -357,6 +360,7 @@ export class OverworldChunkStream {
         this.planRetryDelayMs = INITIAL_PLAN_RETRY_DELAY_MS;
       }
     } catch (error) {
+      if (!this.isCurrent(generation)) return;
       this.markPlanForRetry(signature, generation);
       if (throwOnFailure) throw error;
       console.error("[OverworldChunks] Failed to apply chunk plan:", error);
@@ -648,6 +652,7 @@ export class OverworldChunkStream {
       const renderTiles = await this.options.mapDataService.fetchTilesInBounds(
         UNIFIED_OVERWORLD_MAP_ID,
         renderBounds,
+        this.tileReadLifetime.signal,
       );
       const tiles = renderTiles.filter(
         (tile) =>
