@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+rendered ordinary dialogue timeout/retry and same-character reentry acceptance,
+following `4f26963`:
 dialogue reads use generated identity, shared client correlation and actor/cutscene
 cancellation, following `ab377cf`:
 dialogue text, durable flags, trade completion and branch eligibility share one
@@ -53,6 +55,52 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Rendered ordinary dialogue read acceptance (2026-10-08)
+
+The isolated Chromium/WebSocket fixture uses the existing Game Corner setup and
+source actor `GameCorner_NPC_1`, `(2,6)`, `TEXT_GAMECORNER_BEAUTY1`. Only that
+actor's dialogue text changes in the private database; the source identity,
+geometry, renderer, gameplay handlers and client reader remain real. Fixture
+navigation waits for world input/each committed tile instead of assuming rapid
+key presses all complete.
+
+The transport holds the historical tagged response outside the browser. A real
+five-second timeout permits a new actor interaction with a fresh request ID and
+visible "Current dialogue.". Delivering the historical frame afterward cannot
+replace that visible box. A second case quits while the read is pending and
+reenters the same character; the fresh actor click reads current text, and the
+old delivered frame cannot reopen/replace it. Receipts record both request IDs,
+actual browser delivery and player pose. Reentry records `(2,8)`, direction
+`DOWN`; the test targets the loaded actor directly and does not assume a saved
+keyboard-facing direction. This evidence is not a heading-recovery fix.
+
+A shared response receipt observer now serves both dialogue and informational
+read tests. It preserves the production dispatcher and proves browser receipt,
+rather than merely invoking a transport delivery closure. The existing rendered
+trainer-card timeout/late-reply regression passed after this extraction. The
+ordinary dialogue screenshot was visually inspected: the production box visibly
+contains current text after historical delivery.
+
+Reproduce with:
+
+```bash
+CQ_E2E_DATABASE_FIXTURE=true bash scripts/testing/run-isolated-e2e.sh tests/e2e/dialogue-read-recovery.spec.ts
+```
+
+Final full dialogue spec: two tests passed in 18.2s, with screenshots and
+receipts under `/var/tmp/capturequest-rendered.4SVPr2`. Typecheck and
+`git diff --check` pass. The shared-observer informational regression passed
+in `/var/tmp/capturequest-rendered.n6C9ZW`; its unrelated initial reentry test
+failure was resolved by targeting the actual loaded actor in the final spec.
+
+Scope remains local WebSocket ordinary-actor acceptance. Generated cutscene,
+conditional/trade choice and native transport variants retain their separate
+verification limits. Empty-ID legacy clients still require coordinated retirement;
+simulator choice fixture execution remains global. No production deployment or
+push. All five roadmap areas and historical restore/Repel attribution remain open.
+Next: review remaining trainer interaction read identity and caller lifetime,
+reusing the same correlation/snapshot/source boundaries before another family.
 
 ## Dialogue identity and caller lifetime (2026-10-08)
 

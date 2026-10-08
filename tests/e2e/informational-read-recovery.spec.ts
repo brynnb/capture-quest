@@ -4,20 +4,8 @@ import {createGuestCharacterAndEnterWorld,enterWorld,quitToCharacterSelect} from
 import {isolatedCrashRuntime} from "./helpers/processRecovery";
 import {getGameState,waitForNoMapLoading} from "./helpers/state";
 
-// Routed sockets have no native frame events. Observe the production parser,
-// preserving dispatch, so replay checks prove browser receipt before assertions.
-async function observeReadDelivery(page:Page,receive:(opcode:number,requestId:string)=>void){
-  await page.exposeFunction("observeReadDelivery",receive);
-  await page.evaluate(async opcodes=>{
-    const path="/src/net/index.ts";
-    const {WorldSocket}=await import(path) as typeof import("../../src/net/index");
-    const dispatch=WorldSocket.onJson;
-    WorldSocket.onJson=(opcode,data)=>{
-      if(opcodes.includes(opcode) && data && typeof(data as {requestId?:unknown}).requestId==="string")void(window as unknown as {observeReadDelivery:(opcode:number,id:string)=>Promise<void>}).observeReadDelivery(opcode,(data as {requestId:string}).requestId);
-      dispatch?.(opcode,data);
-    };
-  },[OpCodes.TrainerCardResponse,OpCodes.PokedexListResponse,OpCodes.PokedexStatusResponse]);
-}
+import {observeResponseDelivery} from "./helpers/responseDelivery";
+const observeReadDelivery=(page:Page,receive:(opcode:number,requestId:string)=>void)=>observeResponseDelivery(page,[OpCodes.TrainerCardResponse,OpCodes.PokedexListResponse,OpCodes.PokedexStatusResponse],receive);
 
 test("pending informational view retires across SIGKILL and a replacement transport",async({page,context},testInfo)=>{
   test.skip(process.env.CQ_E2E_CRASH_RECOVERY!=="true","Requires the exact-process crash runner");
