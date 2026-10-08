@@ -406,7 +406,7 @@ func TestPhaserTilesRequestEncodesEmptyCorrelatedChunkAsArray(t *testing.T) {
 }
 
 func TestTileEditorBroadcastsLiveChangesAndLaterJoinLoadsPersistedMap(t *testing.T) {
-	setupWorldTileMutationDB(t)
+	database := setupWorldTileMutationDB(t)
 
 	sessionManager := session.NewSessionManager()
 	originMessenger := &recordingMessenger{}
@@ -424,7 +424,7 @@ func TestTileEditorBroadcastsLiveChangesAndLaterJoinLoadsPersistedMap(t *testing
 	viewer.MapID = UnifiedOverworldMapID
 	viewer.PublishPresence()
 
-	wh := &WorldHandler{sessionManager: sessionManager}
+	wh := &WorldHandler{sessionManager: sessionManager, database: database}
 
 	placePayload, err := json.Marshal(TileEditorPlaceReq{
 		MapID: UnifiedOverworldMapID,
@@ -510,7 +510,7 @@ func TestTileEditorRawEditRequiresAdmin(t *testing.T) {
 		t.Fatalf("marshal place request: %v", err)
 	}
 
-	HandleTileEditorPlace(ses, payload, &WorldHandler{})
+	HandleTileEditorPlace(ses, payload, &WorldHandler{database: raw})
 
 	if len(messenger.streams) != 1 {
 		t.Fatalf("messages = %d, want one rejection", len(messenger.streams))

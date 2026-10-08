@@ -28,6 +28,44 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Shared account-status authorization and slash corpus (2026-10-08)
+
+The production registration inventory contains exactly one slash command:
+`/help`. There are no registered slash mutation handlers to migrate. Prior notes
+about potential slash writers were audit questions, not evidence of such writers.
+Help listing and generic minimum-status admission shared `getAccountStatus`, which
+used the global pool, had no caller cancellation and converted every failure into
+status zero. Tile editing used that same wrapper. It now takes the caller context
+and runtime database, returns a wrapped read error and preserves cancellation.
+Help reports unavailable permissions rather than returning a guessed listing;
+privileged dispatch stops on read failure. Dispatch also checks owner retirement
+before reading and immediately before executing a callback.
+
+All five tile-editing authorization callers now supply their WorldHandler. The
+established policy still permits account status above zero or character GM above
+zero, but an expired/cancelled read cannot fall through to cached GM authority.
+Tile mutation storage and reflection broadcasts remain their separate open audit;
+this change does not claim that those global/uncancellable writers are migrated.
+
+PostgreSQL regressions disable the global database, verify injected account status
+and missing-account rejection, and exercise real single-connection pool waits.
+They check privileged command rejection/admission, `/help` permission filtering,
+account and character-GM policies, and cancellation without callback execution or
+cached-GM fallback. Existing tile paint/erase/persist/reload/broadcast checks passed.
+Full world/session race suites passed in 49.287 and 1.066 seconds; logs are retained
+at `/var/tmp/capturequest-account-authority-full.log`. Final focused authorization
+and tile regressions passed in 1.523 seconds after the help-filtering and early
+retirement checks were added; logs are at
+`/var/tmp/capturequest-account-authority-final.log`. Diff checks passed. No frontend, wire, schema or asset changed; no new rendered or
+production acceptance is claimed.
+
+Remaining: option/story writers, bridge shutdown, independent-owner cache ordering,
+tile mutation storage/contracts and other command rows. The original restore
+timeout remains unattributed, and all five roadmap areas remain active. Next:
+review this shared authorization boundary, then audit creation/static query
+contracts and cancellable reads. This checkpoint is local only; no push, deployment
+or production mutation is part of this continuation.
+
 ## Chat and heartbeat ownership baseline (2026-10-08)
 
 Chat persistence started a new background context after admission, so a pool wait

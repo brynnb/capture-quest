@@ -1,12 +1,13 @@
 package world
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
-	"log"
 	"strings"
+	"time"
 
 	"capturequest/internal/api/opcodes"
-	"capturequest/internal/db"
 	"capturequest/internal/session"
 )
 
@@ -30,19 +31,22 @@ func RegisterChatCommand(cmd *ChatCommand) {
 	chatCommandRegistry[strings.ToLower(cmd.Name)] = cmd
 }
 
-// getAccountStatus fetches the account's status (GM level) from the database.
-func getAccountStatus(accountID int64) int32 {
-	myDB := db.GlobalWorldDB.DB
-	if myDB == nil {
-		return 0
+// getAccountStatus shares the caller's lifetime and runtime database. A failed
+// read is not a zero-status account and must not execute a privileged command.
+func getAccountStatus(ctx context.Context, database *sql.DB, accountID int64) (int32, error) {
+	if database == nil {
+		return 0, fmt.Errorf("account status database is required")
 	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	var status int32
-	err := myDB.QueryRow("SELECT status FROM account WHERE id = $1", accountID).Scan(&status)
-	if err != nil {
-		log.Printf("[ChatCmd] failed to fetch account status for %d: %v", accountID, err)
-		return 0
+	if err := database.QueryRowContext(ctx, "SELECT status FROM account WHERE id=$1", accountID).Scan(&status); err != nil {
+		if ctx.Err() != nil {
+			err = ctx.Err()
+		}
+		return 0, fmt.Errorf("read account %d status: %w", accountID, err)
 	}
-	return status
+	return status, nil
 }
 
 // HandleChatCommand attempts to parse and execute a slash command.
@@ -50,6 +54,9 @@ func getAccountStatus(accountID int64) int32 {
 func HandleChatCommand(ses *session.Session, text string, wh *WorldHandler) bool {
 	if !strings.HasPrefix(text, "/") {
 		return false
+	}
+	if ses.IsClosed() || ses.CommandContext().Err() != nil {
+		return true
 	}
 
 	// Parse: "/commandName arg1 arg2 ..."
@@ -69,13 +76,20 @@ func HandleChatCommand(ses *session.Session, text string, wh *WorldHandler) bool
 
 	// Permission check
 	if cmd.MinStatus > 0 {
-		status := getAccountStatus(ses.AccountID)
+		status, err := getAccountStatus(ses.CommandContext(), wh.database, ses.AccountID)
+		if err != nil {
+			sendCommandError(ses, "Account permissions unavailable.")
+			return true
+		}
 		if status < cmd.MinStatus {
 			sendCommandError(ses, "You don't have permission to use that command.")
 			return true
 		}
 	}
 
+	if ses.IsClosed() || ses.CommandContext().Err() != nil {
+		return true
+	}
 	cmd.Handler(ses, args, wh)
 	return true
 }
@@ -103,7 +117,11 @@ func init() {
 		Description: "List available commands",
 		MinStatus:   0,
 		Handler: func(ses *session.Session, args string, wh *WorldHandler) {
-			accountStatus := getAccountStatus(ses.AccountID)
+			accountStatus, err := getAccountStatus(ses.CommandContext(), wh.database, ses.AccountID)
+			if err != nil {
+				sendCommandError(ses, "Account permissions unavailable.")
+				return
+			}
 			lines := []string{"Available commands:"}
 			for _, cmd := range chatCommandRegistry {
 				if cmd.MinStatus <= accountStatus {

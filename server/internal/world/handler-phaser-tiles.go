@@ -134,7 +134,7 @@ func HandleTileEditorPlace(ses *session.Session, payload []byte, wh *WorldHandle
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "invalid request"}, opcodes.TileEditorPlaceResponse)
 		return false
 	}
-	if !canAdminEditWorldTiles(ses) {
+	if !canAdminEditWorldTiles(ses, wh) {
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "not authorized"}, opcodes.TileEditorPlaceResponse)
 		return false
 	}
@@ -169,7 +169,7 @@ func HandleTileEditorErase(ses *session.Session, payload []byte, wh *WorldHandle
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "invalid request"}, opcodes.TileEditorEraseResponse)
 		return false
 	}
-	if !canAdminEditWorldTiles(ses) {
+	if !canAdminEditWorldTiles(ses, wh) {
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "not authorized"}, opcodes.TileEditorEraseResponse)
 		return false
 	}
@@ -208,7 +208,7 @@ func HandleTileEditorFill(ses *session.Session, payload []byte, wh *WorldHandler
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "invalid request"}, opcodes.TileEditorFillResponse)
 		return false
 	}
-	if !canAdminEditWorldTiles(ses) {
+	if !canAdminEditWorldTiles(ses, wh) {
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "not authorized"}, opcodes.TileEditorFillResponse)
 		return false
 	}
@@ -367,7 +367,7 @@ func HandleTileEditorUndo(ses *session.Session, payload []byte, wh *WorldHandler
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "invalid request"}, opcodes.TileEditorUndoResponse)
 		return false
 	}
-	if !canAdminEditWorldTiles(ses) {
+	if !canAdminEditWorldTiles(ses, wh) {
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "not authorized"}, opcodes.TileEditorUndoResponse)
 		return false
 	}
@@ -465,7 +465,7 @@ func HandleTilePropertyUpdate(ses *session.Session, payload []byte, wh *WorldHan
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "invalid request"}, opcodes.TilePropertyUpdateResponse)
 		return false
 	}
-	if !canAdminEditWorldTiles(ses) {
+	if !canAdminEditWorldTiles(ses, wh) {
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "not authorized"}, opcodes.TilePropertyUpdateResponse)
 		return false
 	}
