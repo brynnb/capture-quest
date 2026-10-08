@@ -2,11 +2,11 @@ package world
 
 import (
 	"capturequest/internal/api/opcodes"
+	"capturequest/internal/db"
 	"capturequest/internal/db/cqitems"
 	"capturequest/internal/itemuse"
 	"capturequest/internal/session"
-	"context"
-	"time"
+	"fmt"
 )
 
 type BicycleStateRequest struct {
@@ -42,18 +42,30 @@ func HandleBicycleState(ses *session.Session, payload []byte, wh *WorldHandler) 
 		return false
 	}
 	if req.WantsRiding != nil {
-		if battle := getBattle(int64(charID)); battle != nil && !battle.IsOver() {
-			fail()
-			return false
-		}
 		if req.Revision == nil || *req.Revision < 0 || req.InstanceID <= 0 {
 			fail()
 			return false
 		}
-		ctx, cancel := context.WithTimeout(ses.CommandContext(), 5*time.Second)
-		defer cancel()
-		found, err := cqitems.NewStore(wh.database).FindInventoryItemByInstanceIDContext(ctx, int32(charID), req.InstanceID)
-		if err != nil || itemuse.ShortName(found.Item) != "BICYCLE" {
+		// Reuse the durable ownership policy without making this session-local
+		// preference an inventory revision or publishing before read commit.
+		err := db.Transaction(ses.CommandContext(), wh.database, func(tx db.DBTX) error {
+			var lockedID int64
+			if err := tx.QueryRow(`SELECT id FROM character_data WHERE id=$1 FOR UPDATE`, charID).Scan(&lockedID); err != nil {
+				return err
+			}
+			if err := requireNoOwnedBattleIn(tx, int64(charID)); err != nil {
+				return err
+			}
+			found, err := cqitems.NewStore(tx).FindInventoryItemByInstanceIDContext(ses.CommandContext(), int32(charID), req.InstanceID)
+			if err != nil {
+				return err
+			}
+			if itemuse.ShortName(found.Item) != "BICYCLE" {
+				return fmt.Errorf("not an owned Bicycle")
+			}
+			return nil
+		})
+		if err != nil || ses.CommandContext().Err() != nil {
 			fail()
 			return false
 		}

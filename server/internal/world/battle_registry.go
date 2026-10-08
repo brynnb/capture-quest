@@ -3,6 +3,7 @@ package world
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
 	"sync"
 
@@ -78,4 +79,25 @@ func restoreBattleOnLogin(ctx context.Context, database *sql.DB, charID int64) (
 	configureBattleObedience(battle, charID, nil)
 	setBattle(charID, battle)
 	return battle, nil
+}
+
+// A persisted battle retains gameplay ownership until dismissal, including its
+// terminal and pending-choice states. Cache absence is not an admission grant.
+// Call under the character lock inside the caller's transaction.
+func requireNoOwnedBattleIn(tx db.DBTX, charID int64) error {
+	battle, err := pokebattle.LoadBattleState(tx, charID)
+	if err != nil {
+		return err
+	}
+	if battle != nil {
+		return fmt.Errorf("finish the current battle first")
+	}
+	visit, err := safariSessionIn(tx, charID)
+	if err != nil {
+		return err
+	}
+	if visit != nil && visit.Battle != nil {
+		return fmt.Errorf("finish the safari encounter first")
+	}
+	return nil
 }

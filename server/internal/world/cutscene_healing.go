@@ -2,27 +2,17 @@ package world
 
 import (
 	"fmt"
-
-	"capturequest/internal/pokebattle"
 )
 
 // Center healing joins the interpreter's transaction and party writer. Other
 // healing scripts (including battle scripts) keep their existing policy.
 func applyCenterHealingPolicy(ctx CutsceneActionContext, mapName string, charID int64) error {
 	tx := ctx.mutation.database
-	battle, err := pokebattle.LoadBattleState(tx, charID)
-	if err != nil {
-		return err
-	}
-	if battle != nil || ctx.mutation.boundBattle {
+	if ctx.mutation.boundBattle {
 		return fmt.Errorf("finish the current battle before center healing")
 	}
-	visit, err := safariSessionIn(tx, charID)
-	if err != nil {
+	if err := requireNoOwnedBattleIn(tx, charID); err != nil {
 		return err
-	}
-	if visit != nil && visit.Battle != nil {
-		return fmt.Errorf("finish the safari encounter before center healing")
 	}
 	var centerMapID int
 	if err := tx.QueryRow(`SELECT id FROM phaser_maps WHERE name=$1`, mapName).Scan(&centerMapID); err != nil {

@@ -1,7 +1,6 @@
 package world
 
 import (
-	"fmt"
 	"log"
 
 	"capturequest/internal/api/opcodes"
@@ -41,20 +40,10 @@ func HandlePokemonPartyReorder(ses *session.Session, payload []byte, wh *WorldHa
 	snapshot, err := cqitems.NewStore(wh.database).ExecuteCommand(ses.CommandContext(), int32(charID), *req.Command.Revision, func(tx db.DBTX) error {
 		// Even a terminal battle owns its party until dismissal and pending move
 		// choices commit. Check durable state under the same character lock.
-		battle, err := pokebattle.LoadBattleState(tx, charID)
-		if err != nil {
+		if err := requireNoOwnedBattleIn(tx, charID); err != nil {
 			return err
 		}
-		if battle != nil {
-			return fmt.Errorf("finish the current battle before reordering")
-		}
-		visit, err := safariSessionIn(tx, charID)
-		if err != nil {
-			return err
-		}
-		if visit != nil && visit.Battle != nil {
-			return fmt.Errorf("finish the safari encounter before reordering")
-		}
+		var err error
 		party, err = pokebattle.ReorderPartyInTransaction(tx, charID, req.PokemonIDs)
 		return err
 	})

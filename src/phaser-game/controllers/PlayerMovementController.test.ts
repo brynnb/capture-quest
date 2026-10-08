@@ -97,6 +97,24 @@ test("retired movement controllers ignore late Bicycle state",async()=>{
  expect(useAudioActivityStore.getState().wantsBicycle).toBe(false);
 });
 
+test("character replacement cancels Bicycle admission and ignores a late state", async () => {
+  const { controller } = buildLedgeController();
+  usePlayerCharacterStore.getState().setCharacterProfile({ id: 42 });
+  useAudioActivityStore.getState().resetTravelAudio();
+  let resolve!: (value: import("@/net/generated/world_api").BicycleStateResponse) => void;
+  const request = vi.mocked(movement.requestBicycleState);
+  request.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+  const pending = controller.changeBicyclePreference(7);
+  const signal = request.mock.calls[0][1];
+  usePlayerCharacterStore.getState().setCharacterProfile({ id: 43 });
+  expect(signal.aborted).toBe(true);
+  resolve({ success: true, requestId: "old-character", characterId: 42,
+    bicycle: { revision: 1, wantsRiding: true, activeRiding: true, forcedRiding: false } });
+  await pending;
+  expect(request).toHaveBeenCalledTimes(1);
+  expect(useAudioActivityStore.getState().wantsBicycle).toBe(false);
+});
+
 describe("PlayerMovementController ledges", () => {
   test("facing a source tile publishes its direction without changing location",()=>{
     const {controller}=buildLedgeController();

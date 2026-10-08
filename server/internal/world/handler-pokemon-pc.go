@@ -58,19 +58,8 @@ func authorizePCIn(tx db.DBTX, ses *session.Session, wh *WorldHandler, sourceID 
 	if savedMap != mapID || savedX != position.X || savedY != position.Y {
 		return 0, fmt.Errorf("PC source ownership changed")
 	}
-	battle, err := pokebattle.LoadBattleState(tx, charID)
-	if err != nil {
+	if err := requireNoOwnedBattleIn(tx, charID); err != nil {
 		return 0, err
-	}
-	if battle != nil {
-		return 0, fmt.Errorf("finish the battle before using PC storage")
-	}
-	visit, err := safariSessionIn(tx, charID)
-	if err != nil {
-		return 0, err
-	}
-	if visit != nil && visit.Battle != nil {
-		return 0, fmt.Errorf("finish the safari encounter before using PC storage")
 	}
 	return mapID, nil
 }

@@ -28,6 +28,57 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized a branch push for the stopping checkpoint on 2026-10-07; production deployment remains unauthorized.
 
+## Bicycle boundary review and shared battle admission (2026-10-07)
+
+Review found that the Bicycle setter checked only `getBattle(charID)` and
+`!IsOver()`. That granted admission when a persisted battle was absent from the
+cache, after a terminal result before dismissal, and during a Safari encounter.
+The authoritative records retain ownership through those states. PC storage,
+party reorder and center healing already enforced that durable policy with
+repeated ordinary/Safari reads. Their identical checks now use
+`requireNoOwnedBattleIn` in the existing battle registry. Their transaction owners
+and domain-specific source/healing policies remain unchanged.
+
+Bicycle joins the same policy in a bounded, character-locked read transaction
+that validates the owned positive-quantity Bicycle instance. It commits the read
+before changing the movement preference or publishing. A failed/cancelled read
+cannot advance the session preference revision. The actual desired-state update
+still checks movement session identity and revision under the manager lock; it
+does not consume inventory, create a durable receipt or use an inventory revision.
+The session command queue owns admission ordering; player registration resets
+preference, so process restart does not promise to preserve riding intent.
+
+Focused PostgreSQL checks passed (4.255 seconds), followed by the full world
+race suite (41.880 seconds). Cases include a foreign/empty/wrong item, uncached
+ordinary and terminal battle owners, Safari ownership and database read failure;
+recovery reads remain available after rejection. A final Bicycle-focused run
+passed (1.972 seconds), including a real lock-contention cancellation: the
+command deadline propagates and neither preference nor revision advances.
+All 24 movement-controller
+client tests and TypeScript checks passed, including character replacement
+aborting admission and ignoring its late reply.
+
+The existing transport fault helper now selects request payloads and tracks
+request IDs: a shared response opcode's recovery reads pass through while only
+the selected setter's reply is lost. This extends the existing harness rather
+than adding a Bicycle-specific transport coordinator. Five rendered cases passed
+in 1.3 minutes in `/var/tmp/capturequest-rendered.85LkMs`: ordinary Bicycle
+on/off/on and indoor/outdoor behavior; exact duplicate/lost setter replies,
+current-state recovery, old reply delivery and session-reset reentry; and the
+existing PC normal/timeout/process-death recovery cases. The PC crash runner
+stopped only its recorded private server PID and restarted against the same
+private database. Its final cleanup stopped that isolated runtime. No production
+mutation or deployment occurred.
+
+This review checkpoint is locally committed separately from the preceding
+user-authorized branch push. No additional push or deployment is part of this
+continuation. Next: migrate Escape Rope's transport through the existing movement
+owner and preserve its atomic item/position/source primitive.
+
+Remaining: the broader movement source/catalog/queue admission and acceptance
+inventory, Escape Rope command identity/recovery, the unresolved login timeout,
+and other rows of SERVER_COMMAND_AUDIT.md. The five-area goal remains active.
+
 ## Bicycle stopping checkpoint (2026-10-07)
 
 Bicycle now uses typed correlated requests (201/202) through the existing movement
