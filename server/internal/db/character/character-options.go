@@ -92,18 +92,24 @@ func LoadOptionsFrom(ctx context.Context, database db.ContextDBTX, charID int32)
 	return opts, nil
 }
 
-// SaveOptions saves character options to the database
-func SaveOptions(ctx context.Context, charID int32, opts *CharacterOptions) error {
-	jsonBytes, err := json.Marshal(opts)
-	if err != nil {
-		return fmt.Errorf("failed to marshal options to JSON: %w", err)
+// SetBooleanOption owns one desired preference key. Newer center/story keys and
+// unknown options remain in the same authoritative JSON object.
+func SetBooleanOption(ctx context.Context, database *sql.DB, charID int32, key string, enabled bool) error {
+	if key != "showNetworkStats" && key != "allowTrainerRebattles" {
+		return fmt.Errorf("unsupported preference key %q", key)
 	}
-
-	query := `UPDATE character_data SET options = $1 WHERE id = $2`
-	_, err = db.GlobalWorldDB.DB.ExecContext(ctx, query, string(jsonBytes), charID)
-	if err != nil {
-		return fmt.Errorf("failed to save options for character %d: %w", charID, err)
-	}
-
-	return nil
+	return db.Transaction(ctx, database, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, int64(charID)); err != nil {
+			return err
+		}
+		var valid bool
+		if err := tx.QueryRow(`SELECT options IS NULL OR jsonb_typeof(options)='object' FROM character_data WHERE id=$1`, charID).Scan(&valid); err != nil {
+			return err
+		}
+		if !valid {
+			return fmt.Errorf("options for character %d must be an object", charID)
+		}
+		_, err := tx.Exec(`UPDATE character_data SET options=COALESCE(options,'{}'::jsonb)||jsonb_build_object($2::text,$3::boolean) WHERE id=$1`, charID, key, enabled)
+		return err
+	})
 }

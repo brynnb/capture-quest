@@ -7,8 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-movement-owned Bicycle/Escape Rope commands, shared durable battle admission and
-current recovery, following owned resource reads and character-scoped notices.
+flag-cache read lifetime and atomic preference-key persistence, following owned
+entry reads, actor publication and movement/resource recovery.
 
 The latest field-command prerequisite is Escape Rope source fencing, recorded
 below; Bicycle now has a movement-owned desired-state command. Escape Rope transport now uses a correlated revision-fenced command and movement-owned current recovery.
@@ -26,7 +26,47 @@ implementation is `f118916` (per-command clerk authorization and source sale
 policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected menu
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
-branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized a branch push for the stopping checkpoint on 2026-10-07; production deployment remains unauthorized.
+branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Flag-cache lifetime and preference persistence checkpoint (2026-10-08)
+
+The flag loader held the shared cache mutex during database I/O and started its
+five-second timeout only after acquiring that mutex. A blocked query could delay
+unrelated characters' cached flag reads and entry. Loads now perform I/O outside
+the mutex under the caller deadline. Temporary per-character read tokens prevent
+an older load from replacing a newer committed snapshot or resurrecting an
+unloaded character. Completed and failed loads remove their tokens. Movement and
+boulder commits publish through one snapshot-copying cache primitive.
+
+`SetOption` previously changed client state before persistence and saved the whole
+cached options document through a background/global database path. That document
+could overwrite newer `lastPokeCenterMapId`, story or unknown keys. The handler now
+validates a desired boolean preference, patches only its whitelisted JSON key in
+the existing injected character transaction, and changes the client cache after
+commit. The obsolete full-document `SaveOptions` API and its callers are retired.
+No additional gameplay coordinator or schema was introduced.
+
+PostgreSQL regressions verify actual pool-wait cancellation, unrelated cache reads
+while a load waits, unload fencing, snapshot isolation and token cleanup. Preference
+checks verify preservation of other stored keys and database/client rollback when
+a deferred constraint rejects commit. Focused checks and the full character,
+client, world and simulator race suites passed (1.380, 1.093, 45.241 and 1.068
+seconds). Logs are retained at `/var/tmp/capturequest-flag-option-check.log`.
+The rendered run covering preference persistence through fresh entry, multiplayer
+warp visibility, private boulder isolation and walking recovery/reentry is marked
+passed with no failed tests in
+`/var/tmp/capturequest-rendered.y6Eq8q/playwright/.last-run.json`. This is local
+acceptance; no production availability claim follows from it. Diff checks passed.
+
+This is a bounded stopping point for the requested commit and branch push. It
+includes the preceding local checkpoints since the last branch push. The full
+five-area goal remains incomplete. In particular, the original five-second
+`restoreBattleOnLogin` timeout has not been attributed or closed. Remaining flag
+writer cancellation, legacy option/rival-name reads, option reply/recovery lifetime,
+chat/liveness and other command families remain in `SERVER_COMMAND_AUDIT.md`.
+Next: audit remaining flag writers and preference transport against the existing
+ownership, transaction and current-read primitives before migrating another family.
+No production deployment or production mutation is authorized by this checkpoint.
 
 ## Remaining entry options, account and flag dependencies (2026-10-07)
 

@@ -299,9 +299,7 @@ func commitMovementStep(ctx context.Context, wh *WorldHandler, charID int64, c m
 // replay effects after an unknown outcome. The owning session gate is held.
 func publishMovementStepEffects(ses *session.Session, wh *WorldHandler, charID int64, result movementStepResult) {
 	if wh.EventFlags != nil && result.Flags != nil {
-		wh.EventFlags.mu.Lock()
-		wh.EventFlags.flags[charID] = result.Flags
-		wh.EventFlags.mu.Unlock()
+		wh.EventFlags.publishCommittedFlags(charID, result.Flags)
 	}
 	if result.SafariEntryBlocked {
 		SendSystemMessage(ses, "Please check in at the counter first.")

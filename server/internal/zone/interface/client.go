@@ -19,7 +19,6 @@ type Client interface {
 	SetAllowTrainerRebattlesEnabled(enabled bool)
 
 	Options() *db_character.CharacterOptions
-	SaveOptions() error
 
 	SendSystemMessage(text string)
 	SendSpecialMessage(text string, msgType string)

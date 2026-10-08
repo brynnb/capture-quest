@@ -149,12 +149,7 @@ func pushBoulder(ctx context.Context, database *sql.DB, charID int64, mapID, pla
 		return BoulderPushResult{}, err
 	}
 	if efm != nil && flags != nil {
-		efm.mu.Lock()
-		if efm.flags == nil {
-			efm.flags = make(map[int64]map[string]bool)
-		}
-		efm.flags[charID] = flags.flags[charID]
-		efm.mu.Unlock()
+		efm.publishCommittedFlags(charID, flags.flags[charID])
 	}
 	return result, nil
 }

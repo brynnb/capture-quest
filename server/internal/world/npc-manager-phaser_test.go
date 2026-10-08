@@ -48,7 +48,6 @@ func (c *testSessionClient) AllowTrainerRebattles() bool     { return false }
 func (c *testSessionClient) SetAllowTrainerRebattlesEnabled(bool) {
 }
 func (c *testSessionClient) Options() *db_character.CharacterOptions { return nil }
-func (c *testSessionClient) SaveOptions() error                      { return nil }
 func (c *testSessionClient) SendSystemMessage(string)                {}
 func (c *testSessionClient) SendSpecialMessage(string, string)       {}
 func (c *testSessionClient) SendStateUpdate()                        {}

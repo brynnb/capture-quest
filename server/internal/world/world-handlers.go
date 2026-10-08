@@ -28,33 +28,32 @@ func HandleSetOption(ses *session.Session, payload []byte, wh *WorldHandler) boo
 	if !ses.HasValidClient() {
 		return false
 	}
-
 	var req struct {
 		OptionID options.OptionId `json:"optionId"`
 		Value    int              `json:"value"`
 	}
-	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("HandleSetOption: failed to unmarshal JSON: %v", err)
+	if decodePlayerMovement(payload, &req) != nil || (req.Value != 0 && req.Value != 1) {
 		return false
 	}
-
-	log.Printf("SetOption for character %d: %d = %d", ses.Client.CharData().ID, req.OptionID, req.Value)
-
-	enabled := req.Value == 1
-
+	var key string
 	switch req.OptionID {
 	case options.OptionShowNetworkStats:
-		ses.Client.SetShowNetworkStatsEnabled(enabled)
+		key = "showNetworkStats"
 	case options.OptionAllowTrainerRebattles:
-		ses.Client.SetAllowTrainerRebattlesEnabled(enabled)
+		key = "allowTrainerRebattles"
 	default:
-		log.Printf("SetOption: unknown option %d", req.OptionID)
 		return false
 	}
-
-	// Persist all options to database as JSON
-	if err := ses.Client.SaveOptions(); err != nil {
-		log.Printf("SetOption: failed to persist options for character %d: %v", ses.Client.CharData().ID, err)
+	enabled := req.Value == 1
+	if err := db_character.SetBooleanOption(ses.CommandContext(), wh.database, int32(ses.Client.CharData().ID), key, enabled); err != nil {
+		log.Printf("[Options] Save preference for character %d: %v", ses.Client.CharData().ID, err)
+		return false
+	}
+	// Cache only the successfully committed key, never a stale full document.
+	if req.OptionID == options.OptionShowNetworkStats {
+		ses.Client.SetShowNetworkStatsEnabled(enabled)
+	} else {
+		ses.Client.SetAllowTrainerRebattlesEnabled(enabled)
 	}
 	return false
 }

@@ -14,9 +14,10 @@ import (
 // backed by the character_event_flags table. Flags are loaded on login and
 // persisted on set/reset.
 type EventFlagManager struct {
-	db    *sql.DB
-	mu    sync.RWMutex
-	flags map[int64]map[string]bool // characterID -> set of active flag names
+	db         *sql.DB
+	mu         sync.RWMutex
+	flags      map[int64]map[string]bool // characterID -> set of active flag names
+	readTokens map[int64]*flagReadToken
 }
 
 // NewEventFlagManager creates a new EventFlagManager.
@@ -27,18 +28,34 @@ func NewEventFlagManager(db *sql.DB) *EventFlagManager {
 	}
 }
 
+// Non-zero size guarantees distinct address identities; struct{} would not.
+type flagReadToken struct{ marker byte }
+
 // LoadFlags loads all event flags for a character from the database into the cache.
 // Should be called when a character enters the world.
 func (m *EventFlagManager) LoadFlags(charID int64) error {
 	return m.LoadFlagsContext(context.Background(), charID)
 }
 func (m *EventFlagManager) LoadFlagsContext(ctx context.Context, charID int64) error {
-	// Serialize the read and cache replacement so a slow older read cannot replace
-	// a newer snapshot. Writers refresh from committed storage, not a stale delta.
-	m.mu.Lock()
-	defer m.mu.Unlock()
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	token := &flagReadToken{}
+	m.mu.Lock()
+	if m.readTokens == nil {
+		m.readTokens = make(map[int64]*flagReadToken)
+	}
+	m.readTokens[charID] = token
+	m.mu.Unlock()
+	defer func() {
+		m.mu.Lock()
+		if m.readTokens[charID] == token {
+			delete(m.readTokens, charID)
+		}
+		m.mu.Unlock()
+	}()
 	rows, err := m.db.QueryContext(ctx, `SELECT flag_name FROM character_event_flags WHERE character_id=$1`, charID)
 	if err != nil {
 		return fmt.Errorf("load event flags for character %d: %w", charID, err)
@@ -55,6 +72,17 @@ func (m *EventFlagManager) LoadFlagsContext(ctx context.Context, charID int64) e
 	if err := rows.Err(); err != nil {
 		return err
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.readTokens[charID] != token {
+		return nil
+	} // A newer publication/retirement owns the view.
+	if m.flags == nil {
+		m.flags = make(map[int64]map[string]bool)
+	}
 	m.flags[charID] = flags
 	return nil
 }
@@ -63,8 +91,30 @@ func (m *EventFlagManager) LoadFlagsContext(ctx context.Context, charID int64) e
 // Should be called when a character leaves the world.
 func (m *EventFlagManager) UnloadFlags(charID int64) {
 	m.mu.Lock()
+	delete(m.readTokens, charID)
 	delete(m.flags, charID)
 	m.mu.Unlock()
+}
+
+// Publish only snapshots from a completed authoritative transaction. Copying
+// keeps subsequent caller mutations outside the manager's immutable cache view.
+func (m *EventFlagManager) publishCommittedFlags(charID int64, flags map[string]bool) {
+	snapshot := make(map[string]bool, len(flags))
+	for flag, on := range flags {
+		if on {
+			snapshot[flag] = true
+		}
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.readTokens == nil {
+		m.readTokens = make(map[int64]*flagReadToken)
+	}
+	if m.flags == nil {
+		m.flags = make(map[int64]map[string]bool)
+	}
+	delete(m.readTokens, charID)
+	m.flags[charID] = snapshot
 }
 
 // CheckFlag returns true if the given flag is set for the character.

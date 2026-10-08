@@ -82,10 +82,6 @@ func (c *Client) Options() *db_character.CharacterOptions {
 	return c.options
 }
 
-func (c *Client) SaveOptions() error {
-	return db_character.SaveOptions(context.Background(), int32(c.charData.ID), c.options)
-}
-
 func (c *Client) SendSystemMessage(text string) {
 	if c.OnSystemMessage != nil {
 		c.OnSystemMessage(text)

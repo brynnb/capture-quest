@@ -1,0 +1,88 @@
+package world
+
+import (
+	"capturequest/internal/testdb"
+	"context"
+	"errors"
+	"testing"
+	"time"
+)
+
+func TestFlagReadPoolWaitDoesNotHoldCacheLockAndUnloadSupersedesIt(t *testing.T) {
+	database := testdb.Postgres(t)
+	testdb.Exec(t, database, `INSERT INTO character_data(id,name) VALUES(42,'flags'); INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'STORED')`)
+	manager := NewEventFlagManager(database)
+	manager.publishCommittedFlags(7, map[string]bool{"OTHER": true})
+	database.SetMaxOpenConns(1)
+	lease, err := database.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.Close()
+	before := database.Stats().WaitCount
+	finished := make(chan error, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	go func() { finished <- manager.LoadFlagsContext(ctx, 42) }()
+	deadline := time.Now().Add(time.Second)
+	for database.Stats().WaitCount == before {
+		if time.Now().After(deadline) {
+			t.Fatal("flag query did not wait on pool")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	cached := make(chan bool, 1)
+	go func() { cached <- manager.CheckFlag(7, "OTHER"); manager.UnloadFlags(42) }()
+	select {
+	case present := <-cached:
+		if !present {
+			t.Fatal("other character cache unavailable")
+		}
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("database wait held shared cache lock")
+	}
+	// Ensure retirement has completed before releasing the blocked read.
+	manager.UnloadFlags(42)
+	lease.Close()
+	if err := <-finished; err != nil {
+		t.Fatal(err)
+	}
+	if manager.CheckFlag(42, "STORED") {
+		t.Fatal("old read resurrected unloaded cache")
+	}
+	manager.mu.RLock()
+	pending := len(manager.readTokens)
+	manager.mu.RUnlock()
+	if pending != 0 {
+		t.Fatal("retained completed load tokens")
+	}
+}
+
+func TestFlagLoadDeadlineAndCommittedPublicationOwnCacheView(t *testing.T) {
+	database := testdb.Postgres(t)
+	testdb.Exec(t, database, `INSERT INTO character_data(id,name) VALUES(42,'flags'); INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'STORED')`)
+	manager := NewEventFlagManager(database)
+	database.SetMaxOpenConns(1)
+	lease, err := database.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if err := manager.LoadFlagsContext(ctx, 42); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("flag load escaped caller deadline: %v", err)
+	}
+	snapshot := map[string]bool{"COMMITTED": true}
+	manager.publishCommittedFlags(42, snapshot)
+	snapshot["LATER_CALLER_MUTATION"] = true
+	if !manager.CheckFlag(42, "COMMITTED") || manager.CheckFlag(42, "LATER_CALLER_MUTATION") {
+		t.Fatal("cache snapshot shares caller mutation")
+	}
+	manager.mu.RLock()
+	pending := len(manager.readTokens)
+	manager.mu.RUnlock()
+	if pending != 0 {
+		t.Fatal("failed read retained token")
+	}
+}

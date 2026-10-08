@@ -64,3 +64,25 @@ func TestOptionsEntryReadDefaultsOnlyUnsetDataAndHonorsPoolDeadline(t *testing.T
 		t.Fatalf("options escaped cancellation: %v", err)
 	}
 }
+
+func TestBooleanPreferencePatchPreservesConcurrentDomainAndUnknownKeys(t *testing.T) {
+	database := testdb.Postgres(t)
+	testdb.Exec(t, database, `INSERT INTO character_data(id,name,options) VALUES(9,'patch-reader','{"lastPokeCenterMapId":192,"rivalName":"Blue","futureKey":{"v":7}}')`)
+	old := db.GlobalWorldDB
+	db.GlobalWorldDB = nil
+	t.Cleanup(func() { db.GlobalWorldDB = old })
+	if err := SetBooleanOption(context.Background(), database, 9, "showNetworkStats", false); err != nil {
+		t.Fatal(err)
+	}
+	var preserved bool
+	if err := database.QueryRow(`SELECT options->>'lastPokeCenterMapId'='192' AND options->>'rivalName'='Blue' AND options->'futureKey'='{"v":7}'::jsonb AND options->>'showNetworkStats'='false' FROM character_data WHERE id=9`).Scan(&preserved); err != nil || !preserved {
+		t.Fatal("preference replaced domain/unknown options")
+	}
+	testdb.Exec(t, database, `CREATE FUNCTION reject_option_patch() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'reject patch'; END $$; CREATE CONSTRAINT TRIGGER reject_option_patch AFTER UPDATE ON character_data DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_option_patch();`)
+	if err := SetBooleanOption(context.Background(), database, 9, "allowTrainerRebattles", true); err == nil {
+		t.Fatal("rejected patch committed")
+	}
+	if err := database.QueryRow(`SELECT NOT(options ? 'allowTrainerRebattles') FROM character_data WHERE id=9`).Scan(&preserved); err != nil || !preserved {
+		t.Fatal("failed option patch leaked")
+	}
+}
