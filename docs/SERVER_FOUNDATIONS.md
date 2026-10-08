@@ -7,7 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-owned reconnect timers and rendered informational process-replacement acceptance,
+WebSocket attempts settle on retirement and callbacks use the owned instance,
+following `208c5a2`: owned reconnect timers and rendered informational process-replacement acceptance,
 following `82c87cc`: informational read boundary review rejects incomplete/wrong-kind data and
 suppresses same-turn abandoned dispatch, following `6600612`:
 Pokédex/trainer client reads reuse shared correlation and transport retirement,
@@ -40,6 +41,40 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## WebSocket attempt and callback ownership (2026-10-08)
+
+The pending-attempt regression failed before the fix: replacing an unopened
+WebSocket left the older `connect()` promise unresolved. Inspection also found
+that late open/message/close/error callbacks consulted global state without
+checking which socket owned it.
+
+The existing `ws` field now owns its instance from construction. One retirement
+method closes that instance, clears its handlers/buffer/heartbeat and settles its
+pending connection promise as cancelled. All WebSocket callbacks check instance
+identity before affecting state or delivering a message. A superseded automatic
+attempt also checks its attempt generation before scheduling another retry;
+queued retry scheduling does not compete with a pending manual attempt. No
+second transport registry or connection framework is introduced.
+
+Checks prove replacement settles the old attempt, captured stale callbacks cannot
+open/send/close the replacement, explicit close during setup prevents resurrection,
+and retired automatic work cannot enqueue retries over pending manual connection.
+The real pending-view SIGKILL/reentry check passed again in 6.4s: owned server
+PID `2684699` exited `137`, replacement `2685015` served generation 1, and the
+browser recovered its fresh card. Evidence is retained at
+`/var/tmp/capturequest-rendered.ucEKcg`. This is WebSocket browser acceptance.
+Seven socket-lifetime tests and 53 related network/read/preference/character
+tests pass. Frontend typechecking, production build, runtime asset validation
+and diff checks passed; existing build warnings remain. No unrelated Go suite
+was rerun for this client-only change.
+
+Next: review native WebTransport fetch/handshake/control-stream continuations and
+stale close/read callbacks, setup deadline behavior and legacy FIFO request
+retirement. Those guarantees are not established by this WebSocket checkpoint.
+Continue the finite command/acquisition inventory afterward. Historical restore
+timeout and Repel-click attribution remain open, as do all five roadmap areas.
+No Go/wire/schema/assets changed. No push, deployment or production acceptance.
 
 ## Pending informational read across server replacement (2026-10-08)
 

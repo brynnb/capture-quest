@@ -119,6 +119,8 @@ export class CaptureQuestSocket {
   // Heartbeat
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private cancelWebSocketConnect: (()=>void) | null = null;
+  private webSocketAttemptGeneration = 0;
   public latency = 0;
   public onPing: ((latency: number) => void) | null = null;
   private ownerGeneration = 0;
@@ -155,6 +157,7 @@ export class CaptureQuestSocket {
   ): Promise<boolean> {
     this.clearReconnectTimer();
     this.isConnected = false;
+    this.retireWebSocket();
     this.retireSessionReads();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const WT = (window as any).WebTransport as {
@@ -426,20 +429,7 @@ export class CaptureQuestSocket {
     this.datagramWriter = null;
     this.controlWriter = null;
 
-    // Clean up WebSocket
-    if (this.ws) {
-      this.ws.onclose = null; // prevent re-entrant close handler
-      this.ws.onerror = null;
-      this.ws.onmessage = null;
-      this.ws.close();
-      this.ws = null;
-    }
-    this.wsBuffer = new Uint8Array(0);
-
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval);
-      this.heartbeatInterval = null;
-    }
+    this.retireWebSocket();
 
     if (scheduleReconnect && this.allowReconnect) {
       this.scheduleReconnect();
@@ -451,7 +441,21 @@ export class CaptureQuestSocket {
 
   // ——— WebSocket fallback ———
 
+  private retireWebSocket() {
+    this.webSocketAttemptGeneration++;
+    const cancel=this.cancelWebSocketConnect;this.cancelWebSocketConnect=null;cancel?.();
+    if(this.ws){
+      const ws=this.ws;this.ws=null;
+      ws.onopen=null;ws.onclose=null;ws.onerror=null;ws.onmessage=null;ws.close();
+    }
+    this.wsBuffer=new Uint8Array(0);
+    if(this.heartbeatInterval){clearInterval(this.heartbeatInterval);this.heartbeatInterval=null;}
+  }
+
   private async connectWebSocket(onClose: () => void): Promise<boolean> {
+    this.clearReconnectTimer();
+    this.isConnected=false;
+    this.retireWebSocket();
     this.onClose = onClose;
     this.useWebSocket = true;
 
@@ -459,26 +463,39 @@ export class CaptureQuestSocket {
       const wsUrl = getWsUrl("/ws");
       console.log(`[CaptureQuestSocket] Connecting via WebSocket to ${wsUrl}...`);
       const ws = new WebSocket(wsUrl);
+      this.ws=ws;
       ws.binaryType = "arraybuffer";
+      const owns=()=>this.ws===ws;
+      let settled=false;
+      const finish=(connected:boolean)=>{
+        if(settled)return;settled=true;
+        if(this.cancelWebSocketConnect===cancel)this.cancelWebSocketConnect=null;
+        resolve(connected);
+      };
+      const cancel=()=>finish(false);
+      this.cancelWebSocketConnect=cancel;
 
       ws.onopen = () => {
+        if(!owns()){finish(false);return;}
         console.log("[CaptureQuestSocket] WebSocket connection established");
-        this.ws = ws;
         this.isConnected = true;
         this.isClosing = false;
         this.retryCount = 0;
         this.startHeartbeat();
-        resolve(true);
+        finish(true);
       };
 
       ws.onerror = (e) => {
+        if(!owns()){finish(false);return;}
         console.error("[CaptureQuestSocket] WebSocket error:", e);
         if (!this.isConnected) {
-          resolve(false);
+          finish(false);
         }
       };
 
       ws.onclose = () => {
+        finish(false);
+        if(!owns())return;
         if (!this.isClosing) {
           console.log("[CaptureQuestSocket] WebSocket closed unexpectedly");
           this.close(true);
@@ -486,6 +503,7 @@ export class CaptureQuestSocket {
       };
 
       ws.onmessage = (event: MessageEvent) => {
+        if(!owns())return;
         const data = new Uint8Array(event.data as ArrayBuffer);
         // Append to buffer for length-prefixed frame parsing
         this.wsBuffer = concatUint8(this.wsBuffer, data);
@@ -671,7 +689,7 @@ export class CaptureQuestSocket {
   }
 
   private scheduleReconnect() {
-    if(this.reconnectTimer!==null || this.isConnected)return;
+    if(this.reconnectTimer!==null || this.isConnected || this.cancelWebSocketConnect!==null)return;
     if (
       this.retryCount >= this.maxRetries ||
       !this.onClose
@@ -697,7 +715,10 @@ export class CaptureQuestSocket {
       if(this.isConnected)return;
       let ok: boolean;
       if (this.useWebSocket) {
-        ok = await this.connectWebSocket(this.onClose!);
+        const connecting=this.connectWebSocket(this.onClose!);
+        const generation=this.webSocketAttemptGeneration;
+        ok = await connecting;
+        if(generation!==this.webSocketAttemptGeneration)return;
       } else {
         ok = await this.connect(this.url!, this.port!, this.onClose!);
       }
