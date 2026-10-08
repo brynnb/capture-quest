@@ -84,5 +84,28 @@ test("retired automatic attempt cannot schedule retries over a pending manual at
  (socket as unknown as {scheduleReconnect:()=>void}).scheduleReconnect();await vi.advanceTimersByTimeAsync(1000);
  expect(created).toHaveLength(1);
  const manual=socket.connect("localhost",4433,()=>{});await Promise.resolve();await Promise.resolve();
- expect(vi.getTimerCount()).toBe(0);created[1].onopen!();expect(await manual).toBe(true);socket.close(false);
+ // Only the new attempt's setup deadline remains; no retired retry timer.
+ expect(vi.getTimerCount()).toBe(1);created[1].onopen!();expect(await manual).toBe(true);socket.close(false);
+});
+
+test("retirement rejects FIFO requests before a replacement can supply their response",async()=>{
+ vi.useFakeTimers();const created=fakeWebSockets();const socket=new CaptureQuestSocket({allowReconnect:false});
+ const connect=socket.connect("localhost",4433,()=>{});created[0].onopen!();await connect;
+ let result="pending";
+ void socket.sendJsonRequest(OpCodes.ValidateNameRequest,OpCodes.ValidateNameResponse,{}).then(()=>{result="resolved"},error=>{result=String(error)});
+ socket.close(false);await vi.advanceTimersByTimeAsync(0);
+ expect(result).toContain("retired");expect(vi.getTimerCount()).toBe(0);
+ const replacement=socket.connect("localhost",4433,()=>{});created[1].onopen!();await replacement;
+ const fresh=socket.sendJsonRequest<{valid:boolean}>(OpCodes.ValidateNameRequest,OpCodes.ValidateNameResponse,{});
+ const payload=new TextEncoder().encode('{"valid":true}');const bytes=new Uint8Array(6+payload.length);
+ const view=new DataView(bytes.buffer);view.setUint32(0,2+payload.length,true);view.setUint16(4,OpCodes.ValidateNameResponse,true);bytes.set(payload,6);
+ created[1].onmessage!(new MessageEvent("message",{data:bytes.buffer}));expect(await fresh).toEqual({valid:true});socket.close(false);
+});
+
+test("WebSocket setup expires at the existing transport deadline and fences a late open",async()=>{
+ vi.useFakeTimers();const created=fakeWebSockets();const socket=new CaptureQuestSocket({allowReconnect:false});
+ const connect=socket.connect("localhost",4433,()=>{});const open=created[0].onopen!;
+ let result:boolean|undefined;void connect.then(value=>{result=value});
+ await vi.advanceTimersByTimeAsync(8000);expect(result).toBe(false);
+ open();expect(socket.isConnected).toBe(false);expect(created[0].close).toHaveBeenCalledOnce();expect(vi.getTimerCount()).toBe(0);
 });

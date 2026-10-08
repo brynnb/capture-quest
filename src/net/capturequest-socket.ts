@@ -415,6 +415,7 @@ export class CaptureQuestSocket {
 
   public close(scheduleReconnect: boolean = true) {
     this.clearReconnectTimer();
+    this.retirePendingRequests();
     // Observers must see an unavailable connection before retirement can
     // synchronously trigger another read.
     this.isClosing = true;
@@ -442,6 +443,7 @@ export class CaptureQuestSocket {
   // ——— WebSocket fallback ———
 
   private retireWebSocket() {
+    if(this.ws || this.cancelWebSocketConnect)this.retirePendingRequests();
     this.webSocketAttemptGeneration++;
     const cancel=this.cancelWebSocketConnect;this.cancelWebSocketConnect=null;cancel?.();
     if(this.ws){
@@ -450,6 +452,15 @@ export class CaptureQuestSocket {
     }
     this.wsBuffer=new Uint8Array(0);
     if(this.heartbeatInterval){clearInterval(this.heartbeatInterval);this.heartbeatInterval=null;}
+  }
+
+  private retirePendingRequests() {
+    // Untagged replies cannot cross a physical transport boundary. Authentication
+    // read-generation changes on the same socket do not reorder its FIFO queue.
+    const queues=[...this.pendingRequests.values()];this.pendingRequests.clear();
+    for(const queue of queues)for(const pending of queue){
+      clearTimeout(pending.timeout);pending.reject(new Error("Connection session retired"));
+    }
   }
 
   private async connectWebSocket(onClose: () => void): Promise<boolean> {
@@ -467,13 +478,19 @@ export class CaptureQuestSocket {
       ws.binaryType = "arraybuffer";
       const owns=()=>this.ws===ws;
       let settled=false;
+      let setupTimeout:ReturnType<typeof setTimeout>|undefined;
       const finish=(connected:boolean)=>{
         if(settled)return;settled=true;
+        if(setupTimeout!==undefined)clearTimeout(setupTimeout);
         if(this.cancelWebSocketConnect===cancel)this.cancelWebSocketConnect=null;
         resolve(connected);
       };
       const cancel=()=>finish(false);
       this.cancelWebSocketConnect=cancel;
+      setupTimeout=setTimeout(()=>{
+        finish(false);
+        if(owns())this.close(true);
+      },TRANSPORT_CONNECT_TIMEOUT_MS);
 
       ws.onopen = () => {
         if(!owns()){finish(false);return;}

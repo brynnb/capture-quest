@@ -7,7 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-WebSocket attempts settle on retirement and callbacks use the owned instance,
+WebSocket setup uses the existing deadline and FIFO requests retire with transport,
+following `849b797`: WebSocket attempts settle on retirement and callbacks use the owned instance,
 following `208c5a2`: owned reconnect timers and rendered informational process-replacement acceptance,
 following `82c87cc`: informational read boundary review rejects incomplete/wrong-kind data and
 suppresses same-turn abandoned dispatch, following `6600612`:
@@ -41,6 +42,37 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## WebSocket setup deadline and FIFO transport retirement (2026-10-08)
+
+Two regressions failed before this checkpoint: an old FIFO request remained
+pending after close, and an unopened WebSocket remained unresolved after the
+existing transport setup limit. Pending FIFO queues now clear and reject at
+physical transport retirement, with their timers removed. The replacement's
+response settles only its fresh request. Read-generation changes for
+authentication on the same physical connection do not reorder its FIFO queue.
+
+WebSocket setup now uses the existing `TRANSPORT_CONNECT_TIMEOUT_MS=8000` limit.
+Expiry settles failure, retires the owning socket through the existing close
+path, and cannot be revived by its captured late-open callback. The setup timer
+is cleared on success, cancellation and failure; automatic reconnect remains
+governed by the existing timer/attempt ownership. The pending-manual regression
+requires exactly its one setup deadline, with no stale retry timer.
+
+Nine socket-lifetime checks and 55 related network/read/preference/character
+tests passed. Typechecking, production build, runtime asset validation and diff
+checks passed; existing build warnings remain. The actual pending-view SIGKILL
+and reentry check passed again in 6.9s at
+`/var/tmp/capturequest-rendered.PMRM8E`: owned PID `2693179` exited `137`,
+replacement `2693506` served generation 1. No Go or wire change required a broad
+Go rerun.
+
+Next: finish native WebTransport continuation and read-loop ownership. FIFO
+consumers still include `authService`, `questApi` and `DialogueService`; late
+untagged replies after timeout on the same connection remain a protocol audit,
+not a solved association guarantee. The historical restore timeout and Repel
+click remain unattributed. All five roadmap areas remain open. No push,
+deployment or production acceptance.
 
 ## WebSocket attempt and callback ownership (2026-10-08)
 
