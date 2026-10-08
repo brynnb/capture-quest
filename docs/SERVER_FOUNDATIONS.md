@@ -28,6 +28,38 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Flag writer commit-result boundary (2026-10-08)
+
+`EventFlagManager.writeFlags` previously committed the mutation, then returned
+`LoadFlagsContext`'s error as the write error. A caller cancellation or unavailable
+connection during that second query could therefore report rejection after a
+successful toggle or batch. The writer now reads its complete flag snapshot inside
+the same locked transaction and publishes it through the existing committed-cache
+primitive only after commit succeeds. A snapshot-read failure rolls back the
+mutation; cancellation after successful commit cannot turn it into rejection.
+There is no follow-up query or second transaction on this writer path. The shared
+`eventFlagSnapshotIn` helper was mechanically moved from movement into the flag
+domain file; movement, battle admission and current recovery keep using it.
+
+The new PostgreSQL regression blocks cache publication, observes the committed flag
+from a separate connection, cancels the caller, then releases publication. The
+writer still reports success and publishes both the existing and new flags.
+Previously established rollback, cancellation and concurrent-toggle checks remain;
+focused flag checks passed five repetitions in 3.165 seconds before the final
+commit/cancellation regression was added. Full world and simulator race suites,
+including that regression, passed in 46.134 and 1.069 seconds. Logs are retained
+at `/var/tmp/capturequest-flag-snapshot-full.log`; diff checks passed.
+No new frontend, wire, schema or generated-data contract changed.
+
+Live writers remain serialized by the existing session owner, whose close drains
+publication before unloading flags. This change does not prove ordering between
+independent owners or retire the background/simulator audit. Direct post-commit
+refreshes in other families still need their domain review; missing cached flags
+must not be treated as a universal authorization denial because absent-flag rules
+also exist. The original login timeout remains unattributed. Next: audit preference
+reply and current-read recovery as a complete command family. The full roadmap
+remains active; this checkpoint is local only, without push or deployment.
+
 ## Explicit flag-writer contexts and obsolete boulder path (2026-10-08)
 
 The writer inventory found `SetFlag`, `ResetFlag`, `ToggleFlag` and `SetFlagBatch`

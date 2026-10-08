@@ -147,16 +147,26 @@ func (m *EventFlagManager) ToggleFlag(ctx context.Context, charID int64, flag st
 	return on, err
 }
 func (m *EventFlagManager) writeFlags(ctx context.Context, charID int64, apply func(db.DBTX) error) error {
+	var snapshot *EventFlagManager
 	err := db.Transaction(ctx, m.db, func(tx db.DBTX) error {
 		if err := db.LockCharacter(tx, charID); err != nil {
 			return err
 		}
-		return apply(tx)
+		if err := apply(tx); err != nil {
+			return err
+		}
+		var err error
+		snapshot, err = eventFlagSnapshotIn(tx, charID)
+		return err
 	})
 	if err != nil {
 		return err
 	}
-	return m.LoadFlagsContext(ctx, charID)
+	// Publication uses the committed transaction snapshot: a later refresh error
+	// must never make an accepted toggle/batch appear rejected. Live callers are
+	// serialized by their existing session owner.
+	m.publishCommittedFlags(charID, snapshot.flags[charID])
+	return nil
 }
 
 func queryEventFlag(database db.DBTX, charID int64, flag string) (bool, error) {
@@ -205,4 +215,24 @@ func (m *EventFlagManager) SetFlagBatch(ctx context.Context, charID int64, flags
 		}
 		return nil
 	})
+}
+
+func eventFlagSnapshotIn(q db.DBTX, charID int64) (*EventFlagManager, error) {
+	rows, err := q.Query(`SELECT flag_name FROM character_event_flags WHERE character_id=$1`, charID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	flags := make(map[string]bool)
+	for rows.Next() {
+		var flag string
+		if err := rows.Scan(&flag); err != nil {
+			return nil, err
+		}
+		flags[flag] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return &EventFlagManager{flags: map[int64]map[string]bool{charID: flags}}, nil
 }

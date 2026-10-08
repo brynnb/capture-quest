@@ -38,26 +38,6 @@ type movementStepResult struct {
 	Flags                            map[string]bool
 }
 
-func eventFlagSnapshotIn(q db.DBTX, charID int64) (*EventFlagManager, error) {
-	rows, err := q.Query(`SELECT flag_name FROM character_event_flags WHERE character_id=$1`, charID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	flags := make(map[string]bool)
-	for rows.Next() {
-		var flag string
-		if err := rows.Scan(&flag); err != nil {
-			return nil, err
-		}
-		flags[flag] = true
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return &EventFlagManager{flags: map[int64]map[string]bool{charID: flags}}, nil
-}
-
 // Position, durable counters, selected battle and forced destinations have one
 // commit. Returned presentation plans stay private until the outer commit.
 func commitMovementStep(ctx context.Context, wh *WorldHandler, charID int64, c movementStepCandidate) (movementStepResult, error) {

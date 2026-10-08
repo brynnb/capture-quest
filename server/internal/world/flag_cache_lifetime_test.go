@@ -164,3 +164,50 @@ func TestFlagWriterCancellationWhileCharacterLockedDoesNotCommit(t *testing.T) {
 		t.Fatal("cancelled mutation published cache")
 	}
 }
+
+func TestFlagCommitPublishesSnapshotAfterCallerCancellation(t *testing.T) {
+	database := testdb.Postgres(t)
+	testdb.Exec(t, database, `INSERT INTO character_data(id,name) VALUES(42,'flags'); INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'EXISTING')`)
+	manager := NewEventFlagManager(database)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	// Hold only the cache publication lock. The database transaction must still
+	// commit, then wait here; cancellation at that point cannot reject the write.
+	manager.mu.Lock()
+	locked := true
+	defer func() {
+		if locked {
+			manager.mu.Unlock()
+		}
+	}()
+	finished := make(chan error, 1)
+	go func() { finished <- manager.SetFlag(ctx, 42, "COMMITTED") }()
+	deadline := time.Now().Add(time.Second)
+	for {
+		var committed bool
+		if err := database.QueryRow(`SELECT EXISTS(SELECT 1 FROM character_event_flags WHERE character_id=42 AND flag_name='COMMITTED')`).Scan(&committed); err != nil {
+			t.Fatal(err)
+		}
+		if committed {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("writer did not commit while cache publication was blocked")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	cancel()
+	manager.mu.Unlock()
+	locked = false
+	select {
+	case err := <-finished:
+		if err != nil {
+			t.Fatalf("committed flag reported rejection after cancellation: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("committed writer did not finish publication")
+	}
+	if !manager.CheckFlag(42, "EXISTING") || !manager.CheckFlag(42, "COMMITTED") {
+		t.Fatal("committed complete snapshot was not published")
+	}
+}
