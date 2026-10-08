@@ -121,7 +121,6 @@ export class NetworkBridge {
       case OpCodes.PhaserInstantWarpResponse:
       case OpCodes.PhaserWarpActivateResponse:
       case OpCodes.PhaserTilesResponse:
-      case OpCodes.PhaserOverworldMapsResponse:
       case OpCodes.PhaserActorsResponse:
       case OpCodes.PhaserWarpsResponse:
       case OpCodes.PhaserActorPositionUpdate:

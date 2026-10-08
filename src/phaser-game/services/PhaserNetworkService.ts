@@ -3,7 +3,7 @@ import { openShopForActor, buyShopItem, sellShopItem } from "./ShopCommandServic
 import type { BattleCommandResponse, SafariBattleActionResponse, BattleCommandError } from "@/net/generated/world_api";
 import type { GameplayStateRequest, GameplayStateResponse } from "@/net/generated/world_api";
 import type { TrainerEncounterNotifyPayload } from "@/net/generated/protocol";
-import type { CutsceneEndRequest, CutsceneEndResponse, OwnedPlayerPositionRequest, OwnedPlayerPositionResponse, ServerPlayerMovementNotify, PlayerFacingRequest, PlayerFacingResponse, PlayerStepRequest, PlayerStepResponse, PlayerStepCompleteRequest, PlayerStepCompleteResponse, PlayerStepError, PhaserMapInfo, PhaserMapInfoRequest, PhaserMapInfoResponse, PhaserMapLoadRequest, PhaserMapLoadResponse, PhaserMapRequestError, PhaserWarpActivateRequest, PhaserWarpActivateResponse, PhaserInstantWarpRequest, PhaserInstantWarpResponse } from "@/net/generated/protocol";
+import type { CutsceneEndRequest, CutsceneEndResponse, OwnedPlayerPositionRequest, OwnedPlayerPositionResponse, ServerPlayerMovementNotify, PlayerFacingRequest, PlayerFacingResponse, PlayerStepRequest, PlayerStepResponse, PlayerStepCompleteRequest, PlayerStepCompleteResponse, PlayerStepError, PhaserMapInfoRequest, PhaserMapInfoResponse, PhaserMapLoadRequest, PhaserMapLoadResponse, PhaserMapRequestError, PhaserWarpActivateRequest, PhaserWarpActivateResponse, PhaserInstantWarpRequest, PhaserInstantWarpResponse } from "@/net/generated/protocol";
 import type { GameCornerSlotPlayRequest } from "@/net/generated/world_api";
 import type { PhaserMapScriptsRequest } from "@/net/generated/protocol";
 /**
@@ -166,15 +166,7 @@ export function requestTiles(request: PhaserTilesRequest): void {
 /**
  * Request all overworld maps
  */
-export function requestOverworldMaps(): void {
-  if (!WorldSocket.isConnected) {
-    console.warn(
-      "[PhaserNetwork] Not connected - cannot request overworld maps",
-    );
-    return;
-  }
-  NetworkBridge.send({}, OpCodes.PhaserOverworldMapsRequest);
-}
+
 
 /**
  * Request actors for a specific map ID
@@ -306,7 +298,6 @@ export function buyPrize(prizeId: number): void {
 export type PhaserMapInfoHandler = (data: PhaserMapInfoResponse | PhaserMapRequestError) => void;
 export type PhaserMapLoadHandler = (data: PhaserMapLoadResponse | PhaserMapRequestError) => void;
 export type PhaserTilesHandler = (data: PhaserTilesResponse | PhaserTile[]) => void;
-export type PhaserOverworldMapsHandler = (data: PhaserMapInfo[]) => void;
 export type PhaserActorsHandler = (data: import("@/net/generated/world_api").PhaserActorsResponse | PlayerStepError) => void;
 export type PhaserWarpsHandler = (data: import("@/net/generated/world_api").PhaserWarpsResponse | PlayerStepError) => void;
 export type PhaserActorUpdateHandler = (data: PhaserActor) => void;
@@ -358,7 +349,6 @@ const handlers = {
   instantWarp: new Set<(data: PhaserInstantWarpResponse | PhaserMapRequestError) => void>(),
   warpActivation: new Set<(data: PhaserWarpActivateResponse | PhaserMapRequestError) => void>(),
   tiles: new Set<PhaserTilesHandler>(),
-  overworldMaps: new Set<PhaserOverworldMapsHandler>(),
   actors: new Set<PhaserActorsHandler>(),
   warps: new Set<PhaserWarpsHandler>(),
   actorUpdate: new Set<PhaserActorUpdateHandler>(),
@@ -450,12 +440,7 @@ export function onTiles(handler: PhaserTilesHandler): () => void {
   return () => handlers.tiles.delete(handler);
 }
 
-export function onOverworldMaps(
-  handler: PhaserOverworldMapsHandler,
-): () => void {
-  handlers.overworldMaps.add(handler);
-  return () => handlers.overworldMaps.delete(handler);
-}
+
 
 export function onActors(handler: PhaserActorsHandler): () => void {
   handlers.actors.add(handler);
@@ -610,16 +595,7 @@ export function dispatchPhaserResponse(opcode: number, data: unknown): void {
     case OpCodes.PhaserTilesResponse:
       handlers.tiles.forEach((h) => h(data as PhaserTilesResponse | PhaserTile[]));
       break;
-    case OpCodes.PhaserOverworldMapsResponse:
-      handlers.overworldMaps.forEach((h) =>
-        h(
-          normalizePhaserArrayPayload<PhaserMapInfo>(
-            data,
-            "overworld maps response",
-          ),
-        ),
-      );
-      break;
+
     case OpCodes.PhaserActorsResponse:
       handlers.actors.forEach((h) =>
         h(data as import("@/net/generated/world_api").PhaserActorsResponse | PlayerStepError),

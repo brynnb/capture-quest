@@ -12,10 +12,6 @@ import (
 func TestMapCatalogProjections(t *testing.T) {
 	database := testdb.Postgres(t)
 	s := New(database)
-	empty, err := s.OverworldMaps(context.Background())
-	if err != nil || empty == nil || len(empty) != 0 {
-		t.Fatalf("empty list must be an array: %+v %v", empty, err)
-	}
 	info, err := s.OverworldInfo(context.Background())
 	if err != nil || info.TileMinX != nil || info.Width != 0 {
 		t.Fatalf("empty catalog must not invent bounds: %+v %v", info, err)
@@ -24,10 +20,6 @@ func TestMapCatalogProjections(t *testing.T) {
  (9,'NINE',20,30,4,1),(2,'TWO',10,12,NULL,1),(38,'ROOM',8,8,NULL,0);
  INSERT INTO phaser_tiles(map_id,x,y,tile_image_id,is_tile_erased) VALUES
  (NULL,-10,-20,1,0),(NULL,5,7,1,0),(NULL,-100,-100,1,1),(38,100,100,1,0);`)
-	maps, err := s.OverworldMaps(context.Background())
-	if err != nil || len(maps) != 2 || maps[0].ID != 2 || maps[1].ID != 9 || maps[0].TilesetID != nil || *maps[1].TilesetID != 4 {
-		t.Fatalf("catalog list: %+v %v", maps, err)
-	}
 	room, err := s.MapInfo(context.Background(), 38)
 	if err != nil || room.Name != "ROOM" || room.IsOverworld != 0 || room.TileMinX != nil {
 		t.Fatalf("interior: %+v %v", room, err)
@@ -47,7 +39,6 @@ func TestMapCatalogCancellationDeadlineAndRetry(t *testing.T) {
 		load        func(context.Context) error
 	}{
 		{"map", "phaser_maps", func(ctx context.Context) error { _, err := s.MapInfo(ctx, 2); return err }},
-		{"list", "phaser_maps", func(ctx context.Context) error { _, err := s.OverworldMaps(ctx); return err }},
 		{"bounds", "phaser_tiles", func(ctx context.Context) error { _, err := s.OverworldInfo(ctx); return err }},
 	}
 	for _, tc := range cases {

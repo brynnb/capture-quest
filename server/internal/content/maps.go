@@ -35,25 +35,3 @@ func (s *Service) OverworldInfo(ctx context.Context) (protocol.PhaserMapInfo, er
 	}
 	return m, nil
 }
-
-func (s *Service) OverworldMaps(ctx context.Context) ([]protocol.PhaserMapInfo, error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	rows, err := s.database.QueryContext(ctx, `SELECT id,name,width,height,tileset_id,is_overworld FROM phaser_maps WHERE is_overworld=1 ORDER BY id`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	maps := make([]protocol.PhaserMapInfo, 0)
-	for rows.Next() {
-		var m protocol.PhaserMapInfo
-		if err := rows.Scan(&m.ID, &m.Name, &m.Width, &m.Height, &m.TilesetID, &m.IsOverworld); err != nil {
-			return nil, err
-		}
-		maps = append(maps, m)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return maps, nil
-}

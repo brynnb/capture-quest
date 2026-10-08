@@ -43,10 +43,11 @@ const (
 	QuestTurnInResponse   OpCode = 33
 
 	// Phaser map/data opcodes.
-	PhaserMapInfoRequest         OpCode = 34
-	PhaserMapInfoResponse        OpCode = 35
-	PhaserTilesRequest           OpCode = 36
-	PhaserTilesResponse          OpCode = 37
+	PhaserMapInfoRequest  OpCode = 34
+	PhaserMapInfoResponse OpCode = 35
+	PhaserTilesRequest    OpCode = 36
+	PhaserTilesResponse   OpCode = 37
+	// Reserved: region metadata comes from the shared static catalog.
 	PhaserOverworldMapsRequest   OpCode = 38
 	PhaserOverworldMapsResponse  OpCode = 39
 	PhaserActorsRequest          OpCode = 40

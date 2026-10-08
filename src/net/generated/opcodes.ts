@@ -52,6 +52,9 @@ export const PhaserMapInfoRequest: OpCode = 34;
 export const PhaserMapInfoResponse: OpCode = 35;
 export const PhaserTilesRequest: OpCode = 36;
 export const PhaserTilesResponse: OpCode = 37;
+/**
+ * Reserved: region metadata comes from the shared static catalog.
+ */
 export const PhaserOverworldMapsRequest: OpCode = 38;
 export const PhaserOverworldMapsResponse: OpCode = 39;
 export const PhaserActorsRequest: OpCode = 40;

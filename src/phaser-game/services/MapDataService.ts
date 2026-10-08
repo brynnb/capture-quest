@@ -75,15 +75,6 @@ function normalizeCorrelatedTiles(data: PhaserTilesResponse): PhaserTile[] {
   return tiles as PhaserTile[];
 }
 
-/**
- * Create a promise that rejects after a timeout
- */
-function createTimeoutPromise<T>(ms: number, errorMessage: string): Promise<T> {
-  return new Promise((_, reject) => {
-    setTimeout(() => reject(new Error(errorMessage)), ms);
-  });
-}
-
 export class MapDataService {
   private static readonly MAX_CACHED_OVERWORLD_CHUNKS = 18;
   // Cache of known tile image IDs from tiles
@@ -308,28 +299,6 @@ export class MapDataService {
       });
     }
     return tileImages;
-  }
-
-  /**
-   * Fetch all overworld maps
-   */
-  async fetchOverworldMaps(): Promise<PhaserMapInfo[]> {
-    if (!PhaserNet.isConnected()) {
-      throw new Error("Not connected to server - please log in first");
-    }
-
-    const dataPromise = new Promise<PhaserMapInfo[]>((resolve) => {
-      const unsubscribe = PhaserNet.onOverworldMaps((data) => {
-        unsubscribe();
-        resolve(data || []);
-      });
-      PhaserNet.requestOverworldMaps();
-    });
-
-    return Promise.race([
-      dataPromise,
-      createTimeoutPromise<PhaserMapInfo[]>(REQUEST_TIMEOUT_MS, "Timeout fetching overworld maps")
-    ]);
   }
 
   /**

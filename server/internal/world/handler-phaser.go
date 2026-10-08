@@ -540,15 +540,10 @@ func HandlePhaserTilesRequest(ses *session.Session, payload []byte, wh *WorldHan
 	return false
 }
 
-// HandlePhaserOverworldMapsRequest returns all overworld maps
+// Reserved legacy list query. Map metadata comes from the shared catalog; do
+// not restore another response/cache path for callers removed from the client.
 func HandlePhaserOverworldMapsRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	maps, err := wh.Content.OverworldMaps(ses.CommandContext())
-	if err != nil {
-		log.Printf("[Phaser] Error querying overworld maps: %v", err)
-		ses.SendStreamJSON(protocol.ErrorResponse{Error: "Could not load overworld maps."}, opcodes.PhaserOverworldMapsResponse)
-		return false
-	}
-	ses.SendStreamJSON(maps, opcodes.PhaserOverworldMapsResponse)
+	ses.SendStreamJSON(protocol.ErrorResponse{Error: "Overworld list query is no longer supported; reload the client."}, opcodes.PhaserOverworldMapsResponse)
 	return false
 }
 

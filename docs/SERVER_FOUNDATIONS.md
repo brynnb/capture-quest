@@ -28,6 +28,41 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Unused overworld-list retirement and active tile audit (2026-10-08)
+
+The complete caller search found no consumers of `fetchOverworldMaps`, its network
+request/subscription, or the old map REST facade. The shared catalog is the active
+metadata provider. The unused network list, service query, subscription/dispatch,
+detached timeout helper and REST exports are retired. Opcodes 38/39 remain reserved
+and return explicit unsupported/reload rejection without a database dependency.
+Active individual-map information and unified-overworld tile bounds remain in the
+content service. Their projection, cancellation and retry tests remain; only tests
+for the removed unused list were removed with its implementation.
+
+Focused world/content checks passed in 1.264 and 1.412 seconds, including the
+reserved-list rejection with both database handles unavailable and the active map
+catalog checks. 46 existing client checks passed across map requests, tile responses,
+chunk cache and shared catalog loading. Canonical Tygo, typecheck, asset validation,
+production build (Vite 3.36 seconds) and diff checks passed. Logs are retained under
+`/var/tmp/capturequest-overworld-retirement-*`. No new rendered or production
+acceptance is claimed. No extractor, schema or runtime-asset contract changed.
+
+The active tile reader is different and remains open. Source tracing found
+`HandlePhaserTilesRequest` using global `Query` without its command cancellation;
+`requestTileBatch` has a separate promise/timer and no AbortSignal. Request IDs are
+`tiles-${++this.tileRequestSequence}` with a per-instance counter, so different
+MapDataService instances can mint the same ID while sharing response listeners.
+Raw legacy arrays are still accepted without correlation. These are source-derived
+risks to verify through a focused collision/retirement regression, not a claimed
+production incident or attribution for the original login timeout.
+
+Next: migrate active tile reads through shared correlation with explicit interior/
+overworld timeout policy, viewer/map validation, request retirement and injected
+storage; review event-flag projection at that boundary. Preserve canonical tile
+IDs/URLs and chunk ownership. The broader roadmap and original restore investigation
+remain active. This checkpoint is local only, without push, deployment or production
+mutation.
+
 ## Snapshot review and unused map-music query retirement (2026-10-08)
 
 The shared snapshot review now includes an attempted INSERT through its repository

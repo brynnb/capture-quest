@@ -24,3 +24,19 @@ func TestRetiredMapMusicQueryRejectsWithoutDatabaseDependency(t *testing.T) {
 		t.Fatalf("retired query accepted: %+v %v", reply, err)
 	}
 }
+
+func TestRetiredOverworldListRejectsWithoutDatabaseDependency(t *testing.T) {
+	old := db.GlobalWorldDB
+	db.GlobalWorldDB = nil
+	t.Cleanup(func() { db.GlobalWorldDB = old })
+	messages := &recordingMessenger{}
+	ses := &session.Session{Authenticated: true, Messenger: messages}
+	HandlePhaserOverworldMapsRequest(ses, []byte(`{}`), &WorldHandler{})
+	if len(messages.streams) != 1 || messages.streams[0].opcode != opcodes.PhaserOverworldMapsResponse {
+		t.Fatal("missing retired list rejection")
+	}
+	var reply protocol.ErrorResponse
+	if err := json.Unmarshal(messages.streams[0].payload, &reply); err != nil || reply.Success || reply.Error == "" {
+		t.Fatalf("retired list accepted: %+v %v", reply, err)
+	}
+}
