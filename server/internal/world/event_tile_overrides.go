@@ -31,6 +31,18 @@ type eventTileOverride struct {
 	Label              sql.NullString
 }
 
+// Ordered rules use the last eligible override, matching presentation and
+// collision projection. Publishers must not choose the first matching rule.
+func eligibleEventTileOverrides(charID int64, flags *EventFlagManager, overrides []eventTileOverride) map[string]eventTileOverride {
+	selected := make(map[string]eventTileOverride)
+	for _, override := range overrides {
+		if override.eventTileEligible(charID, flags) {
+			selected[tileKey(override.X, override.Y)] = override
+		}
+	}
+	return selected
+}
+
 // Project one owned database snapshot. An unavailable override/image source is
 // a failed read, never permission to publish plausible base tiles.
 func applyEventTileOverridesContext(ctx context.Context, database db.ReadDBTX, charID int64, mapID int, tiles []PhaserTile) ([]PhaserTile, error) {
@@ -45,12 +57,7 @@ func applyEventTileOverridesContext(ctx context.Context, database db.ReadDBTX, c
 	if err != nil {
 		return nil, err
 	}
-	byCoord := make(map[string]eventTileOverride)
-	for _, override := range overrides {
-		if override.eventTileEligible(charID, flags) {
-			byCoord[tileKey(override.X, override.Y)] = override
-		}
-	}
+	byCoord := eligibleEventTileOverrides(charID, flags, overrides)
 	properties := make(map[int]tileRuntimeProperties)
 	for i := range tiles {
 		override, ok := byCoord[tileKey(tiles[i].X, tiles[i].Y)]
@@ -110,61 +117,45 @@ func EventTileRawFootTileOverrides(charID int64, mapID int, efm *EventFlagManage
 	return rawFootTiles
 }
 
-func EventTileStatesForCharacter(charID int64, mapID int, efm *EventFlagManager) ([]EventTileState, error) {
-	overrides, err := eventTileOverridesForMap(mapID)
+func EventTileStatesForCharacter(ctx context.Context, database *sql.DB, charID int64, mapID int) ([]EventTileState, error) {
+	return db.ReadSnapshot(ctx, database, func(ctx context.Context, q db.ReadDBTX) ([]EventTileState, error) {
+		return eventTileStatesIn(ctx, q, charID, mapID)
+	})
+}
+func eventTileStatesIn(ctx context.Context, q db.ReadDBTX, charID int64, mapID int) ([]EventTileState, error) {
+	flags, err := eventFlagSnapshotIn(q, charID)
 	if err != nil {
 		return nil, err
 	}
-	if len(overrides) == 0 {
-		return nil, nil
+	overrides, err := eventTileOverridesForMapContext(ctx, q, mapID)
+	if err != nil {
+		return nil, err
 	}
-
-	states := make([]EventTileState, 0, len(overrides))
+	selected := eligibleEventTileOverrides(charID, flags, overrides)
+	states := make([]EventTileState, 0)
 	seen := make(map[string]bool)
-	for _, override := range overrides {
-		key := tileKey(override.X, override.Y)
+	for _, rule := range overrides {
+		key := tileKey(rule.X, rule.Y)
 		if seen[key] {
 			continue
 		}
 		seen[key] = true
-		state, ok := currentEventTileState(charID, mapID, efm, override.X, override.Y, overrides)
-		if !ok {
-			continue
+		var state EventTileState
+		if chosen, ok := selected[key]; ok {
+			props, err := tileRuntimePropertiesForTileImageContext(ctx, q, chosen.TileImageID)
+			if err != nil {
+				return nil, fmt.Errorf("event tile map=%d coordinate=(%d,%d) image=%d: %w", mapID, chosen.X, chosen.Y, chosen.TileImageID, err)
+			}
+			state = EventTileState{X: chosen.X, Y: chosen.Y, TileImageID: chosen.TileImageID, CollisionType: chosen.CollisionType, RawFootTileID: props.RawFootTileID, TalkOverTile: props.TalkOverTile, Label: nullStringValue(chosen.Label)}
+		} else {
+			state, err = baseEventTileStateIn(q, mapID, rule.X, rule.Y)
+			if err != nil {
+				return nil, fmt.Errorf("base event tile map=%d coordinate=(%d,%d): %w", mapID, rule.X, rule.Y, err)
+			}
 		}
 		states = append(states, state)
 	}
 	return states, nil
-}
-
-func currentEventTileState(charID int64, mapID int, efm *EventFlagManager, x, y int, overrides []eventTileOverride) (EventTileState, bool) {
-	for _, override := range overrides {
-		if override.X != x || override.Y != y {
-			continue
-		}
-		if override.eventTileEligible(charID, efm) {
-			props := tileRuntimePropertiesForTileImage(override.TileImageID)
-			return EventTileState{
-				X:             override.X,
-				Y:             override.Y,
-				TileImageID:   override.TileImageID,
-				CollisionType: override.CollisionType,
-				RawFootTileID: props.RawFootTileID,
-				TalkOverTile:  props.TalkOverTile,
-				Label:         nullStringValue(override.Label),
-			}, true
-		}
-	}
-
-	base, err := baseEventTileState(mapID, x, y)
-	if err != nil {
-		log.Printf("[EventTiles] Failed to load base tile for map %d (%d,%d): %v", mapID, x, y, err)
-		return EventTileState{}, false
-	}
-	return base, true
-}
-
-func baseEventTileState(mapID, x, y int) (EventTileState, error) {
-	return baseEventTileStateIn(db.GlobalWorldDB.DB, mapID, x, y)
 }
 
 func baseEventTileStateIn(database db.DBTX, mapID, x, y int) (EventTileState, error) {
@@ -191,15 +182,26 @@ func sendEventTileStatesForSession(ses *session.Session, charID int64, mapName s
 	if ses == nil || wh == nil {
 		return
 	}
-	mapID := eventTileMapID(mapName, ses)
-	if mapID == 0 {
-		return
+	type publication struct {
+		mapID  int
+		states []EventTileState
 	}
-	states, err := EventTileStatesForCharacter(charID, mapID, wh.EventFlags)
+	view, err := db.ReadSnapshot(ses.CommandContext(), wh.database, func(ctx context.Context, q db.ReadDBTX) (publication, error) {
+		mapID, err := eventTileMapIDContext(ctx, q, mapName, ses)
+		if err != nil {
+			return publication{}, err
+		}
+		states, err := eventTileStatesIn(ctx, q, charID, mapID)
+		if err != nil {
+			return publication{}, err
+		}
+		return publication{mapID: mapID, states: states}, nil
+	})
 	if err != nil {
-		log.Printf("[EventTiles] Failed to resolve tile states for char %d map %d: %v", charID, mapID, err)
+		log.Printf("[EventTiles] Character %d map %q publication read: %v", charID, mapName, err)
 		return
 	}
+	mapID, states := view.mapID, view.states
 	if len(states) == 0 {
 		return
 	}
@@ -221,17 +223,18 @@ func sendEventTileStatesForSession(ses *session.Session, charID int64, mapName s
 	ses.SendStreamJSON(TileEditorBroadcastPayload{Tiles: edits, MapID: mapID}, opcodes.TileEditorBroadcast)
 }
 
-func eventTileMapID(mapName string, ses *session.Session) int {
+func eventTileMapIDContext(ctx context.Context, database db.ContextDBTX, mapName string, ses *session.Session) (int, error) {
 	if mapName != "" {
 		var mapID int
-		if err := db.GlobalWorldDB.DB.QueryRow(`SELECT id FROM phaser_maps WHERE name = $1`, mapName).Scan(&mapID); err == nil {
-			return mapID
+		if err := database.QueryRowContext(ctx, `SELECT id FROM phaser_maps WHERE name=$1`, mapName).Scan(&mapID); err != nil {
+			return 0, fmt.Errorf("map %q: %w", mapName, err)
 		}
+		return mapID, nil
 	}
-	if ses != nil {
-		return ses.MapID
+	if ses == nil {
+		return 0, fmt.Errorf("event tile map context is required")
 	}
-	return 0
+	return ses.MapID, nil
 }
 
 func eventTileOverridesForMap(mapID int) ([]eventTileOverride, error) {

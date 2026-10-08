@@ -742,7 +742,7 @@ func runMapLoad(scenario *Scenario, applied *AppliedFixture, initial *Snapshot, 
 }
 
 func eventTileStates(applied *AppliedFixture, efm *world.EventFlagManager) ([]TileState, error) {
-	states, err := world.EventTileStatesForCharacter(applied.CharacterID, applied.MapID, efm)
+	states, err := world.EventTileStatesForCharacter(context.Background(), db.GlobalWorldDB.DB, applied.CharacterID, applied.MapID)
 	if err != nil {
 		return nil, err
 	}

@@ -28,6 +28,42 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Event-tile publication uses the same authoritative priority (2026-10-08)
+
+Publication tracing found `currentEventTileState` returning the first eligible
+ordered rule, while tile reads and collision maps selected the last. The publisher
+also used cached flags and global/background map, rule, property and base-tile
+reads, with error paths that silently skipped states or guessed the session map.
+`eligibleEventTileOverrides` now expresses the established last-eligible policy for
+both the read projection and publication. Ordered output deduplicates coordinates
+without changing that policy.
+
+Published states now read map identity, committed flags, rules and required
+properties/base tiles in one `db.ReadSnapshot`. Failed named-map lookup does not
+fall back to the session map; valid map ID zero is no longer discarded. Failure
+returns no partial state list or packet. The simulator explicitly supplies its
+fixture database/context through the same state reader. The sole remaining caller
+of the removed base-tile wrapper was CUT's preflight; it now uses the injected
+snapshot read. Other field-action policies/writers remain their own audit.
+
+The regression disables the global pool, uses one connection and deliberately
+stales cached flags. Two eligible rules at one coordinate must select the same
+final image/properties in the tile reply, state reader and actual publication.
+A missing named map emits no guessed update. Missing required properties retain
+map/coordinate/image errors. Focused world checks passed in 3.664 seconds, followed
+by full world/simulator race suites in 46.464 and 1.069 seconds. Evidence is retained
+under `/var/tmp/capturequest-event-publication-*`. Four rendered multiplayer,
+private-puzzle and scripted-event cases passed in 43.2 seconds in
+`/var/tmp/capturequest-rendered.MD64ro`. The runner compiled the changed backend
+and stopped its private runtime. Diff checks passed. No frontend, schema, wire or generated asset changed.
+
+Remaining: client cached-view/read versus streamed-update ordering, missing/erased
+base-state policy, other legacy collision/publication query owners and broader
+field-action migration. The original restore timeout remains unattributed, and
+all five roadmap areas remain active. Next: audit the client tile update/cache
+boundary before closing world-presentation coverage. This is a local checkpoint,
+without push, deployment or production mutation.
+
 ## Tile event projection joins the authoritative read snapshot (2026-10-08)
 
 The projection review found another global/background dependency after the tile

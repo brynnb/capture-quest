@@ -74,16 +74,37 @@ func TestTileProjectionUsesCommittedFlagsAndRejectsUnavailableMetadata(t *testin
 	if !projected.Success || len(projected.Tiles) != 1 || projected.Tiles[0].TileImageID != 2 || projected.Tiles[0].CollisionType != 0 || projected.Tiles[0].RawFootTileID == nil || *projected.Tiles[0].RawFootTileID != 2 || !projected.Tiles[0].TalkOverTile {
 		t.Fatalf("projection used stale cache/default properties: %+v", projected)
 	}
+	testdb.Exec(t, database, `INSERT INTO phaser_tile_images(id,image_path,raw_foot_tile_id,talk_over_tile) VALUES(3,'priority.png',3,false); INSERT INTO phaser_tile_properties(tile_image_id,collision_type) VALUES(3,0); INSERT INTO phaser_event_tile_overrides(map_id,map_name,x,y,tile_image_id,collision_type,requires_flag) VALUES(50,'GATE',1,1,3,0,'OPEN')`)
+	projected = read()
+	states, err := EventTileStatesForCharacter(context.Background(), database, 42, 50)
+	if err != nil || len(states) != 1 || projected.Tiles[0].TileImageID != 3 || states[0].TileImageID != 3 || states[0].RawFootTileID == nil || *states[0].RawFootTileID != 3 {
+		t.Fatalf("read/publisher override priority differs: %+v %+v %v", projected, states, err)
+	}
+	messages.streams = nil
+	sendEventTileStatesForSession(ses, 42, "GATE", wh)
+	var publication TileEditorBroadcastPayload
+	if len(messages.streams) != 1 {
+		t.Fatal("missing owned publication")
+	}
+	if err := json.Unmarshal(messages.streams[0].payload, &publication); err != nil || len(publication.Tiles) != 1 || publication.Tiles[0].TileImageID != 3 {
+		t.Fatalf("publication used global/cache/first override: %+v %v", publication, err)
+	}
+	messages.streams = nil
+	ses.MapID = 50
+	sendEventTileStatesForSession(ses, 42, "MISSING_MAP", wh)
+	if len(messages.streams) != 0 {
+		t.Fatal("failed named-map lookup published through guessed session map")
+	}
 	testdb.Exec(t, database, `DELETE FROM character_event_flags WHERE character_id=42`)
 	wh.EventFlags.publishCommittedFlags(42, map[string]bool{"OPEN": true})
 	projected = read()
 	if !projected.Success || projected.Tiles[0].TileImageID != 1 {
 		t.Fatalf("stale positive flag granted override: %+v", projected)
 	}
-	testdb.Exec(t, database, `INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'OPEN'); DELETE FROM phaser_tile_properties WHERE tile_image_id=2`)
+	testdb.Exec(t, database, `INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'OPEN'); DELETE FROM phaser_tile_properties WHERE tile_image_id=3`)
 	projected = read()
 	var failed protocol.PlayerStepError
-	if err := json.Unmarshal(messages.streams[0].payload, &failed); err != nil || projected.Success || failed.Error == "" || !strings.Contains(failed.Error, "image=2") {
+	if err := json.Unmarshal(messages.streams[0].payload, &failed); err != nil || projected.Success || failed.Error == "" || !strings.Contains(failed.Error, "image=3") {
 		t.Fatalf("missing image metadata became base-tile success: %+v %v", failed, err)
 	}
 }

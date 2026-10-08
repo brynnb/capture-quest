@@ -114,7 +114,9 @@ func handleCutFieldMove(ses *session.Session, req FieldMoveUseRequestPayload, wh
 		return false
 	}
 
-	state, err := baseEventTileState(targetMapID, targetX, targetY)
+	state, err := db.ReadSnapshot(ses.CommandContext(), wh.database, func(_ context.Context, q db.ReadDBTX) (EventTileState, error) {
+		return baseEventTileStateIn(q, targetMapID, targetX, targetY)
+	})
 	if err != nil || state.RawFootTileID == nil || *state.RawFootTileID != cuttableTreeRawFootTileID {
 		sendFieldMoveUseError(ses, "There isn't anything to CUT.")
 		return false
