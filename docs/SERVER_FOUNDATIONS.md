@@ -28,6 +28,44 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Late peer transport read acceptance (2026-10-08)
+
+Two isolated browser contexts now exercise the existing scene-owned actor read and
+real peer spawn/despawn/movement packets. The observer holds a successful actor
+snapshot containing the peer while that peer quits. Releasing it cannot resurrect
+the peer. In the replacement case, the peer reloads its connection, authenticates
+again and reenters the same character, then moves from (3,6) to (4,6). The observer
+receives the new stream before the old snapshot is released; it must retain exactly
+one peer at (4,6), without a rewind or duplicate. Server evidence confirms the
+replacement character entered through session IDs 4 then 5.
+
+The read must settle successfully within its existing transport timeout; the test
+handles pending promise settlement explicitly rather than relying on an unhandled
+rejection. It does not extend the production timeout or bypass actor projection.
+Initial fixture failures used `objectType` instead of the test bridge's actual
+`type` field, then attempted the blocked bed at map 38 (3,5). Canonical SQLite rows
+confirm (3,5) has collision 0 and (4,6) collision 1; correcting the field and source-
+verified movement target preserves the lifecycle assertions and adds an exact
+single-peer assertion. No application workaround was needed.
+
+Both final peer cases passed in 13.2s at
+`/var/tmp/capturequest-rendered.APG0FW`. Existing newer-boulder-stream and scene-
+retirement browser cases also passed in the preceding run at
+`/var/tmp/capturequest-rendered.5z5IrU`. The three focused `ActorReadView` checks and
+diff checks pass. This proves real browser transport and actor registry behavior,
+not screenshot pixels or complete lost-notification recovery. Runtime source,
+wire/schema/generated assets remain unchanged in this acceptance checkpoint.
+
+The shared `ActorReadView` and despawn markers already cover this peer lifetime
+case; no second peer-specific coordinator or guard was introduced. Remaining:
+peer read omission/publication ordering without an observed notification,
+reconnect/idle resident recovery, local/simulator/startup/dormant collision APIs
+and the wider command matrix. The original restore timeout and the earlier
+pre-command Repel UI click failure remain unattributed. All five goal areas stay
+active. Next: review the remaining collision API inventory and retire dormant
+paths or propagate explicit owners through real consumers before another family
+migration. This checkpoint is local only, without push or deployment.
+
 ## Peer actor metadata joins one matching movement snapshot (2026-10-08)
 
 The query-free actor constructor still combined immutable presence position/name
