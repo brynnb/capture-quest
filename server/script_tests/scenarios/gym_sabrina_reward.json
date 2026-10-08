@@ -21,7 +21,7 @@
   },
   "trigger": { "type": "map_script", "mapName": "SAFFRON_GYM" },
   "expect": {
-    "scriptLabel": "SaffronGymSabrinaPostBattle",
+    "scriptLabel": "SaffronGymSabrinaReceiveTM46Script",
     "flagsPresent": ["EVENT_BEAT_SABRINA", "EVENT_GOT_MARSHBADGE", "EVENT_GOT_TM46"],
     "inventoryContains": [{ "itemId": 134, "quantity": 1 }],
     "actionTypesContains": ["dialogue", "setFlag", "giveItem"],

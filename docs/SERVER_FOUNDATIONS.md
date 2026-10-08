@@ -28,6 +28,57 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Source-owned gym rewards and shared map-script selection (2026-10-08)
+
+The Lt. Surge label mismatch reflected duplicate ownership: the scenario named a
+reconstructed manual reward, while the runtime selected the extractor-generated
+`VermilionGymLTSurgeReceiveTM24Script`. Original `VermilionGym.asm` defines that
+label and its GiveItem/TM/badge state machine. Corpus review found all eight gyms
+have native `gym_leader_tm_reward_v1` candidates. Seven use the same victory flag
+as the manual counterpart and guard repeat delivery by the source TM-received flag.
+Their manual duplicate files are retired, and scenarios assert the native labels
+while preserving badge, inventory, action and absent-battle assertions.
+
+Giovanni is deliberately retained pending an explicit migration: the legacy manual
+requires `EVENT_BEAT_GIOVANNI_GYM`, while native source requires
+`EVENT_BEAT_VIRIDIAN_GYM_GIOVANNI`. The existing gym metadata supports the former as
+an alternate win flag; deleting its reward now would strand that old state. This
+is a remaining migration gate, not approval for permanent duplicate ownership.
+
+Removing the other duplicates exposed map-script selection by insertion order:
+Cinnabar's unconditional reset preceded its conditional reward. The map selector
+now uses the same existing specificity rule as click/coordinate selection, sorting
+a copied view rather than mutating shared cache. The regression proves an eligible
+reward wins over reset and ceases to win once its TM flag is present. No per-gym
+priority constant, new reward coordinator or handwritten replacement is added.
+
+Focused selection/cutscene/gym tests passed (1.9s), full world (51.1s), simulator
+and script-sync race suites passed, all Go packages compile and diff checks pass.
+Runtime corpus completed 181 scenarios, including all eight gym reward checks,
+then stopped at `lances_room_entrance_blocks_closed` on its existing numeric tile
+expectation (12,6)/image 50. Evidence is
+`/var/tmp/capturequest-gym-native-selected-corpus.log`, with private runtime data at
+`/var/tmp/capturequest-script-sim.TVgTYr`; the private cluster is stopped.
+
+Canonical generated-output verification initially found stale diagnostics from the
+prior native resolver's revised error wording. Canonical regeneration followed by
+`import-script-candidates --check` passes. Generated/skipped/unsupported decision
+counts remain 422/18/1; no unsupported budget was relaxed. The unresolved Lance
+source block/quadrant diagnostic remains visible. Ignored output was regenerated
+through its locked publication tooling, not edited manually.
+
+Remaining: Giovanni canonical flag migration; native received-item dialogue
+hydration (the generated Surge receipt line currently omits the item name);
+remaining numeric expectations/text goldens; source/compiler unsupported records;
+and broader duplicate, reconnect and rendered reward acceptance. Source-native
+reward semantics are tested here, not complete historical/UI fidelity. Future
+production publication of the manual-script retirement requires the documented
+full-data deployment lane; no push, deployment, backup/import or production state
+mutation occurred. The original restore timeout and Repel click failure remain
+unattributed, and all five goal areas stay active. Next: review Lance source identity
+and the received-item text compiler as shared producing boundaries before another
+command migration. This checkpoint is local only.
+
 ## Native tile expectation identity (2026-10-08)
 
 The corpus audit found 156 tile expectations; 132 have unambiguous native block

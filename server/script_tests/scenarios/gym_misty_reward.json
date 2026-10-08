@@ -14,7 +14,7 @@
   },
   "trigger": { "type": "map_script", "mapName": "CERULEAN_GYM" },
   "expect": {
-    "scriptLabel": "CeruleanGymMistyPostBattle",
+    "scriptLabel": "CeruleanGymReceiveTM11",
     "flagsPresent": ["EVENT_BEAT_MISTY", "EVENT_GOT_CASCADEBADGE", "EVENT_GOT_TM11"],
     "inventoryContains": [{ "itemId": 99, "quantity": 1 }],
     "actionTypesContains": ["dialogue", "setFlag", "giveItem"],

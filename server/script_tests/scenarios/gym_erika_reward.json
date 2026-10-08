@@ -14,7 +14,7 @@
   },
   "trigger": { "type": "map_script", "mapName": "CELADON_GYM" },
   "expect": {
-    "scriptLabel": "CeladonGymErikaPostBattle",
+    "scriptLabel": "CeladonGymReceiveTM21",
     "flagsPresent": ["EVENT_BEAT_ERIKA", "EVENT_GOT_RAINBOWBADGE", "EVENT_GOT_TM21"],
     "inventoryContains": [{ "itemId": 109, "quantity": 1 }],
     "actionTypesContains": ["dialogue", "setFlag", "giveItem"],

@@ -547,6 +547,10 @@ func (m *CutsceneManager) findEligibleMapScriptCutsceneIn(q db.DBTX, mapName str
 	scripts := append([]*CutsceneScript(nil), m.byMap[mapName]...)
 	m.mu.RUnlock()
 
+	// Match click/coordinate selection: a generic reset cannot starve an
+	// eligible conditional reward merely because it was inserted first.
+	sortCutscenesBySpecificity(scripts)
+
 	for _, cs := range scripts {
 		if cs.TriggerType != "map_script" {
 			continue
