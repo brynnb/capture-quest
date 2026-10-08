@@ -51,6 +51,7 @@ interface OverworldChunkStreamOptions {
 
 interface QueuedExactFetch {
   chunk: OverworldChunk;
+  signal?: AbortSignal;
   resolve: (result: FetchedExactChunk) => void;
   reject: (error: unknown) => void;
 }
@@ -538,7 +539,7 @@ export class OverworldChunkStream {
         const loaded = await Promise.all(
           batch.map(async (chunk) => ({
             chunk,
-            ...(refreshSignal ? await this.fetchChunkAtCurrentRevision(chunk,refreshSignal) : await this.fetchChunk(chunk)),
+            ...(refreshSignal ? await this.fetchFreshChunk(chunk, refreshSignal) : await this.fetchChunk(chunk)),
           })),
         );
         if (!this.isCurrent(generation)) return;
@@ -616,6 +617,29 @@ export class OverworldChunkStream {
     return this.recoverSkippedFetch(chunk, request);
   }
 
+  private fetchFreshChunk(chunk: OverworldChunk, signal: AbortSignal): Promise<FetchedExactChunk> {
+    // Recovery bypasses cached/pending snapshots, but shares the same global
+    // network admission ceiling as camera and explicit tile reads.
+    let queued: QueuedExactFetch;
+    const retire = () => {
+      const index = this.exactFetchQueue.indexOf(queued);
+      if (index < 0) return; // Active reads already carry this signal.
+      this.exactFetchQueue.splice(index, 1);
+      queued.reject(new DOMException("Chunk recovery retired", "AbortError"));
+    };
+    const request = new Promise<FetchedExactChunk>((resolve, reject) => {
+      queued = { chunk, signal, resolve, reject };
+      if (signal.aborted) {
+        reject(new DOMException("Chunk recovery retired", "AbortError"));
+        return;
+      }
+      signal.addEventListener("abort", retire, { once: true });
+      this.exactFetchQueue.push(queued);
+      this.pumpExactFetchQueue();
+    });
+    return request.finally(() => signal.removeEventListener("abort", retire));
+  }
+
   private async recoverSkippedFetch(
     chunk: OverworldChunk,
     request: Promise<FetchedExactChunk>,
@@ -646,7 +670,7 @@ export class OverworldChunkStream {
     ) {
       const queued = this.exactFetchQueue.shift();
       if (!queued) return;
-      if (!this.shouldFetchQueuedChunk(queued.chunk.key)) {
+      if (!queued.signal && !this.shouldFetchQueuedChunk(queued.chunk.key)) {
         queued.resolve({
           tiles: [],
           renderTiles: [],
@@ -656,7 +680,7 @@ export class OverworldChunkStream {
       }
 
       this.activeExactFetches += 1;
-      void this.fetchChunkAtCurrentRevision(queued.chunk)
+      void this.fetchChunkAtCurrentRevision(queued.chunk, queued.signal)
         .then(queued.resolve, queued.reject)
         .finally(() => {
           this.activeExactFetches -= 1;
@@ -732,7 +756,7 @@ export class OverworldChunkStream {
   private purgeObsoleteQueuedExactFetches(): void {
     for (let index = this.exactFetchQueue.length - 1; index >= 0; index -= 1) {
       const queued = this.exactFetchQueue[index];
-      if (this.shouldFetchQueuedChunk(queued.chunk.key)) continue;
+      if (queued.signal || this.shouldFetchQueuedChunk(queued.chunk.key)) continue;
       this.exactFetchQueue.splice(index, 1);
       queued.resolve({
         tiles: [],

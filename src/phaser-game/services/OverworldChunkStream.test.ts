@@ -732,3 +732,38 @@ test.each(["caller", "stream"])("%s retirement prevents recovery publication", a
     expect(harness.emittedTiles.at(-1)).toEqual([]);
   }
 });
+
+test.each([true, false])("resident recovery shares admission while queued (cancel=%s)", async (cancel) => {
+  const harness = createHarness();
+  await harness.stream.initialize(tileCamera(7, 7));
+  harness.fetchTilesInBounds.mockClear();
+  const gates: Array<ReturnType<typeof deferred<PhaserTile[]>>> = [];
+  harness.fetchTilesInBounds.mockImplementation(async (_map, bounds) => {
+    // Superseded explicit reads may legitimately retry after recovery advances
+    // the generation. Gate only the first two requests, not those fresh retries.
+    if (gates.length >= 2) return [makeTile(bounds, 100)];
+    const gate = deferred<PhaserTile[]>();
+    gates.push(gate);
+    return gate.promise;
+  });
+  const first = harness.stream.ensureTileAvailable(263, 7);
+  const second = harness.stream.ensureTileAvailable(327, 7);
+  await vi.waitFor(() => expect(gates).toHaveLength(2));
+  const caller = new AbortController();
+  const recovery = harness.stream.reconcileResidentView(caller.signal);
+  const settlement = cancel
+    ? expect(recovery).rejects.toMatchObject({ name: "AbortError" })
+    : expect(recovery).resolves.toBeUndefined();
+  // Both network slots are already occupied; recovery must stay in the queue.
+  expect(harness.fetchTilesInBounds).toHaveBeenCalledTimes(2);
+  if (cancel) {
+    caller.abort();
+    await settlement;
+  }
+  for (const gate of gates) gate.resolve([]);
+  await Promise.all([first, second, settlement]);
+  // Cancellation removes the queued resident-chunk read rather than leaving it
+  // to run when a slot becomes available. Only distant explicit reads may retry.
+  const residentReads = harness.fetchTilesInBounds.mock.calls.filter(([, bounds]) => bounds.minX === 0);
+  expect(residentReads).toHaveLength(cancel ? 0 : 1);
+});

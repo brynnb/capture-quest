@@ -28,6 +28,39 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Resident recovery acceptance and shared admission review (2026-10-08)
+
+The private-database omitted-update regression now covers both interior and unified
+views. Each case captures an actual resident tile, erases its source row without
+sending a notification, proves its renderer and player collision entries remain,
+and invokes the existing scene reconciliation callback. Both entries must then be
+absent. Unified selection uses the runtime chunk-size constant and the player's
+required chunk. This proves browser renderer/collision state, not screenshot pixels
+or automatic idle/reconnect recovery. The test uses only the runner-owned database;
+no production database or process-death claim is involved.
+
+Boundary review found fresh recovery reads bypassing the stream's global network
+queue, so recovery could exceed its two-request ceiling alongside camera or explicit
+reads. Fresh recovery now uses that same queue while bypassing cached/pending
+snapshots. Queued cancellation removes the owned work; active reads retain their
+signal. A focused regression occupies both slots, checks recovery stays queued,
+and proves both successful eventual admission and removal on cancellation.
+
+41 focused chunk/cutscene/map-loader checks, typecheck, canonical asset validation,
+and the production build passed (Vite 3.36s). Both final browser cases passed in
+6.2s at `/var/tmp/capturequest-rendered.j9T62y`; preceding browser evidence is at
+`/var/tmp/capturequest-rendered.DWDY2O`. The earlier failing test used the actor
+controller for player collision inspection; correcting the actual owner preserved
+both assertions. The finite command audit is updated, and its completed healing,
+PC and field-command migrations are no longer described as future work.
+
+Remaining: other owned settlement points and idle/reconnect missed notifications,
+sustained revision churn and legacy collision/publication owners. The original
+login restore timeout remains unattributed; the full five-area goal remains active.
+Next: review reconnect/scene ownership and the remaining legacy collision readers
+before expanding to another command family. This follow-up is a local checkpoint;
+no additional push, deployment or production mutation is authorized by continuation.
+
 ## Unified resident chunk recovery checkpoint (2026-10-08)
 
 The existing cutscene settlement callback now reconciles both interior and unified
@@ -2621,13 +2654,12 @@ restore timeout from that acceptance run is the first investigation in the activ
 plan above; its cause is still unknown.
 
 The bounded login investigation and remaining-family inventory are recorded
-above. Party ordering has subsequently migrated through the reviewed boundary.
-Center healing is next: unify its legacy nurse route with source-authorized
-interaction and atomic healing. PC transfers require box-state recovery; Escape
-Rope, Bicycle and fishing involve movement or battle ownership. Reuse their
-appropriate existing owners and completed atomicity work. The sale browser check
-exercises the existing coordinator and rendered balance; the product still has
-no Sell button.
+above. Party ordering, center healing, PC transfers, Escape Rope and Bicycle now
+have their own documented checkpoints; the finite current inventory is
+[SERVER_COMMAND_AUDIT.md](SERVER_COMMAND_AUDIT.md). Follow that inventory and the
+latest checkpoint sections instead of treating these completed migrations as
+future work. The sale browser check exercises the existing coordinator and
+rendered balance; the product still has no Sell button.
 
 Remaining work includes recovery integration for other mutation commands and
 script/trainer plans and their queue/source/catalog ordering. Ordinary
