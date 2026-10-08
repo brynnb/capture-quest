@@ -28,6 +28,38 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Fresh tile-view ownership discards missed-update caches (2026-10-08)
+
+The chunk audit found the eighteen-entry exact cache returning retained arrays as
+current data on later map/view loads. Its local chunk revisions change only when
+a notification arrives, so they cannot prove no update was missed while the view
+was away. `beginOwnedTileView` now advances the shared tile-read revision and clears
+retained map snapshots and exact chunks when either interior or unified loading
+starts, after the previous stream is stopped. Ordinary camera plans retain their
+existing bounded cache; a new owner begins with authoritative reads. Full cache
+clearing uses the same boundary, so an older pending read cannot repopulate it.
+No new receipt, event log or polling mechanism was introduced.
+
+The regression seeds both map and exact-chunk caches, starts a read, replaces its
+view and verifies the caches are gone and its older reply cannot settle as the
+new current view. The shared read performs a new correlated read. Loader stubs were
+updated for the required owner method while preserving cancellation/failure assertions.
+38 focused lifetime/cache/loader/chunk checks and typecheck passed. Eleven browser
+initial-publication, guest/reentry and door/stair/gate cases passed in one minute
+in `/var/tmp/capturequest-rendered.yp2Dry`. This reuses the exact private-database
+fixture mode; it is not process-death evidence. Production build and canonical
+asset validation passed (Vite 3.37 seconds); logs are retained at
+`/var/tmp/capturequest-tile-owner-build.log`. Diff checks passed. No backend, schema or runtime-asset contract changed.
+
+Remaining: live missed notifications while a view remains resident, character/
+session retirement beyond normal map transitions, read/cache/stream revision
+scope, sustained churn, missing/erased base publication and other legacy collision
+owners. Reentry refresh does not prove live missed-update recovery. The original
+restore timeout is unattributed and all five roadmap areas remain active. Next:
+review owner reset against actor-cache consumers and define live current-view
+reconciliation through existing reads before closing world-presentation coverage.
+This checkpoint is local only, without push, deployment or production mutation.
+
 ## Initial map rendering revalidates its tile view (2026-10-08)
 
 Initial interior loading could retain a tile array across image, item and actor

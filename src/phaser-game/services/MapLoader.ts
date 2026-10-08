@@ -126,6 +126,7 @@ export class MapLoader {
     const mapRequestAbort = new AbortController();
     this.mapRequestAbort = mapRequestAbort;
     this.stopOverworldStreaming();
+    this.mapDataService.beginOwnedTileView();
     (this.scene as any).mapLoadInProgress = true; // eslint-disable-line @typescript-eslint/no-explicit-any
     try {
       // Check if network is ready
@@ -379,6 +380,7 @@ export class MapLoader {
     this.mapRequestAbort = mapRequestAbort;
     let readyForWorldInput = false;
     this.stopOverworldStreaming();
+    this.mapDataService.beginOwnedTileView();
     (this.scene as any).mapLoadInProgress = true; // eslint-disable-line @typescript-eslint/no-explicit-any
     try {
       // Check if network is ready

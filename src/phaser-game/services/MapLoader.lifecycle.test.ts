@@ -27,6 +27,7 @@ function createPendingLoader() {
   raw.scene = scene;
   raw.mapDataService = {
     isReady: () => true,
+    beginOwnedTileView: vi.fn(),
     ensureRuntimeTileCatalogCurrent: vi.fn(() => compatibility.promise),
   };
   raw.uiManager = { setLoadingText: vi.fn() };
@@ -83,6 +84,7 @@ function createFailedOverworldLoader() {
     },
     mapDataService: {
       isReady: () => true,
+      beginOwnedTileView: vi.fn(),
       ensureRuntimeTileCatalogCurrent: vi.fn(async () => undefined),
       getSnapshot: vi.fn(() => undefined),
       setSnapshot: vi.fn(),

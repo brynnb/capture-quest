@@ -41,3 +41,12 @@ test("a completed tile read retains its revision stamp across later asynchronous
  const service=new MapDataService();const run=service.fetchTiles(33);await Promise.resolve();await Promise.resolve();const request=net.send.mock.calls[0][0];receive(reply(request.requestId,33));const tiles=await run;
  expect(service.isTileReadCurrent(tiles)).toBe(true);service.recordCommittedTileUpdate();expect(service.isTileReadCurrent(tiles)).toBe(false);
 });
+
+test("new tile view discards missed-update caches and fences an earlier owner read",async()=>{
+ const service=new MapDataService();service.setSnapshot(33,{tiles:[]} as never);
+ const bounds={minX:0,minY:0,maxX:63,maxY:63};service.setOverworldTileChunk("old",bounds,[]);
+ const run=service.fetchTiles(33);await Promise.resolve();await Promise.resolve();const first=net.send.mock.calls[0][0];
+ service.beginOwnedTileView();expect(service.getSnapshot(33)).toBeUndefined();expect(service.getOverworldTileChunk("old")).toBeUndefined();
+ receive(reply(first.requestId,33));await Promise.resolve();await Promise.resolve();const second=net.send.mock.calls[1][0];expect(second.requestId).not.toBe(first.requestId);
+ receive(reply(second.requestId,33));await run;expect(net.listeners.size).toBe(0);
+});

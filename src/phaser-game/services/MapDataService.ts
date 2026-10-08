@@ -84,6 +84,14 @@ export class MapDataService {
   );
   private overworldTileChunks = new Map<string, CachedTileChunk>();
 
+  beginOwnedTileView():void {
+    // Stream delivery is best effort. A new map/view owner must not treat
+    // retained exact chunks as proof that no update was missed while away.
+    this.tileReadRevision++;
+    this.snapshots.clear();
+    this.overworldTileChunks.clear();
+  }
+
   isTileReadCurrent(tiles: PhaserTile[]):boolean { return this.tileReadViews.get(tiles)===this.tileReadRevision; }
 
   recordCommittedTileUpdate(): void {
@@ -305,8 +313,7 @@ export class MapDataService {
    * Clear the tile image cache
    */
   clearCache(): void {
+    this.beginOwnedTileView();
     this.knownTileImageIds.clear();
-    this.snapshots.clear();
-    this.overworldTileChunks.clear();
   }
 }
