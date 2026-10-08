@@ -743,6 +743,15 @@ export class MapLoader {
     return tiles;
   }
 
+  async reconcileResidentChunks(signal: AbortSignal): Promise<void> {
+    const generation = this.mapLoadGeneration;
+    if (!this.overworldChunkStream) throw new Error("Resident chunk owner unavailable");
+    await this.overworldChunkStream.reconcileResidentView(signal);
+    if (signal.aborted || !this.isLoadCurrent(generation)) {
+      throw new DOMException("Map recovery retired", "AbortError");
+    }
+  }
+
   recordCommittedTileUpdates(mapId:number,updates:readonly CommittedOverworldTileUpdate[]):void {
     this.mapDataService.recordCommittedTileUpdate();
     if(mapId===UNIFIED_OVERWORLD_MAP_ID)this.applyCommittedOverworldTileUpdates(updates);

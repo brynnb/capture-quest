@@ -28,6 +28,36 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Unified resident chunk recovery checkpoint (2026-10-08)
+
+The existing cutscene settlement callback now reconciles both interior and unified
+resident tiles before releasing its input lock. Unified recovery stays inside
+`OverworldChunkStream`: it rereads the required bounded gameplay footprint rather
+than loading the entire world or using the interior renderer. Fresh reads bypass
+cached chunks, stage tiles/images, check revisions and owner generation, and then
+replace renderer and collision residency together. The previous resident view
+remains until staging succeeds. Recovery rejects if superseded; revision retries
+are bounded. Both caller cancellation and stream retirement abort pending reads.
+
+39 focused chunk, cutscene and map-loader lifecycle checks passed, including fresh
+reads, collision replacement, caller cancellation and stream retirement. Typecheck,
+canonical runtime asset validation and the production build passed (Vite 3.32s).
+The interior omitted-update browser regression also passed (2.8s), verifying the
+renderer registry through the shared scene callback at
+`/var/tmp/capturequest-rendered.7iWPc9`.
+Eleven normal scripted-event/warp browser cases passed in the preceding check at
+`/var/tmp/capturequest-rendered.OP1twB`. These checks do not establish pixel-level
+appearance or an omitted-update fault in unified chunks.
+
+Remaining: a unified-chunk omitted-notification browser regression, other owned
+settlement points, idle/reconnect missed notifications, sustained revision churn,
+and legacy collision owners. The original five-second `restoreBattleOnLogin`
+timeout remains unattributed. All five roadmap areas remain active; this checkpoint
+is a stopping point, not goal completion. Next: prove unified missed-update recovery
+through the rendered runtime before expanding to another command family. The user
+has authorized pushing this stopping checkpoint to `codex/server-foundations`;
+production deployment remains unauthorized.
+
 ## Resident interior reconciliation at cutscene settlement (2026-10-08)
 
 Cutscene completion already owns an input lock through correlated commit/position

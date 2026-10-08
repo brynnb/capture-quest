@@ -687,3 +687,48 @@ test("stopping the stream aborts its owned pending tile query without an error l
  await vi.waitFor(()=>expect(signal).toBeDefined());harness.stream.stop();await load;
  expect(signal?.aborted).toBe(true);expect(log).not.toHaveBeenCalled();log.mockRestore();
 });
+test("resident recovery rereads required chunks and removes stale collision residency",async()=>{
+ const harness=createHarness();await harness.stream.initialize(tileCamera(7,7));
+ const before=harness.fetchTilesInBounds.mock.calls.length;
+ const resident = harness.emittedTiles.at(-1)!;
+ harness.movementController.removeCollisionTiles.mockClear();
+ harness.movementController.addCollisionTiles.mockClear();
+ harness.fetchTilesInBounds.mockResolvedValue([]);
+ await harness.stream.reconcileResidentView(new AbortController().signal);
+ expect(harness.fetchTilesInBounds.mock.calls.length).toBeGreaterThan(before);
+ expect(harness.emittedTiles.at(-1)).toEqual([]);
+ expect(harness.movementController.removeCollisionTiles.mock.calls.flatMap(([tiles]) => tiles)).toEqual(resident);
+ expect(harness.movementController.addCollisionTiles.mock.calls.every(([tiles]) => tiles.length === 0)).toBe(true);
+});
+
+
+test.each(["caller", "stream"])("%s retirement prevents recovery publication", async (owner) => {
+  const harness = createHarness();
+  await harness.stream.initialize(tileCamera(7, 7));
+  const resident = harness.emittedTiles.at(-1);
+  harness.mapRenderer.upsertTileChunk.mockClear();
+  harness.movementController.removeCollisionTiles.mockClear();
+  let pendingSignal: AbortSignal | undefined;
+  harness.fetchTilesInBounds.mockImplementation((_map, _bounds, signal) => {
+    pendingSignal = signal;
+    return new Promise((_, reject) => signal?.addEventListener("abort", () => {
+      reject(new DOMException("retired", "AbortError"));
+    }, { once: true }));
+  });
+  const caller = new AbortController();
+  const recovery = harness.stream.reconcileResidentView(caller.signal);
+  const rejected = expect(recovery).rejects.toMatchObject({ name: "AbortError" });
+  await vi.waitFor(() => expect(pendingSignal).toBeDefined());
+  if (owner === "caller") caller.abort();
+  else harness.stream.stop();
+  await rejected;
+  expect(pendingSignal?.aborted).toBe(true);
+  expect(harness.mapRenderer.upsertTileChunk).not.toHaveBeenCalled();
+  if (owner === "caller") {
+    expect(harness.emittedTiles.at(-1)).toEqual(resident);
+    expect(harness.movementController.removeCollisionTiles).not.toHaveBeenCalled();
+  } else {
+    // Stream retirement deliberately unloads its old residency.
+    expect(harness.emittedTiles.at(-1)).toEqual([]);
+  }
+});

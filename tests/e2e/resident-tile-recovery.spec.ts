@@ -16,7 +16,7 @@ test("owned resident tile reconciliation recovers an omitted update",async({page
  const before=await page.evaluate(tile=>(window as any).__residentRecovery.renderer.tileDataMap.has(`${tile.x},${tile.y}`),tile);expect(before).toBe(true);
  const after=await page.evaluate(async tile=>{
   const renderer=(window as any).__residentRecovery.renderer;
-  await renderer.scene.reconcileResidentInteriorTiles(new AbortController().signal);
+  await renderer.scene.reconcileResidentTiles(new AbortController().signal);
   return renderer.tileDataMap.has(`${tile.x},${tile.y}`);
  },tile);
  expect(after).toBe(false);errors.assertNoSevereErrors();

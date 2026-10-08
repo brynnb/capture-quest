@@ -783,7 +783,7 @@ export class TileViewer extends Scene {
       onReconcile: async (position,signal) => {
         await this.warpEvents.reconcileOwnedPosition(position);
         if(signal.aborted || !this.sys.isActive())throw new DOMException("World view retired","AbortError");
-        await this.reconcileResidentInteriorTiles(signal);
+        await this.reconcileResidentTiles(signal);
       },
       scene: this,
       mapContainer: () => this.mapContainer,
@@ -1707,11 +1707,13 @@ export class TileViewer extends Scene {
     this.flushTileEditorBatch();
   }
 
-  private async reconcileResidentInteriorTiles(signal:AbortSignal):Promise<void>{
-    const map=this.mapInfo;
-    // Exact unified chunks retain their own bounded stream owner. Do not load
-    // the whole overworld or force it through the interior renderer.
-    if(!map || map.isOverworld===1)return;
+  private async reconcileResidentTiles(signal: AbortSignal): Promise<void> {
+    const map = this.mapInfo;
+    if (!map) throw new Error("Resident map view unavailable");
+    if (map.isOverworld === 1) {
+      await this.mapLoader.reconcileResidentChunks(signal);
+      return;
+    }
     const characterId=usePlayerCharacterStore.getState().characterProfile.id;
     const viewCurrent=this.mapLoader.captureTilePresentationView(map.id);
     const current=()=>!signal.aborted && this.sys.isActive() && viewCurrent() && usePlayerCharacterStore.getState().characterProfile.id===characterId;

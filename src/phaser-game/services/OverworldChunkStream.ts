@@ -237,6 +237,32 @@ export class OverworldChunkStream {
     };
   }
 
+  async reconcileResidentView(signal: AbortSignal): Promise<void> {
+    if (signal.aborted || this.stopped || !this.lastPlan) {
+      throw new DOMException("Chunk view retired", "AbortError");
+    }
+    const plan = this.lastPlan.mode === "exact"
+      ? this.lastPlan : this.planGameplayFootprint();
+    if (!plan) throw new Error("Resident gameplay chunk plan unavailable");
+    const generation = ++this.requestGeneration;
+    // Either the settlement caller or the stream owner can retire this read.
+    const owned = new AbortController();
+    const retire = () => owned.abort();
+    signal.addEventListener("abort", retire, { once: true });
+    this.tileReadLifetime.signal.addEventListener("abort", retire, { once: true });
+    try {
+      await this.loadChunks(plan.requiredChunks, generation, owned.signal);
+      if (owned.signal.aborted || !this.isCurrent(generation)) {
+        throw new DOMException("Chunk recovery retired", "AbortError");
+      }
+      this.emitTiles();
+    } finally {
+      signal.removeEventListener("abort", retire);
+      this.tileReadLifetime.signal.removeEventListener("abort", retire);
+      owned.abort();
+    }
+  }
+
   stop(): void {
     this.stopped = true;
     this.tileReadLifetime.abort();
@@ -488,13 +514,17 @@ export class OverworldChunkStream {
   private async loadChunks(
     chunks: readonly OverworldChunk[],
     generation: number,
+    refreshSignal?: AbortSignal,
   ): Promise<void> {
-    const missingChunks = chunks.filter(
+    const missingChunks = refreshSignal ? [...chunks] : chunks.filter(
       (chunk) => !this.loadedExactChunks.has(chunk.key),
     );
     if (missingChunks.length === 0) return;
 
+    let attempts = 0;
     for (;;) {
+      if (refreshSignal?.aborted) throw new DOMException("Chunk recovery aborted", "AbortError");
+      if (refreshSignal && attempts++ >= 2) throw new Error("Chunk recovery overtaken; another owned read is required");
       const staged: StagedExactChunk[] = [];
       for (
         let index = 0;
@@ -508,7 +538,7 @@ export class OverworldChunkStream {
         const loaded = await Promise.all(
           batch.map(async (chunk) => ({
             chunk,
-            ...(await this.fetchChunk(chunk)),
+            ...(refreshSignal ? await this.fetchChunkAtCurrentRevision(chunk,refreshSignal) : await this.fetchChunk(chunk)),
           })),
         );
         if (!this.isCurrent(generation)) return;
@@ -519,6 +549,8 @@ export class OverworldChunkStream {
         await this.options.mapDataService.fetchTileImages(),
       );
       if (!this.isCurrent(generation)) return;
+
+      if (refreshSignal?.aborted) throw new DOMException("Chunk recovery aborted", "AbortError");
 
       // A committed paint/erase can arrive while Phaser loads the tile image.
       // No renderer, resident lookup, or collision state is touched until every
@@ -537,7 +569,12 @@ export class OverworldChunkStream {
       // collision residency never exceeds the plan's <=3x3 desired set.
       this.evictNonDesiredExactChunks();
       for (const { chunk, tiles, renderTiles } of staged) {
-        if (this.loadedExactChunks.has(chunk.key)) continue;
+        if (this.loadedExactChunks.has(chunk.key)) {
+          if (!refreshSignal) continue;
+          if (!this.options.viewOnly) {
+            this.options.movementController.removeCollisionTiles(this.loadedExactChunks.get(chunk.key)!);
+          }
+        }
         this.options.mapRenderer.upsertTileChunk(
           chunk.key,
           chunk.chunkX,
@@ -637,9 +674,15 @@ export class OverworldChunkStream {
 
   private async fetchChunkAtCurrentRevision(
     chunk: OverworldChunk,
+    signal: AbortSignal = this.tileReadLifetime.signal,
   ): Promise<FetchedExactChunk> {
     const streamGeneration = this.requestGeneration;
+    let attempts = 0;
     for (;;) {
+      if (signal.aborted) throw new DOMException("Chunk read retired", "AbortError");
+      if (signal !== this.tileReadLifetime.signal && attempts++ >= 2) {
+        throw new Error("Chunk recovery overtaken; another owned read is required");
+      }
       const revision = this.chunkRevisionByKey.get(chunk.key) ?? 0;
       // Include one neighboring row and column as a render-only halo. The
       // adjacent chunk contains the same source tiles, so their RenderTextures
@@ -652,13 +695,13 @@ export class OverworldChunkStream {
       const renderTiles = await this.options.mapDataService.fetchTilesInBounds(
         UNIFIED_OVERWORLD_MAP_ID,
         renderBounds,
-        this.tileReadLifetime.signal,
+        signal,
       );
       const tiles = renderTiles.filter(
         (tile) =>
           tile.x <= chunk.bounds.maxX && tile.y <= chunk.bounds.maxY,
       );
-      if (this.stopped || streamGeneration !== this.requestGeneration) {
+      if (signal.aborted || this.stopped || streamGeneration !== this.requestGeneration) {
         // A stopped or superseded stream must never repopulate the shared LRU
         // after cleanup (especially after a committed editor invalidation).
         return { tiles: [], renderTiles: [], revision };
