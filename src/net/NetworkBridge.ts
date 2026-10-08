@@ -1,6 +1,5 @@
-import type { CQInventorySnapshot } from "@/net/generated/cqitems";
-import type { CQInventoryResponse, BattleEndOutcome } from "@/net/generated/world_api";
 import { presentBattleEnd } from "@/phaser-game/services/BattleCommandService";
+import type { BattleEndOutcome } from "@/net/generated/world_api";
 import { WorldSocket } from "./index";
 import * as OpCodes from "./generated/opcodes";
 import type { OpCode } from "./generated/opcodes";
@@ -15,7 +14,6 @@ import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import useGameStatusStore from "@/stores/GameStatusStore";
 import useGameScreenStore from "@/stores/GameScreenStore";
 import usePokeBattleStore from "@/stores/PokeBattleStore";
-import usePokemonPartyStore from "@/stores/PokemonPartyStore";
 import useCQInventoryStore from "@/stores/CQInventoryStore";
 import usePokemonDialogueStore from "@/stores/PokemonDialogueStore";
 import useAudioActivityStore from "@/stores/AudioActivityStore";
@@ -152,14 +150,8 @@ export class NetworkBridge {
         this.handlePokeBattleEnd(data as Record<string, unknown>);
         break;
 
-      // Pokémon Party opcodes (Phase 6.1)
-      case OpCodes.PokemonPartyResponse:
-        this.handlePokemonPartyResponse(data as Record<string, unknown>);
-        break;
-
-      // CQ Inventory & Merchant (Phase 7)
-      case OpCodes.CQInventoryResponse:
-        this.handleCQInventoryResponse(data as Record<string, unknown>);
+      case OpCodes.ResourcesChangedNotify:
+        import("@/phaser-game/services/InventoryCommandService").then(module=>module.acceptResourceChangeNotification(data));
         break;
       case OpCodes.CQItemUseResponse:
         // Correlated party replies belong exclusively to the scene coordinator.
@@ -370,42 +362,6 @@ export class NetworkBridge {
       return;
     }
     presentBattleEnd(end);
-  }
-
-  private handlePokemonPartyResponse(data: Record<string, unknown>) {
-    if (!data.success) {
-      console.warn("[NetworkBridge] Party request failed:", data.error);
-      return;
-    }
-    const party = (data.party || []) as Parameters<
-      ReturnType<typeof usePokemonPartyStore.getState>["setParty"]
-    >[0];
-    usePokemonPartyStore.getState().setParty(party);
-  }
-
-  private handleCQInventoryResponse(data: Record<string, unknown>) {
-    if (!data.success) {
-      console.warn("[NetworkBridge] Inventory request failed:", data.error);
-      return;
-    }
-    this.applyInventorySnapshot(data as unknown as CQInventoryResponse);
-  }
-
-  private applyInventorySnapshot(snapshot: CQInventorySnapshot): boolean {
-    // A malformed success must not clear a real bag or replace money with zero.
-    if (!snapshot || !Array.isArray(snapshot.items)
-      || !Number.isSafeInteger(snapshot.money) || snapshot.money < 0 || snapshot.money > 0xffffffff
-      || !Number.isSafeInteger(snapshot.commandRevision) || snapshot.commandRevision < 0) {
-      console.warn("[NetworkBridge] Invalid inventory snapshot");
-      return false;
-    }
-    if (snapshot.commandRevision < useCQInventoryStore.getState().commandRevision) return false;
-    useCQInventoryStore.getState().setInventory(snapshot.items, snapshot.money, snapshot.commandRevision);
-    const characterId = usePlayerCharacterStore.getState().characterProfile?.id;
-    if (characterId !== undefined) {
-      usePlayerCharacterStore.getState().handleCharacterWalletData({ characterId, pokedollars: snapshot.money });
-    }
-    return true;
   }
 
   private handleCQItemUseResponse(data: Record<string, unknown>) {

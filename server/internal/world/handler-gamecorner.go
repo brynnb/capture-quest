@@ -429,9 +429,7 @@ func HandleGameCornerPrizeBuy(ses *session.Session, payload []byte, wh *WorldHan
 		"pcSlot":       result.PCSlot,
 	}, opcodes.GameCornerPrizeBuyResponse)
 
-	ses.SendStreamJSON(map[string]interface{}{
-		"success": true, "items": result.inventory, "money": result.money,
-	}, opcodes.CQInventoryResponse)
+	notifyResourceChange(ses)
 	return false
 }
 

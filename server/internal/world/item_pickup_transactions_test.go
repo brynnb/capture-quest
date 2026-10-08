@@ -41,7 +41,7 @@ func TestItemPickupRollbackPublicationAndRetry(t *testing.T) {
 	testdb.Exec(t, database, `ALTER TABLE character_collected_items DROP CONSTRAINT reject_collection`)
 	messages.streams = nil
 	battleDispatch(t, wh, ses, opcodes.ItemPickupRequest, request)
-	if len(messages.streams) != 2 || messages.streams[1].opcode != opcodes.CQInventoryResponse {
+	if len(messages.streams) != 2 || messages.streams[1].opcode != opcodes.ResourcesChangedNotify {
 		t.Fatalf("success publication: %+v", messages.streams)
 	}
 	if err := json.Unmarshal(messages.streams[0].payload, &response); err != nil || !response.Success || response.InstanceID == 0 {

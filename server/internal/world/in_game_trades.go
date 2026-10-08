@@ -133,7 +133,7 @@ func handleInGameTradeDialogueChoice(ctx context.Context, ses *session.Session, 
 	}, opcodes.DialogueChoiceResponse)
 
 	if outcome.Traded {
-		sendPokemonPartySnapshot(ses, outcome.party)
+		notifyResourceChange(ses)
 	}
 
 	log.Printf("[InGameTrade] Dialogue choice %s choice=%t traded=%t wrongPokemon=%t",

@@ -508,13 +508,13 @@ func sendCutsceneSystemMessage(ses *session.Session, message string) {
 
 func sendCutsceneInventorySnapshot(ses *session.Session, charID int32) {
 	if ses != nil {
-		sendCQInventorySnapshot(ses, charID)
+		notifyResourceChange(ses)
 	}
 }
 
 func sendCutscenePartyUpdate(ses *session.Session) {
 	if ses != nil {
-		sendPartyUpdate(ses)
+		notifyResourceChange(ses)
 	}
 }
 

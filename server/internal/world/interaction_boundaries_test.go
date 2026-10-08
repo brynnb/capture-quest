@@ -101,7 +101,7 @@ func TestTradeChoiceAuthorizationRollbackRetryAndDuplicate(t *testing.T) {
 		}
 		if !want {
 			for _, message := range messages.streams {
-				if message.opcode == opcodes.PokemonPartyResponse {
+				if message.opcode == opcodes.ResourcesChangedNotify {
 					t.Fatal("failed trade published party")
 				}
 			}
@@ -156,7 +156,7 @@ func TestTradeChoiceAuthorizationRollbackRetryAndDuplicate(t *testing.T) {
 	if err := database.QueryRow(`SELECT id,pokemon_id FROM character_pokemon WHERE character_id=42`).Scan(&receivedRow, &species); err != nil || species != 129 {
 		t.Fatalf("received species=%d err=%v", species, err)
 	}
-	if len(messages.streams) != 2 || messages.streams[1].opcode != opcodes.PokemonPartyResponse {
+	if len(messages.streams) != 2 || messages.streams[1].opcode != opcodes.ResourcesChangedNotify {
 		t.Fatal("committed party snapshot missing")
 	}
 	request(true)

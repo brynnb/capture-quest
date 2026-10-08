@@ -13,7 +13,7 @@ import useCQInventoryStore from "@/stores/CQInventoryStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import {openShopForActor,buyShopItem,sellShopItem} from "./ShopCommandService";
 
-import {bindInventoryScene,sendPartyItemCommand,sendRepelItemCommand,sendPartyReorderCommand,refreshOwnedGameplayResources} from "./InventoryCommandService";
+import {bindInventoryScene,sendPartyItemCommand,sendRepelItemCommand,sendPartyReorderCommand,refreshOwnedGameplayResources,acceptResourceChangeNotification} from "./InventoryCommandService";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
 import useGameStatusStore from "@/stores/GameStatusStore";
 import AudioManager from "@/services/audio/AudioManager";
@@ -269,6 +269,31 @@ test("an explicit refresh overtaken by a newer resource view stays inert",async(
   resolve({position:{mapId:50},eventFlags:[],pc:{currentBox:2,boxCount:12,boxSize:20,box:[],sources:[]},inventory:[],wallet:{characterId:42,pokedollars:0},commandRevision:6,party:[]});
   await pending; expect(usePokemonPartyStore.getState().party).toEqual([{rowId:9}]);
   expect(useCQInventoryStore.getState().money).toBe(1000);
+});
+
+test("resource notices coalesce behind a sent command and read current state",async()=>{
+  net.read.mockResolvedValue({position:{mapId:50},eventFlags:[],pc:{currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]},inventory:[],wallet:{characterId:42,pokedollars:700},commandRevision:6,party});
+  const pending=sendRepelItemCommand(1),requestId=id();
+  for(let i=0;i<5;i++) acceptResourceChangeNotification({success:true,resourcesChanged:true,characterId:42,items:["historical"]});
+  expect(net.read).not.toHaveBeenCalled();
+  emit(144,reply(requestId)); await pending;
+  await vi.waitFor(()=>expect(useCQInventoryStore.getState().commandRevision).toBe(6));
+  expect(net.read).toHaveBeenCalledOnce(); expect(net.send).toHaveBeenCalledOnce();
+  expect(useCQInventoryStore.getState().money).toBe(700);
+});
+
+test("untagged, foreign and retired-scene resource notices stay inert",()=>{
+  acceptResourceChangeNotification({success:true,items:[],money:0});
+  acceptResourceChangeNotification({success:true,resourcesChanged:true,characterId:43});
+  retire(); acceptResourceChangeNotification({success:true,resourcesChanged:true,characterId:42});
+  expect(net.read).not.toHaveBeenCalled(); expect(useCQInventoryStore.getState().money).toBe(1000);
+});
+
+test("character replacement discards an old owner's queued notice",async()=>{
+  const pending=sendRepelItemCommand(1);
+  acceptResourceChangeNotification({success:true,resourcesChanged:true,characterId:42});
+  usePlayerCharacterStore.getState().setCharacterProfile({id:43,pokedollars:500}); await pending;
+  expect(net.read).not.toHaveBeenCalled();
 });
 
 test("older scene cleanup cannot release a newer command",async()=>{

@@ -14,9 +14,11 @@ import { sfxPathForConstant } from "@/services/audio/pokemonMusic";
 
 let scene: symbol | null = null;
 let active: AbortController | null = null;
+let resourcesDirtyCharacter=0;
 type Reply = import("@/net/generated/world_api").GameplayStateResponse | import("@/net/generated/world_api").PokemonPCResponse | CQMerchantOpenResponse | CQMerchantBuyResponse | CQMerchantSellResponse | CQPartyItemUseResponse | RepelUseResponse | PokemonPartyReorderResponse;
 
 export function bindInventoryScene(): () => void {
+  resourcesDirtyCharacter=0;
   active?.abort(); active = null;
   useCQInventoryStore.getState().closeShop();
   usePokemonPCStore.getState().closePC();
@@ -25,6 +27,7 @@ export function bindInventoryScene(): () => void {
   return () => {
     if (scene !== owner) return;
     scene = null; active?.abort(); active = null;
+    resourcesDirtyCharacter=0;
     useCQInventoryStore.getState().closeShop();
     usePokemonPCStore.getState().closePC();
     useCQInventoryStore.setState({ inventoryCommandPending: false, pendingTMHM: null });
@@ -70,7 +73,7 @@ export async function runInventoryRequest<T extends Reply>(options: {
   const controller = new AbortController(); active = controller;
   const current = () => !controller.signal.aborted && scene === owner && usePlayerCharacterStore.getState().characterProfile.id === characterId;
   const stopProfile = usePlayerCharacterStore.subscribe(state => {
-    if (state.characterProfile.id !== characterId) { controller.abort(); useCQInventoryStore.getState().closeShop(); }
+    if (state.characterProfile.id !== characterId) { resourcesDirtyCharacter=0; controller.abort(); useCQInventoryStore.getState().closeShop(); }
   });
   let presentationCurrent = true;
   const stopPresentation = options.watchPresentation?.(() => {
@@ -121,6 +124,7 @@ export async function runInventoryRequest<T extends Reply>(options: {
   } finally {
     stopProfile(); stopPresentation?.();
     if (active === controller) { active = null; useCQInventoryStore.setState({inventoryCommandPending: false}); }
+    flushResourceChanges();
   }
 }
 
@@ -132,6 +136,22 @@ export function refreshOwnedGameplayResources(): Promise<void> {
   apply:applyGameplayResourceSnapshot, present:()=>{},
   readError:"Could not refresh current party and inventory. Please try again.",
  });
+}
+
+// Notices never apply their payload. Burst notices coalesce behind the same
+// admission slot; scene/character retirement discards the old owner's work.
+export function acceptResourceChangeNotification(value: unknown): void {
+  if (!value || typeof value!=="object") return;
+  const notice=value as {success?:boolean;resourcesChanged?:boolean;characterId?:number};
+  if (!scene || notice.success!==true || notice.resourcesChanged!==true
+    || notice.characterId!==usePlayerCharacterStore.getState().characterProfile.id) return;
+  resourcesDirtyCharacter=notice.characterId!; flushResourceChanges();
+}
+function flushResourceChanges(): void {
+  if (!resourcesDirtyCharacter || active || !scene) return;
+  if (resourcesDirtyCharacter!==usePlayerCharacterStore.getState().characterProfile.id) {resourcesDirtyCharacter=0;return;}
+  resourcesDirtyCharacter=0;
+  void refreshOwnedGameplayResources();
 }
 
 function reportError(message: string) {

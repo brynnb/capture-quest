@@ -395,7 +395,7 @@ func handleBattleAction(ses *session.Session, payload []byte, wh *WorldHandler, 
 	setBattle(charID, committed)
 	publishBattleTurn(ses, wh, charID, committed, result, responseOpcode, req.RequestID)
 	if req.Action == "item" || committed.IsOver() {
-		sendCQInventorySnapshot(ses, int32(charID))
+		notifyResourceChange(ses)
 	}
 	return false
 }
@@ -535,30 +535,6 @@ func getTrainerDefeatText(className string) string {
 	}
 }
 
-// sendPartyUpdate loads the player's party from DB and pushes it to the client.
-func sendPartyUpdate(ses *session.Session) {
-	charID := int64(ses.Client.CharData().ID)
-	myDB := db.GlobalWorldDB.DB
-	party, err := pokebattle.LoadParty(myDB, charID)
-	if err != nil {
-		log.Printf("[Party] Failed to load party for update (char %d): %v", charID, err)
-		return
-	}
-	sendPokemonPartySnapshot(ses, party)
-}
-
-// Publish the committed domain snapshot without another mutable database read.
-func sendPokemonPartySnapshot(ses *session.Session, party []*pokebattle.Pokemon) {
-	partyDTOs := make([]PokemonDTO, 0, len(party))
-	for _, p := range party {
-		partyDTOs = append(partyDTOs, pokemonToDTO(p))
-	}
-	ses.SendStreamJSON(map[string]interface{}{
-		"success": true,
-		"party":   partyDTOs,
-	}, opcodes.PokemonPartyResponse)
-}
-
 // HandlePokemonPartyRequest sends the player's current Pokémon party to the client.
 func HandlePokemonPartyRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
 	if !ses.HasValidClient() {
@@ -631,7 +607,7 @@ func HandlePokeMoveLearn(ses *session.Session, payload []byte, wh *WorldHandler)
 	}
 	setBattle(charID, committed)
 	ses.SendStreamJSON(BattleCommandResponse{Success: true, RequestID: req.RequestID, Position: wh.ownedPlayerSnapshot(ses, req.RequestID), Battle: gameplayBattleSnapshot(committed), Events: []pokebattle.BattleEvent{}, Learning: &learning, End: &BattleEndOutcome{PlayerWon: true}}, opcodes.PokeMoveLearnResponse)
-	sendPokemonPartySnapshot(ses, committed.PlayerParty)
+	notifyResourceChange(ses)
 	return false
 }
 
@@ -691,5 +667,5 @@ func publishStandaloneBlackout(ses *session.Session, wh *WorldHandler, charID in
 	ses.SendStreamJSON(model.CharacterWallet{CharacterID: uint32(charID), Pokedollars: uint32(result.NewMoney)}, opcodes.CharacterWallet)
 	ses.SendStreamJSON(BattleEndOutcome{PlayerWon: false, Blackout: true, Money: result.NewMoney, MoneyLost: result.MoneyLost, BlackoutMapID: result.MapID, BlackoutX: result.X, BlackoutY: result.Y}, opcodes.PokeBattleEndNotify)
 
-	sendPokemonPartySnapshot(ses, party)
+	notifyResourceChange(ses)
 }

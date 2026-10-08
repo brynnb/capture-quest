@@ -88,7 +88,7 @@ func TestGameCornerPrizeCommitFailureDispatcherAndOwnedDatabase(t *testing.T) {
 			t.Fatalf("response %+v %v", result, err)
 		}
 		if want {
-			if len(messages.streams) != 2 || messages.streams[1].opcode != opcodes.CQInventoryResponse || result.Coins != 50 {
+			if len(messages.streams) != 2 || messages.streams[1].opcode != opcodes.ResourcesChangedNotify || result.Coins != 50 {
 				t.Fatalf("success publication %+v %+v", messages.streams, result)
 			}
 		} else if len(messages.streams) != 1 {

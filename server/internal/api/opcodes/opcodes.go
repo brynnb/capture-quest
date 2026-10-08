@@ -224,4 +224,5 @@ const (
 	GameplayStateRequest          OpCode = 197
 	GameplayStateResponse         OpCode = 198
 	PokeBattleCloseResponse       OpCode = 199
+	ResourcesChangedNotify        OpCode = 200
 )

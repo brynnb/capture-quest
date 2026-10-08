@@ -7,7 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-owned explicit resource reads; unsolicited publishers remain under audit.
+owned resource reads and character-scoped change notices; historical global
+bag/party application is retired.
 The preceding PC migration and
 source-authorized PC commands and Indigo failure/restart acceptance (2026-10-07);
 PC permission/source retirement review is recorded below. This follows
@@ -23,6 +24,59 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. No push or production deployment is authorized by this goal.
+
+## Resource notifications through current owned reconciliation (2026-10-07)
+
+The publisher inventory is migrated: login/debug, cutscene commit, battle/move
+learning/blackout, in-game trade, item pickup and Game Corner now publish
+`ResourceChangeNotify` through `ResourcesChangedNotify` (opcode 200). Its three
+fields are success, resourcesChanged and characterId; it carries no bag, wallet,
+party or PC projection. Publishers no longer re-query a mutable snapshot after
+commit. Old snapshot helpers, the unused bag reply DTO and global client bag/
+party application are removed. Reserved old read opcodes still reject.
+
+The dedicated notification opcode is deliberate: reusing the old party reply
+could cause an older client to treat a notice's missing party array as an empty
+party. Old clients ignore the new opcode instead. Matching builds are still
+needed for live updates; this is not a compatibility alias or a production
+rollout. Both old untagged resource packets and foreign-character notices are
+inert in the current client.
+
+The existing scene/admission owner marks the matching character's resources
+dirty, coalesces notices behind an active command/read, and performs current
+locked resource reconciliation. Retirement clears queued work, including
+character replacement. Notice data is never directly applied. This preserves
+committed updates without letting a historical packet rewind views, and does not
+retry a mutation or take over battle/movement/issued-plan presentation. A burst
+during a command produces one subsequent owned read.
+
+Verification: resource publisher regressions disable database dependencies and
+assert the exact three-field payload and closed-owner suppression. Existing
+post-commit/rollback checks for trade, pickup, cutscene, battle and prizes remain;
+their expected publication opcode is now the dedicated notice. Client checks
+cover coalescing, old/foreign/retired notices, replacement characters, actual bridge
+delivery to a current read, and withholding notice payload application until its
+correlated snapshot. All 185 affected client checks passed. The bridge fixture
+initially had a disconnected fake transport; it now explicitly satisfies the
+reader's connected precondition, with all ownership assertions unchanged.
+
+The full world PostgreSQL race suite passed after the final wire change (47.078
+seconds). Eight rendered item/PC/script cases passed in 50.5 seconds in
+`/var/tmp/capturequest-rendered.WJnFCY`, covering bag refresh, item use, terminal
+storage and real scripted rewards/movement. The earlier run in `jd4Fhr` passed
+before the dedicated opcode change and is retained as intermediate evidence.
+Canonical type/opcode generation, TypeScript/diff checks, frontend build and
+runtime asset validation passed. The private
+runtime was stopped by its runner. No production mutation, push or deployment
+was performed.
+
+This closes the selected standalone bag/party read and historical-payload
+publication migration. It does not make every resource writer revision-aware or
+close independent wallet/coins, source eligibility and lifetime audits. Next:
+review/migrate the remaining Bicycle/Escape Rope dispatch using the appropriate
+existing ownership model; preserve Escape Rope's atomic position/item work and
+keep movement authority in its movement coordinator. The original login timeout
+and full five-area roadmap remain incomplete.
 
 ## Explicit resource reads through the shared owner (2026-10-07)
 

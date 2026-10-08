@@ -70,7 +70,7 @@ func (m *cutsceneMutation) publish(ctx CutsceneActionContext) {
 		sendCutsceneInventorySnapshot(ctx.Session, int32(m.characterID))
 	}
 	if m.partyDirty && ctx.Session != nil {
-		sendPokemonPartySnapshot(ctx.Session, *m.party)
+		notifyResourceChange(ctx.Session)
 	}
 }
 

@@ -72,7 +72,7 @@ func HandleItemPickup(ses *session.Session, payload []byte, wh *WorldHandler) bo
 		"success": true, "actorId": req.ActorID, "itemName": result.item.Name,
 		"itemId": result.item.ID, "instanceId": result.instanceID, "message": itemPickupMessage(result.item.Name),
 	}, opcodes.ItemPickupResponse)
-	ses.SendStreamJSON(map[string]interface{}{"success": true, "items": result.inventory, "money": result.money}, opcodes.CQInventoryResponse)
+	notifyResourceChange(ses)
 	return false
 }
 

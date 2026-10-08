@@ -237,3 +237,4 @@ export const OwnedPlayerPositionResponse: OpCode = 196;
 export const GameplayStateRequest: OpCode = 197;
 export const GameplayStateResponse: OpCode = 198;
 export const PokeBattleCloseResponse: OpCode = 199;
+export const ResourcesChangedNotify: OpCode = 200;

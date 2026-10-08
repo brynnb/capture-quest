@@ -333,7 +333,7 @@ func TestMoveLearningPublishesOnlyAfterPartyAndBattleCommit(t *testing.T) {
 	testdb.Exec(t, database, `ALTER TABLE character_pokemon DROP CONSTRAINT reject_move`)
 	messages.streams = nil
 	battleDispatch(t, wh, ses, opcodes.PokeMoveLearnRequest, `{"forgetSlot":0}`)
-	if len(messages.streams) != 2 || messages.streams[1].opcode != opcodes.PokemonPartyResponse {
+	if len(messages.streams) != 2 || messages.streams[1].opcode != opcodes.ResourcesChangedNotify {
 		t.Fatalf("move success messages=%+v", messages.streams)
 	}
 	var learned BattleCommandResponse

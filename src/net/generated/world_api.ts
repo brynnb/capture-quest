@@ -522,12 +522,6 @@ export interface InventoryCommandError {
 /**
  * These tagged contracts replace map-shaped bag and shop mutation successes.
  */
-export interface CQInventoryResponse {
-  commandRevision: number /* int64 */;
-  success: true;
-  items: import("./cqitems").CQInventoryItem[];
-  money: number /* int64 */;
-}
 export interface CQMerchantBuyResponse {
   requestId: string;
   success: true;
@@ -1423,6 +1417,19 @@ export interface RepelUseResult {
   message: string;
   stepsLeft: number /* int */;
   inventory: import("./cqitems").CQInventorySnapshot;
+}
+
+//////////
+// source: resource_changes.go
+
+/**
+ * Post-commit notices carry no historical resource projection. The current
+ * scene reconciles through its owned, locked gameplay read.
+ */
+export interface ResourceChangeNotify {
+  success: true;
+  resourcesChanged: true;
+  characterId: number /* int64 */;
 }
 
 //////////

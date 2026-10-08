@@ -1,7 +1,6 @@
 package world
 
 import (
-	"capturequest/internal/db"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,7 +9,6 @@ import (
 
 	"capturequest/internal/api/opcodes"
 	db_character "capturequest/internal/db/character"
-	"capturequest/internal/db/cqitems"
 	"capturequest/internal/options"
 	"capturequest/internal/protocol"
 	"capturequest/internal/session"
@@ -256,27 +254,9 @@ func buildAndSendCharacterState(ses *session.Session) {
 	wallet, _ := db_character.GetCharacterWallet(ctx, charData.ID)
 	ses.SendStreamJSON(wallet, opcodes.CharacterWallet)
 
-	sendCQInventorySnapshot(ses, int32(charData.ID))
+	notifyResourceChange(ses)
 
 	// Send bind data as its own persisted model stream.
 	bind, _ := db_character.GetCharacterBind(ctx, charData.ID)
 	ses.SendStreamJSON(bind, opcodes.CharacterBind)
-}
-
-func sendCQInventorySnapshot(ses *session.Session, charID int32) {
-	publishCQInventorySnapshot(ses, db.GlobalWorldDB.DB, charID)
-}
-
-func publishCQInventorySnapshot(ses *session.Session, database db.DBTX, charID int32) {
-	snapshot, err := cqitems.NewStore(database).GetCharacterSnapshot(ses.CommandContext(), charID)
-	if err != nil {
-		log.Printf("[CQItems] Failed to load inventory snapshot for char %d: %v", charID, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Failed to load inventory"}, opcodes.CQInventoryResponse)
-		return
-	}
-	sendCommittedCQInventory(ses, snapshot)
-}
-
-func sendCommittedCQInventory(ses *session.Session, snapshot cqitems.CQInventorySnapshot) {
-	ses.SendStreamJSON(CQInventoryResponse{CommandRevision: snapshot.CommandRevision, Success: true, Items: snapshot.Items, Money: snapshot.Money}, opcodes.CQInventoryResponse)
 }

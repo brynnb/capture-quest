@@ -48,12 +48,6 @@ func sendInventoryCommandError(ses *session.Session, requestID string, opcode op
 }
 
 // These tagged contracts replace map-shaped bag and shop mutation successes.
-type CQInventoryResponse struct {
-	CommandRevision int64                     `json:"commandRevision"`
-	Success         bool                      `json:"success" tstype:"true"`
-	Items           []cqitems.CQInventoryItem `json:"items" tstype:"import(\"./cqitems\").CQInventoryItem[]"`
-	Money           int64                     `json:"money"`
-}
 type CQMerchantBuyResponse struct {
 	RequestID  string                      `json:"requestId"`
 	Success    bool                        `json:"success" tstype:"true"`

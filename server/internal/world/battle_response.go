@@ -109,7 +109,7 @@ func publishBattleTurn(ses *session.Session, wh *WorldHandler, charID int64, bat
 	// Events and terminal outcome share one correlated publication. A late reply
 	// has no separate uncorrelated end notification that can mutate a newer panel.
 	ses.SendStreamJSON(response, opcode)
-	sendPokemonPartySnapshot(ses, battle.PlayerParty)
+	notifyResourceChange(ses)
 }
 
 func itemEffectEvent(message string, target *pokebattle.Pokemon) pokebattle.BattleEvent {

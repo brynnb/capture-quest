@@ -241,22 +241,26 @@ func TestMerchantMutationsRecheckReachVisibilityAndCurrentScriptEligibility(t *t
 	}
 }
 
-func TestInventoryPublicationFailsWholeReadOnWalletError(t *testing.T) {
+func TestInventoryNoticeDoesNotReadOrPublishAHistoricalBag(t *testing.T) {
 	wh, ses, messages := setupIssuedStep(t)
 	if _, err := cqitems.NewStore(wh.database).AddItemToInventory(42, 1, 2); err != nil {
 		t.Fatal(err)
 	}
 	testdb.Exec(t, wh.database, `DROP TABLE character_wallet`)
-	publishCQInventorySnapshot(ses, wh.database, 42)
-	if len(messages.streams) != 1 || messages.streams[0].opcode != opcodes.CQInventoryResponse {
+	notifyResourceChange(ses)
+	if len(messages.streams) != 1 || messages.streams[0].opcode != opcodes.ResourcesChangedNotify {
 		t.Fatalf("inventory publication=%+v", messages.streams)
 	}
-	var reply struct {
-		Success bool
-		Error   string
-		Items   []cqitems.CQInventoryItem
+	var reply ResourceChangeNotify
+	if err := json.Unmarshal(messages.streams[0].payload, &reply); err != nil || !reply.ResourcesChanged || reply.CharacterID != 42 {
+		t.Fatalf("notice=%+v err=%v", reply, err)
 	}
-	if err := json.Unmarshal(messages.streams[0].payload, &reply); err != nil || reply.Success || reply.Error == "" || reply.Items != nil {
-		t.Fatalf("wallet query failure cleared/published bag: %+v %v", reply, err)
+	var payload map[string]interface{}
+	if err := json.Unmarshal(messages.streams[0].payload, &payload); err != nil {
+		t.Fatal(err)
 	}
+	if _, ok := payload["items"]; ok {
+		t.Fatal("notice carried historical bag")
+	}
+
 }
