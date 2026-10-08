@@ -690,7 +690,7 @@ export class MapLoader {
   }
 
   private async recoverLoadedOwnership(generation: number, signal: AbortSignal): Promise<void> {
-    const snapshot = await readCurrentGameplayState(signal, () => this.playerMovementController.getPositionGeneration());
+    const snapshot = await readCurrentGameplayState(signal, () => this.playerMovementController.capturePositionView());
     if (!this.isLoadCurrent(generation) || signal.aborted) return;
     // Project pose before resuming battle/plan presentation. A route may have
     // advanced before the local actor or its notification subscriber existed.

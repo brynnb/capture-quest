@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+Safari battle starts and standalone blackout publication reuse owned recovery,
+following `678b56a`:
 common battle-start publication uses owned current-state recovery,
 following `11aa26e`:
 rendered trainer read/completion acceptance and shared control-gesture ownership,
@@ -63,6 +65,55 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Safari start and standalone blackout publication (2026-10-08)
+
+The shared battle publication consumer now has explicit ordinary-start,
+Safari-start and standalone-end policies. Safari's existing producers omit
+`success`; their opcode is a read hint, with battle identity/Pokémon/counters
+loaded from the current aggregate. Duplicate Safari identity/revision does not
+restart its queue. NetworkBridge's direct Safari start cast/projection is retired.
+
+The standalone end audit confirmed its only live producer is the no-ready-party
+battle-start blackout. The old consumer trusted `blackoutMapId/X/Y` and could
+warp a replacement character or apply an old ending to a new battle. It now
+reads the current character's battle, resources and committed pose, publishes
+synchronously while ownership is valid, and projects through the existing scene
+owner. Nothing from the carrier establishes a destination, win/loss result or
+resource value. Correlated ordinary/Safari command outcomes retain their existing
+presentation policy; no start/close mutation is retried by this read path.
+
+Position projection needs a richer fence than route retirement alone. The
+movement owner now exposes one stable position-view key covering generation,
+map/tile, facing, movement, issued step and facing/field admission. Map recovery
+and the battle scene reuse it. End reads that project position are fenced against
+view changes and use the existing bounded current-read retry. Start reads retain
+battle/character/scene ownership without forcing an unrelated movement freeze.
+This preserves the separate presentation and movement ownership models.
+
+Focused checks prove current Safari identity/duplicate queues and owned blackout
+pose projection, including movement invalidation. The broader client suite
+passed (26 files, 411 tests); final focused fence checks passed (39 tests), with
+typecheck, runtime asset validation, build and diff checks passing. No backend,
+schema or generated asset changes.
+
+Rendered Chromium/WebSocket evidence: late actual Safari and blackout packets
+are delivered after switching characters; a current read is requested/received,
+no foreign battle opens, and the replacement stays at its owned upstairs pose.
+The real blackout and Safari action-menu regressions also pass: four cases in
+16.5s (`/var/tmp/capturequest-rendered.MbyvoA`). The no-foreign-teleport screenshot
+was visually inspected. The earlier complete Safari/blackout run passed seven
+cases in 56.8s (`/var/tmp/capturequest-rendered.Sd5Sky`), including entry, expiry and
+lost capture acknowledgements with party/PC placement.
+
+Remaining: Safari zone enter/step/exit packets still pass through legacy global
+events. Their exit callback can close a battle and project the carrier's gate
+coordinates; that path is explicitly not fixed by the battle-start/end consumer.
+Next: migrate zone HUD and exit publication through authoritative visit/pose
+state, preserving exit narrative while retiring the raw callback and automatic
+close behavior. Wider native/sight/start-ack acceptance and all five roadmap
+areas remain incomplete. Historical restore/Repel attribution remains open.
+Local checkpoint only; no push or deployment.
 
 ## Owned battle-start publication (2026-10-08)
 

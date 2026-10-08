@@ -570,7 +570,7 @@ export class TileViewer extends Scene {
     });
     this.warpEvents.register();
     this.inventorySceneUnsubscribe = bindInventoryScene();
-    this.battleSceneUnsubscribe = bindBattleScene(position => this.warpEvents.reconcileOwnedPosition(position));
+    this.battleSceneUnsubscribe = bindBattleScene(position => this.warpEvents.reconcileOwnedPosition(position), () => this.playerMovementController.capturePositionView());
 
     this.eventBridge = new TileViewerEventBridge({
       scene: this,

@@ -590,3 +590,11 @@ test("a facing acceptance from a replaced character cannot reserve movement", as
   expect(recovery.readCurrentGameplayState).not.toHaveBeenCalled();
   controller.clear();
 });
+
+test("position read view changes for pose/facing without requiring route retirement",()=>{
+ const {controller}=buildLedgeController();
+ const generation=controller.getPositionGeneration();const initial=controller.capturePositionView();
+ expect(controller.capturePositionView()).toBe(initial);
+ controller.syncPosition(9,1);expect(controller.getPositionGeneration()).toBe(generation);expect(controller.capturePositionView()).not.toBe(initial);
+ const moved=controller.capturePositionView();controller.syncDirection("LEFT");expect(controller.getPositionGeneration()).toBe(generation);expect(controller.capturePositionView()).not.toBe(moved);
+});

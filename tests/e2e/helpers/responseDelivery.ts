@@ -11,7 +11,7 @@ export async function observeResponseDelivery(page:Page,opcodes:number[],receive
  WorldSocket.onJson=(opcode,data)=>{
  const envelope=data as {requestId?:unknown;battleId?:unknown}|null;
  const id=typeof envelope?.requestId==="string" ? envelope.requestId : envelope?.battleId;
- if(opcodes.includes(opcode) && typeof id==="string")void(window as unknown as {observeResponseDelivery:(opcode:number,id:string)=>Promise<void>}).observeResponseDelivery(opcode,id);
+ if(opcodes.includes(opcode) && data)void(window as unknown as {observeResponseDelivery:(opcode:number,id:string)=>Promise<void>}).observeResponseDelivery(opcode,typeof id==="string" ? id : "");
  dispatch?.(opcode,data);
  };
  },opcodes);

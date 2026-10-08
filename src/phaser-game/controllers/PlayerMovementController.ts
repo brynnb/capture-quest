@@ -218,6 +218,12 @@ export class PlayerMovementController {
   }
   getPositionGeneration(): number { return this.movementGeneration; }
 
+  // Retiring a route is only one change to ownership. Reads also need to notice
+  // ordinary predicted movement/facing and a newly issued step before snapping.
+  capturePositionView(): string {
+    return `${this.movementGeneration}:${this.currentMapId}:${this.currentTileX}:${this.currentTileY}:${this.currentDirection}:${this.isMoving}:${this.issuedStep?.stepToken ?? ""}:${!!this.facingAbort}:${!!this.fieldCommandAbort}`;
+  }
+
   // Call only after an owned, validated current read. Visual/server notifications
   // can be missed while a scene binds; resource and plan publication stay outside.
   projectOwnedPosition(position: OwnedPlayerPositionResponse): void {

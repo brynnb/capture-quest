@@ -1,5 +1,4 @@
-import { presentBattleEnd, recoverBattleStartNotice } from "@/phaser-game/services/BattleCommandService";
-import type { BattleEndOutcome } from "@/net/generated/world_api";
+import { recoverBattlePublication } from "@/phaser-game/services/BattleCommandService";
 import { WorldSocket } from "./index";
 import * as OpCodes from "./generated/opcodes";
 import type { OpCode } from "./generated/opcodes";
@@ -11,7 +10,6 @@ import useCharacterSelectStore, {
   type CharacterSelectEntry,
 } from "@/stores/CharacterSelectStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
-import useGameStatusStore from "@/stores/GameStatusStore";
 import useGameScreenStore from "@/stores/GameScreenStore";
 import usePokeBattleStore from "@/stores/PokeBattleStore";
 import useCQInventoryStore from "@/stores/CQInventoryStore";
@@ -321,7 +319,7 @@ export class NetworkBridge {
       console.warn("[NetworkBridge] Battle start failed:", data.error);
       return;
     }
-    void recoverBattleStartNotice(data);
+    void recoverBattlePublication(data);
   }
 
   private playSourceSFX(sfxConstant: string, volume: number) {
@@ -332,14 +330,7 @@ export class NetworkBridge {
   }
 
   private handlePokeBattleEnd(data: Record<string, unknown>) {
-    // Only standalone battle-start blackout still uses this unsolicited opcode.
-    // Ordinary command end outcomes travel inside their correlated reply.
-    const end = data as unknown as BattleEndOutcome;
-    if (!end.playerWon && end.blackoutMapId > 0 && !usePokeBattleStore.getState().isInBattle) {
-      useGameStatusStore.getState().triggerBlackoutWarp(end.blackoutMapId, end.blackoutX, end.blackoutY);
-      return;
-    }
-    presentBattleEnd(end);
+    void recoverBattlePublication(data,"standalone-end");
   }
 
   private handleCQItemUseResponse(data: Record<string, unknown>) {
@@ -563,14 +554,7 @@ export class NetworkBridge {
   }
 
   private handleSafariBattleStart(data: Record<string, unknown>) {
-    console.log("[NetworkBridge] Safari battle start:", data);
-    const pokemon = data.pokemon as { id: number; name: string; level: number; hp: number; maxHp: number };
-    usePokeBattleStore.getState().startSafariBattle({
-      pokemon,
-      battleId: data.battleId as string, revision: data.revision as number,
-      ballsLeft: data.ballsLeft as number,
-      stepsLeft: data.stepsLeft as number,
-    });
+    void recoverBattlePublication(data,"safari-start");
   }
 
   private handleWarpTileTeleport(data: ProtocolTypes.WarpTileTeleportNotify) {
