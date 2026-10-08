@@ -41,16 +41,20 @@ type inGameTradeOutcome struct {
 	party            []*pokebattle.Pokemon
 }
 
-func resolveInGameTradeDialogueEntries(textConstant string, charID int64) ([]PhaserDialogueEntry, bool) {
-	trade, err := loadInGameTradeDefinitionByText(textConstant)
+func resolveInGameTradeDialogueEntries(ctx context.Context, database db.ContextDBTX, textConstant string, charID int64) ([]PhaserDialogueEntry, error) {
+	trade, err := queryInGameTradeDefinitionByTextContext(ctx, database, textConstant)
+	if errors.Is(err, errInGameTradeNotFound) {
+		return nil, nil
+	}
 	if err != nil {
-		return nil, false
+		return nil, err
 	}
 
 	completed := false
 	if charID > 0 {
-		if done, err := characterCompletedInGameTrade(db.GlobalWorldDB.DB, charID, trade.TradeKey); err == nil {
-			completed = done
+		err = database.QueryRowContext(ctx, inGameTradeCompletionQuery, charID, trade.TradeKey).Scan(&completed)
+		if err != nil {
+			return nil, fmt.Errorf("dialogue trade completion: %w", err)
 		}
 	}
 
@@ -64,7 +68,7 @@ func resolveInGameTradeDialogueEntries(textConstant string, charID int64) ([]Pha
 		SourceFile: trade.SourceFile,
 		Dialogue:   dialogue,
 		IsTrainer:  0,
-	}}, true
+	}}, nil
 }
 
 func checkInGameTradeBranchingDialogue(textConstant string, charID int64) *BranchingDialogue {
@@ -189,13 +193,13 @@ func scanInGameTradeDefinition(row *sql.Row) (inGameTradeDefinition, error) {
 	return trade, nil
 }
 
+const inGameTradeCompletionQuery = `SELECT EXISTS (
+ SELECT 1 FROM character_in_game_trades WHERE character_id=$1 AND trade_key=$2
+)`
+
 func characterCompletedInGameTrade(myDB pokebattle.DBTX, charID int64, tradeKey string) (bool, error) {
 	var completed bool
-	err := myDB.QueryRow(`
-		SELECT EXISTS (
-			SELECT 1 FROM character_in_game_trades
-			WHERE character_id = $1 AND trade_key = $2
-		)`, charID, tradeKey).Scan(&completed)
+	err := myDB.QueryRow(inGameTradeCompletionQuery, charID, tradeKey).Scan(&completed)
 	return completed, err
 }
 

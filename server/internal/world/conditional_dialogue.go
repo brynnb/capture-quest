@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -18,8 +19,8 @@ type conditionalDialogueOverride struct {
 // checkConditionalDialogue checks if a text constant has a conditional override
 // based on the player's event flags. Returns the highest-priority matching
 // override, or nil if no conditions match (use default dialogue).
-func checkConditionalDialogue(textConstant string, charID int64, efm *EventFlagManager) (*conditionalDialogueOverride, error) {
-	rows, err := db.GlobalWorldDB.DB.Query(`
+func checkConditionalDialogue(ctx context.Context, database db.ContextDBTX, textConstant string, charID int64, efm *EventFlagManager) (*conditionalDialogueOverride, error) {
+	rows, err := database.QueryContext(ctx, `
 		SELECT id, requires_flag, requires_flag_absent, requires_flags, requires_flags_absent, override_dialogue
 		FROM phaser_conditional_dialogue
 		WHERE text_constant = $1

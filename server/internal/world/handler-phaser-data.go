@@ -1,10 +1,13 @@
 package world
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
+	"time"
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
@@ -124,7 +127,9 @@ func HandlePhaserDialogueRequest(ses *session.Session, payload []byte, wh *World
 	if wh != nil {
 		efm = wh.EventFlags
 	}
-	entries, err := resolvePhaserDialogueEntries(req.TextConstant, charID, efm)
+	ctx, cancel := context.WithTimeout(ses.CommandContext(), 5*time.Second)
+	defer cancel()
+	entries, err := resolvePhaserDialogueEntries(ctx, wh.database, req.TextConstant, charID, efm)
 	if err != nil {
 		log.Printf("[Phaser] Error querying dialogue for %s: %v", req.TextConstant, err)
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.PhaserDialogueResponse)
@@ -148,8 +153,8 @@ func HandlePhaserDialogueRequest(ses *session.Session, payload []byte, wh *World
 	return false
 }
 
-func resolvePhaserDialogueEntries(textConstant string, charID int64, efm *EventFlagManager) ([]PhaserDialogueEntry, error) {
-	rows, err := db.GlobalWorldDB.DB.Query(`
+func resolvePhaserDialogueEntries(ctx context.Context, database db.ContextDBTX, textConstant string, charID int64, efm *EventFlagManager) ([]PhaserDialogueEntry, error) {
+	rows, err := database.QueryContext(ctx, `
 		SELECT dt.label, dt.source_file, dt.dialogue, tp.is_trainer, tp.map_name
 		FROM phaser_text_pointers tp
 		LEFT JOIN phaser_dialogue_text dt ON dt.label = tp.dialogue_label
@@ -164,8 +169,7 @@ func resolvePhaserDialogueEntries(textConstant string, charID int64, efm *EventF
 		var label, sourceFile, dialogue, mapName sql.NullString
 		var isTrainer sql.NullInt64
 		if err := rows.Scan(&label, &sourceFile, &dialogue, &isTrainer, &mapName); err != nil {
-			log.Printf("[Phaser] Error scanning dialogue: %v", err)
-			continue
+			return nil, fmt.Errorf("dialogue %s scan: %w", textConstant, err)
 		}
 		if !label.Valid || !sourceFile.Valid || !dialogue.Valid {
 			continue
@@ -186,12 +190,18 @@ func resolvePhaserDialogueEntries(textConstant string, charID int64, efm *EventF
 		return nil, err
 	}
 
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
 	if len(entries) == 0 {
-		entries = resolveScriptDialogueFallbackEntries(textConstant, charID, efm)
+		entries, err = resolveInGameTradeDialogueEntries(ctx, database, textConstant, charID)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if charID > 0 && efm != nil {
-		override, err := checkConditionalDialogue(textConstant, charID, efm)
+		override, err := checkConditionalDialogue(ctx, database, textConstant, charID, efm)
 		if err != nil {
 			return nil, err
 		}

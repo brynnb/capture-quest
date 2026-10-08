@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+dialogue entries, conditional overrides and trade fallback reads use the injected
+database and caller cancellation, following `b6d3ce3`:
 conditional dialogue rejects malformed conditions and load failures,
 following `e68fce5`: name validation uses owned filtering, explicit identity and cancellable application,
 following `58b871e`: real local Chromium native QUIC login/movement/reentry and restart acceptance,
@@ -47,6 +49,32 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Dialogue reader ownership prerequisite (2026-10-08)
+
+Ordinary entries, conditional overrides and trade fallback reads now take an
+explicit database and context. The live entry resolver uses the world handler's
+captured database with one five-second session budget. Trade definition and
+completion errors propagate; only an absent definition means no trade fallback.
+Entry scan failures reject the result rather than publishing a partial list.
+Rows are explicitly closed before subsequent reads, allowing a retained single
+transaction connection. The unused one-call fallback wrapper is retired, and
+trade completion SQL remains shared with the mutation path.
+
+Focused checks cover pool-wait cancellation and retry, generated/scalar selection
+without the global database, malformed conditions, scan failure, offer/after-trade
+selection and the difference between missing definitions and failed SQL.
+Full PostgreSQL world (55.3s) and simulator (1.4s) race suites passed; the
+final added scan/trade regressions passed separately (1.7s). All Go packages
+compile and `git diff --check` passes. No rendered check was run.
+
+Remaining: branch prompt reads still use global dependencies and suppress errors;
+entry/flag/trade/branch reads still need one coherent snapshot. Client dialogue
+still uses FIFO responses and needs correlation plus actor/cutscene cancellation.
+This prerequisite does not prove rendered dialogue behavior or complete the
+family. Next: migrate branch readers and assemble the response through the
+existing shared read snapshot, then migrate client lifetime ownership. The full
+goal remains active. No wire/schema/assets, push or deployment this checkpoint.
 
 ## Dialogue migration prerequisite: explicit condition failure (2026-10-08)
 

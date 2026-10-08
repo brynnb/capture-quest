@@ -1,13 +1,19 @@
 package world
 
 import (
+	"capturequest/internal/db"
+	"context"
 	"testing"
 )
 
 func TestResolveScriptDialogueFallbackEntriesRoute18Gate2FYoungster(t *testing.T) {
-	setupInGameTradeTestDB(t, 42, true)
+	raw := setupInGameTradeTestDB(t, 42, true)
+	db.GlobalWorldDB = nil
 
-	entries := resolveScriptDialogueFallbackEntries(route18Gate2FYoungsterTextConstant, 42, nil)
+	entries, err := resolveInGameTradeDialogueEntries(context.Background(), raw, route18Gate2FYoungsterTextConstant, 42)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(entries) != 1 {
 		t.Fatalf("got %d entries, want 1", len(entries))
 	}
@@ -32,7 +38,10 @@ func TestResolveScriptDialogueFallbackEntriesRoute18Gate2FYoungsterAfterTrade(t 
 		t.Fatal(err)
 	}
 
-	entries := resolveScriptDialogueFallbackEntries(route18Gate2FYoungsterTextConstant, 42, nil)
+	entries, err := resolveInGameTradeDialogueEntries(context.Background(), raw, route18Gate2FYoungsterTextConstant, 42)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(entries) != 1 {
 		t.Fatalf("got %d entries, want 1", len(entries))
 	}
@@ -41,5 +50,31 @@ func TestResolveScriptDialogueFallbackEntriesRoute18Gate2FYoungsterAfterTrade(t 
 	}
 	if bd := checkInGameTradeBranchingDialogue(route18Gate2FYoungsterTextConstant, 42); bd != nil {
 		t.Fatalf("branching dialogue after completed trade = %#v", bd)
+	}
+}
+
+func TestTradeDialogueRejectsCompletionLookupFailure(t *testing.T) {
+	raw := setupInGameTradeTestDB(t, 42, true)
+	if _, err := raw.Exec(`DROP TABLE character_in_game_trades`); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := resolveInGameTradeDialogueEntries(context.Background(), raw, route18Gate2FYoungsterTextConstant, 42)
+	if err == nil || entries != nil {
+		t.Fatalf("entries=%v error=%v", entries, err)
+	}
+}
+
+func TestTradeDialogueMissingDefinitionIsNotQueryFailure(t *testing.T) {
+	raw := setupInGameTradeTestDB(t, 42, true)
+	entries, err := resolveInGameTradeDialogueEntries(context.Background(), raw, "UNKNOWN_TEXT", 42)
+	if err != nil || entries != nil {
+		t.Fatalf("absent entries=%v error=%v", entries, err)
+	}
+	if _, err := raw.Exec(`DROP TABLE phaser_in_game_trades`); err != nil {
+		t.Fatal(err)
+	}
+	entries, err = resolveInGameTradeDialogueEntries(context.Background(), raw, "UNKNOWN_TEXT", 42)
+	if err == nil || entries != nil {
+		t.Fatalf("failed entries=%v error=%v", entries, err)
 	}
 }

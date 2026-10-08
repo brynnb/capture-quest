@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"database/sql"
 	"testing"
 
@@ -47,13 +48,14 @@ func TestBranchingDialogueForResponseAllowsLegacyBranchWithoutScriptOwner(t *tes
 }
 
 func TestResolvePhaserDialogueEntriesAppliesGeneratedConditionalDialogue(t *testing.T) {
-	setupGeneratedConditionalDialogueResolverTestDB(t)
+	raw := setupGeneratedConditionalDialogueResolverTestDB(t)
+	db.GlobalWorldDB = nil
 
 	efm := NewEventFlagManager(nil)
 	const charID int64 = 42
 	efm.flags[charID] = map[string]bool{}
 
-	entries, err := resolvePhaserDialogueEntries("TEXT_OAKSLAB_RIVAL", charID, efm)
+	entries, err := resolvePhaserDialogueEntries(context.Background(), raw, "TEXT_OAKSLAB_RIVAL", charID, efm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +67,7 @@ func TestResolvePhaserDialogueEntriesAppliesGeneratedConditionalDialogue(t *test
 	}
 
 	efm.flags[charID]["EVENT_FOLLOWED_OAK_INTO_LAB_2"] = true
-	entries, err = resolvePhaserDialogueEntries("TEXT_OAKSLAB_RIVAL", charID, efm)
+	entries, err = resolvePhaserDialogueEntries(context.Background(), raw, "TEXT_OAKSLAB_RIVAL", charID, efm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +76,7 @@ func TestResolvePhaserDialogueEntriesAppliesGeneratedConditionalDialogue(t *test
 	}
 
 	efm.flags[charID]["EVENT_GOT_STARTER"] = true
-	entries, err = resolvePhaserDialogueEntries("TEXT_OAKSLAB_RIVAL", charID, efm)
+	entries, err = resolvePhaserDialogueEntries(context.Background(), raw, "TEXT_OAKSLAB_RIVAL", charID, efm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +142,7 @@ func setupBranchingDialogueTestDB(t *testing.T, textConstant string) {
 	})
 }
 
-func setupGeneratedConditionalDialogueResolverTestDB(t *testing.T) {
+func setupGeneratedConditionalDialogueResolverTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 
 	raw, err := sql.Open("sqlite", ":memory:")
@@ -199,8 +201,20 @@ func setupGeneratedConditionalDialogueResolverTestDB(t *testing.T) {
 		db.GlobalWorldDB = previous
 		raw.Close()
 	})
+	return raw
 }
 
 func stringPtr(value string) *string {
 	return &value
+}
+
+func TestResolveDialogueRejectsScanFailureWithoutPartialEntries(t *testing.T) {
+	raw := setupGeneratedConditionalDialogueResolverTestDB(t)
+	if _, err := raw.Exec(`UPDATE phaser_text_pointers SET is_trainer='malformed'`); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := resolvePhaserDialogueEntries(context.Background(), raw, "TEXT_OAKSLAB_RIVAL", 42, NewEventFlagManager(nil))
+	if err == nil || entries != nil {
+		t.Fatalf("entries=%v error=%v", entries, err)
+	}
 }
