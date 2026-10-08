@@ -1,8 +1,7 @@
 import { create } from "zustand";
 import { persist, subscribeWithSelector } from "zustand/middleware";
 import { MapData } from "@/services/characterService";
-import { WorldSocket, OpCodes } from "@/net";
-import { OptionId } from "@/constants/optionId";
+import { setTrainerPreference } from "@/phaser-game/services/PreferenceCommandService";
 import { displayLocationNameForMap } from "@utils/locationNames";
 import type { InstantWarpTarget } from "@/phaser-game/instantWarp";
 import AudioManager from "@/services/audio/AudioManager";
@@ -83,11 +82,15 @@ interface GameStatusStore {
   pendingBlackoutWarp: { mapId: number; x: number; y: number } | null;
   triggerBlackoutWarp: (mapId: number, x: number, y: number) => void;
   clearBlackoutWarp: () => void;
+  preferenceRevision: number;
+  preferenceCommandPending: boolean;
+  preferenceRecoveryRequired: boolean;
   allowTrainerRebattles: boolean;
   toggleAllowTrainerRebattles: () => void;
 }
 
 interface GameOptions {
+  preferenceRevision?: number;
   allowTrainerRebattles?: boolean;
 }
 
@@ -284,6 +287,8 @@ const useGameStatusStore = create<GameStatusStore>()(
           }
           set({
             allowTrainerRebattles: !!parsed.allowTrainerRebattles,
+            preferenceRevision: parsed.preferenceRevision ?? 0,
+            preferenceRecoveryRequired: false,
           });
         },
         resetPanelStates: () => {
@@ -372,14 +377,10 @@ const useGameStatusStore = create<GameStatusStore>()(
           set({ pendingBlackoutWarp: null });
         },
         allowTrainerRebattles: false,
-        toggleAllowTrainerRebattles: () => {
-          const newVal = !get().allowTrainerRebattles;
-          set({ allowTrainerRebattles: newVal });
-          WorldSocket.sendJsonMessage(OpCodes.SetOption, {
-            optionId: OptionId.AllowTrainerRebattles,
-            value: newVal ? 1 : 0,
-          });
-        },
+        preferenceRevision: 0,
+        preferenceCommandPending: false,
+        preferenceRecoveryRequired: false,
+        toggleAllowTrainerRebattles: () => { void setTrainerPreference(!get().allowTrainerRebattles); },
       }),
       {
         name: "game-status-storage",

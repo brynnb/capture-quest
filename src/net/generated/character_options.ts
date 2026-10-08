@@ -12,6 +12,7 @@ export interface CharacterOptions {
   /**
    * UI options
    */
+  preferenceRevision: number /* int64 */;
   showNetworkStats: boolean;
   allowTrainerRebattles: boolean;
   /**

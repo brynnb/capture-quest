@@ -1464,6 +1464,26 @@ export type PriorityQueue = (AStarNode | undefined)[];
 
 
 //////////
+// source: preference_commands.go
+
+export interface PreferenceRequest {
+  requestId: string;
+  characterId: number /* int64 */;
+  current?: boolean;
+  revision: number /* int64 */;
+  optionId: number;
+  value: number /* int */;
+}
+export interface PreferenceResponse {
+  success: true;
+  requestId: string;
+  characterId: number /* int64 */;
+  revision: number /* int64 */;
+  showNetworkStats: boolean;
+  allowTrainerRebattles: boolean;
+}
+
+//////////
 // source: repel_inventory.go
 
 export interface RepelUseResult {
@@ -1707,11 +1727,6 @@ export interface VictoryRoadBoulderTarget {
   sourceObjectName: string;
   destinationMapName: string;
   destinationObjectName: string;
-}
-export interface VictoryRoadBoulderOutcome {
-  target: VictoryRoadBoulderTarget;
-  alreadySet: boolean;
-  changed: boolean;
 }
 
 //////////

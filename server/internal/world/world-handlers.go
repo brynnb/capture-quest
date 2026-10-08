@@ -9,7 +9,6 @@ import (
 
 	"capturequest/internal/api/opcodes"
 	db_character "capturequest/internal/db/character"
-	"capturequest/internal/options"
 	"capturequest/internal/protocol"
 	"capturequest/internal/session"
 	"capturequest/internal/zone/client"
@@ -23,42 +22,6 @@ import (
 // - world-combat-handlers.go
 // - world-query-handlers.go
 
-// HandleSetOption handles all game option changes from the client
-func HandleSetOption(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	if !ses.HasValidClient() {
-		return false
-	}
-	var req struct {
-		OptionID options.OptionId `json:"optionId"`
-		Value    int              `json:"value"`
-	}
-	if decodePlayerMovement(payload, &req) != nil || (req.Value != 0 && req.Value != 1) {
-		return false
-	}
-	var key string
-	switch req.OptionID {
-	case options.OptionShowNetworkStats:
-		key = "showNetworkStats"
-	case options.OptionAllowTrainerRebattles:
-		key = "allowTrainerRebattles"
-	default:
-		return false
-	}
-	enabled := req.Value == 1
-	if err := db_character.SetBooleanOption(ses.CommandContext(), wh.database, int32(ses.Client.CharData().ID), key, enabled); err != nil {
-		log.Printf("[Options] Save preference for character %d: %v", ses.Client.CharData().ID, err)
-		return false
-	}
-	// Cache only the successfully committed key, never a stale full document.
-	if req.OptionID == options.OptionShowNetworkStats {
-		ses.Client.SetShowNetworkStatsEnabled(enabled)
-	} else {
-		ses.Client.SetAllowTrainerRebattlesEnabled(enabled)
-	}
-	return false
-}
-
-// HandleCharacterQuitRequest saves player data before returning to character select.
 func HandleCharacterQuitRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
 	if !ses.HasValidClient() {
 		return false

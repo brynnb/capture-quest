@@ -17,8 +17,9 @@ const DefaultRivalName = "Gary"
 // All fields use camelCase for JSON to match frontend conventions
 type CharacterOptions struct {
 	// UI options
-	ShowNetworkStats      bool `json:"showNetworkStats"`
-	AllowTrainerRebattles bool `json:"allowTrainerRebattles"`
+	PreferenceRevision    int64 `json:"preferenceRevision"`
+	ShowNetworkStats      bool  `json:"showNetworkStats"`
+	AllowTrainerRebattles bool  `json:"allowTrainerRebattles"`
 
 	// Pokémon Center tracking (last visited center for blackout warp)
 	LastPokeCenterMapID int `json:"lastPokeCenterMapId"`
@@ -87,6 +88,9 @@ func LoadOptionsFrom(ctx context.Context, database db.ContextDBTX, charID int32)
 	if err := json.Unmarshal([]byte(optionsJSON.String), opts); err != nil {
 		return nil, fmt.Errorf("parse options for character %d: %w", charID, err)
 	}
+	if opts.PreferenceRevision < 0 || opts.PreferenceRevision >= 9007199254740991 {
+		return nil, fmt.Errorf("invalid preference revision for character %d", charID)
+	}
 	opts.RivalName = NormalizeRivalName(opts.RivalName)
 
 	return opts, nil
@@ -94,7 +98,7 @@ func LoadOptionsFrom(ctx context.Context, database db.ContextDBTX, charID int32)
 
 // SetBooleanOption owns one desired preference key. Newer center/story keys and
 // unknown options remain in the same authoritative JSON object.
-func SetBooleanOption(ctx context.Context, database *sql.DB, charID int32, key string, enabled bool) error {
+func SetBooleanOption(ctx context.Context, database *sql.DB, charID int32, key string, enabled bool, expectedRevision int64) error {
 	if key != "showNetworkStats" && key != "allowTrainerRebattles" {
 		return fmt.Errorf("unsupported preference key %q", key)
 	}
@@ -102,14 +106,16 @@ func SetBooleanOption(ctx context.Context, database *sql.DB, charID int32, key s
 		if err := db.LockCharacter(tx, int64(charID)); err != nil {
 			return err
 		}
-		var valid bool
-		if err := tx.QueryRow(`SELECT options IS NULL OR jsonb_typeof(options)='object' FROM character_data WHERE id=$1`, charID).Scan(&valid); err != nil {
+		// Use the same strict reader as entry/current preference reads. The shared
+		// transaction wrapper implements ContextDBTX and preserves its own deadline.
+		opts, err := LoadOptionsFrom(ctx, tx.(db.ContextDBTX), charID)
+		if err != nil {
 			return err
 		}
-		if !valid {
-			return fmt.Errorf("options for character %d must be an object", charID)
+		if expectedRevision < 0 || opts.PreferenceRevision != expectedRevision || expectedRevision >= 9007199254740990 {
+			return fmt.Errorf("preference revision changed; read current preferences")
 		}
-		_, err := tx.Exec(`UPDATE character_data SET options=COALESCE(options,'{}'::jsonb)||jsonb_build_object($2::text,$3::boolean) WHERE id=$1`, charID, key, enabled)
+		_, err = tx.Exec(`UPDATE character_data SET options=COALESCE(options,'{}'::jsonb)||jsonb_build_object($2::text,$3::boolean,'preferenceRevision',$4::bigint) WHERE id=$1`, charID, key, enabled, expectedRevision+1)
 		return err
 	})
 }

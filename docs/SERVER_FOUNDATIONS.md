@@ -7,8 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-flag-cache read lifetime and atomic preference-key persistence, following owned
-entry reads, actor publication and movement/resource recovery.
+correlated, revision-fenced preference commands and current-state recovery,
+following flag-cache commit/lifetime fixes, owned entry reads and movement recovery.
 
 The latest field-command prerequisite is Escape Rope source fencing, recorded
 below; Bicycle now has a movement-owned desired-state command. Escape Rope transport now uses a correlated revision-fenced command and movement-owned current recovery.
@@ -27,6 +27,51 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Preference command and current-state recovery (2026-10-08)
+
+The client changed `allowTrainerRebattles` before sending an uncorrelated
+`SetOption`, so a rejected or lost write could leave its displayed toggle wrong.
+`SetOption` now has explicit request/reply contracts with character identity,
+request correlation and `preferenceRevision`. A desired boolean write checks and
+increments that revision under the existing character transaction; the revision
+lives in the authoritative options JSON. Patches preserve center/story/unknown
+keys. Stale or duplicate revisions reject without mutation. A `current` request
+reads preferences under the same character lock and never increments the revision.
+No inventory coordinator, broker, new table or schema migration was introduced.
+
+The client uses the shared `correlatedRequest` timeout, cancellation and listener
+cleanup. The Options toggle shows its existing confirmed value until settlement,
+displays Saving while pending and rejects rapid second clicks. Unknown outcomes
+read current preferences without resending the write. Failed recovery requires a
+current read before another mutation. Reply validation fences character identity,
+revision and boolean values; late replies have no global application. Character
+change or leaving the game retires pending work, including same-character reentry.
+Closing only the Options panel leaves the character-owned operation running.
+The obsolete uncorrelated send and inline server handler are retired. Canonical
+Tygo generation publishes matching contracts; old requests without correlation
+reject, so rollout requires matched frontend/backend code.
+
+Five client regressions passed: confirmed settlement, rapid duplicate admission,
+lost reply/read-only recovery and late acknowledgement, quit/reentry retirement,
+failed-recovery admission and an older read overtaken by a newer preference view.
+PostgreSQL checks cover character mismatch, stale/duplicate revisions, current
+read revision stability, key preservation and commit rejection/cache consistency.
+Full character, client, world and simulator race suites passed in 1.373, 1.090,
+51.238 and 1.068 seconds. Typecheck and diff checks passed. Three rendered cases
+passed in 39.4 seconds: normal preference/reentry, dropped reply/reentry and walking
+recovery/reentry. The fault test observes exactly one preference mutation followed
+by one current read. Evidence is retained in `/var/tmp/capturequest-rendered.3kCupL`.
+The production build and its canonical runtime-asset validation passed (Vite build
+3.57 seconds); build logs are at `/var/tmp/capturequest-preference-build.log`.
+
+This establishes the selected preference command baseline, not closure of the
+combined options/chat/liveness row. Remaining option/rival-name writers, unrelated
+chat/heartbeat limits, independent-owner cache ordering and the original
+unattributed restore timeout remain open. No new process-death or production
+acceptance is claimed. Next: review this preference boundary, then audit the
+remaining chat/liveness commands as their own non-inventory domain. This checkpoint
+is local only; no push, deployment or production mutation is part of this turn.
 
 ## Flag writer commit-result boundary (2026-10-08)
 

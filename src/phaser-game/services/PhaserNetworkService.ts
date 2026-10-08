@@ -376,6 +376,7 @@ export function onInventoryCommand<T extends InventoryReply>(opcode: number, rec
 
 const handlers = {
   escapeRope: new Set<(data: import("@/net/generated/world_api").EscapeRopeUseResponse | PlayerStepError) => void>(),
+  preferences: new Set<(data: import("@/net/generated/world_api").PreferenceResponse | PlayerStepError) => void>(),
   bicycleState: new Set<(data: import("@/net/generated/world_api").BicycleStateResponse | PlayerStepError) => void>(),
   gameplayState: new Set<(data: GameplayStateResponse | PlayerStepError) => void>(),
   cutsceneEnd: new Set<(data: CutsceneEndResponse | PlayerStepError) => void>(),
@@ -404,6 +405,12 @@ export function onEscapeRope(handler: (data: import("@/net/generated/world_api")
 }
 export function requestEscapeRope(request: import("@/net/generated/world_api").EscapeRopeUseRequest): Promise<void> {
   return NetworkBridge.send(request, OpCodes.EscapeRopeUseRequest);
+}
+export function onPreferences(handler: (data: import("@/net/generated/world_api").PreferenceResponse | PlayerStepError) => void): () => void {
+  handlers.preferences.add(handler); return () => handlers.preferences.delete(handler);
+}
+export function requestPreferences(request: import("@/net/generated/world_api").PreferenceRequest): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.SetOption);
 }
 export function onBicycleState(handler: (data: import("@/net/generated/world_api").BicycleStateResponse | PlayerStepError) => void): () => void {
   handlers.bicycleState.add(handler);
@@ -586,6 +593,9 @@ export function dispatchPhaserResponse(opcode: number, data: unknown): void {
 
     case OpCodes.EscapeRopeUseResponse:
       handlers.escapeRope.forEach(handler => handler(data as import("@/net/generated/world_api").EscapeRopeUseResponse | PlayerStepError));
+      break;
+    case OpCodes.SetOption:
+      handlers.preferences.forEach(handler => handler(data as import("@/net/generated/world_api").PreferenceResponse | PlayerStepError));
       break;
     case OpCodes.BicycleStateResponse:
       handlers.bicycleState.forEach(handler => handler(data as import("@/net/generated/world_api").BicycleStateResponse | PlayerStepError));
