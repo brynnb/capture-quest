@@ -28,6 +28,39 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Shared lock transaction-contract review (2026-10-08)
+
+Caller inventory confirms character locking is performed through owned transaction
+query handles or explicit test transactions. The primitive nevertheless accepted a
+plain pool: an autocommitted SELECT could release the row lock before the protected
+operation and falsely advertise ownership. `LockCharacter` now uses the existing
+`RequireTransaction` guard before querying. That guard also rejects nil `*sql.Tx`
+and nil owned query handles instead of allowing dereference panics. The obsolete
+comment claiming SQLite/no-op UPDATE semantics is removed.
+
+The PostgreSQL regression occupies the only pool connection and invokes ownership
+with a plain database. It must reject immediately without changing the pool wait
+counter; nil handles also reject. Existing serialization/deadline, missing-row and
+update-trigger regressions still pass. Focused db/inventory/battle checks passed
+(2.0s/2.5s/4.2s), full db repositories/economy/itemuse/battle/world race suites passed
+(world 70.5s), all Go packages compile and diff checks pass. No new browser run was
+needed for this admission guard; the preceding actual Repel crash/reentry evidence
+covers valid transaction consumers, while the guard regression covers misuse.
+
+Lifecycle source review found a remaining distinct boundary: cleanup always invokes
+`FlushPlayerPosition` for a registered state, then unregisters it even on failure.
+The flush does not inspect `positionDirty`, and committed projection setters mark
+that flag. Before changing recovery policy, audit every producer of dirty position
+and distinguish authoritative committed projections from genuinely unsaved legacy
+state. Durable final-save recovery is still open; this patch does not guess or
+silently discard that obligation.
+
+The original restore timeout and Repel click failure remain unattributed, and all
+five roadmap areas stay active. Next: audit final-position producers and cleanup
+recovery through the existing movement/session owner before expanding another
+command family. This checkpoint is local only, without push, deployment, schema
+or generated-asset mutation.
+
 ## Character ownership lock without manufactured writes (2026-10-08)
 
 Returning to the original restore investigation exposed a concrete shared-boundary

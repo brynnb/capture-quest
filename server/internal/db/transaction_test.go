@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"strings"
 	"testing"
@@ -110,5 +111,38 @@ func TestCharacterLockDoesNotFireUpdateTrigger(t *testing.T) {
 	}
 	if err := Transaction(context.Background(), database, func(tx DBTX) error { return LockCharacter(tx, 2) }); err == nil || !strings.Contains(err.Error(), "does not exist") {
 		t.Fatalf("missing owner accepted: %v", err)
+	}
+}
+
+func TestCharacterOwnershipRequiresRetainedTransactionBeforePoolAccess(t *testing.T) {
+	database := testdb.Postgres(t)
+	database.SetMaxOpenConns(1)
+	lease, err := database.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.Close()
+	before := database.Stats().WaitCount
+	done := make(chan error, 1)
+	go func() { done <- LockCharacter(database, 1) }()
+	select {
+	case err = <-done:
+	case <-time.After(200 * time.Millisecond):
+		lease.Close()
+		<-done
+		t.Fatal("invalid ownership handle attempted a pool query")
+	}
+	if err == nil || !strings.Contains(err.Error(), "requires a transaction") {
+		t.Fatalf("pool accepted for ownership: %v", err)
+	}
+	if database.Stats().WaitCount != before {
+		t.Fatal("ownership guard borrowed a connection")
+	}
+	var nilTransaction *sql.Tx
+	if err := LockCharacter(nilTransaction, 1); err == nil || !strings.Contains(err.Error(), "nil") {
+		t.Fatalf("nil transaction accepted: %v", err)
+	}
+	if err := LockCharacter(transactionQueries{}, 1); err == nil {
+		t.Fatal("nil owned query handle accepted")
 	}
 }

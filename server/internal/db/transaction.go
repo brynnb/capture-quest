@@ -27,8 +27,16 @@ type ContextDBTX interface {
 // RequireTransaction guards operations whose caller owns the atomic boundary.
 // A plain database would let partially completed writes escape on failure.
 func RequireTransaction(database DBTX) error {
-	switch database.(type) {
-	case transactionQueries, *sql.Tx:
+	switch handle := database.(type) {
+	case transactionQueries:
+		if handle.tx == nil {
+			return fmt.Errorf("transaction handle is nil")
+		}
+		return nil
+	case *sql.Tx:
+		if handle == nil {
+			return fmt.Errorf("transaction handle is nil")
+		}
 		return nil
 	default:
 		return fmt.Errorf("operation requires a transaction, got %T", database)
@@ -82,12 +90,13 @@ func (q transactionQueries) Exec(query string, args ...any) (sql.Result, error) 
 	return q.tx.ExecContext(q.ctx, query, args...)
 }
 
-// LockCharacter serializes durable operations for one character, including when
-// the wallet or inventory is empty. A no-op update takes a row lock on PostgreSQL
-// and also works in the offline SQLite simulator. Call only inside Transaction.
-// LockCharacter serializes the owner without manufacturing a character write.
-// A no-op UPDATE fires triggers and creates row versions even on restore reads.
+// LockCharacter serializes one character inside an owned PostgreSQL transaction
+// without manufacturing a write. A plain pool cannot retain this lock, so it is
+// rejected before querying. A no-op UPDATE would fire triggers and create rows.
 func LockCharacter(database DBTX, characterID int64) error {
+	if err := RequireTransaction(database); err != nil {
+		return fmt.Errorf("character ownership: %w", err)
+	}
 	var id int64
 	err := database.QueryRow(`SELECT id FROM character_data WHERE id=$1 FOR UPDATE`, characterID).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
