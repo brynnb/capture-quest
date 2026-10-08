@@ -5,7 +5,7 @@ import usePokeBattleStore from "@/stores/PokeBattleStore";
 import usePokemonDialogueStore from "@/stores/PokemonDialogueStore";
 import usePokemonPCStore from "@/stores/PokemonPCStore";
 import useSlotMachineStore from "@/stores/SlotMachineStore";
-import { getWorldInputFreezeReason } from "./worldInputGuard";
+import { getWorldInputFreezeReason, isInteractiveControlTarget } from "./worldInputGuard";
 
 function resetInputState(): void {
   usePokeBattleStore.setState({ isInBattle: false });
@@ -74,4 +74,20 @@ describe("responsive HUD panel state", () => {
     expect(useGameStatusStore.getState().isHelpOpen).toBe(false);
     expect(useGameStatusStore.getState().isGroupOpen).toBe(true);
   });
+});
+
+
+describe("global gesture control ownership",()=>{
+ it("recognizes control descendants without claiming ordinary background clicks",()=>{
+ for(const tag of ["button","a","input","select","textarea","div"]){
+ const control=document.createElement(tag);
+ if(tag==="a")control.setAttribute("href","#");
+ if(tag==="div")control.setAttribute("role","button");
+ const icon=document.createElementNS("http://www.w3.org/2000/svg","svg");control.append(icon);
+ expect(isInteractiveControlTarget(control)).toBe(true);expect(isInteractiveControlTarget(icon)).toBe(true);
+ }
+ const background=document.createElement("div");expect(isInteractiveControlTarget(background)).toBe(false);
+ const editor=document.createElement("div");editor.setAttribute("contenteditable","true");expect(isInteractiveControlTarget(editor)).toBe(true);
+ expect(isInteractiveControlTarget(null)).toBe(false);
+ });
 });

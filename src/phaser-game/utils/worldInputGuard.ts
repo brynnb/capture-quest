@@ -96,3 +96,11 @@ export function suppressWorldInputFor(
     Date.now() + durationMs,
   );
 }
+
+
+// A global gameplay gesture must not steal an explicit control's activation.
+// closest also covers icon/SVG descendants inside buttons and links.
+export function isInteractiveControlTarget(target:EventTarget|null):boolean {
+ const element=target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
+ return !!element?.closest("button, a[href], input, select, textarea, [role='button'], [role='link'], [contenteditable='true']");
+}

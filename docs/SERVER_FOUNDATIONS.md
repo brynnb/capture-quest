@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+rendered trainer read/completion acceptance and shared control-gesture ownership,
+following `44ec129`:
 trainer reads use generated identity and the shared character/actor lifetime
 boundary, following `84703cb`:
 trainer read status uses a durable snapshot and direct battle eligibility joins
@@ -59,6 +61,62 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Rendered trainer reads and control-owned retirement (2026-10-08)
+
+The browser read matrix now runs ordinary and trainer sources through the same
+held-response test. Trainer source provenance is the matched local catalog:
+`PewterGym_NPC_2`, object 384, native map 54, `(3,6)`, class `JR_TRAINER_M`,
+party 1, header `PewterGymTrainerHeaders` index 0. The existing Brock post-TM
+fixture suppresses sight encounters. Keyboard interaction from `(3,5)` exercises
+the real trainer read after approach; no trainer adapter or reply is mocked.
+Private text changes distinguish historical/current responses. Timeout and
+same-character reentry issue fresh IDs, and actual historical browser delivery
+cannot replace visible current dialogue.
+
+Live completion removes Brock's flag only after approach, proving the direct
+read/eligibility uses durable current state despite the loaded cache. Closing the
+real dialogue sends exactly one battle-start command, commits one battle row and
+renders the trainer intro. Two retirement cases use pointer Quit and focused Quit
+with Enter, then replay the captured real retired completion callback after
+reentry. Both send zero battle starts, leave zero durable battles and render no
+battle overlay. Callback replay is an application-lifetime check, not claimed
+network delivery.
+
+The first retirement run exposed a systemic input bug: the dialogue component's
+global pointerdown handler completed any finished dialogue before the clicked
+control's own handler. Clicking Quit therefore sent opcode 83 (direct trainer
+battle start) before retirement; its late reply opened an overlay over character
+selection. The diagnostic receipt showed `isInBattle:false`, `battleId:""`,
+`phase:"none"` immediately after Quit but one durable battle and a later overlay.
+This was not an old saved callback being deliberately replayed by the test.
+
+Global dialogue pointer/keyboard gestures now leave explicit controls to their
+own handlers. One shared interactive-target predicate recognizes native controls,
+links, editable/role controls and icon/SVG descendants. Dialogue and the existing
+chat Enter handler reuse it. No Quit-specific selector or compatibility override
+was added. Deliberate background/standard dialogue advancement remains supported;
+retirement still resets dialogue without executing its completion callback.
+
+Final isolated Chromium/WebSocket run: all seven ordinary/trainer timeout,
+reentry, live-completion and pointer/keyboard retirement cases passed in 56.7s.
+Evidence: `/var/tmp/capturequest-rendered.NVQ8Cs`. Trainer intro and retired
+no-battle screenshots were visually inspected. The 24-file/362-test client suite,
+typecheck, asset validation, production build and diff checks pass; existing build
+chunk warnings remain. No server behavior, schema or generated assets changed in
+this checkpoint. No push or production deployment.
+
+Remaining shared publication gap: `buildBattleStateResponse` includes battle ID
+and revision but no character/entry ownership, and NetworkBridge applies
+successful `PokeBattleStartResponse` bodies directly. Direct clicks, sight,
+wild/fishing/surfing starts and login restore share that opcode. The control fix
+prevents the reproduced unwanted start; it does not make a legitimate late start
+response safe across retirement. Next: treat this common publication boundary as
+an owned current-state recovery using the existing gameplay snapshot, with
+late-start/retirement regressions across its producers. Direct-start mutation
+acknowledgement/recovery and wider trainer plan/native acceptance remain open.
+All five original roadmap areas and historical restore/Repel attribution remain
+incomplete.
 
 ## Trainer read identity and shared character lifetime (2026-10-08)
 

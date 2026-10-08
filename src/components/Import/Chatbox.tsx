@@ -1,3 +1,4 @@
+import {isInteractiveControlTarget} from "@/phaser-game/utils/worldInputGuard";
 import React, { useEffect, useRef, useState } from "react";
 import styled from "styled-components";
 import useChatStore, { MessageType } from "@stores/ChatStore";
@@ -224,9 +225,7 @@ const ChatBox: React.FC = () => {
   // Global click: blur chat input when clicking outside the chat container
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      const interactiveTarget = (e.target as HTMLElement | null)?.closest?.(
-        "input, button, select, textarea, [contenteditable='true']",
-      );
+      const interactiveTarget = isInteractiveControlTarget(e.target);
       if (
         e.key === "Enter" &&
         document.activeElement !== chatInputRef.current &&

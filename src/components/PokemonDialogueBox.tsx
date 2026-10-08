@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useCallback, useState } from "react";
 import styled from "styled-components";
 import usePokemonDialogueStore from "@/stores/PokemonDialogueStore";
-import { suppressWorldInputFor } from "@/phaser-game/utils/worldInputGuard";
+import { suppressWorldInputFor, isInteractiveControlTarget } from "@/phaser-game/utils/worldInputGuard";
 import { MOBILE_INTERACT_EVENT } from "@/phaser-game/mobileControls";
 
 const TYPEWRITER_SPEED = 30; // ms per character
@@ -213,7 +213,7 @@ const PokemonDialogueBox: React.FC = () => {
   // Keyboard handler (A key, Enter, Space, or Z to advance)
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (!isOpen) return;
+      if (!isOpen || isInteractiveControlTarget(e.target)) return;
       if (isChoicePending) {
         if (e.key === "y" || e.key === "Y") {
           consumeKeyboardEvent(e);
@@ -279,6 +279,9 @@ const PokemonDialogueBox: React.FC = () => {
   const canDismiss = isOpen && !isChoicePending && !isTyping && isLastLine;
 
   const handleGlobalClick = useCallback((e: PointerEvent) => {
+    // Quit and other controls own their clicks. Completing dialogue here could
+    // start a battle before the control's retirement handler gets to run.
+    if(isInteractiveControlTarget(e.target))return;
     const state = usePokemonDialogueStore.getState();
     const currentlyDismissable =
       state.isOpen &&
