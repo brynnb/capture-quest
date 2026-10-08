@@ -11,8 +11,9 @@ import (
 )
 
 // A candidate is resolved by an owned command or timer, never from client X/Y.
-// Surf entry preserves its existing wild-only effect policy; forced paths alone
-// resolve spin/current/automatic warp continuation. Ordinary warps use 183/184.
+// Surf entry preserves its wild-only effect policy. Walking and forced paths
+// resolve spin/current rules; only forced routes resolve automatic warp continuation.
+// Ordinary warps use 183/184.
 type movementStepCandidate struct {
 	StepToken                          string
 	SourceMap, SourceX, SourceY        int
@@ -210,7 +211,7 @@ func commitMovementStep(ctx context.Context, wh *WorldHandler, charID int64, c m
 				return nil
 			}
 		}
-		if !c.Forced {
+		if c.SurfEntry {
 			return nil
 		}
 		name := ""
@@ -228,7 +229,7 @@ func commitMovementStep(ctx context.Context, wh *WorldHandler, charID int64, c m
 				return nil
 			}
 		}
-		if c.PathDestination && wh.WarpTiles != nil {
+		if c.Forced && c.PathDestination && wh.WarpTiles != nil {
 			if warp := wh.WarpTiles.CheckTile(c.MapID, c.X, c.Y); warp != nil {
 				if c.MapID == SafariZoneGateMapID && IsInSafariZone(warp.DestMapID) {
 					visit, err := safariSessionIn(tx, charID)

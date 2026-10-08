@@ -1,0 +1,11 @@
+{
+  "name": "debug_spin_route_ready",
+  "description": "Stand beside the source Rocket Hideout B2F arrow at (4,9), whose imported route moves LEFT twice.",
+  "fixture": {
+    "characterName": "DebugSpinRouteReady",
+    "mapName": "ROCKET_HIDEOUT_B2F", "x": 5, "y": 9, "direction": "LEFT",
+    "party": [{ "speciesId": 1, "level": 12 }], "inventory": [], "hiddenObjects": []
+  },
+  "trigger": { "type": "fixture_state", "mapName": "ROCKET_HIDEOUT_B2F" },
+  "expect": { "scriptLabel": "FixtureState", "finalX": 5, "finalY": 9, "finalDirection": "LEFT", "activeBattleAbsent": true }
+}

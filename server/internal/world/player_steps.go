@@ -245,6 +245,19 @@ func HandlePlayerStepCompleteRequest(ses *session.Session, payload []byte, wh *W
 	// acknowledgements never re-run encounters, Safari counters or script triggers.
 	broadcastCommittedPlayerStep(ses, wh, step.x, step.y, step.mapID, step.direction, step.sourceMapID)
 	publishMovementStepEffects(ses, wh, int64(ses.Client.CharData().ID), step.effects)
+	if len(step.effects.ForcedPath) > 0 {
+		// The committed source point starts the server route; this notification
+		// retires the client's future user path before its next prediction.
+		wh.PlayerMovement.mu.RLock()
+		state := wh.PlayerMovement.players[int(ses.Client.CharData().ID)]
+		if state != nil && state.SessionID == ses.SessionID && len(state.Path) > 0 {
+			snapshot := wh.PlayerMovement.snapshotForState(state, 0)
+			wh.PlayerMovement.mu.RUnlock()
+			wh.PlayerMovement.broadcastSnapshot(snapshot, true)
+		} else {
+			wh.PlayerMovement.mu.RUnlock()
+		}
+	}
 	return false
 }
 
@@ -301,6 +314,14 @@ func (m *PlayerMovementManager) completePlayerStep(ses *session.Session, token s
 	m.rejectPlayerStep(ses, token)
 	m.UpdateReportedPosition(charID, step.x, step.y, step.mapID, step.direction)
 	publishCommittedPlayerLocation(ses, m.wh, step.mapID, step.x, step.y)
+	if len(effects.ForcedPath) > 0 {
+		m.mu.Lock()
+		if current := m.players[charID]; current == state && current.SessionID == ses.SessionID {
+			current.Path = append([]PathNode(nil), effects.ForcedPath...)
+			current.LastMoveTime = time.Now()
+		}
+		m.mu.Unlock()
+	}
 	return step, nil
 }
 

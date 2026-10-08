@@ -28,6 +28,47 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized a branch push for the stopping checkpoint on 2026-10-07; production deployment remains unauthorized.
 
+## Ordinary step activation of source-driven forced routes (2026-10-07)
+
+The source inventory has three route producers: boulder follow-up, imported spin
+movement and Seafoam current rules. Inspection found `commitMovementStep` returned
+for every `!c.Forced` candidate before looking up spin/current data. Only boulder
+steps or already-running routes could reach that code; ordinary issued walking
+never activated an imported arrow. There was no generated-script replacement:
+`script_candidate_import_diagnostics.json` labels the arrow routine covered by
+`spin_tile_runtime_v1` and identifies `spin_tiles` as its runtime source.
+
+Walking now uses those same existing spin/current lookups. Surf entry keeps its
+existing wild-only policy; automatic warps remain specific to forced route
+endpoints. No parallel tile rule or generated asset override was added. After an
+issued step commits, its movement owner installs the selected route and publishes
+a source-point server-movement notification. This retires the user's future path
+before timer-owned points continue. A duplicate completion remains a historical
+receipt acknowledgement and cannot reinstall or republish the route.
+
+A real PostgreSQL regression rejects the entry commit and proves no route starts;
+then it commits, checks the two planned points and source-only start notification,
+and verifies duplicate completion cannot restart it. Its messenger uses a real
+registered session so origin publication is exercised. Focused checks passed
+(3.385 seconds), followed by the full world race suite (44.970 seconds). The source
+fixture at Rocket Hideout B2F (5,9) passed canonical tile validation. The local
+SQLite catalog identifies arrow (4,9) with `LEFT,count=2`; the importer normalizes
+its source map name to `ROCKET_HIDEOUT_B2F`. Two rendered cases passed in
+23.7 seconds in `/var/tmp/capturequest-rendered.ESLLNu`: walking enters the
+imported arrow and ends at (2,9), with only one user-step completion; existing
+lost-completion/reentry recovery remains intact. The runner compiled the updated
+server, validated the matched local assets, and stopped its private runtime.
+Wire types and frontend production code were unchanged. Diff checks passed.
+This checkpoint is committed locally; no push or production deployment occurred.
+
+Remaining: restart-safe persistence/resumption of an in-progress forced route,
+forced-route data validation and source/continuation audit, the unresolved login
+restore timeout and the wider five-area roadmap. Runtime route progress remains
+session memory; this activation fix is not a claim of crash-safe continuation.
+Next: persist/recover route progress through the authoritative movement owner
+before treating this family as complete. No new push or deployment is part of
+this local checkpoint.
+
 ## Durable battle ownership at movement commit (2026-10-07)
 
 `commitMovementStep` previously locked the character and checked pending trainer/

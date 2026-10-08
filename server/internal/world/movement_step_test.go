@@ -559,3 +559,47 @@ func TestBattleAcquiredAfterStepIssuanceRejectsCompletion(t *testing.T) {
 		t.Fatalf("battle-owned completion stored receipt: %+v %v", receipt, err)
 	}
 }
+
+func TestIssuedWalkingStartsSourceSpinRouteOnlyAfterCommit(t *testing.T) {
+	wh, fixture, messages := setupIssuedStep(t)
+	ses := wh.sessionManager.CreateNextSession(messages, "", nil)
+	ses.Client, ses.Authenticated = fixture.Client, true
+	wh.PlayerMovement.RegisterPlayer(ses, 42, 7, 8, 50, "RIGHT")
+	wh.PlayerMovement.players[42].MoveSpeed = time.Millisecond
+	t.Cleanup(ses.Close)
+	wh.Cutscenes = NewCutsceneManager(wh.database)
+	wh.Cutscenes.mapIDToName[50] = "ROOM"
+	wh.SpinTiles = NewSpinTileManager(wh.database)
+	wh.SpinTiles.byMap["ROOM"] = map[string]*SpinTile{"8,8": {MapName: "ROOM", X: 8, Y: 8, Movements: []SpinMovement{{Direction: "RIGHT", Count: 2}}}}
+	testdb.Exec(t, wh.database, `INSERT INTO phaser_tiles(map_id,x,y,tile_image_id,collision_type) VALUES(50,9,8,1,1),(50,10,8,1,1); CREATE FUNCTION reject_spin_start() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'reject spin start'; END $$; CREATE CONSTRAINT TRIGGER reject_spin_start AFTER UPDATE ON character_data DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN(NEW.x=8) EXECUTE FUNCTION reject_spin_start();`)
+	step := issueStep(t, wh, ses, messages)
+	battleDispatch(t, wh, ses, opcodes.PlayerStepCompleteRequest, fmt.Sprintf(`{"requestId":"fail","stepToken":%q}`, step.StepToken))
+	assertStepPosition(t, wh, ses, 7)
+	if len(wh.PlayerMovement.players[42].Path) != 0 {
+		t.Fatal("failed commit started spin route")
+	}
+	testdb.Exec(t, wh.database, `DROP TRIGGER reject_spin_start ON character_data`)
+	step = issueStep(t, wh, ses, messages)
+	messages.streams = nil
+	request := fmt.Sprintf(`{"requestId":"spin","stepToken":%q}`, step.StepToken)
+	battleDispatch(t, wh, ses, opcodes.PlayerStepCompleteRequest, request)
+	assertStepPosition(t, wh, ses, 8)
+	state := wh.PlayerMovement.players[42]
+	if len(state.Path) != 2 || state.Path[0].X != 9 || state.Path[1].X != 10 {
+		t.Fatalf("walking did not install source route: %+v", state.Path)
+	}
+	var started protocol.ServerPlayerMovementNotify
+	for _, message := range messages.streams {
+		if message.opcode == opcodes.ServerPlayerMovementNotify {
+			json.Unmarshal(message.payload, &started)
+		}
+	}
+	if started.X != 8 || started.Y != 8 || started.PathFinished {
+		t.Fatalf("route start not published at committed source: %+v", started)
+	}
+	messages.streams = nil
+	battleDispatch(t, wh, ses, opcodes.PlayerStepCompleteRequest, request)
+	if len(messages.streams) != 1 || len(state.Path) != 2 {
+		t.Fatal("duplicate completion restarted route")
+	}
+}
