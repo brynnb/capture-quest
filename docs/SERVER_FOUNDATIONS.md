@@ -28,6 +28,46 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Tile event projection joins the authoritative read snapshot (2026-10-08)
+
+The projection review found another global/background dependency after the tile
+query: `ApplyEventTileOverridesToTiles` loaded override rows and image metadata
+outside the owned read and decided eligibility from the shared flag cache. An
+override-read error returned unchanged base tiles as successful content; image
+property errors were likewise defaulted by the legacy wrapper.
+
+The tile handler now uses the existing `db.ReadSnapshot` for the whole projection.
+After consuming/closing its tile cursor, it loads committed character flags,
+ordered override rules and required image properties through that same bounded
+read-only snapshot. Existing flag-eligibility rules are reused. Property lookups
+are shared per distinct applied image within the read. Failures return no tile
+catalog, with map/coordinate/image identity for required metadata failures. The
+old presentation-only fallback function is retired; independent legacy collision/
+publication wrappers remain separate audit items. Projection-disabled fixtures
+retain that explicit configuration; live handlers have their existing event
+manager enabled. No data rows, generated IDs or image URLs were changed.
+
+A real PostgreSQL regression disables the global database, limits the pool to one
+connection and seeds an override with stored flag/image properties. Deliberately
+stale negative and positive flag caches cannot change the returned projection.
+Deleting required properties rejects rather than returning base tiles. Focused
+checks passed in 1.304 seconds, followed by world/database race suites in 49.263
+and 1.823 seconds. Logs are retained under
+`/var/tmp/capturequest-tile-projection-*`. Eleven rendered multiplayer/private-
+puzzle and warp cases passed in 1.5 minutes in
+`/var/tmp/capturequest-rendered.91li1I`. The isolated runner compiled the changed
+backend and stopped its private runtime. Diff checks passed; no new frontend
+build is required for this backend-only boundary change.
+
+Remaining: review cached tile views and event publication/revision ordering against
+this authoritative projection, plus other legacy event/collision query owners and
+previous-map recovery. The shared request timeout policy retains its tested 10/30-
+second values; no additional timer or retirement mechanism was introduced here.
+The original restore timeout is unattributed and all five roadmap areas remain
+active. Next: audit publication and cached-view ordering before closing the world-
+presentation family. This checkpoint is local only, without push, deployment or
+production mutation.
+
 ## Active tile reads share correlation and owner cancellation (2026-10-08)
 
 Tile reads had per-service `tiles-N` IDs, shared listeners and a separate promise/

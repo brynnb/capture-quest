@@ -31,42 +31,47 @@ type eventTileOverride struct {
 	Label              sql.NullString
 }
 
-func ApplyEventTileOverridesToTiles(charID int64, mapID int, efm *EventFlagManager, tiles []PhaserTile) []PhaserTile {
+// Project one owned database snapshot. An unavailable override/image source is
+// a failed read, never permission to publish plausible base tiles.
+func applyEventTileOverridesContext(ctx context.Context, database db.ReadDBTX, charID int64, mapID int, tiles []PhaserTile) ([]PhaserTile, error) {
 	if len(tiles) == 0 {
-		return tiles
+		return tiles, nil
 	}
-	overrides, err := eventTileOverridesForMap(mapID)
+	flags, err := eventFlagSnapshotIn(database, charID)
 	if err != nil {
-		log.Printf("[EventTiles] Failed to load overrides for map %d: %v", mapID, err)
-		return tiles
+		return nil, err
 	}
-	if len(overrides) == 0 {
-		return tiles
+	overrides, err := eventTileOverridesForMapContext(ctx, database, mapID)
+	if err != nil {
+		return nil, err
 	}
-
 	byCoord := make(map[string]eventTileOverride)
 	for _, override := range overrides {
-		if override.eventTileEligible(charID, efm) {
+		if override.eventTileEligible(charID, flags) {
 			byCoord[tileKey(override.X, override.Y)] = override
 		}
 	}
-	if len(byCoord) == 0 {
-		return tiles
-	}
-
+	properties := make(map[int]tileRuntimeProperties)
 	for i := range tiles {
 		override, ok := byCoord[tileKey(tiles[i].X, tiles[i].Y)]
 		if !ok {
 			continue
 		}
+		props, ok := properties[override.TileImageID]
+		if !ok {
+			props, err = tileRuntimePropertiesForTileImageContext(ctx, database, override.TileImageID)
+			if err != nil {
+				return nil, fmt.Errorf("event tile map=%d coordinate=(%d,%d) image=%d: %w", mapID, override.X, override.Y, override.TileImageID, err)
+			}
+			properties[override.TileImageID] = props
+		}
 		tiles[i].TileImageID = override.TileImageID
 		tiles[i].CollisionType = override.CollisionType
-		props := tileRuntimePropertiesForTileImage(override.TileImageID)
 		tiles[i].RawFootTileID = props.RawFootTileID
 		tiles[i].TalkOverTile = props.TalkOverTile
 		tiles[i].ContentOrigin = "event"
 	}
-	return tiles
+	return tiles, nil
 }
 
 func EventTileCollisionOverrides(charID int64, mapID int, efm *EventFlagManager) map[string]int {

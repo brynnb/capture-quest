@@ -456,68 +456,75 @@ func HandlePhaserTilesRequest(ses *session.Session, payload []byte, wh *WorldHan
 		queryArgs = append(queryArgs, pageSize)
 	}
 
-	rows, err := wh.database.QueryContext(ses.CommandContext(), query, queryArgs...)
-	if err != nil {
-		log.Printf("[Phaser] Error querying tiles for map %d: %v", req.MapID, err)
-		sendError(err)
-		return false
-	}
-	defer rows.Close()
+	tiles, err := db.ReadSnapshot(ses.CommandContext(), wh.database, func(ctx context.Context, snapshot db.ReadDBTX) ([]PhaserTile, error) {
+		rows, err := snapshot.QueryContext(ctx, query, queryArgs...)
+		if err != nil {
+			log.Printf("[Phaser] Error querying tiles for map %d: %v", req.MapID, err)
+			return nil, err
+		}
+		defer rows.Close()
 
-	// Keep empty correlated responses as [] rather than null. Chunk requests
-	// routinely cover sparse parts of the overworld, and clients must be able to
-	// treat an empty chunk as a completed request.
-	tiles := make([]PhaserTile, 0)
-	for rows.Next() {
-		var t PhaserTile
-		var mapID sql.NullInt64
-		var sourceMapID sql.NullInt64
-		var sourceMapName sql.NullString
-		var rawFootTileID sql.NullInt64
-		if err := rows.Scan(
-			&t.ID, &t.X, &t.Y, &t.TileImageID, &t.LocalX, &t.LocalY,
-			&mapID, &sourceMapID, &sourceMapName, &t.CollisionType,
-			&rawFootTileID, &t.TalkOverTile, &t.IsNativeGameData,
-			&t.CoordinateOrigin, &t.ContentOrigin,
-		); err != nil {
-			log.Printf("[Phaser] Error scanning tile: %v", err)
-			sendError(err)
-			return false
+		// Keep empty correlated responses as [] rather than null. Chunk requests
+		// routinely cover sparse parts of the overworld, and clients must be able to
+		// treat an empty chunk as a completed request.
+		tiles := make([]PhaserTile, 0)
+		for rows.Next() {
+			var t PhaserTile
+			var mapID sql.NullInt64
+			var sourceMapID sql.NullInt64
+			var sourceMapName sql.NullString
+			var rawFootTileID sql.NullInt64
+			if err := rows.Scan(
+				&t.ID, &t.X, &t.Y, &t.TileImageID, &t.LocalX, &t.LocalY,
+				&mapID, &sourceMapID, &sourceMapName, &t.CollisionType,
+				&rawFootTileID, &t.TalkOverTile, &t.IsNativeGameData,
+				&t.CoordinateOrigin, &t.ContentOrigin,
+			); err != nil {
+				log.Printf("[Phaser] Error scanning tile: %v", err)
+				return nil, err
+			}
+			if rawFootTileID.Valid {
+				v := int(rawFootTileID.Int64)
+				t.RawFootTileID = &v
+			}
+			if mapID.Valid {
+				t.MapID = int(mapID.Int64)
+			} else {
+				t.MapID = UnifiedOverworldMapID // Present as 9999 to clients
+			}
+			if sourceMapID.Valid {
+				v := int(sourceMapID.Int64)
+				t.SourceMapID = &v
+			}
+			if sourceMapName.Valid {
+				v := sourceMapName.String
+				t.SourceMapName = &v
+			}
+			tiles = append(tiles, t)
 		}
-		if rawFootTileID.Valid {
-			v := int(rawFootTileID.Int64)
-			t.RawFootTileID = &v
+		if err := rows.Err(); err != nil {
+			log.Printf("[Phaser] Error iterating tiles for map %d: %v", req.MapID, err)
+			return nil, err
 		}
-		if mapID.Valid {
-			t.MapID = int(mapID.Int64)
-		} else {
-			t.MapID = UnifiedOverworldMapID // Present as 9999 to clients
+		if err := rows.Close(); err != nil {
+			return nil, err
 		}
-		if sourceMapID.Valid {
-			v := int(sourceMapID.Int64)
-			t.SourceMapID = &v
+
+		if ses.HasValidClient() && wh != nil && wh.EventFlags != nil {
+			charID := int64(ses.Client.CharData().ID)
+			tiles, err = applyEventTileOverridesContext(ctx, snapshot, charID, req.MapID, tiles)
+			if err != nil {
+				return nil, err
+			}
 		}
-		if sourceMapName.Valid {
-			v := sourceMapName.String
-			t.SourceMapName = &v
-		}
-		tiles = append(tiles, t)
-	}
-	if err := rows.Err(); err != nil {
-		log.Printf("[Phaser] Error iterating tiles for map %d: %v", req.MapID, err)
-		sendError(err)
-		return false
-	}
-	if err := rows.Close(); err != nil {
+
+		return tiles, nil
+	})
+	if err != nil {
 		sendError(err)
 		return false
 	}
 	loadedAt := time.Now()
-
-	if ses.HasValidClient() && wh != nil && wh.EventFlags != nil {
-		charID := int64(ses.Client.CharData().ID)
-		tiles = ApplyEventTileOverridesToTiles(charID, req.MapID, wh.EventFlags, tiles)
-	}
 
 	// PhaserTile already has the exact camelCase JSON contract. Sending the
 	// typed slice directly also honors omitempty for its nullable source fields.
