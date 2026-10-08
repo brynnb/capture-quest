@@ -24,3 +24,10 @@ starting a binary that requires receipts; startup fails if it is absent. Ordinar
 step receipt writes share the position/effects transaction. This addition requires
 no database reset. For an authorized production release, use the schema-aware
 full-data workflow in `docs/DEPLOYMENT.md`.
+
+The forced-route checkpoint adds `character_movement_routes`, one versioned current
+remaining path and committed source pose per character. Its writes join the
+position/effects transaction; the historical step receipt stays separate. Apply
+the tracked schema before starting the updated server; startup requires this
+table. This is an additive migration with no player reset. Use the schema-aware
+full-data deployment workflow and backup rules for an authorized release.

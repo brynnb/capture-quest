@@ -2,6 +2,7 @@ package world
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -16,6 +17,8 @@ import (
 // Ordinary warps use 183/184.
 type movementStepCandidate struct {
 	StepToken                          string
+	RemainingPath                      []PathNode
+	Surfing                            bool
 	SourceMap, SourceX, SourceY        int
 	MapID, X, Y                        int
 	Direction                          string
@@ -59,6 +62,7 @@ func eventFlagSnapshotIn(q db.DBTX, charID int64) (*EventFlagManager, error) {
 // commit. Returned presentation plans stay private until the outer commit.
 func commitMovementStep(ctx context.Context, wh *WorldHandler, charID int64, c movementStepCandidate) (movementStepResult, error) {
 	result := movementStepResult{MapID: c.MapID, X: c.X, Y: c.Y, Direction: c.Direction}
+	var rejection error
 	err := db.Transaction(ctx, wh.database, func(tx db.DBTX) (err error) {
 		if err := db.LockCharacter(tx, charID); err != nil {
 			return err
@@ -66,6 +70,10 @@ func commitMovementStep(ctx context.Context, wh *WorldHandler, charID int64, c m
 		// Cached availability is only an early hint. Durable battle ownership
 		// fences all position/effect writers under the same character lock.
 		if err := requireNoOwnedBattleIn(tx, charID); err != nil {
+			if errors.Is(err, errBattleOwnership) {
+				rejection = err
+				return saveMovementRouteIn(tx, charID, 0, 0, 0, nil, false)
+			}
 			return err
 		}
 		var trainerPending bool
@@ -86,6 +94,17 @@ func commitMovementStep(ctx context.Context, wh *WorldHandler, charID int64, c m
 		if err := validateClientDestinationIn(tx, c.MapID, c.X, c.Y); err != nil {
 			return err
 		}
+		route, err := loadMovementRouteIn(tx, charID)
+		if err != nil {
+			return err
+		}
+		remaining := c.RemainingPath
+		if route != nil {
+			if !c.Forced || route.MapID != c.SourceMap || route.X != c.SourceX || route.Y != c.SourceY || route.Path[0].X != c.X || route.Path[0].Y != c.Y {
+				return fmt.Errorf("movement route ownership changed")
+			}
+			remaining = route.Path[1:]
+		}
 		if err := saveFieldDestinationIn(tx, charID, c.MapID, c.X, c.Y); err != nil {
 			return err
 		}
@@ -95,6 +114,16 @@ func commitMovementStep(ctx context.Context, wh *WorldHandler, charID int64, c m
 		}
 		result.Flags = flags.flags[charID]
 		defer func() {
+			if err == nil {
+				path := remaining
+				if !c.Forced || result.StopPath || result.Teleport {
+					path = nil
+				}
+				if len(result.ForcedPath) > 0 {
+					path = result.ForcedPath
+				}
+				err = saveMovementRouteIn(tx, charID, result.MapID, result.X, result.Y, path, c.Surfing && isSurfableWaterTile(wh, result.MapID, result.X, result.Y))
+			}
 			if err == nil && result.FlagsChanged {
 				var final *EventFlagManager
 				final, err = eventFlagSnapshotIn(tx, charID)
@@ -259,6 +288,9 @@ func commitMovementStep(ctx context.Context, wh *WorldHandler, charID int64, c m
 	})
 	if err != nil {
 		return movementStepResult{}, err
+	}
+	if rejection != nil {
+		return movementStepResult{}, rejection
 	}
 	return result, nil
 }

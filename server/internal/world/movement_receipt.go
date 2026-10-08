@@ -84,5 +84,12 @@ func (m *PlayerMovementManager) Load(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("movement receipt schema: %w", err)
 	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	rows, err = m.wh.database.QueryContext(ctx, `SELECT character_id,map_id,x,y,path_json FROM character_movement_routes LIMIT 0`)
+	if err != nil {
+		return fmt.Errorf("movement route schema: %w", err)
+	}
 	return rows.Close()
 }

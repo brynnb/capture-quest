@@ -28,6 +28,62 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized a branch push for the stopping checkpoint on 2026-10-07; production deployment remains unauthorized.
 
+## Durable forced-route progress and loaded-position recovery (2026-10-07)
+
+`character_movement_routes` is one current, versioned movement cursor per character:
+committed source map/X/Y, remaining unit-adjacent points and Surfing mode. It is
+separate from the historical ordinary-step receipt and has no new command counter.
+The existing character transaction commits each point, step effects and remaining
+cursor together. Spin/current entry commits its initial cursor with the entry
+point; rollback leaves both unchanged. A fresh movement registration restores the
+matching cursor under the character lock before successful world entry. Unknown
+versions, missing coordinates/mode, non-adjacent points, source mismatch or missing
+source catalog fail explicitly. Failed entry now closes/drains the partial owner.
+
+Completed routes, explicit teleports (including same-tile teleports), confirmed
+battle ownership and NPC-blocked routes retire the cursor. Same-position persistence
+flushes preserve it only when saved pose, cursor and requested pose agree. Database
+failures retain existing retry behavior. Debug/simulator resets clear their own
+route state. Startup requires the new table. `server/schema/README.md` documents
+the additive migration: use the schema-aware full-data workflow and its backup
+rules for an authorized release; no reset or production change occurred here.
+
+The first mid-route process-death case exposed a separate presentation race.
+The retained private database showed character 3 at map 200, (2,9), with no cursor,
+while the browser remained at (3,9). The server had completed correctly before
+scene binding. Map loading previously recovered resources/plans but ignored the
+snapshot position. It now uses the existing current reader's movement-generation
+fence and the same owned-position projection as Escape Rope. Pose is projected
+before battle/plan restoration; retired loads cannot apply a late position. There
+is no global historical position handler or additional read retry loop.
+
+Verification: focused route/progress/cancellation/schema checks passed, followed
+by the full world PostgreSQL race suite (44.731 seconds) and importer tests. The
+first broad run's standalone SQLite visibility fixture lacked the required table;
+its schema was updated with teleport assertions unchanged. Final NPC cancellation
+and related checks passed in 2.910 seconds. All 51 focused movement/map-loader/
+recovery client checks and TypeScript checks passed. Workflow YAML parsing,
+runtime-asset validation, production build and diff checks passed.
+
+Four rendered cases passed in 44.8 seconds in
+`/var/tmp/capturequest-rendered.hpXJ91`: normal imported-arrow activation, process
+death after route entry, process death after the first point, and ordinary walking
+process-death recovery. The private crash harness freezes only its verified
+recorded server PID, reads the committed source/cursor, then kills/reaps that child
+and restarts against the unchanged private database. Both route boundaries reach
+(2,9), delete their cursor and send no client step completion after reentry. Earlier
+failed evidence is retained in `PfGpLY`; its private cluster was briefly reopened
+for the exact SQL inspection and stopped again. The final runner stopped its
+private runtime. No push, deployment or production mutation was performed.
+
+Remaining migration: boulder pushes still use older separate mutations and queue
+their first movement point after publication. The shared timer can persist later
+progress, but that initial handoff is not atomic or crash-safe. Next: migrate the
+boulder push plus route-start outcome through the existing character transaction
+before declaring all forced-route producers durable. Route source/catalog and
+writer audits, the original login restore timeout and the broader five-area goal
+also remain open. This checkpoint is local.
+
 ## Ordinary step activation of source-driven forced routes (2026-10-07)
 
 The source inventory has three route producers: boulder follow-up, imported spin

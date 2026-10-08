@@ -104,6 +104,11 @@ func saveFieldDestinationIn(tx db.DBTX, charID int64, mapID, x, y int) error {
 	if err := db.RequireTransaction(tx); err != nil {
 		return err
 	}
+	// An explicit destination retires route intent, including same-tile teleports.
+	// Movement transactions write their next cursor before the outer commit.
+	if _, err := tx.Exec(`DELETE FROM character_movement_routes WHERE character_id=$1`, charID); err != nil {
+		return err
+	}
 	if _, err := endSafariForDestinationIn(tx, charID, mapID); err != nil {
 		return err
 	}
@@ -140,7 +145,23 @@ func commitPosition(ctx context.Context, database *sql.DB, charID int64, mapID, 
 			}
 		}
 
-		return saveFieldDestinationIn(tx, charID, mapID, x, y)
+		// A same-position persistence flush is not a new destination intent.
+		// Preserve its cursor only when storage, cursor and requested pose agree.
+		route, err := loadMovementRouteIn(tx, charID)
+		if err != nil {
+			return err
+		}
+		var same bool
+		if err := tx.QueryRow(`SELECT map_id=$2 AND CAST(x AS INTEGER)=$3 AND CAST(y AS INTEGER)=$4 FROM character_data WHERE id=$1`, charID, mapID, x, y).Scan(&same); err != nil {
+			return err
+		}
+		if err := saveFieldDestinationIn(tx, charID, mapID, x, y); err != nil {
+			return err
+		}
+		if same && route != nil && route.MapID == mapID && route.X == x && route.Y == y {
+			return saveMovementRouteIn(tx, charID, mapID, x, y, route.Path, route.Surfing)
+		}
+		return nil
 	})
 }
 

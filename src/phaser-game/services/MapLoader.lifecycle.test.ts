@@ -1,4 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("./GameplayRecoveryService", () => ({ readCurrentGameplayState: vi.fn(), applyGameplaySnapshot: vi.fn() }));
+import * as recovery from "./GameplayRecoveryService";
+afterEach(() => vi.clearAllMocks());
 
 import { MapLoader } from "./MapLoader";
 
@@ -255,4 +259,35 @@ describe("MapLoader async lifecycle", () => {
     loader.updateOverworldStreaming();
     expect(update).toHaveBeenCalledOnce();
   });
+});
+
+
+it("final map recovery projects missed movement before resuming plans", async () => {
+  const order: string[] = [];
+  const raw = Object.create(MapLoader.prototype) as any;
+  raw.mapLoadGeneration = 7;
+  raw.playerMovementController = {
+    getPositionGeneration: () => 3,
+    projectOwnedPosition: vi.fn(() => order.push("position")),
+  };
+  const snapshot = { position: { mapId: 200, x: 2, y: 9, direction: "LEFT" } } as any;
+  vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce(snapshot);
+  vi.mocked(recovery.applyGameplaySnapshot).mockImplementationOnce(() => order.push("plans"));
+  await raw.recoverLoadedOwnership(7, new AbortController().signal);
+  expect(raw.playerMovementController.projectOwnedPosition).toHaveBeenCalledWith(snapshot.position);
+  expect(order).toEqual(["position", "plans"]);
+});
+
+it("retired map loads cannot project a late current position", async () => {
+  const raw = Object.create(MapLoader.prototype) as any;
+  raw.mapLoadGeneration = 7;
+  raw.playerMovementController = { getPositionGeneration: () => 3, projectOwnedPosition: vi.fn() };
+  let resolve!: (value: any) => void;
+  vi.mocked(recovery.readCurrentGameplayState).mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+  const pending = raw.recoverLoadedOwnership(7, new AbortController().signal);
+  raw.mapLoadGeneration++;
+  resolve({ position: { mapId: 200, x: 2, y: 9, direction: "LEFT" } });
+  await pending;
+  expect(raw.playerMovementController.projectOwnedPosition).not.toHaveBeenCalled();
+  expect(recovery.applyGameplaySnapshot).not.toHaveBeenCalled();
 });

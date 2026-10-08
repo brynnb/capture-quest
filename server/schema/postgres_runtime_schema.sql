@@ -192,6 +192,15 @@ CREATE TABLE IF NOT EXISTS character_movement_receipts (
     committed_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Current remaining server route, distinct from a historical step receipt.
+CREATE TABLE IF NOT EXISTS character_movement_routes (
+    character_id bigint PRIMARY KEY REFERENCES character_data(id) ON DELETE CASCADE,
+    map_id integer NOT NULL,
+    x integer NOT NULL,
+    y integer NOT NULL,
+    path_json text NOT NULL
+);
+
 -- One durable revision serializes shop mutations across replies and reconnects.
 CREATE TABLE IF NOT EXISTS character_shop_state (
     character_id bigint PRIMARY KEY REFERENCES character_data(id) ON DELETE CASCADE,

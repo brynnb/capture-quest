@@ -2,6 +2,7 @@ package world
 
 import (
 	"capturequest/internal/api/opcodes"
+	"capturequest/internal/db"
 	"capturequest/internal/logutil"
 	"capturequest/internal/protocol"
 	"capturequest/internal/session"
@@ -518,6 +519,28 @@ func (m *PlayerMovementManager) processCharacterTick(ctx context.Context, charac
 		target := planned.Path[0]
 		for _, blocker := range blockers {
 			if blocker.X == target.X && blocker.Y == target.Y {
+				err := db.Transaction(ctx, m.wh.database, func(tx db.DBTX) error {
+					if err := db.LockCharacter(tx, int64(characterID)); err != nil {
+						return err
+					}
+					route, err := loadMovementRouteIn(tx, int64(characterID))
+					if err != nil {
+						return err
+					}
+					if route != nil && (route.MapID != state.MapID || route.X != state.CurrentX || route.Y != state.CurrentY) {
+						return fmt.Errorf("blocked route source changed")
+					}
+					return saveMovementRouteIn(tx, int64(characterID), 0, 0, 0, nil, false)
+				})
+				if err != nil {
+					logutil.Debugf("[PlayerMovement] Retire blocked route for %d: %v", characterID, err)
+					m.mu.Lock()
+					if m.players[characterID] == state {
+						state.LastMoveTime = now
+					}
+					m.mu.Unlock()
+					return
+				}
 				m.mu.Lock()
 				if current := m.players[characterID]; current == state {
 					current.Path = nil
@@ -537,7 +560,7 @@ func (m *PlayerMovementManager) processCharacterTick(ctx context.Context, charac
 	if !ok || !ses.HasValidClient() {
 		return
 	}
-	effects, err := commitMovementStep(ctx, m.wh, int64(characterID), movementStepCandidate{SourceMap: state.MapID, SourceX: state.CurrentX, SourceY: state.CurrentY, MapID: planned.MapID, X: planned.CurrentX, Y: planned.CurrentY, Direction: planned.Direction, Forced: true, PathDestination: update.isPathDestination})
+	effects, err := commitMovementStep(ctx, m.wh, int64(characterID), movementStepCandidate{SourceMap: state.MapID, SourceX: state.CurrentX, SourceY: state.CurrentY, MapID: planned.MapID, X: planned.CurrentX, Y: planned.CurrentY, Direction: planned.Direction, Forced: true, Surfing: planned.IsSurfing, RemainingPath: planned.Path, PathDestination: update.isPathDestination})
 	if err != nil {
 		logutil.Debugf("[PlayerMovement] Commit forced step for %d: %v", characterID, err)
 		// A confirmed domain owner ends this path. Database/commit failures

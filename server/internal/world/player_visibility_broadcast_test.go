@@ -55,7 +55,7 @@ func TestServerTeleportedPlayerDespawnsOldMapAndUpdatesNewMap(t *testing.T) {
 
 	gotMapID, err := setServerTeleportedPlayerPosition(origin, wh, 63, 2, 7, "UP")
 	if err != nil || gotMapID != 63 {
-		t.Fatalf("setServerTeleportedPlayerPosition mapID = %d, want 63", gotMapID)
+		t.Fatalf("setServerTeleportedPlayerPosition mapID = %d, want 63: %v", gotMapID, err)
 	}
 
 	assertSinglePlayerDespawn(t, oldMapMessenger, wh.ActorRegistry.GetPhaserID(ActorTypePlayer, 7))
@@ -131,7 +131,8 @@ func setupPlayerVisibilityTestDB(t *testing.T) {
 		CREATE TABLE phaser_tiles(map_id INTEGER,x INTEGER,y INTEGER,collision_type INTEGER DEFAULT 0,raw_foot_tile_id INTEGER,is_tile_erased INTEGER DEFAULT 0);
 		INSERT INTO phaser_maps(id) VALUES(63);
 		INSERT INTO phaser_tiles(map_id,x,y) VALUES(63,2,7);
-		CREATE TABLE character_safari_state(character_id INTEGER PRIMARY KEY,state_json TEXT NOT NULL,updated_at TEXT);
+		CREATE TABLE character_movement_routes(character_id INTEGER PRIMARY KEY,map_id INTEGER NOT NULL,x INTEGER NOT NULL,y INTEGER NOT NULL,path_json TEXT NOT NULL);
+        CREATE TABLE character_safari_state(character_id INTEGER PRIMARY KEY,state_json TEXT NOT NULL,updated_at TEXT);
         CREATE TABLE character_cutscene_plans (character_id INTEGER,completion_token TEXT,resolution TEXT,map_id INTEGER,x INTEGER,y INTEGER);
  CREATE TABLE character_trainer_encounters(character_id INTEGER PRIMARY KEY,resolution TEXT,map_id INTEGER,x INTEGER,y INTEGER,updated_at TEXT);
 		CREATE TABLE character_event_flags(character_id INTEGER,flag_name TEXT,PRIMARY KEY(character_id,flag_name));

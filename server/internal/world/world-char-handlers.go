@@ -38,6 +38,9 @@ func HandleEnterWorld(ses *session.Session, payload []byte, wh *WorldHandler) bo
 	if err := sendCharacterStateFromDB(ses, wh, name); err != nil {
 		log.Printf("[WORLD] Session %d: character entry failed: %v", ses.SessionID, err)
 		ses.SendStreamJSON(SimpleSuccessResponse{Value: 0}, opcodes.PostEnterWorld)
+		// Entry may already have installed partial character/movement ownership.
+		// Drain the failed owner instead of accepting gameplay on that state.
+		ses.Close()
 		return false
 	}
 

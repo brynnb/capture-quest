@@ -943,13 +943,13 @@ func recoverInvalidCharacterPosition(ses *session.Session, wh *WorldHandler) (bo
 }
 
 // RegisterPlayerForMovement registers a player with the movement manager when they spawn
-func RegisterPlayerForMovement(ses *session.Session, wh *WorldHandler) {
+func RegisterPlayerForMovement(ses *session.Session, wh *WorldHandler) error {
 	if !ses.HasValidClient() {
-		return
+		return nil
 	}
 	char := ses.Client.CharData()
 	if char == nil {
-		return
+		return nil
 	}
 
 	storedMapID := int(char.MapID)
@@ -966,4 +966,5 @@ func RegisterPlayerForMovement(ses *session.Session, wh *WorldHandler) {
 		mapID,
 		initialPlayerDirection(storedMapID, int(char.X), int(char.Y)),
 	)
+	return wh.PlayerMovement.restoreMovementRoute(ses)
 }

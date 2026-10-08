@@ -300,7 +300,7 @@ func (m *PlayerMovementManager) completePlayerStep(ses *session.Session, token s
 	} else if value, exists := collision[tileKey(step.x, step.y)]; !exists || !isPathableCollision(value, pathfindOptions{AllowWater: surfing}) {
 		return nil, fmt.Errorf("step became blocked")
 	}
-	effects, err := commitMovementStep(ses.CommandContext(), m.wh, int64(charID), movementStepCandidate{StepToken: token, SourceMap: step.mapID, SourceX: step.sourceX, SourceY: step.sourceY, MapID: step.mapID, X: step.x, Y: step.y, Direction: step.direction})
+	effects, err := commitMovementStep(ses.CommandContext(), m.wh, int64(charID), movementStepCandidate{StepToken: token, Surfing: surfing, SourceMap: step.mapID, SourceX: step.sourceX, SourceY: step.sourceY, MapID: step.mapID, X: step.x, Y: step.y, Direction: step.direction})
 	if err != nil {
 		return nil, err
 	}

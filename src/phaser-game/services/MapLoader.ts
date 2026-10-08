@@ -1,4 +1,4 @@
-import { recoverGameplayState } from "./GameplayRecoveryService";
+import { readCurrentGameplayState, applyGameplaySnapshot } from "./GameplayRecoveryService";
 import type { PhaserMapInfo } from "@/net/generated/protocol";
 import { Scene } from "phaser";
 import {
@@ -352,7 +352,7 @@ export class MapLoader {
       this.uiManager.hideLoadingText();
       await (this.scene as any).playPendingWarpExitAnimation?.(200); // eslint-disable-line @typescript-eslint/no-explicit-any
       if (!this.isLoadCurrent(loadGeneration)) return;
-      await recoverGameplayState(this.playerMovementController.getCurrentMapId(), mapRequestAbort.signal);
+      await this.recoverLoadedOwnership(loadGeneration, mapRequestAbort.signal);
       if (!this.isLoadCurrent(loadGeneration)) return;
       if (mapInfo.name) {
         PhaserNet.requestMapScripts(mapInfo.name);
@@ -659,7 +659,7 @@ export class MapLoader {
       await (this.scene as any).playPendingWarpExitAnimation?.(200); // eslint-disable-line @typescript-eslint/no-explicit-any
       if (!this.isLoadCurrent(loadGeneration)) return;
       if (!options.viewOnly) {
-        await recoverGameplayState(this.playerMovementController.getCurrentMapId(), mapRequestAbort.signal);
+        await this.recoverLoadedOwnership(loadGeneration, mapRequestAbort.signal);
         if (!this.isLoadCurrent(loadGeneration)) return;
       }
       readyForWorldInput = true;
@@ -688,6 +688,16 @@ export class MapLoader {
         (this.scene as any).mapLoadInProgress = false; // eslint-disable-line @typescript-eslint/no-explicit-any
       }
     }
+  }
+
+  private async recoverLoadedOwnership(generation: number, signal: AbortSignal): Promise<void> {
+    const snapshot = await readCurrentGameplayState(signal, () => this.playerMovementController.getPositionGeneration());
+    if (!this.isLoadCurrent(generation) || signal.aborted) return;
+    // Project pose before resuming battle/plan presentation. A route may have
+    // advanced before the local actor or its notification subscriber existed.
+    this.playerMovementController.projectOwnedPosition(snapshot.position);
+    if (!this.isLoadCurrent(generation) || signal.aborted) return;
+    applyGameplaySnapshot(snapshot);
   }
 
   updateOverworldStreaming(): void {

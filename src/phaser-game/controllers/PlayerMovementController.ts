@@ -1,4 +1,4 @@
-import type { PlayerStepResponse, PlayerStepError } from "@/net/generated/protocol";
+import type { OwnedPlayerPositionResponse, PlayerStepResponse, PlayerStepError } from "@/net/generated/protocol";
 import { requestEscapeRope, requestBicycleState, requestPlayerFacing, requestPlayerStep, completePlayerStep, readOwnedPlayerPosition } from "../services/PlayerMovementService";
 import { CorrelatedResponseError } from "../services/CorrelatedRequest";
 import { Scene } from "phaser";
@@ -204,14 +204,7 @@ export class PlayerMovementController {
         const position = snapshot.position;
         if (accepted) useChatStore.getState().addMessage("You escaped from the dungeon.", MessageType.SYSTEM);
         else if (rejection) useChatStore.getState().addMessage(rejection, MessageType.SYSTEM);
-        this.stopMovement(true);
-        if (position.mapId === this.currentMapId) {
-          this.syncPosition(position.x, position.y);
-          this.syncDirection(position.direction);
-          if (this.playerId !== null) this.mapRenderer?.snapActorPosition(this.playerId, position.x, position.y, position.direction);
-        } else {
-          window.dispatchEvent(new CustomEvent("warpTileTeleport", { detail: { ...position, serverCommitted: true } }));
-        }
+        this.projectOwnedPosition(position);
       } catch {
         if (current()) {
           this.movementRecoveryRequired = true;
@@ -220,6 +213,24 @@ export class PlayerMovementController {
       }
     });
   }
+  getPositionGeneration(): number { return this.movementGeneration; }
+
+  // Call only after an owned, validated current read. Visual/server notifications
+  // can be missed while a scene binds; resource and plan publication stay outside.
+  projectOwnedPosition(position: OwnedPlayerPositionResponse): void {
+    if (this.fieldCommandsRetired) return;
+    this.movementRecoveryRequired = false;
+    this.stopMovement(true);
+    if (position.mapId === this.currentMapId) {
+      this.syncPosition(position.x, position.y);
+      this.syncDirection(position.direction);
+      if (this.playerId !== null) this.mapRenderer?.snapActorPosition(this.playerId, position.x, position.y, position.direction);
+      if (position.serverMovementPending) this.beginServerMovement(false);
+    } else {
+      window.dispatchEvent(new CustomEvent("warpTileTeleport", { detail: { ...position, serverCommitted: true } }));
+    }
+  }
+
   private movementGeneration = 0;
   private isMoving: boolean = false;
   private activeMoveDestination: {

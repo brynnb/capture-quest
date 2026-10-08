@@ -1388,6 +1388,7 @@ func resetDebugCharacterState(charID int64, wh *WorldHandler) error {
 		`DELETE FROM cq_item_instances WHERE id IN (SELECT item_instance_id FROM cq_character_inventory WHERE character_id = $1)`,
 		`DELETE FROM cq_character_inventory WHERE character_id = $1`,
 		`DELETE FROM character_battle_state WHERE character_id = $1`,
+		`DELETE FROM character_movement_routes WHERE character_id = $1`,
 	}
 	for _, stmt := range statements {
 		if _, err := db.GlobalWorldDB.DB.Exec(stmt, charID); err != nil {
