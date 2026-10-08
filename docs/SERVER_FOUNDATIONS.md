@@ -7,7 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-real local Chromium native QUIC login/movement/reentry and restart acceptance,
+name validation uses owned filtering, explicit identity and cancellable application,
+following `58b871e`: real local Chromium native QUIC login/movement/reentry and restart acceptance,
 following `91c6015`: legacy FIFO timeout/send failure retires ambiguous transport and settles its caller,
 following `aa0e219`: native transport setup/readers/writes are fenced to their captured owner,
 following `9e872ad`: WebSocket setup uses the existing deadline and FIFO requests retire with transport,
@@ -45,6 +46,56 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Name validation identity and authoritative lookup (2026-10-08)
+
+The FIFO corpus audit found `questApi` request functions with no callers and a
+legacy `DialogueStore` used by nothing else. Both are retired; Pokémon dialogue
+remains its authoritative store/runtime, and opcode numbers remain reserved.
+Active FIFO consumers are account login/create/entry and Phaser dialogue reads.
+Name validation was selected as an active migration, not retired as unused.
+
+`HandleValidateNameRequest` previously treated any character lookup error as
+"available". Its shared name filter also used the global database and returned
+success on query/scan failure. The shared validator now accepts the injected
+database/caller context, has a five-second bound, preserves Unicode format and
+trim/lowercase substring policy, and rejects query/scan/iteration failure.
+Creation and validation use that one primitive. The unscoped disallowed-word
+cache is retired so another database/configuration cannot supply this policy.
+Creation returns its existing rejection reply if filtering cannot be confirmed.
+
+Availability uses one owned existence query matching the canonical UNIQUE(name),
+including soft-deleted rows. Errors are terminal failures, not free names.
+The check remains advisory; concurrent creation is still decided by the database
+constraint. Generated success/error DTOs echo request identity, and successful
+checks echo the actual name. Invalid-format/taken names are business results,
+distinct from transport/SQL failure. The temporary legacy empty-ID lane remains
+until coordinated client/server activation can retire it.
+
+The client uses existing CorrelatedRequest settlement and socket retirement;
+name editing/unmount aborts the request and prevents stale state application.
+It no longer uses opcode FIFO or the old `valid || success` fallback. Concurrent
+names can settle out of order without association errors. The rendered test
+holds an earlier available-name response while the newer name is reserved by a
+soft-deleted row, then proves delivery cannot replace the "taken" result.
+
+Focused PostgreSQL checks cover injected reads, active/deleted uniqueness,
+filter/lookup SQL failure, creation rejection and actual pool cancellation.
+Client checks cover out-of-order correlation, edit/unmount and transport
+retirement. The delayed-name browser run passed in 2.6s at
+`/var/tmp/capturequest-rendered.TzHjZc`. Full native creation/movement/reentry and
+real restart acceptance also passed in 17.3s at
+`/var/tmp/capturequest-rendered.xYDpBN`.
+Focused PostgreSQL checks passed (1.3s); full world (57.7s), protocol, session and
+server race suites passed. Eighteen focused client/shared-boundary checks,
+frontend typecheck, all Go package compilation, production build, runtime asset
+validation and diff checks passed. Canonical wire types were regenerated;
+existing build warnings remain. No production endpoint was tested.
+
+Next: shared-boundary review and active Phaser dialogue read migration, then
+remaining account command identity/recovery and the finite wider matrix. The
+historical restore timeout and Repel click remain unattributed, and all five
+roadmap areas remain open. No schema/assets changed, push or deployment.
 
 ## Native Chromium/QUIC acceptance (2026-10-08)
 

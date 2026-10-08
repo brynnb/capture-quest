@@ -13,3 +13,23 @@ type CharacterData struct {
 	models.CharacterData `tstype:",extends"`
 	Options              *db_character.CharacterOptions `json:"options,omitempty"`
 }
+
+type NameValidationRequest struct {
+	RequestID string `json:"requestId"`
+	Name      string `json:"name"`
+}
+
+type NameValidationResponse struct {
+	Success      bool   `json:"success" tstype:"true"`
+	RequestID    string `json:"requestId"`
+	Name         string `json:"name"`
+	Valid        bool   `json:"valid"`
+	Available    bool   `json:"available"`
+	ErrorMessage string `json:"errorMessage"`
+}
+
+type NameValidationError struct {
+	Success   bool   `json:"success" tstype:"false"`
+	RequestID string `json:"requestId"`
+	Error     string `json:"error"`
+}

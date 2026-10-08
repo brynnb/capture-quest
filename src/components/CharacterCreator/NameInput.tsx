@@ -107,6 +107,7 @@ const NameInput: React.FC = () => {
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
+    const controller=new AbortController();
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
     }
@@ -132,7 +133,8 @@ const NameInput: React.FC = () => {
         isValidating: true,
       });
 
-      const result = await validateName(characterName);
+      const result = await validateName(characterName,controller.signal);
+      if(controller.signal.aborted)return;
 
       if (result) {
         setNameValidation({
@@ -152,6 +154,7 @@ const NameInput: React.FC = () => {
     }, 300);
 
     return () => {
+      controller.abort();
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
       }

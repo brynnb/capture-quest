@@ -289,6 +289,11 @@ export function buyPrize(prizeId: number): void {
   NetworkBridge.send({ prizeId }, OpCodes.GameCornerPrizeBuyRequest);
 }
 
+type NameReply=import("@/net/generated/protocol").NameValidationResponse|import("@/net/generated/protocol").NameValidationError;
+const nameValidationHandlers=new Set<(reply:NameReply)=>void>();
+export function onNameValidation(receive:(reply:NameReply)=>void):()=>void {nameValidationHandlers.add(receive);return()=>nameValidationHandlers.delete(receive);}
+export function requestNameValidation(requestId:string,name:string):Promise<void>{return NetworkBridge.send({requestId,name},OpCodes.ValidateNameRequest);}
+
 export type PokedexReadReply = import("@/net/generated/protocol").TrainerCardResponse | import("@/net/generated/protocol").PokedexListResponse | import("@/net/generated/protocol").PokedexStatusResponse | import("@/net/generated/protocol").PokedexReadError;
 const pokedexReadHandlers = new Map<number, Set<(reply: PokedexReadReply) => void>>([
  OpCodes.TrainerCardResponse,OpCodes.PokedexListResponse,OpCodes.PokedexStatusResponse,
@@ -532,6 +537,9 @@ export function normalizePhaserArrayPayload<T>(
 // Internal: dispatch incoming Phaser responses
 export function dispatchPhaserResponse(opcode: number, data: unknown): void {
   switch (opcode) {
+    case OpCodes.ValidateNameResponse:
+      nameValidationHandlers.forEach(receive=>receive(data as NameReply));break;
+
     case OpCodes.TrainerCardResponse:
     case OpCodes.PokedexListResponse:
     case OpCodes.PokedexStatusResponse:

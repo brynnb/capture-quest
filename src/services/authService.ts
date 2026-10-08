@@ -3,6 +3,9 @@
  */
 import { WorldSocket, OpCodes } from "@/net";
 import { WT_IP, WT_PORT } from "@/config";
+import { correlatedRequest } from "@/phaser-game/services/CorrelatedRequest";
+import * as PhaserNet from "@/phaser-game/services/PhaserNetworkService";
+import type { NameValidationResponse } from "@/net/generated/protocol";
 import { getExistingGuestToken } from "@/utils/guestToken";
 
 // JWT Response interface
@@ -22,12 +25,7 @@ export interface CharacterCreateRequest {
     tutorial: number;
 }
 
-interface NameValidationResponse {
-    valid?: boolean;
-    success?: boolean;
-    available?: boolean;
-    errorMessage?: string;
-}
+
 
 /**
  * Login with email and password
@@ -162,29 +160,17 @@ export async function deleteCharacter(name: string): Promise<boolean> {
 /**
  * Validate a character name
  */
-export async function validateName(name: string): Promise<{
-    valid: boolean;
-    available: boolean;
-    errorMessage: string;
-} | null> {
-    try {
-        if (!WorldSocket.isConnected) {
-            console.warn("WorldSocket not connected for validateName");
-            return null;
-        }
-        const response = await WorldSocket.sendJsonRequest(
-            OpCodes.ValidateNameRequest,
-            OpCodes.ValidateNameResponse,
-            { name }
-        ) as NameValidationResponse;
-        return {
-            valid: !!(response.valid || response.success),
-            available: !!response.available,
-            errorMessage: response.errorMessage || "",
-            ...response,
-        };
-    } catch (error) {
-        console.error("Error validating name via JSON:", error);
-        return null;
-    }
+export async function validateName(name:string,signal?:AbortSignal):Promise<{valid:boolean;available:boolean;errorMessage:string}|null>{
+ const controller=new AbortController();const generation=WorldSocket.sessionGeneration;
+ const abort=()=>controller.abort();signal?.addEventListener("abort",abort,{once:true});if(signal?.aborted)abort();
+ const stop=WorldSocket.subscribeSessionRetirement(abort);
+ try {
+  const response=await correlatedRequest<NameValidationResponse>(PhaserNet.onNameValidation,requestId=>PhaserNet.requestNameValidation(requestId,name),controller.signal);
+  if(controller.signal.aborted || WorldSocket.sessionGeneration!==generation)return null;
+  if(response.name!==name || typeof response.valid!=="boolean" || typeof response.available!=="boolean" || typeof response.errorMessage!=="string")throw new Error("Invalid name validation response");
+  return {valid:response.valid,available:response.available,errorMessage:response.errorMessage};
+ } catch(error) {
+  if(!controller.signal.aborted)console.error("Name validation could not be confirmed:",error);
+  return null;
+ } finally {stop();signal?.removeEventListener("abort",abort);}
 }

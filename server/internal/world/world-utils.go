@@ -1,7 +1,6 @@
 package world
 
 import (
-	"capturequest/internal/cache"
 	"capturequest/internal/db"
 	"context"
 	"fmt"
@@ -11,82 +10,45 @@ import (
 	"unicode"
 )
 
-// ValidateName performs basic validation on character names
-// Returns (isValid, errorMessage)
-func ValidateName(name string) (bool, string) {
-	ctx := context.Background()
-
+// ValidateNameContext preserves format/filter policy with an owned query context.
+func ValidateNameContext(ctx context.Context, database db.ContextDBTX, name string) (bool, string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	if len(name) < 4 || len(name) > 15 {
-		return false, "Invalid name format. Names must be 4-15 characters long."
+		return false, "Invalid name format. Names must be 4-15 characters long.", nil
 	}
-
 	if !unicode.IsUpper(rune(name[0])) {
-		return false, "Invalid name format. Names must start with an uppercase letter."
+		return false, "Invalid name format. Names must start with an uppercase letter.", nil
 	}
-
-	for idx, char := range name {
-		if idx > 0 && (!unicode.IsLetter(char) || unicode.IsUpper(char)) {
-			return false, "Invalid name format. Names must contain only letters, and only the first letter can be uppercase."
+	for index, char := range name {
+		if index > 0 && (!unicode.IsLetter(char) || unicode.IsUpper(char)) {
+			return false, "Invalid name format. Names must contain only letters, and only the first letter can be uppercase.", nil
 		}
 	}
-
-	isValidWord, _ := CheckNameFilter(ctx, name)
-	if !isValidWord {
-		return false, "The name contains a disallowed phrase."
+	rows, err := database.QueryContext(ctx, `SELECT word FROM disallowed_words WHERE word<>''`)
+	if err != nil {
+		return false, "", fmt.Errorf("name filter query: %w", err)
 	}
-
-	return true, ""
-}
-
-// CheckNameFilter checks if a name contains any forbidden words from disallowed_words.
-// Returns (isValid, matchedWord)
-func CheckNameFilter(ctx context.Context, name string) (bool, string) {
-	cacheKey := "disallowed_words:name_validation"
-
-	var words []string
-	if val, found, err := cache.GetCache().Get(cacheKey); err == nil && found {
-		if cachedWords, ok := val.([]string); ok {
-			words = cachedWords
-		}
-	}
-
-	if len(words) == 0 {
-		rows, err := db.GlobalWorldDB.DB.QueryContext(ctx, `
-			SELECT word
-			FROM disallowed_words
-			WHERE word <> ''`)
-		if err != nil {
-			fmt.Printf("failed to query disallowed words for name validation: %v\n", err)
-			return true, ""
-		}
-		defer rows.Close()
-
-		for rows.Next() {
-			var word string
-			if err := rows.Scan(&word); err != nil {
-				fmt.Printf("failed to scan disallowed word for name validation: %v\n", err)
-				return true, ""
-			}
-			word = strings.ToLower(strings.TrimSpace(word))
-			if word != "" {
-				words = append(words, word)
-			}
-		}
-		if err := rows.Err(); err != nil {
-			fmt.Printf("failed to read disallowed words for name validation: %v\n", err)
-			return true, ""
-		}
-		cache.GetCache().Set(cacheKey, words)
-	}
-
+	defer rows.Close()
 	lowerName := strings.ToLower(name)
-	for _, word := range words {
-		if strings.Contains(lowerName, word) {
-			return false, word
+	matched := ""
+	for rows.Next() {
+		var word string
+		if err := rows.Scan(&word); err != nil {
+			return false, "", fmt.Errorf("name filter scan: %w", err)
+		}
+		word = strings.ToLower(strings.TrimSpace(word))
+		if word != "" && strings.Contains(lowerName, word) {
+			matched = word
 		}
 	}
-
-	return true, ""
+	if err := rows.Err(); err != nil {
+		return false, "", fmt.Errorf("name filter iteration: %w", err)
+	}
+	if matched != "" {
+		return false, "The name contains a disallowed phrase.", nil
+	}
+	return true, "", nil
 }
 
 // ItemToMap converts an item model to a map with lowercased keys for JSON compatibility.

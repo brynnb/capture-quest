@@ -121,7 +121,13 @@ func HandleCharacterCreate(ses *session.Session, payload []byte, wh *WorldHandle
 	}
 
 	name := req.Name
-	if valid, _ := ValidateName(name); !valid {
+	valid, _, validationErr := ValidateNameContext(ses.CommandContext(), wh.database, name)
+	if validationErr != nil {
+		log.Printf("Character name validation failed: %v", validationErr)
+		ses.SendStreamJSON(SimpleSuccessResponse{Value: 0}, opcodes.CharacterCreateResponse)
+		return false
+	}
+	if !valid {
 		ses.SendStreamJSON(SimpleSuccessResponse{Value: 0}, opcodes.CharacterCreateResponse)
 		return false
 	}

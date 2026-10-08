@@ -2,7 +2,6 @@ package world
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"time"
@@ -55,38 +54,38 @@ func HandleHeartbeat(ses *session.Session, payload []byte, wh *WorldHandler) boo
 
 // HandleValidateNameRequest handles name validation
 func HandleValidateNameRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	var req struct {
-		Name string `json:"name"`
+	var req protocol.NameValidationRequest
+	sendError := func(err error) {
+		ses.SendStreamJSON(protocol.NameValidationError{RequestID: req.RequestID, Error: err.Error()}, opcodes.ValidateNameResponse)
 	}
-	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("HandleValidateNameRequest: failed to unmarshal JSON: %v", err)
+	if err := decodePlayerMovement(payload, &req); err != nil {
+		sendError(err)
 		return false
 	}
-
-	valid, errorMsg := ValidateName(req.Name)
-	available := false
-	errorMessage := errorMsg
-
+	if req.RequestID != "" && !validBattleRequestID(req.RequestID) {
+		sendError(fmt.Errorf("invalid name validation request identity"))
+		return false
+	}
+	ctx, cancel := context.WithTimeout(ses.CommandContext(), 5*time.Second)
+	defer cancel()
+	valid, message, err := ValidateNameContext(ctx, wh.database, req.Name)
+	if err != nil {
+		sendError(err)
+		return false
+	}
+	response := protocol.NameValidationResponse{Success: true, RequestID: req.RequestID, Name: req.Name, Valid: valid, ErrorMessage: message}
 	if valid {
-		// Check database for availability
-		char, err := db_character.GetCharacterByName(req.Name)
-		if err != nil {
-			// If error is "not found", then it's available
-			available = true
-		} else if char == nil || char.ID == 0 {
-			available = true
-		} else {
-			available = false
-			errorMessage = "Name is already taken."
+		// The schema's UNIQUE(name) includes soft-deleted rows. Match that authority,
+		// and never turn a query failure into an available name.
+		if err := wh.database.QueryRowContext(ctx, `SELECT NOT EXISTS(SELECT 1 FROM character_data WHERE name=$1)`, req.Name).Scan(&response.Available); err != nil {
+			sendError(err)
+			return false
+		}
+		if !response.Available {
+			response.ErrorMessage = "Name is already taken."
 		}
 	}
-
-	ses.SendStreamJSON(map[string]interface{}{
-		"valid":        valid,
-		"available":    available,
-		"errorMessage": errorMessage,
-	}, opcodes.ValidateNameResponse)
-
+	ses.SendStreamJSON(response, opcodes.ValidateNameResponse)
 	return false
 }
 

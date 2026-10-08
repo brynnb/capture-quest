@@ -15,6 +15,23 @@ for both encoding/json and generated TypeScript; no field-name conversion runs.
 export interface CharacterData extends CharacterBase {
   options?: import("./character_options").CharacterOptions;
 }
+export interface NameValidationRequest {
+  requestId: string;
+  name: string;
+}
+export interface NameValidationResponse {
+  success: true;
+  requestId: string;
+  name: string;
+  valid: boolean;
+  available: boolean;
+  errorMessage: string;
+}
+export interface NameValidationError {
+  success: false;
+  requestId: string;
+  error: string;
+}
 
 //////////
 // source: content.go
