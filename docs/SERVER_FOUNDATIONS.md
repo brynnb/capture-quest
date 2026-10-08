@@ -7,8 +7,9 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
-correlated, revision-fenced preference commands and current-state recovery,
-following flag-cache commit/lifetime fixes, owned entry reads and movement recovery.
+`a343ac5`, skipping clean committed-position rewrites while preserving dirty-save
+failure checks, following shared character-lock transaction enforcement and native
+source/simulator consolidation.
 
 The latest field-command prerequisite is Escape Rope source fencing, recorded
 below; Bicycle now has a movement-owned desired-state command. Escape Rope transport now uses a correlated revision-fenced command and movement-owned current recovery.
@@ -27,6 +28,22 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Requested branch handoff (2026-10-08)
+
+The user requested a stopping point, commit and GitHub branch push. Implementation
+is already committed through `a343ac5`; this documentation checkpoint accompanies
+the branch push. No partial implementation is left in the worktree. Prior test
+evidence is recorded with each checkpoint below; this documentation-only handoff
+does not claim a new test run or production deployment.
+
+Next recommended work is genuine cleanup-failure/reentry recovery through the
+existing character, movement and session owners. Investigation has started, but
+no recovery policy or fix has been implemented. In particular, retrying additive
+playtime after an uncertain commit must not double-count it, and recovery must not
+allow a retired position writer to overwrite a newer owner. The historical login
+restore timeout and Repel click failure remain unattributed. All five roadmap
+areas remain open; the finite remaining inventory is in `SERVER_COMMAND_AUDIT.md`.
 
 ## Skip clean position rewrites; preserve dirty cleanup obligations (2026-10-08)
 
