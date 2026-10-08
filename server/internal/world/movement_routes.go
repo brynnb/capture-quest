@@ -87,14 +87,21 @@ func saveMovementRouteIn(tx db.DBTX, charID int64, mapID, x, y int, path []PathN
 func (m *PlayerMovementManager) restoreMovementRoute(ses *session.Session) error {
 	charID := int64(ses.Client.CharData().ID)
 	var route *movementRoute
+	var savedMap, x, y int
+	var surfing bool
 	err := db.Transaction(ses.CommandContext(), m.wh.database, func(tx db.DBTX) error {
-		var savedMap, x, y int
 		if err := tx.QueryRow(`SELECT map_id,CAST(x AS INTEGER),CAST(y AS INTEGER) FROM character_data WHERE id=$1 FOR UPDATE`, charID).Scan(&savedMap, &x, &y); err != nil {
 			return err
 		}
 		var err error
 		route, err = loadMovementRouteIn(tx, charID)
-		if err != nil || route == nil {
+		if err != nil {
+			return err
+		}
+		if route == nil {
+			// Prepare entry state before presence/spawn publication, never from
+			// an independent SQL read during actor presentation.
+			surfing, err = isSurfableWaterTileIn(ses.CommandContext(), tx.(db.ContextDBTX), m.wh, normalizedVisiblePlayerMapID(m.wh, savedMap), x, y)
 			return err
 		}
 		if route.MapID != normalizedVisiblePlayerMapID(m.wh, savedMap) || route.X != x || route.Y != y {
@@ -112,17 +119,24 @@ func (m *PlayerMovementManager) restoreMovementRoute(ses *session.Session) error
 		}
 		return nil
 	})
-	if err != nil || route == nil {
+	if err != nil {
 		return err
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	state := m.players[int(charID)]
-	if state == nil || state.SessionID != ses.SessionID || state.MapID != route.MapID || state.CurrentX != route.X || state.CurrentY != route.Y {
+	if state == nil || state.SessionID != ses.SessionID || state.MapID != normalizedVisiblePlayerMapID(m.wh, savedMap) || state.CurrentX != x || state.CurrentY != y {
 		return fmt.Errorf("movement route owner changed for character %d", charID)
 	}
-	state.Path = append([]PathNode(nil), route.Path...)
-	state.IsSurfing = route.Surfing
+	if err := ses.CommandContext().Err(); err != nil {
+		return err
+	}
+	if route != nil {
+		state.Path = append([]PathNode(nil), route.Path...)
+		surfing = route.Surfing
+	}
+	state.IsSurfing = surfing
+	m.applyBicycleMapRules(state)
 	state.LastMoveTime = time.Now()
 	return nil
 }

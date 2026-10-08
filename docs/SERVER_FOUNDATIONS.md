@@ -28,6 +28,48 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Entry prepares surfing; actor presentation performs no collision SQL (2026-10-08)
+
+`createPlayerActorFromPresence` previously inferred a surfing sprite by reading
+collision whenever movement reported false. The same actor constructor serves
+initial spawn, map/position publication and peer actor reads, so presentation could
+start its own database work after entry or a gameplay commit.
+
+The existing `restoreMovementRoute` entry operation now prepares surfing alongside
+its owned saved map/coordinates and optional persisted route. Without a route, it
+uses the existing transaction water predicate/query handle. Saved routes retain
+their stored surfing decision and source validation. Read failure rejects entry
+preparation; successful publication requires the matching session/registration,
+saved position and live command context before installing path/surfing state.
+Actor construction uses prepared movement state; its collision fallback is removed.
+Committed movement/SURF already carries the subsequent surfing decision. No new
+storage, polling or shadow presence service was introduced.
+
+Private PostgreSQL checks cover land/water entry with a one-connection pool,
+expected actor sprite fields, and actor construction while the pool is occupied
+and the collision cache is cold. They verify no connection request during
+presentation. Pool cancellation and missing source preserve the live movement
+state instead of projecting guessed defaults. Focused actor/entry/route checks
+passed (2.0s), full world (51.6s) and script-simulator race suites passed, all Go
+packages compile and diff checks pass.
+
+The normal entry/house-exit browser case passed (8.2s) at
+`/var/tmp/capturequest-rendered.KaBqLk`; its two Repel cases were skipped because that
+run did not enable crash mode. A separate correctly enabled crash run passed both
+Repel duplicate/lost-reply/reentry cases in 25.5s at
+`/var/tmp/capturequest-rendered.6hhy7F`. The verified restart receipt records old PID
+2233163, new PID 2234027, exit 137 and generation 1, with process recovery evidence.
+No restore/ResumeBattle/deadline-exceeded diagnostic matched the retained server
+logs in this run. This rerun does not attribute or close the original restore
+timeout. Browser entry/reentry evidence is distinct from the headless sprite-field
+check; no rendered water-sprite pixel claim or production acceptance is made.
+
+Remaining: peer presence/movement metadata consistency across session replacement,
+local/simulator/startup/dormant collision APIs, batching under edits, reconnect/idle
+resident recovery and the remaining command matrix. All five roadmap areas remain
+active. Next: review peer actor snapshot ownership before another domain migration.
+This follow-up is a local checkpoint only, without push or deployment.
+
 ## Warp eligibility uses one owned collision view (2026-10-08)
 
 Normal warp activation already owns a bounded transaction, but adjacent carpet

@@ -894,11 +894,6 @@ func createPlayerActorFromPresence(p session.Presence, wh *WorldHandler) *Phaser
 
 	ridingBicycle := wh.PlayerMovement != nil && wh.PlayerMovement.IsBicycleActive(int(p.CharacterID))
 	surfing := wh.PlayerMovement != nil && wh.PlayerMovement.IsSurfing(int(p.CharacterID))
-	if !surfing && wh.ActorManager != nil {
-		if collisionType, exists := wh.ActorManager.CollisionTypeAt(mapID, spawnX, spawnY); exists && collisionType == collisionWater {
-			surfing = true
-		}
-	}
 	spriteName := playerSpriteName(p.Gender, ridingBicycle, surfing)
 
 	objectType := "player"

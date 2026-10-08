@@ -4,8 +4,12 @@ import (
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
 	"capturequest/internal/testdb"
+	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"testing"
+	"time"
 )
 
 func TestActorReadIsCorrelatedInjectedAndIncludesOwnedOverrides(t *testing.T) {
@@ -65,4 +69,94 @@ func TestBoulderPublicationIsScopedToProducingCharacter(t *testing.T) {
 	}
 	owner.Close()
 	peer.Close()
+}
+
+func TestEntryPreparesSurfingBeforeQueryFreeActorPresentation(t *testing.T) {
+	for _, water := range []bool{false, true} {
+		t.Run(fmt.Sprint(water), func(t *testing.T) {
+			wh, ses, _ := setupIssuedStep(t)
+			collision := 1
+			if water {
+				collision = 2
+			}
+			testdb.Exec(t, wh.database, `UPDATE phaser_tiles SET collision_type=$1 WHERE map_id=50 AND x=7 AND y=8`, collision)
+			wh.ActorManager.InvalidateCollisionMap(50)
+			old := db.GlobalWorldDB
+			db.GlobalWorldDB = nil
+			t.Cleanup(func() { db.GlobalWorldDB = old })
+			wh.database.SetMaxOpenConns(1)
+			if err := ses.ExecuteCommand(context.Background(), func() {
+				if err := wh.PlayerMovement.restoreMovementRoute(ses); err != nil {
+					t.Fatal(err)
+				}
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if wh.PlayerMovement.IsSurfing(42) != water {
+				t.Fatal("entry did not prepare authoritative surfing state")
+			}
+			wh.ActorManager.InvalidateCollisionMap(50)
+			lease, err := wh.database.Conn(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer lease.Close()
+			before := wh.database.Stats().WaitCount
+			done := make(chan *PhaserActor, 1)
+			go func() { done <- createPlayerActor(ses, wh) }()
+			var actor *PhaserActor
+			select {
+			case actor = <-done:
+			case <-time.After(200 * time.Millisecond):
+				lease.Close()
+				<-done
+				t.Fatal("actor presentation performed collision SQL")
+			}
+			presence := ses.Presence()
+			wanted := playerSpriteName(presence.Gender, false, water)
+			if actor == nil || actor.SpriteName == nil || *actor.SpriteName != wanted {
+				t.Fatalf("prepared actor sprite: %+v want %s", actor, wanted)
+			}
+			if wh.database.Stats().WaitCount != before {
+				t.Fatal("actor presentation borrowed a connection")
+			}
+		})
+	}
+}
+
+func TestEntrySurfPreparationFailurePreservesMovementState(t *testing.T) {
+	for _, failure := range []string{"pool-cancel", "source-error"} {
+		t.Run(failure, func(t *testing.T) {
+			wh, ses, _ := setupIssuedStep(t)
+			state := wh.PlayerMovement.players[42]
+			state.IsSurfing = true
+			wh.ActorManager.InvalidateCollisionMap(50)
+			ctx := context.Background()
+			if failure == "pool-cancel" {
+				wh.database.SetMaxOpenConns(1)
+				lease, err := wh.database.Conn(context.Background())
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer lease.Close()
+				owned, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+				defer cancel()
+				ctx = owned
+			} else {
+				testdb.Exec(t, wh.database, `ALTER TABLE phaser_tiles RENAME TO unavailable_tiles`)
+			}
+			var preparation error
+			err := ses.ExecuteCommand(ctx, func() { preparation = wh.PlayerMovement.restoreMovementRoute(ses) })
+			if failure == "pool-cancel" {
+				if !errors.Is(err, context.DeadlineExceeded) {
+					t.Fatal(err)
+				}
+			} else if preparation == nil {
+				t.Fatal("missing entry tile source accepted")
+			}
+			if !state.IsSurfing || state.CurrentX != 7 || state.CurrentY != 8 {
+				t.Fatal("failed entry preparation projected guessed state")
+			}
+		})
+	}
 }
