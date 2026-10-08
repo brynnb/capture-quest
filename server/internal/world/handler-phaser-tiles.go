@@ -106,11 +106,6 @@ func tileRuntimePropertiesForTileImageContext(ctx context.Context, database db.C
 	return props, nil
 }
 
-func rawFootTileIDForTileImage(tileImageID int) *int {
-	props := tileRuntimePropertiesForTileImage(tileImageID)
-	return props.RawFootTileID
-}
-
 // TilePropertyUpdateReq is the request payload for updating tile properties
 type TilePropertyUpdateReq struct {
 	TileImageID   int    `json:"tileImageId"`

@@ -126,3 +126,69 @@ func TestTileProjectionUsesCommittedFlagsAndRejectsUnavailableMetadata(t *testin
 		t.Fatalf("missing image metadata became base-tile success: %+v %v", failed, err)
 	}
 }
+
+func TestCharacterCollisionUsesCommittedRuleSelection(t *testing.T) {
+	database, wh, _, _ := battleTestWorld(t)
+	testdb.Exec(t, database, `INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(9999,'WORLD',2,2,1);
+ INSERT INTO phaser_tile_images(id,image_path,raw_foot_tile_id,talk_over_tile) VALUES(2,'selected.png',2,false);
+ INSERT INTO phaser_tile_properties(tile_image_id,collision_type) VALUES(2,0);
+ INSERT INTO phaser_event_tile_overrides(map_id,map_name,x,y,tile_image_id,collision_type,requires_flag) VALUES(9999,'WORLD',1,1,999,2,'OPEN'),(9999,'WORLD',1,1,2,0,'OPEN');
+ INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'OPEN');`)
+	manager := &PhaserActorManager{collisionMap: map[int]map[string]int{9999: {tileKey(1, 1): 1}}, rawFootTileMap: map[int]map[string]int{9999: {tileKey(1, 1): 1}}}
+	wh.EventFlags.publishCommittedFlags(42, map[string]bool{})
+	old := db.GlobalWorldDB
+	db.GlobalWorldDB = nil
+	t.Cleanup(func() { db.GlobalWorldDB = old })
+	database.SetMaxOpenConns(1)
+	collision, raw, err := manager.characterCollision(context.Background(), database, 42, 9999, 0, 0, wh.EventFlags)
+	if err != nil || collision[tileKey(1, 1)] != 0 || raw[tileKey(1, 1)] != 2 {
+		t.Fatalf("stale-negative cache or superseded metadata selected: collision=%v raw=%v err=%v", collision, raw, err)
+	}
+	testdb.Exec(t, database, `DELETE FROM character_event_flags WHERE character_id=42`)
+	wh.EventFlags.publishCommittedFlags(42, map[string]bool{"OPEN": true})
+	collision, raw, err = manager.characterCollision(context.Background(), database, 42, 9999, 0, 0, wh.EventFlags)
+	if err != nil || collision[tileKey(1, 1)] != 1 || raw[tileKey(1, 1)] != 1 {
+		t.Fatalf("stale-positive cache authorized rule: collision=%v raw=%v err=%v", collision, raw, err)
+	}
+	rollback := errors.New("reject outer movement transaction")
+	err = db.Transaction(context.Background(), database, func(tx db.DBTX) error {
+		if _, err := tx.Exec(`INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'OPEN')`); err != nil {
+			return err
+		}
+		collision, raw, err := manager.characterCollision(context.Background(), tx.(db.ReadDBTX), 42, 9999, 0, 0, wh.EventFlags)
+		if err != nil || collision[tileKey(1, 1)] != 0 || raw[tileKey(1, 1)] != 2 {
+			t.Fatalf("collision did not join caller's transaction: %v %v %v", collision, raw, err)
+		}
+		return rollback
+	})
+	if !errors.Is(err, rollback) {
+		t.Fatal(err)
+	}
+	collision, raw, err = manager.characterCollision(context.Background(), database, 42, 9999, 0, 0, wh.EventFlags)
+	if err != nil || collision[tileKey(1, 1)] != 1 {
+		t.Fatalf("rolled-back flags leaked into collision: %v %v", collision, err)
+	}
+	testdb.Exec(t, database, `INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'OPEN'); DELETE FROM phaser_tile_properties WHERE tile_image_id=2`)
+	collision, raw, err = manager.characterCollision(context.Background(), database, 42, 9999, 0, 0, wh.EventFlags)
+	if err == nil || collision != nil || raw != nil {
+		t.Fatalf("missing winning metadata returned partial success: %v %v %v", collision, raw, err)
+	}
+}
+
+func TestCharacterCollisionHonorsPoolWaitCancellation(t *testing.T) {
+	database, wh, _, _ := battleTestWorld(t)
+	database.SetMaxOpenConns(1)
+	lease, err := database.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.Close()
+	manager := &PhaserActorManager{}
+	before := database.Stats().WaitCount
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	collision, raw, err := manager.characterCollision(ctx, database, 42, 9999, 0, 0, wh.EventFlags)
+	if !errors.Is(err, context.DeadlineExceeded) || collision != nil || raw != nil || database.Stats().WaitCount <= before {
+		t.Fatalf("collision escaped owned pool wait: %v %v %v", collision, raw, err)
+	}
+}

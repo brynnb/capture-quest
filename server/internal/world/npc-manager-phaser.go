@@ -790,7 +790,7 @@ func (m *PhaserActorManager) FindPathForCharacter(charID int64, mapID, startX, s
 }
 
 func (m *PhaserActorManager) FindPathForCharacterWithOptions(charID int64, mapID, startX, startY, endX, endY int, efm *EventFlagManager, opts pathfindOptions) []PathNode {
-	var database db.ContextDBTX
+	var database db.ReadDBTX
 	if m.wh != nil && m.wh.database != nil {
 		database = m.wh.database
 	} else if db.GlobalWorldDB != nil {
@@ -809,7 +809,24 @@ func (m *PhaserActorManager) FindPathForCharacterWithOptions(charID int64, mapID
 
 // characterCollision is shared by pathfinding and issued player steps. A failed
 // dynamic blocker read must never authorize movement through that blocker.
-func (m *PhaserActorManager) characterCollision(ctx context.Context, database db.ContextDBTX, charID int64, mapID, startX, startY int, efm *EventFlagManager) (map[string]int, map[string]int, error) {
+func (m *PhaserActorManager) characterCollision(ctx context.Context, database db.ReadDBTX, charID int64, mapID, startX, startY int, efm *EventFlagManager) (map[string]int, map[string]int, error) {
+	if pool, ok := database.(*sql.DB); ok {
+		type view struct{ collision, raw map[string]int }
+		result, err := db.ReadSnapshot(ctx, pool, func(ctx context.Context, q db.ReadDBTX) (view, error) {
+			collision, raw, err := m.characterCollision(ctx, q, charID, mapID, startX, startY, efm)
+			return view{collision, raw}, err
+		})
+		return result.collision, result.raw, err
+	}
+	// Player collision and presentation must select rules from durable flags in
+	// the same owned snapshot. A stale cache is not movement authorization.
+	if efm != nil {
+		flags, err := eventFlagSnapshotIn(database, charID)
+		if err != nil {
+			return nil, nil, err
+		}
+		efm = flags
+	}
 	m.mu.Lock()
 	if err := m.ensureWalkableMapLoadedLockedIn(ctx, database, mapID); err != nil {
 		m.mu.Unlock()
@@ -829,11 +846,10 @@ func (m *PhaserActorManager) characterCollision(ctx context.Context, database db
 			return nil, nil, err
 		}
 	}
+	selected := eligibleEventTileOverrides(charID, efm, tileOverrides)
 	overrides := make(map[string]int)
-	for _, override := range tileOverrides {
-		if override.eventTileEligible(charID, efm) {
-			overrides[tileKey(override.X, override.Y)] = override.CollisionType
-		}
+	for key, override := range selected {
+		overrides[key] = override.CollisionType
 	}
 	if len(overrides) > 0 {
 		withOverrides := copyCollisionMap(collisionMap, len(overrides))
@@ -856,14 +872,12 @@ func (m *PhaserActorManager) characterCollision(ctx context.Context, database db
 		var rawOverrides map[string]*int
 		if efm != nil {
 			rawOverrides = make(map[string]*int)
-			for _, override := range tileOverrides {
-				if override.eventTileEligible(charID, efm) {
-					props, err := tileRuntimePropertiesForTileImageContext(ctx, database, override.TileImageID)
-					if err != nil {
-						return nil, nil, err
-					}
-					rawOverrides[tileKey(override.X, override.Y)] = props.RawFootTileID
+			for _, override := range selected {
+				props, err := tileRuntimePropertiesForTileImageContext(ctx, database, override.TileImageID)
+				if err != nil {
+					return nil, nil, fmt.Errorf("collision event tile map=%d coordinate=(%d,%d) image=%d: %w", mapID, override.X, override.Y, override.TileImageID, err)
 				}
+				rawOverrides[tileKey(override.X, override.Y)] = props.RawFootTileID
 			}
 		}
 		if len(rawOverrides) > 0 {

@@ -126,7 +126,7 @@ func commitMovementStep(ctx context.Context, wh *WorldHandler, charID int64, c m
 			if c.MapID != c.SourceMap || abs(c.X-c.SourceX)+abs(c.Y-c.SourceY) != 1 {
 				return fmt.Errorf("SURF target is not adjacent")
 			}
-			collision, _, err := wh.ActorManager.characterCollision(ctx, tx.(db.ContextDBTX), charID, c.MapID, c.SourceX, c.SourceY, flags)
+			collision, _, err := wh.ActorManager.characterCollision(ctx, tx.(db.ReadDBTX), charID, c.MapID, c.SourceX, c.SourceY, flags)
 			if err != nil {
 				return err
 			}

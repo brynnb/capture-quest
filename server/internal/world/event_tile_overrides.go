@@ -83,42 +83,6 @@ func applyEventTileOverridesContext(ctx context.Context, database db.ReadDBTX, c
 	return tiles, nil
 }
 
-func EventTileCollisionOverrides(charID int64, mapID int, efm *EventFlagManager) map[string]int {
-	overrides, err := eventTileOverridesForMap(mapID)
-	if err != nil {
-		log.Printf("[EventTiles] Failed to load collision overrides for map %d: %v", mapID, err)
-		return nil
-	}
-	collisions := make(map[string]int)
-	for _, override := range overrides {
-		if override.eventTileEligible(charID, efm) {
-			collisions[tileKey(override.X, override.Y)] = override.CollisionType
-		}
-	}
-	if len(collisions) == 0 {
-		return nil
-	}
-	return collisions
-}
-
-func EventTileRawFootTileOverrides(charID int64, mapID int, efm *EventFlagManager) map[string]*int {
-	overrides, err := eventTileOverridesForMap(mapID)
-	if err != nil {
-		log.Printf("[EventTiles] Failed to load raw foot tile overrides for map %d: %v", mapID, err)
-		return nil
-	}
-	rawFootTiles := make(map[string]*int)
-	for _, override := range overrides {
-		if override.eventTileEligible(charID, efm) {
-			rawFootTiles[tileKey(override.X, override.Y)] = rawFootTileIDForTileImage(override.TileImageID)
-		}
-	}
-	if len(rawFootTiles) == 0 {
-		return nil
-	}
-	return rawFootTiles
-}
-
 func EventTileStatesForCharacter(ctx context.Context, database *sql.DB, charID int64, mapID int) ([]EventTileState, error) {
 	return db.ReadSnapshot(ctx, database, func(ctx context.Context, q db.ReadDBTX) ([]EventTileState, error) {
 		return eventTileStatesIn(ctx, q, charID, mapID)
@@ -261,10 +225,6 @@ func eventTileMapIDContext(ctx context.Context, database db.ContextDBTX, mapName
 		return 0, fmt.Errorf("event tile map context is required")
 	}
 	return ses.MapID, nil
-}
-
-func eventTileOverridesForMap(mapID int) ([]eventTileOverride, error) {
-	return eventTileOverridesForMapContext(context.Background(), db.GlobalWorldDB.DB, mapID)
 }
 
 func eventTileOverridesForMapContext(ctx context.Context, database db.ContextDBTX, mapID int) ([]eventTileOverride, error) {

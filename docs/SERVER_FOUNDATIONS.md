@@ -28,6 +28,41 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Collision rule snapshot alignment (2026-10-08)
+
+Review of the remaining collision reader found a concrete divergence from tile
+presentation: `characterCollision` selected event rules with the caller's cached
+flags, then read raw-foot metadata for every eligible rule. A stale flag cache
+could therefore choose different collision from presentation; a superseded rule's
+missing metadata could reject an otherwise valid final selection.
+
+Database-backed collision reads now use the existing bounded `db.ReadSnapshot`.
+Calls made inside an owned movement transaction retain that transaction, including
+its uncommitted flag changes. Player collision selection loads durable flags and
+uses the shared `eligibleEventTileOverrides` last-eligible policy, then resolves
+raw-foot metadata only for selected rules. Missing winning metadata still rejects,
+with map, coordinate and image identity in the error. Existing base collision,
+CUT overlays, boulders and NPC blockers retain their responsibilities. Unused
+global event collision/raw-foot wrappers and their unused raw-foot helper are
+removed; the separate tile-mutation property helper remains for its actual caller.
+
+Private PostgreSQL regressions prove stale-negative and stale-positive cache
+rejection, superseded metadata exclusion, missing winning metadata failure,
+transaction-local flag visibility, rollback without collision publication, and
+actual connection-pool wait cancellation. The focused race-enabled checks passed.
+World (69.8s), server and session race suites passed in the broader run; that command
+failed overall because its extra `internal/simulator` target does not exist. The
+correct full `internal/scriptsim` suite subsequently passed, and all Go packages
+compile. No new rendered movement, process-death, deployment or production evidence
+is claimed. Source changes were reviewed with `git diff --check`.
+
+Remaining: shared base-collision cache lifetime and lock/I/O ownership, remaining
+global/background pathfinding callers, reconnect/idle resident recovery and the
+other open matrix rows. The original restore timeout remains unattributed; all five
+roadmap areas remain active. Next: audit the base collision cache's read/invalidator
+ownership before another family migration. This checkpoint is local only, without
+push or deployment.
+
 ## Resident recovery acceptance and shared admission review (2026-10-08)
 
 The private-database omitted-update regression now covers both interior and unified
