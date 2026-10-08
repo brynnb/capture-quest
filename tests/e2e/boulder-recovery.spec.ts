@@ -8,7 +8,7 @@ import { isolatedCrashRuntime } from "./helpers/processRecovery";
 import { jumpToScenario } from "./helpers/scenarioDebugger";
 import { getGameState, waitForNoMapLoading, waitForPlayerIdle, waitForPlayerTile } from "./helpers/state";
 
-for (const mode of ["normal", "lost", "crash"] as const) {
+for (const mode of ["normal", "lost", "lost-all-movement", "crash"] as const) {
   test(`boulder duplicate and mode=${mode} recover one object move and follow-up`, async ({ page, context }) => {
     test.skip(process.env.CQ_E2E_CRASH_RECOVERY !== "true", "Requires the isolated database and recorded server");
     test.setTimeout(120_000);
@@ -17,7 +17,8 @@ for (const mode of ["normal", "lost", "crash"] as const) {
     let frozen: Promise<number> | undefined;
     let facingRequests = 0;
     const faults = mode === "crash" ? undefined : await inventoryCommandFaults(page,
-      OpCodes.PlayerFacingRequest, OpCodes.PlayerFacingResponse, mode === "lost");
+      OpCodes.PlayerFacingRequest, OpCodes.PlayerFacingResponse, mode !== "normal", () => true,
+      opcode => mode === "lost-all-movement" && opcode === OpCodes.ServerPlayerMovementNotify);
     if (mode === "crash") {
       await page.routeWebSocket("**/ws", socket => {
         const server = socket.connectToServer();

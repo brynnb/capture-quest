@@ -28,6 +28,43 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized a branch push for the stopping checkpoint on 2026-10-07; production deployment remains unauthorized.
 
+## Current recovery for unknown facing outcomes (2026-10-07)
+
+Facing can now commit a boulder mutation and movement cursor, so its old blanket
+position-free timeout rule was incomplete. Explicit correlated rejection still
+reconciles only source-matching direction. An ambiguous transport failure now
+engages the existing movement recovery lock and reads the existing current
+coherent gameplay snapshot with the movement-generation fence. The same owned
+resource/position projection used by Escape Rope and map loading applies it.
+The turn is never resent. Failed reads preserve the lock; retired or replaced
+owners cannot apply the result. The successful facing callback also checks the
+captured character before reserving pending server movement.
+
+Unit checks cover one mutation/one current read, current-pose projection, failed
+read locking across stops, retirement during recovery and rejection of an old
+character's successful pending-movement reply. All 47 focused client checks,
+TypeScript, runtime-asset validation, production build and diff checks passed.
+
+Four rendered boulder cases passed in 38.0 seconds in
+`/var/tmp/capturequest-rendered.46YNv5`: normal duplicates, lost acknowledgement,
+combined loss of facing acknowledgement and all server-movement notifications,
+and pre-follow-up process death. The combined-loss case waits for the ordinary
+request timeout and then reaches the committed player (18,10) through current
+recovery, with the object at (18,9), no cursor and no client step completion.
+Historical acknowledgement delivery and quit/reentry preserve those positions.
+The exact-process runner compiled the existing server, validated matched local
+assets and stopped its private runtime. The final character-success guard does
+not change the covered same-character path; it has a separate focused regression.
+No server, wire or generated-data contract changed in this checkpoint.
+
+Remaining: simultaneous loss of object-position notifications is a separate world
+presentation/read-lifetime audit; the current resource snapshot does not contain
+actor overrides. Wider source, route-data, writer and lifecycle audits, the
+unresolved login restore timeout and the rest of the five-area roadmap remain
+open. Next: audit owned actor refresh/reconciliation before closing the broader
+world-presentation boundary or migrating another family. No new push or deployment
+is part of this local checkpoint.
+
 ## Boulder duplicate, lost-reply and process-death acceptance (2026-10-07)
 
 Three rendered cases passed in 23.1 seconds in

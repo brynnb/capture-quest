@@ -535,3 +535,58 @@ test("retirement ignores a late receipt recovery and failed recovery keeps input
   expect(next.handleKeyboardMove("LEFT")).toBe(false);
   next.clear(); log.mockRestore();
 });
+
+
+test("unknown facing outcome reads current pose without retrying the turn", async () => {
+  const { controller, mapRenderer } = buildLedgeController();
+  usePlayerCharacterStore.getState().setCharacterProfile({ id: 42 });
+  vi.mocked(movement.requestPlayerFacing).mockRejectedValueOnce(new Error("timeout"));
+  const snapshot = { position: { mapId: 9999, x: 9, y: 0, direction: "LEFT", serverMovementPending: false } } as import("@/net/generated/world_api").GameplayStateResponse;
+  vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce(snapshot);
+  controller.faceTile(9, 0);
+  await vi.waitFor(() => expect(mapRenderer.snapActorPosition).toHaveBeenCalledWith(1, 9, 0, "LEFT"));
+  expect(movement.requestPlayerFacing).toHaveBeenCalledTimes(1);
+  expect(recovery.readCurrentGameplayState).toHaveBeenCalledTimes(1);
+  expect(recovery.applyGameplayResourceSnapshot).toHaveBeenCalledWith(snapshot);
+});
+
+test("failed facing recovery remains locked and retired recovery cannot apply", async () => {
+  const { controller } = buildLedgeController();
+  usePlayerCharacterStore.getState().setCharacterProfile({ id: 42 });
+  const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  vi.mocked(movement.requestPlayerFacing).mockRejectedValueOnce(new Error("timeout"));
+  vi.mocked(recovery.readCurrentGameplayState).mockRejectedValueOnce(new Error("read unavailable"));
+  controller.faceTile(9, 0);
+  await vi.waitFor(() => expect(warning).toHaveBeenCalled());
+  controller.stopMovement(true);
+  expect(controller.handleKeyboardMove("LEFT")).toBe(false);
+  controller.clear();
+  warning.mockRestore();
+
+  vi.clearAllMocks();
+  const next = buildLedgeController().controller;
+  let resolve!: (value: import("@/net/generated/world_api").GameplayStateResponse) => void;
+  vi.mocked(movement.requestPlayerFacing).mockRejectedValueOnce(new Error("timeout"));
+  vi.mocked(recovery.readCurrentGameplayState).mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+  next.faceTile(9, 0);
+  await vi.waitFor(() => expect(recovery.readCurrentGameplayState).toHaveBeenCalled());
+  next.clear();
+  resolve({ position: { mapId: 9999, x: 9, y: 0, direction: "LEFT" } } as import("@/net/generated/world_api").GameplayStateResponse);
+  await Promise.resolve(); await Promise.resolve();
+  expect(recovery.applyGameplayResourceSnapshot).not.toHaveBeenCalled();
+});
+
+
+test("a facing acceptance from a replaced character cannot reserve movement", async () => {
+  const { controller } = buildLedgeController();
+  usePlayerCharacterStore.getState().setCharacterProfile({ id: 42 });
+  let resolve!: (value: Awaited<ReturnType<typeof movement.requestPlayerFacing>>) => void;
+  vi.mocked(movement.requestPlayerFacing).mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+  controller.faceTile(9, 0);
+  usePlayerCharacterStore.getState().setCharacterProfile({ id: 43 });
+  resolve({ success: true, requestId: "old-owner", mapId: 9999, x: 10, y: 0, direction: "LEFT", serverMovementPending: true });
+  await Promise.resolve(); await Promise.resolve();
+  expect(controller.getIsMoving()).toBe(false);
+  expect(recovery.readCurrentGameplayState).not.toHaveBeenCalled();
+  controller.clear();
+});

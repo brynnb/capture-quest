@@ -1049,6 +1049,7 @@ export class PlayerMovementController {
 
   private requestFacing(direction: MovementDirection): void {
     if (this.playerId === null || this.stepAbort || this.serverMovementInProgress) return;
+    const characterId = usePlayerCharacterStore.getState().characterProfile.id;
     const request = { mapId: this.currentMapId, fromX: this.currentTileX, fromY: this.currentTileY, direction };
     const key = [request.mapId, request.fromX, request.fromY, direction].join(":");
     if (this.facingAbort && key === this.facingRequestKey) return;
@@ -1056,18 +1057,34 @@ export class PlayerMovementController {
     const abort = new AbortController();
     this.facingAbort = abort;
     this.facingRequestKey = key;
+    const current = () => !abort.signal.aborted && !this.fieldCommandsRetired
+      && usePlayerCharacterStore.getState().characterProfile.id === characterId;
     void requestPlayerFacing(request, abort.signal).then((result) => {
-      if (abort.signal.aborted) return;
+      if (!current()) return;
       if (result.serverMovementPending && result.mapId === this.currentMapId && result.x === this.currentTileX && result.y === this.currentTileY) {
         // Boulder updates can arrive before the first committed path point.
         // Preserve that server-owned phase instead of issuing an ordinary step
         // into the now visually unoccupied tile during this interval.
         this.beginServerMovement(false);
       }
-    }).catch((error: unknown) => {
-      if (abort.signal.aborted) return;
-      // Facing cannot change position. A rejected/stale turn must not snap the
-      // player or turn a later movement response into a position write.
+    }).catch(async (error: unknown) => {
+      if (!current()) return;
+      if (!(error instanceof CorrelatedResponseError)) {
+        // A turn can commit a boulder push and its route. Unknown transport
+        // outcomes require a current read, never a facing retry or error pose.
+        this.movementRecoveryRequired = true;
+        try {
+          const snapshot = await readCurrentGameplayState(abort.signal, () => this.movementGeneration);
+          if (!current()) return;
+          applyGameplayResourceSnapshot(snapshot);
+          this.projectOwnedPosition(snapshot.position);
+        } catch {
+          if (current()) console.warn("[PlayerMovement] Facing recovery unavailable; reconnect before moving.");
+        }
+        return;
+      }
+      // Explicit rejection does not confirm a movement commit. Keep its
+      // presentation directional and source-matching.
       if (error instanceof CorrelatedResponseError && !this.isMoving) {
         const owned = error.response as PlayerStepError;
         if (owned.mapId === this.currentMapId && owned.x === this.currentTileX && owned.y === this.currentTileY) {
