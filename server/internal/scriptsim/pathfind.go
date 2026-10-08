@@ -32,7 +32,7 @@ func runPathfind(ctx context.Context, database *sql.DB, scenario *Scenario, appl
 		Path:   path,
 	}
 
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}

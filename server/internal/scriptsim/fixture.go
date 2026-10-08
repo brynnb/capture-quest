@@ -282,12 +282,17 @@ func mapNameForID(mapID int) (string, error) {
 }
 
 func isOverworldMapName(mapName string) bool {
+	value, _ := isOverworldMapNameIn(db.GlobalWorldDB.DB, mapName)
+	return value
+}
+
+func isOverworldMapNameIn(q db.DBTX, mapName string) (bool, error) {
 	if mapName == "" {
-		return false
+		return false, nil
 	}
 	var isOverworld bool
-	if err := db.GlobalWorldDB.DB.QueryRow(`SELECT is_overworld FROM phaser_maps WHERE name = $1`, mapName).Scan(&isOverworld); err != nil {
-		return false
+	if err := q.QueryRow(`SELECT is_overworld FROM phaser_maps WHERE name=$1`, mapName).Scan(&isOverworld); err != nil {
+		return false, err
 	}
-	return isOverworld
+	return isOverworld, nil
 }

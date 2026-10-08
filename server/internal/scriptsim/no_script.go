@@ -2,13 +2,14 @@ package scriptsim
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
 	"capturequest/internal/db"
 	"capturequest/internal/world"
 )
 
-func runClickNoScript(
+func runClickNoScript(ctx context.Context, database *sql.DB,
 	scenario *Scenario,
 	applied *AppliedFixture,
 	initial *Snapshot,
@@ -24,7 +25,7 @@ func runClickNoScript(
 			scenario.Trigger.MapName, keys, cs.ScriptLabel)
 	}
 
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}
@@ -45,7 +46,7 @@ func runClickNoScript(
 	return result, nil
 }
 
-func runCoordNoScript(
+func runCoordNoScript(ctx context.Context, database *sql.DB,
 	scenario *Scenario,
 	applied *AppliedFixture,
 	initial *Snapshot,
@@ -67,7 +68,7 @@ func runCoordNoScript(
 		}
 	}
 
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}

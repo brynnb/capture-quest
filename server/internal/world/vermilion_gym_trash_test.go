@@ -55,7 +55,7 @@ func TestVermilionTrashResetRollback(t *testing.T) {
 		t.Fatalf("reset failure: %+v %v", outcome, err)
 	}
 	flag, err := queryEventFlag(database, 42, EventVermilionGymFirstLockOpened)
-	state, loadErr := loadVermilionGymTrashState(database, 42)
+	state, loadErr := ReadVermilionGymTrashState(database, 42)
 	if err != nil || !flag || loadErr != nil || state.SecondLockCanIndex == nil || *state.SecondLockCanIndex != 1 || !wh.EventFlags.CheckFlag(42, EventVermilionGymFirstLockOpened) {
 		t.Fatalf("reset leaked: %+v %v %v %v", state, flag, err, loadErr)
 	}
@@ -131,7 +131,7 @@ func TestVermilionTrashCommitFailureDoesNotPublish(t *testing.T) {
 	if err == nil || outcome != nil {
 		t.Fatalf("commit failure published: %+v %v", outcome, err)
 	}
-	state, err := loadVermilionGymTrashState(database, 42)
+	state, err := ReadVermilionGymTrashState(database, 42)
 	flag, flagErr := queryEventFlag(database, 42, EventVermilionGymFirstLockOpened)
 	if err != nil || state != nil || flagErr != nil || flag || wh.EventFlags.CheckFlag(42, EventVermilionGymFirstLockOpened) {
 		t.Fatalf("commit failure escaped: %+v %v %v %v", state, flag, err, flagErr)
@@ -178,7 +178,7 @@ func TestVermilionTrashConcurrentTransitions(t *testing.T) {
 	}
 	// Repeated clicks are separate gameplay actions: first-can clicks alternate
 	// opening and resetting, even when callers all begin with an empty cache.
-	state, err := loadVermilionGymTrashState(database, 42)
+	state, err := ReadVermilionGymTrashState(database, 42)
 	flag, flagErr := queryEventFlag(database, 42, EventVermilionGymFirstLockOpened)
 	if opened != 2 || reset != 2 || err != nil || state.SecondLockCanIndex != nil || flagErr != nil || flag || wh.EventFlags.CheckFlag(42, EventVermilionGymFirstLockOpened) {
 		t.Fatalf("transitions opened=%d reset=%d state=%+v flag=%v errors=%v,%v", opened, reset, state, flag, err, flagErr)

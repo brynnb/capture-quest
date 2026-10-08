@@ -39,7 +39,7 @@ type DayCareWithdrawResult struct {
 }
 
 func LoadDayCareStatus(charID int64) (DayCareStatus, error) {
-	return loadDayCareStatus(db.GlobalWorldDB.DB, charID)
+	return ReadDayCareStatus(db.GlobalWorldDB.DB, charID)
 }
 
 func TryDepositDayCarePokemon(charID int64, partySlot int) DayCareDepositResult {
@@ -136,7 +136,7 @@ func advanceDayCareStepsIn(tx db.DBTX, charID int64, steps int) (DayCareStatus, 
 		return DayCareStatus{}, false, err
 	}
 	if steps <= 0 {
-		status, err := loadDayCareStatus(tx, charID)
+		status, err := ReadDayCareStatus(tx, charID)
 		return status, false, err
 	}
 	rowID, _, pokemon, err := loadDayCarePokemon(tx, charID, false)
@@ -161,7 +161,7 @@ func advanceDayCareStepsIn(tx db.DBTX, charID int64, steps int) (DayCareStatus, 
 		return DayCareStatus{}, false, err
 	}
 
-	status, err := loadDayCareStatus(tx, charID)
+	status, err := ReadDayCareStatus(tx, charID)
 	return status, pokemon.Exp != oldExp, err
 }
 
@@ -279,7 +279,7 @@ func dayCareWithdrawFailure(charID int64, message string) DayCareWithdrawResult 
 	}
 }
 
-func loadDayCareStatus(q pokebattle.DBTX, charID int64) (DayCareStatus, error) {
+func ReadDayCareStatus(q pokebattle.DBTX, charID int64) (DayCareStatus, error) {
 	_, startLevel, pokemon, err := loadDayCarePokemon(q, charID, false)
 	if err == sql.ErrNoRows {
 		return DayCareStatus{Active: false}, nil

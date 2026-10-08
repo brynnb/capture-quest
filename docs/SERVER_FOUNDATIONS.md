@@ -28,6 +28,56 @@ reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
 
+## Shared simulator snapshot read boundary (2026-10-08)
+
+The shared snapshot reader no longer combines independent global queries with a
+runtime battle cache. `CaptureSnapshot` now requires context/database and owns the
+existing bounded read-only repeatable-read `db.ReadSnapshot`. Character, flags,
+wallet, coins, Pokédex, party, PC, inventory, hidden objects, battle, Day Care and
+Vermilion puzzle state use its one query handle. Existing domain readers are
+exposed/reused rather than duplicated; persisted battle loading and the cached
+summary share the same summary constructor. Metadata lookup errors propagate,
+and a late failure returns no partially populated snapshot.
+
+All initial/final snapshot consumers pass their caller context and database through
+the existing scenario functions, including final pathfinding capture. Fixture and
+other action writers remain global. During that migration, `Run` rejects a database
+different from its initialized fixture target before mutation; it must not write
+one database while inspecting another. There is no mutable global snapshot context
+or second read model.
+
+PostgreSQL regressions remove the global database, use a one-connection pool,
+inspect persisted battle state without its runtime cache, fail the final puzzle
+read and verify no partial result, and cancel an actual pool wait. A held coins
+relation lock pauses the aggregate while another transaction commits changes to
+name, wallet, coins and flags. The first snapshot sees all old values; a fresh one
+sees all new values. Focused checks passed (1.4s simulator, 1.5s world), full world
+(50.5s) and simulator race suites passed, all Go packages compile and diff checks
+pass. Canonical type regeneration produced no wire change.
+
+Corpus verification remains incomplete. The isolated `--all` runtime-expectation
+run at `/var/tmp/capturequest-script-sim.FcoYdO` completed eight scenarios, then
+failed `agathas_room_exit_block_closed` with missing event metadata for map 247,
+coordinate (0,4), image 50. A matched parent-revision executable (`c43f8f5`) in
+`/var/tmp/capturequest-snapshot-control.*`, using the same database and complete
+generated script/metadata family, fails identically after eight scenarios.
+The initial control lacked side metadata and was discarded as a matched comparison.
+Three representative fixed goldens pass: `daycare_deposit_pikachu`,
+`fixture_party_detailed_state`, and `game_corner_buy_coins_exact_fee`.
+`vermilion_gym_trash_second_lock_success` fails on map 92, coordinate (4,4), image
+253; the matched parent also reproduces that error. No goldens, source diagnostics
+or assertions were weakened. Private cluster shutdown logs are retained; no
+production database or generated asset publication was involved.
+
+Remaining: establish provenance/root cause for those pre-existing event metadata
+gaps before claiming corpus acceptance, migrate simulator fixture/action writers
+and remaining background work, and retire dormant diagnostic wrappers. Other
+command rows and reconnect/idle recovery remain open. The original restore timeout
+and pre-command Repel click failure remain unattributed; all five goal areas stay
+active. Next: trace the missing event-image properties through authoritative data
+and importer/sync production before another command migration. This checkpoint is
+local only, without push or deployment.
+
 ## Owned standalone pathfinding queries and explicit simulator failure (2026-10-08)
 
 `FindPathForCharacter` and its options variant previously chose a database through

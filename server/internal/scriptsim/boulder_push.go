@@ -1,6 +1,8 @@
 package scriptsim
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 
 	"capturequest/internal/world"
@@ -34,7 +36,7 @@ type BoulderObjectSummary struct {
 	Label    string
 }
 
-func runBoulderPush(scenario *Scenario, applied *AppliedFixture, initial *Snapshot, efm *world.EventFlagManager) (*Result, error) {
+func runBoulderPush(ctx context.Context, database *sql.DB, scenario *Scenario, applied *AppliedFixture, initial *Snapshot, efm *world.EventFlagManager) (*Result, error) {
 	x, y := triggerOrFixturePosition(scenario)
 	outcome, err := world.TryPushBoulder(
 		applied.CharacterID,
@@ -81,7 +83,7 @@ func runBoulderPush(scenario *Scenario, applied *AppliedFixture, initial *Snapsh
 	if err != nil {
 		return nil, err
 	}
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}

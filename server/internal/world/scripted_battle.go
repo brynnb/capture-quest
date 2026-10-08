@@ -218,7 +218,19 @@ func ClearBattleForCharacter(charID int64) {
 }
 
 func ActiveBattleSummaryForCharacter(charID int64) *ActiveBattleSummary {
-	battle := getBattle(charID)
+	return summarizeActiveBattle(getBattle(charID))
+}
+
+// ReadActiveBattleSummary joins the caller-owned durable snapshot.
+func ReadActiveBattleSummary(q db.DBTX, charID int64) (*ActiveBattleSummary, error) {
+	battle, err := pokebattle.LoadBattleState(q, charID)
+	if err != nil {
+		return nil, err
+	}
+	return summarizeActiveBattle(battle), nil
+}
+
+func summarizeActiveBattle(battle *pokebattle.BattleState) *ActiveBattleSummary {
 	if battle == nil || battle.IsOver() {
 		return nil
 	}

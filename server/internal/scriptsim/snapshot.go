@@ -1,6 +1,7 @@
 package scriptsim
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 
@@ -70,11 +71,17 @@ type ItemSummary struct {
 	Quantity int
 }
 
-func CaptureSnapshot(charID int64, mapName string) (*Snapshot, error) {
+func CaptureSnapshot(ctx context.Context, database *sql.DB, charID int64, mapName string) (*Snapshot, error) {
+	return db.ReadSnapshot(ctx, database, func(ctx context.Context, q db.ReadDBTX) (*Snapshot, error) {
+		return captureSnapshotIn(q, charID, mapName)
+	})
+}
+
+func captureSnapshotIn(q db.ReadDBTX, charID int64, mapName string) (*Snapshot, error) {
 	s := &Snapshot{CharacterID: charID}
 	var heading float64
 	var currentMapName sql.NullString
-	if err := db.GlobalWorldDB.DB.QueryRow(`
+	if err := q.QueryRow(`
 		SELECT cd.name, cd.map_id, pm.name, CAST(cd.x AS INTEGER), CAST(cd.y AS INTEGER), COALESCE(cd.heading, 0)
 		FROM character_data cd
 		LEFT JOIN phaser_maps pm ON pm.id = cd.map_id
@@ -89,61 +96,64 @@ func CaptureSnapshot(charID int64, mapName string) (*Snapshot, error) {
 	if mapName == "" {
 		mapName = s.MapName
 	}
-	flags, err := loadFlags(charID)
+	flags, err := loadFlags(q, charID)
 	if err != nil {
 		return nil, err
 	}
 	s.Flags = flags
 
-	money, err := loadMoney(charID)
+	money, err := loadMoney(q, charID)
 	if err != nil {
 		return nil, err
 	}
 	s.Money = money
 
-	coins, err := loadCoins(charID)
+	coins, err := loadCoins(q, charID)
 	if err != nil {
 		return nil, err
 	}
 	s.Coins = coins
 
-	seen, caught, err := loadPokedexCounts(charID)
+	seen, caught, err := loadPokedexCounts(q, charID)
 	if err != nil {
 		return nil, err
 	}
 	s.PokedexSeen = seen
 	s.PokedexCaught = caught
 
-	party, err := loadPartySummary(charID)
+	party, err := loadPartySummary(q, charID)
 	if err != nil {
 		return nil, err
 	}
 	s.Party = party
 
-	pc, err := loadPCSummary(charID)
+	pc, err := loadPCSummary(q, charID)
 	if err != nil {
 		return nil, err
 	}
 	s.PC = pc
 
-	inventory, err := loadInventorySummary(charID)
+	inventory, err := loadInventorySummary(q, charID)
 	if err != nil {
 		return nil, err
 	}
 	s.Inventory = inventory
 
-	hidden, err := loadHiddenObjects(charID, mapName)
+	hidden, err := loadHiddenObjects(q, charID, mapName)
 	if err != nil {
 		return nil, err
 	}
 	s.HiddenObjects = hidden
-	s.ActiveBattle = world.ActiveBattleSummaryForCharacter(charID)
-	dayCare, err := world.LoadDayCareStatus(charID)
+	s.ActiveBattle, err = world.ReadActiveBattleSummary(q, charID)
+	if err != nil {
+		return nil, fmt.Errorf("snapshot battle: %w", err)
+	}
+	dayCare, err := world.ReadDayCareStatus(q, charID)
 	if err != nil {
 		return nil, fmt.Errorf("snapshot Day Care state: %w", err)
 	}
 	s.DayCare = dayCare
-	trashState, err := world.LoadVermilionGymTrashState(charID)
+	trashState, err := world.ReadVermilionGymTrashState(q, charID)
 	if err != nil {
 		return nil, fmt.Errorf("snapshot Vermilion Gym trash state: %w", err)
 	}
@@ -151,8 +161,8 @@ func CaptureSnapshot(charID int64, mapName string) (*Snapshot, error) {
 	return s, nil
 }
 
-func loadFlags(charID int64) ([]string, error) {
-	rows, err := db.GlobalWorldDB.DB.Query(
+func loadFlags(q db.ReadDBTX, charID int64) ([]string, error) {
+	rows, err := q.Query(
 		`SELECT flag_name FROM character_event_flags WHERE character_id = $1 ORDER BY flag_name`, charID)
 	if err != nil {
 		return nil, fmt.Errorf("snapshot flags: %w", err)
@@ -170,9 +180,9 @@ func loadFlags(charID int64) ([]string, error) {
 	return flags, rows.Err()
 }
 
-func loadMoney(charID int64) (int, error) {
+func loadMoney(q db.ReadDBTX, charID int64) (int, error) {
 	var money int
-	if err := db.GlobalWorldDB.DB.QueryRow(
+	if err := q.QueryRow(
 		`SELECT COALESCE(pokedollars, 0) FROM character_wallet WHERE character_id = $1`, charID).Scan(&money); err != nil {
 		if err == sql.ErrNoRows {
 			return 0, nil
@@ -182,9 +192,9 @@ func loadMoney(charID int64) (int, error) {
 	return money, nil
 }
 
-func loadCoins(charID int64) (int, error) {
+func loadCoins(q db.ReadDBTX, charID int64) (int, error) {
 	var coins int
-	if err := db.GlobalWorldDB.DB.QueryRow(
+	if err := q.QueryRow(
 		`SELECT coins FROM character_coins WHERE character_id = $1`, charID).Scan(&coins); err != nil {
 		if err == sql.ErrNoRows {
 			return 0, nil
@@ -194,10 +204,10 @@ func loadCoins(charID int64) (int, error) {
 	return coins, nil
 }
 
-func loadPokedexCounts(charID int64) (int, int, error) {
+func loadPokedexCounts(q db.ReadDBTX, charID int64) (int, int, error) {
 	var seen int
 	var caught int
-	if err := db.GlobalWorldDB.DB.QueryRow(`
+	if err := q.QueryRow(`
 		SELECT COALESCE(SUM(seen), 0), COALESCE(SUM(caught), 0)
 		FROM character_pokedex
 		WHERE character_id = $1`, charID).Scan(&seen, &caught); err != nil {
@@ -206,8 +216,8 @@ func loadPokedexCounts(charID int64) (int, int, error) {
 	return seen, caught, nil
 }
 
-func loadPartySummary(charID int64) ([]PokemonSummary, error) {
-	party, err := pokebattle.LoadParty(db.GlobalWorldDB.DB, charID)
+func loadPartySummary(q db.ReadDBTX, charID int64) ([]PokemonSummary, error) {
+	party, err := pokebattle.LoadParty(q, charID)
 	if err != nil {
 		return nil, err
 	}
@@ -261,8 +271,8 @@ func loadPartySummary(charID int64) ([]PokemonSummary, error) {
 	return summaries, nil
 }
 
-func loadPCSummary(charID int64) ([]PCPokemonSummary, error) {
-	rows, err := db.GlobalWorldDB.DB.Query(`
+func loadPCSummary(q db.ReadDBTX, charID int64) ([]PCPokemonSummary, error) {
+	rows, err := q.Query(`
 		SELECT cp.box, cp.box_slot, cp.pokemon_id, pp.name, cp.level
 		FROM character_pokemon cp
 		JOIN phaser_pokemon pp ON pp.id = cp.pokemon_id
@@ -284,8 +294,8 @@ func loadPCSummary(charID int64) ([]PCPokemonSummary, error) {
 	return pc, rows.Err()
 }
 
-func loadInventorySummary(charID int64) ([]ItemSummary, error) {
-	items, err := cqitems.NewStore(db.GlobalWorldDB.DB).GetCharacterInventory(int32(charID))
+func loadInventorySummary(q db.ReadDBTX, charID int64) ([]ItemSummary, error) {
+	items, err := cqitems.NewStore(q).GetCharacterInventory(int32(charID))
 	if err != nil {
 		return nil, err
 	}
@@ -300,16 +310,23 @@ func loadInventorySummary(charID int64) ([]ItemSummary, error) {
 	return summaries, nil
 }
 
-func loadHiddenObjects(charID int64, mapName string) ([]ObjectSummary, error) {
-	objects, err := queryHiddenObjectsByMapName(charID, mapName)
+func loadHiddenObjects(q db.ReadDBTX, charID int64, mapName string) ([]ObjectSummary, error) {
+	objects, err := queryHiddenObjectsByMapName(q, charID, mapName)
 	if err != nil {
 		return nil, err
 	}
-	if len(objects) > 0 || !isOverworldMapName(mapName) {
+	if len(objects) > 0 {
+		return objects, nil
+	}
+	overworld, err := isOverworldMapNameIn(q, mapName)
+	if err != nil {
+		return nil, fmt.Errorf("snapshot hidden-object map %q: %w", mapName, err)
+	}
+	if !overworld {
 		return objects, nil
 	}
 
-	rows, err := db.GlobalWorldDB.DB.Query(`
+	rows, err := q.Query(`
 		SELECT po.id, COALESCE(po.name, ''), COALESCE(po.text, '')
 		FROM character_collected_items cci
 		JOIN phaser_objects po ON po.id = cci.object_id
@@ -332,8 +349,8 @@ func loadHiddenObjects(charID int64, mapName string) ([]ObjectSummary, error) {
 	return objects, rows.Err()
 }
 
-func queryHiddenObjectsByMapName(charID int64, mapName string) ([]ObjectSummary, error) {
-	rows, err := db.GlobalWorldDB.DB.Query(`
+func queryHiddenObjectsByMapName(q db.ReadDBTX, charID int64, mapName string) ([]ObjectSummary, error) {
+	rows, err := q.Query(`
 		SELECT po.id, COALESCE(po.name, ''), COALESCE(po.text, '')
 		FROM character_collected_items cci
 		JOIN phaser_objects po ON po.id = cci.object_id

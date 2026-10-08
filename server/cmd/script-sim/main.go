@@ -12,6 +12,7 @@ import (
 	"sort"
 	"syscall"
 
+	"capturequest/internal/db"
 	"capturequest/internal/scriptsim"
 )
 
@@ -69,7 +70,7 @@ func runScenario(ctx context.Context, scenarioPath string, opts runOptions) erro
 	if err != nil {
 		return fmt.Errorf("load scenario failed: %w", err)
 	}
-	result, err := scriptsim.Run(ctx, scenario)
+	result, err := scriptsim.Run(ctx, db.GlobalWorldDB.DB, scenario)
 	output := ""
 	if result != nil {
 		output = scriptsim.FormatResult(result)

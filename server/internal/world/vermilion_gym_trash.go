@@ -211,13 +211,13 @@ func LoadVermilionGymTrashState(charID int64) (*VermilionGymTrashState, error) {
 	var state *VermilionGymTrashState
 	err := db.Transaction(context.Background(), db.GlobalWorldDB.DB, func(tx db.DBTX) error {
 		var err error
-		state, err = loadVermilionGymTrashState(tx, charID)
+		state, err = ReadVermilionGymTrashState(tx, charID)
 		return err
 	})
 	return state, err
 }
 
-func loadVermilionGymTrashState(tx db.DBTX, charID int64) (*VermilionGymTrashState, error) {
+func ReadVermilionGymTrashState(tx db.DBTX, charID int64) (*VermilionGymTrashState, error) {
 	var state VermilionGymTrashState
 	var second sql.NullInt64
 	err := tx.QueryRow(`
@@ -296,7 +296,7 @@ func (p FixedVermilionGymTrashPicker) PickSecondLockCanIndex(firstLockCanIndex i
 }
 
 func ensureVermilionGymTrashState(tx db.DBTX, charID int64, picker VermilionGymTrashPicker) (VermilionGymTrashState, error) {
-	state, err := loadVermilionGymTrashState(tx, charID)
+	state, err := ReadVermilionGymTrashState(tx, charID)
 	if err != nil {
 		return VermilionGymTrashState{}, err
 	}
