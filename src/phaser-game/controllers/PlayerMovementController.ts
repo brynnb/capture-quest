@@ -1,5 +1,6 @@
+import {recoverBattlePublication} from "../services/BattleCommandService";
 import type { OwnedPlayerPositionResponse, PlayerStepResponse, PlayerStepError } from "@/net/generated/protocol";
-import { requestEscapeRope, requestBicycleState, requestPlayerFacing, requestPlayerStep, completePlayerStep, readOwnedPlayerPosition } from "../services/PlayerMovementService";
+import { requestFishing, requestEscapeRope, requestBicycleState, requestPlayerFacing, requestPlayerStep, completePlayerStep, readOwnedPlayerPosition } from "../services/PlayerMovementService";
 import { CorrelatedResponseError } from "../services/CorrelatedRequest";
 import { Scene } from "phaser";
 import { PhaserActor, PhaserTile, PhaserWarp } from "@/net/generated/world_api";
@@ -144,6 +145,25 @@ export class PlayerMovementController {
       && usePlayerCharacterStore.getState().characterProfile.id === characterId;
     try { await operation(characterId, abort.signal, current); }
     finally { stopProfile(); if (this.fieldCommandAbort === abort) this.fieldCommandAbort = null; }
+  }
+
+  async fish(instanceId:number):Promise<void>{
+    if(this.isMoving || this.facingAbort || this.issuedStep || this.serverMovementInProgress)return;
+    return this.runOwnedFieldCommand(async(characterId,signal,current)=>{
+      const source={mapId:this.currentMapId,x:this.currentTileX,y:this.currentTileY,direction:this.currentDirection};
+      const reconcile=()=>recoverBattlePublication({success:true},"ordinary-start",signal);
+      try{
+        const reply=await requestFishing({...source,characterId,instanceId,itemId:0},signal);
+        if(!current())return;
+        if(reply.characterId!==characterId || reply.instanceId!==instanceId || typeof reply.hooked!=="boolean" || typeof reply.message!=="string")throw new Error("Invalid fishing response identity");
+        useChatStore.getState().addMessage(reply.message,MessageType.SYSTEM);
+        if(reply.hooked && !(await reconcile()))this.movementRecoveryRequired=true;
+      }catch(error){
+        if(!current())return;
+        try{if(!(await reconcile()))this.movementRecoveryRequired=true;if(current() && error instanceof CorrelatedResponseError)useChatStore.getState().addMessage(error.message,MessageType.SYSTEM_ERROR);}
+        catch{if(current()){this.movementRecoveryRequired=true;useChatStore.getState().addMessage("Fishing state could not be recovered. Reconnect before moving.",MessageType.SYSTEM_ERROR);}}
+      }
+    });
   }
 
   async changeBicyclePreference(instanceId: number): Promise<void> {

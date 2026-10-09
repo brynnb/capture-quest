@@ -261,7 +261,7 @@ func TestFishingRejectsForgedSourceUnownedRodAndFailedCommit(t *testing.T) {
 			messages := &recordingMessenger{}
 			ses := &session.Session{SessionID: 1, Authenticated: true, Messenger: messages, Client: &testSessionClient{char: &model.CharacterData{ID: 42, MapID: 1, X: 5, Y: 5, Heading: 90}}}
 			wh := &WorldHandler{database: database, ActorManager: &PhaserActorManager{collisionMap: map[int]map[string]int{}}}
-			request := PokeFishingRequestPayload{ItemID: 76, RodType: "OLD_ROD", Direction: "RIGHT"}
+			request := PokeFishingRequestPayload{RequestID: "fish:owned", CharacterID: 42, InstanceID: 1, ItemID: 76, RodType: "OLD_ROD", Direction: "RIGHT"}
 			switch kind {
 			case "catalog-id":
 				request.RodType = ""
@@ -303,6 +303,10 @@ func TestFishingRejectsForgedSourceUnownedRodAndFailedCommit(t *testing.T) {
 			}
 			if len(messages.streams) == 0 || json.Unmarshal(messages.streams[0].payload, &response) != nil {
 				t.Fatal("missing terminal fishing response")
+			}
+			var envelope map[string]any
+			if json.Unmarshal(messages.streams[0].payload, &envelope) != nil || envelope["requestId"] != "fish:owned" || envelope["characterId"] != float64(42) || envelope["instanceId"] != float64(1) {
+				t.Fatalf("fishing identity=%v", envelope)
 			}
 			var battles, seen int
 			database.QueryRow(`SELECT COUNT(*) FROM character_battle_state WHERE character_id=42`).Scan(&battles)

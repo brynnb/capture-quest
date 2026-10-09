@@ -162,7 +162,7 @@ export class NetworkBridge {
         } else this.handleCQItemUseResponse(data as Record<string, unknown>);
         break;
       case OpCodes.PokeFishingResponse:
-        this.handlePokeFishingResponse(data as Record<string, unknown>);
+        import("@/phaser-game/services/PhaserNetworkService").then(module=>module.dispatchPhaserResponse(opcode,data));
         break;
       case OpCodes.PokeSurfingResponse:
         this.handlePokeSurfingResponse(data as Record<string, unknown>);
@@ -365,31 +365,6 @@ export class NetworkBridge {
 
     this.playSourceSFX("SFX_PRESS_AB", 0.75);
     console.log("[NetworkBridge] Used item:", data.message);
-  }
-
-  private handlePokeFishingResponse(data: Record<string, unknown>) {
-    const message = String(data.error || data.message || "");
-    if (!data.success) {
-      console.warn("[NetworkBridge] Fishing failed:", data.error);
-      if (message) {
-        usePokemonDialogueStore.getState().openDialogue([message]);
-        useChatStore.getState().addMessage(message, MessageType.SYSTEM);
-      }
-      this.playSourceSFX("SFX_DENIED", 0.8);
-      return;
-    }
-    if (message) {
-      usePokemonDialogueStore.getState().openDialogue([message]);
-      useChatStore.getState().addMessage(message, MessageType.SYSTEM);
-    }
-    if (data.hooked) {
-      console.log("[NetworkBridge] Fishing: hooked a Pokémon!");
-      this.playSourceSFX("SFX_PRESS_AB", 0.75);
-      // Battle start will arrive via PokeBattleStartResponse
-    } else {
-      console.log("[NetworkBridge] Fishing:", data.message);
-      this.playSourceSFX("SFX_DENIED", 0.6);
-    }
   }
 
   private handlePokeSurfingResponse(data: Record<string, unknown>) {

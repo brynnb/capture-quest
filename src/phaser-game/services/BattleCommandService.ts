@@ -50,11 +50,13 @@ export function bindBattleScene(reconcile: Projection, capturePositionView?:()=>
 
 // Unsolicited battle publication is a hint, not authority for a panel or warp.
 // All producers use the same owned read; commands are never resent here.
-export async function recoverBattlePublication(notice:Record<string,unknown>,kind:"ordinary-start"|"safari-start"|"standalone-end"|"safari-visit"|"safari-exit"="ordinary-start"):Promise<void>{
- if((kind==="ordinary-start" && notice.success!==true) || !sceneProjection || useGameScreenStore.getState().currentScreen!=="game")return;
+export async function recoverBattlePublication(notice:Record<string,unknown>,kind:"ordinary-start"|"safari-start"|"standalone-end"|"safari-visit"|"safari-exit"="ordinary-start",signal?:AbortSignal):Promise<boolean>{
+ if(signal?.aborted)return false;
+ if((kind==="ordinary-start" && notice.success!==true) || !sceneProjection || useGameScreenStore.getState().currentScreen!=="game")return false;
  const initial=usePokeBattleStore.getState();
- if(initial.battleCommandPending)return;
+ if(initial.battleCommandPending)return true;
  publicationRead?.abort();const controller=new AbortController();publicationRead=controller;
+ const abort=()=>controller.abort();signal?.addEventListener("abort",abort,{once:true});
  const project=sceneProjection;
  const positionView=scenePositionView;
  let positionGeneration=positionView?.();
@@ -70,14 +72,14 @@ export async function recoverBattlePublication(notice:Record<string,unknown>,kin
  positionGeneration=positionView?.();
  snapshot=await readForCurrentCharacter((_id,signal)=>readCurrentGameplayState(signal,positionView),controller.signal);
  }
- if(!current())return;
+ if(!current())return false;
  acceptOwnedSafariVisit(snapshot.safari);
- if(kind==="safari-visit")return;
+ if(kind==="safari-visit")return true;
  if(kind==="safari-exit"){
  applyGameplayResourceSnapshot(snapshot);
  usePokeBattleStore.getState().restoreGameplay(snapshot);
  presentOwnedSafariExit(snapshot);
- return;
+ return true;
  }
 
  const state=usePokeBattleStore.getState();
@@ -99,9 +101,11 @@ export async function recoverBattlePublication(notice:Record<string,unknown>,kin
  applyGameplayResourceSnapshot(snapshot);
  await project(snapshot.position);
  }
+ return true;
  }catch(error){
  if(current() && !(error instanceof DOMException && error.name==="AbortError"))useChatStore.getState().addMessage("Battle state could not be refreshed. Reconnect to recover it.",MessageType.SYSTEM_ERROR);
- }finally{if(publicationRead===controller)publicationRead=null;}
+ return false;
+ }finally{signal?.removeEventListener("abort",abort);if(publicationRead===controller)publicationRead=null;}
 }
 
 // Both notification recovery and scene startup consume the same owned terminal

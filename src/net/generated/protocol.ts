@@ -141,6 +141,24 @@ export interface PhaserDialogueError extends PhaserDialogueIdentity {
 }
 
 //////////
+// source: fishing.go
+
+export interface FishingIdentity {
+  requestId: string;
+  characterId: number /* int64 */;
+  instanceId: number /* int32 */;
+}
+export interface FishingResponse extends FishingIdentity {
+  success: true;
+  hooked: boolean;
+  message: string;
+}
+export interface FishingError extends FishingIdentity {
+  success: false;
+  error: string;
+}
+
+//////////
 // source: map_content.go
 
 export interface PhaserMapScriptsRequest {

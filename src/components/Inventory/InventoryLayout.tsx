@@ -236,6 +236,9 @@ const InventorySidebar: React.FC = () => {
       setSelectedItemPointer(null);
       return;
     }
+    if(["OLD_ROD","GOOD_ROD","SUPER_ROD"].includes(item.item.shortName.toUpperCase())){
+      window.dispatchEvent(new CustomEvent("cq:fishingUse",{detail:{instanceId:item.instance.id}}));setSelectedCQItem(null);setSelectedItemPointer(null);return;
+    }
     if (item.item.shortName === "BICYCLE") {
       window.dispatchEvent(new CustomEvent("cq:bicycleUse",{detail:{instanceId:item.instance.id}}));
       setSelectedCQItem(null);setSelectedItemPointer(null);return;

@@ -738,6 +738,9 @@ export interface FieldMoveUseResponsePayload {
 // source: handler-fishing.go
 
 export interface PokeFishingRequestPayload {
+  requestId: string;
+  characterId: number /* int64 */;
+  instanceId: number /* int32 */;
   itemId: number /* int32 */; // Catalog rod item ID; ownership and short name are resolved on the server.
   rodType?: string;
   mapId?: number /* int */;

@@ -269,6 +269,11 @@ const dialogueReadHandlers = new Set<(reply:DialogueReadReply)=>void>();
 export function onDialogueRead(receive:(reply:DialogueReadReply)=>void):()=>void {dialogueReadHandlers.add(receive);return()=>dialogueReadHandlers.delete(receive);}
 export function requestDialogueRead(requestId:string,textConstant:string):Promise<void>{return NetworkBridge.send({requestId,textConstant},OpCodes.PhaserDialogueRequest);}
 
+export type FishingReply=import("@/net/generated/protocol").FishingResponse|import("@/net/generated/protocol").FishingError;
+const fishingHandlers=new Set<(reply:FishingReply)=>void>();
+export function onFishing(receive:(reply:FishingReply)=>void):()=>void{fishingHandlers.add(receive);return()=>fishingHandlers.delete(receive);}
+export function requestFishing(request:import("@/net/generated/world_api").PokeFishingRequestPayload):Promise<void>{return NetworkBridge.send(request,OpCodes.PokeFishingRequest);}
+
 export type PokedexReadReply = import("@/net/generated/protocol").TrainerCardResponse | import("@/net/generated/protocol").PokedexListResponse | import("@/net/generated/protocol").PokedexStatusResponse | import("@/net/generated/protocol").PokedexReadError;
 const pokedexReadHandlers = new Map<number, Set<(reply: PokedexReadReply) => void>>([
  OpCodes.TrainerCardResponse,OpCodes.PokedexListResponse,OpCodes.PokedexStatusResponse,
@@ -512,6 +517,8 @@ export function normalizePhaserArrayPayload<T>(
 // Internal: dispatch incoming Phaser responses
 export function dispatchPhaserResponse(opcode: number, data: unknown): void {
   switch (opcode) {
+    case OpCodes.PokeFishingResponse:
+      fishingHandlers.forEach(receive=>receive(data as FishingReply));break;
     case OpCodes.TrainerInteractResponse:
       trainerInteractHandlers.forEach(receive=>receive(data as TrainerInteractReply));break;
     case OpCodes.PhaserDialogueResponse:

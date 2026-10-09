@@ -1,7 +1,10 @@
+vi.mock("../services/BattleCommandService",()=>({recoverBattlePublication:vi.fn(async()=>true)}));
+import * as battlePublication from "../services/BattleCommandService";
 import { afterEach } from "vitest";
 import { CorrelatedResponseError } from "../services/CorrelatedRequest";
 import * as movement from "../services/PlayerMovementService";
 vi.mock("../services/PlayerMovementService", () => ({
+  requestFishing:vi.fn(),
   requestEscapeRope: vi.fn(),
   requestBicycleState: vi.fn(),
   requestPlayerFacing: vi.fn(async () => ({ success: true, requestId: "face", mapId: 9999, x: 10, y: 0, direction: "LEFT" })),
@@ -9,7 +12,7 @@ vi.mock("../services/PlayerMovementService", () => ({
   completePlayerStep: vi.fn(async () => ({ success: true, requestId: "complete", mapId: 9999, x: 10, y: 2, direction: "DOWN" })),
   readOwnedPlayerPosition: vi.fn(async () => ({ success: true, requestId: "owned", mapId: 9999, x: 9, y: 0, direction: "LEFT", serverMovementPending: false })),
 }));
-vi.mock("../services/GameplayRecoveryService", () => ({ readCurrentGameplayState: vi.fn(), applyGameplayResourceSnapshot: vi.fn() }));
+vi.mock("../services/GameplayRecoveryService", () => ({ readCurrentGameplayState: vi.fn(), applyGameplayResourceSnapshot: vi.fn(),applyGameplaySnapshot:vi.fn() }));
 import * as recovery from "../services/GameplayRecoveryService";
 afterEach(() => vi.clearAllMocks());
 import { describe, expect, test, vi } from "vitest";
@@ -597,4 +600,24 @@ test("position read view changes for pose/facing without requiring route retirem
  expect(controller.capturePositionView()).toBe(initial);
  controller.syncPosition(9,1);expect(controller.getPositionGeneration()).toBe(generation);expect(controller.capturePositionView()).not.toBe(initial);
  const moved=controller.capturePositionView();controller.syncDirection("LEFT");expect(controller.getPositionGeneration()).toBe(generation);expect(controller.capturePositionView()).not.toBe(moved);
+});
+
+test("fishing uncertainty reconciles once without a second mutation",async()=>{
+ const {controller}=buildLedgeController();usePlayerCharacterStore.getState().setCharacterProfile({id:42});
+ let reject!:(error:Error)=>void;vi.mocked(movement.requestFishing).mockImplementationOnce(()=>new Promise((_ok,no)=>{reject=no}));
+ vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce({battle:{battleId:"committed"}} as any);
+ const pending=controller.fish(7);await controller.fish(7);expect(movement.requestFishing).toHaveBeenCalledOnce();reject(new Error("lost reply"));await pending;
+ expect(movement.requestFishing).toHaveBeenCalledOnce();expect(battlePublication.recoverBattlePublication).toHaveBeenCalledTimes(1);expect(battlePublication.recoverBattlePublication).toHaveBeenCalledWith({success:true},"ordinary-start",expect.any(AbortSignal));
+});
+test("retired fishing ignores a late reply and does not reconcile the old scene",async()=>{
+ const {controller}=buildLedgeController();usePlayerCharacterStore.getState().setCharacterProfile({id:42});let resolve!:(reply:any)=>void;
+ vi.mocked(movement.requestFishing).mockImplementationOnce(()=>new Promise(done=>{resolve=done}));const pending=controller.fish(7);controller.retireFieldCommands();
+ resolve({success:true,requestId:"old",characterId:42,instanceId:7,hooked:true,message:"Oh! A bite!"});await pending;expect(recovery.readCurrentGameplayState).not.toHaveBeenCalled();
+});
+
+test("failed fishing recovery keeps later field mutations inadmissible",async()=>{
+ const {controller}=buildLedgeController();usePlayerCharacterStore.getState().setCharacterProfile({id:42});
+ vi.mocked(movement.requestFishing).mockResolvedValueOnce({success:true,requestId:"done",characterId:42,instanceId:7,hooked:true,message:"Oh! A bite!"});
+ vi.mocked(battlePublication.recoverBattlePublication).mockResolvedValueOnce(false);
+ await controller.fish(7);await controller.fish(7);expect(movement.requestFishing).toHaveBeenCalledTimes(1);
 });

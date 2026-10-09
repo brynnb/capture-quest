@@ -2,10 +2,8 @@ package world
 
 import (
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"math"
-	"strings"
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
@@ -21,25 +19,9 @@ func tryHandleFieldItemUse(ses *session.Session, wh *WorldHandler, found *cqitem
 		sendCQItemUseError(ses, "Use the current Escape Rope command.")
 		return true
 	case "OLD_ROD", "GOOD_ROD", "SUPER_ROD":
-		fishingReq := map[string]interface{}{
-			"itemId":  item.ID,
-			"rodType": itemuse.ShortName(item),
-		}
-		if req.MapID != nil {
-			fishingReq["mapId"] = *req.MapID
-		}
-		if req.X != nil {
-			fishingReq["x"] = *req.X
-		}
-		if req.Y != nil {
-			fishingReq["y"] = *req.Y
-		}
-		if strings.TrimSpace(req.Direction) != "" {
-			fishingReq["direction"] = req.Direction
-		}
-		payload, _ := json.Marshal(fishingReq)
-		HandlePokeFishing(ses, payload, wh)
+		sendCQItemUseError(ses, "Use the current fishing command.")
 		return true
+
 	case "BICYCLE":
 		sendCQItemUseError(ses, "Use the current Bicycle command.")
 		return true

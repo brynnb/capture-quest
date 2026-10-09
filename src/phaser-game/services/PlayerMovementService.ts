@@ -53,3 +53,8 @@ export function requestEscapeRope(request: Omit<import("@/net/generated/world_ap
     PhaserNet.onEscapeRope, requestId => PhaserNet.requestEscapeRope({ ...request, requestId }), signal,
   );
 }
+
+
+export function requestFishing(request:Omit<import("@/net/generated/world_api").PokeFishingRequestPayload,"requestId">,signal?:AbortSignal):Promise<import("@/net/generated/protocol").FishingResponse>{
+ return correlatedRequest<import("@/net/generated/protocol").FishingResponse>(PhaserNet.onFishing,id=>PhaserNet.requestFishing({...request,requestId:id}),signal);
+}

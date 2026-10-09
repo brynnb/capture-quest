@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+fishing uses generated command identity and movement-owned correlation/recovery,
+following `ca01492`:
 fishing source/rod/encounter/party validation joins the existing battle transaction,
 following `fbf6952`:
 interrupted Safari exit narrative recovers through scene startup and owned reads,
@@ -73,6 +75,53 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Fishing command identity and owned recovery (2026-10-08)
+
+The active rod UI used an untagged CQ item-use request, which the legacy field
+adapter translated into fishing. Rod UI now uses the existing movement owner's
+field-command slot, as Bicycle/Escape Rope do. Fishing has generated success/error
+identity: request ID, character ID and inventory instance ID. New tagged requests
+require matching character and a positive instance. The same transactional
+fishing boundary revalidates that instance; catalog/name selectors remain for
+existing direct legacy clients during coordinated activation.
+
+The old rod branch in generic item dispatch now rejects with the current-command
+instruction. NetworkBridge no longer globally applies untagged fishing messages;
+its subscription/dispatch path serves CorrelatedRequest. The movement owner
+admits one request, retires it with character/scene ownership, validates reply
+identity and reconciles after success/uncertainty through the existing shared
+battle-publication reader. No second battle projector or inventory coordinator
+was added. Publication accepts an optional caller signal and reports read
+success/failure; unavailable reconciliation keeps later field mutations locked.
+A currently owned battle command preserves its own view instead of being treated
+as a failed read. No fishing mutation is resent automatically.
+
+World/simulator PostgreSQL race suites pass (60.1s/1.5s), including tagged success
+and rejection identity plus the prior atomic source/rod/water checks. The client
+suite passes with single-flight, late retired reply and failed-recovery admission
+checks. Typecheck, canonical generation, asset validation, production build and
+diff checks pass. Existing chunk warnings remain.
+
+Rendered Chromium/WebSocket evidence holds both committed fishing acknowledgement
+and battle-start notification outside the browser. Timeout recovers the existing
+battle through an owned read; reentry recovers the same commit. One rod command
+is sent in each case. Historical acknowledgement is actually delivered afterward
+and cannot change battle identity/revision/presentation generation. Together with
+normal success/land rejection, four cases passed in 28.0s
+(`/var/tmp/capturequest-rendered.XuRdT2`). No native or process-death fishing
+acceptance is inferred from those cases.
+
+Remaining: request IDs correlate replies but are not yet durable fishing receipts.
+Active battle ownership prevents duplicate committed starts while that battle
+exists; replay after dismissal, or a duplicate no-bite request reroll, is not
+closed by correlation. Define that gameplay-command replay boundary before
+claiming the fishing family complete. Also audit direct legacy activation,
+source/actor changes and process/native recovery across field actions. Next:
+review the consolidated fishing boundary, then durable replay/no-bite semantics
+using the appropriate shared gameplay primitive. All five roadmap areas and the
+historical restore/Repel attribution remain active. No schema/assets-generation,
+push or production deployment this checkpoint.
 
 ## Fishing authoritative source and atomic battle prerequisite (2026-10-08)
 
