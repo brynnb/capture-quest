@@ -14,6 +14,16 @@ import (
 // revision fences every older request even after that latest receipt is replaced.
 // The caller supplies gameplay policy; this boundary owns only lock/commit/replay.
 func ExecuteFieldCommand(ctx context.Context, database *sql.DB, charID int64, domain, requestID string, expected *int64, input []byte, apply func(DBTX) ([]byte, error)) ([]byte, bool, error) {
+	if charID <= 0 || domain == "" || len(domain) > 64 || (expected == nil && requestID != "") {
+		return nil, false, fmt.Errorf("invalid field command identity")
+	}
+	var revisionExpected int64
+	if expected != nil {
+		revisionExpected = *expected
+		if requestID == "" || len(requestID) > 64 || revisionExpected < 0 || revisionExpected >= 9007199254740991 {
+			return nil, false, fmt.Errorf("invalid field command identity")
+		}
+	}
 	var result []byte
 	var replay bool
 	digest := sha256.Sum256(input)
@@ -27,9 +37,6 @@ func ExecuteFieldCommand(ctx context.Context, database *sql.DB, charID int64, do
 			result, err = apply(tx)
 			return err
 		}
-		if domain == "" || len(domain) > 64 || requestID == "" || len(requestID) > 64 || *expected < 0 || *expected >= 9007199254740991 {
-			return fmt.Errorf("invalid field command identity")
-		}
 		if _, err := tx.Exec(`INSERT INTO character_field_command_state(character_id,domain,revision) VALUES($1,$2,0) ON CONFLICT DO NOTHING`, charID, domain); err != nil {
 			return err
 		}
@@ -38,15 +45,15 @@ func ExecuteFieldCommand(ctx context.Context, database *sql.DB, charID int64, do
 		if err := tx.QueryRow(`SELECT revision,request_id,input_hash,result_json FROM character_field_command_state WHERE character_id=$1 AND domain=$2`, charID, domain).Scan(&revision, &oldID, &oldHash, &oldResult); err != nil {
 			return err
 		}
-		if revision == *expected+1 && oldID.String == requestID {
-			if !oldHash.Valid || oldHash.String != hash || !oldResult.Valid {
+		if revision == revisionExpected+1 && oldID.String == requestID {
+			if !oldHash.Valid || oldHash.String != hash || !oldResult.Valid || !json.Valid([]byte(oldResult.String)) {
 				return fmt.Errorf("field command replay input differs or receipt is incomplete")
 			}
 			result = []byte(oldResult.String)
 			replay = true
 			return nil
 		}
-		if revision != *expected {
+		if revision != revisionExpected {
 			return fmt.Errorf("field command is stale; recover current state")
 		}
 		var err error
@@ -57,7 +64,7 @@ func ExecuteFieldCommand(ctx context.Context, database *sql.DB, charID int64, do
 		if !json.Valid(result) {
 			return fmt.Errorf("field command returned invalid JSON receipt")
 		}
-		changed, err := tx.Exec(`UPDATE character_field_command_state SET revision=revision+1,request_id=$3,input_hash=$4,result_json=$5 WHERE character_id=$1 AND domain=$2 AND revision=$6`, charID, domain, requestID, hash, string(result), *expected)
+		changed, err := tx.Exec(`UPDATE character_field_command_state SET revision=revision+1,request_id=$3,input_hash=$4,result_json=$5 WHERE character_id=$1 AND domain=$2 AND revision=$6`, charID, domain, requestID, hash, string(result), revisionExpected)
 		if err != nil {
 			return err
 		}
@@ -88,6 +95,9 @@ func FieldCommandRevisions(q DBTX, charID int64) (map[string]int64, error) {
 		var revision int64
 		if err := rows.Scan(&domain, &revision); err != nil {
 			return nil, err
+		}
+		if domain == "" || revision < 0 || revision > 9007199254740991 {
+			return nil, fmt.Errorf("invalid field revision for %s character %d", domain, charID)
 		}
 		result[domain] = revision
 	}

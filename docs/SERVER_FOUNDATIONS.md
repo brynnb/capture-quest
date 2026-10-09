@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+field receipt identity/concurrency review and live battle retirement across process/native recovery,
+following `ba010ec`:
 bounded field-command revision/receipt closes fishing reroll and dismissed replay,
 following `e6b8ff5`:
 fishing uses generated command identity and movement-owned correlation/recovery,
@@ -77,6 +79,51 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Field receipt review and live transport retirement (2026-10-08)
+
+Shared-boundary review found the optional-revision legacy branch also admitted a
+tagged call with no revision, and replay returned stored JSON without validating
+it. The primitive now rejects that tagged bypass before invoking gameplay,
+validates replay JSON and captures the expected revision once at entry. The apply
+callback cannot mutate the command's expected revision during execution. Recovery
+also rejects malformed/out-of-range field revision data instead of publishing it.
+Untagged legacy compatibility remains explicit; this change does not advertise
+replay protection for that separate path.
+
+A real concurrent duplicate test holds the first callback under its character
+lock, observes the exact backend blocking the duplicate via PostgreSQL blocking
+PIDs, then releases it. One callback/effect commits and the other result replays.
+Identity/bypass/corrupt-receipt/captured-revision and concurrent checks pass in the
+focused PostgreSQL race run (1.2s); the prior fishing checks pass (2.2s).
+
+Rendered WebSocket fishing process replacement also passes (9.1s,
+`/var/tmp/capturequest-rendered.f0QR0b`). A real committed start loses its replies,
+the shell kills/reaps its exact server child and restarts against the same private
+cluster, and reentry restores one battle without another rod command. A dead
+socket cannot deliver historical bytes; the captured old tagged envelope is
+replayed at the current dispatcher to prove the application fence explicitly.
+
+Native fishing acceptance exposed a wider lifecycle bug: an already visible
+battle remained over character selection after transport death. The existing
+battle coordinator now watches transport, character and game-screen retirement
+once, aborts owned requests/exit presentation and retires the live panel. This
+protects both native and WebSocket worlds; scene teardown alone was too late to
+establish that UI boundary. A focused live-panel retirement regression passes.
+
+The native retest passed in 8.7s (`/var/tmp/capturequest-rendered.dlcqrW`). Chromium
+asserted connected native WebTransport with no WebSocket fallback before and
+after exact-process SIGKILL/restart. Fishing receipt revision stays 1 and one
+battle row/panel is restored. This is local native success/process acceptance,
+not fault-injected native acknowledgement loss or every browser guarantee.
+
+The 25-file/393-test client suite, typecheck, asset validation, production build
+and diff checks pass. No new schema change in this review; the preceding receipt
+schema remains a deployment prerequisite. No push or production deployment.
+Next: retire/audit direct untagged fishing callers with coordinated activation,
+then continue the finite field-action/source/acknowledgement matrix. The original
+five areas and historical restore/Repel attribution remain active; successful
+process reentry does not attribute that earlier timeout.
 
 ## Fishing durable replay and bounded field-command outcomes (2026-10-08)
 

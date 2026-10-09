@@ -5,7 +5,11 @@ import (
 	"capturequest/internal/testdb"
 	"context"
 	"encoding/json"
+	"runtime"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestFieldCommandReceiptReplayRevisionAndLateCommitRollback(t *testing.T) {
@@ -52,5 +56,93 @@ func TestFieldCommandReceiptReplayRevisionAndLateCommitRollback(t *testing.T) {
 	}
 	if err := database.QueryRow(`SELECT count(*) FROM character_field_command_state WHERE character_id=42`).Scan(&rows); err != nil || rows != 1 {
 		t.Fatalf("receipt growth=%d err=%v", rows, err)
+	}
+}
+
+func TestFieldCommandIdentityValidationAndStoredReceiptCorruption(t *testing.T) {
+	database := testdb.Postgres(t)
+	testdb.Exec(t, database, `INSERT INTO character_data(id,name) VALUES(42,'identity')`)
+	called := false
+	apply := func(DBTX db.DBTX) ([]byte, error) { called = true; return []byte(`{"ok":true}`), nil }
+	if _, _, err := db.ExecuteFieldCommand(context.Background(), database, 42, "fishing", "tagged", nil, nil, apply); err == nil || called {
+		t.Fatal("tagged legacy bypass invoked gameplay")
+	}
+	revision := int64(0)
+	_, _, err := db.ExecuteFieldCommand(context.Background(), database, 42, "fishing", "first", &revision, []byte("input"), func(tx db.DBTX) ([]byte, error) { revision = 99; return []byte(`{"ok":true}`), nil })
+	if err != nil {
+		t.Fatalf("callback changed captured identity: %v", err)
+	}
+	revision = 0
+	testdb.Exec(t, database, `UPDATE character_field_command_state SET result_json='broken' WHERE character_id=42`)
+	result, replay, err := db.ExecuteFieldCommand(context.Background(), database, 42, "fishing", "first", &revision, []byte("input"), apply)
+	if err == nil || replay || result != nil || called {
+		t.Fatal("corrupt replay advertised or executed gameplay")
+	}
+}
+
+func TestConcurrentFieldDuplicateWaitsAndReplaysOneCommit(t *testing.T) {
+	database := testdb.Postgres(t)
+	testdb.Exec(t, database, `INSERT INTO character_data(id,name) VALUES(42,'concurrent')`)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	unblock := func() { once.Do(func() { close(release) }) }
+	defer unblock()
+	var ownerPID int
+	var calls atomic.Int32
+	apply := func(tx db.DBTX) ([]byte, error) {
+		calls.Add(1)
+		if err := tx.QueryRow(`SELECT pg_backend_pid()`).Scan(&ownerPID); err != nil {
+			return nil, err
+		}
+		close(entered)
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		_, err := tx.Exec(`UPDATE character_data SET time_played=time_played+1 WHERE id=42`)
+		return []byte(`{"ok":true}`), err
+	}
+	type outcome struct {
+		replay bool
+		err    error
+	}
+	results := make(chan outcome, 2)
+	execute := func() {
+		revision := int64(0)
+		_, replay, err := db.ExecuteFieldCommand(ctx, database, 42, "fishing", "same", &revision, []byte("input"), apply)
+		results <- outcome{replay, err}
+	}
+	go execute()
+	select {
+	case <-entered:
+	case <-ctx.Done():
+		t.Fatal("first command did not reach apply")
+	}
+	go execute()
+	for {
+		var waiting bool
+		if err := database.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE $1=ANY(pg_blocking_pids(pid)))`, ownerPID).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting {
+			break
+		}
+		if ctx.Err() != nil {
+			t.Fatal("duplicate did not wait on owner")
+		}
+		runtime.Gosched()
+	}
+	unblock()
+	first, second := <-results, <-results
+	if first.err != nil || second.err != nil || first.replay == second.replay || calls.Load() != 1 {
+		t.Fatalf("first=%+v second=%+v calls=%d", first, second, calls.Load())
+	}
+	var played int
+	if err := database.QueryRow(`SELECT time_played FROM character_data WHERE id=42`).Scan(&played); err != nil || played != 1 {
+		t.Fatalf("duplicate effect=%d %v", played, err)
 	}
 }

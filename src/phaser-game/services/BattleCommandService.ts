@@ -26,9 +26,19 @@ let active: AbortController | null = null;
 let publicationRead: AbortController | null = null;
 let retireExit:(()=>void)|null=null;
 
+let retirementWatching=false;
+function watchBattleRetirement():void{
+ if(retirementWatching)return;retirementWatching=true;
+ const retire=()=>{active?.abort();active=null;publicationRead?.abort();publicationRead=null;retireExit?.();retireExit=null;usePokeBattleStore.getState().retireBattle();};
+ WorldSocket.subscribeSessionRetirement(retire);
+ useGameScreenStore.subscribe(state=>{if(state.currentScreen!=="game")retire();});
+ usePlayerCharacterStore.subscribe((state,before)=>{if(state.characterProfile.id!==before.characterProfile.id)retire();});
+}
+
 // The scene owns both projection and retirement. An older cleanup must never
 // clear a newer binding or let a late command reply revive a retired panel.
 export function bindBattleScene(reconcile: Projection, capturePositionView?:()=>unknown): () => void {
+  watchBattleRetirement();
   retireExit?.();retireExit=null;
   active?.abort();
   publicationRead?.abort();publicationRead=null;

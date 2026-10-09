@@ -49,3 +49,8 @@ test("standalone end projects only the owned pose and is fenced by movement gene
  await recoverBattlePublication({blackoutMapId:999,blackoutX:99,blackoutY:99},"standalone-end");expect(project).toHaveBeenCalledWith(position);
  const held=deferred();mock.read.mockReturnValueOnce(held.promise);const run=recoverBattlePublication({},"standalone-end");epoch++;held.resolve({...snapshot(null),position} as GameplayStateResponse);await run;expect(project).toHaveBeenCalledTimes(1);
 });
+
+test("leaving the game retires a live battle without waiting for scene destruction",()=>{
+ useGameScreenStore.setState({currentScreen:"game"});usePokeBattleStore.getState().startBattle({...battle("live"),events:[]});
+ useGameScreenStore.setState({currentScreen:"characterSelect"});expect(usePokeBattleStore.getState()).toMatchObject({isInBattle:false,battleId:"",phase:"none"});
+});
