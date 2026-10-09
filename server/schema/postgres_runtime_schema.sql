@@ -144,6 +144,17 @@ CREATE TABLE IF NOT EXISTS character_field_move_state (
 );
 CREATE INDEX IF NOT EXISTS character_field_move_state_map_idx ON character_field_move_state (character_id, map_id);
 
+-- Bounded latest field-command outcome plus a monotonic stale-request fence.
+CREATE TABLE IF NOT EXISTS character_field_command_state (
+ character_id bigint NOT NULL REFERENCES character_data(id) ON DELETE CASCADE,
+ domain varchar(64) NOT NULL,
+ revision bigint NOT NULL DEFAULT 0 CHECK(revision>=0),
+ request_id varchar(64),
+ input_hash varchar(64),
+ result_json text,
+ PRIMARY KEY(character_id,domain)
+);
+
 CREATE TABLE IF NOT EXISTS character_safari_state (
     character_id bigint PRIMARY KEY REFERENCES character_data(id) ON DELETE CASCADE,
     state_json text NOT NULL,

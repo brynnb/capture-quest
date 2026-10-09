@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+bounded field-command revision/receipt closes fishing reroll and dismissed replay,
+following `e6b8ff5`:
 fishing uses generated command identity and movement-owned correlation/recovery,
 following `ca01492`:
 fishing source/rod/encounter/party validation joins the existing battle transaction,
@@ -75,6 +77,55 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Fishing durable replay and bounded field-command outcomes (2026-10-08)
+
+Reply correlation alone did not prevent the same no-bite request from rerolling,
+or an old hooked request from starting again after its battle was dismissed.
+The field-command boundary now owns a monotonic revision and latest committed
+result per character/domain. One `character_field_command_state` row retains the
+latest request ID, normalized input hash and JSON outcome. A matching latest
+request replays only with identical input; every older revision is rejected even
+after its receipt is replaced. Storage therefore stays bounded without expiring
+old IDs back into executable mutations. Reusing an ID with a new revision is a
+new intent; command identity includes revision and input, not request ID alone.
+
+The boundary uses the existing bounded transaction/character lock. Its apply
+callback retains gameplay policy and battle preparation. Fishing's no-bite or
+hooked result commits with its revision/receipt and gameplay effects. Replay runs
+before current source/rod/RNG validation and returns historical outcome only;
+it never republishes or resurrects historical battle state. Current owned battle
+recovery remains the client authority. Changed input, malformed result and late
+receipt commit failure reject without a successful projection. Inventory and
+movement authorization counters are not repurposed as rod-command state.
+
+Current gameplay recovery exposes field-command revisions through one retained
+query handle. The movement-owned fishing slot reads that authority before sending
+its expected revision. Tagged fishing requests require it; direct untagged legacy
+requests remain a separate coordinated-retirement boundary and do not gain replay
+protection by implication. No automatic mutation retry was added.
+
+Focused PostgreSQL checks prove identical replay, changed-input rejection,
+replaced-receipt stale rejection, one-row retention and late receipt rollback of
+both revision and gameplay. Fishing checks prove no-bite replay after rod removal,
+catalog disappearance and owner replacement, and hooked replay after dismissal
+without another battle/publication. The DB (2.1s), world (65.4s) and simulator
+(1.5s) race suites pass. Client checks pass (25 files/393 tests), with typecheck,
+canonical generation, asset validation, build and diff checks passing.
+Four rendered fishing success/rejection/held-ack timeout/reentry cases also
+passed in 27.6s (`/var/tmp/capturequest-rendered.08Go1R`), without another rod
+mutation or late-reply presentation rewind.
+
+Schema/activation: the canonical runtime schema adds the bounded field-command
+state table. Existing characters start at revision zero when no row exists. This
+requires the schema step and database backup in the canonical deployment lane;
+new recovery queries fail closed if it is missing. No production mutation,
+push or deployment was performed.
+
+Next: review this receipt primitive and complete process/native/source acceptance
+before reusing it for another field command. The direct legacy fishing route,
+other battle-start/field-action replay policies and the original five roadmap
+areas remain incomplete. Historical restore/Repel attribution stays open.
 
 ## Fishing command identity and owned recovery (2026-10-08)
 

@@ -605,17 +605,19 @@ test("position read view changes for pose/facing without requiring route retirem
 test("fishing uncertainty reconciles once without a second mutation",async()=>{
  const {controller}=buildLedgeController();usePlayerCharacterStore.getState().setCharacterProfile({id:42});
  let reject!:(error:Error)=>void;vi.mocked(movement.requestFishing).mockImplementationOnce(()=>new Promise((_ok,no)=>{reject=no}));
- vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce({battle:{battleId:"committed"}} as any);
+ vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce({fieldCommands:{},battle:{battleId:"committed"}} as any);
  const pending=controller.fish(7);await controller.fish(7);expect(movement.requestFishing).toHaveBeenCalledOnce();reject(new Error("lost reply"));await pending;
  expect(movement.requestFishing).toHaveBeenCalledOnce();expect(battlePublication.recoverBattlePublication).toHaveBeenCalledTimes(1);expect(battlePublication.recoverBattlePublication).toHaveBeenCalledWith({success:true},"ordinary-start",expect.any(AbortSignal));
 });
 test("retired fishing ignores a late reply and does not reconcile the old scene",async()=>{
+ vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce({fieldCommands:{}} as any);
  const {controller}=buildLedgeController();usePlayerCharacterStore.getState().setCharacterProfile({id:42});let resolve!:(reply:any)=>void;
- vi.mocked(movement.requestFishing).mockImplementationOnce(()=>new Promise(done=>{resolve=done}));const pending=controller.fish(7);controller.retireFieldCommands();
- resolve({success:true,requestId:"old",characterId:42,instanceId:7,hooked:true,message:"Oh! A bite!"});await pending;expect(recovery.readCurrentGameplayState).not.toHaveBeenCalled();
+ vi.mocked(movement.requestFishing).mockImplementationOnce(()=>new Promise(done=>{resolve=done}));const pending=controller.fish(7);await Promise.resolve();controller.retireFieldCommands();
+ resolve({success:true,requestId:"old",characterId:42,instanceId:7,hooked:true,message:"Oh! A bite!"});await pending;expect(battlePublication.recoverBattlePublication).not.toHaveBeenCalled();
 });
 
 test("failed fishing recovery keeps later field mutations inadmissible",async()=>{
+ vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce({fieldCommands:{}} as any);
  const {controller}=buildLedgeController();usePlayerCharacterStore.getState().setCharacterProfile({id:42});
  vi.mocked(movement.requestFishing).mockResolvedValueOnce({success:true,requestId:"done",characterId:42,instanceId:7,hooked:true,message:"Oh! A bite!"});
  vi.mocked(battlePublication.recoverBattlePublication).mockResolvedValueOnce(false);

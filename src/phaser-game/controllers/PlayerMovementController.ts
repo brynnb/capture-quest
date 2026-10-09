@@ -153,7 +153,12 @@ export class PlayerMovementController {
       const source={mapId:this.currentMapId,x:this.currentTileX,y:this.currentTileY,direction:this.currentDirection};
       const reconcile=()=>recoverBattlePublication({success:true},"ordinary-start",signal);
       try{
-        const reply=await requestFishing({...source,characterId,instanceId,itemId:0},signal);
+        const before=await readCurrentGameplayState(signal);
+        if(!current())return;
+        if(!before.fieldCommands || typeof before.fieldCommands!=="object")throw new Error("Missing field command revisions");
+        const commandRevision=before.fieldCommands.fishing??0;
+        if(!Number.isSafeInteger(commandRevision) || commandRevision<0)throw new Error("Invalid fishing command revision");
+        const reply=await requestFishing({...source,characterId,instanceId,itemId:0,commandRevision},signal);
         if(!current())return;
         if(reply.characterId!==characterId || reply.instanceId!==instanceId || typeof reply.hooked!=="boolean" || typeof reply.message!=="string")throw new Error("Invalid fishing response identity");
         useChatStore.getState().addMessage(reply.message,MessageType.SYSTEM);

@@ -4,7 +4,7 @@ const transport = vi.hoisted(() => ({ send: vi.fn() }));
 vi.mock("@/net", () => ({ WorldSocket: { sendJsonMessage: transport.send }, OpCodes: { PokeBattleCloseRequest: 89 } }));
 import usePokeBattleStore from "./PokeBattleStore";
 const pokemon: PokemonDTO = { id: 25, name: "PIKACHU", level: 5, type1: "ELECTRIC", type2: "", curHp: 1, maxHp: 20, attack: 10, defense: 10, speed: 10, special: 10, exp: 125, expToNextLevel: 91, status: "", isWild: false, boxSlot: 0, moves: [] };
-const empty = (): GameplayStateResponse => ({ pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, commandRevision: 0, inventory: [], wallet: { characterId: 42, pokedollars: 0 }, party: [], eventFlags: [], success: true, requestId: "read", position: { success: true, requestId: "read", mapId: 50, x: 7, y: 8, direction: "UP", serverMovementPending: false }, battle: null, safari: null, trainer: null, cutscene: null });
+const empty = (): GameplayStateResponse => ({ fieldCommands:{},pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, commandRevision: 0, inventory: [], wallet: { characterId: 42, pokedollars: 0 }, party: [], eventFlags: [], success: true, requestId: "read", position: { success: true, requestId: "read", mapId: 50, x: 7, y: 8, direction: "UP", serverMovementPending: false }, battle: null, safari: null, trainer: null, cutscene: null });
 beforeEach(() => { usePokeBattleStore.getState().restoreGameplay(empty()); transport.send.mockClear(); });
 
 test.each([false, true])("capture recovery restores authoritative placement without replaying events (PC=%s)", sentToPC => {

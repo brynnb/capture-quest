@@ -50,11 +50,11 @@ async function recoverRead(currentBattle: GameplayBattleState | null, safari: Sa
   const request = net.gameplayRequests.mock.calls.at(-1)![0];
   expect(request).toEqual({ current: true, requestId: expect.any(String) });
   expect(net.positionRequests).not.toHaveBeenCalled();
-  net.gameplay.forEach(receive => receive({ pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, commandRevision: 0, inventory: [], wallet: { characterId: 42, pokedollars: 0 }, party: currentBattle?.playerParty ?? safari?.playerParty ?? [], eventFlags: [], success: true, requestId: request.requestId, position: position(request.requestId), battle: currentBattle, safari, trainer: null, cutscene: null }));
+  net.gameplay.forEach(receive => receive({ fieldCommands:{},pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, commandRevision: 0, inventory: [], wallet: { characterId: 42, pokedollars: 0 }, party: currentBattle?.playerParty ?? safari?.playerParty ?? [], eventFlags: [], success: true, requestId: request.requestId, position: position(request.requestId), battle: currentBattle, safari, trainer: null, cutscene: null }));
 }
 
 test("Safari uses the same single-flight coordinator and correlated durable revision", async () => {
-  usePokeBattleStore.getState().restoreGameplay({ pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, commandRevision: 0, inventory: [], wallet: { characterId: 42, pokedollars: 0 }, party: [], eventFlags: [], success: true, requestId: "start", position: position("start"), battle: null, safari: safari(), trainer: null, cutscene: null });
+  usePokeBattleStore.getState().restoreGameplay({ fieldCommands:{},pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, commandRevision: 0, inventory: [], wallet: { characterId: 42, pokedollars: 0 }, party: [], eventFlags: [], success: true, requestId: "start", position: position("start"), battle: null, safari: safari(), trainer: null, cutscene: null });
   const action = sendSafariAction("ball");
   await sendSafariAction("ball"); await sendBattleAction({ action: "fight" });
   expect(net.send).toHaveBeenCalledTimes(1);
@@ -95,7 +95,7 @@ test("lost Safari close acknowledgement restores absence without resending dismi
 
 test.each([false, true])("expired Safari dismissal presents the server message after projection; lost reply=%s", async lost => {
   const terminal = { ...safari(2), active: false, ballsLeft: 0, isOver: true, exitMessage: "Server expiry announcement" };
-  usePokeBattleStore.getState().restoreGameplay({ pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, commandRevision: 0, inventory: [], wallet: { characterId: 42, pokedollars: 0 }, party: [], eventFlags: [], success: true, requestId: "start", position: position("start"), battle: null, safari: terminal, trainer: null, cutscene: null });
+  usePokeBattleStore.getState().restoreGameplay({ fieldCommands:{},pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, commandRevision: 0, inventory: [], wallet: { characterId: 42, pokedollars: 0 }, party: [], eventFlags: [], success: true, requestId: "start", position: position("start"), battle: null, safari: terminal, trainer: null, cutscene: null });
   const announce = vi.spyOn(usePokemonDialogueStore.getState(), "openDialogue").mockImplementation(() => {});
   project.mockImplementationOnce(async () => { expect(announce).not.toHaveBeenCalled(); });
   const closing = closeSafariBattle(); const id = sentID();
@@ -110,7 +110,7 @@ test.each([false, true])("expired Safari dismissal presents the server message a
 
 test("failed expired Safari dismissal retains the terminal encounter without announcing or retrying", async () => {
   const terminal = { ...safari(2), active: false, ballsLeft: 0, isOver: true, exitMessage: "Server expiry announcement" };
-  usePokeBattleStore.getState().restoreGameplay({ pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, commandRevision: 0, inventory: [], wallet: { characterId: 42, pokedollars: 0 }, party: [], eventFlags: [], success: true, requestId: "start", position: position("start"), battle: null, safari: terminal, trainer: null, cutscene: null });
+  usePokeBattleStore.getState().restoreGameplay({ fieldCommands:{},pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, commandRevision: 0, inventory: [], wallet: { characterId: 42, pokedollars: 0 }, party: [], eventFlags: [], success: true, requestId: "start", position: position("start"), battle: null, safari: terminal, trainer: null, cutscene: null });
   const announce = vi.spyOn(usePokemonDialogueStore.getState(), "openDialogue").mockImplementation(() => {});
   const closing = closeSafariBattle(); emit(130, { success: false, requestId: sentID(), error: "Commit failed" });
   await recoverRead(null, terminal); await closing;
@@ -120,7 +120,7 @@ test("failed expired Safari dismissal retains the terminal encounter without ann
 
 test("scene retirement during recovered Safari dismissal projection suppresses the old announcement", async () => {
   const terminal = { ...safari(2), active: false, ballsLeft: 0, isOver: true, exitMessage: "Old scene announcement" };
-  usePokeBattleStore.getState().restoreGameplay({ pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, commandRevision: 0, inventory: [], wallet: { characterId: 42, pokedollars: 0 }, party: [], eventFlags: [], success: true, requestId: "start", position: position("start"), battle: null, safari: terminal, trainer: null, cutscene: null });
+  usePokeBattleStore.getState().restoreGameplay({ fieldCommands:{},pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, commandRevision: 0, inventory: [], wallet: { characterId: 42, pokedollars: 0 }, party: [], eventFlags: [], success: true, requestId: "start", position: position("start"), battle: null, safari: terminal, trainer: null, cutscene: null });
   const announce = vi.spyOn(usePokemonDialogueStore.getState(), "openDialogue").mockImplementation(() => {});
   let finish!: () => void;
   project.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
@@ -299,7 +299,7 @@ test("a replacement scene can dismiss a recovered terminal battle before the ret
   expect(releases[0]).toHaveBeenCalledTimes(1);
   const destinationProject = vi.fn(async () => {});
   retireScene = bindBattleScene(destinationProject);
-  usePokeBattleStore.getState().restoreGameplay({ pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, commandRevision: 0, inventory: [], wallet: { characterId: 42, pokedollars: 0 }, party: [], eventFlags: [], success: true, requestId: "destination", position: position("destination"), battle: terminal, safari: null, trainer: null, cutscene: null });
+  usePokeBattleStore.getState().restoreGameplay({ fieldCommands:{},pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, commandRevision: 0, inventory: [], wallet: { characterId: 42, pokedollars: 0 }, party: [], eventFlags: [], success: true, requestId: "destination", position: position("destination"), battle: terminal, safari: null, trainer: null, cutscene: null });
   cleanupOld(); // A second old cleanup cannot retire the destination binding.
   const close = closeOrdinaryBattle();
   expect(net.send).toHaveBeenCalledTimes(2);

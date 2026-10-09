@@ -21,7 +21,7 @@ import useCQInventoryStore from "@/stores/CQInventoryStore";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
 import usePokemonPCStore from "@/stores/PokemonPCStore";
 import { applyGameplaySnapshot, applyGameplayResourceSnapshot, recoverGameplayState, readCurrentGameplayState } from "./GameplayRecoveryService";
-const snapshot = (requestId: string): GameplayStateResponse => ({ pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, commandRevision: 0, inventory: [], wallet: { characterId: 42, pokedollars: 0 }, party: [], eventFlags: [], success: true, requestId, position: { success: true, requestId, mapId: 50, x: 7, y: 8, direction: "UP", serverMovementPending: false }, battle: null, safari: null, trainer: null, cutscene: null });
+const snapshot = (requestId: string): GameplayStateResponse => ({ fieldCommands:{},pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, commandRevision: 0, inventory: [], wallet: { characterId: 42, pokedollars: 0 }, party: [], eventFlags: [], success: true, requestId, position: { success: true, requestId, mapId: 50, x: 7, y: 8, direction: "UP", serverMovementPending: false }, battle: null, safari: null, trainer: null, cutscene: null });
 const receive = (data: unknown) => state.listeners.forEach(listener => listener(data));
 beforeEach(() => { useGameScreenStore.setState({currentScreen:"game"}); useCQInventoryStore.getState().setInventory([], 0); usePokemonPartyStore.getState().clearParty(); state.current = { restoreGameplay: state.apply }; state.character = { characterProfile:{id:42},handleCharacterWalletData: state.wallet, setEventFlags: state.flags }; });
 afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); state.listeners.clear(); });

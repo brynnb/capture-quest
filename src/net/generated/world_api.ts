@@ -477,6 +477,7 @@ export interface SafariRecoveryState {
   pokemon?: SafariRecoveryPokemon;
 }
 export interface GameplayStateResponse {
+  fieldCommands: { [key: string]: number /* int64 */};
   pc: PCStorageSnapshot;
   commandRevision: number /* int64 */;
   inventory: import("./cqitems").CQInventoryItem[];
@@ -738,6 +739,7 @@ export interface FieldMoveUseResponsePayload {
 // source: handler-fishing.go
 
 export interface PokeFishingRequestPayload {
+  commandRevision?: number;
   requestId: string;
   characterId: number /* int64 */;
   instanceId: number /* int32 */;

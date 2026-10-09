@@ -77,6 +77,7 @@ type SafariRecoveryState struct {
 	Pokemon       *SafariRecoveryPokemon `json:"pokemon"`
 }
 type GameplayStateResponse struct {
+	FieldCommands   map[string]int64                        `json:"fieldCommands"`
 	PC              PCStorageSnapshot                       `json:"pc"`
 	CommandRevision int64                                   `json:"commandRevision"`
 	Inventory       []cqitems.CQInventoryItem               `json:"inventory" tstype:"import(\"./cqitems\").CQInventoryItem[]"`
@@ -183,6 +184,10 @@ func readGameplayState(ctx context.Context, ses *session.Session, wh *WorldHandl
 			for _, pokemon := range party {
 				result.Party = append(result.Party, pokemonToDTO(pokemon))
 			}
+		}
+		result.FieldCommands, err = db.FieldCommandRevisions(tx, charID)
+		if err != nil {
+			return err
 		}
 		safari, err := safariSessionIn(tx, charID)
 		if err != nil {

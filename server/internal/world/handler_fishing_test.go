@@ -261,7 +261,8 @@ func TestFishingRejectsForgedSourceUnownedRodAndFailedCommit(t *testing.T) {
 			messages := &recordingMessenger{}
 			ses := &session.Session{SessionID: 1, Authenticated: true, Messenger: messages, Client: &testSessionClient{char: &model.CharacterData{ID: 42, MapID: 1, X: 5, Y: 5, Heading: 90}}}
 			wh := &WorldHandler{database: database, ActorManager: &PhaserActorManager{collisionMap: map[int]map[string]int{}}}
-			request := PokeFishingRequestPayload{RequestID: "fish:owned", CharacterID: 42, InstanceID: 1, ItemID: 76, RodType: "OLD_ROD", Direction: "RIGHT"}
+			revision := int64(0)
+			request := PokeFishingRequestPayload{CommandRevision: &revision, RequestID: "fish:owned", CharacterID: 42, InstanceID: 1, ItemID: 76, RodType: "OLD_ROD", Direction: "RIGHT"}
 			switch kind {
 			case "catalog-id":
 				request.RodType = ""
@@ -318,12 +319,52 @@ func TestFishingRejectsForgedSourceUnownedRodAndFailedCommit(t *testing.T) {
 				messages.streams = nil
 				HandlePokeFishing(ses, payload, wh)
 				json.Unmarshal(messages.streams[0].payload, &response)
-				if response.Success {
-					t.Fatal("duplicate created a second battle")
+				if !response.Success || len(messages.streams) != 1 {
+					t.Fatal("duplicate did not replay its receipt without another battle publication")
+				}
+				testdb.Exec(t, database, `DELETE FROM character_battle_state WHERE character_id=42`)
+				forgetBattle(42, getBattle(42))
+				messages.streams = nil
+				HandlePokeFishing(ses, payload, wh)
+				database.QueryRow(`SELECT COUNT(*) FROM character_battle_state WHERE character_id=42`).Scan(&battles)
+				if len(messages.streams) != 1 || battles != 0 || getBattle(42) != nil {
+					t.Fatal("receipt replay resurrected a dismissed encounter")
 				}
 			} else if response.Success || battles != 0 || seen != 0 || getBattle(42) != nil {
 				t.Fatalf("rejected fishing=%+v battles=%d seen=%d", response, battles, seen)
 			}
 		})
+	}
+}
+
+func TestFishingNoBiteReceiptSurvivesRodRemovalAndOwnerReplacement(t *testing.T) {
+	database := openFishingTestDB(t)
+	testdb.Exec(t, database, `UPDATE cq_items SET short_name='SUPER_ROD',name='Super Rod' WHERE id=76`)
+	messages := &recordingMessenger{}
+	ses := &session.Session{SessionID: 1, Authenticated: true, Messenger: messages, Client: &testSessionClient{char: &model.CharacterData{ID: 42, MapID: 1, X: 5, Y: 5, Heading: 90}}}
+	wh := &WorldHandler{database: database, ActorManager: &PhaserActorManager{collisionMap: map[int]map[string]int{}}}
+	revision := int64(0)
+	request := PokeFishingRequestPayload{CommandRevision: &revision, RequestID: "no-bite", CharacterID: 42, InstanceID: 1, Direction: "RIGHT"}
+	payload, _ := json.Marshal(request)
+	HandlePokeFishing(ses, payload, wh)
+	if len(messages.streams) != 1 {
+		t.Fatalf("no bite packets=%d", len(messages.streams))
+	}
+	first := string(messages.streams[0].payload)
+	var result struct {
+		Success bool
+		Hooked  bool
+	}
+	json.Unmarshal(messages.streams[0].payload, &result)
+	if !result.Success || result.Hooked {
+		t.Fatalf("no-bite=%s", first)
+	}
+	testdb.Exec(t, database, `DELETE FROM cq_character_inventory WHERE character_id=42; ALTER TABLE phaser_pokemon RENAME TO unavailable_species`)
+	messages.streams = nil
+	ses.SessionID = 2
+	ses.Client.CharData().Heading = 180
+	HandlePokeFishing(ses, payload, wh)
+	if len(messages.streams) != 1 || string(messages.streams[0].payload) != first || getBattle(42) != nil {
+		t.Fatalf("replayed no-bite changed or rerolled=%+v", messages.streams)
 	}
 }
