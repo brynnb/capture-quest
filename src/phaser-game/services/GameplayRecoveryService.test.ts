@@ -96,7 +96,7 @@ test("a newer battle state overtaking a read requires a fresh read before public
   receive(snapshot(first.requestId)); await Promise.resolve(); await Promise.resolve();
   expect(state.apply).not.toHaveBeenCalled(); expect(state.send).toHaveBeenCalledTimes(2);
   const second = state.send.mock.calls[1][0]; expect(second.requestId).not.toBe(first.requestId);
-  const current = snapshot(second.requestId); current.safari = { active: true, ballsLeft: 7, stepsLeft: 93, pokemon: undefined };
+  const current = snapshot(second.requestId); current.safari = { visitId:"visit",visitRevision:1,active: true, ballsLeft: 7, stepsLeft: 93, pokemon: undefined };
   receive(current); await result;
   expect(state.apply).toHaveBeenCalledOnce(); expect(state.apply).toHaveBeenCalledWith(current);
 });

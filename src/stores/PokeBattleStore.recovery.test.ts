@@ -18,7 +18,7 @@ test.each([false, true])("capture recovery restores authoritative placement with
 });
 
 test("ordinary recovery replaces stale Safari and preserves faint-switch authority", () => {
-  const safari = empty(); safari.safari = { active: true, ballsLeft: 7, stepsLeft: 93, pokemon: { id: 129, name: "MAGIKARP", level: 5, hp: 10, maxHp: 10 } };
+  const safari = empty(); safari.safari = { visitId:"visit",visitRevision:1,active: true, ballsLeft: 7, stepsLeft: 93, pokemon: { id: 129, name: "MAGIKARP", level: 5, hp: 10, maxHp: 10 } };
   usePokeBattleStore.getState().restoreGameplay(safari); expect(usePokeBattleStore.getState().isSafari).toBe(true);
   const ordinary = empty(); ordinary.battle = { battleId: "battle", revision: 2, phase: "faint_switch", turnNumber: 3, playerPokemon: pokemon, enemyPokemon: { ...pokemon, id: 129, name: "MAGIKARP" }, playerParty: [pokemon], playerActive: 0, battleType: "trainer", allowedActions: [], guaranteedCatch: false, trainerClass: "TEST", trainerName: "Trainer" };
   usePokeBattleStore.getState().restoreGameplay(ordinary);

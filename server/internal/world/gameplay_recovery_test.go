@@ -241,7 +241,7 @@ func TestGameplayRecoveryReadsSafariBattleCountersAndRejectsCorruptStore(t *test
 		t.Fatal(err)
 	}
 	visit := &SafariSession{Active: true, BallsLeft: 7, StepsLeft: 93, Battle: pokebattle.NewSafariBattle(wild, 7, 93)}
-	if err := db.Transaction(context.Background(), wh.database, func(tx db.DBTX) error { return saveSafariSessionIn(tx, 42, visit) }); err != nil {
+	if err := NewSafariZoneManager(wh.database).SetSession(context.Background(), 42, *visit); err != nil {
 		t.Fatal(err)
 	}
 	messages.streams = nil
@@ -307,8 +307,9 @@ func TestLastBallSafariCaptureRecoveryRetainsPlacementAndExpiry(t *testing.T) {
 			}
 			messages.streams = nil
 			battleDispatch(t, wh, ses, opcodes.GameplayStateRequest, `{"requestId":"closed","current":true}`)
-			if recoveryReply(t, messages).Safari != nil {
-				t.Fatal("dismissed encounter recovered again")
+			closed := recoveryReply(t, messages).Safari
+			if closed == nil || closed.Active || closed.Pokemon != nil || closed.VisitID != s.VisitID || closed.VisitRevision <= s.VisitRevision || closed.ExitMessage != SafariExpiryMessage {
+				t.Fatalf("dismissed encounter revived or terminal visit missing: %+v", closed)
 			}
 		})
 	}

@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+Safari visit identity/revision and owned terminal narrative prerequisite,
+following `5ea7000`:
 Safari battle starts and standalone blackout publication reuse owned recovery,
 following `678b56a`:
 common battle-start publication uses owned current-state recovery,
@@ -65,6 +67,50 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Safari visit identity prerequisite (2026-10-08)
+
+Zone HUD updates happen every step. Fetching the complete party/PC/gameplay
+aggregate for each update would duplicate unnecessary work. The existing
+character-owned Safari blob now carries a visit UUID and monotonic revision:
+reads preserve both; committed saves advance the revision; a new visit gets a new
+UUID. This supplies the state identity needed to reject older counter packets and
+packets from an earlier visit without creating another visit ledger or cache.
+
+Persisted format is now v3. Supported v1/v2 blobs upgrade once under the existing
+transaction/character lock. The prior ID-less v1 encounter upgrade is folded into
+that same primitive. Failed commit returns no upgraded snapshot. Invalid current
+UUID/revision rejects instead of generating a plausible replacement. Revision
+rollbacks retain the stored identity/revision. Explicit fixture setup initializes
+identity through its canonical manager; normal writers must retain a valid visit.
+
+Current gameplay recovery now includes the inactive expiry record even after its
+encounter closes. It exposes visit ID/revision and the existing authoritative
+expiry message, with `active:false` and no Pokémon, allowing a later owned exit
+consumer to preserve narrative without trusting a raw callback destination.
+Recovery assertions explicitly distinguish that terminal record from a resurrected
+encounter. Canonical tygo publishes the additional required fields; typed client
+fixtures supply the new wire contract.
+
+Focused visit upgrade/revision/rollback checks passed. The final world (55.9s)
+and simulator (1.5s) PostgreSQL race suites passed after fixing two stale fixtures;
+all Go packages compile. Client checks passed (24 files/358 tests), as did
+typecheck, canonical generation, asset validation, production build and diff
+checks. Five existing rendered Safari cases passed in 47.6s
+(`/var/tmp/capturequest-rendered.n4Zqas`): entry, run, expiry and lost capture
+with party/PC placement. These checks do not complete the HUD/exit consumer
+migration.
+
+Deployment compatibility: no DDL changes are needed, but this is a persisted
+format upgrade. An old v2 binary cannot read a v3 blob after the new owner has
+committed it. Deployment/rollback must account for that actual compatibility
+boundary and follow the documented backup workflow. Nothing was deployed here.
+
+Next: publish scoped visit state and migrate zone entry/step/exit consumers using
+this identity, preserving exit narrative and removing raw teleport/auto-close
+callbacks. Those live legacy consumers remain open, along with the full original
+five-area roadmap and historical restore/Repel attribution. Local checkpoint;
+no push or production mutation.
 
 ## Safari start and standalone blackout publication (2026-10-08)
 

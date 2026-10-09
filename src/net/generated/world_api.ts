@@ -460,6 +460,8 @@ export interface SafariRecoveryPokemon {
   maxHp: number /* int */;
 }
 export interface SafariRecoveryState {
+  visitId: string;
+  visitRevision: number /* int64 */;
   exitMessage?: string;
   isOver?: boolean;
   caught?: boolean;
@@ -1504,6 +1506,8 @@ export const SafariExpiryMessage = "PA: Ding-dong! Your SAFARI GAME is over!";
  * SafariSession tracks a player's current Safari Zone visit.
  */
 export interface SafariSession {
+  visitId: string;
+  revision: number /* int64 */;
   ballsLeft: number /* int */;
   stepsLeft: number /* int */;
   active: boolean;

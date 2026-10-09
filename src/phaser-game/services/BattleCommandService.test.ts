@@ -34,7 +34,7 @@ const reply = (requestId: string, revision = 3): BattleCommandResponse => ({ suc
 const emit = (opcode: number, data: BattleCommandResponse | SafariBattleActionResponse | BattleCommandError) => net.commands.get(opcode)?.forEach(receive => receive(data));
 const sentID = () => net.send.mock.calls.at(-1)![1].requestId as string;
 const project = vi.fn(async () => {});
-const safari = (revision = 1): SafariRecoveryState => ({ active: true, ballsLeft: 30, stepsLeft: 499, battleId: "safari", revision, pokemon: { id: 129, name: "MAGIKARP", level: 5, hp: 20, maxHp: 20 }, playerParty: [pokemon] });
+const safari = (revision = 1): SafariRecoveryState => ({ visitId:"visit",visitRevision:1,active: true, ballsLeft: 30, stepsLeft: 499, battleId: "safari", revision, pokemon: { id: 129, name: "MAGIKARP", level: 5, hp: 20, maxHp: 20 }, playerParty: [pokemon] });
 const safariReply = (requestId: string, revision = 2): SafariBattleActionResponse => ({ success: true, requestId, battleId: "safari", revision, position: position(requestId), events: [], ballsLeft: 29, stepsLeft: 499, isOver: false, caught: false, fled: false });
 let retireScene: () => void;
 beforeEach(() => {
@@ -88,7 +88,7 @@ test("lost Safari close acknowledgement restores absence without resending dismi
   usePokeBattleStore.getState().startSafariBattle({ ...safari(2), pokemon: safari().pokemon! });
   const closing = closeSafariBattle();
   await vi.advanceTimersByTimeAsync(10000);
-  await recoverRead(null, { active: true, ballsLeft: 29, stepsLeft: 499 }); await closing;
+  await recoverRead(null, { visitId:"visit",visitRevision:1,active: true, ballsLeft: 29, stepsLeft: 499 }); await closing;
   expect(usePokeBattleStore.getState().isInBattle).toBe(false);
   expect(net.send).toHaveBeenCalledTimes(1); expect(net.commands.get(130)?.size).toBe(0); expect(vi.getTimerCount()).toBe(0);
 });

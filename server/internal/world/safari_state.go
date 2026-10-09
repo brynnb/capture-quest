@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"math"
 
 	"capturequest/internal/db"
 	"capturequest/internal/db/pokedex"
@@ -40,6 +41,8 @@ var safariZoneMapIDs = map[int]bool{
 
 // SafariSession tracks a player's current Safari Zone visit.
 type SafariSession struct {
+	VisitID   string                        `json:"visitId"`
+	Revision  int64                         `json:"revision"`
 	BallsLeft int                           `json:"ballsLeft"`
 	StepsLeft int                           `json:"stepsLeft"`
 	Active    bool                          `json:"active"`
@@ -70,7 +73,7 @@ func NewSafariZoneManager(database *sql.DB) *SafariZoneManager {
 }
 
 // Bump this version and define a migration before changing persisted meaning.
-const safariStateVersion = 2
+const safariStateVersion = 3
 
 type storedSafariState struct {
 	Version int            `json:"version"`
@@ -111,7 +114,7 @@ func safariSessionIn(database db.DBTX, charID int64) (*SafariSession, error) {
 	if err := json.Unmarshal([]byte(encoded), &saved); err != nil {
 		return nil, fmt.Errorf("safari character %d: %w", charID, err)
 	}
-	if saved.Version != 1 && saved.Version != safariStateVersion {
+	if saved.Version != 1 && saved.Version != 2 && saved.Version != safariStateVersion {
 		return nil, fmt.Errorf("safari character %d unsupported state version %d", charID, saved.Version)
 	}
 	if saved.Visit == nil {
@@ -119,6 +122,24 @@ func safariSessionIn(database db.DBTX, charID int64) (*SafariSession, error) {
 	}
 	if err := validateSafariState(saved.Visit, saved.Version == 1); err != nil {
 		return nil, fmt.Errorf("safari character %d: %w", charID, err)
+	}
+	if saved.Version < safariStateVersion {
+		// Supported legacy state is upgraded once under the existing owner lock.
+		// Never repair a malformed current-version identity by inventing another one.
+		if err := db.RequireTransaction(database); err != nil {
+			return nil, fmt.Errorf("Safari legacy upgrade requires transaction: %w", err)
+		}
+		saved.Visit.VisitID = uuid.NewString()
+		saved.Visit.Revision = 0
+		if saved.Visit.Battle != nil && saved.Visit.Battle.BattleID == "" {
+			saved.Visit.Battle.BattleID = uuid.NewString()
+			saved.Visit.Battle.Revision = 1
+		}
+		if err := saveSafariSessionIn(database, charID, saved.Visit); err != nil {
+			return nil, err
+		}
+	} else if id, err := uuid.Parse(saved.Visit.VisitID); err != nil || id == uuid.Nil || saved.Visit.Revision < 1 {
+		return nil, fmt.Errorf("Safari character %d invalid visit identity/revision", charID)
 	}
 	return saved.Visit, nil
 }
@@ -131,6 +152,10 @@ func saveSafariSessionIn(tx db.DBTX, charID int64, s *SafariSession) error {
 		_, err := tx.Exec(`DELETE FROM character_safari_state WHERE character_id=$1`, charID)
 		return err
 	}
+	if id, err := uuid.Parse(s.VisitID); err != nil || id == uuid.Nil || s.Revision < 0 || s.Revision == math.MaxInt64 {
+		return fmt.Errorf("invalid Safari visit identity/revision")
+	}
+	s.Revision++
 	if err := validateSafariState(s, false); err != nil {
 		return err
 	}
@@ -160,12 +185,6 @@ func (m *SafariZoneManager) GetSession(ctx context.Context, charID int64) (*Safa
 		if err != nil {
 			return err
 		}
-		// Upgrade only the supported ID-less v1 encounter, under its owner lock,
-		// before any notification can advertise a playable command identity.
-		if s != nil && s.Battle != nil && s.Battle.BattleID == "" {
-			s.Battle.BattleID, s.Battle.Revision = uuid.NewString(), 1
-			return saveSafariSessionIn(tx, charID, s)
-		}
 		return nil
 	})
 	if err != nil {
@@ -191,6 +210,10 @@ func (m *SafariZoneManager) mutate(ctx context.Context, charID int64, apply func
 
 // SetSession is explicit fixture setup, never an unlocked runtime writeback.
 func (m *SafariZoneManager) SetSession(ctx context.Context, charID int64, s SafariSession) error {
+	if s.VisitID == "" {
+		s.VisitID = uuid.NewString()
+		s.Revision = 0
+	}
 	return db.Transaction(ctx, m.database, func(tx db.DBTX) error {
 		if err := db.LockCharacter(tx, charID); err != nil {
 			return err
@@ -274,7 +297,7 @@ func startSafariVisitIn(tx db.DBTX, charID int64) (SafariEntryResult, error) {
 	if err := tx.QueryRow(`UPDATE character_wallet SET pokedollars=pokedollars-$1 WHERE character_id=$2 AND pokedollars>=$1 RETURNING pokedollars`, SafariZoneEntryFee, charID).Scan(&result.Money); err != nil {
 		return SafariEntryResult{}, err
 	}
-	s = &SafariSession{Active: true, BallsLeft: SafariZoneMaxBalls, StepsLeft: SafariZoneMaxSteps}
+	s = &SafariSession{VisitID: uuid.NewString(), Active: true, BallsLeft: SafariZoneMaxBalls, StepsLeft: SafariZoneMaxSteps}
 	if err := saveSafariSessionIn(tx, charID, s); err != nil {
 		return SafariEntryResult{}, err
 	}

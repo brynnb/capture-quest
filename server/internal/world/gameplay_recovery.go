@@ -60,19 +60,21 @@ type SafariRecoveryPokemon struct {
 	MaxHP int    `json:"maxHp"`
 }
 type SafariRecoveryState struct {
-	ExitMessage string                 `json:"exitMessage,omitempty"`
-	IsOver      bool                   `json:"isOver,omitempty"`
-	Caught      bool                   `json:"caught,omitempty"`
-	Fled        bool                   `json:"fled,omitempty"`
-	SentToPC    bool                   `json:"sentToPC,omitempty"`
-	PCBox       int                    `json:"pcBox,omitempty"`
-	PlayerParty []PokemonDTO           `json:"playerParty,omitempty"`
-	BattleID    string                 `json:"battleId,omitempty"`
-	Revision    int64                  `json:"revision,omitempty"`
-	Active      bool                   `json:"active"`
-	BallsLeft   int                    `json:"ballsLeft"`
-	StepsLeft   int                    `json:"stepsLeft"`
-	Pokemon     *SafariRecoveryPokemon `json:"pokemon"`
+	VisitID       string                 `json:"visitId"`
+	VisitRevision int64                  `json:"visitRevision"`
+	ExitMessage   string                 `json:"exitMessage,omitempty"`
+	IsOver        bool                   `json:"isOver,omitempty"`
+	Caught        bool                   `json:"caught,omitempty"`
+	Fled          bool                   `json:"fled,omitempty"`
+	SentToPC      bool                   `json:"sentToPC,omitempty"`
+	PCBox         int                    `json:"pcBox,omitempty"`
+	PlayerParty   []PokemonDTO           `json:"playerParty,omitempty"`
+	BattleID      string                 `json:"battleId,omitempty"`
+	Revision      int64                  `json:"revision,omitempty"`
+	Active        bool                   `json:"active"`
+	BallsLeft     int                    `json:"ballsLeft"`
+	StepsLeft     int                    `json:"stepsLeft"`
+	Pokemon       *SafariRecoveryPokemon `json:"pokemon"`
 }
 type GameplayStateResponse struct {
 	PC              PCStorageSnapshot                       `json:"pc"`
@@ -186,8 +188,8 @@ func readGameplayState(ctx context.Context, ses *session.Session, wh *WorldHandl
 		if err != nil {
 			return err
 		}
-		if safari != nil && (safari.Active || safari.Battle != nil) {
-			result.Safari = &SafariRecoveryState{Active: safari.Active, BallsLeft: safari.BallsLeft, StepsLeft: safari.StepsLeft}
+		if safari != nil {
+			result.Safari = &SafariRecoveryState{VisitID: safari.VisitID, VisitRevision: safari.Revision, Active: safari.Active, BallsLeft: safari.BallsLeft, StepsLeft: safari.StepsLeft}
 			if !safari.Active {
 				result.Safari.ExitMessage = SafariExpiryMessage
 			}

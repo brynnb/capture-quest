@@ -194,7 +194,7 @@ func TestLegacySafariIdentityUpgradeCommitsBeforeAdvertisement(t *testing.T) {
 		t.Fatal("identity was not durable", err)
 	}
 	var version int
-	if err := wh.database.QueryRow(`SELECT (state_json::json->>'version')::int FROM character_safari_state WHERE character_id=42`).Scan(&version); err != nil || version != 2 {
+	if err := wh.database.QueryRow(`SELECT (state_json::json->>'version')::int FROM character_safari_state WHERE character_id=42`).Scan(&version); err != nil || version != safariStateVersion {
 		t.Fatal("legacy state not migrated", err)
 	}
 }
@@ -204,6 +204,10 @@ func TestSafariTurnCommitFailureDoesNotPublishOrMutateSnapshot(t *testing.T) {
 	ses.MapID = 220
 	ses.Client.CharData().MapID = 220
 	seedSafariBattle(t, wh.Safari, 30)
+	before, err := wh.Safari.GetSession(context.Background(), 42)
+	if err != nil {
+		t.Fatal(err)
+	}
 	previous := db.GlobalWorldDB
 	db.GlobalWorldDB = nil
 	t.Cleanup(func() { db.GlobalWorldDB = previous })
@@ -218,7 +222,7 @@ func TestSafariTurnCommitFailureDoesNotPublishOrMutateSnapshot(t *testing.T) {
 		t.Fatalf("failure=%+v %v", response, err)
 	}
 	saved, err := wh.Safari.GetSession(context.Background(), 42)
-	if err != nil || saved.Battle == nil || saved.Battle.IsOver() {
+	if err != nil || saved.Battle == nil || saved.Battle.IsOver() || saved.VisitID != before.VisitID || saved.Revision != before.Revision {
 		t.Fatalf("partial turn=%+v %v", saved, err)
 	}
 	testdb.Exec(t, database, `DROP TRIGGER reject_safari_turn ON character_safari_state`)
@@ -533,5 +537,61 @@ func TestSafariDirectEntryRequiresVisibleSourceWorker(t *testing.T) {
 	battleDispatch(t, wh, ses, opcodes.SafariZoneEnterRequest, `{}`)
 	if err := database.QueryRow(`SELECT pokedollars FROM character_wallet WHERE character_id=42`).Scan(&money); err != nil || money != 500 {
 		t.Fatalf("re-entry charge=%d %v", money, err)
+	}
+}
+
+func TestSafariVisitIdentitySurvivesReadsAndRevisionsAndChangesForNewVisit(t *testing.T) {
+	database, _, _, _ := battleTestWorld(t)
+	manager := NewSafariZoneManager(database)
+	if err := manager.SetSession(context.Background(), 42, SafariSession{Active: true, BallsLeft: 30, StepsLeft: 500}); err != nil {
+		t.Fatal(err)
+	}
+	first, err := manager.GetSession(context.Background(), 42)
+	if err != nil || first.VisitID == "" || first.Revision != 1 {
+		t.Fatalf("first=%+v error=%v", first, err)
+	}
+	again, err := manager.GetSession(context.Background(), 42)
+	if err != nil || again.VisitID != first.VisitID || again.Revision != first.Revision {
+		t.Fatalf("read changed identity=%+v error=%v", again, err)
+	}
+	if _, _, _, err := manager.DecrementStep(context.Background(), 42); err != nil {
+		t.Fatal(err)
+	}
+	stepped, err := manager.GetSession(context.Background(), 42)
+	if err != nil || stepped.VisitID != first.VisitID || stepped.Revision != 2 || stepped.StepsLeft != 499 {
+		t.Fatalf("stepped=%+v error=%v", stepped, err)
+	}
+	if err := manager.EndSession(context.Background(), 42); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.SetSession(context.Background(), 42, SafariSession{Active: true, BallsLeft: 30, StepsLeft: 500}); err != nil {
+		t.Fatal(err)
+	}
+	next, err := manager.GetSession(context.Background(), 42)
+	if err != nil || next.VisitID == first.VisitID || next.Revision != 1 {
+		t.Fatalf("new visit=%+v error=%v", next, err)
+	}
+}
+
+func TestSafariV2VisitUpgradeIsCommittedAndCurrentIdentityCorruptionRejects(t *testing.T) {
+	database, _, _, _ := battleTestWorld(t)
+	manager := NewSafariZoneManager(database)
+	encoded, err := json.Marshal(storedSafariState{Version: 2, Visit: &SafariSession{Active: true, BallsLeft: 30, StepsLeft: 499}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	testdb.Exec(t, database, `INSERT INTO character_safari_state(character_id,state_json) VALUES(42,$1)`, string(encoded))
+	testdb.Exec(t, database, `CREATE FUNCTION reject_visit_upgrade() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'visit upgrade rejected'; END $$; CREATE CONSTRAINT TRIGGER reject_visit_upgrade AFTER UPDATE ON character_safari_state DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_visit_upgrade()`)
+	if got, err := manager.GetSession(context.Background(), 42); err == nil || got != nil {
+		t.Fatalf("published failed upgrade=%+v error=%v", got, err)
+	}
+	testdb.Exec(t, database, `DROP TRIGGER reject_visit_upgrade ON character_safari_state`)
+	got, err := manager.GetSession(context.Background(), 42)
+	if err != nil || got.VisitID == "" || got.Revision != 1 || got.StepsLeft != 499 {
+		t.Fatalf("upgrade=%+v error=%v", got, err)
+	}
+	testdb.Exec(t, database, `UPDATE character_safari_state SET state_json=jsonb_set(state_json::jsonb,'{visit,visitId}','"broken"')::text WHERE character_id=42`)
+	if got, err := manager.GetSession(context.Background(), 42); err == nil || got != nil {
+		t.Fatalf("manufactured replacement identity=%+v error=%v", got, err)
 	}
 }
