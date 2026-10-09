@@ -1,4 +1,4 @@
-import {acceptOwnedSafariVisit} from "./SafariVisitService";
+import {acceptOwnedSafariVisit,captureSafariVisitView} from "./SafariVisitService";
 import type { GameplayStateResponse } from "@/net/generated/world_api";
 import { OpCodes } from "@/net";
 import usePokeBattleStore from "@/stores/PokeBattleStore";
@@ -74,7 +74,7 @@ export async function recoverGameplayState(mapId: number, signal?: AbortSignal):
 function captureGameplayViews() {
   const inventory = useCQInventoryStore.getState();
   const pc = usePokemonPCStore.getState();
-  return [usePokeBattleStore.getState(), inventory.items, inventory.money, inventory.commandRevision, usePlayerCharacterStore.getState().characterProfile, usePokemonPartyStore.getState().party, pc.boxPokemon, pc.currentBox, pc.sources];
+  return [usePokeBattleStore.getState(), inventory.items, inventory.money, inventory.commandRevision, usePlayerCharacterStore.getState().characterProfile, usePokemonPartyStore.getState().party, pc.boxPokemon, pc.currentBox, pc.sources, captureSafariVisitView()];
 }
 function gameplayViewsChanged(before: ReturnType<typeof captureGameplayViews>) {
   return captureGameplayViews().some((view, index) => view !== before[index]);

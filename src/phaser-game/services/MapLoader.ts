@@ -1,3 +1,4 @@
+import {presentOwnedSafariExit} from "./BattleCommandService";
 import { readCurrentGameplayState, applyGameplaySnapshot } from "./GameplayRecoveryService";
 import type { PhaserMapInfo } from "@/net/generated/protocol";
 import { Scene } from "phaser";
@@ -697,6 +698,7 @@ export class MapLoader {
     this.playerMovementController.projectOwnedPosition(snapshot.position);
     if (!this.isLoadCurrent(generation) || signal.aborted) return;
     applyGameplaySnapshot(snapshot);
+    presentOwnedSafariExit(snapshot,signal);
   }
 
   updateOverworldStreaming(): void {

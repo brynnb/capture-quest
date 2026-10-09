@@ -1,4 +1,4 @@
-import {bindSafariVisitView} from "./SafariVisitService";
+import {bindSafariVisitView,acceptOwnedSafariVisit} from "./SafariVisitService";
 import useGameScreenStore from "@/stores/GameScreenStore";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { GameplayStateResponse } from "@/net/generated/world_api";
@@ -189,4 +189,12 @@ test("an owned position change overtaking a current snapshot requires a fresh re
   current.position.x = 9;
   receive(current);
   expect((await run).position.x).toBe(9);
+});
+
+test("a newer owned Safari visit invalidates an older aggregate before application",async()=>{
+ const visit=(id:string)=>({visitId:id,visitRevision:1,active:true,ballsLeft:30,stepsLeft:500,pokemon:undefined});
+ acceptOwnedSafariVisit(visit("first"));const run=recoverGameplayState(50);const old=state.send.mock.calls[0][0];
+ acceptOwnedSafariVisit(visit("next"));const reply=snapshot(old.requestId);reply.safari=visit("first");receive(reply);
+ await Promise.resolve();await Promise.resolve();expect(state.apply).not.toHaveBeenCalled();expect(state.send).toHaveBeenCalledTimes(2);
+ const current=snapshot(state.send.mock.calls[1][0].requestId);current.safari=visit("next");receive(current);await run;expect(state.apply).toHaveBeenCalledWith(current);
 });

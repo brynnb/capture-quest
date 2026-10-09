@@ -1,4 +1,4 @@
-import {acceptOwnedSafariVisit,claimSafariExit,isCurrentSafariExit,acceptSafariVisitNotice} from "./SafariVisitService";
+import {acceptOwnedSafariVisit,claimSafariExit,isCurrentSafariExit,releaseSafariExit,completeSafariExit,acceptSafariVisitNotice} from "./SafariVisitService";
 import { OpCodes, WorldSocket } from "@/net";
 import type { BattleCommandResponse, SafariBattleActionResponse, SafariBattleActionRequest, BattleEndOutcome, PokeBattleActionRequest, PokeBattleSwitchRequest, PokeMoveLearnRequest } from "@/net/generated/world_api";
 import type { OwnedPlayerPositionResponse } from "@/net/generated/protocol";
@@ -24,10 +24,12 @@ let sceneProjection: Projection | null = null;
 let scenePositionView: (()=>unknown)|undefined;
 let active: AbortController | null = null;
 let publicationRead: AbortController | null = null;
+let retireExit:(()=>void)|null=null;
 
 // The scene owns both projection and retirement. An older cleanup must never
 // clear a newer binding or let a late command reply revive a retired panel.
 export function bindBattleScene(reconcile: Projection, capturePositionView?:()=>unknown): () => void {
+  retireExit?.();retireExit=null;
   active?.abort();
   publicationRead?.abort();publicationRead=null;
   // Scene retirement releases admission immediately. The old projection may
@@ -37,6 +39,7 @@ export function bindBattleScene(reconcile: Projection, capturePositionView?:()=>
   scenePositionView = capturePositionView;
   return () => {
     if (sceneProjection !== reconcile) return;
+    retireExit?.();retireExit=null;
     sceneProjection = null;
     scenePositionView = undefined;
     publicationRead?.abort();publicationRead=null;
@@ -71,15 +74,12 @@ export async function recoverBattlePublication(notice:Record<string,unknown>,kin
  acceptOwnedSafariVisit(snapshot.safari);
  if(kind==="safari-visit")return;
  if(kind==="safari-exit"){
- const visit=snapshot.safari;
- if(snapshot.battle || !visit || !claimSafariExit(visit))return;
  applyGameplayResourceSnapshot(snapshot);
- const callbackCurrent=()=>isCurrentSafariExit(visit) && !controller.signal.aborted && sceneProjection===project && WorldSocket.sessionGeneration===generation && usePlayerCharacterStore.getState().characterProfile.id===characterId && useGameScreenStore.getState().currentScreen==="game" && positionView?.()===positionGeneration;
- // Retire local presentation without sending another Safari close mutation.
  usePokeBattleStore.getState().restoreGameplay(snapshot);
- usePokemonDialogueStore.getState().openDialogue([visit.exitMessage!],null,undefined,()=>{if(callbackCurrent())void project(snapshot.position);});
+ presentOwnedSafariExit(snapshot);
  return;
  }
+
  const state=usePokeBattleStore.getState();
  const owned=snapshot.battle;
  // Duplicate hints preserve current event queues. An end hint can still need
@@ -102,6 +102,28 @@ export async function recoverBattlePublication(notice:Record<string,unknown>,kin
  }catch(error){
  if(current() && !(error instanceof DOMException && error.name==="AbortError"))useChatStore.getState().addMessage("Battle state could not be refreshed. Reconnect to recover it.",MessageType.SYSTEM_ERROR);
  }finally{if(publicationRead===controller)publicationRead=null;}
+}
+
+// Both notification recovery and scene startup consume the same owned terminal
+// narrative. An interrupted scene releases its claim; completing it does not.
+export function presentOwnedSafariExit(snapshot:import("@/net/generated/world_api").GameplayStateResponse,signal?:AbortSignal):void{
+ const visit=snapshot.safari;const project=sceneProjection;
+ if(!project || signal?.aborted || snapshot.battle || !visit || !isCurrentSafariExit(visit) || !claimSafariExit(visit))return;
+ const characterId=usePlayerCharacterStore.getState().characterProfile.id;
+ const generation=WorldSocket.sessionGeneration;
+ const positionView=scenePositionView;const position=positionView?.();
+ const current=()=>!signal?.aborted && sceneProjection===project && useGameScreenStore.getState().currentScreen==="game" && usePlayerCharacterStore.getState().characterProfile.id===characterId && WorldSocket.sessionGeneration===generation && isCurrentSafariExit(visit) && positionView?.()===position;
+ let stopped=false;
+ const dispose=()=>{if(stopped)return;stopped=true;signal?.removeEventListener("abort",dispose);releaseSafariExit(visit);if(usePokemonDialogueStore.getState().onClose===complete)usePokemonDialogueStore.getState().resetDialogueState();if(retireExit===dispose)retireExit=null;};
+ const complete=()=>{
+ if(stopped)return;
+ if(!current()){dispose();return;}
+ completeSafariExit(visit);dispose();
+ void project(snapshot.position).catch(()=>{if(sceneProjection===project && usePlayerCharacterStore.getState().characterProfile.id===characterId)useChatStore.getState().addMessage("Safari exit could not be displayed. Reconnect to recover the committed location.",MessageType.SYSTEM_ERROR);});
+ };
+ retireExit?.();retireExit=dispose;
+ signal?.addEventListener("abort",dispose,{once:true});
+ usePokemonDialogueStore.getState().openDialogue([visit.exitMessage!],null,undefined,complete);
 }
 
 export function presentBattleEnd(end: BattleEndOutcome): void {

@@ -10,8 +10,9 @@ let owner:number|undefined;
 let generation=-1;
 const listeners=new Set<(view:View|null)=>void>();
 let shownExit:string|null=null;
+let exitCompleted=false;
 let watching=false;
-function retire(){known=null;shownExit=null;publish();}
+function retire(){known=null;shownExit=null;exitCompleted=false;publish();}
 function watch(){if(watching)return;watching=true;
  WorldSocket.subscribeSessionRetirement(retire);
  usePlayerCharacterStore.subscribe((state,before)=>{if(state.characterProfile.id!==before.characterProfile.id)retire();});
@@ -21,7 +22,7 @@ function scope():boolean{
  watch();
  const id=usePlayerCharacterStore.getState().characterProfile?.id;
  if(owner!==id || generation!==WorldSocket.sessionGeneration || useGameScreenStore.getState().currentScreen!=="game"){
- owner=id;generation=WorldSocket.sessionGeneration;known=null;shownExit=null;
+ owner=id;generation=WorldSocket.sessionGeneration;known=null;shownExit=null;exitCompleted=false;
  }
  return !!id && useGameScreenStore.getState().currentScreen==="game";
 }
@@ -48,7 +49,7 @@ export function bindSafariVisitView(receive:(view:View|null)=>void):()=>void{
 }
 export function claimSafariExit(view:SafariRecoveryState):boolean{
  if(!scope() || !view.visitId || view.active || view.pokemon || !view.exitMessage || shownExit===view.visitId)return false;
- shownExit=view.visitId;return true;
+ shownExit=view.visitId;exitCompleted=false;return true;
 }
 
 export function shouldRecoverSafariExit(data:unknown):boolean{
@@ -60,3 +61,8 @@ export function shouldRecoverSafariExit(data:unknown):boolean{
 export function isCurrentSafariExit(view:SafariRecoveryState):boolean{
  return scope() && known?.visitId===view.visitId && known.visitRevision===view.visitRevision && !known.active;
 }
+
+export function releaseSafariExit(view:SafariRecoveryState):void{if(shownExit===view.visitId && !exitCompleted)shownExit=null;}
+export function completeSafariExit(view:SafariRecoveryState):void{if(shownExit===view.visitId)exitCompleted=true;}
+
+export function captureSafariVisitView():unknown{scope();return known;}

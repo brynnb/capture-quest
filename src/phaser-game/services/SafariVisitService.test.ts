@@ -26,3 +26,10 @@ test("a new visit retires the old exit callback even with the same character",()
  const ended={...visit(),active:false,stepsLeft:0,exitMessage:"Expiry"};acceptOwnedSafariVisit(ended);expect(isCurrentSafariExit(ended)).toBe(true);
  acceptOwnedSafariVisit(visit("next"));expect(isCurrentSafariExit(ended)).toBe(false);
 });
+
+test("interrupted claims can be recovered while completed claims stay deduplicated",async()=>{
+ const {releaseSafariExit,completeSafariExit}=await import("./SafariVisitService");
+ const ended={...visit(),active:false,stepsLeft:0,exitMessage:"Expiry"};acceptOwnedSafariVisit(ended);
+ expect(claimSafariExit(ended)).toBe(true);releaseSafariExit(ended);expect(claimSafariExit(ended)).toBe(true);
+ completeSafariExit(ended);releaseSafariExit(ended);expect(claimSafariExit(ended)).toBe(false);
+});

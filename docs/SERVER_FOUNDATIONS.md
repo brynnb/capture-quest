@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+interrupted Safari exit narrative recovers through scene startup and owned reads,
+following `7738e87`:
 scoped Safari HUD and owned exit consumers replace global callbacks,
 following `6af6bbd`:
 Safari visit identity/revision and owned terminal narrative prerequisite,
@@ -69,6 +71,50 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Safari boundary review: interrupted narrative and aggregate freshness (2026-10-08)
+
+The shared review found notification recovery could show expiry, but scene
+startup only restored the inactive visit view. Quitting or losing the process
+before dialogue dismissal therefore lost the presentation despite retaining the
+committed expiry record. One owned presenter now serves both notification
+recovery and the existing map-load snapshot. It captures scene/character/
+transport/position/terminal-visit ownership, releases unfinished claims when its
+scene or load signal retires, and keeps completed presentation deduplicated
+within that owner. Stale captured callbacks cannot affect a replacement scene.
+Repeated completion is ignored; projection failures report recovery unavailable
+instead of leaving an unhandled promise.
+
+Narrative remains a presentation policy: the durable inactive visit retains the
+expiry message until native visit-end handling clears it. Reentry may present
+that still-retained result again; this does not recharge admission, replay a
+catch, create a battle or write another destination. No new narrative receipt
+ledger or acknowledgement command was added. A completed projection does not
+reopen the message on the subsequent map load in the same owner.
+
+The review also found gameplay read freshness captured battle, wallet/party and
+PC views but not the new Safari view. Its existing bounded retry now captures
+the Safari publication too. A newer owned visit appearing while an older
+aggregate is held forces a fresh read before application, rather than allowing
+the old visit to replace it. This extends the authoritative existing freshness
+check instead of adding another recovery coordinator.
+
+Client verification: 25 files/390 tests passed, including claim release versus
+completion and the newer-visit read race. Typecheck, asset validation, production
+build and diff checks pass. Seven final rendered Chromium/WebSocket cases passed
+in 1.2m (`/var/tmp/capturequest-rendered.LWW10U`): interrupted expiry through
+quit/reentry and exact-process SIGKILL/restart, plus the existing entry, run,
+expiry and lost-capture party/PC cases. Old real callbacks replayed after recovery
+leave the recovered dialogue intact; the visit UUID remains durable. The recovery
+screenshot visibly shows the source PA message at the committed gate. The earlier
+focused crash run is `/var/tmp/capturequest-rendered.etOeJ2` (17.9s).
+
+Remaining Safari source/admission/writer/native acceptance is still in the finite
+matrix. The historical restore timeout is not attributed by these successful
+reentry checks. All five roadmap areas remain active. Next: resume queued field
+actions with the fishing source/rod/party/battle ownership audit; its request
+coordinate overrides and global loaders remain explicitly open. This checkpoint
+changes client recovery only; no schema/assets generation, push or deployment.
 
 ## Scoped Safari HUD and owned exit consumer (2026-10-08)
 
