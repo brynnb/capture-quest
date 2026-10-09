@@ -1,7 +1,9 @@
 import {recoverBattlePublication} from "../services/BattleCommandService";
 import type { OwnedPlayerPositionResponse, PlayerStepResponse, PlayerStepError } from "@/net/generated/protocol";
 import { requestFishing, requestEscapeRope, requestBicycleState, requestPlayerFacing, requestPlayerStep, completePlayerStep, readOwnedPlayerPosition } from "../services/PlayerMovementService";
-import { CorrelatedResponseError } from "../services/CorrelatedRequest";
+import { WorldSocket } from "@/net/index";
+import useGameScreenStore from "@/stores/GameScreenStore";
+import { CorrelatedResponseError, readForCurrentCharacter } from "../services/CorrelatedRequest";
 import { Scene } from "phaser";
 import { PhaserActor, PhaserTile, PhaserWarp } from "@/net/generated/world_api";
 import { TILE_SIZE, UNIFIED_OVERWORLD_MAP_ID } from "../constants";
@@ -138,13 +140,19 @@ export class PlayerMovementController {
     if (!characterId) return;
     const abort = new AbortController();
     this.fieldCommandAbort = abort;
-    const stopProfile = usePlayerCharacterStore.subscribe(state => {
-      if (state.characterProfile.id !== characterId) abort.abort();
-    });
-    const current = () => !abort.signal.aborted && !this.fieldCommandsRetired
-      && usePlayerCharacterStore.getState().characterProfile.id === characterId;
-    try { await operation(characterId, abort.signal, current); }
-    finally { stopProfile(); if (this.fieldCommandAbort === abort) this.fieldCommandAbort = null; }
+    try {
+      await readForCurrentCharacter(async (owner, signal) => {
+        const current = () => !signal.aborted && !this.fieldCommandsRetired
+          && usePlayerCharacterStore.getState().characterProfile.id === owner;
+        await operation(owner, signal, current);
+      }, abort.signal);
+    } catch (error) {
+      // Retirement ends presentation, not the server mutation. A fresh scene
+      // recovers durable state; it must never revive this owner's callback.
+      if (!(error instanceof DOMException && error.name === "AbortError")) throw error;
+    } finally {
+      if (this.fieldCommandAbort === abort) this.fieldCommandAbort = null;
+    }
   }
 
   async fish(instanceId:number):Promise<void>{
@@ -859,10 +867,22 @@ export class PlayerMovementController {
       return false;
     }
 
+    // The prompt starts its own facing request. Its settlement may change the
+    // transient view without changing the shore that authorized this choice.
+    const source = { generation: this.movementGeneration, mapId: this.currentMapId,
+      x: this.currentTileX, y: this.currentTileY };
+    const characterId = usePlayerCharacterStore.getState().characterProfile.id;
+    const transport = WorldSocket.sessionGeneration;
     usePokemonDialogueStore.getState().showChoice(
       "The water is calm. Want to SURF?",
       (yes) => {
-        if (!yes) return;
+        if (!yes || this.fieldCommandsRetired || this.inputFrozenChecker()
+          || this.movementGeneration !== source.generation
+          || this.currentMapId !== source.mapId || this.currentTileX !== source.x || this.currentTileY !== source.y
+          || this.isMoving || this.issuedStep !== null || this.serverMovementInProgress
+          || usePlayerCharacterStore.getState().characterProfile.id !== characterId
+          || useGameScreenStore.getState().currentScreen !== "game"
+          || WorldSocket.sessionGeneration !== transport) return;
         PhaserNet.requestSurf(waterX, waterY, this.currentMapId, direction);
       },
     );

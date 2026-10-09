@@ -1,6 +1,6 @@
 vi.mock("../services/BattleCommandService",()=>({recoverBattlePublication:vi.fn(async()=>true)}));
 import * as battlePublication from "../services/BattleCommandService";
-import { afterEach } from "vitest";
+import { afterEach, beforeEach } from "vitest";
 import { CorrelatedResponseError } from "../services/CorrelatedRequest";
 import * as movement from "../services/PlayerMovementService";
 vi.mock("../services/PlayerMovementService", () => ({
@@ -14,6 +14,7 @@ vi.mock("../services/PlayerMovementService", () => ({
 }));
 vi.mock("../services/GameplayRecoveryService", () => ({ readCurrentGameplayState: vi.fn(), applyGameplayResourceSnapshot: vi.fn(),applyGameplaySnapshot:vi.fn() }));
 import * as recovery from "../services/GameplayRecoveryService";
+beforeEach(() => useGameScreenStore.getState().setScreen("game"));
 afterEach(() => vi.clearAllMocks());
 import { describe, expect, test, vi } from "vitest";
 import { PlayerMovementController } from "./PlayerMovementController";
@@ -24,6 +25,10 @@ import type { MapRenderer } from "../renderers/MapRenderer";
 import { NetworkBridge } from "@/net/NetworkBridge";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import useAudioActivityStore from "@/stores/AudioActivityStore";
+import useGameScreenStore from "@/stores/GameScreenStore";
+import usePokemonDialogueStore from "@/stores/PokemonDialogueStore";
+import { WorldSocket } from "@/net/index";
+import * as PhaserNet from "../services/PhaserNetworkService";
 import useGameStatusStore from "@/stores/GameStatusStore";
 import * as OpCodes from "@/net/generated/opcodes";
 
@@ -622,4 +627,44 @@ test("failed fishing recovery keeps later field mutations inadmissible",async()=
  vi.mocked(movement.requestFishing).mockResolvedValueOnce({success:true,requestId:"done",characterId:42,instanceId:7,hooked:true,message:"Oh! A bite!"});
  vi.mocked(battlePublication.recoverBattlePublication).mockResolvedValueOnce(false);
  await controller.fish(7);await controller.fish(7);expect(movement.requestFishing).toHaveBeenCalledTimes(1);
+});
+
+
+test.each(["screen", "transport"])("shared field slot retires Bicycle on %s replacement", async (kind) => {
+  const {controller} = buildLedgeController();
+  usePlayerCharacterStore.getState().setCharacterProfile({id:42});
+  useAudioActivityStore.getState().resetTravelAudio();
+  let resolve!: (reply: any) => void;
+  const request = vi.mocked(movement.requestBicycleState);
+  request.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+  const pending = controller.changeBicyclePreference(7);
+  const signal = request.mock.calls[0][1];
+  if (kind === "screen") useGameScreenStore.getState().setScreen("title");
+  else WorldSocket.close(false);
+  expect(signal.aborted).toBe(true);
+  resolve({success:true, requestId:"retired", characterId:42, bicycle:{revision:1,wantsRiding:true,activeRiding:true,forcedRiding:false}});
+  await pending;
+  expect(request).toHaveBeenCalledOnce();
+  expect(useAudioActivityStore.getState().wantsBicycle).toBe(false);
+});
+
+test.each(["current", "facing-settled", "position", "character", "scene", "screen", "transport"])("SURF choice respects %s source lifetime", (kind) => {
+  const {controller} = buildLedgeController();
+  usePlayerCharacterStore.getState().setCharacterProfile({id:42});
+  vi.spyOn(controller as any, "partyKnowsSurf").mockReturnValue(true);
+  let choose!: (yes:boolean) => void;
+  const choice = vi.spyOn(usePokemonDialogueStore.getState(), "showChoice").mockImplementation((_text, callback) => {choose = callback;});
+  const send = vi.spyOn(PhaserNet, "requestSurf").mockImplementation(() => {});
+  if (kind === "facing-settled") (controller as any).facingAbort = new AbortController();
+  (controller as any).promptSurfToWater(9,0,"LEFT");
+  if (kind === "facing-settled") (controller as any).facingAbort = null;
+  if (kind === "position") controller.syncPosition(9,1);
+  if (kind === "character") usePlayerCharacterStore.getState().setCharacterProfile({id:43});
+  if (kind === "scene") controller.retireFieldCommands();
+  if (kind === "screen") useGameScreenStore.getState().setScreen("title");
+  if (kind === "transport") WorldSocket.close(false);
+  choose(true);
+  if (kind === "current" || kind === "facing-settled") expect(send).toHaveBeenCalledOnce();
+  else expect(send).not.toHaveBeenCalled();
+  choice.mockRestore(); send.mockRestore();
 });

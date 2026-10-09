@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+shared movement-owned field operations reuse character/screen/transport retirement,
+and SURF choices retain their source lifetime, following `a2145d0`:
 SURF entry delegates permission and effects to the existing movement transaction;
 targetless encounter generation is retired, following `f034af0`:
 identity-free fishing and shared field-executor bypass are retired locally,
@@ -83,6 +85,41 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Shared field lifetime review before SURF correlation (2026-10-08)
+
+Review found the movement-owned field slot had a private character-only lifetime,
+although the established shared wrapper already retires on character, game-screen
+and transport changes. Fishing, Bicycle and Escape Rope now run inside that
+wrapper with the existing scene abort signal. Retired outcomes cannot update
+presentation or trigger old-scene recovery; a new scene reads durable state.
+This adds no mutation retry or additional transaction/recovery coordinator.
+
+SURF choice callbacks now retain the source map, coordinates, movement generation,
+character and transport. Source movement, scene retirement, screen exit or session
+replacement prevents dispatch. The first rendered check exposed an overly broad
+view fence: the prompt's own facing request settled while the choice was open,
+rejecting legitimate entry. The corrected fence compares source position and
+movement ownership rather than transient facing-request occupancy. Both ordinary
+and facing-settled choices have positive checks, alongside stale-source cases.
+
+The complete client suite found 12 previously added simulator fixtures absent
+from the story coverage manifest (472 entries versus 484 files). Regeneration via
+`node scripts/generate_story_checkpoints.mjs` restores full deterministic coverage;
+canonical ordering changes accompany the new entries. No scenario expectations
+or test assertions were weakened.
+
+Verification: all 575 client tests in 59 files pass (4.7s), including shared field
+retirement and SURF choice acceptance/rejection. Typecheck passes. Both rendered Chromium/WebSocket SURF checks pass (8.6s;
+`/var/tmp/capturequest-rendered.gY5dR4`). The earlier incorrect fence failed both
+checks; these results are from a fresh isolated runtime after correction. This checkpoint changes
+no server schema or generated runtime assets and makes no production deployment.
+
+Remaining and next: migrate SURF's legacy global reply/event adapter to generated
+correlated identity and movement-owned current-state recovery, then review
+uncertain-result/replay semantics. The five-area goal, historical restore timeout
+and Repel attribution remain incomplete. Local commit only; no push authorized
+for this new continuation.
 
 ## SURF authoritative entry checkpoint (2026-10-08)
 
