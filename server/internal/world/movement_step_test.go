@@ -674,3 +674,49 @@ func TestMovementSurfRouteUsesOwnedColdCollisionRead(t *testing.T) {
 		t.Fatal("surf route opened a second connection inside movement transaction")
 	}
 }
+
+func TestSurfEntryUsesDurablePermissionAndRejectsLegacyOrMovingSource(t *testing.T) {
+	for _, kind := range []string{"durable-permission", "cached-permission", "targetless", "partial-target", "wrong-facing", "invalid-facing", "moving"} {
+		t.Run(kind, func(t *testing.T) {
+			wh, ses, messages, _ := stepEffectFixture(t, false)
+			wh.EventFlags = NewEventFlagManager(wh.database)
+			testdb.Exec(t, wh.database, `INSERT INTO phaser_moves(id,constant_name,name,short_name,effect,power,type,accuracy,pp) VALUES(57,'SURF','SURF','SURF','NO_ADDITIONAL_EFFECT',95,'WATER',255,15);UPDATE character_pokemon SET move1_id=57,move1_pp=15 WHERE character_id=42;UPDATE phaser_tiles SET collision_type=3 WHERE map_id=50 AND x=8 AND y=8`)
+			wh.ActorManager.collisionMap[50][tileKey(8, 8)] = collisionWater
+			old := db.GlobalWorldDB
+			db.GlobalWorldDB = nil
+			t.Cleanup(func() { db.GlobalWorldDB = old })
+			payload := `{"mapId":50,"targetX":8,"targetY":8,"direction":"RIGHT"}`
+			if kind != "cached-permission" {
+				testdb.Exec(t, wh.database, `INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'EVENT_GOT_SOULBADGE')`)
+				wh.EventFlags.flags[42] = map[string]bool{}
+			} else {
+				wh.EventFlags.flags[42] = map[string]bool{"EVENT_GOT_SOULBADGE": true}
+			}
+			switch kind {
+			case "targetless":
+				payload = `{}`
+			case "partial-target":
+				payload = `{"targetX":8}`
+			case "wrong-facing":
+				payload = `{"mapId":50,"targetX":8,"targetY":8,"direction":"UP"}`
+			case "invalid-facing":
+				payload = `{"mapId":50,"targetX":8,"targetY":8,"direction":"NORTH"}`
+			case "moving":
+				wh.PlayerMovement.players[42].Path = []PathNode{{X: 8, Y: 8}}
+			}
+			battleDispatch(t, wh, ses, opcodes.PokeSurfingRequest, payload)
+			var response struct{ Success bool }
+			if len(messages.streams) == 0 || json.Unmarshal(messages.streams[0].payload, &response) != nil {
+				t.Fatal("missing surf reply")
+			}
+			if response.Success != (kind == "durable-permission") {
+				t.Fatalf("surf kind=%s success=%v", kind, response.Success)
+			}
+			want := 7
+			if kind == "durable-permission" {
+				want = 8
+			}
+			assertStepPosition(t, wh, ses, want)
+		})
+	}
+}

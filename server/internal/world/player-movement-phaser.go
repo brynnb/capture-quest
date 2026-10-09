@@ -695,14 +695,14 @@ func isPokemonTower5FPurifiedZone(mapName string, x, y int) bool {
 // preserving its existing wild-only policy. The handler publishes effects.
 func (m *PlayerMovementManager) SurfTo(ctx context.Context, ses *session.Session, x, y, mapID int, direction string) (movementStepResult, error) {
 	charID := int(ses.Client.CharData().ID)
-	m.mu.RLock()
+	m.mu.Lock()
 	state := m.players[charID]
-	if state == nil || state.SessionID != ses.SessionID {
-		m.mu.RUnlock()
+	if state == nil || state.SessionID != ses.SessionID || len(state.Path) != 0 || state.activePlayerStep(time.Now()) != nil {
+		m.mu.Unlock()
 		return movementStepResult{}, fmt.Errorf("SURF movement owner absent")
 	}
 	sourceMap, sourceX, sourceY := state.MapID, state.CurrentX, state.CurrentY
-	m.mu.RUnlock()
+	m.mu.Unlock()
 	result, err := commitMovementStep(ctx, m.wh, int64(charID), movementStepCandidate{SourceMap: sourceMap, SourceX: sourceX, SourceY: sourceY, MapID: mapID, X: x, Y: y, Direction: normalizeWarpDirection(direction), SurfEntry: true})
 	if err != nil {
 		return movementStepResult{}, err

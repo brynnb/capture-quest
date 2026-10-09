@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+SURF entry delegates permission and effects to the existing movement transaction;
+targetless encounter generation is retired, following `f034af0`:
 identity-free fishing and shared field-executor bypass are retired locally,
 following `170a5ca`:
 field receipt identity/concurrency review and live battle retirement across process/native recovery,
@@ -81,6 +83,38 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## SURF authoritative entry checkpoint (2026-10-08)
+
+Caller inventory found that the live client always supplies an adjacent water
+target. The unused targetless server route duplicated global encounter/party
+loading and battle creation, while its cached permission gate could disagree with
+durable badge state. That route is removed. Entry uses the existing movement
+transaction for durable permission, water, position, Repel and encounter effects;
+no additional transaction coordinator or battle implementation was introduced.
+
+SURF requires both target coordinates and an existing session-owned movement
+source. It no longer registers a source from cached character coordinates.
+Facing must agree with target geometry; malformed facing and pending movement
+reject. The manager uses its write lock when retiring expired step authorization.
+Regression checks prove durable permission wins over stale cache in both
+directions, and rejected target/source requests preserve position.
+
+Verification: focused PostgreSQL regression (1.6s), full world (55.6s) and
+simulator (1.5s) race suites, all Go package compilation and diff checks pass.
+Both rendered Chromium/WebSocket SURF entry and deliberate Space-input checks
+pass (8.7s; `/var/tmp/capturequest-rendered.lFYS8a`). Native transport,
+reply-loss and process-recovery acceptance were not rerun for this checkpoint.
+
+Remaining: the preliminary water read still exists before authoritative
+transaction validation. SURF replies still use the legacy uncorrelated client
+adapter; source retirement, uncertain-result recovery and replay require the
+next scoped migration. The five-area roadmap and historical restore/Repel
+attribution remain incomplete. This checkpoint changes no generated contracts
+or production schema. Production deployment remains unauthorized.
+
+Next: review and migrate SURF reply identity and movement-owned recovery before
+migrating another field family.
 
 ## Fishing legacy caller retirement (2026-10-08)
 

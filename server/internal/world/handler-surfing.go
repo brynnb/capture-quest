@@ -1,14 +1,11 @@
 package world
 
 import (
-	"encoding/json"
 	"log"
-	"math/rand"
+	"strings"
 
 	"capturequest/internal/api/opcodes"
-	"capturequest/internal/db"
 	"capturequest/internal/logutil"
-	"capturequest/internal/pokebattle"
 	"capturequest/internal/session"
 )
 
@@ -19,182 +16,24 @@ type PokeSurfingRequestPayload struct {
 	Direction string `json:"direction,omitempty"`
 }
 
-// HandlePokeSurfing handles a surf request from the client.
-// Surfing triggers water encounters using encounter_type = 'water' in
-// phaser_wild_encounters. Each surf action has a Gen 1 style encounter
-// rate check (rand(256) < encounterRate). If no encounter triggers,
-// the player surfs safely.
+// SURF entry delegates gameplay permission and effects to the movement owner.
+// Targetless encounter generation is retired; ordinary water steps already run
+// the authoritative movement encounter policy.
 func HandlePokeSurfing(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	if !ses.HasValidClient() {
-		return false
-	}
-
 	var req PokeSurfingRequestPayload
-	if len(payload) > 0 {
-		if err := json.Unmarshal(payload, &req); err != nil {
-			ses.SendStreamJSON(map[string]interface{}{
-				"success": false,
-				"error":   "Invalid SURF request.",
-			}, opcodes.PokeSurfingResponse)
-			return false
-		}
+	reject := func(message string) {
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": message}, opcodes.PokeSurfingResponse)
 	}
-
-	charData := ses.Client.CharData()
-	if charData == nil {
+	if !ses.HasValidClient() || wh == nil || wh.PlayerMovement == nil {
+		reject("SURF movement owner unavailable.")
 		return false
 	}
-	charID := int64(charData.ID)
-
-	// Check if already in battle
-	if existing := getBattle(charID); existing != nil && !existing.IsOver() {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "Already in a battle",
-		}, opcodes.PokeSurfingResponse)
+	if err := decodePlayerMovement(payload, &req); err != nil || req.TargetX == nil || req.TargetY == nil {
+		reject("Select adjacent water to SURF.")
 		return false
 	}
-
-	mapID := int(charData.MapID)
-	if wh != nil && wh.ActorManager != nil && wh.ActorManager.IsOverworld(mapID) {
-		mapID = UnifiedOverworldMapID
-	}
-	playerX, playerY := int(charData.X), int(charData.Y)
-	if wh != nil && wh.PlayerMovement != nil {
-		if x, y, movementMapID, ok := wh.PlayerMovement.GetPosition(int(charData.ID)); ok {
-			playerX, playerY, mapID = x, y, movementMapID
-		}
-	}
-
-	myDB := db.GlobalWorldDB.DB
-	mapName := ""
-	var efm *EventFlagManager
-	if wh != nil && wh.Cutscenes != nil {
-		mapName = wh.Cutscenes.MapNameForID(mapID)
-	}
-	if wh != nil {
-		efm = wh.EventFlags
-	}
-
-	permission := CanUseFieldMove(charID, "SURF", efm)
-	if !permission.Allowed {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   permission.Message,
-		}, opcodes.PokeSurfingResponse)
-		return false
-	}
-
-	if SeafoamSurfBlocked(charID, mapName, playerX, playerY, efm) {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "The current is much too fast!",
-		}, opcodes.PokeSurfingResponse)
-		return false
-	}
-
-	if req.TargetX != nil && req.TargetY != nil {
-		return handlePokeSurfingTarget(ses, wh, charID, mapID, playerX, playerY, req)
-	}
-
-	// Check if water encounters exist for this map
-	encounterRate := pokebattle.GetEncounterRate(myDB, mapID, "water")
-	if encounterRate == 0 {
-		// No water encounters on this map — just surf safely
-		ses.SendStreamJSON(map[string]interface{}{
-			"success":   true,
-			"encounter": false,
-			"message":   "You're surfing!",
-		}, opcodes.PokeSurfingResponse)
-		return false
-	}
-
-	// Gen 1 encounter rate check: rand(256) < encounterRate
-	roll := rand.Intn(256)
-	if roll >= encounterRate {
-		// No encounter this surf step
-		ses.SendStreamJSON(map[string]interface{}{
-			"success":   true,
-			"encounter": false,
-		}, opcodes.PokeSurfingResponse)
-		return false
-	}
-
-	// Select a water encounter
-	pokemonID, level, err := pokebattle.SelectWildEncounter(myDB, mapID, "water")
-	if err != nil {
-		log.Printf("[Surfing] No water encounters for map %d: %v", mapID, err)
-		ses.SendStreamJSON(map[string]interface{}{
-			"success":   true,
-			"encounter": false,
-		}, opcodes.PokeSurfingResponse)
-		return false
-	}
-
-	// Build the wild Pokémon
-	wildPokemon, err := pokebattle.BuildWildPokemon(myDB, pokemonID, level)
-	if err != nil {
-		log.Printf("[Surfing] Failed to build wild pokemon %d: %v", pokemonID, err)
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "Failed to create encounter",
-		}, opcodes.PokeSurfingResponse)
-		return false
-	}
-
-	// Load player's party. Oak's starter script is the source of truth for the
-	// first Pokémon.
-	playerParty, err := pokebattle.LoadParty(myDB, charID)
-	if err != nil || len(playerParty) == 0 {
-		log.Printf("[Surfing] No party for char %d: %v", charID, err)
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "No Pokémon in party",
-		}, opcodes.PokeSurfingResponse)
-		return false
-	}
-
-	// Check if any party Pokémon can battle
-	hasAlive := false
-	for _, p := range playerParty {
-		if p.CurHP > 0 {
-			hasAlive = true
-			break
-		}
-	}
-	if !hasAlive {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "All your Pokémon have fainted",
-		}, opcodes.PokeSurfingResponse)
-		return false
-	}
-
-	// Create battle
-	battle := pokebattle.NewWildBattle(playerParty, wildPokemon)
-	configureBattleObedience(battle, charID, wh.EventFlags)
-	battle, err = startBattle(ses.CommandContext(), wh.database, charID, battle)
-	if err != nil {
-		log.Printf("[PokeBattle] Start failed for character %d: %v", charID, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not start battle. Please reconnect."}, opcodes.PokeSurfingResponse)
-		return false
-	}
-
-	log.Printf("[Surfing] %s encountered L%d %s while surfing on map %d",
-		charData.Name, level, wildPokemon.Name, mapID)
-
-	// Send surfing encounter response
-	ses.SendStreamJSON(map[string]interface{}{
-		"success":   true,
-		"encounter": true,
-		"message":   "A wild Pokémon appeared!",
-	}, opcodes.PokeSurfingResponse)
-
-	// Then send the battle start
-	resp := buildBattleStateResponse(battle)
-	ses.SendStreamJSON(resp, opcodes.PokeBattleStartResponse)
-
-	return false
+	source := wh.ownedPlayerSnapshot(ses, "")
+	return handlePokeSurfingTarget(ses, wh, int64(ses.Client.CharData().ID), source.MapID, source.X, source.Y, req)
 }
 
 func handlePokeSurfingTarget(
@@ -253,14 +92,13 @@ func handlePokeSurfingTarget(
 	}
 
 	direction := normalizeWarpDirection(req.Direction)
-	if direction == "" {
-		direction = directionFromAdjacentTiles(playerX, playerY, targetX, targetY)
+	expectedDirection := directionFromAdjacentTiles(playerX, playerY, targetX, targetY)
+	if strings.TrimSpace(req.Direction) != "" && (direction == "" || direction != expectedDirection) {
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "SURF facing disagrees with target."}, opcodes.PokeSurfingResponse)
+		return false
 	}
+	direction = expectedDirection
 
-	charIDInt := int(charID)
-	if _, _, _, ok := wh.PlayerMovement.GetPosition(charIDInt); !ok {
-		wh.PlayerMovement.RegisterPlayer(ses, charIDInt, playerX, playerY, currentMapID, direction)
-	}
 	result, err := wh.PlayerMovement.SurfTo(ses.CommandContext(), ses, targetX, targetY, targetMapID, direction)
 	if err != nil {
 		log.Printf("[Surf] Commit for %d: %v", charID, err)
