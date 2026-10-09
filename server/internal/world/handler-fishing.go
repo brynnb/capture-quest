@@ -2,20 +2,26 @@ package world
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log"
 	"math/rand"
 	"strings"
+	"time"
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
+	"capturequest/internal/db/cqitems"
+	"capturequest/internal/itemuse"
 	"capturequest/internal/logutil"
 	"capturequest/internal/pokebattle"
 	"capturequest/internal/session"
 )
 
 type PokeFishingRequestPayload struct {
-	ItemID    int32  `json:"itemId"` // Fallback rod item ID: 76=Old Rod, 77=Good Rod, 78=Super Rod
+	ItemID    int32  `json:"itemId"` // Catalog rod item ID; ownership and short name are resolved on the server.
 	RodType   string `json:"rodType,omitempty"`
 	MapID     *int   `json:"mapId,omitempty"`
 	X         *int   `json:"x,omitempty"`
@@ -27,7 +33,7 @@ type PokeFishingRequestPayload struct {
 // The client sends the rod item ID. The server checks if the player is facing
 // water, selects an encounter, and starts a wild battle.
 func HandlePokeFishing(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	if !ses.HasValidClient() {
+	if !ses.HasValidClient() || wh == nil || wh.database == nil {
 		return false
 	}
 
@@ -38,144 +44,112 @@ func HandlePokeFishing(ses *session.Session, payload []byte, wh *WorldHandler) b
 	}
 
 	charID := int64(ses.Client.CharData().ID)
-
-	// Check if already in battle
-	if existing := getBattle(charID); existing != nil && !existing.IsOver() {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "Already in a battle",
-		}, opcodes.PokeFishingResponse)
+	source := wh.ownedPlayerSnapshot(ses, "")
+	source.MapID = normalizedVisiblePlayerMapID(wh, source.MapID)
+	if wh.PlayerMovement == nil {
+		source.Direction = directionFromCharacterHeading(ses.Client.CharData().Heading)
+	}
+	if source.ServerMovementPending || (req.MapID != nil && *req.MapID != source.MapID) || (req.X != nil && *req.X != source.X) || (req.Y != nil && *req.Y != source.Y) || (req.Direction != "" && normalizeWarpDirection(req.Direction) != source.Direction) {
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Fishing source changed."}, opcodes.PokeFishingResponse)
 		return false
 	}
-
-	// Determine rod type
-	rodType := fishingRodType(req)
-	if rodType == "" {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "That's not a fishing rod",
-		}, opcodes.PokeFishingResponse)
-		return false
-	}
-
-	charData := ses.Client.CharData()
-	mapID, playerX, playerY := fishingPlayerPosition(ses, wh, req)
-	direction := normalizeWarpDirection(req.Direction)
-	if direction == "" && wh != nil && wh.PlayerMovement != nil {
-		if currentDirection, ok := wh.PlayerMovement.GetDirection(int(charData.ID)); ok {
-			direction = normalizeWarpDirection(currentDirection)
+	var battle *pokebattle.BattleState
+	var nibble bool
+	err := db.Transaction(ses.CommandContext(), wh.database, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, charID); err != nil {
+			return err
 		}
-	}
-	if direction == "" {
-		direction = directionFromCharacterHeading(charData.Heading)
-	}
-	fishable, err := isFacingFishableWater(ses.CommandContext(), wh, mapID, playerX, playerY, direction)
-	if err != nil {
-		logutil.Debugf("[Fishing] Water read map=%d position=(%d,%d) direction=%s: %v", mapID, playerX, playerY, direction, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Unable to read fishing water."}, opcodes.PokeFishingResponse)
-		return false
-	}
-	if !fishable {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "You can't fish here.",
-		}, opcodes.PokeFishingResponse)
-		return false
-	}
-
-	// Gen 1 fishing: 50% chance of "nothing bites" for Good Rod and Super Rod
-	// Old Rod always hooks something
-	if rodType != "old_rod" && rand.Intn(2) == 0 {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": true,
-			"hooked":  false,
-			"message": "Not even a nibble!",
-		}, opcodes.PokeFishingResponse)
-		return false
-	}
-
-	myDB := db.GlobalWorldDB.DB
-
-	// Select fishing encounter
-	pokemonID, level, err := pokebattle.SelectFishingEncounter(myDB, mapID, rodType)
-	if err != nil {
-		log.Printf("[Fishing] No fishing encounters for map %d rod %s: %v", mapID, rodType, err)
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": true,
-			"hooked":  false,
-			"message": "Not even a nibble!",
-		}, opcodes.PokeFishingResponse)
-		return false
-	}
-
-	// Build the wild Pokémon
-	wildPokemon, err := pokebattle.BuildWildPokemon(myDB, pokemonID, level)
-	if err != nil {
-		log.Printf("[Fishing] Failed to build wild pokemon %d: %v", pokemonID, err)
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "Failed to create encounter",
-		}, opcodes.PokeFishingResponse)
-		return false
-	}
-
-	// Load player's party. Oak's starter script is the source of truth for the
-	// first Pokémon.
-	playerParty, err := pokebattle.LoadParty(myDB, charID)
-	if err != nil || len(playerParty) == 0 {
-		log.Printf("[Fishing] No party for char %d: %v", charID, err)
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "No Pokémon in party",
-		}, opcodes.PokeFishingResponse)
-		return false
-	}
-
-	// Check if any party Pokémon can battle
-	hasAlive := false
-	for _, p := range playerParty {
-		if p.CurHP > 0 {
-			hasAlive = true
-			break
+		if err := requireNoOwnedBattleIn(tx, charID); err != nil {
+			return err
 		}
-	}
-	if !hasAlive {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "All your Pokémon have fainted",
-		}, opcodes.PokeFishingResponse)
-		return false
-	}
-
-	// Create battle
-	battle := pokebattle.NewWildBattle(playerParty, wildPokemon)
-	configureBattleObedience(battle, charID, wh.EventFlags)
-	battle, err = startBattle(ses.CommandContext(), wh.database, charID, battle)
+		var mapID, x, y int
+		if err := tx.QueryRow(`SELECT map_id,x,y FROM character_data WHERE id=$1`, charID).Scan(&mapID, &x, &y); err != nil {
+			return err
+		}
+		if normalizedVisiblePlayerMapID(wh, mapID) != source.MapID || x != source.X || y != source.Y {
+			return fmt.Errorf("fishing source changed")
+		}
+		if wh.PlayerMovement != nil {
+			wh.PlayerMovement.mu.Lock()
+			state := wh.PlayerMovement.players[int(charID)]
+			valid := state != nil && state.SessionID == ses.SessionID && state.MapID == source.MapID && state.CurrentX == x && state.CurrentY == y && state.Direction == source.Direction && len(state.Path) == 0 && state.activePlayerStep(time.Now()) == nil
+			wh.PlayerMovement.mu.Unlock()
+			if !valid {
+				return fmt.Errorf("fishing movement owner changed")
+			}
+		}
+		id := req.ItemID
+		if id <= 0 {
+			name := normalizeFishingRodName(req.RodType)
+			if name == "" {
+				return fmt.Errorf("not a fishing rod")
+			}
+			if err := tx.QueryRow(`SELECT id FROM cq_items WHERE short_name=$1`, strings.ToUpper(name)).Scan(&id); err != nil {
+				return err
+			}
+		}
+		owned, err := cqitems.NewStore(tx).FindInventoryItemByItemID(int32(charID), id)
+		if errors.Is(err, sql.ErrNoRows) {
+			return &itemuse.Rejection{Message: "You don't own that fishing rod."}
+		}
+		if err != nil {
+			return fmt.Errorf("owned fishing rod: %w", err)
+		}
+		if owned == nil {
+			return fmt.Errorf("fishing rod not owned")
+		}
+		rod := normalizeFishingRodName(owned.Item.ShortName)
+		if rod == "" || (req.RodType != "" && rod != normalizeFishingRodName(req.RodType)) {
+			return fmt.Errorf("fishing rod identity disagrees with catalog")
+		}
+		targetX, targetY, ok := fishingTargetTile(source.X, source.Y, source.Direction)
+		if !ok {
+			return fmt.Errorf("invalid fishing facing")
+		}
+		water, err := isSurfableWaterTileIn(ses.CommandContext(), tx.(db.ContextDBTX), wh, source.MapID, targetX, targetY)
+		if err != nil {
+			return err
+		}
+		if !water {
+			return &itemuse.Rejection{Message: "You can't fish here."}
+		}
+		if rod != "old_rod" && rand.Intn(2) == 0 {
+			nibble = true
+			return nil
+		}
+		pokemonID, level, err := pokebattle.SelectFishingEncounter(tx, source.MapID, rod)
+		if errors.Is(err, pokebattle.ErrNoEncounter) {
+			nibble = true
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		battle, _, err = prepareScriptedWildBattle(tx, charID, ScriptedWildBattleSpec{PokemonID: pokemonID, Level: level})
+		return err
+	})
 	if err != nil {
-		log.Printf("[PokeBattle] Start failed for character %d: %v", charID, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not start battle. Please reconnect."}, opcodes.PokeFishingResponse)
+		logutil.Debugf("[Fishing] Character %d: %v", charID, err)
+		message := "Unable to read fishing state."
+		var rejection *itemuse.Rejection
+		if errors.As(err, &rejection) {
+			message = rejection.Message
+		}
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": message}, opcodes.PokeFishingResponse)
 		return false
 	}
-
-	log.Printf("[Fishing] %s hooked L%d %s with %s on map %d",
-		charData.Name, level, wildPokemon.Name, rodType, mapID)
-
-	// Send fishing success response (client shows "Oh! A bite!" then opens battle)
-	ses.SendStreamJSON(map[string]interface{}{
-		"success": true,
-		"hooked":  true,
-		"message": "Oh! A bite!",
-	}, opcodes.PokeFishingResponse)
-
-	// Then send the battle start
-	resp := buildBattleStateResponse(battle)
-	ses.SendStreamJSON(resp, opcodes.PokeBattleStartResponse)
-
+	if nibble {
+		ses.SendStreamJSON(map[string]interface{}{"success": true, "hooked": false, "message": "Not even a nibble!"}, opcodes.PokeFishingResponse)
+		return false
+	}
+	setBattle(charID, battle)
+	ses.SendStreamJSON(map[string]interface{}{"success": true, "hooked": true, "message": "Oh! A bite!"}, opcodes.PokeFishingResponse)
+	ses.SendStreamJSON(buildBattleStateResponse(battle), opcodes.PokeBattleStartResponse)
 	return false
 }
 
-func fishingRodType(req PokeFishingRequestPayload) string {
-	switch strings.ToUpper(strings.TrimSpace(req.RodType)) {
+func normalizeFishingRodName(name string) string {
+	switch strings.ToUpper(strings.TrimSpace(name)) {
 	case "OLD_ROD", "OLD ROD", "OLD":
 		return "old_rod"
 	case "GOOD_ROD", "GOOD ROD", "GOOD":
@@ -183,41 +157,7 @@ func fishingRodType(req PokeFishingRequestPayload) string {
 	case "SUPER_ROD", "SUPER ROD", "SUPER":
 		return "super_rod"
 	}
-	switch req.ItemID {
-	case 76:
-		return "old_rod"
-	case 77:
-		return "good_rod"
-	case 78:
-		return "super_rod"
-	default:
-		return ""
-	}
-}
-
-func fishingPlayerPosition(ses *session.Session, wh *WorldHandler, req PokeFishingRequestPayload) (mapID, x, y int) {
-	charData := ses.Client.CharData()
-	mapID = int(charData.MapID)
-	x, y = int(charData.X), int(charData.Y)
-
-	if wh != nil && wh.PlayerMovement != nil {
-		if currentX, currentY, currentMapID, ok := wh.PlayerMovement.GetPosition(int(charData.ID)); ok {
-			x, y, mapID = currentX, currentY, currentMapID
-		}
-	}
-	if req.MapID != nil {
-		mapID = *req.MapID
-	}
-	if req.X != nil {
-		x = *req.X
-	}
-	if req.Y != nil {
-		y = *req.Y
-	}
-	if wh != nil && wh.ActorManager != nil && wh.ActorManager.IsOverworld(mapID) {
-		mapID = UnifiedOverworldMapID
-	}
-	return mapID, x, y
+	return ""
 }
 
 func isFacingFishableWater(ctx context.Context, wh *WorldHandler, mapID, playerX, playerY int, direction string) (bool, error) {

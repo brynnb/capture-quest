@@ -259,7 +259,7 @@ func (s *Store) FindInventoryItemByItemID(charID int32, itemID int32) (*CQInvent
 		FROM cq_character_inventory ci
 		JOIN cq_item_instances ii ON ii.id = ci.item_instance_id
 		JOIN cq_items i ON i.id = ii.item_id
-		WHERE ci.character_id = $1 AND ii.item_id = $2
+		WHERE ci.character_id = $1 AND ii.item_id = $2 AND ii.owner_id=$1 AND ii.owner_type=0 AND ii.quantity>0
 		LIMIT 1
 	`, charID, itemID).Scan(
 		&inv.Instance.ID, &inv.Instance.ItemID, &inv.Instance.Charges, &inv.Instance.Quantity, &inv.Instance.OwnerType,

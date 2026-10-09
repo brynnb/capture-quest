@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+fishing source/rod/encounter/party validation joins the existing battle transaction,
+following `fbf6952`:
 interrupted Safari exit narrative recovers through scene startup and owned reads,
 following `7738e87`:
 scoped Safari HUD and owned exit consumers replace global callbacks,
@@ -71,6 +73,59 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Fishing authoritative source and atomic battle prerequisite (2026-10-08)
+
+The queued field-action audit found fishing accepted request map/X/Y/facing as
+source authority, trusted rod names/numeric mappings without durable ownership,
+and loaded encounters/party through the global database before battle commit.
+Fishing now captures the session-owned source; supplied location/facing are only
+stale-source expectations. The transaction locks the character, rejects owned
+battles, checks the durable pose and current movement owner (including route or
+issued-step admission), and resolves the rod through catalog and inventory.
+Cached character coordinates cannot override the live owner. Interior/unified
+map identity uses the existing map normalization rule.
+
+The existing item-ID inventory lookup now verifies link/instance owner agreement,
+character ownership type and positive quantity, matching the retained instance
+lookup policy. Fishing, battle items and script consumers share that query.
+Numeric rod IDs are catalog selectors, not a hardcoded rod mapping; stable names
+normalize only supported rod spellings. A conflicting name/ID rejects. Alternate
+catalog ID acceptance is tested with an actually owned Old Rod.
+
+Water reads, encounter selection and the existing scripted wild-battle
+preparation run on that same bounded transaction handle. Party readiness,
+obedience, battle persistence and seen registration use the authoritative battle
+primitive; live battle publication happens only after commit. No inventory
+revision coordinator is forced onto reusable rod/battle ownership. The global
+fishing loaders and position-override helper are retired.
+
+Shared wild/fishing selectors now propagate scan/iteration errors instead of
+accepting partial rows. Only an explicit no-encounter result can become a valid
+no-bite outcome; SQL/catalog failure rejects success. Existing rod chance and
+encounter-selection policy remain unchanged. This is not a claim of newly
+verified historical fishing balance.
+
+Focused PostgreSQL checks cover remote/facing forgery, linked but unowned rods,
+conflicting rod metadata, catalog failure, late commit rollback, moving owner,
+live owner versus stale cached pose, alternate catalog IDs and duplicate active
+start, with the global database removed. Water-failure fixtures now own a rod
+and match the actual direction, so they reach the intended injected read instead
+of an earlier denial. Pool cancellation and missing water-source failures remain
+explicit. The movement expiry helper is called under its required write lock.
+
+World (66.5s), battle (4.4s), inventory (2.5s) and simulator (1.5s) PostgreSQL
+race suites passed; final focused catalog/source checks passed (3.4s). All Go
+packages compile, canonical tygo generation/typecheck and diff checks pass.
+Two rendered Old Rod success/land-rejection cases passed in 7.7s
+(`/var/tmp/capturequest-rendered.1vwcxC`). No broader fishing recovery or native
+acceptance is inferred.
+Remaining: fishing wire identity/client lifetime, duplicate/lost acknowledgement
+and process-death start recovery, further field-action source/write audits and
+native acceptance. This backend prerequisite does not close the whole field
+family or any of the five roadmap areas. Next: review the shared encounter/item
+boundary, then correlate the live fishing request and its recovery. Local only;
+no push or deployment. Historical restore/Repel attribution remains open.
 
 ## Safari boundary review: interrupted narrative and aggregate freshness (2026-10-08)
 

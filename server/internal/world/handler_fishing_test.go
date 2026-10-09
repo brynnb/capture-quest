@@ -90,9 +90,9 @@ func TestFishingRodTypePrefersStableRodName(t *testing.T) {
 			want: "super_rod",
 		},
 		{
-			name: "legacy old rod id",
+			name: "numeric IDs are catalog selectors, not rod names",
 			req:  PokeFishingRequestPayload{ItemID: 76},
-			want: "old_rod",
+			want: "",
 		},
 		{
 			name: "unknown",
@@ -103,8 +103,8 @@ func TestFishingRodTypePrefersStableRodName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := fishingRodType(tt.req); got != tt.want {
-				t.Fatalf("fishingRodType(%#v) = %q, want %q", tt.req, got, tt.want)
+			if got := normalizeFishingRodName(tt.req.RodType); got != tt.want {
+				t.Fatalf("normalizeFishingRodName(%#v) = %q, want %q", tt.req, got, tt.want)
 			}
 		})
 	}
@@ -133,7 +133,7 @@ func TestDirectionFromCharacterHeading(t *testing.T) {
 func TestFishingOldRodFacingWaterStartsBattle(t *testing.T) {
 	testDB := openFishingTestDB(t)
 	previousWorldDB := db.GlobalWorldDB
-	db.GlobalWorldDB = &db.WorldDB{DB: testDB}
+	db.GlobalWorldDB = nil
 	t.Cleanup(func() {
 		db.GlobalWorldDB = previousWorldDB
 		activeBattlesMu.Lock()
@@ -226,7 +226,12 @@ func openFishingTestDB(t *testing.T) *sql.DB {
 	t.Cleanup(func() { testDB.Close() })
 
 	if _, err := testDB.Exec(`
-        INSERT INTO character_data(id,name) VALUES(42,'fishing');
+        INSERT INTO character_data(id,name,map_id,x,y,heading) VALUES(42,'fishing',1,5,5,90);
+ INSERT INTO cq_items(id,name,short_name) VALUES(76,'Old Rod','OLD_ROD');
+ INSERT INTO cq_item_instances(id,item_id,quantity,owner_type,owner_id) VALUES(1,76,1,0,42);
+ INSERT INTO cq_character_inventory(character_id,item_instance_id) VALUES(42,1);
+ INSERT INTO phaser_maps(id,name,width,height) VALUES(1,'ROOM',10,10);
+ INSERT INTO phaser_tiles(map_id,x,y,tile_image_id,collision_type) VALUES(1,5,5,0,1),(1,6,5,0,2);
 		INSERT INTO phaser_pokemon (
 			id, name, type_1, type_2, hp, atk, def, spd, spc, catch_rate, base_exp, growth_rate
 		) VALUES
@@ -244,4 +249,77 @@ func openFishingTestDB(t *testing.T) *sql.DB {
 		t.Fatalf("seed fishing db: %v", err)
 	}
 	return testDB
+}
+
+func TestFishingRejectsForgedSourceUnownedRodAndFailedCommit(t *testing.T) {
+	for _, kind := range []string{"remote", "facing", "unowned", "rod-disagreement", "catalog-error", "commit-error", "moving", "owned-source", "catalog-id", "catalog-alias", "success"} {
+		t.Run(kind, func(t *testing.T) {
+			database := openFishingTestDB(t)
+			previous := db.GlobalWorldDB
+			db.GlobalWorldDB = nil
+			t.Cleanup(func() { db.GlobalWorldDB = previous; forgetBattle(42, getBattle(42)) })
+			messages := &recordingMessenger{}
+			ses := &session.Session{SessionID: 1, Authenticated: true, Messenger: messages, Client: &testSessionClient{char: &model.CharacterData{ID: 42, MapID: 1, X: 5, Y: 5, Heading: 90}}}
+			wh := &WorldHandler{database: database, ActorManager: &PhaserActorManager{collisionMap: map[int]map[string]int{}}}
+			request := PokeFishingRequestPayload{ItemID: 76, RodType: "OLD_ROD", Direction: "RIGHT"}
+			switch kind {
+			case "catalog-id":
+				request.RodType = ""
+			case "catalog-alias":
+				testdb.Exec(t, database, `INSERT INTO cq_items(id,name,short_name) VALUES(500,'Catalog Old Rod','OLD_ROD'); UPDATE cq_item_instances SET item_id=500 WHERE id=1`)
+				request.ItemID = 500
+				request.RodType = ""
+			case "moving":
+				wh.PlayerMovement = NewPlayerMovementManager(wh, wh.ActorManager)
+				wh.PlayerMovement.RegisterPlayer(ses, 42, 5, 5, 1, "RIGHT")
+				wh.PlayerMovement.players[42].Path = []PathNode{{X: 6, Y: 5}}
+			case "owned-source":
+				wh.PlayerMovement = NewPlayerMovementManager(wh, wh.ActorManager)
+				wh.PlayerMovement.RegisterPlayer(ses, 42, 5, 5, 1, "RIGHT")
+				ses.Client.CharData().X = 99
+				ses.Client.CharData().Y = 99
+			case "remote":
+				x := 99
+				request.X = &x
+			case "facing":
+				request.Direction = "LEFT"
+			case "unowned":
+				testdb.Exec(t, database, `UPDATE cq_item_instances SET owner_id=99 WHERE id=1`)
+			case "rod-disagreement":
+				request.RodType = "SUPER_ROD"
+			case "catalog-error":
+				testdb.Exec(t, database, `ALTER TABLE phaser_pokemon RENAME TO unavailable_species`)
+			case "commit-error":
+				testdb.Exec(t, database, `CREATE FUNCTION reject_fishing() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'late fishing failure'; END $$; CREATE CONSTRAINT TRIGGER reject_fishing AFTER INSERT ON character_battle_state DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_fishing()`)
+			}
+			payload, err := json.Marshal(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			HandlePokeFishing(ses, payload, wh)
+			var response struct {
+				Success bool
+				Hooked  bool
+			}
+			if len(messages.streams) == 0 || json.Unmarshal(messages.streams[0].payload, &response) != nil {
+				t.Fatal("missing terminal fishing response")
+			}
+			var battles, seen int
+			database.QueryRow(`SELECT COUNT(*) FROM character_battle_state WHERE character_id=42`).Scan(&battles)
+			database.QueryRow(`SELECT COUNT(*) FROM character_pokedex WHERE character_id=42`).Scan(&seen)
+			if kind == "success" || kind == "owned-source" || kind == "catalog-id" || kind == "catalog-alias" {
+				if !response.Success || !response.Hooked || battles != 1 || seen != 1 || getBattle(42) == nil {
+					t.Fatalf("successful fishing=%+v battles=%d seen=%d", response, battles, seen)
+				}
+				messages.streams = nil
+				HandlePokeFishing(ses, payload, wh)
+				json.Unmarshal(messages.streams[0].payload, &response)
+				if response.Success {
+					t.Fatal("duplicate created a second battle")
+				}
+			} else if response.Success || battles != 0 || seen != 0 || getBattle(42) != nil {
+				t.Fatalf("rejected fishing=%+v battles=%d seen=%d", response, battles, seen)
+			}
+		})
+	}
 }

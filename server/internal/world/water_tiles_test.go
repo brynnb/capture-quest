@@ -44,6 +44,12 @@ func TestWaterPreflightReportsOwnedReadFailure(t *testing.T) {
 		for _, failure := range []string{"pool-cancel", "missing-source"} {
 			t.Run(family+"/"+failure, func(t *testing.T) {
 				wh, ses, messages := setupIssuedStep(t)
+				if family == "fishing" {
+					wh.PlayerMovement.mu.Lock()
+					wh.PlayerMovement.players[42].Direction = "RIGHT"
+					wh.PlayerMovement.mu.Unlock()
+					testdb.Exec(t, wh.database, `INSERT INTO cq_items(id,name,short_name) VALUES(76,'Old Rod','OLD_ROD'); INSERT INTO cq_item_instances(id,item_id,quantity,owner_type,owner_id) VALUES(100,76,1,0,42); INSERT INTO cq_character_inventory(character_id,item_instance_id) VALUES(42,100)`)
+				}
 				wh.ActorManager.InvalidateCollisionMap(50)
 				old := db.GlobalWorldDB
 				db.GlobalWorldDB = nil
@@ -91,7 +97,7 @@ func TestWaterPreflightReportsOwnedReadFailure(t *testing.T) {
 				if err := json.Unmarshal(messages.streams[0].payload, &response); err != nil {
 					t.Fatal(err)
 				}
-				wanted := "Unable to read fishing water."
+				wanted := "Unable to read fishing state."
 				if family == "surf" {
 					wanted = "Unable to read water."
 				}

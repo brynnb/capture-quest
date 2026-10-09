@@ -738,7 +738,7 @@ export interface FieldMoveUseResponsePayload {
 // source: handler-fishing.go
 
 export interface PokeFishingRequestPayload {
-  itemId: number /* int32 */; // Fallback rod item Id: 76=Old Rod, 77=Good Rod, 78=Super Rod
+  itemId: number /* int32 */; // Catalog rod item ID; ownership and short name are resolved on the server.
   rodType?: string;
   mapId?: number /* int */;
   x?: number /* int */;
