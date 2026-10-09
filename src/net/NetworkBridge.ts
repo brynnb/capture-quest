@@ -1,3 +1,4 @@
+import {acceptSafariVisitNotice,shouldRecoverSafariExit} from "@/phaser-game/services/SafariVisitService";
 import { recoverBattlePublication } from "@/phaser-game/services/BattleCommandService";
 import { WorldSocket } from "./index";
 import * as OpCodes from "./generated/opcodes";
@@ -217,16 +218,16 @@ export class NetworkBridge {
 
       // Safari Zone (Phase 11.3)
       case OpCodes.SafariZoneEnterResponse:
-        this.handleSafariEvent("safariZoneEnter", data);
+        if(acceptSafariVisitNotice(data)==="refresh")void recoverBattlePublication({},"safari-visit");
         break;
       case OpCodes.SafariBattleStartNotify:
         this.handleSafariBattleStart(data as Record<string, unknown>);
         break;
       case OpCodes.SafariZoneStepUpdate:
-        this.handleSafariEvent("safariStepUpdate", data);
+        if(acceptSafariVisitNotice(data)==="refresh")void recoverBattlePublication({},"safari-visit");
         break;
       case OpCodes.SafariZoneExitNotify:
-        this.handleSafariEvent("safariZoneExit", data);
+        if(shouldRecoverSafariExit(data))void recoverBattlePublication(data as Record<string,unknown>,"safari-exit");
         break;
 
       // Pokédex & UI (Phase 10)
@@ -544,13 +545,6 @@ export class NetworkBridge {
     const eventName = eventMap[opcode] || "gameCornerUnknown";
     console.log(`[NetworkBridge] Game Corner event: ${eventName}`, data);
     window.dispatchEvent(new CustomEvent(eventName, { detail: data }));
-  }
-
-  private handleSafariEvent(eventName: string, data: unknown) {
-    console.log(`[NetworkBridge] Safari event: ${eventName}`, data);
-    window.dispatchEvent(
-      new CustomEvent(eventName, { detail: data })
-    );
   }
 
   private handleSafariBattleStart(data: Record<string, unknown>) {

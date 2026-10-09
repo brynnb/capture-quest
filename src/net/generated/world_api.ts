@@ -1189,6 +1189,9 @@ export interface SafariBattleActionRequest {
   action: string;
 }
 export interface SafariBattleActionResponse {
+  characterId: number /* int64 */;
+  visitId: string;
+  visitRevision: number /* int64 */;
   exitMessage?: string;
   playerParty?: PokemonDTO[];
   success: true;
@@ -1515,6 +1518,7 @@ export interface SafariSession {
   capture?: any /* pokebattle.CapturePlacement */;
 }
 export interface SafariEntryResult {
+  visit?: SafariSession;
   success: boolean;
   message: string;
   money: number /* int */;

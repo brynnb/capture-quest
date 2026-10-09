@@ -1,7 +1,6 @@
-import type { SafariZoneExitNotify } from "@/net/generated/protocol";
-import { Scene } from "phaser";
+import {bindSafariVisitView} from "../../services/SafariVisitService";
 import usePokemonDialogueStore from "@/stores/PokemonDialogueStore";
-import usePokeBattleStore from "@/stores/PokeBattleStore";
+import { Scene } from "phaser";
 import { PhaserActor } from "@/net/generated/world_api";
 import { TileViewerOverlays } from "./TileViewerOverlays";
 import { MapRenderer } from "../../renderers/MapRenderer";
@@ -15,10 +14,11 @@ interface TileViewerEventBridgeDeps {
 }
 
 export class TileViewerEventBridge {
+  private safariUnsubscribe:(()=>void)|null=null;
   private elevatorFloorsHandler: ((e: Event) => void) | null = null;
-  private safariEnterHandler: ((e: Event) => void) | null = null;
-  private safariExitHandler: ((e: Event) => void) | null = null;
-  private safariStepHandler: ((e: Event) => void) | null = null;
+
+
+
   private gameCornerPrizeHandler: ((e: Event) => void) | null = null;
   private gameCornerBuyHandler: ((e: Event) => void) | null = null;
   private gameCornerCoinHandler: ((e: Event) => void) | null = null;
@@ -37,61 +37,7 @@ export class TileViewerEventBridge {
     };
     window.addEventListener("elevatorFloors", this.elevatorFloorsHandler);
 
-    this.safariEnterHandler = (event: Event) => {
-      const data = (event as CustomEvent).detail as {
-        success: boolean;
-        stepsLeft: number;
-        ballsLeft: number;
-      };
-      if (data.success) {
-        console.log(
-          `[Safari] Entered Safari Zone: ${data.stepsLeft} steps, ${data.ballsLeft} balls`,
-        );
-        this.deps.overlays.updateSafariHUD(data.stepsLeft, data.ballsLeft);
-      } else {
-        this.deps.overlays.destroySafariHUD();
-      }
-    };
-    window.addEventListener("safariZoneEnter", this.safariEnterHandler);
-
-    this.safariExitHandler = (event: Event) => {
-      const data = (event as CustomEvent<SafariZoneExitNotify>).detail;
-      console.log("[Safari] Zone exit:", data);
-      if (usePokeBattleStore.getState().isSafari) {
-        usePokeBattleStore.getState().closeBattle();
-      }
-      this.deps.overlays.destroySafariHUD();
-      usePokemonDialogueStore
-        .getState()
-        .openDialogue(
-          [data.message || "PA: Ding-dong! Your SAFARI GAME is over!"],
-          null,
-          undefined,
-          () => {
-            window.dispatchEvent(
-              new CustomEvent("warpTileTeleport", {
-                detail: {
-                  mapId: data.mapId,
-                  x: data.x,
-                  y: data.y,
-                  direction: data.direction,
-                  serverCommitted: true,
-                },
-              }),
-            );
-          },
-        );
-    };
-    window.addEventListener("safariZoneExit", this.safariExitHandler);
-
-    this.safariStepHandler = (event: Event) => {
-      const data = (event as CustomEvent).detail as {
-        stepsLeft: number;
-        ballsLeft: number;
-      };
-      this.deps.overlays.updateSafariHUD(data.stepsLeft, data.ballsLeft);
-    };
-    window.addEventListener("safariStepUpdate", this.safariStepHandler);
+ this.safariUnsubscribe=bindSafariVisitView(view=>{if(view?.active)this.deps.overlays.updateSafariHUD(view.stepsLeft,view.ballsLeft);else this.deps.overlays.destroySafariHUD();});
 
     this.gameCornerPrizeHandler = (event: Event) => {
       const data = (event as CustomEvent).detail;
@@ -157,18 +103,7 @@ export class TileViewerEventBridge {
       window.removeEventListener("elevatorFloors", this.elevatorFloorsHandler);
       this.elevatorFloorsHandler = null;
     }
-    if (this.safariEnterHandler) {
-      window.removeEventListener("safariZoneEnter", this.safariEnterHandler);
-      this.safariEnterHandler = null;
-    }
-    if (this.safariExitHandler) {
-      window.removeEventListener("safariZoneExit", this.safariExitHandler);
-      this.safariExitHandler = null;
-    }
-    if (this.safariStepHandler) {
-      window.removeEventListener("safariStepUpdate", this.safariStepHandler);
-      this.safariStepHandler = null;
-    }
+ this.safariUnsubscribe?.();this.safariUnsubscribe=null;
     if (this.gameCornerPrizeHandler) {
       window.removeEventListener("gameCornerPrizeList", this.gameCornerPrizeHandler);
       this.gameCornerPrizeHandler = null;

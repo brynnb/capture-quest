@@ -1,6 +1,7 @@
 package world
 
 import (
+	"capturequest/internal/protocol"
 	"context"
 	"encoding/json"
 	"sync"
@@ -331,6 +332,12 @@ func TestSafariExpiryCommitFailurePublishesNothing(t *testing.T) {
 	if len(messages.streams) != 1 || messages.streams[0].opcode != opcodes.SafariZoneExitNotify {
 		t.Fatalf("expiry=%+v", messages.streams)
 	}
+	var notice protocol.SafariZoneExitNotify
+	saved, err := wh.Safari.GetSession(context.Background(), 42)
+	if err != nil || json.Unmarshal(messages.streams[0].payload, &notice) != nil || notice.CharacterID != 42 || notice.VisitID != saved.VisitID || notice.VisitRevision != saved.Revision || notice.Active || notice.Message != SafariExpiryMessage {
+		t.Fatalf("unscoped/incorrect expiry=%+v state=%+v error=%v", notice, saved, err)
+	}
+
 	if err := database.QueryRow(`SELECT map_id FROM character_data WHERE id=42`).Scan(&mapID); err != nil || mapID != 156 {
 		t.Fatalf("expiry position=%d %v", mapID, err)
 	}

@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+scoped Safari HUD and owned exit consumers replace global callbacks,
+following `6af6bbd`:
 Safari visit identity/revision and owned terminal narrative prerequisite,
 following `5ea7000`:
 Safari battle starts and standalone blackout publication reuse owned recovery,
@@ -67,6 +69,58 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Scoped Safari HUD and owned exit consumer (2026-10-08)
+
+Entry/status, scripted entry, debug fixtures and movement step publishers share
+one Safari visit-state DTO/helper: character ID, visit UUID/revision, active state
+and committed counters. Entry results carry their committed visit so publishers
+do not query again or construct a competing state. Expiry embeds that identity
+in the existing exit envelope. Correlated Safari action replies also carry visit
+identity, so their acknowledged counters use the same HUD boundary. No separate
+ledger, broker or per-step aggregate polling was introduced.
+
+SafariVisitService is the character/transport-scoped HUD view. An owned gameplay
+snapshot initializes it; same-visit updates advance only a strictly newer
+revision. Older/foreign packets cannot rewind or reopen the view. A different
+visit or scoped status/reset hint requires the existing owned recovery read.
+Character/screen/transport retirement clears private state. Bounds reuse the
+canonical generated Safari limits. The scene binds one view subscriber; global
+`safariZoneEnter`, `safariStepUpdate` and `safariZoneExit` handlers are retired.
+
+Exit uses the shared publication reader and its authoritative inactive visit,
+expiry message and committed pose. It opens owned narrative, then projects that
+pose only on valid completion. Callback identity includes scene, character,
+transport, movement view and the same terminal visit revision; a new visit cannot
+reuse an older exit callback. Local battle presentation retires without sending
+another Close mutation. No packet coordinates or synthesized fallback message
+establish a destination. A final step can settle while expiry is being read;
+that case makes one fresh owned read from the new movement view, retaining the
+movement fence rather than applying the older snapshot.
+
+Verification: world (56.5s) and simulator (1.5s) PostgreSQL race suites pass;
+expiry publication matches committed visit identity after rollback/retry. Client
+integration passes (29 files/380 tests), with focused monotonic/foreign/new-visit,
+terminal narrative and callback checks. Typecheck, canonical tygo generation,
+asset validation, build and diff checks pass. An initial rendered run was
+invalidated by Vite hot reload during edits; unchanged-source expiry then exposed
+and verified the bounded final-step retry.
+
+Final Chromium/WebSocket run passed nine cases in 1.1m:
+`/var/tmp/capturequest-rendered.3ZM8or`. It includes actual historical counter/exit
+browser delivery after character replacement (no HUD/dialogue/foreign warp),
+existing Safari entry/run/expiry and lost capture acknowledgement with party/PC
+placement, plus prior Safari-start/blackout retirement checks. The source PA
+expiry dialogue screenshot was visually inspected before gate projection.
+
+Remaining: review shared read/exit callback behavior across scene/reentry and
+process replacement, especially narrative interrupted before dismissal; expand
+native and writer/source acceptance and retire remaining legacy mutation/read
+families in the finite matrix. Coordinated notification-contract activation and
+v3 blob rollback compatibility remain deployment concerns; no deployment or push
+occurred. All five original goal areas and historical restore/Repel attribution
+remain active. Next: review this consolidated Safari boundary before migrating
+another family.
 
 ## Safari visit identity prerequisite (2026-10-08)
 

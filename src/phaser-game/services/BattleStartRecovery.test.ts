@@ -1,6 +1,6 @@
 import {afterEach,beforeEach,expect,test,vi} from "vitest";
 const mock=vi.hoisted(()=>({read:vi.fn(),retire:new Set<()=>void>(),generation:0}));
-vi.mock("@/net",()=>({WorldSocket:{get sessionGeneration(){return mock.generation}},OpCodes:{}}));
+vi.mock("@/net",()=>({WorldSocket:{get sessionGeneration(){return mock.generation},subscribeSessionRetirement:(cb:()=>void)=>{mock.retire.add(cb);return()=>mock.retire.delete(cb)}},OpCodes:{}}));
 vi.mock("@/net/index",()=>({WorldSocket:{get sessionGeneration(){return mock.generation},subscribeSessionRetirement:(cb:()=>void)=>{mock.retire.add(cb);return()=>mock.retire.delete(cb)}}}));
 vi.mock("./GameplayRecoveryService",()=>({readCurrentGameplayState:mock.read,applyGameplaySnapshot:vi.fn(),applyGameplayResourceSnapshot:vi.fn()}));
 vi.mock("@/services/audio/AudioManager",()=>({default:{playSFX:vi.fn(),playMusic:vi.fn()}}));
@@ -39,7 +39,7 @@ test("failure permits a fresh hint without resending a start command",async()=>{
 });
 
 test("Safari publication uses current identity and leaves a duplicate queue intact",async()=>{
- const value={...snapshot(null),safari:{active:true,battleId:"safari",revision:2,ballsLeft:25,stepsLeft:400,pokemon:{id:25,name:"PIKACHU",level:5,hp:20,maxHp:20},playerParty:[pokemon]}} as GameplayStateResponse;
+ const value={...snapshot(null),safari:{visitId:"visit",visitRevision:1,active:true,battleId:"safari",revision:2,ballsLeft:25,stepsLeft:400,pokemon:{id:25,name:"PIKACHU",level:5,hp:20,maxHp:20},playerParty:[pokemon]}} as GameplayStateResponse;
  mock.read.mockResolvedValue(value);await recoverBattlePublication({battleId:"old",revision:1},"safari-start");expect(usePokeBattleStore.getState()).toMatchObject({battleId:"safari",revision:2,isSafari:true});
  const generation=usePokeBattleStore.getState().presentationGeneration;await recoverBattlePublication({},"safari-start");expect(usePokeBattleStore.getState().presentationGeneration).toBe(generation);
 });

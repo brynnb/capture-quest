@@ -1,14 +1,16 @@
+import {bindSafariVisitView} from "./SafariVisitService";
+import useGameScreenStore from "@/stores/GameScreenStore";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { GameplayStateResponse } from "@/net/generated/world_api";
 const state = vi.hoisted(() => ({
   listeners: new Set<(data: unknown) => void>(), send: vi.fn(), apply: vi.fn(), dispatch: vi.fn(), cutscene: vi.fn(),
   wallet: vi.fn(), flags: vi.fn(),
-  character: null as unknown as { handleCharacterWalletData: (wallet: unknown) => void; setEventFlags: (flags: string[]) => void },
+  character: null as unknown as { characterProfile:{id:number}; handleCharacterWalletData: (wallet: unknown) => void; setEventFlags: (flags: string[]) => void },
   current: null as unknown as { restoreGameplay: (snapshot: unknown) => void },
 }));
-vi.mock("@/net", () => ({ OpCodes: { TrainerEncounterNotify: 75 } }));
+vi.mock("@/net", () => ({ WorldSocket:{sessionGeneration:0,subscribeSessionRetirement:()=>()=>{}},OpCodes: { TrainerEncounterNotify: 75 } }));
 vi.mock("@/stores/PokeBattleStore", () => ({ default: { getState: () => state.current } }));
-vi.mock("@/stores/PlayerCharacterStore", () => ({ default: { getState: () => state.character } }));
+vi.mock("@/stores/PlayerCharacterStore", () => ({ default: { getState: () => state.character, subscribe:()=>()=>{} } }));
 vi.mock("./CutsceneService", () => ({ handleCutsceneStart: state.cutscene }));
 vi.mock("./PhaserNetworkService", () => ({
   isConnected: () => true,
@@ -21,7 +23,7 @@ import usePokemonPCStore from "@/stores/PokemonPCStore";
 import { applyGameplaySnapshot, applyGameplayResourceSnapshot, recoverGameplayState, readCurrentGameplayState } from "./GameplayRecoveryService";
 const snapshot = (requestId: string): GameplayStateResponse => ({ pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, commandRevision: 0, inventory: [], wallet: { characterId: 42, pokedollars: 0 }, party: [], eventFlags: [], success: true, requestId, position: { success: true, requestId, mapId: 50, x: 7, y: 8, direction: "UP", serverMovementPending: false }, battle: null, safari: null, trainer: null, cutscene: null });
 const receive = (data: unknown) => state.listeners.forEach(listener => listener(data));
-beforeEach(() => { useCQInventoryStore.getState().setInventory([], 0); usePokemonPartyStore.getState().clearParty(); state.current = { restoreGameplay: state.apply }; state.character = { handleCharacterWalletData: state.wallet, setEventFlags: state.flags }; });
+beforeEach(() => { useGameScreenStore.setState({currentScreen:"game"}); useCQInventoryStore.getState().setInventory([], 0); usePokemonPartyStore.getState().clearParty(); state.current = { restoreGameplay: state.apply }; state.character = { characterProfile:{id:42},handleCharacterWalletData: state.wallet, setEventFlags: state.flags }; });
 afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); state.listeners.clear(); });
 
 test("resource-only publication leaves battle and issued-plan presentation with their owners",()=>{
@@ -66,7 +68,7 @@ test("malformed PC identity and a foreign source map cannot publish any gameplay
 });
 
 test("one correlated current snapshot clears stale state and redelivers its issued plans", async () => {
-  const safari = vi.fn(); window.addEventListener("safariZoneEnter", safari);
+  const safari = vi.fn();const stop=bindSafariVisitView(safari);safari.mockClear();
   const result = recoverGameplayState(50);
   const request = state.send.mock.calls[0][0];
   receive(snapshot("obsolete")); expect(state.apply).not.toHaveBeenCalled();
@@ -75,8 +77,8 @@ test("one correlated current snapshot clears stale state and redelivers its issu
   receive(reply); await result;
   expect(state.apply).toHaveBeenCalledOnce(); expect(state.apply).toHaveBeenCalledWith(reply);
   expect(state.dispatch).toHaveBeenCalledWith(75, reply.trainer);
-  expect((safari.mock.calls[0][0] as CustomEvent).detail).toEqual({ success: false });
-  expect(state.listeners.size).toBe(0); window.removeEventListener("safariZoneEnter", safari);
+  expect(safari).toHaveBeenCalledWith(null);
+  expect(state.listeners.size).toBe(0); stop();
 });
 
 test("scene retirement removes the listener and cannot apply a late reply", async () => {

@@ -1210,22 +1210,15 @@ func sendDebugSafariState(ses *session.Session, charID int64, wh *WorldHandler, 
 	if session == nil || !session.Active {
 		if IsInSafariZone(mapID) {
 			ses.SendStreamJSON(map[string]interface{}{
-				"success": false,
+				"success": false, "characterId": charID, "refresh": true,
 				"message": "no active safari session",
 			}, opcodes.SafariZoneEnterResponse)
 		}
 		return
 	}
 
-	ses.SendStreamJSON(map[string]interface{}{
-		"success":   true,
-		"ballsLeft": session.BallsLeft,
-		"stepsLeft": session.StepsLeft,
-	}, opcodes.SafariZoneEnterResponse)
-	ses.SendStreamJSON(map[string]interface{}{
-		"stepsLeft": session.StepsLeft,
-		"ballsLeft": session.BallsLeft,
-	}, opcodes.SafariZoneStepUpdate)
+	sendSafariVisitState(ses, charID, session, opcodes.SafariZoneEnterResponse)
+	sendSafariVisitState(ses, charID, session, opcodes.SafariZoneStepUpdate)
 
 	if session.Battle == nil || session.Battle.IsOver() {
 		return

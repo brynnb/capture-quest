@@ -1,3 +1,4 @@
+import {acceptOwnedSafariVisit} from "./SafariVisitService";
 import type { GameplayStateResponse } from "@/net/generated/world_api";
 import { OpCodes } from "@/net";
 import usePokeBattleStore from "@/stores/PokeBattleStore";
@@ -39,9 +40,7 @@ export function applyGameplaySnapshot(snapshot: GameplayStateResponse): void {
   applyGameplayResourceSnapshot(snapshot);
   usePlayerCharacterStore.getState().setEventFlags(snapshot.eventFlags);
   usePokeBattleStore.getState().restoreGameplay(snapshot);
-  window.dispatchEvent(new CustomEvent("safariZoneEnter", { detail: snapshot.safari?.active
-    ? { success: true, ballsLeft: snapshot.safari.ballsLeft, stepsLeft: snapshot.safari.stepsLeft }
-    : { success: false } }));
+  acceptOwnedSafariVisit(snapshot.safari);
   if (snapshot.trainer) PhaserNet.dispatchPhaserResponse(OpCodes.TrainerEncounterNotify, snapshot.trainer);
   if (snapshot.cutscene) void handleCutsceneStart(snapshot.cutscene);
 }

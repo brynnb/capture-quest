@@ -289,9 +289,7 @@ export interface WarpTileTeleportNotify {
   y: number /* int */;
   direction: string;
 }
-export interface SafariZoneExitNotify extends WarpTileTeleportNotify {
-  stepsLeft: number /* int */;
-  ballsLeft: number /* int */;
+export interface SafariZoneExitNotify extends SafariVisitState, WarpTileTeleportNotify {
   message: string;
 }
 /**
@@ -448,6 +446,17 @@ export interface TrainerEncounterNotifyPayload {
 export interface TrainerEncounterReadyRequest {
   encounterToken: string;
   trainerActorId: number /* int */;
+}
+/**
+ * SafariVisitState scopes frequent HUD updates to one durable visit publication.
+ */
+export interface SafariVisitState {
+  characterId: number /* int64 */;
+  visitId: string;
+  visitRevision: number /* int64 */;
+  active: boolean;
+  ballsLeft: number /* int */;
+  stepsLeft: number /* int */;
 }
 
 //////////

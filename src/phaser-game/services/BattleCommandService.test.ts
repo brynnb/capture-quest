@@ -7,7 +7,7 @@ const net = vi.hoisted(() => ({
   gameplay: new Set<(data: GameplayStateResponse) => void>(),
   send: vi.fn(), positionRequests: vi.fn(), gameplayRequests: vi.fn(),
 }));
-vi.mock("@/net", () => ({ WorldSocket: { sendStreamJsonMessage: net.send }, OpCodes: { SafariBattleActionRequest: 129, SafariBattleActionResponse: 130, PokeBattleActionRequest: 70, PokeBattleActionResponse: 71, PokeBattleSwitchRequest: 72, PokeBattleSwitchResponse: 73, PokeMoveLearnRequest: 87, PokeMoveLearnResponse: 88, PokeBattleCloseRequest: 89, PokeBattleCloseResponse: 199 } }));
+vi.mock("@/net", () => ({ WorldSocket: { sendStreamJsonMessage: net.send, sessionGeneration:0, subscribeSessionRetirement:()=>()=>{} }, OpCodes: { SafariBattleActionRequest: 129, SafariBattleActionResponse: 130, PokeBattleActionRequest: 70, PokeBattleActionResponse: 71, PokeBattleSwitchRequest: 72, PokeBattleSwitchResponse: 73, PokeMoveLearnRequest: 87, PokeMoveLearnResponse: 88, PokeBattleCloseRequest: 89, PokeBattleCloseResponse: 199 } }));
 vi.mock("./PhaserNetworkService", () => ({
   isConnected: () => true,
   onBattleCommand: (opcode: number, receive: (data: BattleCommandResponse | SafariBattleActionResponse | BattleCommandError) => void) => {
@@ -35,7 +35,7 @@ const emit = (opcode: number, data: BattleCommandResponse | SafariBattleActionRe
 const sentID = () => net.send.mock.calls.at(-1)![1].requestId as string;
 const project = vi.fn(async () => {});
 const safari = (revision = 1): SafariRecoveryState => ({ visitId:"visit",visitRevision:1,active: true, ballsLeft: 30, stepsLeft: 499, battleId: "safari", revision, pokemon: { id: 129, name: "MAGIKARP", level: 5, hp: 20, maxHp: 20 }, playerParty: [pokemon] });
-const safariReply = (requestId: string, revision = 2): SafariBattleActionResponse => ({ success: true, requestId, battleId: "safari", revision, position: position(requestId), events: [], ballsLeft: 29, stepsLeft: 499, isOver: false, caught: false, fled: false });
+const safariReply = (requestId: string, revision = 2): SafariBattleActionResponse => ({ characterId:42,visitId:"visit",visitRevision:revision,success: true, requestId, battleId: "safari", revision, position: position(requestId), events: [], ballsLeft: 29, stepsLeft: 499, isOver: false, caught: false, fled: false });
 let retireScene: () => void;
 beforeEach(() => {
   vi.useFakeTimers(); net.commands.clear(); net.positions.clear(); net.gameplay.clear();

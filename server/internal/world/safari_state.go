@@ -51,6 +51,7 @@ type SafariSession struct {
 }
 
 type SafariEntryResult struct {
+	Visit         *SafariSession
 	Success       bool
 	Message       string
 	Money         int
@@ -285,6 +286,7 @@ func startSafariVisitIn(tx db.DBTX, charID int64) (SafariEntryResult, error) {
 	if s != nil && s.Active {
 		result.Success = true
 		result.AlreadyActive = true
+		result.Visit = s
 		result.Message = "already in safari session"
 		result.BallsLeft = s.BallsLeft
 		result.StepsLeft = s.StepsLeft
@@ -307,6 +309,7 @@ func startSafariVisitIn(tx db.DBTX, charID int64) (SafariEntryResult, error) {
 	if err := writeEventFlag(tx, charID, EventSafariGameOver, false); err != nil {
 		return SafariEntryResult{}, err
 	}
+	result.Visit = s
 	result.Success = true
 	result.BallsLeft = s.BallsLeft
 	result.StepsLeft = s.StepsLeft

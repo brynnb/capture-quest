@@ -159,9 +159,8 @@ type WarpTileTeleportNotify struct {
 }
 
 type SafariZoneExitNotify struct {
+	SafariVisitState       `tstype:",extends"`
 	WarpTileTeleportNotify `tstype:",extends"`
-	StepsLeft              int    `json:"stepsLeft"`
-	BallsLeft              int    `json:"ballsLeft"`
 	Message                string `json:"message"`
 }
 
@@ -310,4 +309,14 @@ type TrainerEncounterNotifyPayload struct {
 type TrainerEncounterReadyRequest struct {
 	EncounterToken string `json:"encounterToken"`
 	TrainerActorID int    `json:"trainerActorId"`
+}
+
+// SafariVisitState scopes frequent HUD updates to one durable visit publication.
+type SafariVisitState struct {
+	CharacterID   int64  `json:"characterId"`
+	VisitID       string `json:"visitId"`
+	VisitRevision int64  `json:"visitRevision"`
+	Active        bool   `json:"active"`
+	BallsLeft     int    `json:"ballsLeft"`
+	StepsLeft     int    `json:"stepsLeft"`
 }

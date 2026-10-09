@@ -703,7 +703,7 @@ func sendSafariEntryFailure(ses *session.Session, result SafariEntryResult) {
 		message = "Oops! Not enough money!"
 	}
 	ses.SendStreamJSON(map[string]interface{}{
-		"success": false,
+		"success": false, "characterId": int64(ses.Client.CharData().ID), "refresh": true,
 		"message": message,
 		"money":   result.Money,
 	}, opcodes.SafariZoneEnterResponse)
@@ -714,16 +714,8 @@ func sendSafariEntrySuccess(ses *session.Session, result SafariEntryResult) {
 	if ses == nil {
 		return
 	}
-	ses.SendStreamJSON(map[string]interface{}{
-		"success":   true,
-		"ballsLeft": result.BallsLeft,
-		"stepsLeft": result.StepsLeft,
-		"money":     result.Money,
-	}, opcodes.SafariZoneEnterResponse)
-	ses.SendStreamJSON(map[string]interface{}{
-		"stepsLeft": result.StepsLeft,
-		"ballsLeft": result.BallsLeft,
-	}, opcodes.SafariZoneStepUpdate)
+	sendSafariVisitState(ses, int64(ses.Client.CharData().ID), result.Visit, opcodes.SafariZoneEnterResponse)
+	sendSafariVisitState(ses, int64(ses.Client.CharData().ID), result.Visit, opcodes.SafariZoneStepUpdate)
 	if result.AlreadyActive {
 		SendSystemMessage(ses, "Safari Zone visit already active.")
 	} else {
@@ -736,7 +728,7 @@ func sendSafariManualExit(ses *session.Session) {
 		return
 	}
 	ses.SendStreamJSON(map[string]interface{}{
-		"success": false,
+		"success": false, "characterId": int64(ses.Client.CharData().ID), "refresh": true,
 		"message": "Safari Zone visit ended.",
 	}, opcodes.SafariZoneEnterResponse)
 }

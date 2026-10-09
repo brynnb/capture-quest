@@ -1,3 +1,4 @@
+import {acceptOwnedSafariVisit,claimSafariExit,isCurrentSafariExit,acceptSafariVisitNotice} from "./SafariVisitService";
 import { OpCodes, WorldSocket } from "@/net";
 import type { BattleCommandResponse, SafariBattleActionResponse, SafariBattleActionRequest, BattleEndOutcome, PokeBattleActionRequest, PokeBattleSwitchRequest, PokeMoveLearnRequest } from "@/net/generated/world_api";
 import type { OwnedPlayerPositionResponse } from "@/net/generated/protocol";
@@ -46,21 +47,39 @@ export function bindBattleScene(reconcile: Projection, capturePositionView?:()=>
 
 // Unsolicited battle publication is a hint, not authority for a panel or warp.
 // All producers use the same owned read; commands are never resent here.
-export async function recoverBattlePublication(notice:Record<string,unknown>,kind:"ordinary-start"|"safari-start"|"standalone-end"="ordinary-start"):Promise<void>{
+export async function recoverBattlePublication(notice:Record<string,unknown>,kind:"ordinary-start"|"safari-start"|"standalone-end"|"safari-visit"|"safari-exit"="ordinary-start"):Promise<void>{
  if((kind==="ordinary-start" && notice.success!==true) || !sceneProjection || useGameScreenStore.getState().currentScreen!=="game")return;
  const initial=usePokeBattleStore.getState();
  if(initial.battleCommandPending)return;
  publicationRead?.abort();const controller=new AbortController();publicationRead=controller;
  const project=sceneProjection;
  const positionView=scenePositionView;
- const positionGeneration=positionView?.();
+ let positionGeneration=positionView?.();
  const generation=WorldSocket.sessionGeneration;
  const characterId=usePlayerCharacterStore.getState().characterProfile.id;
  const presentation=initial.presentationGeneration;
- const current=()=>(kind!=="standalone-end" || positionView?.()===positionGeneration) && !controller.signal.aborted && publicationRead===controller && sceneProjection===project && WorldSocket.sessionGeneration===generation && usePlayerCharacterStore.getState().characterProfile.id===characterId && useGameScreenStore.getState().currentScreen==="game" && usePokeBattleStore.getState().presentationGeneration===presentation && !usePokeBattleStore.getState().battleCommandPending;
+ const current=(allowPositionChange=false)=>((allowPositionChange || kind!=="standalone-end" && kind!=="safari-exit") || positionView?.()===positionGeneration) && !controller.signal.aborted && publicationRead===controller && sceneProjection===project && WorldSocket.sessionGeneration===generation && usePlayerCharacterStore.getState().characterProfile.id===characterId && useGameScreenStore.getState().currentScreen==="game" && usePokeBattleStore.getState().presentationGeneration===presentation && !usePokeBattleStore.getState().battleCommandPending;
  try {
- const snapshot=await readForCurrentCharacter((_id,signal)=>readCurrentGameplayState(signal,kind==="standalone-end" ? positionView : undefined),controller.signal);
+ let snapshot=await readForCurrentCharacter((_id,signal)=>readCurrentGameplayState(signal,(kind==="standalone-end" || kind==="safari-exit") ? positionView : undefined),controller.signal);
+ if(kind==="safari-exit" && !current() && current(true)){
+ // The final step acknowledgement can settle while expiry is read. Retry the
+ // read once from the new movement view; never reuse the older pose snapshot.
+ positionGeneration=positionView?.();
+ snapshot=await readForCurrentCharacter((_id,signal)=>readCurrentGameplayState(signal,positionView),controller.signal);
+ }
  if(!current())return;
+ acceptOwnedSafariVisit(snapshot.safari);
+ if(kind==="safari-visit")return;
+ if(kind==="safari-exit"){
+ const visit=snapshot.safari;
+ if(snapshot.battle || !visit || !claimSafariExit(visit))return;
+ applyGameplayResourceSnapshot(snapshot);
+ const callbackCurrent=()=>isCurrentSafariExit(visit) && !controller.signal.aborted && sceneProjection===project && WorldSocket.sessionGeneration===generation && usePlayerCharacterStore.getState().characterProfile.id===characterId && useGameScreenStore.getState().currentScreen==="game" && positionView?.()===positionGeneration;
+ // Retire local presentation without sending another Safari close mutation.
+ usePokeBattleStore.getState().restoreGameplay(snapshot);
+ usePokemonDialogueStore.getState().openDialogue([visit.exitMessage!],null,undefined,()=>{if(callbackCurrent())void project(snapshot.position);});
+ return;
+ }
  const state=usePokeBattleStore.getState();
  const owned=snapshot.battle;
  // Duplicate hints preserve current event queues. An end hint can still need
@@ -137,7 +156,7 @@ async function sendBattleCommand(opcode: number, responseOpcode: number, command
         if (response.playerParty) usePokemonPartyStore.getState().setParty(response.playerParty);
         usePokeBattleStore.getState().updateSafariState({ ...response, events: response.events.map(event => ({ ...event, targetHp: 0, targetMaxHp: 0 })) });
       }
-      window.dispatchEvent(new CustomEvent("safariZoneEnter", { detail: { success: !response.safariOver, ballsLeft: response.ballsLeft, stepsLeft: response.stepsLeft } }));
+      acceptSafariVisitNotice({...response,active:!response.safariOver});
       await project(response.position);
       if (response.closed && response.safariOver && response.exitMessage && !controller.signal.aborted && sceneProjection === project) {
         usePokemonDialogueStore.getState().openDialogue([response.exitMessage], null);
