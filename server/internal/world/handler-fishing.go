@@ -21,11 +21,11 @@ import (
 )
 
 type PokeFishingRequestPayload struct {
-	CommandRevision *int64 `json:"commandRevision,omitempty" tstype:"number"`
+	CommandRevision *int64 `json:"commandRevision" tstype:"number,required"`
 	RequestID       string `json:"requestId"`
 	CharacterID     int64  `json:"characterId"`
 	InstanceID      int32  `json:"instanceId"`
-	ItemID          int32  `json:"itemId"` // Catalog rod item ID; ownership and short name are resolved on the server.
+	ItemID          int32  `json:"itemId,omitempty"` // Optional consistency hint; ownership is resolved by instance.
 	RodType         string `json:"rodType,omitempty"`
 	MapID           *int   `json:"mapId,omitempty"`
 	X               *int   `json:"x,omitempty"`
@@ -34,7 +34,7 @@ type PokeFishingRequestPayload struct {
 }
 
 // HandlePokeFishing handles a fishing rod use request from the client.
-// The client sends the rod item ID. The server checks if the player is facing
+// The client sends an owned instance and command identity. The server checks facing
 // water, selects an encounter, and starts a wild battle.
 func HandlePokeFishing(ses *session.Session, payload []byte, wh *WorldHandler) bool {
 	if !ses.HasValidClient() || wh == nil || wh.database == nil {
@@ -42,16 +42,17 @@ func HandlePokeFishing(ses *session.Session, payload []byte, wh *WorldHandler) b
 	}
 
 	var req PokeFishingRequestPayload
-	err := json.Unmarshal(payload, &req)
+	err := decodePlayerMovement(payload, &req)
 	charID := int64(ses.Client.CharData().ID)
 	identity := protocol.FishingIdentity{RequestID: req.RequestID, CharacterID: charID, InstanceID: req.InstanceID}
 	reject := func(message string) {
 		ses.SendStreamJSON(protocol.FishingError{FishingIdentity: identity, Error: message}, opcodes.PokeFishingResponse)
 	}
-	if err != nil || (req.CharacterID != 0 && req.CharacterID != charID) || (req.RequestID != "" && (req.CharacterID != charID || req.InstanceID <= 0 || req.CommandRevision == nil)) {
+	if err != nil || !validBattleRequestID(req.RequestID) || req.CharacterID != charID || req.InstanceID <= 0 || req.CommandRevision == nil {
 		reject("Invalid fishing request.")
 		return false
 	}
+
 	source := wh.ownedPlayerSnapshot(ses, "")
 	source.MapID = normalizedVisiblePlayerMapID(wh, source.MapID)
 	if wh.PlayerMovement == nil {
@@ -90,24 +91,7 @@ func HandlePokeFishing(ses *session.Session, payload []byte, wh *WorldHandler) b
 					return fmt.Errorf("fishing movement owner changed")
 				}
 			}
-			var owned *cqitems.CQInventoryItem
-			var err error
-			store := cqitems.NewStore(tx)
-			if req.InstanceID > 0 {
-				owned, err = store.FindInventoryItemByInstanceID(int32(charID), req.InstanceID)
-			} else {
-				id := req.ItemID
-				if id <= 0 {
-					name := normalizeFishingRodName(req.RodType)
-					if name == "" {
-						return fmt.Errorf("not a fishing rod")
-					}
-					if err := tx.QueryRow(`SELECT id FROM cq_items WHERE short_name=$1`, strings.ToUpper(name)).Scan(&id); err != nil {
-						return err
-					}
-				}
-				owned, err = store.FindInventoryItemByItemID(int32(charID), id)
-			}
+			owned, err := cqitems.NewStore(tx).FindInventoryItemByInstanceID(int32(charID), req.InstanceID)
 			if errors.Is(err, sql.ErrNoRows) {
 				return &itemuse.Rejection{Message: "You don't own that fishing rod."}
 			}

@@ -14,7 +14,7 @@ import (
 // revision fences every older request even after that latest receipt is replaced.
 // The caller supplies gameplay policy; this boundary owns only lock/commit/replay.
 func ExecuteFieldCommand(ctx context.Context, database *sql.DB, charID int64, domain, requestID string, expected *int64, input []byte, apply func(DBTX) ([]byte, error)) ([]byte, bool, error) {
-	if charID <= 0 || domain == "" || len(domain) > 64 || (expected == nil && requestID != "") {
+	if charID <= 0 || domain == "" || len(domain) > 64 || expected == nil {
 		return nil, false, fmt.Errorf("invalid field command identity")
 	}
 	var revisionExpected int64
@@ -30,11 +30,6 @@ func ExecuteFieldCommand(ctx context.Context, database *sql.DB, charID int64, do
 	hash := hex.EncodeToString(digest[:])
 	err := Transaction(ctx, database, func(tx DBTX) error {
 		if err := LockCharacter(tx, charID); err != nil {
-			return err
-		}
-		if expected == nil {
-			var err error
-			result, err = apply(tx)
 			return err
 		}
 		if _, err := tx.Exec(`INSERT INTO character_field_command_state(character_id,domain,revision) VALUES($1,$2,0) ON CONFLICT DO NOTHING`, charID, domain); err != nil {

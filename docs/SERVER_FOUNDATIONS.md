@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+identity-free fishing and shared field-executor bypass are retired locally,
+following `170a5ca`:
 field receipt identity/concurrency review and live battle retirement across process/native recovery,
 following `ba010ec`:
 bounded field-command revision/receipt closes fishing reroll and dismissed replay,
@@ -79,6 +81,41 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Fishing legacy caller retirement (2026-10-08)
+
+Repository-wide caller inventory found one active fishing adapter: the migrated
+inventory UI/movement owner. No simulator or script runtime still invokes the
+untagged direct fishing path; remaining examples were old test fixtures. Fishing
+now requires bounded request ID, matching character, positive instance and an
+expected field revision for every command. Strict shared decoding rejects
+unknown/trailing fields. Missing identity or catalog-only ownership selectors
+cannot mutate gameplay. Optional item ID/name are consistency checks against the
+owned instance, not another execution path.
+
+The shared field executor's identity-free apply branch is removed. All calls
+require an expected revision; malformed/missing identity rejects before gameplay.
+Tests use current envelopes and assert old/missing/wrong-character/unknown-field
+requests leave battle, seen and receipt tables untouched. There is no permanent
+shadow compatibility implementation beside the durable command route.
+
+Verification: DB (2.3s), world (64.0s), simulator (1.4s) PostgreSQL race suites and
+focused retired-request checks pass. Canonical tygo now marks command revision
+required; typecheck and diff checks pass. Four existing rendered success/land
+rejection/held-ack timeout/reentry checks pass in 28.4s
+(`/var/tmp/capturequest-rendered.E7psBh`). The process case was intentionally
+skipped in this non-crash run; prior exact-process/native evidence remains scoped
+to the preceding checkpoint rather than claimed as rerun here.
+
+Activation requires matching frontend/backend release and the preceding field
+receipt schema. Old bundles receive a terminal invalid-command response rather
+than executing an identity-free rod action. No production deployment, push or
+schema change occurred in this checkpoint.
+
+Next: audit SURF permission/source/party/battle paths, which still use global
+loaders and cached field permissions, before choosing its migration policy.
+Wider field writer/source/acknowledgement acceptance and the five-area roadmap
+remain incomplete. Historical restore/Repel attribution remains open.
 
 ## Field receipt review and live transport retirement (2026-10-08)
 

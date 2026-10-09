@@ -67,6 +67,10 @@ func TestFieldCommandIdentityValidationAndStoredReceiptCorruption(t *testing.T) 
 	if _, _, err := db.ExecuteFieldCommand(context.Background(), database, 42, "fishing", "tagged", nil, nil, apply); err == nil || called {
 		t.Fatal("tagged legacy bypass invoked gameplay")
 	}
+	if _, _, err := db.ExecuteFieldCommand(context.Background(), database, 42, "fishing", "", nil, nil, apply); err == nil || called {
+		t.Fatal("untagged legacy bypass invoked gameplay")
+	}
+
 	revision := int64(0)
 	_, _, err := db.ExecuteFieldCommand(context.Background(), database, 42, "fishing", "first", &revision, []byte("input"), func(tx db.DBTX) ([]byte, error) { revision = 99; return []byte(`{"ok":true}`), nil })
 	if err != nil {

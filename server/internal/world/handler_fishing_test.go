@@ -167,7 +167,8 @@ func TestFishingOldRodFacingWaterStartsBattle(t *testing.T) {
 		},
 	}
 
-	payload, err := json.Marshal(PokeFishingRequestPayload{RodType: "OLD_ROD", Direction: "RIGHT"})
+	revision := int64(0)
+	payload, err := json.Marshal(PokeFishingRequestPayload{RequestID: "fishing:normal", CharacterID: 42, InstanceID: 1, CommandRevision: &revision, RodType: "OLD_ROD", Direction: "RIGHT"})
 	if err != nil {
 		t.Fatalf("marshal fishing request: %v", err)
 	}
@@ -366,5 +367,35 @@ func TestFishingNoBiteReceiptSurvivesRodRemovalAndOwnerReplacement(t *testing.T)
 	HandlePokeFishing(ses, payload, wh)
 	if len(messages.streams) != 1 || string(messages.streams[0].payload) != first || getBattle(42) != nil {
 		t.Fatalf("replayed no-bite changed or rerolled=%+v", messages.streams)
+	}
+}
+
+func TestFishingRetiredIdentityFreeRequestsCannotMutate(t *testing.T) {
+	database := openFishingTestDB(t)
+	messages := &recordingMessenger{}
+	ses := &session.Session{SessionID: 1, Authenticated: true, Messenger: messages, Client: &testSessionClient{char: &model.CharacterData{ID: 42, MapID: 1, X: 5, Y: 5, Heading: 90}}}
+	wh := &WorldHandler{database: database, ActorManager: &PhaserActorManager{collisionMap: map[int]map[string]int{}}}
+	for _, payload := range []string{
+		`{"rodType":"OLD_ROD","direction":"RIGHT"}`,
+		`{"requestId":"current","characterId":42,"instanceId":1,"direction":"RIGHT"}`,
+		`{"requestId":"current","characterId":42,"commandRevision":0,"itemId":76,"direction":"RIGHT"}`,
+		`{"requestId":"current","characterId":99,"instanceId":1,"commandRevision":0,"direction":"RIGHT"}`,
+		`{"requestId":"current","characterId":42,"instanceId":1,"commandRevision":0,"direction":"RIGHT","unexpected":true}`,
+	} {
+		messages.streams = nil
+		HandlePokeFishing(ses, []byte(payload), wh)
+		var response struct {
+			Success bool
+			Error   string
+		}
+		if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &response) != nil || response.Success || response.Error == "" {
+			t.Fatalf("retired request accepted: %s response=%+v", payload, response)
+		}
+	}
+	for _, table := range []string{"character_battle_state", "character_pokedex", "character_field_command_state"} {
+		var count int
+		if err := database.QueryRow(`SELECT count(*) FROM ` + table + ` WHERE character_id=42`).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("retired request wrote %s: count=%d error=%v", table, count, err)
+		}
 	}
 }

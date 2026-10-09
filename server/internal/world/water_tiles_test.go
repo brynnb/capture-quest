@@ -73,7 +73,7 @@ func TestWaterPreflightReportsOwnedReadFailure(t *testing.T) {
 				}
 				err := ses.ExecuteCommand(ctx, func() {
 					if family == "fishing" {
-						HandlePokeFishing(ses, []byte(`{"rodType":"old_rod","mapId":50,"x":7,"y":8,"direction":"RIGHT"}`), wh)
+						HandlePokeFishing(ses, []byte(`{"requestId":"fishing:water","characterId":42,"instanceId":100,"commandRevision":0,"rodType":"old_rod","mapId":50,"x":7,"y":8,"direction":"RIGHT"}`), wh)
 					} else {
 						x, y := 8, 8
 						handlePokeSurfingTarget(ses, wh, 42, 50, 7, 8, PokeSurfingRequestPayload{TargetX: &x, TargetY: &y, Direction: "RIGHT"})
