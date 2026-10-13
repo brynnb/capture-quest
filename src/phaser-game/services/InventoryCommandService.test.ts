@@ -404,3 +404,11 @@ test("retiring during actor reconciliation prevents pickup presentation in the n
  retire();retire=bindInventoryScene();expect(signal.aborted).toBe(true);finish();await run;
  expect(AudioManager.playSFX).not.toHaveBeenCalled();expect(net.send).toHaveBeenCalledOnce();
 });
+
+
+test("pickup actor-read failure recovers current bag and retries only reconciliation",async()=>{
+ const reconcile=vi.fn().mockRejectedValueOnce(new Error("actor read failed")).mockResolvedValueOnce(undefined);
+ net.read.mockResolvedValueOnce({position:{mapId:50},eventFlags:[],pc:{currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]},inventory:[],wallet:{characterId:42,pokedollars:900},commandRevision:5,party:[]});
+ const run=sendPickupCommand(14,reconcile);emit(107,{...reply(id()),actorId:14,itemId:1,itemName:"Potion"});await run;
+ expect(net.send).toHaveBeenCalledOnce();expect(net.read).toHaveBeenCalledOnce();expect(reconcile).toHaveBeenCalledTimes(2);expect(AudioManager.playSFX).not.toHaveBeenCalled();expect(useCQInventoryStore.getState().commandRevision).toBe(5);
+});

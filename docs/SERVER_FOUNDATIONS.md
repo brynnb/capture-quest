@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+ItemPickup reconciliation review and native no-fallback process acceptance pass,
+following `adf7234`:
 ItemPickup uses generated inventory command identity/revision and scene-owned
 actor reconciliation, following `34c359e`:
 shared inventory command/recovery lifetime now uses character/screen/transport
@@ -97,6 +99,41 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## ItemPickup reconciliation review and native acceptance (2026-10-13)
+
+Review confirms the grant/marker/source operations remain inside the shared
+inventory revision owner, with no pool-opened transaction or publication between
+nested operations and outer commit. Client actor reconciliation runs after the
+committed/current bag and retains the shared signal through completion. A new
+focused regression proves that actor-read failure recovers current resources and
+retries only the readonly reconciliation; it does not send another grant or replay
+loot presentation. The 156-case inventory coordinator suite, typecheck and diff
+checks pass. No production implementation change was needed in this review.
+
+Rendered native pickup commit and exact-process restoration pass (12.3s;
+`/var/tmp/capturequest-rendered.d4wVOi`). Connected/native are true and WebSocket
+false before and after replacement. The test verifies the same final quantity,
+one collection marker and inventory revision 1, with the actor absent from the
+owned scene after restoration. The exact process receipt records old PID 925362,
+new PID 925550 and exit 137. This is native commit/process evidence, not native
+held-packet loss injection; the prior four WebSocket fault cases retain that scope.
+
+WebSocket and native cases now reuse the private runtime's one pickup-catalog
+fixture helper, mechanically extracted from the prior test. It copies a real
+catalog item/sprite into the isolated database and reloads only its exact process.
+It avoids parallel fixture logic without changing source assets or production.
+
+Pickup source/revision/correlation/recovery and the scoped native baseline are
+locally verified. Wider script/actor publication/catalog ordering and command
+family audits remain in the finite matrix. The original five-area roadmap is
+still incomplete. No push or deployment occurred; unrelated deployment work is
+preserved.
+
+Next: return to the original unresolved restore timeout with a bounded audit of
+current entry/restore query ownership and existing contention diagnostics before
+choosing another family. Successful reentry runs, including these, do not
+attribute or close the historical five-second failure.
 
 ## ItemPickup inventory command and actor recovery (2026-10-13)
 

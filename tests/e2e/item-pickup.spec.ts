@@ -11,17 +11,8 @@ import {isolatedCrashRuntime} from "./helpers/processRecovery";
 for(const mode of ["normal","timeout","reentry","process"] as const){
 test(`owned item pickup ${mode} commits once and reconciles actors`,async({page},testInfo)=>{
  test.skip(process.env.CQ_E2E_CRASH_RECOVERY!=="true","Requires private catalog fixture and exact-process reload");test.setTimeout(90000);
- const {sql,crash,record}=await isolatedCrashRuntime();
- const map=await sql("SELECT id FROM phaser_maps WHERE name='REDS_HOUSE_2F'");
- const existing=await sql("SELECT id FROM phaser_objects WHERE name='CQ_PICKUP_FIXTURE' LIMIT 1");
- const object=existing || await sql("SELECT COALESCE(max(id),0)+1 FROM phaser_objects");
- expect(map).toMatch(/^\d+$/);expect(object).toMatch(/^\d+$/);
- // Reuse a real catalog item/sprite; this additional actor exists only in the
- // isolated PostgreSQL fixture and does not alter generated source assets.
- if(!existing)await sql(`INSERT INTO phaser_objects(id,map_id,x,y,local_x,local_y,object_type,name,item_id,sprite_name,action_direction,movement_type) SELECT ${object},${map},4,6,4,6,'item','CQ_PICKUP_FIXTURE',item_id,sprite_name,'DOWN','LAND' FROM phaser_objects WHERE object_type='item' AND item_id IS NOT NULL AND sprite_name IS NOT NULL ORDER BY id LIMIT 1`);
- expect(await sql(`SELECT count(*) FROM phaser_objects WHERE id=${object}`)).toBe("1");
- const item=await sql(`SELECT item_id FROM phaser_objects WHERE id=${object}`);expect(item).toMatch(/^\d+$/);
- const restart=await crash();
+ const runtime=await isolatedCrashRuntime();const {sql,crash,record}=runtime;
+ const {object,item,restart}=await runtime.pickupFixture();
  const faults=await inventoryCommandFaults<ItemPickupResponse>(page,OpCodes.ItemPickupRequest,OpCodes.ItemPickupResponse,mode!=="normal");
  let delivered=0;
  const character=await createGuestCharacterAndEnterWorld(page);await waitForNoMapLoading(page);await waitForPlayerIdle(page);

@@ -72,3 +72,20 @@ test("native SURF commits one receipt and restores water entry after process rep
  expect(await sql(`SELECT revision FROM character_field_command_state WHERE character_id=${id} AND domain='surf'`)).toBe("1");
  await page.screenshot({path:testInfo.outputPath("native-surf-restored.png")});await record({family:"native-surf",id,before,after,receipt,revision:1});await quitToCharacterSelect(page);
 });
+
+
+test("native pickup keeps its grant, revision and removed actor after process replacement",async({page},testInfo)=>{
+ test.skip(process.env.CQ_E2E_TRANSPORT!=="native" || process.env.CQ_E2E_CRASH_RECOVERY!=="true","Requires native exact-process runner");test.setTimeout(120000);
+ const runtime=await isolatedCrashRuntime();const {sql,crash,record}=runtime;const fixture=await runtime.pickupFixture();
+ const state=await import("./helpers/state");const input=await import("./helpers/input");
+ const character=await createGuestCharacterAndEnterWorld(page);await state.waitForNoMapLoading(page);await waitForPlayerIdle(page);const before=await assertNative(page);
+ const id=(await state.getGameState(page)).player.internalId!;
+ const quantity=()=>sql(`SELECT COALESCE(sum(ii.quantity),0) FROM cq_character_inventory ci JOIN cq_item_instances ii ON ii.id=ci.item_instance_id WHERE ci.character_id=${id} AND ii.item_id=${fixture.item}`);
+ const initial=Number(await quantity());await input.clickTile(page,4,6);await state.waitForMessage(page,/Picked up /i);
+ const present=async()=>(await state.getGameState(page)).visibleActors.some(actor=>actor.name==='CQ_PICKUP_FIXTURE');
+ await expect.poll(present).toBe(false);expect(await quantity()).toBe(String(initial+1));
+ const receipt=await crash();await expect(page.getByRole("button",{name:"PLAY AS GUEST"})).toBeVisible({timeout:20000});await page.getByRole("button",{name:"PLAY AS GUEST"}).click();await expect(page.getByRole("heading",{name:"SELECT A CHARACTER"})).toBeVisible();
+ await enterWorld(page,character);await state.waitForNoMapLoading(page);await expect.poll(present).toBe(false);const after=await assertNative(page);
+ expect(await quantity()).toBe(String(initial+1));expect(await sql(`SELECT revision FROM character_shop_state WHERE character_id=${id}`)).toBe("1");expect(await sql(`SELECT count(*) FROM character_collected_items WHERE character_id=${id} AND object_id=${fixture.object}`)).toBe("1");
+ await page.screenshot({path:testInfo.outputPath("native-pickup-restored.png")});await record({family:"native-pickup",id,before,after,fixture,receipt,quantity:initial+1,revision:1});await quitToCharacterSelect(page);
+});
