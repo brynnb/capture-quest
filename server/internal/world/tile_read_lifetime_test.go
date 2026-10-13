@@ -252,7 +252,7 @@ func TestTileReadProjectsOwnedCutArtAndResetWithoutEditingBase(t *testing.T) {
  INSERT INTO phaser_tiles(map_id,source_map_id,x,y,local_x,local_y,tile_image_id,raw_foot_tile_id,collision_type,is_native_game_data,coordinate_origin,content_origin) VALUES(50,50,1,0,1,0,100,61,0,true,'native','native');
  INSERT INTO phaser_event_tile_overrides(map_id,map_name,x,y,tile_image_id,collision_type) VALUES(50,'ROOM',1,0,300,0)`)
 	raw := cutTreeReplacementRawFoot
-	wh.CutTiles.MarkCut(42, 50, TileEdit{X: 1, Y: 0, TileImageID: 200, CollisionType: collisionLand, RawFootTileID: &raw, TalkOverTile: true})
+	wh.CutTiles.MarkCut(42, 50, wh.CutTiles.Scope(42, 50), TileEdit{X: 1, Y: 0, TileImageID: 200, CollisionType: collisionLand, RawFootTileID: &raw, TalkOverTile: true})
 	raw = 99 // Mutating caller-owned memory cannot alter the stored cut.
 	read := func() PhaserTile {
 		messages.streams = nil
@@ -280,7 +280,7 @@ func TestTileReadProjectsOwnedCutArtAndResetWithoutEditingBase(t *testing.T) {
 	if got := read(); got.TileImageID != 300 || got.ContentOrigin != "event" {
 		t.Fatalf("map reset did not restore event view: %+v", got)
 	}
-	wh.CutTiles.MarkCut(42, 50, TileEdit{X: 1, Y: 0, TileImageID: 200, CollisionType: collisionLand, RawFootTileID: &raw})
+	wh.CutTiles.MarkCut(42, 50, wh.CutTiles.Scope(42, 50), TileEdit{X: 1, Y: 0, TileImageID: 200, CollisionType: collisionLand, RawFootTileID: &raw})
 	wh.CutTiles.ClearCharacter(42)
 	if got := read(); got.TileImageID != 300 {
 		t.Fatal("character reset retained CUT")

@@ -482,6 +482,7 @@ export interface SafariRecoveryState {
   pokemon?: SafariRecoveryPokemon;
 }
 export interface GameplayStateResponse {
+  cutScope: string;
   fieldState: FieldStateSnapshot;
   fieldCommands: { [key: string]: number /* int64 */};
   pc: PCStorageSnapshot;

@@ -485,3 +485,26 @@ func TestGameplayRecoveryRejectsOwnedReadFailuresWithoutPartialPublication(t *te
 		})
 	}
 }
+
+func TestGameplayRecoveryPublishesCurrentCutVisitScope(t *testing.T) {
+	wh, ses, messages := setupIssuedStep(t)
+	wh.CutTiles = NewCutTileManager()
+	read := func() GameplayStateResponse {
+		messages.streams = nil
+		battleDispatch(t, wh, ses, opcodes.GameplayStateRequest, `{"current":true,"requestId":"cut:scope"}`)
+		return recoveryReply(t, messages)
+	}
+	original := read().CutScope
+	if original == "" || read().CutScope != original {
+		t.Fatal("recovery did not retain current scope")
+	}
+	wh.CutTiles.ClearMap(42, 50)
+	next := read().CutScope
+	if next == "" || next == original {
+		t.Fatal("recovery replayed expired scope")
+	}
+	wh.CutTiles.ClearCharacter(42)
+	if scope := read().CutScope; scope == "" || scope == next {
+		t.Fatal("character retirement retained scope")
+	}
+}

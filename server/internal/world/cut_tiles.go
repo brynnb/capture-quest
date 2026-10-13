@@ -1,6 +1,9 @@
 package world
 
-import "sync"
+import (
+	"github.com/google/uuid"
+	"sync"
+)
 
 const (
 	cuttableTreeRawFootTileID = 0x3d
@@ -8,22 +11,27 @@ const (
 )
 
 type CutTileManager struct {
-	mu    sync.RWMutex
-	tiles map[int64]map[int]map[string]TileEdit
+	mu     sync.RWMutex
+	tiles  map[int64]map[int]map[string]TileEdit
+	scopes map[int64]map[int]string
 }
 
 func NewCutTileManager() *CutTileManager {
 	return &CutTileManager{
-		tiles: make(map[int64]map[int]map[string]TileEdit),
+		tiles:  make(map[int64]map[int]map[string]TileEdit),
+		scopes: make(map[int64]map[int]string),
 	}
 }
 
-func (m *CutTileManager) MarkCut(charID int64, mapID int, tile TileEdit) {
+func (m *CutTileManager) MarkCut(charID int64, mapID int, scope string, tile TileEdit) bool {
 	if m == nil {
-		return
+		return false
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if scope == "" || m.scopes[charID][mapID] != scope {
+		return false
+	}
 
 	byMap := m.tiles[charID]
 	if byMap == nil {
@@ -36,6 +44,7 @@ func (m *CutTileManager) MarkCut(charID int64, mapID int, tile TileEdit) {
 		byMap[mapID] = cutTiles
 	}
 	cutTiles[tileKey(tile.X, tile.Y)] = copyCutTile(tile)
+	return true
 }
 
 func (m *CutTileManager) ClearMap(charID int64, mapID int) {
@@ -44,6 +53,12 @@ func (m *CutTileManager) ClearMap(charID int64, mapID int) {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if scopes := m.scopes[charID]; scopes != nil {
+		delete(scopes, mapID)
+		if len(scopes) == 0 {
+			delete(m.scopes, charID)
+		}
+	}
 
 	if byMap := m.tiles[charID]; byMap != nil {
 		delete(byMap, mapID)
@@ -61,6 +76,7 @@ func (m *CutTileManager) ClearCharacter(charID int64) {
 	defer m.mu.Unlock()
 
 	delete(m.tiles, charID)
+	delete(m.scopes, charID)
 }
 
 func (m *CutTileManager) CollisionOverrides(charID int64, mapID int) map[string]int {
@@ -129,4 +145,21 @@ func (m *CutTileManager) ApplyToTiles(charID int64, mapID int, tiles []PhaserTil
 		tiles[i].ContentOrigin = "cut"
 	}
 	return tiles
+}
+
+// Scope is an opaque visit identity, not a durable receipt. Clearing or replacing
+// the owner removes it, so delayed commands cannot recreate expired transient art.
+func (m *CutTileManager) Scope(charID int64, mapID int) string {
+	if m == nil {
+		return ""
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.scopes[charID] == nil {
+		m.scopes[charID] = make(map[int]string)
+	}
+	if m.scopes[charID][mapID] == "" {
+		m.scopes[charID][mapID] = uuid.NewString()
+	}
+	return m.scopes[charID][mapID]
 }

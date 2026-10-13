@@ -103,6 +103,7 @@ func handleCutFieldMove(ses *session.Session, req FieldMoveUseRequestPayload, wh
 	}
 	charID := int64(ses.Client.CharData().ID)
 	var mapID, targetX, targetY int
+	var cutScope string
 	var permission FieldMovePermissionResult
 	var replacement TileEdit
 	err := db.Transaction(ses.CommandContext(), wh.database, func(tx db.DBTX) error {
@@ -117,6 +118,7 @@ func handleCutFieldMove(ses *session.Session, req FieldMoveUseRequestPayload, wh
 			return err
 		}
 		mapID = normalizedVisiblePlayerMapID(wh, mapID)
+		cutScope = wh.CutTiles.Scope(charID, mapID)
 		if req.MapID != nil && normalizedVisiblePlayerMapID(wh, *req.MapID) != mapID {
 			return &itemuse.Rejection{Message: "CUT can't be used here."}
 		}
@@ -159,7 +161,10 @@ func handleCutFieldMove(ses *session.Session, req FieldMoveUseRequestPayload, wh
 	// Transient collision/presentation is publishable only after every read and
 	// the owner's final commit have succeeded. Never turn SQL failure into art.
 	replacement.X, replacement.Y = targetX, targetY
-	wh.CutTiles.MarkCut(charID, mapID, replacement)
+	if !wh.CutTiles.MarkCut(charID, mapID, cutScope, replacement) {
+		sendFieldMoveUseError(ses, "CUT source retired. Refresh the current map.")
+		return false
+	}
 	message := "Used CUT!"
 	if permission.KnownByName != "" {
 		message = permission.KnownByName + " used CUT!"

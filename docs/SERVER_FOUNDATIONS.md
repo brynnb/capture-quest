@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+CUT transient visit scope fences prepared marking across reset/replacement,
+following `9cc3397`:
 CUT transient owner retains full replacement metadata and projects owned tile reads,
 following `9aadcd1`:
 CUT prepares durable source/permission and replacement before transient marking,
@@ -113,6 +115,48 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## CUT reset identity prerequisite (2026-10-13)
+
+CUT's existing transient owner now allocates an opaque character/map visit scope.
+It is stable during that visit and is included in the same owned gameplay snapshot
+as position/resources. Map clear, character clear/registration and a replacement
+manager invalidate it. Marking requires the captured scope to still match; it
+cannot lazily recreate a cleared scope or apply prepared art to a retired visit.
+The old unconditional mark API is replaced at its few inventoried consumers.
+
+CUT preparation captures the visit while it holds character ownership. After
+successful reads/final commit, conditional marking rejects a reset that intervened
+before publication. No durable transient ledger or database schema is added. Scope
+identity and tiles are reclaimed on clear, including visits that never marked a
+tile. A new process has fresh identities. Later command/replay design must retain
+that distinction instead of treating durable acknowledgement as permission to
+reconstruct expired ephemeral state.
+
+Focused PostgreSQL race checks pass (3.7s), and pure owner regressions prove stable
+scope, empty/foreign map/character denial, invalidation without recreation after
+map/character clear, fresh process identity and bounded retained data. Public
+current-gameplay reads expose the stable/current identity. Typed snapshot fixtures
+supply the required field rather than weaken the wire contract. All 596 client
+tests pass (5.3s) and typecheck/diff checks pass. Full world (72.4s), simulator
+(1.6s) race suites and all Go package compilation pass. The rendered
+Chromium/WebSocket bounded reread/walk-through/map-exit-return check passes
+(6.6s; `/var/tmp/capturequest-rendered.xPffyV`): ordinary reads retain the visit
+identity, real map exit/return replaces it and restores the original tree image
+and foot. This proves internal reset/current-view behavior, not correlated
+external CUT request admission.
+
+Remaining: correlated CUT request/source/visit admission and owned tile recovery
+still need implementation; the legacy request can only use the current internal
+scope, so external stale-command fencing is not yet claimed. Native block-swap
+fidelity remains the producing-provenance approximation documented earlier.
+Other command families and the five-area goal remain incomplete, as does historical
+restore attribution. No push or deployment is authorized; source assets and schema
+remain unchanged.
+
+Next: require the owned visit in CUT's correlated envelope, guard execution and
+bounded duplicate handling against that visit, and reconcile current tiles after
+unknown outcomes through existing movement/session reads.
 
 ## CUT transient replacement and owned tile projection (2026-10-13)
 

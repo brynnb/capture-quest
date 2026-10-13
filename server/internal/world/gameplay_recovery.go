@@ -77,6 +77,7 @@ type SafariRecoveryState struct {
 	Pokemon       *SafariRecoveryPokemon `json:"pokemon"`
 }
 type GameplayStateResponse struct {
+	CutScope        string                                  `json:"cutScope"`
 	FieldState      FieldStateSnapshot                      `json:"fieldState"`
 	FieldCommands   map[string]int64                        `json:"fieldCommands"`
 	PC              PCStorageSnapshot                       `json:"pc"`
@@ -185,6 +186,9 @@ func readGameplayState(ctx context.Context, ses *session.Session, wh *WorldHandl
 			for _, pokemon := range party {
 				result.Party = append(result.Party, pokemonToDTO(pokemon))
 			}
+		}
+		if wh.CutTiles != nil {
+			result.CutScope = wh.CutTiles.Scope(charID, result.Position.MapID)
 		}
 		result.FieldState, err = fieldStateSnapshotIn(tx, charID, result.Position.MapID)
 		if err != nil {
