@@ -597,9 +597,9 @@ const PartyPokemonHUD: React.FC<PartyPokemonHUDProps> = ({
       return;
     }
 
-    WorldSocket.sendJsonMessage(OpCodes.FieldMoveUseRequest, {
-      moveName: move.name,
-    });
+    const moveName=normalizeMoveName(move.name);
+    if(moveName==="STRENGTH" || moveName==="FLASH")window.dispatchEvent(new CustomEvent("cq:stateFieldUse",{detail:{moveName}}));
+    else WorldSocket.sendJsonMessage(OpCodes.FieldMoveUseRequest,{moveName:move.name});
     setSelectedPokemon(null);
   }, []);
 

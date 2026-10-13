@@ -77,6 +77,7 @@ type SafariRecoveryState struct {
 	Pokemon       *SafariRecoveryPokemon `json:"pokemon"`
 }
 type GameplayStateResponse struct {
+	FieldState      FieldStateSnapshot                      `json:"fieldState"`
 	FieldCommands   map[string]int64                        `json:"fieldCommands"`
 	PC              PCStorageSnapshot                       `json:"pc"`
 	CommandRevision int64                                   `json:"commandRevision"`
@@ -184,6 +185,10 @@ func readGameplayState(ctx context.Context, ses *session.Session, wh *WorldHandl
 			for _, pokemon := range party {
 				result.Party = append(result.Party, pokemonToDTO(pokemon))
 			}
+		}
+		result.FieldState, err = fieldStateSnapshotIn(tx, charID, result.Position.MapID)
+		if err != nil {
+			return err
 		}
 		result.FieldCommands, err = db.FieldCommandRevisions(tx, charID)
 		if err != nil {

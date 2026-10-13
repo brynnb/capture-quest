@@ -153,6 +153,10 @@ export function requestWarps(request: import("@/net/generated/world_api").Phaser
 export function requestSurf(request: import("@/net/generated/world_api").PokeSurfingRequestPayload): Promise<void> {
   return NetworkBridge.send(request, OpCodes.PokeSurfingRequest);
 }
+export type StateFieldReply=import("@/net/generated/world_api").StateFieldResponse|import("@/net/generated/world_api").InventoryCommandError;
+const stateFieldHandlers=new Set<(reply:StateFieldReply)=>void>();
+export function onStateField(receive:(reply:StateFieldReply)=>void):()=>void{stateFieldHandlers.add(receive);return()=>stateFieldHandlers.delete(receive);}
+export function requestStateField(request:import("@/net/generated/world_api").FieldMoveUseRequestPayload):Promise<void>{return NetworkBridge.send(request,OpCodes.FieldMoveUseRequest);}
 export type SurfReply = import("@/net/generated/world_api").SurfResponse | import("@/net/generated/world_api").SurfError;
 const surfHandlers = new Set<(reply: SurfReply) => void>();
 export function onSurf(receive: (reply: SurfReply) => void): () => void {
@@ -510,6 +514,8 @@ export function normalizePhaserArrayPayload<T>(
 // Internal: dispatch incoming Phaser responses
 export function dispatchPhaserResponse(opcode: number, data: unknown): void {
   switch (opcode) {
+    case OpCodes.FieldMoveUseResponse:
+      stateFieldHandlers.forEach(receive=>receive(data as StateFieldReply));break;
     case OpCodes.PokeSurfingResponse:
       surfHandlers.forEach(receive => receive(data as SurfReply)); break;
     case OpCodes.PokeFishingResponse:

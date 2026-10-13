@@ -168,7 +168,8 @@ export class NetworkBridge {
         import("@/phaser-game/services/PhaserNetworkService").then(module => module.dispatchPhaserResponse(opcode, data));
         break;
       case OpCodes.FieldMoveUseResponse:
-        this.handleFieldMoveUseResponse(data as Record<string, unknown>);
+        if(typeof (data as Record<string,unknown>).requestId==="string")import("@/phaser-game/services/PhaserNetworkService").then(module=>module.dispatchPhaserResponse(opcode,data));
+        else if(!["STRENGTH","FLASH"].includes(String((data as Record<string,unknown>).moveName).toUpperCase()))this.handleFieldMoveUseResponse(data as Record<string, unknown>);
         break;
       case OpCodes.ItemPickupResponse:
         import("@/phaser-game/services/PhaserNetworkService").then(module=>module.dispatchPhaserResponse(opcode,data));

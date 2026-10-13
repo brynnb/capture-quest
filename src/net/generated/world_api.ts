@@ -329,6 +329,11 @@ export interface FieldMoveUseResult {
   moveName: string;
   mapId: number /* int */;
 }
+export interface FieldStateSnapshot {
+  mapId: number /* int */;
+  strength: boolean;
+  flash: boolean;
+}
 
 //////////
 // source: gamecorner_hidden_coins.go
@@ -477,6 +482,7 @@ export interface SafariRecoveryState {
   pokemon?: SafariRecoveryPokemon;
 }
 export interface GameplayStateResponse {
+  fieldState: FieldStateSnapshot;
   fieldCommands: { [key: string]: number /* int64 */};
   pc: PCStorageSnapshot;
   commandRevision: number /* int64 */;
@@ -717,7 +723,20 @@ export interface ElevatorSelectRequestPayload {
 //////////
 // source: handler-field-move.go
 
+export interface StateFieldResponse {
+  success: true;
+  requestId: string;
+  characterId: number /* int64 */;
+  moveName: string;
+  mapId: number /* int */;
+  message: string;
+}
 export interface FieldMoveUseRequestPayload {
+  requestId?: string;
+  characterId?: number /* int64 */;
+  commandRevision?: number /* int64 */;
+  fromX?: number /* int */;
+  fromY?: number /* int */;
   moveName: string;
   targetX?: number /* int */;
   targetY?: number /* int */;

@@ -1,6 +1,6 @@
 import {recoverFieldPublication} from "../services/BattleCommandService";
 import type { OwnedPlayerPositionResponse, PlayerStepResponse, PlayerStepError } from "@/net/generated/protocol";
-import { requestSurf, requestFishing, requestEscapeRope, requestBicycleState, requestPlayerFacing, requestPlayerStep, completePlayerStep, readOwnedPlayerPosition } from "../services/PlayerMovementService";
+import { requestStateField, requestSurf, requestFishing, requestEscapeRope, requestBicycleState, requestPlayerFacing, requestPlayerStep, completePlayerStep, readOwnedPlayerPosition } from "../services/PlayerMovementService";
 import { WorldSocket } from "@/net/index";
 import useGameScreenStore from "@/stores/GameScreenStore";
 import { CorrelatedResponseError, readForCurrentCharacter } from "../services/CorrelatedRequest";
@@ -153,6 +153,33 @@ export class PlayerMovementController {
     } finally {
       if (this.fieldCommandAbort === abort) this.fieldCommandAbort = null;
     }
+  }
+
+  async activateFieldState(moveName:"STRENGTH"|"FLASH"):Promise<void>{
+    if(this.isMoving || this.issuedStep || this.serverMovementInProgress)return;
+    return this.runOwnedFieldCommand(async(characterId,signal,current)=>{
+      const source={mapId:this.currentMapId,fromX:this.currentTileX,fromY:this.currentTileY};
+      let message:string|undefined;let accepted=false;
+      try{
+        const before=await readCurrentGameplayState(signal);if(!current())return;
+        if(!before.fieldCommands)throw new Error("Missing field revisions");
+        const commandRevision=before.fieldCommands["field-state"]??0;
+        if(!Number.isSafeInteger(commandRevision) || commandRevision<0)throw new Error("Invalid field revision");
+        const reply=await requestStateField({...source,characterId,commandRevision,moveName},signal);
+        if(!current())return;
+        if(reply.characterId!==characterId || reply.moveName!==moveName || reply.mapId!==source.mapId || typeof reply.message!=="string")throw new Error("Invalid field outcome");
+        message=reply.message;accepted=true;
+      }catch(error){if(!current())return;if(error instanceof CorrelatedResponseError)message=error.message;}
+      try{
+        const owned=await readCurrentGameplayState(signal,()=>this.capturePositionView());if(!current())return;
+        if(!owned.fieldState || owned.fieldState.mapId!==owned.position.mapId || typeof owned.fieldState.strength!=="boolean" || typeof owned.fieldState.flash!=="boolean")throw new Error("Invalid owned field state");
+        applyGameplayResourceSnapshot(owned);
+        this.projectOwnedPosition(owned.position);
+        const active=moveName==="STRENGTH"?owned.fieldState.strength:owned.fieldState.flash;
+        const presentation=accepted && (!active || owned.fieldState.mapId!==source.mapId) ? `${moveName} state refreshed for your current location.` : message??`${moveName} state refreshed. Check your current location before trying again.`;
+        if(current())usePokemonDialogueStore.getState().openDialogue([presentation]);
+      }catch{if(current()){this.movementRecoveryRequired=true;useChatStore.getState().addMessage("Field move state could not be recovered. Reconnect before moving.",MessageType.SYSTEM_ERROR);}}
+    });
   }
 
   async surf(targetX: number, targetY: number, direction: string): Promise<void> {

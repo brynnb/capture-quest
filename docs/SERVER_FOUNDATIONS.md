@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+explicit STRENGTH/FLASH use scoped field identity, bounded receipts and owned
+active-map recovery, following `4be4b82`:
 STRENGTH/FLASH durable activation shares one primitive with boulder activation,
 following `f18fcab`:
 restore deadline audit records remaining inherited budget and controlled admission/
@@ -103,6 +105,59 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Explicit state-field identity and owned recovery (2026-10-13)
+
+Caller inventory confirmed party-HUD STRENGTH/FLASH buttons are live consumers;
+CUT's tile input and FLY/travel callers remain separate policies. The HUD now
+hands state use to the existing movement-owned field slot rather than emitting
+an unowned packet. Character/screen/transport/scene retirement and single admission
+come from the reviewed shared boundary. Its correlated response belongs to that
+slot; untagged historical state successes no longer open global dialogue.
+
+State commands require request/character identity, expected field revision and
+complete source map/X/Y. They use `db.ExecuteFieldCommand` domain `field-state`
+and the prior joined activation primitive, committing permission, active map and
+bounded latest result together. Matching replay acknowledges history without
+reactivating state; changed/superseded identity is handled by the shared receipt.
+Required-envelope failures and current state-source disagreement reject. CUT and
+travel adapters remain legacy on the shared opcode, with their audits still open.
+
+The existing current-gameplay snapshot now includes required `fieldState` map,
+STRENGTH and FLASH values from the same locked character owner. Missing state is
+inactive; a row for another map is inactive in this map. Unsupported active values
+are explicit data errors. State commands recover through that snapshot after
+success or uncertain delivery without resending. A historical acknowledgement
+cannot claim activation when the current snapshot is inactive or on another map.
+Recovery failure locks the movement owner until reconnect.
+
+Focused state/field/boulder/recovery checks pass. Full world (73.7s) and simulator
+(1.6s) race tests pass; their runner returned a PostgreSQL cleanup wait error.
+Inspection confirmed the shutdown completed afterward and the private PID file
+was removed, so the successful tests were not restarted. The shutdown log recorded
+102.2s checkpoint duration with 66.1s sync and 131,022 sync files, followed by its
+shutdown checkpoint; this is measured test-cluster overhead, not attribution of
+the historical restore timeout. All 595 client tests pass (4.7s), with typecheck,
+canonical tygo and diff checks. Typed snapshot fixtures now supply required state
+rather than weakening that contract. Client uncertainty/retirement and deferred
+receipt rollback/no-reactivation replay checks cover the new boundary. Both
+rendered Chromium/WebSocket party-HUD STRENGTH normal/lost-reply cases pass
+(18.2s; `/var/tmp/capturequest-rendered.9677XL`), with one browser mutation and
+one revision increment. Transport injection sends an identical duplicate; both
+acknowledgements match the durable receipt. The initial test incorrectly expected
+inventory-style duplicate rejection and was corrected to assert equal historical
+acknowledgements, zero rejections and unchanged revision/state. No-reactivation
+after state deactivation/permission loss remains independently checked. Native
+and explicit FLASH rendered acceptance remain open.
+
+Matching frontend/backend activation is required. Existing field receipt and
+state tables are reused; no extra schema or generated runtime assets are added.
+The broader FieldMoveUse family, native/current-result/replay review and the five
+original roadmap areas remain incomplete; restore attribution remains open.
+No push or production deployment is authorized for this continuation.
+
+Next: review state-command source/replay/owned-state validation and complete its
+rendered/native acceptance before auditing CUT or travel policy migration.
 
 ## FieldMoveUse corpus audit and state activation prerequisite (2026-10-13)
 

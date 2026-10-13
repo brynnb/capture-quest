@@ -4,6 +4,7 @@ import { afterEach, beforeEach } from "vitest";
 import { CorrelatedResponseError } from "../services/CorrelatedRequest";
 import * as movement from "../services/PlayerMovementService";
 vi.mock("../services/PlayerMovementService", () => ({
+  requestStateField:vi.fn(),
   requestSurf:vi.fn(),
   requestFishing:vi.fn(),
   requestEscapeRope: vi.fn(),
@@ -695,4 +696,18 @@ test("failed SURF recovery keeps subsequent field mutations locked", async () =>
   vi.mocked(battlePublication.recoverFieldPublication).mockResolvedValueOnce(false);
   await controller.surf(9,0,"LEFT"); await controller.surf(9,0,"LEFT");
   expect(movement.requestSurf).toHaveBeenCalledOnce();
+});
+
+
+test("state field uncertainty reads current state without resending",async()=>{
+ const {controller}=buildLedgeController();usePlayerCharacterStore.getState().setCharacterProfile({id:42});
+ vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce({fieldCommands:{"field-state":2}} as any).mockResolvedValueOnce({fieldState:{mapId:9999,strength:true,flash:false},position:{mapId:9999,x:10,y:0,direction:"UP",serverMovementPending:false}} as any);
+ vi.mocked(movement.requestStateField).mockRejectedValueOnce(new Error("lost reply"));
+ await controller.activateFieldState("STRENGTH");expect(movement.requestStateField).toHaveBeenCalledOnce();expect(vi.mocked(movement.requestStateField).mock.calls[0][0]).toMatchObject({characterId:42,commandRevision:2,moveName:"STRENGTH"});expect(recovery.readCurrentGameplayState).toHaveBeenCalledTimes(2);
+});
+test("retired state field ignores late reply and cannot recover an old scene",async()=>{
+ const {controller}=buildLedgeController();usePlayerCharacterStore.getState().setCharacterProfile({id:42});
+ vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce({fieldCommands:{}} as any);let resolve!:(reply:any)=>void;
+ vi.mocked(movement.requestStateField).mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));
+ const pending=controller.activateFieldState("FLASH");await Promise.resolve();controller.retireFieldCommands();resolve({success:true,requestId:"old",characterId:42,moveName:"FLASH",mapId:9999,message:"Ready"});await pending;expect(recovery.readCurrentGameplayState).toHaveBeenCalledOnce();
 });

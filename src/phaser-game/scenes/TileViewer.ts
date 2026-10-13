@@ -126,6 +126,7 @@ export class TileViewer extends Scene {
   private actorDespawnUnsubscribe: (() => void) | null = null;
   private gameStatusUnsubscribe: (() => void) | null = null;
   private battleInputFreezeUnsubscribe: (() => void) | null = null;
+  private readonly stateFieldUseHandler=(event:Event)=>{const move=(event as CustomEvent<{moveName:string}>).detail?.moveName;if(move==="STRENGTH" || move==="FLASH")void this.playerMovementController.activateFieldState(move);};
   private readonly fishingUseHandler=(event:Event)=>{void this.playerMovementController.fish((event as CustomEvent<{instanceId:number}>).detail.instanceId);};
   private readonly bicycleUseHandler = (event: Event) => {
     const instanceId = (event as CustomEvent<{ instanceId: number }>).detail?.instanceId;
@@ -536,6 +537,7 @@ export class TileViewer extends Scene {
       wasInBattle = state.isInBattle;
     });
     window.addEventListener("cq:fishingUse",this.fishingUseHandler);
+    window.addEventListener("cq:stateFieldUse",this.stateFieldUseHandler);
     window.addEventListener("cq:bicycleUse", this.bicycleUseHandler);
     window.addEventListener("cq:escapeRopeUse", this.escapeRopeUseHandler);
     this.bicycleStateUnsubscribe = useAudioActivityStore.subscribe((state) => {
@@ -2076,6 +2078,7 @@ export class TileViewer extends Scene {
   cleanupResources() {
     this.actorDespawnMarkers.clear();
     window.removeEventListener("cq:fishingUse",this.fishingUseHandler);
+    window.removeEventListener("cq:stateFieldUse",this.stateFieldUseHandler);
     window.removeEventListener("cq:bicycleUse", this.bicycleUseHandler);
     window.removeEventListener("cq:escapeRopeUse", this.escapeRopeUseHandler);
     this.playerMovementController?.retireFieldCommands();

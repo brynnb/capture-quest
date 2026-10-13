@@ -62,3 +62,7 @@ export function requestFishing(request:Omit<import("@/net/generated/world_api").
 export function requestSurf(request: Omit<import("@/net/generated/world_api").PokeSurfingRequestPayload, "requestId">, signal: AbortSignal): Promise<import("@/net/generated/world_api").SurfResponse> {
   return correlatedRequest<import("@/net/generated/world_api").SurfResponse>(PhaserNet.onSurf, requestId => PhaserNet.requestSurf({...request, requestId}), signal);
 }
+
+export function requestStateField(request:Omit<import("@/net/generated/world_api").FieldMoveUseRequestPayload,"requestId">,signal:AbortSignal):Promise<import("@/net/generated/world_api").StateFieldResponse>{
+ return correlatedRequest<import("@/net/generated/world_api").StateFieldResponse>(PhaserNet.onStateField,requestId=>PhaserNet.requestStateField({...request,requestId}),signal);
+}

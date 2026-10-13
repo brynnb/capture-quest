@@ -177,3 +177,37 @@ func normalizeFieldMoveName(name string) string {
 	}
 	return b.String()
 }
+
+type FieldStateSnapshot struct {
+	MapID    int  `json:"mapId"`
+	Strength bool `json:"strength"`
+	Flash    bool `json:"flash"`
+}
+
+func fieldStateSnapshotIn(tx db.DBTX, charID int64, mapID int) (FieldStateSnapshot, error) {
+	result := FieldStateSnapshot{MapID: mapID}
+	rows, err := tx.Query(`SELECT move_name,map_id,active FROM character_field_move_state WHERE character_id=$1 AND move_name IN ('STRENGTH','FLASH')`, charID)
+	if err != nil {
+		return result, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		var savedMap, active int
+		if err := rows.Scan(&name, &savedMap, &active); err != nil {
+			return result, err
+		}
+		if active != 0 && active != 1 {
+			return result, fmt.Errorf("invalid %s active state %d for character %d", name, active, charID)
+		}
+		if savedMap != mapID {
+			continue
+		}
+		if name == "STRENGTH" {
+			result.Strength = active == 1
+		} else {
+			result.Flash = active == 1
+		}
+	}
+	return result, rows.Err()
+}

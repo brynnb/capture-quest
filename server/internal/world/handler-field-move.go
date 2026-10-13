@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 
 	"capturequest/internal/api/opcodes"
@@ -14,12 +15,25 @@ import (
 	"capturequest/internal/session"
 )
 
+type StateFieldResponse struct {
+	Success     bool   `json:"success" tstype:"true"`
+	RequestID   string `json:"requestId"`
+	CharacterID int64  `json:"characterId"`
+	MoveName    string `json:"moveName"`
+	MapID       int    `json:"mapId"`
+	Message     string `json:"message"`
+}
 type FieldMoveUseRequestPayload struct {
-	MoveName  string `json:"moveName"`
-	TargetX   *int   `json:"targetX,omitempty"`
-	TargetY   *int   `json:"targetY,omitempty"`
-	MapID     *int   `json:"mapId,omitempty"`
-	Direction string `json:"direction,omitempty"`
+	RequestID       string `json:"requestId,omitempty"`
+	CharacterID     int64  `json:"characterId,omitempty"`
+	CommandRevision *int64 `json:"commandRevision,omitempty"`
+	FromX           *int   `json:"fromX,omitempty"`
+	FromY           *int   `json:"fromY,omitempty"`
+	MoveName        string `json:"moveName"`
+	TargetX         *int   `json:"targetX,omitempty"`
+	TargetY         *int   `json:"targetY,omitempty"`
+	MapID           *int   `json:"mapId,omitempty"`
+	Direction       string `json:"direction,omitempty"`
 }
 
 type FieldMoveUseResponsePayload struct {
@@ -60,6 +74,10 @@ func HandleFieldMoveUse(ses *session.Session, payload []byte, wh *WorldHandler) 
 	case "CUT":
 		return handleCutFieldMove(ses, req, wh)
 	case "STRENGTH", "FLASH":
+		if err := decodePlayerMovement(payload, &req); err != nil {
+			sendInventoryCommandError(ses, req.RequestID, opcodes.FieldMoveUseResponse, "Invalid state field command.")
+			return false
+		}
 		return handleStateFieldMove(ses, req, wh)
 	case "DIG":
 		return handleEscapeFieldMove(ses, req, wh)
@@ -161,37 +179,51 @@ func handleCutFieldMove(ses *session.Session, req FieldMoveUseRequestPayload, wh
 }
 
 func handleStateFieldMove(ses *session.Session, req FieldMoveUseRequestPayload, wh *WorldHandler) bool {
-	if wh == nil || wh.database == nil {
-		sendFieldMoveUseError(ses, "Field move state unavailable.")
-		return false
+	reject := func(message string) {
+		sendInventoryCommandError(ses, req.RequestID, opcodes.FieldMoveUseResponse, message)
 	}
 	charID := int64(ses.Client.CharData().ID)
-	var result FieldMoveUseResult
-	err := db.Transaction(ses.CommandContext(), wh.database, func(tx db.DBTX) error {
-		if err := db.LockCharacter(tx, charID); err != nil {
-			return err
-		}
+	if wh == nil || wh.database == nil || req.RequestID == "" || len(req.RequestID) > 64 || req.CharacterID != charID || req.CommandRevision == nil || req.MapID == nil || req.FromX == nil || req.FromY == nil {
+		reject("Invalid state field command.")
+		return false
+	}
+	input, _ := json.Marshal(req)
+	encoded, _, err := db.ExecuteFieldCommand(ses.CommandContext(), wh.database, charID, "field-state", req.RequestID, req.CommandRevision, input, func(tx db.DBTX) ([]byte, error) {
 		if err := requireNoOwnedBattleIn(tx, charID); err != nil {
-			return err
+			return nil, err
 		}
-		var mapID int
-		if err := tx.QueryRow(`SELECT map_id FROM character_data WHERE id=$1`, charID).Scan(&mapID); err != nil {
-			return err
+		var mapID, x, y int
+		if err := tx.QueryRow(`SELECT map_id,x,y FROM character_data WHERE id=$1`, charID).Scan(&mapID, &x, &y); err != nil {
+			return nil, err
 		}
 		mapID = normalizedVisiblePlayerMapID(wh, mapID)
-		var err error
-		result, err = prepareStateFieldMoveIn(tx, charID, mapID, req.MoveName)
-		return err
+		if mapID != *req.MapID || x != *req.FromX || y != *req.FromY {
+			return nil, fmt.Errorf("field move source changed")
+		}
+		result, err := prepareStateFieldMoveIn(tx, charID, mapID, req.MoveName)
+		if err != nil {
+			return nil, err
+		}
+		if !result.Success {
+			return nil, &itemuse.Rejection{Message: result.Message}
+		}
+		return json.Marshal(StateFieldResponse{Success: true, RequestID: req.RequestID, CharacterID: charID, MoveName: result.MoveName, MapID: mapID, Message: result.Message})
 	})
 	if err != nil {
-		sendFieldMoveUseError(ses, "That move can't be used here.")
+		var denied *itemuse.Rejection
+		if errors.As(err, &denied) {
+			reject(denied.Message)
+		} else {
+			reject("Field move state changed or could not be read. Recover before trying again.")
+		}
 		return false
 	}
-	if !result.Success {
-		sendFieldMoveUseError(ses, result.Message)
+	var reply StateFieldResponse
+	if err := json.Unmarshal(encoded, &reply); err != nil || !reply.Success || reply.CharacterID != charID || reply.RequestID != req.RequestID || reply.MoveName != normalizeFieldMoveName(req.MoveName) || reply.MapID != *req.MapID || reply.Message == "" {
+		reject("Invalid committed field state result.")
 		return false
 	}
-	ses.SendStreamJSON(FieldMoveUseResponsePayload{Success: true, Message: result.Message, MoveName: result.MoveName, MapID: result.MapID}, opcodes.FieldMoveUseResponse)
+	ses.SendStreamJSON(reply, opcodes.FieldMoveUseResponse)
 	return false
 }
 
