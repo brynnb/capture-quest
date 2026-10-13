@@ -62,10 +62,13 @@ type fieldTravelResult struct {
 	Permission  FieldMovePermissionResult
 }
 
-func useFly(ctx context.Context, database *sql.DB, charID int64, mapID, x, y int, normalizeMap func(int) int) (fieldTravelResult, error) {
+func useFly(ctx context.Context, database db.DBTX, charID int64, sourceMap, sourceX, sourceY, mapID, x, y int, normalizeMap func(int) int) (fieldTravelResult, error) {
 	var result fieldTravelResult
 	err := db.Transaction(ctx, database, func(tx db.DBTX) error {
 		if err := db.LockCharacter(tx, charID); err != nil {
+			return err
+		}
+		if err := requireTravelSourceIn(tx, charID, sourceMap, sourceX, sourceY, normalizeMap); err != nil {
 			return err
 		}
 		var err error
@@ -108,15 +111,8 @@ func useTravelFieldMove(ctx context.Context, database db.DBTX, charID int64, mov
 		if err := db.LockCharacter(tx, charID); err != nil {
 			return err
 		}
-		if err := requireNoOwnedBattleIn(tx, charID); err != nil {
+		if err := requireTravelSourceIn(tx, charID, sourceMap, sourceX, sourceY, normalizeMap); err != nil {
 			return err
-		}
-		var mapID, x, y int
-		if err := tx.QueryRow(`SELECT map_id,x,y FROM character_data WHERE id=$1`, charID).Scan(&mapID, &x, &y); err != nil {
-			return err
-		}
-		if normalizeMap(mapID) != sourceMap || x != sourceX || y != sourceY {
-			return &itemuse.Rejection{Message: "Your position changed. Check your current location before using the move."}
 		}
 		var err error
 		result.Permission, err = fieldMovePermissionIn(tx, charID, moveName, func(flag string) (bool, error) { return queryEventFlag(tx, charID, flag) })
@@ -144,6 +140,25 @@ func useTravelFieldMove(ctx context.Context, database db.DBTX, charID int64, mov
 		return fieldTravelResult{}, err
 	}
 	return result, nil
+}
+
+// All ability travel checks its expected source and durable battle owner under
+// the same character transaction before permission/catalog/destination work.
+func requireTravelSourceIn(tx db.DBTX, charID int64, sourceMap, sourceX, sourceY int, normalizeMap func(int) int) error {
+	if err := db.RequireTransaction(tx); err != nil {
+		return err
+	}
+	if err := requireNoOwnedBattleIn(tx, charID); err != nil {
+		return err
+	}
+	var mapID, x, y int
+	if err := tx.QueryRow(`SELECT map_id,x,y FROM character_data WHERE id=$1`, charID).Scan(&mapID, &x, &y); err != nil {
+		return err
+	}
+	if normalizeMap(mapID) != sourceMap || x != sourceX || y != sourceY {
+		return &itemuse.Rejection{Message: "Your position changed. Check your current location before using the move."}
+	}
+	return nil
 }
 
 // Only absent primary bind retains the established recovery-spawn policy.

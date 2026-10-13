@@ -70,14 +70,7 @@ func HandleFieldMoveUse(ses *session.Session, payload []byte, wh *WorldHandler) 
 			sendInventoryCommandError(ses, req.RequestID, opcodes.FieldMoveUseResponse, "Tagged command is unsupported for this field move.")
 			return false
 		}
-		if move == "FLY" {
-			if char := ses.Client.CharData(); char != nil {
-				if battle := getBattle(int64(char.ID)); battle != nil && !battle.IsOver() {
-					sendFieldMoveUseError(ses, "Field moves can't be used during a battle.")
-					return false
-				}
-			}
-		}
+
 	}
 
 	switch normalizeFieldMoveName(req.MoveName) {
@@ -321,7 +314,8 @@ func handleFlyFieldMove(ses *session.Session, req FieldMoveUseRequestPayload, wh
 		return false
 	}
 
-	result, err := useFly(ses.CommandContext(), wh.database, int64(charData.ID), *req.MapID, *req.TargetX, *req.TargetY, func(mapID int) int {
+	source := wh.ownedPlayerSnapshot(ses, "")
+	result, err := useFly(ses.CommandContext(), wh.database, int64(charData.ID), source.MapID, source.X, source.Y, *req.MapID, *req.TargetX, *req.TargetY, func(mapID int) int {
 		return normalizedVisiblePlayerMapID(wh, mapID)
 	})
 	if err != nil {

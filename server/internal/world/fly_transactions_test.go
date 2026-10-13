@@ -7,7 +7,6 @@ import (
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
-	"capturequest/internal/pokebattle"
 	"capturequest/internal/testdb"
 )
 
@@ -56,9 +55,10 @@ func TestFlyDispatcherValidatesDurableEligibilityAndCatalogBeforeCommit(t *testi
  CREATE CONSTRAINT TRIGGER reject_fly_commit AFTER UPDATE ON character_data DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (NEW.map_id=60) EXECUTE FUNCTION reject_fly_commit();`)
 	deny(60, 3, 4, "Could not FLY. Please try again.")
 	testdb.Exec(t, database, `DROP TRIGGER reject_fly_commit ON character_data`)
-	setBattle(42, &pokebattle.BattleState{Phase: pokebattle.PhaseActionSelect})
-	deny(60, 3, 4, "Field moves can't be used during a battle.")
-	forgetBattle(42, getBattle(42))
+	battleTestStart(t, database, false, nil)
+	forgetBattle(42, getBattle(42)) // Cold cache cannot bypass durable ownership.
+	deny(60, 3, 4, "Could not FLY. Please try again.")
+	testdb.Exec(t, database, `DELETE FROM character_battle_state WHERE character_id=42`)
 	messages.streams = nil
 	battleDispatch(t, wh, ses, opcodes.FieldMoveUseRequest, `{"moveName":"FLY","mapId":60,"targetX":3,"targetY":4}`)
 	if len(messages.streams) != 2 || messages.streams[0].opcode != opcodes.WarpTileTeleportNotify || messages.streams[1].opcode != opcodes.FieldMoveUseResponse {
@@ -76,5 +76,59 @@ func TestFlyDispatcherValidatesDurableEligibilityAndCatalogBeforeCommit(t *testi
 	mx, my, mm, ok := wh.PlayerMovement.GetPosition(42)
 	if !ok || mx != 3 || my != 4 || mm != 60 || ses.Client.CharData().MapID != 60 {
 		t.Fatalf("success live position (%d,%d,%d)", mm, mx, my)
+	}
+}
+
+func TestFlySourceAndPoolOwnershipBeforeCatalogCommit(t *testing.T) {
+	for _, kind := range []string{"stale-source", "single-connection", "catalog-failure"} {
+		t.Run(kind, func(t *testing.T) {
+			database, wh, ses, messages := battleTestWorld(t)
+			testdb.Exec(t, database, `UPDATE character_data SET map_id=50,x=7,y=8 WHERE id=42;INSERT INTO phaser_moves(id,constant_name,name,short_name,effect,power,type,accuracy,pp) VALUES(19,'FLY','FLY','FLY','FLY_EFFECT',70,'FLYING',95,15);UPDATE character_pokemon SET move1_id=19,move1_pp=15 WHERE character_id=42;INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'EVENT_GOT_THUNDERBADGE');INSERT INTO poke_start_cities(id,map_id,name,spawn_x,spawn_y) VALUES(1,60,'Town',3,4)`)
+			ses.Client.CharData().MapID, ses.Client.CharData().X, ses.Client.CharData().Y = 50, 7, 8
+			if kind == "stale-source" {
+				testdb.Exec(t, database, `UPDATE character_data SET x=8 WHERE id=42`)
+			}
+			if kind == "single-connection" {
+				database.SetMaxOpenConns(1)
+			}
+			if kind == "catalog-failure" {
+				testdb.Exec(t, database, `ALTER TABLE poke_start_cities RENAME TO unavailable_catalog`)
+			}
+			old := db.GlobalWorldDB
+			db.GlobalWorldDB = nil
+			t.Cleanup(func() { db.GlobalWorldDB = old })
+			battleDispatch(t, wh, ses, opcodes.FieldMoveUseRequest, `{"moveName":"FLY","mapId":60,"targetX":3,"targetY":4}`)
+			want := kind == "single-connection"
+			var reply FieldMoveUseResponsePayload
+			for _, packet := range messages.streams {
+				if packet.opcode == opcodes.FieldMoveUseResponse {
+					if err := json.Unmarshal(packet.payload, &reply); err != nil {
+						t.Fatal(err)
+					}
+				} else if !want && packet.opcode == opcodes.WarpTileTeleportNotify {
+					t.Fatal("failed FLY published destination")
+				}
+			}
+			if reply.Success != want {
+				t.Fatalf("kind=%s reply=%+v", kind, reply)
+			}
+			var mapID, x int
+			if err := database.QueryRow(`SELECT map_id,x FROM character_data WHERE id=42`).Scan(&mapID, &x); err != nil {
+				t.Fatal(err)
+			}
+			if want {
+				if mapID != 60 || x != 3 {
+					t.Fatal("catalog destination not committed")
+				}
+			} else {
+				expectedX := 7
+				if kind == "stale-source" {
+					expectedX = 8
+				}
+				if mapID != 50 || x != expectedX {
+					t.Fatal("failed source/catalog read moved character")
+				}
+			}
+		})
 	}
 }

@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+FLY shares durable travel source/battle admission while retaining catalog policy,
+following `32be2b4`:
 ability travel shared failure/retirement review and native process acceptance,
 following `dfc1bb5`:
 DIG/TELEPORT scoped field receipts and current owned movement recovery,
@@ -125,6 +127,43 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## FLY source/battle/catalog prerequisite review (2026-10-13)
+
+FLY's existing transaction already checked durable move/badge eligibility and
+matched the UI's unique `poke_start_cities` destination. It lacked saved-source
+validation and relied on the dispatcher's cached battle gate. The shared
+`requireTravelSourceIn` now checks expected saved source and durable battle owner
+under the existing character transaction for FLY, DIG and TELEPORT. FLY's pooled
+or supplied query owner can join the same transaction; catalog validation and
+final movement/route/presentation retirement remain in that commit. No parallel
+catalog, arbitrary coordinate permit or inventory coordinator is introduced.
+
+Cached battle admission is removed from the common field dispatcher. The existing
+FLY denial fixture now establishes a real durable battle and clears runtime cache,
+instead of asserting authority from a fabricated cached battle alone. That change
+matches the established durable-ownership policy, not a weakened assertion.
+Eligibility/no-badge, foreign destination, forged coordinates, duplicate catalog,
+late commit failure, successful saved/live pose and normal legacy response ordering
+remain covered. New stale-source, held single connection and catalog SQL failure
+checks prove no movement/publication on failed ownership/read decisions.
+
+Focused FLY/ability/receipt checks pass (2.5s). Full world (74.8s), simulator (1.5s)
+race suites and all Go package compilation pass, with diff checks. Rendered
+Chromium/WebSocket party-HUD FLY catalog selection/destination acceptance passes
+(5.5s; `/var/tmp/capturequest-rendered.dIOpLu`), with expected name/map/coordinates
+resolved from the actual served catalog and matched against saved pose. This
+does not claim correlated, lost-reply, selector-retirement or native acceptance.
+
+Remaining: FLY still uses its legacy destination-only request and global response/
+warp publication. Source/character/revision envelope, bounded replay, scene-owned
+current recovery and pending destination-menu retirement need coordinated
+migration, reusing the reviewed field/travel boundaries. Wider matrix coverage,
+original five-area completion and historical restore attribution remain open.
+No push/deployment, schema or source asset change occurred.
+
+Next: migrate the FLY selector/command into the existing owned travel adapter,
+retaining unique catalog validation and removing unowned warp/reply effects.
 
 ## Ability travel transition review and native acceptance (2026-10-13)
 
