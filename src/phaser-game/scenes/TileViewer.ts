@@ -1,3 +1,4 @@
+import {readCurrentGameplayState} from "@/phaser-game/services/GameplayRecoveryService";
 import { ActorReadView } from "../services/ActorReadView";
 import { bindInventoryScene } from "@/phaser-game/services/InventoryCommandService";
 import { bindBattleScene } from "@/phaser-game/services/BattleCommandService";
@@ -339,7 +340,8 @@ export class TileViewer extends Scene {
           const position = this.playerMovementController.getCurrentPosition();
           const dx = direction === "LEFT" ? -1 : direction === "RIGHT" ? 1 : 0;
           const dy = direction === "UP" ? -1 : direction === "DOWN" ? 1 : 0;
-          PhaserNet.requestFieldMoveUse(
+          if(command.useFieldMove.moveName.toUpperCase()==="CUT")void this.playerMovementController.cut(command.useFieldMove.targetX??position.x+dx,command.useFieldMove.targetY??position.y+dy,direction);
+          else PhaserNet.requestFieldMoveUse(
             command.useFieldMove.moveName,
             command.useFieldMove.targetX ?? position.x + dx,
             command.useFieldMove.targetY ?? position.y + dy,
@@ -570,6 +572,19 @@ export class TileViewer extends Scene {
 
     // Subscribe to pushed actor lists (e.g. player spawn)
     this.playerMovementController.setActorReconciler(signal => this.reconcileActors(signal));
+    this.playerMovementController.setTileReconciler(async(mapId,x,y,scope,signal)=>{
+      const character=usePlayerCharacterStore.getState().characterProfile.id;
+      const current=()=>!signal.aborted && this.sys.isActive() && this.playerMovementController.getCurrentMapId()===mapId && usePlayerCharacterStore.getState().characterProfile.id===character;
+      this.mapLoader.invalidateOwnedTileProjection(mapId,x,y);
+      const tiles=await this.mapDataService.fetchTilesInBounds(mapId,{minX:x,maxX:x,minY:y,maxY:y},signal);
+      if(!current())return;
+      const owned=await readCurrentGameplayState(signal);if(!current() || owned.cutScope!==scope)return;
+      if(tiles.length!==1)throw new Error("CUT target square is unavailable");
+      const tile=tiles[0];await this.mapRenderer.loadTileTextureIfNeeded(tile.tileImageId);if(!current())return;
+      this.mapRenderer.addTile(tile.x,tile.y,tile.tileImageId);
+      this.updateTileEditorLookup(tile.x,tile.y,tile.tileImageId,tile.collisionType,tile.rawFootTileId,tile.talkOverTile);
+      this.playerMovementController.updateCollisionTile(tile.x,tile.y,tile.collisionType,false,tile.rawFootTileId,tile.talkOverTile);
+    });
 
     // Check if we have data passed from resetScene
     let destinationMapId = null;

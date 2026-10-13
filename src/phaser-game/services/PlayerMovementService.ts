@@ -66,3 +66,7 @@ export function requestSurf(request: Omit<import("@/net/generated/world_api").Po
 export function requestStateField(request:Omit<import("@/net/generated/world_api").FieldMoveUseRequestPayload,"requestId">,signal:AbortSignal):Promise<import("@/net/generated/world_api").StateFieldResponse>{
  return correlatedRequest<import("@/net/generated/world_api").StateFieldResponse>(PhaserNet.onStateField,requestId=>PhaserNet.requestStateField({...request,requestId}),signal);
 }
+
+export function requestCut(request:Omit<import("@/net/generated/world_api").FieldMoveUseRequestPayload,"requestId">,signal:AbortSignal):Promise<import("@/net/generated/world_api").CutFieldResponse>{
+ return correlatedRequest<import("@/net/generated/world_api").CutFieldResponse>(receive=>PhaserNet.onStateField(reply=>receive(reply as import("@/net/generated/world_api").CutFieldResponse|import("@/net/generated/world_api").InventoryCommandError)),requestId=>PhaserNet.requestStateField({...request,requestId}),signal);
+}

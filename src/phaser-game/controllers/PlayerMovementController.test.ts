@@ -4,6 +4,7 @@ import { afterEach, beforeEach } from "vitest";
 import { CorrelatedResponseError } from "../services/CorrelatedRequest";
 import * as movement from "../services/PlayerMovementService";
 vi.mock("../services/PlayerMovementService", () => ({
+  requestCut:vi.fn(),
   requestStateField:vi.fn(),
   requestSurf:vi.fn(),
   requestFishing:vi.fn(),
@@ -719,4 +720,16 @@ test("historical field success cannot present activation over inactive owned sta
  vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce({fieldCommands:{}} as any).mockResolvedValueOnce({fieldState:{mapId:9999,strength:false,flash:false},position:{mapId:9999,x:10,y:0,direction:"UP",serverMovementPending:false}} as any);
  vi.mocked(movement.requestStateField).mockResolvedValueOnce({success:true,requestId:"old",characterId:42,moveName:"FLASH",mapId:9999,message:"PIKACHU used FLASH."});
  await controller.activateFieldState("FLASH");expect(open).toHaveBeenCalledWith(["FLASH state refreshed for your current location."]);expect(movement.requestStateField).toHaveBeenCalledOnce();open.mockRestore();
+});
+
+
+test("CUT unknown delivery reconciles one current scoped tile without resend",async()=>{
+ const {controller}=buildLedgeController();usePlayerCharacterStore.getState().setCharacterProfile({id:42});const reconcile=vi.fn(async()=>{});controller.setTileReconciler(reconcile);
+ vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce({cutScope:"visit",fieldCommands:{cut:0}} as any).mockResolvedValueOnce({cutScope:"visit",position:{mapId:9999}} as any);
+ vi.mocked(movement.requestCut).mockRejectedValueOnce(new Error("lost reply"));await controller.cut(9,0,"LEFT");expect(movement.requestCut).toHaveBeenCalledOnce();expect(reconcile).toHaveBeenCalledWith(9999,9,0,"visit",expect.any(AbortSignal));
+});
+test("CUT unknown result cannot reconcile a replacement visit",async()=>{
+ const {controller}=buildLedgeController();usePlayerCharacterStore.getState().setCharacterProfile({id:42});const reconcile=vi.fn(async()=>{});controller.setTileReconciler(reconcile);
+ vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce({cutScope:"old",fieldCommands:{}} as any).mockResolvedValueOnce({cutScope:"new",position:{mapId:9999}} as any);
+ vi.mocked(movement.requestCut).mockRejectedValueOnce(new Error("lost reply"));await controller.cut(9,0,"LEFT");expect(reconcile).not.toHaveBeenCalled();expect(movement.requestCut).toHaveBeenCalledOnce();
 });

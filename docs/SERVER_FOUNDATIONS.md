@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+CUT correlated source/visit commands and reset-safe current tile recovery,
+following `02bd973`:
 CUT transient visit scope fences prepared marking across reset/replacement,
 following `9cc3397`:
 CUT transient owner retains full replacement metadata and projects owned tile reads,
@@ -115,6 +117,55 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## CUT correlated visit admission and current tile recovery (2026-10-13)
+
+CUT now requires generated request/character identity, expected field revision,
+complete source/target coordinates and the owned transient visit scope. Actor-only
+legacy CUT requests reject. The request joins `db.ExecuteFieldCommand` domain
+`cut` and the prior durable permission/tile preparation. Its bounded receipt
+acknowledges authorization/history, not persistent cut art. Marking remains after
+outer commit and conditional on the same visit. Deferred receipt failure cannot
+publish transient state. Matching replay requires that visit still contain the
+cut and never calls marking again; old scopes reject before receipt replay.
+There is no restoration of expired cuts after map/character/process replacement.
+
+World CUT input and the test bridge now use the existing movement-owned field
+slot and shared correlation. Replies carry identity/visit/target/message without
+tile art to apply. Success or uncertain delivery reads current gameplay ownership,
+then reconciles the bounded square through the existing scene renderer only while
+the visit remains current. No mutation is resent. Replacement visits discard the
+old operation; failure to recover a current tile locks movement until reconnect.
+Tagged CUT success no longer reaches the global field tile-update/dialogue path.
+Legacy travel remains separate and rejects mixed tagged envelopes.
+
+The scene invalidates current snapshot/chunk caches before rereading, without
+installing a committed world-edit patch. Its character/map/scene/signal/visit
+checks fence projection and texture completion. Native coordinate data and the
+existing transient reset policy are unchanged. The native block-swap producing-
+provenance/art approximation remains documented rather than guessed here.
+
+Focused CUT preparation/receipt/reset and mixed legacy-policy checks pass (3.4s),
+with the final deferred receipt failure/no-recreation regression passing (2.0s).
+Full world (68.1s) and simulator (1.5s) race suites, Go compilation, canonical tygo,
+typecheck and diff checks pass. All 598 client tests pass (4.8s), including unknown
+result single-send/current-tile reconciliation and replacement-visit denial.
+All three rendered Chromium/WebSocket timeout, reset/late delivery and bounded
+reread/walk-through checks pass (28.1s;
+`/var/tmp/capturequest-rendered.Rt6kmT`). The fault helper deliberately duplicates
+one browser command; equal receipt acknowledgements leave revision 1. Late actual
+reply delivery after reset leaves the original tree and current pose/dialogue
+unchanged. Current-visit loss recovers walkability and art without another command.
+
+Activation needs matching frontend/backend with existing field receipt schema;
+no new schema/source assets or production changes are introduced. Native CUT,
+source/read/texture race review and exact block provenance remain open, alongside
+travel/other finite-matrix families and the original five-area goal. Historical
+restore attribution remains incomplete. No push or deployment is authorized.
+
+Next: review the CUT receipt/transient-publication gap and source/texture lifetime,
+then native/process acceptance before migrating DIG/TELEPORT/FLY. A process reset
+must reveal the base tree, not apply a historical receipt as a new cut.
 
 ## CUT reset identity prerequisite (2026-10-13)
 

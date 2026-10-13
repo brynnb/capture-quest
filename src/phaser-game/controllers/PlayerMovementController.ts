@@ -1,13 +1,12 @@
 import {recoverFieldPublication} from "../services/BattleCommandService";
 import type { OwnedPlayerPositionResponse, PlayerStepResponse, PlayerStepError } from "@/net/generated/protocol";
-import { requestStateField, requestSurf, requestFishing, requestEscapeRope, requestBicycleState, requestPlayerFacing, requestPlayerStep, completePlayerStep, readOwnedPlayerPosition } from "../services/PlayerMovementService";
+import { requestCut, requestStateField, requestSurf, requestFishing, requestEscapeRope, requestBicycleState, requestPlayerFacing, requestPlayerStep, completePlayerStep, readOwnedPlayerPosition } from "../services/PlayerMovementService";
 import { WorldSocket } from "@/net/index";
 import useGameScreenStore from "@/stores/GameScreenStore";
 import { CorrelatedResponseError, readForCurrentCharacter } from "../services/CorrelatedRequest";
 import { Scene } from "phaser";
 import { PhaserActor, PhaserTile, PhaserWarp } from "@/net/generated/world_api";
 import { TILE_SIZE, UNIFIED_OVERWORLD_MAP_ID } from "../constants";
-import * as PhaserNet from "../services/PhaserNetworkService";
 import { isWorldInputFrozen } from "../utils/worldInputGuard";
 import usePokemonDialogueStore from "@/stores/PokemonDialogueStore";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
@@ -126,6 +125,8 @@ export class PlayerMovementController {
   private actorReconciler: (signal: AbortSignal) => Promise<void> = async () => {};
   setActorReconciler(reconcile: (signal: AbortSignal) => Promise<void>): void { this.actorReconciler = reconcile; }
   reconcileActors(signal: AbortSignal): Promise<void> { return this.actorReconciler(signal); }
+  private tileReconciler:(mapId:number,x:number,y:number,scope:string,signal:AbortSignal)=>Promise<void>=async()=>{throw new Error("Tile recovery is not bound");};
+  setTileReconciler(reconcile:(mapId:number,x:number,y:number,scope:string,signal:AbortSignal)=>Promise<void>):void{this.tileReconciler=reconcile;}
   private fieldCommandAbort: AbortController | null = null;
   private fieldCommandsRetired = false;
 
@@ -153,6 +154,30 @@ export class PlayerMovementController {
     } finally {
       if (this.fieldCommandAbort === abort) this.fieldCommandAbort = null;
     }
+  }
+
+  async cut(targetX:number,targetY:number,direction:string):Promise<void>{
+    if(this.isMoving || this.issuedStep || this.serverMovementInProgress)return;
+    return this.runOwnedFieldCommand(async(characterId,signal,current)=>{
+      const source={mapId:this.currentMapId,fromX:this.currentTileX,fromY:this.currentTileY};
+      let cutScope="";let message:string|undefined;
+      try{
+        const before=await readCurrentGameplayState(signal);if(!current())return;
+        cutScope=before.cutScope;
+        if(typeof cutScope!=="string" || !cutScope || !before.fieldCommands)throw new Error("CUT scope/revision missing");
+        const commandRevision=before.fieldCommands.cut??0;if(!Number.isSafeInteger(commandRevision) || commandRevision<0)throw new Error("CUT revision invalid");
+        const reply=await requestCut({...source,characterId,commandRevision,cutScope,moveName:"CUT",targetX,targetY,direction},signal);if(!current())return;
+        if(reply.characterId!==characterId || reply.cutScope!==cutScope || reply.mapId!==source.mapId || reply.targetX!==targetX || reply.targetY!==targetY || reply.moveName!=="CUT" || typeof reply.message!=="string")throw new Error("CUT outcome differs from source");
+        message=reply.message;
+      }catch(error){if(!current())return;if(error instanceof CorrelatedResponseError)message=error.message;}
+      try{
+        const owned=await readCurrentGameplayState(signal,()=>this.capturePositionView());if(!current())return;
+        if(!cutScope || owned.cutScope!==cutScope || owned.position.mapId!==source.mapId)return;
+        applyGameplayResourceSnapshot(owned);
+        await this.tileReconciler(source.mapId,targetX,targetY,cutScope,signal);if(!current())return;
+        usePokemonDialogueStore.getState().openDialogue([message??"CUT state refreshed. Check the current tile before trying again."]);
+      }catch{if(current()){this.movementRecoveryRequired=true;useChatStore.getState().addMessage("CUT state could not be recovered. Reconnect before moving.",MessageType.SYSTEM_ERROR);}}
+    });
   }
 
   async activateFieldState(moveName:"STRENGTH"|"FLASH"):Promise<void>{
@@ -1076,13 +1101,7 @@ export class PlayerMovementController {
     direction: MovementDirection,
   ): boolean {
     if (this.inputFrozenChecker()) return false;
-    PhaserNet.requestFieldMoveUse(
-      "CUT",
-      targetX,
-      targetY,
-      this.currentMapId,
-      direction,
-    );
+    void this.cut(targetX,targetY,direction);
     return true;
   }
 

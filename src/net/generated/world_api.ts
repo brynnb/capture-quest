@@ -732,7 +732,13 @@ export interface StateFieldResponse {
   mapId: number /* int */;
   message: string;
 }
+export interface CutFieldResponse extends StateFieldResponse {
+  cutScope: string;
+  targetX: number /* int */;
+  targetY: number /* int */;
+}
 export interface FieldMoveUseRequestPayload {
+  cutScope?: string;
   requestId?: string;
   characterId?: number /* int64 */;
   commandRevision?: number /* int64 */;

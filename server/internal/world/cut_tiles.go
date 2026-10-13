@@ -163,3 +163,24 @@ func (m *CutTileManager) Scope(charID int64, mapID int) string {
 	}
 	return m.scopes[charID][mapID]
 }
+
+func (m *CutTileManager) MatchesScope(charID int64, mapID int, scope string) bool {
+	if m == nil || scope == "" {
+		return false
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.scopes[charID][mapID] == scope
+}
+func (m *CutTileManager) HasCut(charID int64, mapID int, scope string, x, y int) bool {
+	if m == nil || scope == "" {
+		return false
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if m.scopes[charID][mapID] != scope {
+		return false
+	}
+	_, ok := m.tiles[charID][mapID][tileKey(x, y)]
+	return ok
+}

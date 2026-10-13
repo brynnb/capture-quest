@@ -754,6 +754,13 @@ export class MapLoader {
     }
   }
 
+  // CUT changes the current character projection, not the authored world.
+  // Invalidate cached chunks/snapshots without installing a persistent edit.
+  invalidateOwnedTileProjection(mapId:number,x:number,y:number):void {
+    this.mapDataService.recordCommittedTileUpdate();
+    if(mapId===UNIFIED_OVERWORLD_MAP_ID)this.overworldChunkStream?.invalidateAt(x,y);
+  }
+
   recordCommittedTileUpdates(mapId:number,updates:readonly CommittedOverworldTileUpdate[]):void {
     this.mapDataService.recordCommittedTileUpdate();
     if(mapId===UNIFIED_OVERWORLD_MAP_ID)this.applyCommittedOverworldTileUpdates(updates);
