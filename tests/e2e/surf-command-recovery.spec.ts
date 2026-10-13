@@ -3,11 +3,11 @@ import * as OpCodes from "../../src/net/generated/opcodes";
 import {createGuestCharacterAndEnterWorld,enterWorld,quitToCharacterSelect} from "./helpers/auth";
 import {jumpToScenario} from "./helpers/scenarioDebugger";
 import {getGameState,waitForNoMapLoading,waitForPlayerIdle} from "./helpers/state";
-import {clickTile,pressSpace} from "./helpers/input";
+import {clickTile,pressSpace,pressMovement} from "./helpers/input";
 import {isolatedCrashRuntime} from "./helpers/processRecovery";
 import {observeResponseDelivery} from "./helpers/responseDelivery";
 
-for (const mode of ["timeout","reentry","process"] as const) {
+for (const mode of ["timeout","reentry","process","duplicate"] as const) {
   test(`committed SURF ${mode} recovers without another entry`,async({page,context},testInfo)=>{
     test.skip(process.env.CQ_E2E_DATABASE_FIXTURE!=="true","Requires private database runner");
     test.skip(mode==="process" && process.env.CQ_E2E_CRASH_RECOVERY!=="true","Requires exact-process runner");
@@ -16,14 +16,14 @@ for (const mode of ["timeout","reentry","process"] as const) {
     const recoveryIds=new Set<string>();
     let requests=0, recoveryReads=0, recoveryReplies=0, oldId="", delivered=0;
     let release:(()=>void)|undefined;
-    let historical:unknown, receipt:unknown;
+    let historical:unknown, originalRequest:unknown, receipt:unknown;
     await context.routeWebSocket("**/ws",socket=>{
       const server=socket.connectToServer();
       socket.onMessage(message=>{
         if(Buffer.isBuffer(message) && message.length>=6 && message.readUInt16LE(4)===OpCodes.PokeSurfingRequest){
           const request=JSON.parse(message.subarray(6).toString());
           expect(request.requestId).toBeTruthy(); expect(request.characterId).toBeGreaterThan(0);
-          expect(request.fromX).toBe(3); expect(request.fromY).toBe(17); requests++;
+          expect(request.fromX).toBe(3); expect(request.fromY).toBe(17); expect(request.commandRevision).toBe(0); originalRequest=request; requests++;
         }
         if (release && Buffer.isBuffer(message) && message.length>=6 && message.readUInt16LE(4)===OpCodes.GameplayStateRequest) {
           recoveryReads++;
@@ -65,7 +65,7 @@ for (const mode of ["timeout","reentry","process"] as const) {
     }
     // Movement broadcasts can display the committed tile before the held ack
     // times out. Require the actual owned recovery request while it is held.
-    if (mode === "timeout") {
+    if (mode === "timeout" || mode === "duplicate") {
       await expect.poll(()=>recoveryReads,{timeout:20000}).toBeGreaterThan(0);
       await expect.poll(()=>recoveryReplies).toBeGreaterThan(0);
     }
@@ -77,6 +77,18 @@ for (const mode of ["timeout","reentry","process"] as const) {
     }else release!();
     await expect.poll(()=>delivered).toBe(1);
     expect(await pose()).toEqual({x:4,y:17,surfing:true}); expect(requests).toBe(1);
+    if (mode === "duplicate") {
+      await pressMovement(page,"left");
+      await expect.poll(pose).toEqual({x:3,y:17,surfing:false});
+      await waitForPlayerIdle(page);
+      await page.evaluate(async request=>{const path="/src/net/NetworkBridge.ts";const {NetworkBridge}=await import(path);await NetworkBridge.send(request,104);},originalRequest);
+      await expect.poll(()=>delivered).toBe(2);
+      expect(requests).toBe(2); // The second send is this explicit replay probe.
+      expect(await pose()).toEqual({x:3,y:17,surfing:false});
+      expect(await sql(`SELECT x::int || ',' || y::int FROM character_data WHERE id=${id}`)).toBe("3,17");
+    }
+    expect(await sql(`SELECT revision FROM character_field_command_state WHERE character_id=${id} AND domain='surf'`)).toBe("1");
+    expect(await sql(`SELECT count(*) FROM character_field_command_state WHERE character_id=${id} AND domain='surf'`)).toBe("1");
     await page.screenshot({path:testInfo.outputPath(`surf-${mode}-recovered.png`)});
     await record({family:"surf-command",mode,id,requests,recoveryReads,recoveryReplies,oldId,delivered,receipt});
     await quitToCharacterSelect(page);

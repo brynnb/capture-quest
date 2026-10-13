@@ -1254,6 +1254,7 @@ export interface SurfError extends SurfIdentity {
   error: string;
 }
 export interface PokeSurfingRequestPayload extends SurfIdentity {
+  commandRevision: number;
   fromX: number;
   fromY: number;
   targetX: number;

@@ -160,8 +160,13 @@ export class PlayerMovementController {
     return this.runOwnedFieldCommand(async (characterId, signal, current) => {
       let rejection: string | undefined;
       try {
-        const reply = await requestSurf({characterId, mapId:this.currentMapId,
-          fromX:this.currentTileX, fromY:this.currentTileY, targetX, targetY, direction}, signal);
+        const source={mapId:this.currentMapId,fromX:this.currentTileX,fromY:this.currentTileY,targetX,targetY,direction};
+        const before=await readCurrentGameplayState(signal);
+        if (!current()) return;
+        if (!before.fieldCommands || typeof before.fieldCommands!=="object") throw new Error("Missing field command revisions");
+        const commandRevision=before.fieldCommands.surf??0;
+        if (!Number.isSafeInteger(commandRevision) || commandRevision<0) throw new Error("Invalid SURF command revision");
+        const reply = await requestSurf({...source,characterId,commandRevision}, signal);
         if (!current()) return;
         if (reply.characterId !== characterId || typeof reply.encounter !== "boolean" || typeof reply.blackout !== "boolean") throw new Error("Invalid SURF response identity");
       } catch (error) {

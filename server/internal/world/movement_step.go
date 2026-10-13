@@ -42,9 +42,14 @@ type movementStepResult struct {
 // Position, durable counters, selected battle and forced destinations have one
 // commit. Returned presentation plans stay private until the outer commit.
 func commitMovementStep(ctx context.Context, wh *WorldHandler, charID int64, c movementStepCandidate) (movementStepResult, error) {
+	return commitMovementStepOn(ctx, wh.database, wh, charID, c)
+}
+
+// Joining an existing owner keeps position/effects private until its outer commit.
+func commitMovementStepOn(ctx context.Context, database db.DBTX, wh *WorldHandler, charID int64, c movementStepCandidate) (movementStepResult, error) {
 	result := movementStepResult{MapID: c.MapID, X: c.X, Y: c.Y, Direction: c.Direction}
 	var rejection error
-	err := db.Transaction(ctx, wh.database, func(tx db.DBTX) (err error) {
+	err := db.Transaction(ctx, database, func(tx db.DBTX) (err error) {
 		if err := db.LockCharacter(tx, charID); err != nil {
 			return err
 		}

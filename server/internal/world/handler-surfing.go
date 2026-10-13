@@ -2,10 +2,8 @@ package world
 
 import (
 	"log"
-	"strings"
 
 	"capturequest/internal/api/opcodes"
-	"capturequest/internal/logutil"
 	"capturequest/internal/session"
 )
 
@@ -25,13 +23,14 @@ type SurfError struct {
 	Error        string `json:"error"`
 }
 type PokeSurfingRequestPayload struct {
-	SurfIdentity `tstype:",extends"`
-	FromX        *int   `json:"fromX" tstype:"number,required"`
-	FromY        *int   `json:"fromY" tstype:"number,required"`
-	TargetX      *int   `json:"targetX" tstype:"number,required"`
-	TargetY      *int   `json:"targetY" tstype:"number,required"`
-	MapID        *int   `json:"mapId" tstype:"number,required"`
-	Direction    string `json:"direction,omitempty"`
+	SurfIdentity    `tstype:",extends"`
+	CommandRevision *int64 `json:"commandRevision" tstype:"number,required"`
+	FromX           *int   `json:"fromX" tstype:"number,required"`
+	FromY           *int   `json:"fromY" tstype:"number,required"`
+	TargetX         *int   `json:"targetX" tstype:"number,required"`
+	TargetY         *int   `json:"targetY" tstype:"number,required"`
+	MapID           *int   `json:"mapId" tstype:"number,required"`
+	Direction       string `json:"direction,omitempty"`
 }
 
 // SURF entry delegates gameplay permission and effects to the movement owner.
@@ -46,79 +45,20 @@ func HandlePokeSurfing(ses *session.Session, payload []byte, wh *WorldHandler) b
 		reject("SURF movement owner unavailable.")
 		return false
 	}
-	if err := decodePlayerMovement(payload, &req); err != nil || req.TargetX == nil || req.TargetY == nil || req.FromX == nil || req.FromY == nil || req.MapID == nil || req.RequestID == "" || len(req.RequestID) > 64 || req.CharacterID != int64(ses.Client.CharData().ID) {
+	if err := decodePlayerMovement(payload, &req); err != nil || req.TargetX == nil || req.TargetY == nil || req.FromX == nil || req.FromY == nil || req.MapID == nil || req.CommandRevision == nil || req.RequestID == "" || len(req.RequestID) > 64 || req.CharacterID != int64(ses.Client.CharData().ID) {
 		reject("Select adjacent water to SURF.")
 		return false
 	}
-	source := wh.ownedPlayerSnapshot(ses, "")
-	if source.MapID != *req.MapID || source.X != *req.FromX || source.Y != *req.FromY {
-		reject("SURF source changed.")
-		return false
-	}
-	return handlePokeSurfingTarget(ses, wh, int64(ses.Client.CharData().ID), source.MapID, source.X, source.Y, req)
-}
-
-func handlePokeSurfingTarget(
-	ses *session.Session,
-	wh *WorldHandler,
-	charID int64,
-	currentMapID int,
-	playerX int,
-	playerY int,
-	req PokeSurfingRequestPayload,
-) bool {
-	if wh == nil || wh.ActorManager == nil || wh.PlayerMovement == nil {
-		sendSurfError(ses, req.SurfIdentity, "You can't SURF here.")
-		return false
-	}
-
-	targetMapID := currentMapID
-	if req.MapID != nil {
-		targetMapID = *req.MapID
-	}
-	if wh.ActorManager.IsOverworld(targetMapID) {
-		targetMapID = UnifiedOverworldMapID
-	}
-	if targetMapID != currentMapID {
-		sendSurfError(ses, req.SurfIdentity, "You can't SURF here.")
-		return false
-	}
-
-	targetX, targetY := *req.TargetX, *req.TargetY
-	if abs(targetX-playerX)+abs(targetY-playerY) != 1 {
-		sendSurfError(ses, req.SurfIdentity, "You need to be next to the water.")
-		return false
-	}
-
-	surfable, err := isSurfableWaterTile(ses.CommandContext(), wh, targetMapID, targetX, targetY)
+	result, outcome, replay, err := wh.PlayerMovement.SurfTo(ses.CommandContext(), ses, req)
 	if err != nil {
-		logutil.Debugf("[Surfing] Water read map=%d target=(%d,%d): %v", targetMapID, targetX, targetY, err)
-		sendSurfError(ses, req.SurfIdentity, "Unable to read water.")
+		log.Printf("[Surf] Commit for %d: %v", req.CharacterID, err)
+		reject("SURF state changed or is unavailable. Recover before trying again.")
 		return false
 	}
-	if !surfable {
-		sendSurfError(ses, req.SurfIdentity, "You can't SURF here.")
-		return false
+	ses.SendStreamJSON(outcome, opcodes.PokeSurfingResponse)
+	if !replay {
+		publishMovementStepEffects(ses, wh, req.CharacterID, result)
 	}
-
-	direction := normalizeWarpDirection(req.Direction)
-	expectedDirection := directionFromAdjacentTiles(playerX, playerY, targetX, targetY)
-	if strings.TrimSpace(req.Direction) != "" && (direction == "" || direction != expectedDirection) {
-		sendSurfError(ses, req.SurfIdentity, "SURF facing disagrees with target.")
-		return false
-	}
-	direction = expectedDirection
-
-	result, err := wh.PlayerMovement.SurfTo(ses.CommandContext(), ses, targetX, targetY, targetMapID, direction)
-	if err != nil {
-		log.Printf("[Surf] Commit for %d: %v", charID, err)
-		sendSurfError(ses, req.SurfIdentity, "You can't SURF here.")
-		return false
-	}
-	encounter := result.Wild.Battle != nil || result.Wild.Blackout != nil
-
-	ses.SendStreamJSON(SurfResponse{SurfIdentity: req.SurfIdentity, Success: true, Encounter: encounter, Blackout: result.Wild.Blackout != nil}, opcodes.PokeSurfingResponse)
-	publishMovementStepEffects(ses, wh, charID, result)
 	return false
 }
 

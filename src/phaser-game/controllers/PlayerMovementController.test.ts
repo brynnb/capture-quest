@@ -660,6 +660,7 @@ test.each(["current", "facing-settled", "position", "character", "scene", "scree
 
 
 test("SURF unknown delivery reconciles owned pose and battle once without resend", async () => {
+  vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce({fieldCommands:{surf:3}} as any);
   const {controller} = buildLedgeController();
   usePlayerCharacterStore.getState().setCharacterProfile({id:42});
   let reject!: (error:Error) => void;
@@ -673,11 +674,13 @@ test("SURF unknown delivery reconciles owned pose and battle once without resend
 });
 
 test("retired SURF ignores a late reply and cannot recover an old scene", async () => {
+  vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce({fieldCommands:{surf:3}} as any);
   const {controller} = buildLedgeController();
   usePlayerCharacterStore.getState().setCharacterProfile({id:42});
   let resolve!: (reply:any)=>void;
   vi.mocked(movement.requestSurf).mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));
   const pending=controller.surf(9,0,"LEFT");
+  await Promise.resolve();
   controller.retireFieldCommands();
   resolve({success:true,requestId:"late",characterId:42,encounter:false,blackout:false});
   await pending;
@@ -685,6 +688,7 @@ test("retired SURF ignores a late reply and cannot recover an old scene", async 
 });
 
 test("failed SURF recovery keeps subsequent field mutations locked", async () => {
+  vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce({fieldCommands:{surf:3}} as any);
   const {controller}=buildLedgeController();
   usePlayerCharacterStore.getState().setCharacterProfile({id:42});
   vi.mocked(movement.requestSurf).mockRejectedValueOnce(new Error("timeout"));

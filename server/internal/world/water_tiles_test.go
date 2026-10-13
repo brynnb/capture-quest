@@ -75,8 +75,7 @@ func TestWaterPreflightReportsOwnedReadFailure(t *testing.T) {
 					if family == "fishing" {
 						HandlePokeFishing(ses, []byte(`{"requestId":"fishing:water","characterId":42,"instanceId":100,"commandRevision":0,"rodType":"old_rod","mapId":50,"x":7,"y":8,"direction":"RIGHT"}`), wh)
 					} else {
-						x, y := 8, 8
-						handlePokeSurfingTarget(ses, wh, 42, 50, 7, 8, PokeSurfingRequestPayload{TargetX: &x, TargetY: &y, Direction: "RIGHT"})
+						HandlePokeSurfing(ses, []byte(`{"requestId":"surf:water","characterId":42,"commandRevision":0,"mapId":50,"fromX":7,"fromY":8,"targetX":8,"targetY":8,"direction":"RIGHT"}`), wh)
 					}
 				})
 				if failure == "pool-cancel" {
@@ -99,7 +98,7 @@ func TestWaterPreflightReportsOwnedReadFailure(t *testing.T) {
 				}
 				wanted := "Unable to read fishing state."
 				if family == "surf" {
-					wanted = "Unable to read water."
+					wanted = "SURF state changed or is unavailable. Recover before trying again."
 				}
 				if response.Success || response.Error != wanted {
 					t.Fatalf("read failure disguised as gameplay result: %+v", response)

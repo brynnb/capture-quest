@@ -7,6 +7,7 @@ import (
 	"capturequest/internal/protocol"
 	"capturequest/internal/session"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -693,19 +694,53 @@ func isPokemonTower5FPurifiedZone(mapName string, x, y int) bool {
 
 // Surf entry shares position/Repel/encounter/blackout commit with movement,
 // preserving its existing wild-only policy. The handler publishes effects.
-func (m *PlayerMovementManager) SurfTo(ctx context.Context, ses *session.Session, x, y, mapID int, direction string) (movementStepResult, error) {
+func (m *PlayerMovementManager) SurfTo(ctx context.Context, ses *session.Session, req PokeSurfingRequestPayload) (movementStepResult, SurfResponse, bool, error) {
 	charID := int(ses.Client.CharData().ID)
-	m.mu.Lock()
-	state := m.players[charID]
-	if state == nil || state.SessionID != ses.SessionID || len(state.Path) != 0 || state.activePlayerStep(time.Now()) != nil {
-		m.mu.Unlock()
-		return movementStepResult{}, fmt.Errorf("SURF movement owner absent")
-	}
-	sourceMap, sourceX, sourceY := state.MapID, state.CurrentX, state.CurrentY
-	m.mu.Unlock()
-	result, err := commitMovementStep(ctx, m.wh, int64(charID), movementStepCandidate{SourceMap: sourceMap, SourceX: sourceX, SourceY: sourceY, MapID: mapID, X: x, Y: y, Direction: normalizeWarpDirection(direction), SurfEntry: true})
+	var state *PlayerMovementState
+	var result movementStepResult
+	input, err := json.Marshal(req)
 	if err != nil {
-		return movementStepResult{}, err
+		return result, SurfResponse{}, false, err
+	}
+	encoded, replay, err := db.ExecuteFieldCommand(ctx, m.wh.database, int64(charID), "surf", req.RequestID, req.CommandRevision, input, func(tx db.DBTX) ([]byte, error) {
+		m.mu.Lock()
+		state = m.players[charID]
+		if state == nil || state.SessionID != ses.SessionID || len(state.Path) != 0 || state.activePlayerStep(time.Now()) != nil {
+			m.mu.Unlock()
+			return nil, fmt.Errorf("SURF movement owner absent")
+		}
+		sourceMap, sourceX, sourceY := state.MapID, state.CurrentX, state.CurrentY
+		m.mu.Unlock()
+		if sourceMap != *req.MapID || sourceX != *req.FromX || sourceY != *req.FromY {
+			return nil, fmt.Errorf("SURF source changed")
+		}
+		direction := directionFromAdjacentTiles(sourceX, sourceY, *req.TargetX, *req.TargetY)
+		if req.Direction != "" && normalizeWarpDirection(req.Direction) != direction {
+			return nil, fmt.Errorf("SURF facing disagrees with target")
+		}
+		var err error
+		result, err = commitMovementStepOn(ctx, tx, m.wh, int64(charID), movementStepCandidate{SourceMap: sourceMap, SourceX: sourceX, SourceY: sourceY, MapID: *req.MapID, X: *req.TargetX, Y: *req.TargetY, Direction: direction, SurfEntry: true})
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(SurfResponse{SurfIdentity: req.SurfIdentity, Success: true, Encounter: result.Wild.Battle != nil || result.Wild.Blackout != nil, Blackout: result.Wild.Blackout != nil})
+	})
+	if err != nil {
+		return movementStepResult{}, SurfResponse{}, false, err
+	}
+	var receipt struct {
+		SurfIdentity
+		Success   bool  `json:"success"`
+		Encounter *bool `json:"encounter"`
+		Blackout  *bool `json:"blackout"`
+	}
+	if err := json.Unmarshal(encoded, &receipt); err != nil || !receipt.Success || receipt.SurfIdentity != req.SurfIdentity || receipt.Encounter == nil || receipt.Blackout == nil {
+		return movementStepResult{}, SurfResponse{}, false, fmt.Errorf("invalid committed SURF receipt")
+	}
+	outcome := SurfResponse{SurfIdentity: receipt.SurfIdentity, Success: true, Encounter: *receipt.Encounter, Blackout: *receipt.Blackout}
+	// Replay acknowledges history without reviving its pose, battle or effects.
+	if replay {
+		return movementStepResult{}, outcome, true, nil
 	}
 	m.projectCommittedPosition(charID, result.X, result.Y, result.MapID, result.Direction, result.Surfing)
 	m.mu.Lock()
@@ -719,7 +754,7 @@ func (m *PlayerMovementManager) SurfTo(ctx context.Context, ses *session.Session
 	if !result.Teleport {
 		m.broadcastPosition(state, 0)
 	}
-	return result, nil
+	return result, outcome, false, nil
 }
 
 func (m *PlayerMovementManager) syncSessionPosition(state *PlayerMovementState) {

@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+SURF bounded revision/receipt and joined movement commit are locally verified,
+following `745892c`:
 SURF command correlation and owned gameplay recovery are locally verified,
 following `65bd498`:
 shared movement-owned field operations reuse character/screen/transport retirement,
@@ -87,6 +89,62 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## SURF bounded replay and joined movement transaction (2026-10-13)
+
+SURF now reuses `db.ExecuteFieldCommand` with domain `surf`, expected revision and
+one latest outcome per character. Its input hash includes source, target and
+identity. Matching latest duplicates acknowledge history without re-entering
+water, re-rolling encounters, projecting a pose or republishing battle/blackout
+notifications. Changed replay input and superseded revisions reject. Current
+owned recovery supplies the expected revision; no automatic mutation retry was
+added and ordinary issued-step receipts retain their existing owner.
+
+`commitMovementStepOn` mechanically extends the existing movement operation to
+join a supplied transaction; its ordinary wrapper still owns its original commit.
+SURF's receipt callback uses that joined operation. The movement manager projects
+position, clears pending state and broadcasts only after the outer receipt commit
+succeeds. The handler publishes encounter/blackout effects only for a new committed
+entry. An incomplete stored outcome rejects rather than treating missing booleans
+as a safe no-encounter result.
+
+The duplicate handler-level water preflight is removed. Existing authoritative
+movement permission/collision/source checks run inside the same transaction as
+receipt, position, route, Repel and encounter changes. Water-read failures remain
+terminal errors and zero-mutation outcomes; the regression now dispatches the
+current SURF envelope through the public handler rather than the removed helper.
+
+Focused PostgreSQL checks cover replay after source return and permission loss,
+changed input, replaced receipt/stale revision, incomplete outcome, bounded rows,
+and a late deferred receipt failure that rolls back position/Repel/battle and
+publishes no success. The join works with a one-connection pool, proving it does
+not open a second database connection. Fixture corrections kept assertions intact:
+collision state must match the seeded water, and simulated source return must
+project the session's committed location as well as the manager's position.
+Canonical tygo marks the expected revision required. Focused PostgreSQL checks
+pass (2.8s); final full DB/domain (1.2–2.8s), world (68.1s) and simulator (1.6s)
+race suites pass, including the incomplete-outcome regression. All 577 client
+tests pass (4.9s), as do typecheck and diff checks.
+
+All six rendered Chromium/WebSocket checks pass (51.8s;
+`/var/tmp/capturequest-rendered.f80rTf`): click/Space entry, held-ack timeout with
+matching successful owned read, reentry, exact-process restart and explicit replay
+after walking back to shore. The latter leaves both displayed/durable position
+at (3,17), with one receipt row at revision 1. Recovery cases retain a single
+mutation send; only the explicit replay probe sends the second request. Late
+replies do not re-enter water. A prior runner exited 143 during bootstrap before
+any tests; its recorded private database was inspected and stopped before the
+fresh successful run. No production or unrelated process was touched.
+
+Remaining: native transport and Surf encounter/blackout notification ordering
+need their acceptance checks; broader field-family coverage, historical
+restore/Repel attribution and the five-area roadmap remain incomplete. This
+checkpoint requires matching frontend/backend and the already-introduced field
+receipt schema; it introduces no additional schema or generated runtime assets.
+No push or production deployment is authorized for this continuation.
+
+Next: review the consolidated SURF boundary and run native plus encounter/blackout
+acceptance before moving to another field family.
 
 ## SURF command identity and owned recovery (2026-10-12)
 
