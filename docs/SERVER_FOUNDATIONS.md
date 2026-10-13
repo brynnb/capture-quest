@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+awaited field recovery cannot report projection success while battle ownership is
+pending; Warp Home emergency admission requirements audited, following `f6353ed`:
 elevator source/menu/gesture lifetime review and native process acceptance,
 following `c7180c8`:
 elevator scoped list/selection uses shared travel receipts and owned recovery,
@@ -142,6 +144,38 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Warp Home emergency-owner audit and awaited recovery correction (2026-10-13)
+
+Warp Home already joins battle deletion, Safari termination and destination/route
+retirement in one bounded character transaction. Its client still sends `{}` and
+applies global reply/warp effects; there is no receipt or owned uncertain-outcome
+recovery. It intentionally works during battle and from a broken movement state.
+Normal `runOwnedFieldCommand` rejects `movementRecoveryRequired`, so blindly routing
+this action through ordinary admission would remove its emergency behavior.
+
+Audit established a shared recovery defect before that migration:
+`readBattlePublication` returned true when `battleCommandPending` was set, even for
+awaited `recoverFieldPublication`. No owned read or projection occurred, yet field
+callers could release movement. The central boundary now returns false for awaited
+field recovery; notifications still defer to the active battle command and return
+handled. No individual field adapter receives a workaround. Regressions cover
+pending-at-entry with zero reads/projection, admission during the owned read, and a
+fresh successful projection after the pending command settles. Existing travel
+failed-recovery admission remains applicable. All 612 client tests and typecheck
+pass; focused battle/recovery/movement checks pass (97 tests). No new rendered,
+server-domain or production evidence is claimed for this narrow boolean boundary.
+
+Remaining: emergency admission must explicitly retire obsolete command/presentation
+ownership while preserving durable uncertainty, permit rescue from recovery lock,
+then use scoped travel identity/receipt and current-state reconciliation. Clearing
+a battle locally is not evidence that the server deleted it. Preserve the existing
+atomic battle/Safari policy and remove legacy sender/reply/warp together during the
+coordinated migration. Wider five-area criteria and original restore timeout
+attribution remain open. Local checkpoint only; no push or deployment.
+
+Next: implement and review the shared emergency-owner retirement/admission policy,
+then migrate Warp Home's wire/client boundary through the travel receipt owner.
 
 ## Elevator lifetime/gesture review and native acceptance (2026-10-13)
 

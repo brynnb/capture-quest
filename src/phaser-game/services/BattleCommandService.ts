@@ -85,7 +85,9 @@ async function readBattlePublication(notice:Record<string,unknown>,kind:"ordinar
  if(signal?.aborted)return false;
  if((kind==="ordinary-start" && notice.success!==true) || !sceneProjection || useGameScreenStore.getState().currentScreen!=="game")return false;
  const initial=usePokeBattleStore.getState();
- if(initial.battleCommandPending)return true;
+ // A deferred notification is handled by the active battle owner. An awaited
+ // field recovery must not release movement without reading/projecting state.
+ if(initial.battleCommandPending)return !fieldPosition;
  publicationRead?.abort();const controller=new AbortController();publicationRead=controller;
  const abort=()=>controller.abort();signal?.addEventListener("abort",abort,{once:true});
  const project=sceneProjection;

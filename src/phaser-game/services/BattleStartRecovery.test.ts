@@ -100,3 +100,26 @@ test("field-owned battle preserves one initial cry across a duplicate start hint
  await recoverBattlePublication({success:true,battleId:"owned",revision:1});
  expect(play).toHaveBeenCalledOnce();
 });
+
+
+test("pending battle command cannot report an awaited field projection as recovered",async()=>{
+ cleanup();const project=vi.fn(async()=>{});cleanup=bindBattleScene(project);
+ usePokeBattleStore.setState({battleCommandPending:true});
+ expect(await recoverFieldPublication(new AbortController().signal)).toBe(false);
+ expect(mock.read).not.toHaveBeenCalled();expect(project).not.toHaveBeenCalled();
+ expect(usePokeBattleStore.getState().battleCommandPending).toBe(true);
+ // Notifications continue to defer to the active owner rather than interrupt it.
+ expect(await recoverBattlePublication({success:true},"standalone-end")).toBe(true);expect(mock.read).not.toHaveBeenCalled();
+ usePokeBattleStore.setState({battleCommandPending:false});
+ const position={success:true,requestId:"current",mapId:50,x:8,y:8,direction:"RIGHT",serverMovementPending:false};
+ mock.read.mockResolvedValue({...snapshot(null),position});
+ expect(await recoverFieldPublication(new AbortController().signal)).toBe(true);
+ expect(mock.read).toHaveBeenCalledOnce();expect(project).toHaveBeenCalledWith(position);
+});
+
+test("battle admission during an owned field read prevents success and projection",async()=>{
+ cleanup();const project=vi.fn(async()=>{});cleanup=bindBattleScene(project);
+ const held=deferred();mock.read.mockReturnValueOnce(held.promise);const pending=recoverFieldPublication(new AbortController().signal);
+ usePokeBattleStore.setState({battleCommandPending:true});held.resolve({...snapshot(null),position:{success:true,requestId:"old",mapId:50,x:7,y:8,direction:"UP",serverMovementPending:false}});
+ expect(await pending).toBe(false);expect(project).not.toHaveBeenCalled();expect(usePokeBattleStore.getState().battleCommandPending).toBe(true);
+});
