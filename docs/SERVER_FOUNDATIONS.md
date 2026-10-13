@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+FLY historical replay/current-pose review, same-position selector retirement and
+native process acceptance, following `8166a07`:
 FLY uses scoped source/catalog identity, the shared travel receipt and owned
 current-position recovery; its selector retires with its source lifetime,
 following `0ee1098`:
@@ -130,6 +132,42 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## FLY replay review, same-position selector retirement and native acceptance (2026-10-13)
+
+FLY catalog policy still belongs to the shared travel transaction. A focused
+PostgreSQL regression now removes the catalog choice and moves the saved/live pose
+after commit, then replays the exact request. The historical acknowledgement is
+identical, travel revision remains 1 and neither current pose is replaced. The
+existing travel executor supplies replay; no FLY-specific receipt owner is added.
+
+Review found that the selector's position watcher could miss scene replacement at
+identical coordinates. The existing source-menu watcher now subscribes to its
+existing scene binding as well as position. Binding replacement or current-owner
+cleanup retires it once; removed watchers and obsolete-owner cleanup cannot retire
+a newer menu. This improves the shared shop/PC/FLY presentation lifetime without
+putting travel mutations in the inventory coordinator. The map-change notification
+is test-only and is not used as production ownership.
+
+Focused Go race checks pass (1.5s); all 606 client tests and typecheck pass. Rendered
+same-source and different-source selector replacements pass with zero travel
+receipts (8.6s; `/var/tmp/capturequest-rendered.55g3ky`). Native FLY party-HUD catalog
+selection, durable map/coordinates/revision and exact SIGKILL/restart acceptance
+pass (7.9s; `/var/tmp/capturequest-rendered.N4VOeE`), with connected native transport
+and WebSocket fallback false before and after replacement. The shared native travel
+test now checks map identity as well as coordinates and durable pose. An initial
+fixture query used smallint `is_overworld` as boolean; its comparison was corrected
+to `=1` without changing application policy or assertions.
+
+Remaining: held FLY replies across character reentry/current-position replacement
+and selector transport/screen retirement acceptance remain to review. Native
+acceptance here follows an observed completed command, not loss of the native reply
+at commit. Wider finite matrix coverage, original five-area criteria and the
+unattributed restore timeout remain open. This continuation creates only a local
+checkpoint; no push or deployment is authorized.
+
+Next: extend the existing held travel recovery checks to FLY, retaining catalog
+choice and proving late acknowledgement cannot replace current presentation.
 
 ## FLY shared travel and selector checkpoint (2026-10-13)
 

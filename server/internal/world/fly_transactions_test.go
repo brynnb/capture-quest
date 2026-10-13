@@ -77,6 +77,28 @@ func TestFlyDispatcherValidatesDurableEligibilityAndCatalogBeforeCommit(t *testi
 	if !ok || mx != 3 || my != 4 || mm != 60 || ses.Client.CharData().MapID != 60 {
 		t.Fatalf("success live position (%d,%d,%d)", mm, mx, my)
 	}
+	// A durable receipt is historical evidence, not permission to reselect the
+	// catalog or replace a newer live/durable pose.
+	committed := append([]byte(nil), messages.streams[0].payload...)
+	testdb.Exec(t, database, `UPDATE character_data SET x=9,y=10 WHERE id=42;DELETE FROM poke_start_cities`)
+	publishCommittedPlayerPosition(ses, wh, 60, 9, 10, "DOWN")
+	messages.streams = nil
+	battleDispatch(t, wh, ses, opcodes.FieldMoveUseRequest, `{"moveName":"FLY","mapId":50,"destinationMapId":60,"targetX":3,"targetY":4,"requestId":"fly-test","characterId":42,"commandRevision":0,"fromX":7,"fromY":8}`)
+	if len(messages.streams) != 1 || string(messages.streams[0].payload) != string(committed) {
+		t.Fatalf("historical FLY receipt not replayed: %+v", messages.streams)
+	}
+	mx, my, mm, ok = wh.PlayerMovement.GetPosition(42)
+	if !ok || mx != 9 || my != 10 || mm != 60 {
+		t.Fatalf("FLY replay replaced current live pose (%d,%d,%d)", mm, mx, my)
+	}
+	var revision int
+	if err := database.QueryRow(`SELECT revision FROM character_field_command_state WHERE character_id=42 AND domain='travel'`).Scan(&revision); err != nil || revision != 1 {
+		t.Fatalf("FLY replay revision %d: %v", revision, err)
+	}
+	if err := database.QueryRow(`SELECT map_id,x,y FROM character_data WHERE id=42`).Scan(&savedMap, &savedX, &savedY); err != nil || savedMap != 60 || savedX != 9 || savedY != 10 {
+		t.Fatalf("FLY replay changed durable pose (%d,%v,%v): %v", savedMap, savedX, savedY, err)
+	}
+
 }
 
 func TestFlySourceAndPoolOwnershipBeforeCatalogCommit(t *testing.T) {

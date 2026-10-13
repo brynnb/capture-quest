@@ -13,7 +13,7 @@ import useCQInventoryStore from "@/stores/CQInventoryStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import {openShopForActor,buyShopItem,sellShopItem} from "./ShopCommandService";
 
-import {bindInventoryScene,sendPickupCommand,sendPartyItemCommand,sendRepelItemCommand,sendPartyReorderCommand,refreshOwnedGameplayResources,acceptResourceChangeNotification} from "./InventoryCommandService";
+import {watchInteractionPosition,bindInventoryScene,sendPickupCommand,sendPartyItemCommand,sendRepelItemCommand,sendPartyReorderCommand,refreshOwnedGameplayResources,acceptResourceChangeNotification} from "./InventoryCommandService";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
 import useGameScreenStore from "@/stores/GameScreenStore";
 import useGameStatusStore from "@/stores/GameStatusStore";
@@ -411,4 +411,18 @@ test("pickup actor-read failure recovers current bag and retries only reconcilia
  net.read.mockResolvedValueOnce({position:{mapId:50},eventFlags:[],pc:{currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]},inventory:[],wallet:{characterId:42,pokedollars:900},commandRevision:5,party:[]});
  const run=sendPickupCommand(14,reconcile);emit(107,{...reply(id()),actorId:14,itemId:1,itemName:"Potion"});await run;
  expect(net.send).toHaveBeenCalledOnce();expect(net.read).toHaveBeenCalledOnce();expect(reconcile).toHaveBeenCalledTimes(2);expect(AudioManager.playSFX).not.toHaveBeenCalled();expect(useCQInventoryStore.getState().commandRevision).toBe(5);
+});
+
+
+test("source menu watcher retires once on same-position scene replacement",()=>{
+ const closed=vi.fn();const stop=watchInteractionPosition(closed);
+ const oldRetire=retire;retire=bindInventoryScene();expect(closed).toHaveBeenCalledTimes(1);
+ oldRetire();retire();expect(closed).toHaveBeenCalledTimes(1);stop();
+});
+
+test("removed source watcher and obsolete scene cleanup cannot retire a newer menu",()=>{
+ const closed=vi.fn();const stop=watchInteractionPosition(closed);stop();
+ const oldRetire=retire;retire=bindInventoryScene();expect(closed).not.toHaveBeenCalled();
+ const current=vi.fn();const stopCurrent=watchInteractionPosition(current);
+ oldRetire();expect(current).not.toHaveBeenCalled();retire();expect(current).toHaveBeenCalledTimes(1);stopCurrent();
 });

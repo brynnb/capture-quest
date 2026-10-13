@@ -27,13 +27,13 @@ for(const loseReply of [false,true])test(`FLY duplicate lost reply=${loseReply} 
  expect(await sql(`SELECT revision FROM character_field_command_state WHERE character_id=${id} AND domain='travel'`)).toBe("1");await page.screenshot({path:info.outputPath("fly-correlated.png")});await record({family:"fly-command",loseReply,id,requests:faults.requests,successes:faults.successes,choice});await quitToCharacterSelect(page);
 });
 
-test("FLY selector retires on source scene replacement without sending travel",async({page})=>{
+for(const sameSource of [false,true])test(`FLY selector retires on source scene replacement sameSource=${sameSource} without sending travel`,async({page})=>{
  test.skip(process.env.CQ_E2E_DATABASE_FIXTURE!=="true","Requires private database runner");test.setTimeout(90000);const {sql,record}=await isolatedCrashRuntime();
  await createGuestCharacterAndEnterWorld(page);await jumpToScenario(page,"field_move_fly_with_thunder_badge");await waitForNoMapLoading(page);const id=(await getGameState(page)).player.internalId!;
  const choice=await sql("SELECT name FROM poke_start_cities ORDER BY id LIMIT 1");await page.locator("#party-pokemon-hud [data-cq-party-entry='true']").first().click();await page.getByText("fly",{exact:true}).click();await expect(page.getByText(choice,{exact:true})).toBeVisible();
- await page.evaluate(async()=>{
+ await page.evaluate(async(sameSource)=>{
   const path="/src/net/index.ts";
   const {WorldSocket,OpCodes}=await import(path) as typeof import("../../src/net/index");
-  WorldSocket.sendJsonMessage(OpCodes.DebugSceneJumpRequest,{scenarioName:"debug_escape_rope_ready"});
- });await expect.poll(async()=>{const state=await getGameState(page);return state.map.id;}).not.toBe(9999);await waitForNoMapLoading(page);await expect(page.getByText(choice,{exact:true})).toBeHidden();expect(await sql(`SELECT count(*) FROM character_field_command_state WHERE character_id=${id} AND domain='travel'`)).toBe("0");await record({family:"fly-selector-retirement",id,choice});await quitToCharacterSelect(page);
+  WorldSocket.sendJsonMessage(OpCodes.DebugSceneJumpRequest,{scenarioName:sameSource?"field_move_fly_with_thunder_badge":"debug_escape_rope_ready"});
+ },sameSource);if(!sameSource)await expect.poll(async()=>{const state=await getGameState(page);return state.map.id;}).not.toBe(9999);await waitForNoMapLoading(page);await expect(page.getByText(choice,{exact:true})).toBeHidden();expect(await sql(`SELECT count(*) FROM character_field_command_state WHERE character_id=${id} AND domain='travel'`)).toBe("0");await record({family:"fly-selector-retirement",id,choice});await quitToCharacterSelect(page);
 });

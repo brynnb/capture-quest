@@ -14,12 +14,14 @@ import AudioManager from "@/services/audio/AudioManager";
 import { sfxPathForConstant } from "@/services/audio/pokemonMusic";
 
 let scene: symbol | null = null;
+const interactionRetirements = new Set<() => void>();
 let active: AbortController | null = null;
 let resourcesDirtyCharacter=0;
 let resourcesDirtyGeneration=0;
 type Reply = import("@/net/generated/world_api").ItemPickupResponse | import("@/net/generated/world_api").GameplayStateResponse | import("@/net/generated/world_api").PokemonPCResponse | CQMerchantOpenResponse | CQMerchantBuyResponse | CQMerchantSellResponse | CQPartyItemUseResponse | RepelUseResponse | PokemonPartyReorderResponse;
 
 export function bindInventoryScene(): () => void {
+  for (const retire of [...interactionRetirements]) retire();
   resourcesDirtyCharacter=0;
   active?.abort(); active = null;
   useCQInventoryStore.getState().closeShop();
@@ -28,6 +30,7 @@ export function bindInventoryScene(): () => void {
   const owner = Symbol("inventory scene"); scene = owner;
   return () => {
     if (scene !== owner) return;
+    for (const retire of [...interactionRetirements]) retire();
     scene = null; active?.abort(); active = null;
     resourcesDirtyCharacter=0;
     useCQInventoryStore.getState().closeShop();
@@ -42,16 +45,20 @@ function views() {
   return [bag.items, bag.money, bag.commandRevision, usePlayerCharacterStore.getState().characterProfile, usePokemonPartyStore.getState().party, pc.boxPokemon, pc.currentBox, pc.sources];
 }
 
-// Source-bound menus are a view of the interaction at one owned location.
+// Source-bound menus are a view of one scene at one owned location. Scene
+// replacement must retire them even when the new scene has identical coordinates.
 // Retiring presentation never cancels a sent mutation; the coordinator below
 // still reconciles its commit. Shops and PCs share this location watcher.
 export function watchInteractionPosition(retire: () => void, includeFacing = false): () => void {
   const origin = useGameStatusStore.getState().playerTileContext;
   let retired=false;
-  return useGameStatusStore.subscribe(state => {
+  const retireOnce=()=>{if(!retired){retired=true;retire();}};
+  interactionRetirements.add(retireOnce);
+  const stop=useGameStatusStore.subscribe(state => {
     const current = state.playerTileContext;
-    if (!retired && (current?.mapId !== origin?.mapId || current?.x !== origin?.x || current?.y !== origin?.y || (includeFacing && current?.direction !== origin?.direction))) { retired=true; retire(); }
+    if (!retired && (current?.mapId !== origin?.mapId || current?.x !== origin?.x || current?.y !== origin?.y || (includeFacing && current?.direction !== origin?.direction))) { retireOnce(); }
   });
+  return ()=>{stop();interactionRetirements.delete(retireOnce);};
 }
 
 // One owner for admission, correlation, cancellation, stale replies and recovery.
