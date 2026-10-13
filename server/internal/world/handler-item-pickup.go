@@ -45,22 +45,14 @@ func HandleItemPickup(ses *session.Session, payload []byte, wh *WorldHandler) bo
 	}
 	ctx, cancel := context.WithTimeout(ses.CommandContext(), 5*time.Second)
 	defer cancel()
-	actor, _, err := wh.scriptInteractionTargetContext(ctx, ses, objectID)
-	if err != nil {
-		fail(fmt.Errorf("Item unavailable or out of reach"))
-		return false
-	}
-	// Item balls require immediate cardinal adjacency, even when a counter would
-	// permit talking to a scripted NPC two tiles away.
-	x, y, _ := wh.ownedPlayerPosition(ses)
-	if !canReachItemForPickup(itemPickupTile{X: x, Y: y, MapID: actor.MapID}, itemPickupTile{X: *actor.X, Y: *actor.Y, MapID: actor.MapID}) {
-		fail(fmt.Errorf("Move next to the item first."))
-		return false
-	}
 	charID := int32(ses.Client.CharData().ID)
-	result, err := collectItem(ctx, wh.database, charID, objectID)
+	result, err := collectOwnedItem(ctx, wh, ses, charID, objectID)
 	if err != nil {
-		if errors.Is(err, errItemAlreadyCollected) {
+		if errors.Is(err, errScriptInteractionDenied) {
+			fail(fmt.Errorf("Item unavailable or out of reach"))
+		} else if errors.Is(err, errBattleOwnership) {
+			fail(err)
+		} else if errors.Is(err, errItemAlreadyCollected) {
 			fail(errItemAlreadyCollected)
 		} else {
 			log.Printf("item pickup character %d object %d: %v", charID, objectID, err)
@@ -85,7 +77,7 @@ type collectedItem struct {
 
 // Collection identity and the grant share the same lock and commit. The snapshot
 // comes from that transaction so publication never reloads through a global DB.
-func collectItem(ctx context.Context, database *sql.DB, charID int32, objectID int) (*collectedItem, error) {
+func collectItem(ctx context.Context, database db.DBTX, charID int32, objectID int) (*collectedItem, error) {
 	result := &collectedItem{}
 	err := db.Transaction(ctx, database, func(tx db.DBTX) error {
 		if err := db.LockCharacter(tx, int64(charID)); err != nil {
@@ -132,13 +124,42 @@ func collectItem(ctx context.Context, database *sql.DB, charID int32, objectID i
 	return result, nil
 }
 
-type itemPickupTile struct {
-	X     int
-	Y     int
-	MapID int
+// The runtime owns source/visibility admission and award in one character lock.
+func collectOwnedItem(ctx context.Context, wh *WorldHandler, ses *session.Session, charID int32, objectID int) (*collectedItem, error) {
+	var result *collectedItem
+	err := db.Transaction(ctx, wh.database, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, int64(charID)); err != nil {
+			return err
+		}
+		if err := requireNoOwnedBattleIn(tx, int64(charID)); err != nil {
+			return err
+		}
+		var source interactionPosition
+		if err := tx.QueryRow(`SELECT x,y,map_id FROM character_data WHERE id=$1`, charID).Scan(&source.X, &source.Y, &source.MapID); err != nil {
+			return err
+		}
+		flags, err := eventFlagSnapshotIn(tx, int64(charID))
+		if err != nil {
+			return err
+		}
+		actor, _, err := wh.scriptInteractionTargetFrom(ctx, tx.(db.ContextDBTX), ses, objectID, flags, source)
+		if err != nil {
+			return err
+		}
+		// Item balls require one cardinal tile even if NPC talk-over permits two.
+		if !canReachItemForPickup(interactionPosition{X: source.X, Y: source.Y, MapID: actor.MapID}, interactionPosition{X: *actor.X, Y: *actor.Y, MapID: actor.MapID}) {
+			return errScriptInteractionDenied
+		}
+		result, err = collectItem(ctx, tx, charID, objectID)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
-func canReachItemForPickup(player, item itemPickupTile) bool {
+func canReachItemForPickup(player, item interactionPosition) bool {
 	if player.MapID != item.MapID {
 		return false
 	}

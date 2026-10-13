@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"capturequest/internal/db"
 	"capturequest/internal/session"
 )
 
@@ -34,23 +35,35 @@ func (wh *WorldHandler) scriptInteractionTargetWithFlags(ctx context.Context, se
 	if wh == nil || wh.database == nil || wh.ActorManager == nil || ses == nil || !ses.HasValidClient() || ses.IsClosed() {
 		return PhaserActor{}, "", fmt.Errorf("interaction state unavailable")
 	}
-	actor, err := wh.ActorManager.loadPhaserObjectActorContext(ctx, wh.database, objectID)
+	x, y, mapID := wh.ownedPlayerPosition(ses)
+	return wh.scriptInteractionTargetFrom(ctx, wh.database, ses, objectID, flags, interactionPosition{X: x, Y: y, MapID: mapID})
+}
+
+type interactionPosition struct{ X, Y, MapID int }
+
+// Eligibility can join an authoritative transaction and its durable source.
+// Ordinary scripted callers retain their existing live movement-owner source.
+func (wh *WorldHandler) scriptInteractionTargetFrom(ctx context.Context, database db.ContextDBTX, ses *session.Session, objectID int, flags *EventFlagManager, source interactionPosition) (PhaserActor, string, error) {
+	if wh == nil || wh.ActorManager == nil || ses == nil || !ses.HasValidClient() || ses.IsClosed() {
+		return PhaserActor{}, "", fmt.Errorf("interaction state unavailable")
+	}
+	actor, err := wh.ActorManager.loadPhaserObjectActorContext(ctx, database, objectID)
 	if err != nil {
 		return PhaserActor{}, "", err
 	}
 	charID := int64(ses.Client.CharData().ID)
-	positions, err := characterObjectPositionsContext(ctx, wh.database, charID)
+	positions, err := characterObjectPositionsContext(ctx, database, charID)
 	if err != nil {
 		return PhaserActor{}, "", err
 	}
 	if position, ok := positions[objectID]; ok {
 		actor.X, actor.Y = &position.X, &position.Y
 	}
-	rules, err := eventObjectVisibilityForMapContext(ctx, wh.database, actor.MapID)
+	rules, err := eventObjectVisibilityForMapContext(ctx, database, actor.MapID)
 	if err != nil {
 		return PhaserActor{}, "", err
 	}
-	overrides, err := objectVisibilityOverridesForCharacterContext(ctx, wh.database, charID)
+	overrides, err := objectVisibilityOverridesForCharacterContext(ctx, database, charID)
 	if err != nil {
 		return PhaserActor{}, "", err
 	}
@@ -65,10 +78,10 @@ func (wh *WorldHandler) scriptInteractionTargetWithFlags(ctx context.Context, se
 	}
 	var mapName string
 	var overworld int
-	if err := wh.database.QueryRowContext(ctx, `SELECT name, is_overworld FROM phaser_maps WHERE id = $1`, actor.MapID).Scan(&mapName, &overworld); err != nil {
+	if err := database.QueryRowContext(ctx, `SELECT name, is_overworld FROM phaser_maps WHERE id = $1`, actor.MapID).Scan(&mapName, &overworld); err != nil {
 		return PhaserActor{}, "", err
 	}
-	x, y, playerMap := wh.ownedPlayerPosition(ses)
+	x, y, playerMap := source.X, source.Y, source.MapID
 	actorMap := actor.MapID
 	if overworld != 0 {
 		actorMap = UnifiedOverworldMapID
@@ -77,7 +90,7 @@ func (wh *WorldHandler) scriptInteractionTargetWithFlags(ctx context.Context, se
 		playerMap = actorMap
 	} else if playerMap != UnifiedOverworldMapID {
 		var playerOverworld int
-		if err := wh.database.QueryRowContext(ctx, `SELECT is_overworld FROM phaser_maps WHERE id = $1`, playerMap).Scan(&playerOverworld); err != nil {
+		if err := database.QueryRowContext(ctx, `SELECT is_overworld FROM phaser_maps WHERE id = $1`, playerMap).Scan(&playerOverworld); err != nil {
 			return PhaserActor{}, "", err
 		}
 		if playerOverworld != 0 {
@@ -95,14 +108,14 @@ func (wh *WorldHandler) scriptInteractionTargetWithFlags(ctx context.Context, se
 		return PhaserActor{}, "", errScriptInteractionDenied
 	}
 	var talkOver bool
-	err = wh.database.QueryRowContext(ctx, `SELECT talk_over_tile FROM phaser_tiles
+	err = database.QueryRowContext(ctx, `SELECT talk_over_tile FROM phaser_tiles
 		WHERE x = $1 AND y = $2 AND is_tile_erased = 0
 		AND (($3::integer = $4::integer AND map_id IS NULL) OR map_id = $3::integer)`, x+dx/2, y+dy/2, playerMap, UnifiedOverworldMapID).Scan(&talkOver)
 	if err != nil && err != sql.ErrNoRows {
 		return PhaserActor{}, "", err
 	}
 	if err == nil {
-		tileOverrides, err := eventTileOverridesForMapContext(ctx, wh.database, playerMap)
+		tileOverrides, err := eventTileOverridesForMapContext(ctx, database, playerMap)
 		if err != nil {
 			return PhaserActor{}, "", err
 		}
@@ -111,7 +124,7 @@ func (wh *WorldHandler) scriptInteractionTargetWithFlags(ctx context.Context, se
 			if override.X != x+dx/2 || override.Y != y+dy/2 || !override.eventTileEligible(charID, flags) {
 				continue
 			}
-			props, err := tileRuntimePropertiesForTileImageContext(ctx, wh.database, override.TileImageID)
+			props, err := tileRuntimePropertiesForTileImageContext(ctx, database, override.TileImageID)
 			if err != nil {
 				return PhaserActor{}, "", err
 			}

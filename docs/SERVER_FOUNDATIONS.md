@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+ItemPickup durable source/visibility admission joins its existing award transaction,
+following `92d23c3`:
 shared field publication review protects awaited recovery from notification
 supersession and settled movement views, following `74a8236`:
 SURF bounded revision/receipt and joined movement commit are locally verified,
@@ -91,6 +93,54 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## ItemPickup authoritative source prerequisite (2026-10-13)
+
+Caller inventory found one live item-ball adapter and one runtime `collectItem`
+caller. The existing collection marker and inventory grant already shared a
+character lock/commit; they were not rebuilt. The handler instead authorized
+actor reach/visibility before that transaction, using cached flags and movement
+position. Durable source/visibility could therefore disagree with admission.
+
+Runtime pickup now locks the character, rejects owned battle, reads durable
+map/X/Y and flags, resolves the actor's per-character position/visibility and
+requires cardinal adjacency before joining the existing award operation. Source,
+collection identity, grant and result snapshot share one owner/commit. Ordinary
+unavailable/out-of-reach denials remain quiet; SQL failures retain diagnostics.
+
+The shared scripted interaction resolver now accepts a context-aware query owner
+and explicit source through `scriptInteractionTargetFrom`. Its existing wrapper
+continues to use ordinary scripted callers' live movement position and supplied
+flags. All object positions, visibility rules/overrides, map and counter/tile reads
+use the supplied owner, rather than opening parallel reads through the pool.
+The pickup position type is mechanically generalized in that substantive domain
+file; no compatibility alias or duplicate visibility implementation is added.
+
+Focused PostgreSQL race checks pass (7.3s), including durable/cache source and
+flag disagreement in both directions, durable battle denial, one-connection join,
+remote/hidden/counter rejection, concurrent single award and rollback/retry.
+Existing fixtures now seed durable position as well as session position; the new
+visibility fixture supplies its schema-required map name. Assertions were not
+weakened. Full world (69.2s) and simulator (1.5s) race suites pass. A rendered
+Chromium/WebSocket pickup check passes (7.6s;
+`/var/tmp/capturequest-rendered.fJ4eBq`): a real adjacent click awards exactly one
+item and persists one collection marker. Its extra actor copies item/sprite data
+from the real catalog into the private database, then reloads the exact owned
+process; source assets and production data remain untouched. This is success/
+persistence evidence, not acknowledgement-loss or native acceptance.
+
+Remaining: pickup still uses its legacy actor-only request/global reply event.
+Its award is not yet coordinated with the existing inventory command revision,
+and source retirement, correlated acknowledgement and lost-result recovery still
+need migration. The collection marker already prevents duplicate awards; do not
+introduce an unbounded duplicate ledger or move it into the movement coordinator.
+Read the current inventory command boundary and actor reconciliation before
+choosing the protocol policy. The original five-area roadmap and historical
+restore/Repel attribution remain incomplete. No push or deployment is authorized;
+no schema/generated source data is changed here.
+
+Next: review this source boundary, then migrate pickup command identity/revision
+and scene-owned actor/inventory recovery through the existing owners.
 
 ## Shared field publication review and native SURF acceptance (2026-10-13)
 

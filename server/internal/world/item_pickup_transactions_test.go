@@ -20,6 +20,7 @@ func TestItemPickupRollbackPublicationAndRetry(t *testing.T) {
  INSERT INTO phaser_objects(id,map_id,x,y,object_type,name,item_id) VALUES(10,1,1,0,'item','POTION',1);
  ALTER TABLE character_collected_items ADD CONSTRAINT reject_collection CHECK(object_id<>10)`)
 	ses.Client.CharData().MapID = 1
+	testdb.Exec(t, database, `UPDATE character_data SET map_id=1,x=0,y=0 WHERE id=42`)
 	actorID := wh.ActorRegistry.GetPhaserID(ActorTypeNPC, 10)
 	db.GlobalWorldDB = nil // The dispatcher and grant must use owned dependencies.
 	request := fmt.Sprintf(`{"actorId":%d}`, actorID)
@@ -98,6 +99,7 @@ func TestItemPickupRejectsRemoteHiddenAndCounterTargets(t *testing.T) {
 	testdb.Exec(t, database, `INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(1,'ROOM',10,10,0);
  INSERT INTO phaser_objects(id,map_id,x,y,object_type,name,item_id) VALUES(10,1,1,0,'item','POTION',1)`)
 	ses.Client.CharData().MapID = 1
+	testdb.Exec(t, database, `UPDATE character_data SET map_id=1,x=0,y=0 WHERE id=42`)
 	actorID := wh.ActorRegistry.GetPhaserID(ActorTypeNPC, 10)
 	deny := func() {
 		t.Helper()
@@ -112,8 +114,10 @@ func TestItemPickupRejectsRemoteHiddenAndCounterTargets(t *testing.T) {
 		}
 	}
 	ses.Client.CharData().X = 8
+	testdb.Exec(t, database, `UPDATE character_data SET x=8 WHERE id=42`)
 	deny()
 	ses.Client.CharData().X = 0
+	testdb.Exec(t, database, `UPDATE character_data SET x=0 WHERE id=42`)
 	testdb.Exec(t, database, `INSERT INTO character_object_visibility_overrides(character_id,object_id,visible,source) VALUES(42,10,false,'test')`)
 	deny()
 	testdb.Exec(t, database, `DELETE FROM character_object_visibility_overrides; UPDATE phaser_objects SET x=2 WHERE id=10;
@@ -122,5 +126,59 @@ func TestItemPickupRejectsRemoteHiddenAndCounterTargets(t *testing.T) {
 	var count int
 	if err := database.QueryRow(`SELECT COUNT(*) FROM character_collected_items`).Scan(&count); err != nil || count != 0 {
 		t.Fatalf("denial mutated collection: %d %v", count, err)
+	}
+}
+
+func TestItemPickupUsesLockedDurableSourceVisibilityAndBattle(t *testing.T) {
+	for _, kind := range []string{"durable-source-remote", "cached-source-remote", "durable-hidden", "cached-hidden", "durable-battle", "single-connection"} {
+		t.Run(kind, func(t *testing.T) {
+			database, wh, ses, messages := battleTestWorld(t)
+			wh.ActorRegistry = NewActorRegistry()
+			wh.ActorManager = NewPhaserActorManager(wh)
+			testdb.Exec(t, database, `INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(1,'ROOM',10,10,0);
+    INSERT INTO phaser_objects(id,map_id,x,y,object_type,name,item_id) VALUES(10,1,1,0,'item','POTION',1);
+    UPDATE character_data SET map_id=1,x=0,y=0 WHERE id=42`)
+			ses.Client.CharData().MapID = 1
+			if kind == "durable-source-remote" {
+				testdb.Exec(t, database, `UPDATE character_data SET x=8 WHERE id=42`)
+			}
+			if kind == "cached-source-remote" {
+				ses.Client.CharData().X = 8
+			}
+			if kind == "durable-hidden" || kind == "cached-hidden" {
+				testdb.Exec(t, database, `INSERT INTO phaser_event_object_visibility(map_id,map_name,object_name,visible,requires_flag) VALUES(1,'ROOM','POTION',false,'PICKUP_HIDDEN')`)
+				wh.EventFlags.flags[42] = map[string]bool{"PICKUP_HIDDEN": kind == "cached-hidden"}
+				if kind == "durable-hidden" {
+					testdb.Exec(t, database, `INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'PICKUP_HIDDEN')`)
+				}
+			}
+			if kind == "durable-battle" {
+				battleTestStart(t, database, false, nil)
+			}
+			if kind == "single-connection" {
+				database.SetMaxOpenConns(1)
+			}
+			actorID := wh.ActorRegistry.GetPhaserID(ActorTypeNPC, 10)
+			battleDispatch(t, wh, ses, opcodes.ItemPickupRequest, fmt.Sprintf(`{"actorId":%d}`, actorID))
+			allowed := kind == "cached-source-remote" || kind == "cached-hidden" || kind == "single-connection"
+			var reply struct{ Success bool }
+			if len(messages.streams) == 0 || json.Unmarshal(messages.streams[0].payload, &reply) != nil || reply.Success != allowed {
+				t.Fatalf("kind=%s reply=%+v streams=%+v", kind, reply, messages.streams)
+			}
+			var grants, markers int
+			if err := database.QueryRow(`SELECT count(*) FROM cq_character_inventory WHERE character_id=42`).Scan(&grants); err != nil {
+				t.Fatal(err)
+			}
+			if err := database.QueryRow(`SELECT count(*) FROM character_collected_items WHERE character_id=42`).Scan(&markers); err != nil {
+				t.Fatal(err)
+			}
+			want := 0
+			if allowed {
+				want = 1
+			}
+			if grants != want || markers != want {
+				t.Fatalf("grant=%d marker=%d wanted=%d", grants, markers, want)
+			}
+		})
 	}
 }
