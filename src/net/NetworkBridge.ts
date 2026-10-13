@@ -165,7 +165,7 @@ export class NetworkBridge {
         import("@/phaser-game/services/PhaserNetworkService").then(module=>module.dispatchPhaserResponse(opcode,data));
         break;
       case OpCodes.PokeSurfingResponse:
-        this.handlePokeSurfingResponse(data as Record<string, unknown>);
+        import("@/phaser-game/services/PhaserNetworkService").then(module => module.dispatchPhaserResponse(opcode, data));
         break;
       case OpCodes.FieldMoveUseResponse:
         this.handleFieldMoveUseResponse(data as Record<string, unknown>);
@@ -365,43 +365,6 @@ export class NetworkBridge {
 
     this.playSourceSFX("SFX_PRESS_AB", 0.75);
     console.log("[NetworkBridge] Used item:", data.message);
-  }
-
-  private handlePokeSurfingResponse(data: Record<string, unknown>) {
-    if (!data.success) {
-      console.warn("[NetworkBridge] Surfing failed:", data.error);
-      if (data.error) {
-        usePokemonDialogueStore.getState().openDialogue([String(data.error)]);
-      }
-      return;
-    }
-    if (data.encounter) {
-      console.log("[NetworkBridge] Surfing: wild Pokémon appeared!");
-      // Battle start will arrive via PokeBattleStartResponse
-    } else {
-      console.log("[NetworkBridge] Surfing:", data.message || "No encounter");
-    }
-
-    // A committed Surf entry can end in blackout. Its recovery notification
-    // owns presentation; the water-entry animation must not overwrite it.
-    if (data.blackout === true) return;
-
-    const x = Number(data.x);
-    const y = Number(data.y);
-    const mapId = Number(data.mapId);
-    if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(mapId)) {
-      window.dispatchEvent(
-        new CustomEvent("pokeSurfingSuccess", {
-          detail: {
-            x,
-            y,
-            mapId,
-            direction:
-              typeof data.direction === "string" ? data.direction : undefined,
-          },
-        }),
-      );
-    }
   }
 
   private handleFieldMoveUseResponse(data: Record<string, unknown>) {

@@ -1,6 +1,6 @@
 import {recoverBattlePublication} from "../services/BattleCommandService";
 import type { OwnedPlayerPositionResponse, PlayerStepResponse, PlayerStepError } from "@/net/generated/protocol";
-import { requestFishing, requestEscapeRope, requestBicycleState, requestPlayerFacing, requestPlayerStep, completePlayerStep, readOwnedPlayerPosition } from "../services/PlayerMovementService";
+import { requestSurf, requestFishing, requestEscapeRope, requestBicycleState, requestPlayerFacing, requestPlayerStep, completePlayerStep, readOwnedPlayerPosition } from "../services/PlayerMovementService";
 import { WorldSocket } from "@/net/index";
 import useGameScreenStore from "@/stores/GameScreenStore";
 import { CorrelatedResponseError, readForCurrentCharacter } from "../services/CorrelatedRequest";
@@ -153,6 +153,29 @@ export class PlayerMovementController {
     } finally {
       if (this.fieldCommandAbort === abort) this.fieldCommandAbort = null;
     }
+  }
+
+  async surf(targetX: number, targetY: number, direction: string): Promise<void> {
+    if (this.isMoving || this.issuedStep || this.serverMovementInProgress) return;
+    return this.runOwnedFieldCommand(async (characterId, signal, current) => {
+      let rejection: string | undefined;
+      try {
+        const reply = await requestSurf({characterId, mapId:this.currentMapId,
+          fromX:this.currentTileX, fromY:this.currentTileY, targetX, targetY, direction}, signal);
+        if (!current()) return;
+        if (reply.characterId !== characterId || typeof reply.encounter !== "boolean" || typeof reply.blackout !== "boolean") throw new Error("Invalid SURF response identity");
+      } catch (error) {
+        if (!current()) return;
+        if (error instanceof CorrelatedResponseError) rejection = error.message;
+        // Unknown delivery never authorizes another entry or encounter roll.
+      }
+      const recovered = await recoverBattlePublication({success:true}, "standalone-end", signal);
+      if (!current()) return;
+      if (!recovered) {
+        this.movementRecoveryRequired = true;
+        useChatStore.getState().addMessage("SURF state could not be recovered. Reconnect before moving.", MessageType.SYSTEM_ERROR);
+      } else if (rejection) usePokemonDialogueStore.getState().openDialogue([rejection]);
+    });
   }
 
   async fish(instanceId:number):Promise<void>{
@@ -883,7 +906,7 @@ export class PlayerMovementController {
           || usePlayerCharacterStore.getState().characterProfile.id !== characterId
           || useGameScreenStore.getState().currentScreen !== "game"
           || WorldSocket.sessionGeneration !== transport) return;
-        PhaserNet.requestSurf(waterX, waterY, this.currentMapId, direction);
+        void this.surf(waterX, waterY, direction);
       },
     );
     return true;
@@ -2239,65 +2262,6 @@ export class PlayerMovementController {
 
   syncDirection(direction: string): void {
     this.currentDirection = direction;
-    this.emitPlayerPositionChanged();
-  }
-
-  applySurfingSuccess(
-    x: number,
-    y: number,
-    mapId: number,
-    direction?: string,
-  ): void {
-    if (this.playerId === null || !this.mapRenderer) return;
-
-    const normalizedDirection =
-      direction != null ? this.normalizeDirection(direction) : null;
-    if (normalizedDirection) {
-      this.currentDirection = normalizedDirection;
-    }
-
-    // Surf success follows a committed MovePlayerTo result. Retire prediction
-    // and project it through the same path as other server movement.
-    this.beginServerMovement(true);
-    this.currentMapId = mapId;
-    this.setSurfingActive(true);
-    this.updateTravelMapForTile(x, y);
-
-    if (this.currentTileX === x && this.currentTileY === y) {
-      this.stopMovement(true);
-      this.emitPlayerPositionChanged();
-      return;
-    }
-
-    const oldX = this.currentTileX;
-    const oldY = this.currentTileY;
-    const isAdjacent = Math.abs(x - oldX) + Math.abs(y - oldY) === 1;
-    if (isAdjacent) {
-      this.isMoving = true;
-      this.mapRenderer.updateActorPosition(
-        this.playerId,
-        oldX,
-        oldY,
-        x,
-        y,
-        this.currentDirection,
-        undefined,
-        { serverControlled: true },
-      );
-      return;
-    }
-
-    this.stopMovement(true);
-    this.currentTileX = x;
-    this.currentTileY = y;
-    this.mapRenderer.snapActorPosition(
-      this.playerId,
-      x,
-      y,
-      this.currentDirection,
-    );
-    this.updateSurfingStateForTile(x, y);
-    this.updateTravelMapForTile(x, y);
     this.emitPlayerPositionChanged();
   }
 

@@ -58,3 +58,7 @@ export function requestEscapeRope(request: Omit<import("@/net/generated/world_ap
 export function requestFishing(request:Omit<import("@/net/generated/world_api").PokeFishingRequestPayload,"requestId">,signal?:AbortSignal):Promise<import("@/net/generated/protocol").FishingResponse>{
  return correlatedRequest<import("@/net/generated/protocol").FishingResponse>(PhaserNet.onFishing,id=>PhaserNet.requestFishing({...request,requestId:id}),signal);
 }
+
+export function requestSurf(request: Omit<import("@/net/generated/world_api").PokeSurfingRequestPayload, "requestId">, signal: AbortSignal): Promise<import("@/net/generated/world_api").SurfResponse> {
+  return correlatedRequest<import("@/net/generated/world_api").SurfResponse>(PhaserNet.onSurf, requestId => PhaserNet.requestSurf({...request, requestId}), signal);
+}

@@ -2,21 +2,20 @@ import { afterEach, expect, test, vi } from "vitest";
 import { NetworkBridge } from "./NetworkBridge";
 import { WorldSocket } from "./index";
 import { PokeSurfingResponse } from "./generated/opcodes";
+import { onSurf } from "@/phaser-game/services/PhaserNetworkService";
 
 afterEach(() => vi.restoreAllMocks());
 
-test.each([false, true])("committed Surf result with blackout=%s gives presentation to the correct outcome", (blackout) => {
+test.each([false, true])("SURF blackout=%s delivers only to its scoped subscribers", async (blackout) => {
   NetworkBridge.initialize();
-  const dispatch = vi.spyOn(window, "dispatchEvent");
-  WorldSocket.onJson?.(PokeSurfingResponse, {
-    success: true, encounter: blackout, blackout,
-    mapId: 50, x: 8, y: 8, direction: "RIGHT",
-  });
-  const animations = dispatch.mock.calls.filter(([event]) => event.type === "pokeSurfingSuccess");
-  if (blackout) {
-    expect(animations).toHaveLength(0);
-  } else {
-    expect(animations).toHaveLength(1);
-    expect((animations[0][0] as CustomEvent).detail).toEqual({ mapId: 50, x: 8, y: 8, direction: "RIGHT" });
-  }
+  const receive=vi.fn(); const stop=onSurf(receive);
+  const dispatch=vi.spyOn(window,"dispatchEvent");
+  const reply={success:true,requestId:"surf-owned",characterId:42,encounter:blackout,blackout};
+  WorldSocket.onJson?.(PokeSurfingResponse,reply);
+  await vi.waitFor(()=>expect(receive).toHaveBeenCalledWith(reply));
+  expect(dispatch.mock.calls.filter(([event])=>event.type==="pokeSurfingSuccess")).toHaveLength(0);
+  stop(); receive.mockClear();
+  WorldSocket.onJson?.(PokeSurfingResponse,reply);
+  await Promise.resolve(); await Promise.resolve();
+  expect(receive).not.toHaveBeenCalled();
 });

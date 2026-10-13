@@ -428,7 +428,7 @@ func TestSurfEntryPositionRepelAndEncounterCommitTogether(t *testing.T) {
  CREATE FUNCTION reject_surf_battle() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'late surf encounter failure'; END $$;
  CREATE CONSTRAINT TRIGGER reject_surf_battle AFTER INSERT ON character_battle_state DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_surf_battle();`)
 	wh.ActorManager.collisionMap[50][tileKey(8, 8)] = collisionWater
-	battleDispatch(t, wh, ses, opcodes.PokeSurfingRequest, `{"mapId":50,"targetX":8,"targetY":8,"direction":"RIGHT"}`)
+	battleDispatch(t, wh, ses, opcodes.PokeSurfingRequest, `{"requestId":"surf-test","characterId":42,"fromX":7,"fromY":8,"mapId":50,"targetX":8,"targetY":8,"direction":"RIGHT"}`)
 	assertStepPosition(t, wh, ses, 7)
 	if len(messages.streams) != 1 || messages.streams[0].opcode != opcodes.PokeSurfingResponse {
 		t.Fatalf("failed Surf packets=%+v", messages.streams)
@@ -446,7 +446,7 @@ func TestSurfEntryPositionRepelAndEncounterCommitTogether(t *testing.T) {
 	}
 	testdb.Exec(t, wh.database, `DROP TRIGGER reject_surf_battle ON character_battle_state`)
 	messages.streams = nil
-	battleDispatch(t, wh, ses, opcodes.PokeSurfingRequest, `{"mapId":50,"targetX":8,"targetY":8,"direction":"RIGHT"}`)
+	battleDispatch(t, wh, ses, opcodes.PokeSurfingRequest, `{"requestId":"surf-test","characterId":42,"fromX":7,"fromY":8,"mapId":50,"targetX":8,"targetY":8,"direction":"RIGHT"}`)
 	assertStepPosition(t, wh, ses, 8)
 	if getBattle(42) == nil {
 		t.Fatal("Surf did not publish committed encounter")
@@ -676,7 +676,7 @@ func TestMovementSurfRouteUsesOwnedColdCollisionRead(t *testing.T) {
 }
 
 func TestSurfEntryUsesDurablePermissionAndRejectsLegacyOrMovingSource(t *testing.T) {
-	for _, kind := range []string{"durable-permission", "cached-permission", "targetless", "partial-target", "wrong-facing", "invalid-facing", "moving"} {
+	for _, kind := range []string{"durable-permission", "cached-permission", "targetless", "partial-target", "wrong-facing", "invalid-facing", "moving", "missing-identity", "wrong-character", "stale-source"} {
 		t.Run(kind, func(t *testing.T) {
 			wh, ses, messages, _ := stepEffectFixture(t, false)
 			wh.EventFlags = NewEventFlagManager(wh.database)
@@ -685,7 +685,7 @@ func TestSurfEntryUsesDurablePermissionAndRejectsLegacyOrMovingSource(t *testing
 			old := db.GlobalWorldDB
 			db.GlobalWorldDB = nil
 			t.Cleanup(func() { db.GlobalWorldDB = old })
-			payload := `{"mapId":50,"targetX":8,"targetY":8,"direction":"RIGHT"}`
+			payload := `{"requestId":"surf-test","characterId":42,"fromX":7,"fromY":8,"mapId":50,"targetX":8,"targetY":8,"direction":"RIGHT"}`
 			if kind != "cached-permission" {
 				testdb.Exec(t, wh.database, `INSERT INTO character_event_flags(character_id,flag_name) VALUES(42,'EVENT_GOT_SOULBADGE')`)
 				wh.EventFlags.flags[42] = map[string]bool{}
@@ -693,24 +693,37 @@ func TestSurfEntryUsesDurablePermissionAndRejectsLegacyOrMovingSource(t *testing
 				wh.EventFlags.flags[42] = map[string]bool{"EVENT_GOT_SOULBADGE": true}
 			}
 			switch kind {
+			case "missing-identity":
+				payload = `{"mapId":50,"fromX":7,"fromY":8,"targetX":8,"targetY":8}`
+			case "wrong-character":
+				payload = `{"requestId":"surf-test","characterId":43,"mapId":50,"fromX":7,"fromY":8,"targetX":8,"targetY":8}`
+			case "stale-source":
+				payload = `{"requestId":"surf-test","characterId":42,"mapId":50,"fromX":6,"fromY":8,"targetX":8,"targetY":8}`
 			case "targetless":
 				payload = `{}`
 			case "partial-target":
 				payload = `{"targetX":8}`
 			case "wrong-facing":
-				payload = `{"mapId":50,"targetX":8,"targetY":8,"direction":"UP"}`
+				payload = `{"requestId":"surf-test","characterId":42,"fromX":7,"fromY":8,"mapId":50,"targetX":8,"targetY":8,"direction":"UP"}`
 			case "invalid-facing":
-				payload = `{"mapId":50,"targetX":8,"targetY":8,"direction":"NORTH"}`
+				payload = `{"requestId":"surf-test","characterId":42,"fromX":7,"fromY":8,"mapId":50,"targetX":8,"targetY":8,"direction":"NORTH"}`
 			case "moving":
 				wh.PlayerMovement.players[42].Path = []PathNode{{X: 8, Y: 8}}
 			}
 			battleDispatch(t, wh, ses, opcodes.PokeSurfingRequest, payload)
-			var response struct{ Success bool }
+			var response struct {
+				Success     bool
+				RequestID   string `json:"requestId"`
+				CharacterID int64  `json:"characterId"`
+			}
 			if len(messages.streams) == 0 || json.Unmarshal(messages.streams[0].payload, &response) != nil {
 				t.Fatal("missing surf reply")
 			}
 			if response.Success != (kind == "durable-permission") {
 				t.Fatalf("surf kind=%s success=%v", kind, response.Success)
+			}
+			if kind == "durable-permission" && (response.RequestID != "surf-test" || response.CharacterID != 42) {
+				t.Fatal("Surf reply lost command identity")
 			}
 			want := 7
 			if kind == "durable-permission" {

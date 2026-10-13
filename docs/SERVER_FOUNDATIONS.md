@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+SURF command correlation and owned gameplay recovery are locally verified,
+following `65bd498`:
 shared movement-owned field operations reuse character/screen/transport retirement,
 and SURF choices retain their source lifetime, following `a2145d0`:
 SURF entry delegates permission and effects to the existing movement transaction;
@@ -85,6 +87,71 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## SURF command identity and owned recovery (2026-10-12)
+
+SURF now requires bounded request ID, matching character and complete expected
+source map/X/Y in addition to adjacent target coordinates. Strict decoding and
+session-owned source checks reject legacy, foreign-character and stale-source
+commands before entry. Success/error envelopes share generated identity. The
+existing movement transaction still owns permission, position, Repel, battle and
+blackout effects; no new coordinator or database schema was introduced.
+
+The live choice dispatch uses the movement-owned field slot and shared correlated
+request primitive. Success and unknown delivery reconcile once through the
+existing current gameplay publication reader and scene-owned position projection.
+The command is never resent automatically. Failure to recover locks later movement
+and field admission until reconnect. Retired replies cannot trigger old-scene
+recovery. NetworkBridge's global SURF pose event, TileViewer listener and separate
+SURF projection method are removed. Owned projection determines the current pose
+and surfing sprite rather than trusting a historical packet destination.
+
+Focused checks cover source/identity denial, rollback, lifetime retirement,
+single admission, uncertainty and failed recovery. Canonical tygo regenerates the
+wire contract. Fresh world (60.0s) and simulator (1.6s) PostgreSQL race suites pass. All
+577 client tests in 59 files pass (5.3s), as do typecheck and diff checks. The
+earlier temporary evidence disappeared across the interrupted run; these are
+new checks of the current files. All Go packages also compile.
+
+Rendered Chromium/WebSocket checks pass: normal click entry, deliberate Space
+entry, held reply, same-character reentry and exact-process restart (five cases,
+27.2s; `/var/tmp/capturequest-rendered.csoo68`). The initial held-reply case could
+observe a movement broadcast before timeout, so it was strengthened and rerun.
+The final timeout check passes (34.3s;
+`/var/tmp/capturequest-rendered.u6cF65`), recording exactly one entry command,
+one correlated recovery request and successful matching response while its ack
+remained withheld, followed by one late delivery without another mutation.
+The process receipt verifies old PID 333211, replacement PID 334187 and exit 137.
+Native transport and blackout/encounter notification-order acceptance were not
+rerun here.
+
+Remaining: source expectations and single-send client policy are not a durable
+SURF replay receipt. Review duplicate requests after later source return, encounter
+and blackout notification ordering, preliminary water-read duplication and native
+transport acceptance before claiming the family complete. Old clients require
+matching frontend/backend activation. Historical restore/Repel attribution and
+all five goal areas remain open. No push or production deployment is authorized
+for this continuation.
+
+Replay boundary review (2026-10-13): `movementStepCandidate.StepToken` is empty
+for SURF. `commitMovementStep` saves `character_movement_receipts` only for a
+nonempty server-issued token, so SURF has no durable movement receipt. A matching
+source can recur after returning to the shore; source coordinates alone therefore
+cannot fence an older request. This is a source-derived finding, not a completed
+rendered replay exploit check.
+
+Reuse `db.ExecuteFieldCommand` for bounded identity/revision/result storage and
+keep gameplay in `commitMovementStep`. First allow that movement operation to
+join the supplied transaction, then retain `SurfTo` projection/broadcast and
+movement effects until the outer receipt commit succeeds. Wrapping current
+`SurfTo` directly is unsafe: its `commitMovementStep` opens a transaction from
+`wh.database` and locks the character again, while `SurfTo` also publishes after
+its own commit. The outer command must not create a parallel database owner or
+publish before its receipt commits. Ordinary step-token receipts remain with
+ordinary issued movement.
+
+Next: implement that transaction join and SURF revision/result policy, with late
+receipt failure and same-source replay regression checks before another family.
 
 ## Shared field lifetime review before SURF correlation (2026-10-08)
 

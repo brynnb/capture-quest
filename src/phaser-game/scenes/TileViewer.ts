@@ -139,7 +139,6 @@ export class TileViewer extends Scene {
   };
   private bicycleStateUnsubscribe: (() => void) | null = null;
   private trainerEncounterUnsubscribe: (() => void) | null = null;
-  private surfSuccessHandler: ((event: Event) => void) | null = null;
   private cutsceneInputLocked: boolean = false;
 
   // View mode tracking
@@ -470,22 +469,6 @@ export class TileViewer extends Scene {
     this.playerMovementController.setInputFrozenChecker(() =>
       this.isWorldInputFrozen(),
     );
-    this.surfSuccessHandler = (event: Event) => {
-      const detail = (event as CustomEvent<{
-        x: number;
-        y: number;
-        mapId: number;
-        direction?: string;
-      }>).detail;
-      if (!detail) return;
-      this.playerMovementController.applySurfingSuccess(
-        detail.x,
-        detail.y,
-        detail.mapId,
-        detail.direction,
-      );
-    };
-    window.addEventListener("pokeSurfingSuccess", this.surfSuccessHandler);
     this.overlays = new TileViewerOverlays(this);
     this.proceduralOverworldPreview = new ProceduralOverworldPreview({
       scene: this,
@@ -2155,11 +2138,6 @@ export class TileViewer extends Scene {
     if (this.trainerEncounterUnsubscribe) {
       this.trainerEncounterUnsubscribe();
       this.trainerEncounterUnsubscribe = null;
-    }
-
-    if (this.surfSuccessHandler) {
-      window.removeEventListener("pokeSurfingSuccess", this.surfSuccessHandler);
-      this.surfSuccessHandler = null;
     }
 
     if (this.uiManager) {

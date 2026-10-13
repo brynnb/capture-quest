@@ -4,6 +4,7 @@ import { afterEach, beforeEach } from "vitest";
 import { CorrelatedResponseError } from "../services/CorrelatedRequest";
 import * as movement from "../services/PlayerMovementService";
 vi.mock("../services/PlayerMovementService", () => ({
+  requestSurf:vi.fn(),
   requestFishing:vi.fn(),
   requestEscapeRope: vi.fn(),
   requestBicycleState: vi.fn(),
@@ -28,7 +29,6 @@ import useAudioActivityStore from "@/stores/AudioActivityStore";
 import useGameScreenStore from "@/stores/GameScreenStore";
 import usePokemonDialogueStore from "@/stores/PokemonDialogueStore";
 import { WorldSocket } from "@/net/index";
-import * as PhaserNet from "../services/PhaserNetworkService";
 import useGameStatusStore from "@/stores/GameStatusStore";
 import * as OpCodes from "@/net/generated/opcodes";
 
@@ -456,17 +456,6 @@ test("an unissued ordinary animation cannot acknowledge or trigger arrival effec
   controller.clear(); error.mockRestore(); send.mockRestore();
 });
 
-test("Surf success projects a committed step and releases input only at completion", () => {
-  const { controller, updates } = buildLedgeController();
-  controller.applySurfingSuccess(9, 0, 9999, "LEFT");
-  expect(updates).toEqual([[1, 10, 0, 9, 0, "LEFT", undefined, { serverControlled: true }]]);
-  expect(controller.handleKeyboardMove("DOWN")).toBe(false);
-  controller.onStepComplete(1, 9, 0, "LEFT", "serverStep");
-  expect(controller.getCurrentPosition()).toEqual({ x: 9, y: 0 });
-  expect(controller.getIsMoving()).toBe(false);
-  expect(movement.completePlayerStep).not.toHaveBeenCalled();
-  controller.clear();
-});
 
 test("committed warp exit is a server projection and retirement ignores late completion", async () => {
   const { controller, updates, mapRenderer, visualMovement } = buildLedgeController();
@@ -654,7 +643,7 @@ test.each(["current", "facing-settled", "position", "character", "scene", "scree
   vi.spyOn(controller as any, "partyKnowsSurf").mockReturnValue(true);
   let choose!: (yes:boolean) => void;
   const choice = vi.spyOn(usePokemonDialogueStore.getState(), "showChoice").mockImplementation((_text, callback) => {choose = callback;});
-  const send = vi.spyOn(PhaserNet, "requestSurf").mockImplementation(() => {});
+  const send = vi.spyOn(controller, "surf").mockResolvedValue();
   if (kind === "facing-settled") (controller as any).facingAbort = new AbortController();
   (controller as any).promptSurfToWater(9,0,"LEFT");
   if (kind === "facing-settled") (controller as any).facingAbort = null;
@@ -667,4 +656,39 @@ test.each(["current", "facing-settled", "position", "character", "scene", "scree
   if (kind === "current" || kind === "facing-settled") expect(send).toHaveBeenCalledOnce();
   else expect(send).not.toHaveBeenCalled();
   choice.mockRestore(); send.mockRestore();
+});
+
+
+test("SURF unknown delivery reconciles owned pose and battle once without resend", async () => {
+  const {controller} = buildLedgeController();
+  usePlayerCharacterStore.getState().setCharacterProfile({id:42});
+  let reject!: (error:Error) => void;
+  vi.mocked(movement.requestSurf).mockImplementationOnce(() => new Promise((_done, no) => {reject=no;}));
+  const pending=controller.surf(9,0,"LEFT");
+  await controller.surf(9,0,"LEFT");
+  expect(movement.requestSurf).toHaveBeenCalledOnce();
+  reject(new Error("lost reply")); await pending;
+  expect(battlePublication.recoverBattlePublication).toHaveBeenCalledWith({success:true},"standalone-end",expect.any(AbortSignal));
+  expect(movement.requestSurf).toHaveBeenCalledOnce();
+});
+
+test("retired SURF ignores a late reply and cannot recover an old scene", async () => {
+  const {controller} = buildLedgeController();
+  usePlayerCharacterStore.getState().setCharacterProfile({id:42});
+  let resolve!: (reply:any)=>void;
+  vi.mocked(movement.requestSurf).mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));
+  const pending=controller.surf(9,0,"LEFT");
+  controller.retireFieldCommands();
+  resolve({success:true,requestId:"late",characterId:42,encounter:false,blackout:false});
+  await pending;
+  expect(battlePublication.recoverBattlePublication).not.toHaveBeenCalled();
+});
+
+test("failed SURF recovery keeps subsequent field mutations locked", async () => {
+  const {controller}=buildLedgeController();
+  usePlayerCharacterStore.getState().setCharacterProfile({id:42});
+  vi.mocked(movement.requestSurf).mockRejectedValueOnce(new Error("timeout"));
+  vi.mocked(battlePublication.recoverBattlePublication).mockResolvedValueOnce(false);
+  await controller.surf(9,0,"LEFT"); await controller.surf(9,0,"LEFT");
+  expect(movement.requestSurf).toHaveBeenCalledOnce();
 });

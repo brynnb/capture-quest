@@ -150,20 +150,13 @@ export function requestWarps(request: import("@/net/generated/world_api").Phaser
 /**
  * Request to start surfing onto an adjacent water tile.
  */
-export function requestSurf(
-  targetX: number,
-  targetY: number,
-  mapId: number,
-  direction: string,
-): void {
-  if (!WorldSocket.isConnected) {
-    console.warn("[PhaserNetwork] Not connected - cannot request Surf");
-    return;
-  }
-  NetworkBridge.send(
-    { targetX, targetY, mapId, direction },
-    OpCodes.PokeSurfingRequest,
-  );
+export function requestSurf(request: import("@/net/generated/world_api").PokeSurfingRequestPayload): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.PokeSurfingRequest);
+}
+export type SurfReply = import("@/net/generated/world_api").SurfResponse | import("@/net/generated/world_api").SurfError;
+const surfHandlers = new Set<(reply: SurfReply) => void>();
+export function onSurf(receive: (reply: SurfReply) => void): () => void {
+  surfHandlers.add(receive); return () => surfHandlers.delete(receive);
 }
 
 /**
@@ -517,6 +510,8 @@ export function normalizePhaserArrayPayload<T>(
 // Internal: dispatch incoming Phaser responses
 export function dispatchPhaserResponse(opcode: number, data: unknown): void {
   switch (opcode) {
+    case OpCodes.PokeSurfingResponse:
+      surfHandlers.forEach(receive => receive(data as SurfReply)); break;
     case OpCodes.PokeFishingResponse:
       fishingHandlers.forEach(receive=>receive(data as FishingReply));break;
     case OpCodes.TrainerInteractResponse:

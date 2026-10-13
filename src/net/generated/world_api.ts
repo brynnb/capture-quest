@@ -1240,10 +1240,25 @@ export interface ScriptedEventInteractResponse {
 //////////
 // source: handler-surfing.go
 
-export interface PokeSurfingRequestPayload {
-  targetX?: number /* int */;
-  targetY?: number /* int */;
-  mapId?: number /* int */;
+export interface SurfIdentity {
+  requestId: string;
+  characterId: number /* int64 */;
+}
+export interface SurfResponse extends SurfIdentity {
+  success: true;
+  encounter: boolean;
+  blackout: boolean;
+}
+export interface SurfError extends SurfIdentity {
+  success: false;
+  error: string;
+}
+export interface PokeSurfingRequestPayload extends SurfIdentity {
+  fromX: number;
+  fromY: number;
+  targetX: number;
+  targetY: number;
+  mapId: number;
   direction?: string;
 }
 
