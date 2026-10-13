@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+state-field mixed-envelope/snapshot review and explicit FLASH acceptance,
+following `90149e4`:
 explicit STRENGTH/FLASH use scoped field identity, bounded receipts and owned
 active-map recovery, following `4be4b82`:
 STRENGTH/FLASH durable activation shares one primitive with boulder activation,
@@ -105,6 +107,44 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## State-field envelope/snapshot review and FLASH acceptance (2026-10-13)
+
+Review found that the shared opcode's optional tagged fields could accompany a
+CUT or travel move and enter its unmigrated handler without command admission.
+Non-state moves now reject migrated identity/source fields before executing that
+legacy policy, with a correlated error. Ordinary legacy CUT/travel callers retain
+their current path until their own migration; there is no tagged fallback beside
+the state receipt. Negative dispatch checks preserve request identity and prove
+no command/state mutation. Existing untagged FLY acceptance still passes.
+
+`fieldStateSnapshotIn` now requires a transaction rather than accepting an
+independent pool. Focused checks prove current-map activation, exclusion of another
+map's state and explicit rejection of corrupt active values (including a corrupt
+row for another map). Existing source/permission/battle/late-commit/replay checks
+and FLY regression pass (2.5s), along with all Go package compilation and diff
+checks. No request deadline, game rule, schema or output asset changed.
+
+All four rendered Chromium/WebSocket party-HUD STRENGTH/FLASH normal and lost-
+reply duplicate cases pass (36.7s;
+`/var/tmp/capturequest-rendered.XwCezu`). Each browser sends one mutation, the
+fault layer duplicates it, equal receipt replies settle without another state
+write/revision, and owned recovery presents state after a missing reply. This is
+field activation/dialogue acceptance; no FLASH cave-lighting visual claim is made.
+Native FLASH activation and exact-process/current-snapshot recovery pass (7.9s;
+`/var/tmp/capturequest-rendered.2nF3mK`), with native true/WebSocket false before
+and after replacement. The owned snapshot confirms FLASH true, its map equal to
+the recovered position map, and field-state revision 1. Native held-packet loss
+was not injected; the WebSocket cases cover that separate boundary.
+
+Remaining: state-command source retirement/late packet review and the remaining
+CUT/DIG/TELEPORT/FLY policies stay in the finite matrix. The full five-area goal
+and historical restore attribution remain incomplete. No push or production
+deployment occurred; unrelated deployment changes are preserved.
+
+Next: review held state outcomes across reentry/source changes before expanding
+another policy, using the existing field slot and owned snapshot rather than a
+new action-specific coordinator.
 
 ## Explicit state-field identity and owned recovery (2026-10-13)
 

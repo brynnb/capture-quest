@@ -5,8 +5,10 @@ import (
 	"capturequest/internal/db"
 	"capturequest/internal/pokebattle"
 	"capturequest/internal/testdb"
+	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -85,5 +87,47 @@ func TestStateFieldReceiptReplaysWithoutReactivationAndRollsBackLateFailure(t *t
 	var active, revision int
 	if err := database.QueryRow(`SELECT (SELECT active FROM character_field_move_state WHERE character_id=42 AND move_name='STRENGTH'),(SELECT revision FROM character_field_command_state WHERE character_id=42 AND domain='field-state')`).Scan(&active, &revision); err != nil || active != 0 || revision != 1 {
 		t.Fatalf("replay mutated state/revision: %d %d %v", active, revision, err)
+	}
+}
+
+func TestFieldStateSnapshotRequiresOwnerAndRejectsCorruption(t *testing.T) {
+	database, _, _, _ := battleTestWorld(t)
+	if _, err := fieldStateSnapshotIn(database, 42, 50); err == nil {
+		t.Fatal("snapshot accepted a pool")
+	}
+	testdb.Exec(t, database, `INSERT INTO character_field_move_state(character_id,move_name,map_id,active) VALUES(42,'STRENGTH',50,1),(42,'FLASH',60,1)`)
+	err := db.Transaction(context.Background(), database, func(tx db.DBTX) error {
+		state, err := fieldStateSnapshotIn(tx, 42, 50)
+		if err != nil {
+			return err
+		}
+		if state.MapID != 50 || !state.Strength || state.Flash {
+			t.Fatalf("cross-map state leaked: %+v", state)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	testdb.Exec(t, database, `UPDATE character_field_move_state SET active=2 WHERE move_name='FLASH'`)
+	err = db.Transaction(context.Background(), database, func(tx db.DBTX) error { _, err := fieldStateSnapshotIn(tx, 42, 50); return err })
+	if err == nil || !strings.Contains(err.Error(), "invalid FLASH active state 2") {
+		t.Fatalf("corrupt row hidden: %v", err)
+	}
+}
+
+func TestTaggedLegacyFieldPoliciesCannotBypassCommandAdmission(t *testing.T) {
+	database, wh, ses, messages := battleTestWorld(t)
+	for _, move := range []string{"CUT", "DIG", "TELEPORT", "FLY"} {
+		messages.streams = nil
+		battleDispatch(t, wh, ses, opcodes.FieldMoveUseRequest, fmt.Sprintf(`{"moveName":%q,"requestId":"mixed-policy","characterId":42,"commandRevision":0,"mapId":50,"fromX":0,"fromY":0}`, move))
+		var reply InventoryCommandError
+		if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &reply) != nil || reply.Success || reply.RequestID != "mixed-policy" || reply.Error != "Tagged command is unsupported for this field move." {
+			t.Fatalf("mixed policy entered legacy adapter: %+v", messages.streams)
+		}
+	}
+	var changed int
+	if err := database.QueryRow(`SELECT (SELECT count(*) FROM character_field_command_state)+(SELECT count(*) FROM character_field_move_state)`).Scan(&changed); err != nil || changed != 0 {
+		t.Fatalf("mixed policy mutated command/state: %d %v", changed, err)
 	}
 }

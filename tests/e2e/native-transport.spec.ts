@@ -89,3 +89,18 @@ test("native pickup keeps its grant, revision and removed actor after process re
  expect(await quantity()).toBe(String(initial+1));expect(await sql(`SELECT revision FROM character_shop_state WHERE character_id=${id}`)).toBe("1");expect(await sql(`SELECT count(*) FROM character_collected_items WHERE character_id=${id} AND object_id=${fixture.object}`)).toBe("1");
  await page.screenshot({path:testInfo.outputPath("native-pickup-restored.png")});await record({family:"native-pickup",id,before,after,fixture,receipt,quantity:initial+1,revision:1});await quitToCharacterSelect(page);
 });
+
+
+test("native FLASH keeps scoped activation across process replacement",async({page},info)=>{
+ test.skip(process.env.CQ_E2E_TRANSPORT!=="native" || process.env.CQ_E2E_CRASH_RECOVERY!=="true","Requires native exact-process runner");test.setTimeout(120000);
+ const {sql,crash,record}=await isolatedCrashRuntime();const character=await createGuestCharacterAndEnterWorld(page);
+ const scenarios=await import("./helpers/scenarioDebugger");const state=await import("./helpers/state");
+ await scenarios.jumpToScenario(page,"field_move_flash_with_boulder_badge");await state.waitForNoMapLoading(page);await waitForPlayerIdle(page);const before=await assertNative(page);
+ const id=(await state.getGameState(page)).player.internalId!;
+ await page.locator("#party-pokemon-hud [data-cq-party-entry='true']").first().click();await page.getByText("flash",{exact:true}).click();await expect.poll(async()=>(await state.getGameState(page)).dialogue.isOpen).toBe(true);
+ expect(await sql(`SELECT active FROM character_field_move_state WHERE character_id=${id} AND move_name='FLASH'`)).toBe("1");
+ const receipt=await crash();await expect(page.getByRole("button",{name:"PLAY AS GUEST"})).toBeVisible({timeout:20000});await page.getByRole("button",{name:"PLAY AS GUEST"}).click();await expect(page.getByRole("heading",{name:"SELECT A CHARACTER"})).toBeVisible();await enterWorld(page,character);await state.waitForNoMapLoading(page);const after=await assertNative(page);
+ expect(await sql(`SELECT revision FROM character_field_command_state WHERE character_id=${id} AND domain='field-state'`)).toBe("1");expect(await sql(`SELECT active FROM character_field_move_state WHERE character_id=${id} AND move_name='FLASH'`)).toBe("1");
+ const owned=await page.evaluate(async()=>{const path="/src/phaser-game/services/GameplayRecoveryService.ts";const snapshot=await (await import(path)).readCurrentGameplayState();return {field:snapshot.fieldState,position:snapshot.position,revision:snapshot.fieldCommands["field-state"]};});expect(owned.field.flash).toBe(true);expect(owned.field.mapId).toBe(owned.position.mapId);expect(owned.revision).toBe(1);
+ await page.screenshot({path:info.outputPath("native-flash-restored.png")});await record({family:"native-state-field",id,before,after,receipt,owned,revision:1});await quitToCharacterSelect(page);
+});

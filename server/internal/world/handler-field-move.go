@@ -61,6 +61,10 @@ func HandleFieldMoveUse(ses *session.Session, payload []byte, wh *WorldHandler) 
 	}
 
 	if move := normalizeFieldMoveName(req.MoveName); move != "STRENGTH" && move != "FLASH" {
+		if req.RequestID != "" || req.CharacterID != 0 || req.CommandRevision != nil || req.FromX != nil || req.FromY != nil {
+			sendInventoryCommandError(ses, req.RequestID, opcodes.FieldMoveUseResponse, "Tagged command is unsupported for this field move.")
+			return false
+		}
 		if char := ses.Client.CharData(); char != nil {
 			if battle := getBattle(int64(char.ID)); battle != nil && !battle.IsOver() {
 				sendFieldMoveUseError(ses, "Field moves can't be used during a battle.")

@@ -186,6 +186,9 @@ type FieldStateSnapshot struct {
 
 func fieldStateSnapshotIn(tx db.DBTX, charID int64, mapID int) (FieldStateSnapshot, error) {
 	result := FieldStateSnapshot{MapID: mapID}
+	if err := db.RequireTransaction(tx); err != nil {
+		return result, err
+	}
 	rows, err := tx.Query(`SELECT move_name,map_id,active FROM character_field_move_state WHERE character_id=$1 AND move_name IN ('STRENGTH','FLASH')`, charID)
 	if err != nil {
 		return result, err
