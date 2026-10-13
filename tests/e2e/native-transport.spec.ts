@@ -118,3 +118,23 @@ test("native CUT process reset restores base tree without replaying receipt",asy
  const current=await read();expect(current.tileImageId).toBe(original.tileImageId);expect(current.rawFootTileId).toBe(0x3d);const newScope=await scope();expect(newScope).not.toBe(oldScope);expect(await sql(`SELECT revision FROM character_field_command_state WHERE character_id=${id} AND domain='cut'`)).toBe("1");
  await page.screenshot({path:info.outputPath("native-cut-reset.png")});await record({family:"native-cut",id,before,after,receipt,oldScope,newScope,image:current.tileImageId,revision:1});await quitToCharacterSelect(page);
 });
+
+for(const move of ["DIG","TELEPORT"] as const)test(`native ${move} commits current travel and restores its pose after process replacement`,async({page},info)=>{
+ test.skip(process.env.CQ_E2E_TRANSPORT!=="native" || process.env.CQ_E2E_CRASH_RECOVERY!=="true","Requires native exact-process runner");test.setTimeout(120000);
+ const {sql,crash,record}=await isolatedCrashRuntime();const character=await createGuestCharacterAndEnterWorld(page);
+ const scenarios=await import("./helpers/scenarioDebugger");const state=await import("./helpers/state");
+ await scenarios.jumpToScenario(page,move==="DIG"?"debug_escape_rope_ready":"field_move_teleport_no_badge_required");await state.waitForNoMapLoading(page);await waitForPlayerIdle(page);const id=(await state.getGameState(page)).player.internalId!;
+ if(move==="DIG"){
+  await sql(`UPDATE character_pokemon SET move1_id=(SELECT id FROM phaser_moves WHERE constant_name='DIG'),move1_pp=10 WHERE character_id=${id} AND party_slot=0`);
+  await page.evaluate(async()=>{const path="/src/phaser-game/services/InventoryCommandService.ts";await (await import(path)).refreshOwnedGameplayResources();});
+ }else{
+  const destination=await sql("SELECT id FROM phaser_maps WHERE name='REDS_HOUSE_2F'");expect(destination).toMatch(/^\d+$/);await sql(`INSERT INTO character_bind(id,slot,map_id,x,y,z,heading) VALUES(${id},0,${destination},3,6,0,0) ON CONFLICT(id,slot) DO UPDATE SET map_id=EXCLUDED.map_id,x=EXCLUDED.x,y=EXCLUDED.y`);
+ }
+ const before=await assertNative(page);const origin=(await state.getGameState(page)).player;
+ await page.locator("#party-pokemon-hud [data-cq-party-entry='true']").first().click();await page.getByText(move.toLowerCase(),{exact:true}).click();
+ await expect.poll(async()=>{const value=await state.getGameState(page);return value.player.x!==origin.x || value.player.y!==origin.y;},{timeout:20000}).toBe(true);await state.waitForNoMapLoading(page);await waitForPlayerIdle(page);
+ const saved=(await state.getGameState(page)).player;expect(await sql(`SELECT revision FROM character_field_command_state WHERE character_id=${id} AND domain='travel'`)).toBe("1");
+ const receipt=await crash();await expect(page.getByRole("button",{name:"PLAY AS GUEST"})).toBeVisible({timeout:20000});await page.getByRole("button",{name:"PLAY AS GUEST"}).click();await expect(page.getByRole("heading",{name:"SELECT A CHARACTER"})).toBeVisible();await enterWorld(page,character);await state.waitForNoMapLoading(page);const after=await assertNative(page);
+ const restored=(await state.getGameState(page)).player;expect({x:restored.x,y:restored.y}).toEqual({x:saved.x,y:saved.y});expect(await sql(`SELECT revision FROM character_field_command_state WHERE character_id=${id} AND domain='travel'`)).toBe("1");
+ await page.screenshot({path:info.outputPath(`native-${move}-owned.png`)});await record({family:"native-ability-travel",move,id,before,after,receipt,position:{x:restored.x,y:restored.y},revision:1});await quitToCharacterSelect(page);
+});

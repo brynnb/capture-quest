@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+ability travel shared failure/retirement review and native process acceptance,
+following `dfc1bb5`:
 DIG/TELEPORT scoped field receipts and current owned movement recovery,
 following `6033d06`:
 DIG/TELEPORT join durable permission/source/destination selection with movement,
@@ -123,6 +125,40 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Ability travel transition review and native acceptance (2026-10-13)
+
+Current-source review confirms the client checks acknowledgement identity but
+never applies its destination map, and the server publishes new ownership only
+for a new committed result. Shared field publication reads current pose/resources
+under the reviewed scene/character/transport lifetime; replay skips cache/warp
+publication. A new regression proves failed owned travel recovery keeps later
+field mutations inadmissible rather than issuing another command. Together with
+existing uncertainty/retirement and battle-publication tests, 68 focused client
+checks pass, as do typecheck and diff checks. No production implementation change
+was needed in this review.
+
+Both native party-HUD DIG/TELEPORT commit and exact-process restoration cases pass
+(15.3s; `/var/tmp/capturequest-rendered.QM9lLp`). Native is true/WebSocket false
+before/after replacement. DIG is exercised from the real Mt Moon fixture: its
+private party row is given the catalog DIG move and refreshed through owned
+resources before clicking. It reaches (98,-185), retaining that pose and travel
+revision 1 after replacement. TELEPORT uses a private primary bind resolved from
+the real map catalog and retains REDS_HOUSE_2F (3,6)/revision 1. Exact process
+receipts record exit 137 and replacement identities. No asset/server policy was
+changed to accommodate the fixtures. Native held-packet loss was not injected;
+prior WebSocket duplicate/timeout/reentry evidence retains that scope.
+
+The ability travel source/permission/destination and scoped recovery baseline is
+locally reviewed. Wider pending-plan/source/catalog/publication ordering still
+belongs to the finite matrix. FLY remains a separate uncorrelated catalog policy,
+and the original five-area roadmap and historical restore attribution remain
+incomplete. No push, production deployment, schema or generated-asset changes
+occurred; unrelated deployment work is preserved.
+
+Next: audit FLY's saved source/battle/catalog decisions and response owner before
+consolidating its travel command adapter. Its existing catalog validation must
+remain authoritative; do not replace it with arbitrary destination coordinates.
 
 ## DIG/TELEPORT correlated source and current movement recovery (2026-10-13)
 

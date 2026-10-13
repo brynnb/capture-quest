@@ -754,3 +754,9 @@ test("retired ability travel ignores old acknowledgement and recovery",async()=>
  vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce({fieldCommands:{}} as any);let resolve!:(reply:any)=>void;
  vi.mocked(movement.requestStateField).mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));const pending=controller.travelByMove("DIG");await Promise.resolve();controller.retireFieldCommands();resolve({success:true,requestId:"old",characterId:42,moveName:"DIG",mapId:50,message:"Dug out"});await pending;expect(battlePublication.recoverFieldPublication).not.toHaveBeenCalled();
 });
+
+test("failed ability travel recovery keeps subsequent field mutations inadmissible",async()=>{
+ const {controller}=buildLedgeController();usePlayerCharacterStore.getState().setCharacterProfile({id:42});
+ vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce({fieldCommands:{}} as any);vi.mocked(movement.requestStateField).mockRejectedValueOnce(new Error("lost reply"));vi.mocked(battlePublication.recoverFieldPublication).mockResolvedValueOnce(false);
+ await controller.travelByMove("TELEPORT");await controller.travelByMove("TELEPORT");expect(movement.requestStateField).toHaveBeenCalledOnce();expect(battlePublication.recoverFieldPublication).toHaveBeenCalledOnce();
+});
