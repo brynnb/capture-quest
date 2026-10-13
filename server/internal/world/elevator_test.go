@@ -5,15 +5,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"capturequest/internal/db"
-
 	_ "modernc.org/sqlite"
 )
 
 func TestAvailableElevatorFloorsReturnsOrderedFloors(t *testing.T) {
-	setupElevatorRuntimeDB(t)
+	database := setupElevatorRuntimeDB(t)
 
-	access, err := AvailableElevatorFloors(1, 236, nil)
+	access, err := AvailableElevatorFloors(database, 1, 236)
 	if err != nil {
 		t.Fatalf("AvailableElevatorFloors: %v", err)
 	}
@@ -44,9 +42,9 @@ func TestAvailableElevatorFloorsReturnsOrderedFloors(t *testing.T) {
 }
 
 func TestElevatorDestinationRequiresCurrentElevatorFloorPair(t *testing.T) {
-	setupElevatorRuntimeDB(t)
+	database := setupElevatorRuntimeDB(t)
 
-	floor, err := ElevatorDestination(1, 236, 235, nil)
+	floor, err := ElevatorDestination(database, 1, 236, 235)
 	if err != nil {
 		t.Fatalf("ElevatorDestination: %v", err)
 	}
@@ -54,15 +52,15 @@ func TestElevatorDestinationRequiresCurrentElevatorFloorPair(t *testing.T) {
 		t.Fatalf("Silph 11F destination = %#v, want 11F at (13,0)", floor)
 	}
 
-	if _, err := ElevatorDestination(1, 127, 235, nil); err == nil {
+	if _, err := ElevatorDestination(database, 1, 127, 235); err == nil {
 		t.Fatal("ElevatorDestination accepted a Silph floor from the Celadon elevator")
 	}
 }
 
 func TestElevatorRuntimeSupportsCeladonAndRocketHideout(t *testing.T) {
-	setupElevatorRuntimeDB(t)
+	database := setupElevatorRuntimeDB(t)
 
-	celadon, err := AvailableElevatorFloors(1, 127, nil)
+	celadon, err := AvailableElevatorFloors(database, 1, 127)
 	if err != nil {
 		t.Fatalf("AvailableElevatorFloors Celadon: %v", err)
 	}
@@ -70,7 +68,7 @@ func TestElevatorRuntimeSupportsCeladonAndRocketHideout(t *testing.T) {
 		t.Fatalf("Celadon floors = %#v, want 5F in fixture", celadon.Floors)
 	}
 
-	rocketLocked, err := AvailableElevatorFloors(1, 203, nil)
+	rocketLocked, err := AvailableElevatorFloors(database, 1, 203)
 	if err != nil {
 		t.Fatalf("AvailableElevatorFloors Rocket locked: %v", err)
 	}
@@ -78,7 +76,7 @@ func TestElevatorRuntimeSupportsCeladonAndRocketHideout(t *testing.T) {
 		t.Fatalf("locked Rocket elevator = %#v, want no floors and key message", rocketLocked)
 	}
 
-	rocketUnlocked, err := AvailableElevatorFloors(42, 203, nil)
+	rocketUnlocked, err := AvailableElevatorFloors(database, 42, 203)
 	if err != nil {
 		t.Fatalf("AvailableElevatorFloors Rocket unlocked: %v", err)
 	}
@@ -86,7 +84,7 @@ func TestElevatorRuntimeSupportsCeladonAndRocketHideout(t *testing.T) {
 		t.Fatalf("unlocked Rocket floors = %#v, want three floors", rocketUnlocked.Floors)
 	}
 
-	floor, err := ElevatorDestination(42, 203, 202, nil)
+	floor, err := ElevatorDestination(database, 42, 203, 202)
 	if err != nil {
 		t.Fatalf("ElevatorDestination Rocket B4F: %v", err)
 	}
@@ -94,12 +92,12 @@ func TestElevatorRuntimeSupportsCeladonAndRocketHideout(t *testing.T) {
 		t.Fatalf("Rocket B4F destination = %#v, want B4F at (24,15)", floor)
 	}
 
-	if _, err := ElevatorDestination(1, 203, 202, nil); err == nil {
+	if _, err := ElevatorDestination(database, 1, 203, 202); err == nil {
 		t.Fatal("Rocket elevator B4F was accessible without Lift Key")
 	}
 }
 
-func setupElevatorRuntimeDB(t *testing.T) {
+func setupElevatorRuntimeDB(t *testing.T) *sql.DB {
 	t.Helper()
 
 	raw, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "elevator-runtime.db"))
@@ -145,10 +143,7 @@ func setupElevatorRuntimeDB(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	previous := db.GlobalWorldDB
-	db.GlobalWorldDB = &db.WorldDB{DB: raw}
-	t.Cleanup(func() {
-		db.GlobalWorldDB = previous
-		raw.Close()
-	})
+	t.Cleanup(func() { raw.Close() })
+	raw.SetMaxOpenConns(1)
+	return raw
 }

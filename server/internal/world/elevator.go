@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 
@@ -16,8 +17,8 @@ type ElevatorAccess struct {
 }
 
 // AvailableElevatorFloors returns the floors selectable by the character in an elevator.
-func AvailableElevatorFloors(charID int64, elevatorMapID int, efm *EventFlagManager) (ElevatorAccess, error) {
-	rows, err := db.GlobalWorldDB.DB.Query(
+func AvailableElevatorFloors(q db.DBTX, charID int64, elevatorMapID int) (ElevatorAccess, error) {
+	rows, err := q.Query(
 		`SELECT floor_map_id, floor_label, dest_x, dest_y, COALESCE(requires_flag, ''), COALESCE(requires_item_id, 0)
 		 FROM phaser_elevator_floors
 		 WHERE elevator_map_id = $1
@@ -40,17 +41,26 @@ func AvailableElevatorFloors(charID int64, elevatorMapID int, efm *EventFlagMana
 		); err != nil {
 			return ElevatorAccess{}, fmt.Errorf("scan elevator floor: %w", err)
 		}
-		allowed, err := elevatorFloorAllowed(charID, floor, efm)
-		if err != nil {
-			return ElevatorAccess{}, err
-		}
-		if allowed {
-			floors = append(floors, floor)
-		}
+		floors = append(floors, floor)
 	}
 	if err := rows.Err(); err != nil {
 		return ElevatorAccess{}, fmt.Errorf("iterate elevator floors: %w", err)
 	}
+	// Release the catalog cursor before permission reads on the same query owner.
+	if err := rows.Close(); err != nil {
+		return ElevatorAccess{}, err
+	}
+	available := make([]ElevatorFloor, 0, len(floors))
+	for _, floor := range floors {
+		allowed, err := elevatorFloorAllowed(q, charID, floor)
+		if err != nil {
+			return ElevatorAccess{}, err
+		}
+		if allowed {
+			available = append(available, floor)
+		}
+	}
+	floors = available
 
 	access := ElevatorAccess{Floors: floors}
 	if len(floors) == 0 {
@@ -60,9 +70,9 @@ func AvailableElevatorFloors(charID int64, elevatorMapID int, efm *EventFlagMana
 }
 
 // ElevatorDestination validates and returns the selected elevator destination.
-func ElevatorDestination(charID int64, elevatorMapID, floorMapID int, efm *EventFlagManager) (*ElevatorFloor, error) {
+func ElevatorDestination(q db.DBTX, charID int64, elevatorMapID, floorMapID int) (*ElevatorFloor, error) {
 	var floor ElevatorFloor
-	err := db.GlobalWorldDB.DB.QueryRow(
+	err := q.QueryRow(
 		`SELECT floor_map_id, floor_label, dest_x, dest_y, COALESCE(requires_flag, ''), COALESCE(requires_item_id, 0)
 		 FROM phaser_elevator_floors
 		 WHERE elevator_map_id = $1 AND floor_map_id = $2`,
@@ -81,7 +91,7 @@ func ElevatorDestination(charID int64, elevatorMapID, floorMapID int, efm *Event
 		return nil, fmt.Errorf("query elevator destination %d/%d: %w", elevatorMapID, floorMapID, err)
 	}
 
-	allowed, err := elevatorFloorAllowed(charID, floor, efm)
+	allowed, err := elevatorFloorAllowed(q, charID, floor)
 	if err != nil {
 		return nil, err
 	}
@@ -91,9 +101,13 @@ func ElevatorDestination(charID int64, elevatorMapID, floorMapID int, efm *Event
 	return &floor, nil
 }
 
-func elevatorFloorAllowed(charID int64, floor ElevatorFloor, efm *EventFlagManager) (bool, error) {
+func elevatorFloorAllowed(q db.DBTX, charID int64, floor ElevatorFloor) (bool, error) {
 	if floor.RequiresFlag != "" {
-		if efm == nil || charID <= 0 || !efm.CheckFlag(charID, floor.RequiresFlag) {
+		on, err := queryEventFlag(q, charID, floor.RequiresFlag)
+		if err != nil {
+			return false, err
+		}
+		if charID <= 0 || !on {
 			return false, nil
 		}
 	}
@@ -101,7 +115,7 @@ func elevatorFloorAllowed(charID int64, floor ElevatorFloor, efm *EventFlagManag
 		if charID <= 0 {
 			return false, nil
 		}
-		hasItem, err := characterHasCQItem(charID, floor.RequiresItemID)
+		hasItem, err := characterHasCQItemIn(q, charID, floor.RequiresItemID)
 		if err != nil {
 			return false, fmt.Errorf("check elevator required item %d: %w", floor.RequiresItemID, err)
 		}
@@ -110,4 +124,25 @@ func elevatorFloorAllowed(charID int64, floor ElevatorFloor, efm *EventFlagManag
 		}
 	}
 	return true, nil
+}
+
+// UseElevator joins source, durable access and catalog destination with the
+// established movement commit. Supplied transactions retain outer ownership.
+func UseElevator(ctx context.Context, database db.DBTX, charID int64, sourceMap, sourceX, sourceY, floorMap int, normalize func(int) int) (*ElevatorFloor, error) {
+	var floor *ElevatorFloor
+	err := db.Transaction(ctx, database, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, charID); err != nil {
+			return err
+		}
+		if err := requireTravelSourceIn(tx, charID, sourceMap, sourceX, sourceY, normalize); err != nil {
+			return err
+		}
+		var err error
+		floor, err = ElevatorDestination(tx, charID, sourceMap, floorMap)
+		if err != nil {
+			return err
+		}
+		return saveFieldDestinationIn(tx, charID, normalize(floor.FloorMapID), floor.DestX, floor.DestY)
+	})
+	return floor, err
 }

@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+elevator durable source/catalog/permission joins the existing movement transaction,
+following `0321780`:
 shared TELEPORT/FLY held timeout/reentry acceptance and elevator prerequisite audit,
 following `0a9efff`:
 FLY historical replay/current-pose review, same-position selector retirement and
@@ -134,6 +136,43 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Elevator durable source/catalog/permission prerequisite (2026-10-13)
+
+Elevator selection previously read global catalog/item data and cached flags
+before a separate position commit; the simulator wrote position directly. Both
+now use `UseElevator`: bounded/joinable transaction, existing character lock,
+shared durable source/no-battle admission, catalog source/floor pair, durable
+flag/item permission and `saveFieldDestinationIn`. The existing destination
+primitive owns route, Safari and issued-plan retirement. Runtime publication and
+warp notification follow successful commit only. No inventory mutation executor
+or new travel store is introduced.
+
+Floor-list reads now inject the same query owner and validate requested map against
+owned/saved source under character ownership. Catalog rows are collected and
+closed before permission reads, preventing a second query from competing with an
+open cursor on a single connection. SQLite catalog tests also use explicit query
+owners; their global database installation is retired. The simulator selection
+uses the runtime transaction rather than its former direct UPDATE.
+
+PostgreSQL success, stale source, missing durable flag, catalog/flag query failure,
+cold durable battle, deferred commit failure and occupied-pool cancellation checks
+pass with unchanged saved pose on rejection. Actual dispatch proves commit failure
+publishes neither live pose nor warp, while successful commit publishes both.
+Final focused race checks pass (2.5s); full world (83.6s), simulator (1.5s) race suites
+and all-package compilation pass. This is domain/headless evidence, not rendered
+elevator or native acceptance. No schema, generated contract or source data change.
+
+Remaining: elevator source-panel eligibility, correlated list/selection contracts,
+expected source/revision, bounded replay, source-owned menu retirement and current
+movement recovery need the next coordinated migration. The existing legacy
+notification is retained only until that replacement, not as a new parallel path.
+Warp Home keeps its separate emergency battle/Safari policy. Wider matrix and all
+five original roadmap criteria remain open; historical restore attribution remains
+unproven. Local checkpoint only; no push or deployment.
+
+Next: review panel source identity and migrate elevator read/selection through
+shared correlation, travel receipts and owned current-position recovery.
 
 ## Shared held travel acceptance and next-family audit (2026-10-13)
 

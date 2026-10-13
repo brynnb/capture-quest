@@ -531,7 +531,12 @@ func triggerOrFixturePosition(scenario *Scenario) (int, int) {
 }
 
 func runElevatorFloors(ctx context.Context, database *sql.DB, scenario *Scenario, applied *AppliedFixture, initial *Snapshot, efm *world.EventFlagManager) (*Result, error) {
-	access, err := world.AvailableElevatorFloors(applied.CharacterID, applied.MapID, efm)
+	var access world.ElevatorAccess
+	err := db.Transaction(ctx, database, func(tx db.DBTX) error {
+		var err error
+		access, err = world.AvailableElevatorFloors(tx, applied.CharacterID, applied.MapID)
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -578,16 +583,10 @@ func runElevatorSelect(ctx context.Context, database *sql.DB, scenario *Scenario
 	if err != nil {
 		return nil, err
 	}
-	floor, err := world.ElevatorDestination(applied.CharacterID, applied.MapID, floorMapID, efm)
+	floor, err := world.UseElevator(ctx, database, applied.CharacterID, applied.MapID, initial.X, initial.Y, floorMapID, func(id int) int { return id })
 	if err != nil {
 		return nil, err
 	}
-	if _, err := db.GlobalWorldDB.DB.Exec(
-		`UPDATE character_data SET map_id = $1, x = $2, y = $3 WHERE id = $4`,
-		floor.FloorMapID, floor.DestX, floor.DestY, applied.CharacterID); err != nil {
-		return nil, fmt.Errorf("apply elevator destination: %w", err)
-	}
-
 	selected, err := elevatorFloorSummary(*floor)
 	if err != nil {
 		return nil, err

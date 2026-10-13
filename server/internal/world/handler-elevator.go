@@ -2,9 +2,11 @@ package world
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 
 	"capturequest/internal/api/opcodes"
+	"capturequest/internal/db"
 	"capturequest/internal/session"
 )
 
@@ -40,7 +42,22 @@ func HandleElevatorFloorsRequest(ses *session.Session, payload []byte, wh *World
 	if char := ses.Client.CharData(); char != nil {
 		charID = int64(char.ID)
 	}
-	access, err := AvailableElevatorFloors(charID, req.MapID, wh.EventFlags)
+	source := wh.ownedPlayerSnapshot(ses, "")
+	var access ElevatorAccess
+	err := db.Transaction(ses.CommandContext(), wh.database, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, charID); err != nil {
+			return err
+		}
+		if req.MapID != source.MapID {
+			return fmt.Errorf("elevator source map mismatch")
+		}
+		if err := requireTravelSourceIn(tx, charID, source.MapID, source.X, source.Y, func(id int) int { return normalizedVisiblePlayerMapID(wh, id) }); err != nil {
+			return err
+		}
+		var err error
+		access, err = AvailableElevatorFloors(tx, charID, req.MapID)
+		return err
+	})
 	if err != nil {
 		log.Printf("[Elevator] Error querying floors for elevator %d: %v", req.MapID, err)
 		return false
@@ -76,20 +93,17 @@ func HandleElevatorSelectRequest(ses *session.Session, payload []byte, wh *World
 	}
 
 	// Get the player's current map to determine which elevator they're in
-	currentMapID := int(char.MapID)
+	source := wh.ownedPlayerSnapshot(ses, "")
+	currentMapID := source.MapID
 
-	floor, err := ElevatorDestination(int64(char.ID), currentMapID, req.FloorMapID, wh.EventFlags)
+	floor, err := UseElevator(ses.CommandContext(), wh.database, int64(char.ID), currentMapID, source.X, source.Y, req.FloorMapID, func(id int) int { return normalizedVisiblePlayerMapID(wh, id) })
 	if err != nil {
 		log.Printf("[Elevator] Floor %d not found in elevator %d: %v", req.FloorMapID, currentMapID, err)
 		return false
 	}
 
-	// Teleport the player to the selected floor
-	if _, err := setServerTeleportedPlayerPosition(ses, wh, req.FloorMapID, floor.DestX, floor.DestY, "DOWN"); err != nil {
-		log.Printf("[Elevator] Save destination for %d: %v", char.ID, err)
-		SendSystemMessage(ses, "Could not save the destination. Please try again.")
-		return false
-	}
+	refreshSafariFlags(ses, wh, int64(char.ID))
+	publishCommittedPlayerPosition(ses, wh, normalizedVisiblePlayerMapID(wh, floor.FloorMapID), floor.DestX, floor.DestY, "DOWN")
 
 	// Send teleport notification to client
 	sendCommittedWarpNotification(ses, req.FloorMapID, floor.DestX, floor.DestY, "DOWN")
