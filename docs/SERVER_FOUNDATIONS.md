@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+shared TELEPORT/FLY held timeout/reentry acceptance and elevator prerequisite audit,
+following `0a9efff`:
 FLY historical replay/current-pose review, same-position selector retirement and
 native process acceptance, following `8166a07`:
 FLY uses scoped source/catalog identity, the shared travel receipt and owned
@@ -132,6 +134,36 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Shared held travel acceptance and next-family audit (2026-10-13)
+
+The existing held TELEPORT suite now parameterizes FLY with a destination from
+`poke_start_cities` and normalized map identity. Both policies pass exact duplicate,
+all-replies-held timeout recovery and same-character reentry. Delivering the old
+acknowledgement through the real dispatcher afterward leaves current player state
+unchanged and opens no dialogue; one browser mutation and travel revision 1 remain.
+All four rendered cases pass (40.0s; `/var/tmp/capturequest-rendered.Z7326a`), with
+saved destination checks and typecheck. No additional command/recovery coordinator
+or production behavior is introduced. This is WebSocket/application late-delivery
+evidence, not native loss-at-commit acceptance.
+
+Next-family source audit: elevator floor reads/selects use `GlobalWorldDB` and
+cached `EventFlagManager` permission; handler source is cached `char.MapID`, and
+catalog/permission selection precedes a separate movement transaction. Simulator
+`runElevatorSelect` directly updates position. These are real ownership/atomicity
+gaps, not missing duplicate implementations to add. Replace them with injected
+query-owner catalog/permission decisions joined under the existing movement owner,
+then migrate typed scoped selection and source-owned selector/recovery. Keep
+Warp Home's deliberate battle/Safari clearing policy distinct from ordinary travel.
+
+Remaining: selector transport/screen rendered retirement and native loss-at-commit
+acceptance remain explicit FLY limits; current shared lifetime unit evidence and
+completed native commit/restart evidence are reusable. The broader five-area goal,
+wider matrix and original restore attribution remain open. Local checkpoint only;
+no push or deployment.
+
+Next: implement and review the elevator durable source/catalog/permission
+prerequisite before changing its wire/client selector.
 
 ## FLY replay review, same-position selector retirement and native acceptance (2026-10-13)
 
