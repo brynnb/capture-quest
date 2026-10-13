@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+shared inventory command/recovery lifetime now uses character/screen/transport
+retirement before pickup protocol migration, following `4ab4d4c`:
 ItemPickup durable source/visibility admission joins its existing award transaction,
 following `92d23c3`:
 shared field publication review protects awaited recovery from notification
@@ -93,6 +95,47 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Shared inventory lifetime review before pickup migration (2026-10-13)
+
+The pickup protocol review found that `runInventoryRequest` retained its private
+character/scene lifetime while the established shared wrapper already handled
+screen and transport retirement. A held mutation or recovery could otherwise
+retain an obsolete transport and try to reconcile on its replacement. The shared
+inventory coordinator now runs through `readForCurrentCharacter`, preserving its
+existing admission, correlation, revision, response validation and one-read/no-
+mutation-retry recovery policy. Shop, party, Repel, reorder and PC adapters inherit
+this boundary; no pickup-specific lifetime/coordinator was introduced.
+
+Retirement aborts the command/read, closes owned menus and ignores late replies
+or recovery snapshots. Signal/presentation/session subscriptions are cleaned on
+every outcome. Closing presentation while a mutation remains on the same owner
+still preserves its committed reply/reconciliation. Resource hints carry the
+captured transport generation; queued hints are discarded after transport change
+or screen exit, and hints received outside the game cannot start a new read or
+report an error into the retired screen.
+
+Focused checks cover screen/transport retirement both during mutation and held
+recovery, subscriber cleanup, no resend and old queued hints. Existing tests
+still prove presentation closure, source changes, malformed/out-of-order replies,
+timeout and immutable snapshots across all shared adapters. Fixture correction
+combined the two aliases for the same network mock so opcode/send/retirement
+capabilities coexist; the actual NetworkBridge notice fixture now seeds its
+required active game screen. Assertions were retained.
+
+All 588 client tests in 59 files pass (4.6s), with typecheck and diff checks.
+Rendered Chromium/WebSocket lost-reply shop purchase, Repel closure/reentry/
+process recovery and PC deposit/process replacement checks pass (44.6s;
+`/var/tmp/capturequest-rendered.L2D0Vs`). Final outside-game hint filtering is
+covered by focused regressions after that rendered run. No server schema,
+generated runtime assets, push or production deployment changed here.
+
+Remaining and next: migrate pickup's actor-only request/global reply to generated
+identity and the existing inventory command revision, with scene-owned actor and
+resource recovery. Its authoritative source/award prerequisite remains the prior
+checkpoint. The original five-area roadmap and historical restore/Repel
+attribution remain incomplete; these passing checks do not establish that old
+timeout's root cause or close it.
 
 ## ItemPickup authoritative source prerequisite (2026-10-13)
 

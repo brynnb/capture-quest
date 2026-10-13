@@ -7,6 +7,7 @@ import type { CQInventoryItem } from "./generated/cqitems";
 import useCQInventoryStore from "@/stores/CQInventoryStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import AudioManager from "@/services/audio/AudioManager";
+import useGameScreenStore from "@/stores/GameScreenStore";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
 
 const stack = (id: number, quantity: number): CQInventoryItem => ({
@@ -24,6 +25,7 @@ test.each([PokemonPCOpenResponse,PokemonPCDepositResponse,PokemonPCWithdrawRespo
 });
 
 beforeEach(() => {
+  useGameScreenStore.getState().setScreen("game");
   NetworkBridge.initialize();
   useCQInventoryStore.getState().setInventory([stack(1, 95)], 1000,0);
   usePlayerCharacterStore.getState().setCharacterProfile({ id: 42, pokedollars: 1000 });

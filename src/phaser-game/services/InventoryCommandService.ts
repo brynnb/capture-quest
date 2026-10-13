@@ -1,12 +1,13 @@
 import { OpCodes, WorldSocket } from "@/net";
 import type { CQMerchantOpenResponse, CQMerchantBuyResponse, CQMerchantSellResponse, CQPartyItemUseResponse, RepelUseResponse, PokemonPartyReorderResponse } from "@/net/generated/world_api";
 import useCQInventoryStore from "@/stores/CQInventoryStore";
+import useGameScreenStore from "@/stores/GameScreenStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
 import usePokemonPCStore from "@/stores/PokemonPCStore";
 import useGameStatusStore from "@/stores/GameStatusStore";
 import useChatStore, { MessageType } from "@/stores/ChatStore";
-import { correlatedRequest, CorrelatedResponseError } from "./CorrelatedRequest";
+import { correlatedRequest, CorrelatedResponseError, readForCurrentCharacter } from "./CorrelatedRequest";
 import * as PhaserNet from "./PhaserNetworkService";
 import { readCurrentGameplayState, applyGameplayResourceSnapshot } from "./GameplayRecoveryService";
 import AudioManager from "@/services/audio/AudioManager";
@@ -15,6 +16,7 @@ import { sfxPathForConstant } from "@/services/audio/pokemonMusic";
 let scene: symbol | null = null;
 let active: AbortController | null = null;
 let resourcesDirtyCharacter=0;
+let resourcesDirtyGeneration=0;
 type Reply = import("@/net/generated/world_api").GameplayStateResponse | import("@/net/generated/world_api").PokemonPCResponse | CQMerchantOpenResponse | CQMerchantBuyResponse | CQMerchantSellResponse | CQPartyItemUseResponse | RepelUseResponse | PokemonPartyReorderResponse;
 
 export function bindInventoryScene(): () => void {
@@ -71,10 +73,9 @@ export async function runInventoryRequest<T extends Reply>(options: {
   if (!characterId || !Number.isSafeInteger(revision) || revision < 0) return;
   const initial = views();
   const controller = new AbortController(); active = controller;
-  const current = () => !controller.signal.aborted && scene === owner && usePlayerCharacterStore.getState().characterProfile.id === characterId;
-  const stopProfile = usePlayerCharacterStore.subscribe(state => {
-    if (state.characterProfile.id !== characterId) { resourcesDirtyCharacter=0; controller.abort(); useCQInventoryStore.getState().closeShop(); }
-  });
+  let lifetimeSignal=controller.signal;
+  let stopLifetime=()=>{};
+  const current = () => !lifetimeSignal.aborted && useGameScreenStore.getState().currentScreen === "game" && scene === owner && usePlayerCharacterStore.getState().characterProfile.id === characterId;
   let presentationCurrent = true;
   const stopPresentation = options.watchPresentation?.(() => {
     presentationCurrent = false;
@@ -84,45 +85,55 @@ export async function runInventoryRequest<T extends Reply>(options: {
   });
   useCQInventoryStore.setState({ inventoryCommandPending: true, inventoryCommandError: null });
   try {
-    const reply = options.read ? await options.read(controller.signal) : await correlatedRequest<T>(
-      receive => PhaserNet.onInventoryCommand(options.responseOpcode, value => receive(value as T)),
-      requestId => WorldSocket.sendStreamJsonMessage(options.opcode, {
-        ...options.payload, requestId,
-        ...(options.mutation ? {command: {characterId, revision}} : {characterId}),
-      }), controller.signal,
-    );
-    if (!current()) return;
-    if (views().some((view, i) => view !== initial[i])) throw new Error("Inventory reply overtaken by newer state");
-    options.validate?.(reply);
-    if (options.mutation) {
-      if (!("inventory" in reply) || Array.isArray(reply.inventory)) throw new Error("Invalid mutation response kind");
-      if (!Array.isArray(reply.inventory?.items)
-        || reply.inventory.commandRevision !== revision + 1 || !Number.isSafeInteger(reply.inventory.money)
-        || reply.inventory.money < 0 || reply.inventory.money > 0xffffffff) throw new Error("Invalid committed inventory response");
-      useCQInventoryStore.getState().setInventory(reply.inventory.items, reply.inventory.money, reply.inventory.commandRevision);
-      usePlayerCharacterStore.getState().handleCharacterWalletData({characterId, pokedollars: reply.inventory.money});
-    }
-    options.apply?.(reply);
-    if (presentationCurrent) options.present(reply);
-  } catch (error) {
-    if (!current()) return;
-    if (!options.mutation) {
-      reportError(options.readError ?? "Could not read inventory state. Please try again.");
-      return;
-    }
-    // Even rejection cannot prove rollback after a lost earlier reply. Read
-    // current authority once; never resend the mutation or apply its late reply.
-    try {
-      const snapshot = await readCurrentGameplayState(controller.signal);
-      if (!current()) return;
-      applyGameplayResourceSnapshot(snapshot);
-      useCQInventoryStore.getState().setPendingTMHM(null);
-      useChatStore.getState().addMessage(error instanceof CorrelatedResponseError ? error.message : (options.recoveryMessage ?? "Inventory state refreshed. Check your bag and party before trying again."), MessageType.SYSTEM);
-    } catch {
-      if (current()) reportError("Could not restore inventory state. Please reconnect.");
-    }
+    await readForCurrentCharacter(async (_character,signal)=>{
+      lifetimeSignal=signal;
+      const retireMenus=()=>{if(scene===owner){useCQInventoryStore.getState().closeShop();usePokemonPCStore.getState().closePC();}};
+      signal.addEventListener("abort",retireMenus,{once:true});
+      stopLifetime=()=>signal.removeEventListener("abort",retireMenus);
+      try {
+        const reply = options.read ? await options.read(lifetimeSignal) : await correlatedRequest<T>(
+          receive => PhaserNet.onInventoryCommand(options.responseOpcode, value => receive(value as T)),
+          requestId => WorldSocket.sendStreamJsonMessage(options.opcode, {
+            ...options.payload, requestId,
+            ...(options.mutation ? {command: {characterId, revision}} : {characterId}),
+          }), lifetimeSignal,
+        );
+        if (!current()) return;
+        if (views().some((view, i) => view !== initial[i])) throw new Error("Inventory reply overtaken by newer state");
+        options.validate?.(reply);
+        if (options.mutation) {
+          if (!("inventory" in reply) || Array.isArray(reply.inventory)) throw new Error("Invalid mutation response kind");
+          if (!Array.isArray(reply.inventory?.items)
+            || reply.inventory.commandRevision !== revision + 1 || !Number.isSafeInteger(reply.inventory.money)
+            || reply.inventory.money < 0 || reply.inventory.money > 0xffffffff) throw new Error("Invalid committed inventory response");
+          useCQInventoryStore.getState().setInventory(reply.inventory.items, reply.inventory.money, reply.inventory.commandRevision);
+          usePlayerCharacterStore.getState().handleCharacterWalletData({characterId, pokedollars: reply.inventory.money});
+        }
+        options.apply?.(reply);
+        if (presentationCurrent) options.present(reply);
+      } catch (error) {
+        if (!current()) return;
+        if (!options.mutation) {
+          reportError(options.readError ?? "Could not read inventory state. Please try again.");
+          return;
+        }
+        // Even rejection cannot prove rollback after a lost earlier reply. Read
+        // current authority once; never resend the mutation or apply its late reply.
+        try {
+          const snapshot = await readCurrentGameplayState(lifetimeSignal);
+          if (!current()) return;
+          applyGameplayResourceSnapshot(snapshot);
+          useCQInventoryStore.getState().setPendingTMHM(null);
+          useChatStore.getState().addMessage(error instanceof CorrelatedResponseError ? error.message : (options.recoveryMessage ?? "Inventory state refreshed. Check your bag and party before trying again."), MessageType.SYSTEM);
+        } catch {
+          if (current()) reportError("Could not restore inventory state. Please reconnect.");
+        }
+      }
+    }, controller.signal);
+  } catch(error) {
+    if (!(error instanceof DOMException && error.name==="AbortError") && current()) reportError("Inventory request could not start. Reconnect before trying again.");
   } finally {
-    stopProfile(); stopPresentation?.();
+    stopLifetime(); stopPresentation?.();
     if (active === controller) { active = null; useCQInventoryStore.setState({inventoryCommandPending: false}); }
     flushResourceChanges();
   }
@@ -143,13 +154,13 @@ export function refreshOwnedGameplayResources(): Promise<void> {
 export function acceptResourceChangeNotification(value: unknown): void {
   if (!value || typeof value!=="object") return;
   const notice=value as {success?:boolean;resourcesChanged?:boolean;characterId?:number};
-  if (!scene || notice.success!==true || notice.resourcesChanged!==true
+  if (!scene || useGameScreenStore.getState().currentScreen!=="game" || notice.success!==true || notice.resourcesChanged!==true
     || notice.characterId!==usePlayerCharacterStore.getState().characterProfile.id) return;
-  resourcesDirtyCharacter=notice.characterId!; flushResourceChanges();
+  resourcesDirtyCharacter=notice.characterId!; resourcesDirtyGeneration=WorldSocket.sessionGeneration; flushResourceChanges();
 }
 function flushResourceChanges(): void {
   if (!resourcesDirtyCharacter || active || !scene) return;
-  if (resourcesDirtyCharacter!==usePlayerCharacterStore.getState().characterProfile.id) {resourcesDirtyCharacter=0;return;}
+  if (useGameScreenStore.getState().currentScreen!=="game" || resourcesDirtyGeneration!==WorldSocket.sessionGeneration || resourcesDirtyCharacter!==usePlayerCharacterStore.getState().characterProfile.id) {resourcesDirtyCharacter=0;return;}
   resourcesDirtyCharacter=0;
   void refreshOwnedGameplayResources();
 }

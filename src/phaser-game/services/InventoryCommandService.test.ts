@@ -1,6 +1,6 @@
 import { beforeEach, afterEach, expect, test, vi } from "vitest";
-const net = vi.hoisted(() => ({ listeners:new Map<number,Set<(reply:any)=>void>>(),send:vi.fn(),read:vi.fn() }));
-vi.mock("@/net",()=>({OpCodes:{PokemonPCOpenRequest:108,PokemonPCOpenResponse:109,PokemonPCDepositRequest:110,PokemonPCDepositResponse:111,PokemonPCWithdrawRequest:112,PokemonPCWithdrawResponse:113,PokemonPCReleaseRequest:114,PokemonPCReleaseResponse:115,PokemonPCSwitchBoxRequest:116,PokemonPCSwitchBoxResponse:117,PokemonPartyReorderRequest:90,PokemonPartyReorderResponse:91,CQItemUseRequest:100,CQItemUseResponse:101,RepelUseRequest:143,RepelUseResponse:144,CQMerchantOpenRequest:94,CQMerchantOpenResponse:95,CQMerchantBuyRequest:96,CQMerchantBuyResponse:97,CQMerchantSellRequest:98,CQMerchantSellResponse:99},WorldSocket:{sendStreamJsonMessage:net.send}}));
+const net = vi.hoisted(() => ({ listeners:new Map<number,Set<(reply:any)=>void>>(),send:vi.fn(),read:vi.fn(),generation:0,retired:new Set<()=>void>() }));
+vi.mock("@/net",()=>({OpCodes:{PokemonPCOpenRequest:108,PokemonPCOpenResponse:109,PokemonPCDepositRequest:110,PokemonPCDepositResponse:111,PokemonPCWithdrawRequest:112,PokemonPCWithdrawResponse:113,PokemonPCReleaseRequest:114,PokemonPCReleaseResponse:115,PokemonPCSwitchBoxRequest:116,PokemonPCSwitchBoxResponse:117,PokemonPartyReorderRequest:90,PokemonPartyReorderResponse:91,CQItemUseRequest:100,CQItemUseResponse:101,RepelUseRequest:143,RepelUseResponse:144,CQMerchantOpenRequest:94,CQMerchantOpenResponse:95,CQMerchantBuyRequest:96,CQMerchantBuyResponse:97,CQMerchantSellRequest:98,CQMerchantSellResponse:99},WorldSocket:{sendStreamJsonMessage:net.send,get sessionGeneration(){return net.generation;},subscribeSessionRetirement:(receive:()=>void)=>{net.retired.add(receive);return()=>net.retired.delete(receive);}}}));
 vi.mock("./PhaserNetworkService",()=>({isConnected:()=>true,onInventoryCommand:(opcode:number,receive:(reply:any)=>void)=>{
   if (!net.listeners.has(opcode)) net.listeners.set(opcode,new Set());
   const listeners=net.listeners.get(opcode)!;listeners.add(receive);return()=>listeners.delete(receive);
@@ -15,6 +15,7 @@ import {openShopForActor,buyShopItem,sellShopItem} from "./ShopCommandService";
 
 import {bindInventoryScene,sendPartyItemCommand,sendRepelItemCommand,sendPartyReorderCommand,refreshOwnedGameplayResources,acceptResourceChangeNotification} from "./InventoryCommandService";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
+import useGameScreenStore from "@/stores/GameScreenStore";
 import useGameStatusStore from "@/stores/GameStatusStore";
 import AudioManager from "@/services/audio/AudioManager";
 const party = [{rowId:7,curHp:21}] as any;
@@ -26,6 +27,7 @@ let retire:()=>void;
 const id=()=>net.send.mock.calls.at(-1)![1].requestId;
 const emit=(opcode:number,reply:any)=>net.listeners.get(opcode)?.forEach(receive=>receive(reply));
 beforeEach(()=>{
+  useGameScreenStore.getState().setScreen("game"); net.generation=0;net.retired.clear();
   vi.useFakeTimers();net.listeners.clear();net.send.mockReset().mockResolvedValue(undefined);net.read.mockReset();
   vi.mocked(AudioManager.playSFX).mockClear();
   useGameStatusStore.setState({isInventoryOpen:true,playerTileContext:{mapId:50,x:7,y:8,direction:"UP"}});
@@ -344,4 +346,36 @@ test.each(["scene","character","close"])("open retires on %s and ignores a late 
   await pending;
   emit(95,menu(requestId)); expect(useCQInventoryStore.getState().shopOpen).toBe(false);
   expect(net.listeners.get(95)?.size).toBe(0);
+});
+
+
+test.each(["screen","transport"])("inventory mutation retires on %s change without recovering on a replacement owner",async(kind)=>{
+ const run=sendPartyReorderCommand([7]);const request=id();
+ if(kind==="screen")useGameScreenStore.getState().setScreen("title");
+ else{net.generation++;net.retired.forEach(receive=>receive());}
+ emit(91,reply(request));await run;
+ expect(useCQInventoryStore.getState().money).toBe(1000);
+ expect(useCQInventoryStore.getState().inventoryCommandPending).toBe(false);
+ expect(net.read).not.toHaveBeenCalled();expect(net.retired.size).toBe(0);
+ expect(net.listeners.get(91)?.size).toBe(0);
+});
+
+test.each(["screen","transport"])("%s retirement discards a queued old resource hint",async(kind)=>{
+ const run=sendPartyReorderCommand([7]);
+ acceptResourceChangeNotification({success:true,resourcesChanged:true,characterId:42});
+ if(kind==="screen")useGameScreenStore.getState().setScreen("title");
+ else{net.generation++;net.retired.forEach(receive=>receive());}
+ await run;
+ expect(net.read).not.toHaveBeenCalled();expect(net.send).toHaveBeenCalledOnce();expect(useCQInventoryStore.getState().inventoryCommandError).toBeNull();
+});
+
+test.each(["screen","transport"])("%s retirement during recovery ignores an eventual old snapshot",async(kind)=>{
+ let resolve!:(snapshot:any)=>void;net.read.mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));
+ const run=sendPartyReorderCommand([7]);await vi.advanceTimersByTimeAsync(10001);
+ const signal=net.read.mock.calls[0][0] as AbortSignal;
+ if(kind==="screen")useGameScreenStore.getState().setScreen("title");
+ else{net.generation++;net.retired.forEach(receive=>receive());}
+ expect(signal.aborted).toBe(true);
+ resolve({position:{mapId:50},eventFlags:[],pc:{currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]},inventory:[],wallet:{characterId:42,pokedollars:800},commandRevision:5,party:[]});
+ await run;expect(useCQInventoryStore.getState().money).toBe(1000);expect(net.send).toHaveBeenCalledOnce();expect(net.retired.size).toBe(0);
 });
