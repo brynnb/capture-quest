@@ -24,12 +24,13 @@ let sceneProjection: Projection | null = null;
 let scenePositionView: (()=>unknown)|undefined;
 let active: AbortController | null = null;
 let publicationRead: AbortController | null = null;
+let fieldPublication: Promise<boolean> | null = null;
 let retireExit:(()=>void)|null=null;
 
 let retirementWatching=false;
 function watchBattleRetirement():void{
  if(retirementWatching)return;retirementWatching=true;
- const retire=()=>{active?.abort();active=null;publicationRead?.abort();publicationRead=null;retireExit?.();retireExit=null;usePokeBattleStore.getState().retireBattle();};
+ const retire=()=>{active?.abort();active=null;publicationRead?.abort();publicationRead=null;fieldPublication=null;retireExit?.();retireExit=null;usePokeBattleStore.getState().retireBattle();};
  WorldSocket.subscribeSessionRetirement(retire);
  useGameScreenStore.subscribe(state=>{if(state.currentScreen!=="game")retire();});
  usePlayerCharacterStore.subscribe((state,before)=>{if(state.characterProfile.id!==before.characterProfile.id)retire();});
@@ -41,7 +42,7 @@ export function bindBattleScene(reconcile: Projection, capturePositionView?:()=>
   watchBattleRetirement();
   retireExit?.();retireExit=null;
   active?.abort();
-  publicationRead?.abort();publicationRead=null;
+  publicationRead?.abort();publicationRead=null;fieldPublication=null;
   // Scene retirement releases admission immediately. The old projection may
   // still be settling; its identity-guarded finally cannot retire a newer slot.
   active = null;
@@ -52,7 +53,7 @@ export function bindBattleScene(reconcile: Projection, capturePositionView?:()=>
     retireExit?.();retireExit=null;
     sceneProjection = null;
     scenePositionView = undefined;
-    publicationRead?.abort();publicationRead=null;
+    publicationRead?.abort();publicationRead=null;fieldPublication=null;
     active?.abort();
     active = null;
   };
@@ -60,7 +61,27 @@ export function bindBattleScene(reconcile: Projection, capturePositionView?:()=>
 
 // Unsolicited battle publication is a hint, not authority for a panel or warp.
 // All producers use the same owned read; commands are never resent here.
+// Field commands await this read to release movement admission. Notifications
+// wait for it instead of aborting a successful commit's position recovery.
+export async function recoverFieldPublication(signal: AbortSignal): Promise<boolean> {
+ if(signal.aborted)return false;
+ if(fieldPublication)return fieldPublication;
+ const run=readBattlePublication({success:true},"standalone-end",signal,true);
+ fieldPublication=run;
+ try{return await run;}
+ finally{if(fieldPublication===run)fieldPublication=null;}
+}
+
 export async function recoverBattlePublication(notice:Record<string,unknown>,kind:"ordinary-start"|"safari-start"|"standalone-end"|"safari-visit"|"safari-exit"="ordinary-start",signal?:AbortSignal):Promise<boolean>{
+ const project=sceneProjection;
+ const character=usePlayerCharacterStore.getState().characterProfile.id;
+ const generation=WorldSocket.sessionGeneration;
+ if(fieldPublication)await fieldPublication;
+ if(signal?.aborted || sceneProjection!==project || usePlayerCharacterStore.getState().characterProfile.id!==character || WorldSocket.sessionGeneration!==generation || useGameScreenStore.getState().currentScreen!=="game")return false;
+ return readBattlePublication(notice,kind,signal);
+}
+
+async function readBattlePublication(notice:Record<string,unknown>,kind:"ordinary-start"|"safari-start"|"standalone-end"|"safari-visit"|"safari-exit"="ordinary-start",signal?:AbortSignal, fieldPosition=false):Promise<boolean>{
  if(signal?.aborted)return false;
  if((kind==="ordinary-start" && notice.success!==true) || !sceneProjection || useGameScreenStore.getState().currentScreen!=="game")return false;
  const initial=usePokeBattleStore.getState();
@@ -76,8 +97,8 @@ export async function recoverBattlePublication(notice:Record<string,unknown>,kin
  const current=(allowPositionChange=false)=>((allowPositionChange || kind!=="standalone-end" && kind!=="safari-exit") || positionView?.()===positionGeneration) && !controller.signal.aborted && publicationRead===controller && sceneProjection===project && WorldSocket.sessionGeneration===generation && usePlayerCharacterStore.getState().characterProfile.id===characterId && useGameScreenStore.getState().currentScreen==="game" && usePokeBattleStore.getState().presentationGeneration===presentation && !usePokeBattleStore.getState().battleCommandPending;
  try {
  let snapshot=await readForCurrentCharacter((_id,signal)=>readCurrentGameplayState(signal,(kind==="standalone-end" || kind==="safari-exit") ? positionView : undefined),controller.signal);
- if(kind==="safari-exit" && !current() && current(true)){
- // The final step acknowledgement can settle while expiry is read. Retry the
+ if((kind==="safari-exit" || fieldPosition) && !current() && current(true)){
+ // A final step/facing acknowledgement can settle during owned recovery. Retry the
  // read once from the new movement view; never reuse the older pose snapshot.
  positionGeneration=positionView?.();
  snapshot=await readForCurrentCharacter((_id,signal)=>readCurrentGameplayState(signal,positionView),controller.signal);
@@ -103,7 +124,7 @@ export async function recoverBattlePublication(notice:Record<string,unknown>,kin
  const events=kind==="ordinary-start" && owned && notice.battleId===owned.battleId && notice.revision===owned.revision && !owned.needsDismissal && Array.isArray(notice.events)
  ? notice.events as BattleEvent[] : [];
  state.restoreGameplay(snapshot,events);
- if(kind!=="standalone-end" && owned){const path=cryPathForPokemon(owned.enemyPokemon.name,owned.enemyPokemon.crySfx);if(path)void AudioManager.playSFX(path,0.8);}
+ if((kind!=="standalone-end" || fieldPosition) && owned){const path=cryPathForPokemon(owned.enemyPokemon.name,owned.enemyPokemon.crySfx);if(path)void AudioManager.playSFX(path,0.8);}
  }
  if(kind==="standalone-end"){
  // No carrier destination is trusted. Synchronous publication precedes the

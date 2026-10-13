@@ -1,4 +1,4 @@
-vi.mock("../services/BattleCommandService",()=>({recoverBattlePublication:vi.fn(async()=>true)}));
+vi.mock("../services/BattleCommandService",()=>({recoverBattlePublication:vi.fn(async()=>true),recoverFieldPublication:vi.fn(async()=>true)}));
 import * as battlePublication from "../services/BattleCommandService";
 import { afterEach, beforeEach } from "vitest";
 import { CorrelatedResponseError } from "../services/CorrelatedRequest";
@@ -601,20 +601,20 @@ test("fishing uncertainty reconciles once without a second mutation",async()=>{
  let reject!:(error:Error)=>void;vi.mocked(movement.requestFishing).mockImplementationOnce(()=>new Promise((_ok,no)=>{reject=no}));
  vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce({fieldCommands:{},battle:{battleId:"committed"}} as any);
  const pending=controller.fish(7);await controller.fish(7);expect(movement.requestFishing).toHaveBeenCalledOnce();reject(new Error("lost reply"));await pending;
- expect(movement.requestFishing).toHaveBeenCalledOnce();expect(battlePublication.recoverBattlePublication).toHaveBeenCalledTimes(1);expect(battlePublication.recoverBattlePublication).toHaveBeenCalledWith({success:true},"ordinary-start",expect.any(AbortSignal));
+ expect(movement.requestFishing).toHaveBeenCalledOnce();expect(battlePublication.recoverFieldPublication).toHaveBeenCalledTimes(1);expect(battlePublication.recoverFieldPublication).toHaveBeenCalledWith(expect.any(AbortSignal));
 });
 test("retired fishing ignores a late reply and does not reconcile the old scene",async()=>{
  vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce({fieldCommands:{}} as any);
  const {controller}=buildLedgeController();usePlayerCharacterStore.getState().setCharacterProfile({id:42});let resolve!:(reply:any)=>void;
  vi.mocked(movement.requestFishing).mockImplementationOnce(()=>new Promise(done=>{resolve=done}));const pending=controller.fish(7);await Promise.resolve();controller.retireFieldCommands();
- resolve({success:true,requestId:"old",characterId:42,instanceId:7,hooked:true,message:"Oh! A bite!"});await pending;expect(battlePublication.recoverBattlePublication).not.toHaveBeenCalled();
+ resolve({success:true,requestId:"old",characterId:42,instanceId:7,hooked:true,message:"Oh! A bite!"});await pending;expect(battlePublication.recoverFieldPublication).not.toHaveBeenCalled();
 });
 
 test("failed fishing recovery keeps later field mutations inadmissible",async()=>{
  vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce({fieldCommands:{}} as any);
  const {controller}=buildLedgeController();usePlayerCharacterStore.getState().setCharacterProfile({id:42});
  vi.mocked(movement.requestFishing).mockResolvedValueOnce({success:true,requestId:"done",characterId:42,instanceId:7,hooked:true,message:"Oh! A bite!"});
- vi.mocked(battlePublication.recoverBattlePublication).mockResolvedValueOnce(false);
+ vi.mocked(battlePublication.recoverFieldPublication).mockResolvedValueOnce(false);
  await controller.fish(7);await controller.fish(7);expect(movement.requestFishing).toHaveBeenCalledTimes(1);
 });
 
@@ -669,7 +669,7 @@ test("SURF unknown delivery reconciles owned pose and battle once without resend
   await controller.surf(9,0,"LEFT");
   expect(movement.requestSurf).toHaveBeenCalledOnce();
   reject(new Error("lost reply")); await pending;
-  expect(battlePublication.recoverBattlePublication).toHaveBeenCalledWith({success:true},"standalone-end",expect.any(AbortSignal));
+  expect(battlePublication.recoverFieldPublication).toHaveBeenCalledWith(expect.any(AbortSignal));
   expect(movement.requestSurf).toHaveBeenCalledOnce();
 });
 
@@ -684,7 +684,7 @@ test("retired SURF ignores a late reply and cannot recover an old scene", async 
   controller.retireFieldCommands();
   resolve({success:true,requestId:"late",characterId:42,encounter:false,blackout:false});
   await pending;
-  expect(battlePublication.recoverBattlePublication).not.toHaveBeenCalled();
+  expect(battlePublication.recoverFieldPublication).not.toHaveBeenCalled();
 });
 
 test("failed SURF recovery keeps subsequent field mutations locked", async () => {
@@ -692,7 +692,7 @@ test("failed SURF recovery keeps subsequent field mutations locked", async () =>
   const {controller}=buildLedgeController();
   usePlayerCharacterStore.getState().setCharacterProfile({id:42});
   vi.mocked(movement.requestSurf).mockRejectedValueOnce(new Error("timeout"));
-  vi.mocked(battlePublication.recoverBattlePublication).mockResolvedValueOnce(false);
+  vi.mocked(battlePublication.recoverFieldPublication).mockResolvedValueOnce(false);
   await controller.surf(9,0,"LEFT"); await controller.surf(9,0,"LEFT");
   expect(movement.requestSurf).toHaveBeenCalledOnce();
 });

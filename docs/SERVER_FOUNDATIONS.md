@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+shared field publication review protects awaited recovery from notification
+supersession and settled movement views, following `74a8236`:
 SURF bounded revision/receipt and joined movement commit are locally verified,
 following `745892c`:
 SURF command correlation and owned gameplay recovery are locally verified,
@@ -89,6 +91,59 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Shared field publication review and native SURF acceptance (2026-10-13)
+
+Review reproduced a shared recovery race: an encounter/blackout hint aborted the
+publication read awaited by the field command. The command then treated a valid
+commit as failed recovery and locked movement. A failing regression confirmed
+`false` from the awaited read while the replacement hint succeeded.
+
+`recoverFieldPublication` uses the existing owned snapshot, battle application,
+resource projection and scene-owned position boundary. Its current promise keeps
+notifications from aborting that read; notifications wait, then use their existing
+publication policy. Scene/character/screen/transport retirement releases the slot
+immediately. Captured queued hints cannot cross into a new owner, and an old
+finally cannot clear a replacement slot. SURF and fishing now share this awaited
+field boundary rather than installing command-specific notification races.
+Initial field-owned battle application preserves the enemy cry; a duplicate
+notification does not reset its event queue or replay the cry.
+
+The first rendered ordering run passed three cases but failed encounter ack-first:
+movement remained locked after the battle. A facing acknowledgement settled while
+the owned reply was held. Current gameplay reading refreshed, but the outer
+position-view fence still held the earlier view. Field recovery now reuses the
+existing Safari expiry pattern: one bounded fresh read from the settled view,
+with all character/scene/transport/presentation guards retained. It never retries
+the mutation or applies the old pose. Focused held-view/queued-hint/retirement
+regressions and the full client suite pass.
+
+All four rendered SURF encounter/blackout acknowledgement-first/notification-first
+checks pass after correction (41.1s;
+`/var/tmp/capturequest-rendered.aQmAQC`). Each withholds a real owned response,
+delivers the other committed publication, then verifies owned pose, battle
+outcome, subsequent real movement and a single entry/receipt revision. Fixtures
+modify only the private runner's encounter catalog and reload its exact process;
+the deterministic 256 rate spans the production 8-bit roll domain solely to
+isolate delivery ordering. It is not a production balance/content change.
+
+Native SURF commit and exact-process restoration pass (8.4s;
+`/var/tmp/capturequest-rendered.XDfMdN`) with connected/native true and WebSocket
+false before and after replacement. Final native fishing and SURF commit/process restoration both pass (15.8s;
+`/var/tmp/capturequest-rendered.XqJcSN`) after the shared caller change, with
+WebSocket false/native true for both owners before and after restart. The full
+581-test client suite passes (4.7s), with a further focused initial/duplicate cry
+regression passing; typecheck and diff checks pass. No server schema,
+generated runtime assets, production mutation or push is part of this checkpoint.
+
+Remaining: broader field families and the original five-area roadmap remain
+incomplete; historical restore/Repel attribution is still open. Review current
+coverage before choosing the next family; this closes these specific SURF
+publication/native gaps, not the overall goal. Next: audit ItemPickup's existing
+`collectItem` transaction and source checks before migrating its uncorrelated
+actor request/global reply consumer. Source inspection confirms that item source
+admission precedes `collectItem`; preserve its existing atomic award/collection
+boundary and decide where source, identity and recovery belong before adding code.
 
 ## SURF bounded replay and joined movement transaction (2026-10-13)
 

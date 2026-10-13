@@ -1,4 +1,4 @@
-import {recoverBattlePublication} from "../services/BattleCommandService";
+import {recoverFieldPublication} from "../services/BattleCommandService";
 import type { OwnedPlayerPositionResponse, PlayerStepResponse, PlayerStepError } from "@/net/generated/protocol";
 import { requestSurf, requestFishing, requestEscapeRope, requestBicycleState, requestPlayerFacing, requestPlayerStep, completePlayerStep, readOwnedPlayerPosition } from "../services/PlayerMovementService";
 import { WorldSocket } from "@/net/index";
@@ -174,7 +174,7 @@ export class PlayerMovementController {
         if (error instanceof CorrelatedResponseError) rejection = error.message;
         // Unknown delivery never authorizes another entry or encounter roll.
       }
-      const recovered = await recoverBattlePublication({success:true}, "standalone-end", signal);
+      const recovered = await recoverFieldPublication(signal);
       if (!current()) return;
       if (!recovered) {
         this.movementRecoveryRequired = true;
@@ -187,7 +187,7 @@ export class PlayerMovementController {
     if(this.isMoving || this.facingAbort || this.issuedStep || this.serverMovementInProgress)return;
     return this.runOwnedFieldCommand(async(characterId,signal,current)=>{
       const source={mapId:this.currentMapId,x:this.currentTileX,y:this.currentTileY,direction:this.currentDirection};
-      const reconcile=()=>recoverBattlePublication({success:true},"ordinary-start",signal);
+      const reconcile=()=>recoverFieldPublication(signal);
       try{
         const before=await readCurrentGameplayState(signal);
         if(!current())return;

@@ -4,7 +4,8 @@ vi.mock("@/net",()=>({WorldSocket:{get sessionGeneration(){return mock.generatio
 vi.mock("@/net/index",()=>({WorldSocket:{get sessionGeneration(){return mock.generation},subscribeSessionRetirement:(cb:()=>void)=>{mock.retire.add(cb);return()=>mock.retire.delete(cb)}}}));
 vi.mock("./GameplayRecoveryService",()=>({readCurrentGameplayState:mock.read,applyGameplaySnapshot:vi.fn(),applyGameplayResourceSnapshot:vi.fn()}));
 vi.mock("@/services/audio/AudioManager",()=>({default:{playSFX:vi.fn(),playMusic:vi.fn()}}));
-import {bindBattleScene,recoverBattlePublication} from "./BattleCommandService";
+import AudioManager from "@/services/audio/AudioManager";
+import {bindBattleScene,recoverBattlePublication,recoverFieldPublication} from "./BattleCommandService";
 import usePokeBattleStore from "@/stores/PokeBattleStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import useGameScreenStore from "@/stores/GameScreenStore";
@@ -53,4 +54,49 @@ test("standalone end projects only the owned pose and is fenced by movement gene
 test("leaving the game retires a live battle without waiting for scene destruction",()=>{
  useGameScreenStore.setState({currentScreen:"game"});usePokeBattleStore.getState().startBattle({...battle("live"),events:[]});
  useGameScreenStore.setState({currentScreen:"characterSelect"});expect(usePokeBattleStore.getState()).toMatchObject({isInBattle:false,battleId:"",phase:"none"});
+});
+
+test.each(["ordinary-start","standalone-end"] as const)("a %s hint cannot fail an awaited field position recovery",async(kind)=>{
+ const held=deferred(); const position={success:true,requestId:"owned",mapId:50,x:8,y:8,direction:"RIGHT",serverMovementPending:false};
+ mock.read.mockReturnValueOnce(held.promise).mockResolvedValue({...snapshot(battle()),position});
+ const field=recoverFieldPublication(new AbortController().signal);
+ const hint=recoverBattlePublication({success:true,battleId:"owned",revision:1},kind);
+ held.resolve({...snapshot(battle()),position} as GameplayStateResponse);
+ expect(await field).toBe(true); await hint;
+});
+
+
+test("retired field publication releases a new scene and queued hints stay retired",async()=>{
+ const held=deferred();mock.read.mockReturnValueOnce(held.promise);
+ const old=recoverFieldPublication(new AbortController().signal);
+ const hint=recoverBattlePublication({success:true});
+ cleanup(); const project=vi.fn(async()=>{}); cleanup=bindBattleScene(project);
+ const position={success:true,requestId:"new",mapId:50,x:10,y:8,direction:"UP",serverMovementPending:false};
+ mock.read.mockResolvedValueOnce({...snapshot(null),position});
+ expect(await recoverFieldPublication(new AbortController().signal)).toBe(true);
+ held.resolve(snapshot(battle("retired")));
+ expect(await old).toBe(false);expect(await hint).toBe(false);
+ expect(project).toHaveBeenCalledOnce();expect(usePokeBattleStore.getState().isInBattle).toBe(false);
+});
+
+
+test("field recovery rereads a settled movement view before releasing admission",async()=>{
+ cleanup();let view=1;const project=vi.fn(async()=>{});cleanup=bindBattleScene(project,()=>view);
+ const held=deferred();const oldPosition={success:true,requestId:"old",mapId:50,x:7,y:8,direction:"UP",serverMovementPending:false};
+ const currentPosition={...oldPosition,requestId:"current",x:8};
+ mock.read.mockReturnValueOnce(held.promise).mockResolvedValueOnce({...snapshot(null),position:currentPosition});
+ const run=recoverFieldPublication(new AbortController().signal);
+ view++;held.resolve({...snapshot(null),position:oldPosition} as GameplayStateResponse);
+ expect(await run).toBe(true);expect(mock.read).toHaveBeenCalledTimes(2);expect(project).toHaveBeenCalledWith(currentPosition);
+});
+
+
+test("field-owned battle preserves one initial cry across a duplicate start hint",async()=>{
+ const play=vi.mocked(AudioManager.playSFX);play.mockClear();
+ const position={success:true,requestId:"owned",mapId:50,x:8,y:8,direction:"RIGHT",serverMovementPending:false};
+ mock.read.mockResolvedValue({...snapshot(battle()),position});
+ expect(await recoverFieldPublication(new AbortController().signal)).toBe(true);
+ expect(play).toHaveBeenCalledOnce();
+ await recoverBattlePublication({success:true,battleId:"owned",revision:1});
+ expect(play).toHaveBeenCalledOnce();
 });

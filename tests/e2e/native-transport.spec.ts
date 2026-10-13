@@ -56,3 +56,19 @@ test("native fishing commits one receipt and restores its battle after process r
  expect(await sql(`SELECT revision FROM character_field_command_state WHERE character_id=${id} AND domain='fishing'`)).toBe("1");expect(await sql(`SELECT count(*) FROM character_battle_state WHERE character_id=${id}`)).toBe("1");
  await page.screenshot({path:testInfo.outputPath("native-fishing-restored.png")});await record({family:"native-fishing",id,before,after,receipt,revision:1});await quitToCharacterSelect(page);
 });
+
+test("native SURF commits one receipt and restores water entry after process replacement",async({page},testInfo)=>{
+ test.skip(process.env.CQ_E2E_TRANSPORT!=="native" || process.env.CQ_E2E_CRASH_RECOVERY!=="true","Requires native exact-process runner");test.setTimeout(120000);
+ const {crash,sql,record}=await isolatedCrashRuntime();const character=await createGuestCharacterAndEnterWorld(page);
+ const scenarios=await import("./helpers/scenarioDebugger");const state=await import("./helpers/state");const input=await import("./helpers/input");
+ await scenarios.jumpToScenario(page,"debug_field_move_surf_ready");await state.waitForNoMapLoading(page);await waitForPlayerIdle(page);
+ const before=await assertNative(page);const id=(await state.getGameState(page)).player.internalId!;
+ await input.clickTile(page,4,17);await expect.poll(async()=>(await state.getGameState(page)).dialogue.isChoicePending).toBe(true);await input.pressSpace(page);
+ const pose=async()=>{const value=await state.getGameState(page);return{x:value.player.x,y:value.player.y,surfing:value.player.isSurfing};};
+ await expect.poll(pose).toEqual({x:4,y:17,surfing:true});
+ expect(await sql(`SELECT revision FROM character_field_command_state WHERE character_id=${id} AND domain='surf'`)).toBe("1");
+ const receipt=await crash();await expect(page.getByRole("button",{name:"PLAY AS GUEST"})).toBeVisible({timeout:20000});await page.getByRole("button",{name:"PLAY AS GUEST"}).click();await expect(page.getByRole("heading",{name:"SELECT A CHARACTER"})).toBeVisible();
+ await enterWorld(page,character);await state.waitForNoMapLoading(page);await expect.poll(pose).toEqual({x:4,y:17,surfing:true});const after=await assertNative(page);
+ expect(await sql(`SELECT revision FROM character_field_command_state WHERE character_id=${id} AND domain='surf'`)).toBe("1");
+ await page.screenshot({path:testInfo.outputPath("native-surf-restored.png")});await record({family:"native-surf",id,before,after,receipt,revision:1});await quitToCharacterSelect(page);
+});
