@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+Warp Home rendered rejection/owned-read failure and Game Corner source/payment
+audit, following `1fe0e8d`:
 Warp Home held action/reset reentry and native exact-process acceptance,
 following `9b281dd`:
 Warp Home scoped emergency admission, travel receipts and owned recovery, with
@@ -148,6 +150,42 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Warp Home rendered failures and Game Corner next-family audit (2026-10-13)
+
+Rendered deferred Home commit rejection preserves the entire original Safari JSON,
+active battle controls and saved/current source (220,14,24), with zero travel
+receipts. The browser receives the correlated rejection and current recovery
+restores retained state; a cached rollback or typecheck is not the sole proof.
+A second case commits Home but withholds current GameplayState replies: the old
+view remains locked, pressing right emits no PlayerStepRequest, and no automatic
+Home reset retry occurs. A new explicit Home click after read delivery is restored
+uses current ownership and reaches (9999,9,4) with travel revision 2. That second
+revision records a distinct user action, not replay of the uncertain first reset.
+Both Chromium/WebSocket cases pass (18.7s;
+`/var/tmp/capturequest-rendered.2bDWtI`), with private SQL/packet evidence and
+screenshots; typecheck/diff checks pass. The existing socket fault helper gained
+an optional non-mutating request observer to prove movement admission through the
+real outgoing boundary. No production behavior changed, so prior domain/client
+suites are reused rather than repeated.
+
+Next-family audit confirms `buyGameCornerCoins` already locks the character and
+joins Coin Case, wallet debit and coin award in one bounded transaction. Its
+handler calls `authorizeSourceInteraction` first, outside that transaction; that
+source resolver uses separate pool reads/runtime source. Thus eligibility can
+change before payment commits. Existing coin tests cover rollback/retry, clerk
+reach and failed publication, but do not close this split ownership boundary.
+The global balance/reply events and command identity/recovery also remain to
+migrate afterward. Do not replace the existing wallet/coin transaction or invent
+a parallel money store to address the source gap.
+
+Remaining: native loss at the exact commit/reply boundary and wider writer audits
+remain explicit limits; this checkpoint does not close the full five-area goal or
+attribute the historical restore timeout. Local checkpoint only; no push or
+deployment.
+
+Next: join Game Corner clerk source/visibility/reach with its existing coin-payment
+transaction, review the shared source boundary, then migrate scoped coin commands.
 
 ## Warp Home pending-action/reentry and native process acceptance (2026-10-13)
 
