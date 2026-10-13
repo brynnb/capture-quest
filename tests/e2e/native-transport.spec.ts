@@ -146,3 +146,16 @@ for(const move of ["DIG","TELEPORT","FLY","ELEVATOR"] as const)test(`native ${mo
  const restoredState=await state.getGameState(page);const restored=restoredState.player;expect(restoredState.map.id).toBe(savedState.map.id);expect(await durablePose()).toBe(expectedPose);expect({x:restored.x,y:restored.y}).toEqual({x:saved.x,y:saved.y});expect(await sql(`SELECT revision FROM character_field_command_state WHERE character_id=${id} AND domain='travel'`)).toBe("1");
  await page.screenshot({path:info.outputPath(`native-${move}-owned.png`)});await record({family:"native-ability-travel",move,id,before,after,receipt,position:{x:restored.x,y:restored.y},revision:1});await quitToCharacterSelect(page);
 });
+
+
+test("native Warp Home retires Safari battle and restores committed home after process replacement",async({page},info)=>{
+ test.skip(process.env.CQ_E2E_TRANSPORT!=="native" || process.env.CQ_E2E_CRASH_RECOVERY!=="true","Requires native exact-process runner");test.setTimeout(120000);
+ const {sql,crash,record}=await isolatedCrashRuntime();const character=await createGuestCharacterAndEnterWorld(page);
+ const scenarios=await import("./helpers/scenarioDebugger");const state=await import("./helpers/state");
+ await scenarios.jumpToScenario(page,"safari_battle_run");await state.waitForNoMapLoading(page);await expect(page.getByTestId("battle-action-safari-ball")).toBeVisible();const id=(await state.getGameState(page)).player.internalId!;const before=await assertNative(page);
+ await page.getByRole("button",{name:"Warp Home",exact:true}).click();await waitForMap(page,9999);await waitForPlayerTile(page,9,4);await expect.poll(async()=>(await state.getGameState(page)).battle.isOpen).toBe(false);
+ const durable=()=>sql(`SELECT map_id || ',' || x::int || ',' || y::int FROM character_data WHERE id=${id}`);expect(await durable()).toBe("9999,9,4");
+ const receipt=await crash();await expect(page.getByRole("button",{name:"PLAY AS GUEST"})).toBeVisible({timeout:20000});await page.getByRole("button",{name:"PLAY AS GUEST"}).click();await expect(page.getByRole("heading",{name:"SELECT A CHARACTER"})).toBeVisible();await enterWorld(page,character);await state.waitForNoMapLoading(page);await waitForMap(page,9999);await waitForPlayerTile(page,9,4);const after=await assertNative(page);
+ expect((await state.getGameState(page)).battle.isOpen).toBe(false);expect(await durable()).toBe("9999,9,4");expect(await sql(`SELECT count(*) FROM character_safari_state WHERE character_id=${id}`)).toBe("0");expect(await sql(`SELECT revision FROM character_field_command_state WHERE character_id=${id} AND domain='travel'`)).toBe("1");
+ await page.screenshot({path:info.outputPath("native-home-restored.png")});await record({family:"native-warp-home",id,before,after,receipt,revision:1});await quitToCharacterSelect(page);
+});

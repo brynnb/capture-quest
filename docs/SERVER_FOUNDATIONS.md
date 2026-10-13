@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+Warp Home held action/reset reentry and native exact-process acceptance,
+following `9b281dd`:
 Warp Home scoped emergency admission, travel receipts and owned recovery, with
 canonical saved/published recovery identity, following `125ad84`:
 awaited field recovery cannot report projection success while battle ownership is
@@ -146,6 +148,33 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Warp Home pending-action/reentry and native process acceptance (2026-10-13)
+
+The existing socket fault harness now holds an actual Safari run response while
+Home resets the visit, and separately holds a Home reset across same-character
+reentry. Current recovery reaches Pallet (9999,9,4), removes the battle/visit and
+retains travel revision 1 with one browser reset. Historical action and Home
+responses are then delivered through the real dispatcher; neither reopens battle/
+dialogue nor changes the recovered position. Both rendered cases pass (20.7s;
+`/var/tmp/capturequest-rendered.bXeFsG`), including the field/battle owner handoff.
+
+The existing native exact-process harness now exercises the real Safari battle
+and Home button, then replaces the server process after observing committed home.
+Native connectivity with WebSocket fallback false is asserted before and after;
+saved/recovered map and coordinates remain 9999,9,4, Safari is absent and travel
+revision remains 1. Acceptance passes (9.0s;
+`/var/tmp/capturequest-rendered.jOfqfb`). Typecheck/diff checks pass. No production
+behavior changed in this verification checkpoint, so the previous 618 client and
+server-domain checks are reused rather than rerun.
+
+Remaining: rendered rejection/recovery-read failure and native loss at the exact
+commit/reply boundary remain separate gates. Native restart here follows an
+observed completed reset. The broader five-area roadmap, writer audits and original
+restore attribution remain open. Local checkpoint only; no push or deployment.
+
+Next: verify Home rejection/failed owned-read admission through the rendered
+boundary, then reassess the remaining finite matrix before the next family.
 
 ## Warp Home scoped emergency ownership, receipt and current recovery (2026-10-13)
 
