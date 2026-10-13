@@ -3,9 +3,8 @@ package world
 import "sync"
 
 const (
-	cuttableTreeRawFootTileID   = 0x3d
-	cutTreeReplacementTileImage = 25
-	cutTreeReplacementRawFoot   = 0x52
+	cuttableTreeRawFootTileID = 0x3d
+	cutTreeReplacementRawFoot = 0x52
 )
 
 type CutTileManager struct {

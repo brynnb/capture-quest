@@ -2,7 +2,6 @@ package world
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +11,7 @@ import (
 	"capturequest/internal/db"
 	db_character "capturequest/internal/db/character"
 	"capturequest/internal/itemuse"
+	"capturequest/internal/logutil"
 	"capturequest/internal/session"
 )
 
@@ -65,13 +65,14 @@ func HandleFieldMoveUse(ses *session.Session, payload []byte, wh *WorldHandler) 
 			sendInventoryCommandError(ses, req.RequestID, opcodes.FieldMoveUseResponse, "Tagged command is unsupported for this field move.")
 			return false
 		}
-		if char := ses.Client.CharData(); char != nil {
-			if battle := getBattle(int64(char.ID)); battle != nil && !battle.IsOver() {
-				sendFieldMoveUseError(ses, "Field moves can't be used during a battle.")
-				return false
+		if move != "CUT" {
+			if char := ses.Client.CharData(); char != nil {
+				if battle := getBattle(int64(char.ID)); battle != nil && !battle.IsOver() {
+					sendFieldMoveUseError(ses, "Field moves can't be used during a battle.")
+					return false
+				}
 			}
 		}
-
 	}
 
 	switch normalizeFieldMoveName(req.MoveName) {
@@ -96,89 +97,74 @@ func HandleFieldMoveUse(ses *session.Session, payload []byte, wh *WorldHandler) 
 }
 
 func handleCutFieldMove(ses *session.Session, req FieldMoveUseRequestPayload, wh *WorldHandler) bool {
-	if wh == nil || wh.CutTiles == nil {
-		sendFieldMoveUseError(ses, "CUT can't be used here.")
+	if wh == nil || wh.database == nil || wh.CutTiles == nil {
+		sendFieldMoveUseError(ses, "CUT state unavailable.")
 		return false
 	}
-
-	charData := ses.Client.CharData()
-	if charData == nil {
-		return false
-	}
-	charID := int64(charData.ID)
-
-	mapID := int(charData.MapID)
-	if wh.ActorManager != nil && wh.ActorManager.IsOverworld(mapID) {
-		mapID = UnifiedOverworldMapID
-	}
-	playerX, playerY := int(charData.X), int(charData.Y)
-	if wh.PlayerMovement != nil {
-		if x, y, movementMapID, ok := wh.PlayerMovement.GetPosition(int(charData.ID)); ok {
-			playerX, playerY, mapID = x, y, movementMapID
+	charID := int64(ses.Client.CharData().ID)
+	var mapID, targetX, targetY int
+	var permission FieldMovePermissionResult
+	var replacement TileEdit
+	err := db.Transaction(ses.CommandContext(), wh.database, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, charID); err != nil {
+			return err
 		}
-	}
-
-	targetMapID := mapID
-	if req.MapID != nil {
-		targetMapID = *req.MapID
-	}
-	if wh.ActorManager != nil && wh.ActorManager.IsOverworld(targetMapID) {
-		targetMapID = UnifiedOverworldMapID
-	}
-	if targetMapID != mapID {
-		sendFieldMoveUseError(ses, "CUT can't be used here.")
-		return false
-	}
-
-	targetX, targetY, ok := fieldMoveTargetTile(playerX, playerY, req)
-	if !ok {
-		sendFieldMoveUseError(ses, "CUT can't be used here.")
-		return false
-	}
-	if abs(targetX-playerX)+abs(targetY-playerY) != 1 {
-		sendFieldMoveUseError(ses, "You need to be next to it.")
-		return false
-	}
-
-	state, err := db.ReadSnapshot(ses.CommandContext(), wh.database, func(_ context.Context, q db.ReadDBTX) (EventTileState, error) {
-		return baseEventTileStateIn(q, targetMapID, targetX, targetY)
+		if err := requireNoOwnedBattleIn(tx, charID); err != nil {
+			return err
+		}
+		var x, y int
+		if err := tx.QueryRow(`SELECT map_id,x,y FROM character_data WHERE id=$1`, charID).Scan(&mapID, &x, &y); err != nil {
+			return err
+		}
+		mapID = normalizedVisiblePlayerMapID(wh, mapID)
+		if req.MapID != nil && normalizedVisiblePlayerMapID(wh, *req.MapID) != mapID {
+			return &itemuse.Rejection{Message: "CUT can't be used here."}
+		}
+		var ok bool
+		targetX, targetY, ok = fieldMoveTargetTile(x, y, req)
+		if !ok || abs(targetX-x)+abs(targetY-y) != 1 {
+			return &itemuse.Rejection{Message: "You need to be next to it."}
+		}
+		state, err := baseEventTileStateIn(tx, mapID, targetX, targetY)
+		if err != nil {
+			return fmt.Errorf("CUT map=%d target=(%d,%d): %w", mapID, targetX, targetY, err)
+		}
+		tiles, err := applyEventTileOverridesContext(ses.CommandContext(), tx.(db.ReadDBTX), charID, mapID, []PhaserTile{{X: targetX, Y: targetY, TileImageID: state.TileImageID, CollisionType: state.CollisionType, RawFootTileID: state.RawFootTileID, TalkOverTile: state.TalkOverTile}})
+		if err != nil {
+			return err
+		}
+		if tiles[0].RawFootTileID == nil || *tiles[0].RawFootTileID != cuttableTreeRawFootTileID {
+			return &itemuse.Rejection{Message: "There isn't anything to CUT."}
+		}
+		permission, err = fieldMovePermissionIn(tx, charID, "CUT", func(flag string) (bool, error) { return queryEventFlag(tx, charID, flag) })
+		if err != nil {
+			return err
+		}
+		if !permission.Allowed {
+			return &itemuse.Rejection{Message: permission.Message}
+		}
+		replacement, err = cutTreeReplacementIn(tx, tiles[0].TileImageID)
+		return err
 	})
-	if err != nil || state.RawFootTileID == nil || *state.RawFootTileID != cuttableTreeRawFootTileID {
-		sendFieldMoveUseError(ses, "There isn't anything to CUT.")
+	if err != nil {
+		var denied *itemuse.Rejection
+		if errors.As(err, &denied) {
+			sendFieldMoveUseError(ses, denied.Message)
+		} else {
+			logutil.Debugf("[CUT] Prepare character=%d: %v", charID, err)
+			sendFieldMoveUseError(ses, "Unable to read CUT state.")
+		}
 		return false
 	}
-
-	permission := CanUseFieldMove(charID, "CUT", wh.EventFlags)
-	if !permission.Allowed {
-		sendFieldMoveUseError(ses, permission.Message)
-		return false
-	}
-
-	wh.CutTiles.MarkCut(charID, targetMapID, targetX, targetY)
-
-	replacement := cutTreeReplacementForTileImage(state.TileImageID)
-	tile := TileEdit{
-		X:             targetX,
-		Y:             targetY,
-		TileImageID:   replacement.TileImageID,
-		CollisionType: replacement.CollisionType,
-		RawFootTileID: replacement.RawFootTileID,
-		TalkOverTile:  replacement.TalkOverTile,
-	}
+	// Transient collision/presentation is publishable only after every read and
+	// the owner's final commit have succeeded. Never turn SQL failure into art.
+	wh.CutTiles.MarkCut(charID, mapID, targetX, targetY)
+	replacement.X, replacement.Y = targetX, targetY
 	message := "Used CUT!"
 	if permission.KnownByName != "" {
 		message = permission.KnownByName + " used CUT!"
 	}
-
-	ses.SendStreamJSON(FieldMoveUseResponsePayload{
-		Success:  true,
-		Message:  message,
-		MoveName: "CUT",
-		MapID:    targetMapID,
-		TargetX:  targetX,
-		TargetY:  targetY,
-		Tile:     &tile,
-	}, opcodes.FieldMoveUseResponse)
+	ses.SendStreamJSON(FieldMoveUseResponsePayload{Success: true, Message: message, MoveName: "CUT", MapID: mapID, TargetX: targetX, TargetY: targetY, Tile: &replacement}, opcodes.FieldMoveUseResponse)
 	return false
 }
 
@@ -367,51 +353,22 @@ func fieldMoveTargetTile(playerX, playerY int, req FieldMoveUseRequestPayload) (
 	}
 }
 
-func cutTreeReplacementForTileImage(tileImageID int) TileEdit {
-	rawFoot := cutTreeReplacementRawFoot
-	fallback := TileEdit{
-		TileImageID:   cutTreeReplacementTileImage,
-		CollisionType: collisionLand,
-		RawFootTileID: &rawFoot,
+// This retains the existing single-square approximation. Native CUT replaces
+// blocks via CutTreeBlockSwaps; placed block provenance is not yet imported.
+// Numeric image IDs are catalog-local, so missing metadata cannot use tile 25.
+func cutTreeReplacementIn(tx db.DBTX, tileImageID int) (TileEdit, error) {
+	if err := db.RequireTransaction(tx); err != nil {
+		return TileEdit{}, err
 	}
-	if db.GlobalWorldDB == nil || db.GlobalWorldDB.DB == nil {
-		return fallback
-	}
-
-	var (
-		replacementTileImageID int
-		collisionType          int
-		rawFootTileID          sql.NullInt64
-		talkOverTile           bool
-	)
-	err := db.GlobalWorldDB.DB.QueryRow(`
-		SELECT replacement.id, COALESCE(tp.collision_type, $2), replacement.raw_foot_tile_id, COALESCE(replacement.talk_over_tile, FALSE)
-		FROM phaser_tile_images source
-		JOIN phaser_tile_images replacement
-		  ON replacement.tileset_id = source.tileset_id
-		 AND replacement.raw_foot_tile_id = $3
-		LEFT JOIN phaser_tile_properties tp ON tp.tile_image_id = replacement.id
-		WHERE source.id = $1
-		ORDER BY replacement.id
-		LIMIT 1`,
-		tileImageID,
-		collisionLand,
-		cutTreeReplacementRawFoot,
-	).Scan(&replacementTileImageID, &collisionType, &rawFootTileID, &talkOverTile)
+	var id, raw int
+	var talkOver bool
+	err := tx.QueryRow(`SELECT replacement.id,replacement.raw_foot_tile_id,replacement.talk_over_tile FROM phaser_tile_images source JOIN phaser_tile_images replacement ON replacement.tileset_id=source.tileset_id AND replacement.raw_foot_tile_id=$2 WHERE source.id=$1 ORDER BY replacement.id LIMIT 1`, tileImageID, cutTreeReplacementRawFoot).Scan(&id, &raw, &talkOver)
 	if err != nil {
-		return fallback
+		return TileEdit{}, fmt.Errorf("CUT source image %d replacement foot %d: %w", tileImageID, cutTreeReplacementRawFoot, err)
 	}
-
-	replacement := TileEdit{
-		TileImageID:   replacementTileImageID,
-		CollisionType: collisionType,
-		TalkOverTile:  talkOverTile,
-	}
-	if rawFootTileID.Valid {
-		v := int(rawFootTileID.Int64)
-		replacement.RawFootTileID = &v
-	}
-	return replacement
+	// CutTileManager authorizes cleared ground as land. Palette preferences must
+	// not make the client disagree with that transient gameplay collision rule.
+	return TileEdit{TileImageID: id, CollisionType: collisionLand, RawFootTileID: &raw, TalkOverTile: talkOver}, nil
 }
 
 func eventFlagsForFieldMove(wh *WorldHandler) *EventFlagManager {

@@ -52,6 +52,32 @@ in the square do not determine terrain. The bundled extractor owns this rule;
 regenerate the atomic SQLite/art/contract family when it changes. Runtime
 movement and pathfinding consume that classification without per-map overrides.
 
+### CUT replacement provenance and current approximation
+
+The bundled pokered disassembly's `engine/overworld/cut.asm` calls
+`ReplaceTreeTileBlock` using `data/tilesets/cut_tree_blocks.asm`: CUT replaces a
+whole native block, not an arbitrary catalog square sharing a grass foot tile.
+Inspected game-data revision: `cfbd67a9f5d3469a616f83e33446d2e10b25f559`;
+extractor revision: `ed8b7d58ab3cac46401beb7e53896a88f51b9139`.
+
+Current runtime CUT retains its preexisting single-square approximation: select
+the lowest catalog image ID in the source image's tileset whose native foot is
+`$52`. This is deterministic within a catalog and is not exact native block-swap
+art fidelity. The extractor deduplicates image hashes in
+`export_scripts/create_zones_and_tiles.py`; an image's stored block/position can
+be the first occurrence, not the placed square's original block identity.
+`tiles_raw` retains native block placement in SQLite, but current Postgres placed
+tiles do not import that block index. Exact swaps require deterministic provenance
+translation through the canonical data lane, not a guessed image-ID mapping.
+
+The unsafe numeric tile-25 fallback is retired. CUT prepares source, permission,
+event override and replacement metadata through its injected character transaction
+before marking transient state. Missing catalog metadata/query failure rejects
+with the affected image/target in local diagnostics. Cleared collision is land,
+matching the character's transient collision override; sparse palette collision
+preferences do not override that gameplay result. Map exit/character retirement
+retain the current transient reset policy. No source images are hand-edited.
+
 ## Shared tileset blocksets
 
 Catalog rows retain their original tileset identity when graphics/blocksets are

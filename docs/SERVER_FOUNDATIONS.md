@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+CUT prepares durable source/permission and replacement before transient marking,
+following `8b7189e`:
 held state replies across reentry/source replacement and inactive recovery pass,
 following `59e55b5`:
 state-field mixed-envelope/snapshot review and explicit FLASH acceptance,
@@ -109,6 +111,57 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## CUT coherent preparation and catalog failure boundary (2026-10-13)
+
+Source audit found CUT marked its transient collision state before an unowned
+replacement read. Missing metadata, missing global database and SQL errors all
+returned numeric image 25 as plausible art. The handler now locks the character,
+reads saved source and durable battle/permission, applies the existing character
+event-tile resolver and resolves replacement in that same transaction. Only a
+successful final commit allows transient marking and response publication. Cached
+badge/map/battle admission and the magic image fallback are removed from CUT.
+
+The existing same-tileset `$52` replacement-square policy is retained explicitly
+as an approximation. Bundled source inspection shows native CUT swaps whole
+blocks through `CutTreeBlockSwaps`; exporter image-hash deduplication means catalog
+block/position metadata is not necessarily placed provenance. Exact art translation
+needs the canonical data lane's original block identity, not a runtime guess.
+Source revisions and producing-layer limitation are recorded in
+`docs/DATA_PIPELINE_OVERVIEW.md`. No extractor, importer, generated asset or schema
+was changed. CUT remains character/map transient and is not turned into a
+persistent world-edit ledger.
+
+Replacement requires a supplied transaction and a real source/replacement catalog
+row; errors include the affected image/target in concise local diagnostics.
+Returned collision is land, agreeing with `CutTileManager` rather than inheriting
+a sparse palette preference that could block only the client. Raw foot/talk-over
+come from catalog metadata. Ordinary ineligibility stays a business rejection.
+
+Focused PostgreSQL race checks pass (2.8s): durable/cache badge disagreement,
+missing source and replacement, SQL error, durable battle with cold cache,
+character event override, one-connection join and held-pool cancellation all prove
+no transient cut/tile publication on failure. A valid replacement deliberately
+uses image 200 rather than a catalog-specific constant, and a differing palette
+preference cannot split collision authority. Existing transient per-character
+and map-clear tests remain passing. Full world (75.8s) and simulator (1.5s)
+race suites, all Go package compilation and diff checks pass. Both rendered
+Chromium/WebSocket deliberate CUT and click-bush cut/walk-through cases pass
+(`/var/tmp/capturequest-rendered.VT2eK9`). This is success/collision acceptance,
+not uncertain-result or transient-image reload recovery.
+
+Remaining: CUT wire identity, response lifetime, current transient recovery and
+exact block provenance/fidelity need their own policy review. DIG/TELEPORT/FLY and
+other finite-matrix families remain open, along with the original five-area goal
+and historical restore attribution. No push or deployment is authorized.
+
+Source inspection also confirms `CutTileManager` currently projects only collision
+and raw-foot overrides in movement; tile-image projection/read recovery is absent.
+That is a distinct remaining gap, not repaired by this publication prerequisite.
+
+Next: review CUT's transient reader/projection/reset contract before migrating
+its correlated command and uncertainty handling; do not reuse durable receipts
+in a way that recreates a cleared cut after map/character retirement.
 
 ## State-field held response and source retirement acceptance (2026-10-13)
 
