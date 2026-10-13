@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+elevator runtime listing/selection shares actor reach/visibility authorization,
+following `b6d37fb`:
 elevator durable source/catalog/permission joins the existing movement transaction,
 following `0321780`:
 shared TELEPORT/FLY held timeout/reentry acceptance and elevator prerequisite audit,
@@ -136,6 +138,37 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Elevator panel source review and authorization (2026-10-13)
+
+The local SQLite catalog has exactly one sign in each elevator room:
+Celadon object 100 at (3,0), Rocket object 519 at (1,1), Silph object 992 at (3,0),
+and no hidden-object panels. Bundled original `data/maps/objects/*Elevator.asm`
+at game-data revision `cfbd67a9f5d3469a616f83e33446d2e10b25f559` confirms those
+background events and their text identities. Current runtime selects the unique
+sign in a catalog elevator room; missing/ambiguous candidates reject explicitly.
+No new map-ID or per-panel coordinate table is introduced.
+
+Runtime listing and selection now authorize this source inside their retained
+character transaction using the existing `scriptInteractionTargetFrom`. That
+resolver owns character-specific positions, visibility overrides and reach.
+Pending server movement rejects. Selection joins the previously reviewed travel
+transaction; authorization failure cannot reach movement commit. Both requests
+reject remote, hidden, moved, missing and ambiguous panels. Successful and late
+commit-failure dispatch publication checks remain passing. The fixture now supplies
+an actual session manager when actor publication is enabled; an earlier incomplete
+fixture panic was corrected without modifying production behavior.
+
+Focused elevator/shared actor-interaction PostgreSQL race checks pass (7.8s), plus
+all-package compilation and diff checks. This is headless/domain evidence. The
+existing simulator travel fixtures still test catalog travel from their recorded
+positions, not runtime panel reach; they are not advertised as interaction proof.
+No source data, schema or generated wire changes. Local checkpoint only; no push
+or deployment. Wider matrix and original restore attribution remain open.
+
+Next: migrate correlated elevator list/selection, expected source and travel
+revision, bounded receipts, owned menu retirement and current-pose recovery;
+verify the actual rendered panel interaction after that coordinated replacement.
 
 ## Elevator durable source/catalog/permission prerequisite (2026-10-13)
 

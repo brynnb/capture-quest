@@ -9,6 +9,7 @@ import (
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
+	"capturequest/internal/session"
 	"capturequest/internal/testdb"
 )
 
@@ -87,11 +88,14 @@ func TestElevatorDispatcherPublishesOnlyCommittedDestination(t *testing.T) {
 	for _, rejectCommit := range []bool{false, true} {
 		t.Run(fmt.Sprint(rejectCommit), func(t *testing.T) {
 			database, wh, ses, messages := battleTestWorld(t)
-			testdb.Exec(t, database, `UPDATE character_data SET map_id=50,x=7,y=8 WHERE id=42;INSERT INTO phaser_elevator_floors(elevator_map_id,floor_map_id,floor_label,dest_x,dest_y) VALUES(50,60,'2F',3,4)`)
+			testdb.Exec(t, database, `UPDATE character_data SET map_id=50,x=7,y=8 WHERE id=42;INSERT INTO phaser_elevator_floors(elevator_map_id,floor_map_id,floor_label,dest_x,dest_y) VALUES(50,60,'2F',3,4); INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(50,'ELEVATOR',10,10,0),(60,'FLOOR',10,10,0);INSERT INTO phaser_objects(id,map_id,x,y,object_type,name,text) VALUES(100,50,7,7,'sign','PANEL','PANEL')`)
 			if rejectCommit {
 				testdb.Exec(t, database, `CREATE FUNCTION reject_elevator_publication() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'late elevator failure';END $$;CREATE CONSTRAINT TRIGGER reject_elevator_publication AFTER UPDATE ON character_data DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (NEW.map_id=60) EXECUTE FUNCTION reject_elevator_publication()`)
 			}
 			ses.Client.CharData().MapID, ses.Client.CharData().X, ses.Client.CharData().Y = 50, 7, 8
+			wh.sessionManager = session.NewSessionManager()
+			wh.ActorRegistry = NewActorRegistry()
+			wh.ActorManager = NewPhaserActorManager(wh)
 			wh.PlayerMovement = NewPlayerMovementManager(wh, nil)
 			wh.PlayerMovement.RegisterPlayer(ses, 42, 7, 8, 50, "UP")
 			battleDispatch(t, wh, ses, opcodes.ElevatorSelectRequest, `{"floorMapId":60}`)
@@ -114,6 +118,52 @@ func TestElevatorDispatcherPublishesOnlyCommittedDestination(t *testing.T) {
 				}
 				if len(messages.streams) != 1 || messages.streams[0].opcode != opcodes.WarpTileTeleportNotify {
 					t.Fatalf("warp messages %+v", messages.streams)
+				}
+			}
+		})
+	}
+}
+
+func TestElevatorPanelUsesOwnedActorReachAndVisibility(t *testing.T) {
+	for _, kind := range []string{"valid", "remote", "hidden", "moved", "ambiguous", "missing"} {
+		t.Run(kind, func(t *testing.T) {
+			database, wh, ses, messages := battleTestWorld(t)
+			wh.ActorRegistry = NewActorRegistry()
+			wh.ActorManager = NewPhaserActorManager(wh)
+			testdb.Exec(t, database, `INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(50,'ELEVATOR',10,10,0);UPDATE character_data SET map_id=50,x=7,y=8 WHERE id=42;INSERT INTO phaser_objects(id,map_id,x,y,object_type,name,text) VALUES(100,50,7,7,'sign','PANEL','PANEL');INSERT INTO phaser_elevator_floors(elevator_map_id,floor_map_id,floor_label,dest_x,dest_y) VALUES(50,60,'2F',3,4)`)
+			switch kind {
+			case "remote":
+				testdb.Exec(t, database, `UPDATE character_data SET x=1,y=1 WHERE id=42`)
+				ses.Client.CharData().X, ses.Client.CharData().Y = 1, 1
+			case "hidden":
+				testdb.Exec(t, database, `INSERT INTO character_object_visibility_overrides(character_id,object_id,visible,source) VALUES(42,100,false,'test')`)
+			case "moved":
+				testdb.Exec(t, database, `INSERT INTO character_object_positions(character_id,object_id,map_id,x,y) VALUES(42,100,50,1,1)`)
+			case "ambiguous":
+				testdb.Exec(t, database, `INSERT INTO phaser_objects(id,map_id,x,y,object_type,name,text) VALUES(101,50,7,9,'sign','OTHER','OTHER')`)
+			case "missing":
+				testdb.Exec(t, database, `DELETE FROM phaser_objects WHERE id=100`)
+			}
+			ses.Client.CharData().MapID = 50
+			if kind != "remote" {
+				ses.Client.CharData().X, ses.Client.CharData().Y = 7, 8
+			}
+			database.SetMaxOpenConns(1)
+			battleDispatch(t, wh, ses, opcodes.ElevatorFloorsRequest, `{"mapId":50}`)
+			if (len(messages.streams) == 1) != (kind == "valid") {
+				t.Fatalf("panel %s messages %+v", kind, messages.streams)
+			}
+			if len(messages.streams) == 1 && messages.streams[0].opcode != opcodes.ElevatorFloorsResponse {
+				t.Fatal("unexpected panel reply")
+			}
+			messages.streams = nil
+			if kind != "valid" {
+				battleDispatch(t, wh, ses, opcodes.ElevatorSelectRequest, `{"floorMapId":60}`)
+			}
+			if kind != "valid" {
+				var m int
+				if err := database.QueryRow(`SELECT map_id FROM character_data WHERE id=42`).Scan(&m); err != nil || m != 50 {
+					t.Fatalf("unavailable panel traveled: %d %v", m, err)
 				}
 			}
 		})

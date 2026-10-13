@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -54,6 +55,9 @@ func HandleElevatorFloorsRequest(ses *session.Session, payload []byte, wh *World
 		if err := requireTravelSourceIn(tx, charID, source.MapID, source.X, source.Y, func(id int) int { return normalizedVisiblePlayerMapID(wh, id) }); err != nil {
 			return err
 		}
+		if err := wh.authorizeElevatorPanelIn(ses.CommandContext(), tx, ses, source.MapID, source.X, source.Y); err != nil {
+			return err
+		}
 		var err error
 		access, err = AvailableElevatorFloors(tx, charID, req.MapID)
 		return err
@@ -96,7 +100,18 @@ func HandleElevatorSelectRequest(ses *session.Session, payload []byte, wh *World
 	source := wh.ownedPlayerSnapshot(ses, "")
 	currentMapID := source.MapID
 
-	floor, err := UseElevator(ses.CommandContext(), wh.database, int64(char.ID), currentMapID, source.X, source.Y, req.FloorMapID, func(id int) int { return normalizedVisiblePlayerMapID(wh, id) })
+	var floor *ElevatorFloor
+	err := db.Transaction(ses.CommandContext(), wh.database, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, int64(char.ID)); err != nil {
+			return err
+		}
+		if err := wh.authorizeElevatorPanelIn(ses.CommandContext(), tx, ses, currentMapID, source.X, source.Y); err != nil {
+			return err
+		}
+		var err error
+		floor, err = UseElevator(ses.CommandContext(), tx, int64(char.ID), currentMapID, source.X, source.Y, req.FloorMapID, func(id int) int { return normalizedVisiblePlayerMapID(wh, id) })
+		return err
+	})
 	if err != nil {
 		log.Printf("[Elevator] Floor %d not found in elevator %d: %v", req.FloorMapID, currentMapID, err)
 		return false
@@ -110,4 +125,31 @@ func HandleElevatorSelectRequest(ses *session.Session, payload []byte, wh *World
 
 	log.Printf("[Elevator] Player %d teleported to floor %d (%d,%d)", char.ID, req.FloorMapID, floor.DestX, floor.DestY)
 	return false
+}
+
+// The current catalog has one sign in each elevator room. Resolve that source
+// deterministically, then share actor position/visibility/reach authorization.
+// Missing or ambiguous panels reject rather than guessing a sign or coordinate.
+func (wh *WorldHandler) authorizeElevatorPanelIn(ctx context.Context, tx db.DBTX, ses *session.Session, mapID, x, y int) error {
+	if err := db.RequireTransaction(tx); err != nil {
+		return err
+	}
+	source := wh.ownedPlayerSnapshot(ses, "")
+	if source.ServerMovementPending || source.MapID != mapID || source.X != x || source.Y != y {
+		return errScriptInteractionDenied
+	}
+	var objectID *int
+	var count int
+	if err := tx.QueryRow(`SELECT MIN(o.id),COUNT(*) FROM phaser_objects o WHERE o.map_id=$1 AND o.object_type='sign' AND EXISTS(SELECT 1 FROM phaser_elevator_floors f WHERE f.elevator_map_id=o.map_id)`, mapID).Scan(&objectID, &count); err != nil {
+		return err
+	}
+	if count != 1 || objectID == nil {
+		return fmt.Errorf("elevator map %d has %d panel candidates", mapID, count)
+	}
+	flags, err := eventFlagSnapshotIn(tx, int64(ses.Client.CharData().ID))
+	if err != nil {
+		return err
+	}
+	_, _, err = wh.scriptInteractionTargetFrom(ctx, tx.(db.ContextDBTX), ses, *objectID, flags, interactionPosition{MapID: mapID, X: x, Y: y})
+	return err
 }
