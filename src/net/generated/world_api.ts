@@ -709,16 +709,35 @@ export interface ElevatorFloor {
   requiresItemId?: number /* int */;
 }
 /**
- * ElevatorFloorsRequestPayload is sent by the client when clicking an elevator panel.
+ * ElevatorFloorsRequestPayload binds reads and selections to their expected source.
  */
 export interface ElevatorFloorsRequestPayload {
-  mapId: number /* int */; // The elevator room's map ID
+  requestId: string;
+  characterId: number /* int64 */;
+  mapId?: number /* int */;
+  fromX?: number /* int */;
+  fromY?: number /* int */;
+}
+export interface ElevatorSelectRequestPayload {
+  requestId: string;
+  characterId: number /* int64 */;
+  mapId?: number /* int */;
+  fromX?: number /* int */;
+  fromY?: number /* int */;
+  commandRevision?: number /* int64 */;
+  floorMapId: number /* int */;
 }
 /**
- * ElevatorSelectRequestPayload is sent when the client picks a floor.
+ * Both policies use the existing response opcode, with explicit kind identity.
  */
-export interface ElevatorSelectRequestPayload {
-  floorMapId: number /* int */; // The selected floor's map ID
+export interface ElevatorResponse {
+  success: true;
+  requestId: string;
+  characterId: number /* int64 */;
+  kind: string;
+  mapId: number /* int */;
+  floors: ElevatorFloor[];
+  message: string;
 }
 
 //////////

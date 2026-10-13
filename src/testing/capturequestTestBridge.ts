@@ -229,6 +229,7 @@ export interface CaptureQuestTileViewerDiagnostics {
     | Promise<{ ok: boolean; events?: EngineProbeEvent[]; error?: string } | undefined>
     | { ok: boolean; events?: EngineProbeEvent[]; error?: string }
     | undefined;
+  overlayTextToViewport?: (text:string)=>TileViewportPoint|null;
   tileToViewport?: (x: number, y: number) => TileViewportPoint | null;
   centerTileInView?: (x: number, y: number) => void;
 }
@@ -287,6 +288,7 @@ export interface CaptureQuestTestBridge {
   ) => Promise<EngineProbeResult>;
   waitForIdle: (options?: { timeoutMs?: number }) => Promise<void>;
   waitForEvent: (type: string, timeoutMs?: number) => Promise<unknown>;
+  overlayTextToViewport: (text:string)=>TileViewportPoint|null;
   tileToViewport: (x: number, y: number) => TileViewportPoint | null;
   centerTileInView: (x: number, y: number) => void;
   warpToMap: (mapId: number, x: number, y: number, direction?: string) => Promise<void>;
@@ -978,6 +980,7 @@ export function installCaptureQuestTestBridge(): void {
     sendCommand,
     waitForIdle,
     waitForEvent,
+    overlayTextToViewport:text=>tileViewerDiagnostics?.overlayTextToViewport?.(text)??null,
     tileToViewport,
     centerTileInView,
     warpToMap,

@@ -540,7 +540,7 @@ export class TileViewerInteractionController {
     const elevatorMapIds = [127, 203, 236];
     if (actor.objectType === "sign" && elevatorMapIds.includes(actor.mapId)) {
       console.log(`[TileViewer] Elevator panel clicked on map ${actor.mapId}`);
-      PhaserNet.requestElevatorFloors(actor.mapId);
+      await this.deps.playerMovementController().useElevator((floors,signal)=>this.deps.overlays().showElevatorMenu(floors,signal));
       return;
     }
 

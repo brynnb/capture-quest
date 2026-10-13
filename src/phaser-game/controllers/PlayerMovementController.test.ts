@@ -4,6 +4,7 @@ import { afterEach, beforeEach } from "vitest";
 import { CorrelatedResponseError } from "../services/CorrelatedRequest";
 import * as movement from "../services/PlayerMovementService";
 vi.mock("../services/PlayerMovementService", () => ({
+  requestElevator:vi.fn(),
   requestCut:vi.fn(),
   requestStateField:vi.fn(),
   requestSurf:vi.fn(),
@@ -765,4 +766,25 @@ test("FLY forwards catalog identity separately from expected source",async()=>{
  const {controller}=buildLedgeController();usePlayerCharacterStore.getState().setCharacterProfile({id:42});
  vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce({fieldCommands:{travel:3}} as any);vi.mocked(movement.requestStateField).mockRejectedValueOnce(new Error("lost reply"));
  await controller.travelByMove("FLY",{mapId:60,x:3,y:4});expect(movement.requestStateField).toHaveBeenCalledOnce();expect(vi.mocked(movement.requestStateField).mock.calls[0][0]).toMatchObject({mapId:9999,destinationMapId:60,targetX:3,targetY:4,moveName:"FLY",characterId:42,commandRevision:3});expect(battlePublication.recoverFieldPublication).toHaveBeenCalledOnce();
+});
+
+
+test("elevator uncertain selection shares travel recovery without resending",async()=>{
+ const {controller}=buildLedgeController();usePlayerCharacterStore.getState().setCharacterProfile({id:42});
+ vi.mocked(movement.requestElevator).mockResolvedValueOnce({success:true,requestId:"list",characterId:42,kind:"list",mapId:9999,floors:[{floorMapId:60,floorLabel:"2F",destX:3,destY:4}],message:""}).mockRejectedValueOnce(new Error("lost reply"));
+ vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce({fieldCommands:{travel:3}} as any);
+ await controller.useElevator(async()=>60);expect(movement.requestElevator).toHaveBeenCalledTimes(2);expect(vi.mocked(movement.requestElevator).mock.calls[1][0]).toMatchObject({floorMapId:60,mapId:9999,fromX:10,fromY:0,characterId:42,commandRevision:3});expect(battlePublication.recoverFieldPublication).toHaveBeenCalledOnce();
+});
+
+test("retired elevator listing cannot open a menu or send a selection",async()=>{
+ const {controller}=buildLedgeController();usePlayerCharacterStore.getState().setCharacterProfile({id:42});let resolve!:(reply:any)=>void;
+ vi.mocked(movement.requestElevator).mockImplementationOnce(()=>new Promise(done=>{resolve=done}));const choose=vi.fn();const pending=controller.useElevator(choose);
+ controller.retireFieldCommands();resolve({success:true,requestId:"old",characterId:42,kind:"list",mapId:9999,floors:[],message:""});await pending;
+ expect(choose).not.toHaveBeenCalled();expect(movement.requestElevator).toHaveBeenCalledOnce();expect(battlePublication.recoverFieldPublication).not.toHaveBeenCalled();
+});
+
+test("cancelled elevator selector sends no mutation and performs no recovery",async()=>{
+ const {controller}=buildLedgeController();usePlayerCharacterStore.getState().setCharacterProfile({id:42});
+ vi.mocked(movement.requestElevator).mockResolvedValueOnce({success:true,requestId:"list",characterId:42,kind:"list",mapId:9999,floors:[{floorMapId:60,floorLabel:"2F",destX:3,destY:4}],message:""});
+ await controller.useElevator(async()=>undefined);expect(movement.requestElevator).toHaveBeenCalledOnce();expect(battlePublication.recoverFieldPublication).not.toHaveBeenCalled();
 });

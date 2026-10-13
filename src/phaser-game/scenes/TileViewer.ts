@@ -356,6 +356,14 @@ export class TileViewer extends Scene {
 
         return undefined;
       },
+      overlayTextToViewport: text => {
+        const item=this.children.list.find(child=>child instanceof Phaser.GameObjects.Text && child.text===text && child.visible && child.active && child.scrollFactorX===0 && child.scrollFactorY===0 && child.depth>=9999) as Phaser.GameObjects.Text|undefined;
+        if(!item)return null;
+        const camera=this.cameras.getCamera("UICamera");if(!camera)return null;const origin=camera.getWorldPoint(0,0);const nextX=camera.getWorldPoint(1,0);const nextY=camera.getWorldPoint(0,1);
+        const point={x:(item.x-origin.x+camera.scrollX)/(nextX.x-origin.x),y:(item.y-origin.y+camera.scrollY)/(nextY.y-origin.y)};
+        const canvas=this.game.canvas;const rect=canvas.getBoundingClientRect();
+        return{x:rect.left+point.x*rect.width/canvas.width,y:rect.top+point.y*rect.height/canvas.height};
+      },
       tileToViewport: (tileX, tileY) => {
         const camera = this.cameras.main;
         const canvas = this.game.canvas;
@@ -470,7 +478,7 @@ export class TileViewer extends Scene {
     this.playerMovementController.setInputFrozenChecker(() =>
       this.isWorldInputFrozen(),
     );
-    this.overlays = new TileViewerOverlays(this);
+    this.overlays = new TileViewerOverlays(this,elements=>this.cameraController.configureUIElements(elements));
     this.proceduralOverworldPreview = new ProceduralOverworldPreview({
       scene: this,
       mapRenderer: () => this.mapRenderer,

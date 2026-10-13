@@ -1,10 +1,10 @@
 package world
 
 import (
+	"capturequest/internal/logutil"
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
@@ -21,109 +21,107 @@ type ElevatorFloor struct {
 	RequiresItemID int    `json:"requiresItemId,omitempty"`
 }
 
-// ElevatorFloorsRequestPayload is sent by the client when clicking an elevator panel.
+// ElevatorFloorsRequestPayload binds reads and selections to their expected source.
 type ElevatorFloorsRequestPayload struct {
-	MapID int `json:"mapId"` // The elevator room's map ID
+	RequestID   string `json:"requestId"`
+	CharacterID int64  `json:"characterId"`
+	MapID       *int   `json:"mapId"`
+	FromX       *int   `json:"fromX"`
+	FromY       *int   `json:"fromY"`
 }
-
-// ElevatorSelectRequestPayload is sent when the client picks a floor.
 type ElevatorSelectRequestPayload struct {
-	FloorMapID int `json:"floorMapId"` // The selected floor's map ID
+	RequestID       string `json:"requestId"`
+	CharacterID     int64  `json:"characterId"`
+	MapID           *int   `json:"mapId"`
+	FromX           *int   `json:"fromX"`
+	FromY           *int   `json:"fromY"`
+	CommandRevision *int64 `json:"commandRevision"`
+	FloorMapID      int    `json:"floorMapId"`
 }
 
-// HandleElevatorFloorsRequest returns available floors for the elevator the player is in.
+// Both policies use the existing response opcode, with explicit kind identity.
+type ElevatorResponse struct {
+	Success     bool            `json:"success" tstype:"true"`
+	RequestID   string          `json:"requestId"`
+	CharacterID int64           `json:"characterId"`
+	Kind        string          `json:"kind"`
+	MapID       int             `json:"mapId"`
+	Floors      []ElevatorFloor `json:"floors"`
+	Message     string          `json:"message"`
+}
+
+func validElevatorSource(ses *session.Session, requestID string, charID int64, m, x, y *int) bool {
+	return ses.HasValidClient() && requestID != "" && len(requestID) <= 64 && charID == int64(ses.Client.CharData().ID) && m != nil && x != nil && y != nil
+}
 func HandleElevatorFloorsRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
 	var req ElevatorFloorsRequestPayload
-	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("[Elevator] Invalid floors request: %v", err)
+	reject := func() {
+		sendInventoryCommandError(ses, req.RequestID, opcodes.ElevatorFloorsResponse, "Elevator source unavailable. Check your current location.")
+	}
+	if err := decodePlayerMovement(payload, &req); err != nil || !validElevatorSource(ses, req.RequestID, req.CharacterID, req.MapID, req.FromX, req.FromY) {
+		reject()
 		return false
 	}
-
-	charID := int64(0)
-	if char := ses.Client.CharData(); char != nil {
-		charID = int64(char.ID)
-	}
-	source := wh.ownedPlayerSnapshot(ses, "")
 	var access ElevatorAccess
 	err := db.Transaction(ses.CommandContext(), wh.database, func(tx db.DBTX) error {
-		if err := db.LockCharacter(tx, charID); err != nil {
+		if err := db.LockCharacter(tx, req.CharacterID); err != nil {
 			return err
 		}
-		if req.MapID != source.MapID {
-			return fmt.Errorf("elevator source map mismatch")
-		}
-		if err := requireTravelSourceIn(tx, charID, source.MapID, source.X, source.Y, func(id int) int { return normalizedVisiblePlayerMapID(wh, id) }); err != nil {
+		if err := requireTravelSourceIn(tx, req.CharacterID, *req.MapID, *req.FromX, *req.FromY, func(id int) int { return normalizedVisiblePlayerMapID(wh, id) }); err != nil {
 			return err
 		}
-		if err := wh.authorizeElevatorPanelIn(ses.CommandContext(), tx, ses, source.MapID, source.X, source.Y); err != nil {
+		if err := wh.authorizeElevatorPanelIn(ses.CommandContext(), tx, ses, *req.MapID, *req.FromX, *req.FromY); err != nil {
 			return err
 		}
 		var err error
-		access, err = AvailableElevatorFloors(tx, charID, req.MapID)
+		access, err = AvailableElevatorFloors(tx, req.CharacterID, *req.MapID)
 		return err
 	})
 	if err != nil {
-		log.Printf("[Elevator] Error querying floors for elevator %d: %v", req.MapID, err)
+		logutil.Debugf("[Elevator] read character=%d: %v", req.CharacterID, err)
+		reject()
 		return false
 	}
-
-	if len(access.Floors) == 0 {
-		// No accessible floors (e.g. Rocket Hideout without LIFT KEY)
-		ses.SendStreamJSON(map[string]interface{}{
-			"floors":  []ElevatorFloor{},
-			"message": access.Message,
-		}, opcodes.ElevatorFloorsResponse)
-		return false
-	}
-
-	ses.SendStreamJSON(map[string]interface{}{
-		"floors": access.Floors,
-	}, opcodes.ElevatorFloorsResponse)
-	log.Printf("[Elevator] Sent %d floors for elevator %d", len(access.Floors), req.MapID)
+	ses.SendStreamJSON(ElevatorResponse{Success: true, RequestID: req.RequestID, CharacterID: req.CharacterID, Kind: "list", MapID: *req.MapID, Floors: access.Floors, Message: access.Message}, opcodes.ElevatorFloorsResponse)
 	return false
 }
-
-// HandleElevatorSelectRequest teleports the player to the selected floor.
 func HandleElevatorSelectRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
 	var req ElevatorSelectRequestPayload
-	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("[Elevator] Invalid select request: %v", err)
+	reject := func() {
+		sendInventoryCommandError(ses, req.RequestID, opcodes.ElevatorFloorsResponse, "Elevator travel state changed or could not be read. Recover before trying again.")
+	}
+	if err := decodePlayerMovement(payload, &req); err != nil || !validElevatorSource(ses, req.RequestID, req.CharacterID, req.MapID, req.FromX, req.FromY) || req.CommandRevision == nil || req.FloorMapID <= 0 {
+		reject()
 		return false
 	}
-
-	char := ses.Client.CharData()
-	if char == nil {
-		return false
-	}
-
-	// Get the player's current map to determine which elevator they're in
-	source := wh.ownedPlayerSnapshot(ses, "")
-	currentMapID := source.MapID
-
+	input, _ := json.Marshal(req)
 	var floor *ElevatorFloor
-	err := db.Transaction(ses.CommandContext(), wh.database, func(tx db.DBTX) error {
-		if err := db.LockCharacter(tx, int64(char.ID)); err != nil {
-			return err
-		}
-		if err := wh.authorizeElevatorPanelIn(ses.CommandContext(), tx, ses, currentMapID, source.X, source.Y); err != nil {
-			return err
+	encoded, replay, err := db.ExecuteFieldCommand(ses.CommandContext(), wh.database, req.CharacterID, "travel", req.RequestID, req.CommandRevision, input, func(tx db.DBTX) ([]byte, error) {
+		if err := wh.authorizeElevatorPanelIn(ses.CommandContext(), tx, ses, *req.MapID, *req.FromX, *req.FromY); err != nil {
+			return nil, err
 		}
 		var err error
-		floor, err = UseElevator(ses.CommandContext(), tx, int64(char.ID), currentMapID, source.X, source.Y, req.FloorMapID, func(id int) int { return normalizedVisiblePlayerMapID(wh, id) })
-		return err
+		floor, err = UseElevator(ses.CommandContext(), tx, req.CharacterID, *req.MapID, *req.FromX, *req.FromY, req.FloorMapID, func(id int) int { return normalizedVisiblePlayerMapID(wh, id) })
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(ElevatorResponse{Success: true, RequestID: req.RequestID, CharacterID: req.CharacterID, Kind: "select", MapID: normalizedVisiblePlayerMapID(wh, floor.FloorMapID), Floors: []ElevatorFloor{}, Message: "Elevator travel committed."})
 	})
 	if err != nil {
-		log.Printf("[Elevator] Floor %d not found in elevator %d: %v", req.FloorMapID, currentMapID, err)
+		logutil.Debugf("[Elevator] select character=%d: %v", req.CharacterID, err)
+		reject()
 		return false
 	}
-
-	refreshSafariFlags(ses, wh, int64(char.ID))
-	publishCommittedPlayerPosition(ses, wh, normalizedVisiblePlayerMapID(wh, floor.FloorMapID), floor.DestX, floor.DestY, "DOWN")
-
-	// Send teleport notification to client
-	sendCommittedWarpNotification(ses, req.FloorMapID, floor.DestX, floor.DestY, "DOWN")
-
-	log.Printf("[Elevator] Player %d teleported to floor %d (%d,%d)", char.ID, req.FloorMapID, floor.DestX, floor.DestY)
+	var reply ElevatorResponse
+	if err := json.Unmarshal(encoded, &reply); err != nil || !reply.Success || reply.RequestID != req.RequestID || reply.CharacterID != req.CharacterID || reply.Kind != "select" || reply.MapID <= 0 || reply.Message == "" {
+		reject()
+		return false
+	}
+	if !replay {
+		refreshSafariFlags(ses, wh, req.CharacterID)
+		publishCommittedPlayerPosition(ses, wh, reply.MapID, floor.DestX, floor.DestY, "DOWN")
+	}
+	ses.SendStreamJSON(reply, opcodes.ElevatorFloorsResponse)
 	return false
 }
 

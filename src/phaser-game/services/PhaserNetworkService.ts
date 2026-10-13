@@ -168,22 +168,6 @@ export function onSurf(receive: (reply: SurfReply) => void): () => void {
  */
 
 /**
- * Request elevator floor list (player clicked elevator control panel)
- */
-export function requestElevatorFloors(mapId: number): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ mapId }, OpCodes.ElevatorFloorsRequest);
-}
-
-/**
- * Select an elevator floor (player chose a floor from the menu)
- */
-export function selectElevatorFloor(floorMapId: number): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ floorMapId }, OpCodes.ElevatorSelectRequest);
-}
-
-/**
  * Request to enter Safari Zone (player at gate — creates new session)
  */
 export function requestSafariZoneEnter(): void {
@@ -307,6 +291,7 @@ export function onInventoryCommand<T extends InventoryReply>(opcode: number, rec
 }
 
 const handlers = {
+ elevator: new Set<(data: import("@/net/generated/world_api").ElevatorResponse | PlayerStepError)=>void>(),
   escapeRope: new Set<(data: import("@/net/generated/world_api").EscapeRopeUseResponse | PlayerStepError) => void>(),
   staticContent: new Set<(data: import("@/net/generated/world_api").StaticDataResponse | PlayerStepError) => void>(),
   preferences: new Set<(data: import("@/net/generated/world_api").PreferenceResponse | PlayerStepError) => void>(),
@@ -330,6 +315,8 @@ const handlers = {
   trainerEncounter: new Set<TrainerEncounterHandler>(),
 };
 
+export function onElevator(handler:(data:import("@/net/generated/world_api").ElevatorResponse | PlayerStepError)=>void):()=>void{handlers.elevator.add(handler);return()=>handlers.elevator.delete(handler);}
+export function requestElevator(request:import("@/net/generated/world_api").ElevatorFloorsRequestPayload | import("@/net/generated/world_api").ElevatorSelectRequestPayload,select:boolean):Promise<void>{return NetworkBridge.send(request,select?OpCodes.ElevatorSelectRequest:OpCodes.ElevatorFloorsRequest);}
 export function onEscapeRope(handler: (data: import("@/net/generated/world_api").EscapeRopeUseResponse | PlayerStepError) => void): () => void {
   handlers.escapeRope.add(handler);
   return () => handlers.escapeRope.delete(handler);
@@ -549,6 +536,9 @@ export function dispatchPhaserResponse(opcode: number, data: unknown): void {
       break;
     case OpCodes.SetOption:
       handlers.preferences.forEach(handler => handler(data as import("@/net/generated/world_api").PreferenceResponse | PlayerStepError));
+      break;
+    case OpCodes.ElevatorFloorsResponse:
+      handlers.elevator.forEach(handler=>handler(data as import("@/net/generated/world_api").ElevatorResponse | PlayerStepError));
       break;
     case OpCodes.BicycleStateResponse:
       handlers.bicycleState.forEach(handler => handler(data as import("@/net/generated/world_api").BicycleStateResponse | PlayerStepError));

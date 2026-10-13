@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+elevator scoped list/selection uses shared travel receipts and owned recovery,
+following `558ccfb`:
 elevator runtime listing/selection shares actor reach/visibility authorization,
 following `b6d37fb`:
 elevator durable source/catalog/permission joins the existing movement transaction,
@@ -138,6 +140,55 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Elevator scoped list/selection and shared travel recovery (2026-10-13)
+
+Elevator reads and selections now require request/character identity and expected
+map/fromX/fromY. Selection also requires the existing travel revision and commits
+its bounded latest receipt with panel authorization, catalog permission and
+movement. The existing elevator response opcode carries generated `ElevatorResponse`
+with explicit `kind` list/select. Identity-free envelopes reject; replay returns the
+historical acknowledgement without re-reading a removed panel/catalog or replacing
+a newer saved/live pose. New commits publish server position only; unsolicited
+client warp is retired. Deferred commit rejection still publishes no movement.
+
+The movement-owned field slot owns list, menu and selection through the shared
+character/screen/transport lifetime. The menu resolves a choice, cancellation or
+retirement; source position/facing and scene replacement close it. List responses
+are validated before presentation. Unknown mutation outcomes use the same current
+publication coordinator as ability travel, with a shared reconciliation method for
+recovered pose, rejection presentation and failed-recovery admission. No new
+inventory mutation coordinator or independent retry path is added. The global
+`elevatorFloors` bridge/event listener and raw select sender are removed. Tygo
+regenerated the authoritative wire types.
+
+Focused PostgreSQL envelope/replay/source/rollback/publication checks pass (2.6s),
+full world (65.2s) and simulator (1.4s) race suites pass, plus 609 client tests and
+typecheck. Rendered real Celadon panel/menu duplicate and all-replies-held recovery
+pass with one browser selection, revision 1 and saved/current fifth-floor pose
+(19.6s; `/var/tmp/capturequest-rendered.KY3ISM`). Tests explicitly walk adjacent and
+settle before clicking; the first distant click approached but dispatched no panel
+interaction, which is not claimed as a resolved auto-approach behavior.
+
+Screenshot review found dynamic overlays rendered by both world and UI cameras.
+The existing camera configuration now admits dynamic elevator/prize/Safari UI
+objects through the same main-camera exclusion as static UI. Elevator frame height
+also includes header and cancel rows. Final rendered duplicate/lost-reply and
+Safari gate/HUD acceptance pass (28.6s; `/var/tmp/capturequest-rendered.e90mqo`),
+with inspected screenshots showing one menu/HUD. A final row-layout acceptance
+passes (4.8s; `/var/tmp/capturequest-rendered.gbODby`) with cancel inside the frame.
+The generic test-only overlay text viewport diagnostic observes actual Phaser
+objects; it neither sends selection nor manufactures success.
+
+Remaining: held list/selection across source/scene/reentry, menu cancellation and
+native/process acceptance need review before another family. Prize-menu camera
+routing shares the fix but is not claimed newly rendered here. Wider matrix, all
+five roadmap areas and original restore attribution remain open. This coordinated
+wire change needs client/server activation together; no source assets or schema
+changed. Local checkpoint only; no push or deployment.
+
+Next: review elevator menu/receipt/current-pose lifetime under held responses,
+then native process recovery before extending emergency Warp Home.
 
 ## Elevator panel source review and authorization (2026-10-13)
 

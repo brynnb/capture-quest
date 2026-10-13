@@ -2,6 +2,7 @@ package world
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
@@ -98,7 +99,7 @@ func TestElevatorDispatcherPublishesOnlyCommittedDestination(t *testing.T) {
 			wh.ActorManager = NewPhaserActorManager(wh)
 			wh.PlayerMovement = NewPlayerMovementManager(wh, nil)
 			wh.PlayerMovement.RegisterPlayer(ses, 42, 7, 8, 50, "UP")
-			battleDispatch(t, wh, ses, opcodes.ElevatorSelectRequest, `{"floorMapId":60}`)
+			battleDispatch(t, wh, ses, opcodes.ElevatorSelectRequest, `{"requestId":"elevator-test","characterId":42,"mapId":50,"fromX":7,"fromY":8,"commandRevision":0,"floorMapId":60}`)
 			x, y, m, ok := wh.PlayerMovement.GetPosition(42)
 			if !ok {
 				t.Fatal("lost movement owner")
@@ -116,8 +117,28 @@ func TestElevatorDispatcherPublishesOnlyCommittedDestination(t *testing.T) {
 				if m != 60 || x != 3 || y != 4 || ses.Client.CharData().MapID != 60 {
 					t.Fatal("committed destination not published")
 				}
-				if len(messages.streams) != 1 || messages.streams[0].opcode != opcodes.WarpTileTeleportNotify {
+				if len(messages.streams) != 1 || messages.streams[0].opcode != opcodes.ElevatorFloorsResponse {
 					t.Fatalf("warp messages %+v", messages.streams)
+				}
+
+				historical := string(messages.streams[0].payload)
+				testdb.Exec(t, database, `UPDATE character_data SET x=9,y=8 WHERE id=42;DELETE FROM phaser_objects WHERE id=100;DELETE FROM phaser_elevator_floors`)
+				publishCommittedPlayerPosition(ses, wh, 60, 9, 8, "DOWN")
+				messages.streams = nil
+				battleDispatch(t, wh, ses, opcodes.ElevatorSelectRequest, `{"requestId":"elevator-test","characterId":42,"mapId":50,"fromX":7,"fromY":8,"commandRevision":0,"floorMapId":60}`)
+				if len(messages.streams) != 1 || string(messages.streams[0].payload) != historical {
+					t.Fatal("historical elevator receipt not replayed")
+				}
+				x, y, m, ok = wh.PlayerMovement.GetPosition(42)
+				if !ok || m != 60 || x != 9 || y != 8 {
+					t.Fatal("replay replaced current live pose")
+				}
+				var revision, savedX int
+				if err := database.QueryRow(`SELECT revision FROM character_field_command_state WHERE character_id=42 AND domain='travel'`).Scan(&revision); err != nil || revision != 1 {
+					t.Fatalf("replay revision %d %v", revision, err)
+				}
+				if err := database.QueryRow(`SELECT x FROM character_data WHERE id=42`).Scan(&savedX); err != nil || savedX != 9 {
+					t.Fatal("replay replaced durable pose")
 				}
 			}
 		})
@@ -149,8 +170,9 @@ func TestElevatorPanelUsesOwnedActorReachAndVisibility(t *testing.T) {
 				ses.Client.CharData().X, ses.Client.CharData().Y = 7, 8
 			}
 			database.SetMaxOpenConns(1)
-			battleDispatch(t, wh, ses, opcodes.ElevatorFloorsRequest, `{"mapId":50}`)
-			if (len(messages.streams) == 1) != (kind == "valid") {
+			battleDispatch(t, wh, ses, opcodes.ElevatorFloorsRequest, `{"requestId":"elevator-read","characterId":42,"mapId":50,"fromX":7,"fromY":8}`)
+			var reply ElevatorResponse
+			if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &reply) != nil || reply.Success != (kind == "valid") {
 				t.Fatalf("panel %s messages %+v", kind, messages.streams)
 			}
 			if len(messages.streams) == 1 && messages.streams[0].opcode != opcodes.ElevatorFloorsResponse {
@@ -158,7 +180,7 @@ func TestElevatorPanelUsesOwnedActorReachAndVisibility(t *testing.T) {
 			}
 			messages.streams = nil
 			if kind != "valid" {
-				battleDispatch(t, wh, ses, opcodes.ElevatorSelectRequest, `{"floorMapId":60}`)
+				battleDispatch(t, wh, ses, opcodes.ElevatorSelectRequest, `{"requestId":"elevator-test","characterId":42,"mapId":50,"fromX":7,"fromY":8,"commandRevision":0,"floorMapId":60}`)
 			}
 			if kind != "valid" {
 				var m int
@@ -167,5 +189,28 @@ func TestElevatorPanelUsesOwnedActorReachAndVisibility(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestElevatorRejectsIdentityFreeAndWrongCharacterEnvelopes(t *testing.T) {
+	database, wh, ses, messages := battleTestWorld(t)
+	for _, request := range []struct {
+		opcode  opcodes.OpCode
+		payload string
+	}{
+		{opcodes.ElevatorFloorsRequest, `{"mapId":50}`},
+		{opcodes.ElevatorSelectRequest, `{"floorMapId":60}`},
+		{opcodes.ElevatorSelectRequest, `{"requestId":"wrong","characterId":99,"mapId":50,"fromX":7,"fromY":8,"commandRevision":0,"floorMapId":60}`},
+	} {
+		messages.streams = nil
+		battleDispatch(t, wh, ses, request.opcode, request.payload)
+		var reply struct{ Success bool }
+		if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &reply) != nil || reply.Success {
+			t.Fatalf("invalid elevator accepted %+v", messages.streams)
+		}
+	}
+	var count int
+	if err := database.QueryRow(`SELECT count(*) FROM character_field_command_state WHERE character_id=42 AND domain='travel'`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("invalid elevator mutated revision %d %v", count, err)
 	}
 }

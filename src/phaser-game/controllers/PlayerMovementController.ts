@@ -1,6 +1,6 @@
 import {recoverFieldPublication} from "../services/BattleCommandService";
 import type { OwnedPlayerPositionResponse, PlayerStepResponse, PlayerStepError } from "@/net/generated/protocol";
-import { requestCut, requestStateField, requestSurf, requestFishing, requestEscapeRope, requestBicycleState, requestPlayerFacing, requestPlayerStep, completePlayerStep, readOwnedPlayerPosition } from "../services/PlayerMovementService";
+import { requestElevator, requestCut, requestStateField, requestSurf, requestFishing, requestEscapeRope, requestBicycleState, requestPlayerFacing, requestPlayerStep, completePlayerStep, readOwnedPlayerPosition } from "../services/PlayerMovementService";
 import { WorldSocket } from "@/net/index";
 import useGameScreenStore from "@/stores/GameScreenStore";
 import { CorrelatedResponseError, readForCurrentCharacter } from "../services/CorrelatedRequest";
@@ -156,6 +156,36 @@ export class PlayerMovementController {
     }
   }
 
+  private async reconcileTravelPublication(signal:AbortSignal,current:()=>boolean,rejection?:string):Promise<void>{
+    const recovered=await recoverFieldPublication(signal);if(!current())return;
+    if(!recovered){this.movementRecoveryRequired=true;useChatStore.getState().addMessage("Travel state could not be recovered. Reconnect before moving.",MessageType.SYSTEM_ERROR);}
+    else if(rejection)usePokemonDialogueStore.getState().openDialogue([rejection]);
+  }
+
+  async useElevator(choose:(floors:import("@/net/generated/world_api").ElevatorFloor[],signal:AbortSignal)=>Promise<number|undefined>):Promise<void>{
+    if(this.isMoving || this.issuedStep || this.serverMovementInProgress)return;
+    return this.runOwnedFieldCommand(async(characterId,signal,current)=>{
+      const source={mapId:this.currentMapId,fromX:this.currentTileX,fromY:this.currentTileY};
+      const atSource=()=>current() && this.currentMapId===source.mapId && this.currentTileX===source.fromX && this.currentTileY===source.fromY && !this.isMoving && !this.issuedStep && !this.serverMovementInProgress;
+      let list;
+      try{list=await requestElevator({...source,characterId},false,signal);}
+      catch(error){if(atSource())useChatStore.getState().addMessage(error instanceof Error?error.message:"Elevator unavailable",MessageType.SYSTEM_ERROR);return;}
+      if(!atSource())return;
+      if(list.kind!=="list" || list.characterId!==characterId || list.mapId!==source.mapId || !Array.isArray(list.floors) || list.floors.some(floor=>!Number.isSafeInteger(floor.floorMapId)||floor.floorMapId<=0||typeof floor.floorLabel!=="string"||!floor.floorLabel))throw new Error("Invalid elevator list");
+      if(list.floors.length===0){if(list.message)usePokemonDialogueStore.getState().openDialogue([list.message]);return;}
+      const floorMapId=await choose(list.floors,signal);if(floorMapId===undefined || !atSource())return;
+      if(!list.floors.some(floor=>floor.floorMapId===floorMapId))throw new Error("Invalid elevator selection");
+      let rejection:string|undefined;
+      try{
+        const before=await readCurrentGameplayState(signal);if(!atSource())return;
+        const commandRevision=before.fieldCommands?.travel??0;if(!before.fieldCommands || !Number.isSafeInteger(commandRevision)||commandRevision<0)throw new Error("Missing travel revision");
+        const reply=await requestElevator({...source,characterId,commandRevision,floorMapId},true,signal);if(!current())return;
+        if(reply.kind!=="select" || reply.characterId!==characterId || !Number.isSafeInteger(reply.mapId)||reply.mapId<=0)throw new Error("Invalid elevator result");
+      }catch(error){if(!current())return;if(error instanceof CorrelatedResponseError)rejection=error.message;}
+      await this.reconcileTravelPublication(signal,current,rejection);
+    });
+  }
+
   async travelByMove(moveName:"DIG"|"TELEPORT"|"FLY",destination?:{mapId:number;x:number;y:number}):Promise<void>{
     if(this.isMoving || this.issuedStep || this.serverMovementInProgress)return;
     return this.runOwnedFieldCommand(async(characterId,signal,current)=>{
@@ -166,9 +196,7 @@ export class PlayerMovementController {
         const reply=await requestStateField({...source,characterId,commandRevision,moveName,...(destination?{destinationMapId:destination.mapId,targetX:destination.x,targetY:destination.y}:{})},signal);if(!current())return;
         if(reply.characterId!==characterId || reply.moveName!==moveName || !Number.isSafeInteger(reply.mapId) || reply.mapId<=0 || typeof reply.message!=="string")throw new Error("Invalid travel outcome");
       }catch(error){if(!current())return;if(error instanceof CorrelatedResponseError)rejection=error.message;}
-      const recovered=await recoverFieldPublication(signal);if(!current())return;
-      if(!recovered){this.movementRecoveryRequired=true;useChatStore.getState().addMessage("Travel state could not be recovered. Reconnect before moving.",MessageType.SYSTEM_ERROR);}
-      else if(rejection)usePokemonDialogueStore.getState().openDialogue([rejection]);
+      await this.reconcileTravelPublication(signal,current,rejection);
     });
   }
 

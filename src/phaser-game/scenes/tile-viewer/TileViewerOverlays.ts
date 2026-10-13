@@ -1,3 +1,4 @@
+import {watchInteractionPosition} from "../../services/InventoryCommandService";
 import { Scene } from "phaser";
 import usePokemonDialogueStore from "@/stores/PokemonDialogueStore";
 
@@ -13,7 +14,7 @@ export class TileViewerOverlays {
   private safariHudContainer: Phaser.GameObjects.Container | null = null;
   private safariHudText: Phaser.GameObjects.Text | null = null;
 
-  constructor(private readonly scene: Scene) {}
+  constructor(private readonly scene: Scene, private readonly configureUI:(elements:Phaser.GameObjects.GameObject[])=>void) {}
 
   isSlotMachineTile(x: number, y: number): boolean {
     const slotPositions = new Set([
@@ -107,6 +108,7 @@ export class TileViewerOverlays {
       .setInteractive({ useHandCursor: true });
     closeBtn.on("pointerdown", () => this.closeGameCornerUI());
     this.gameCornerMenuItems.push(closeBtn);
+    this.configureUI(this.gameCornerMenuItems);
   }
 
   closeGameCornerUI(): void {
@@ -138,6 +140,7 @@ export class TileViewerOverlays {
         .setDepth(9998)
         .setScrollFactor(0)
         .setSize(width, height);
+      this.configureUI([this.safariHudContainer]);
     }
     this.safariHudText.setText(`SAFARI\nSTEPS ${stepsLeft}\nBALLS  ${ballsLeft}`);
     this.positionSafariHUD();
@@ -170,12 +173,15 @@ export class TileViewerOverlays {
 
   showElevatorMenu(
     floors: Array<{ floorMapId: number; floorLabel: string }>,
-  ): void {
+    signal:AbortSignal,
+  ): Promise<number|undefined> {
+    return new Promise(resolve=>{
     const cam = this.scene.cameras.main;
     const menuWidth = 120;
     const itemHeight = 24;
     const padding = 8;
-    const menuHeight = floors.length * itemHeight + padding * 2 + itemHeight;
+    // Include both the header and cancel row in the frame.
+    const menuHeight = (floors.length + 2) * itemHeight + padding * 2;
     const bg = this.scene.add
       .rectangle(cam.width / 2, cam.height / 2, menuWidth, menuHeight, 0x000000, 0.9)
       .setStrokeStyle(2, 0xffffff)
@@ -197,6 +203,10 @@ export class TileViewerOverlays {
       .setScrollFactor(0);
     menuItems.push(header);
 
+    let settled=false;
+    const finish=(floor?:number)=>{if(settled)return;settled=true;stopPosition();signal.removeEventListener("abort",abort);menuItems.forEach(item=>item.destroy());resolve(floor);};
+    const abort=()=>finish();const stopPosition=watchInteractionPosition(abort,true);
+    signal.addEventListener("abort",abort,{once:true});
     floors.forEach((floor, i) => {
       const yPos = headerY + (i + 1) * itemHeight;
       const label = this.scene.add
@@ -216,12 +226,7 @@ export class TileViewerOverlays {
       label.on("pointerover", () => label.setColor("#ffff00"));
       label.on("pointerout", () => label.setColor("#ffffff"));
       label.on("pointerdown", () => {
-        import("@/phaser-game/services/PhaserNetworkService").then(
-          (PhaserNet) => {
-            PhaserNet.selectElevatorFloor(floor.floorMapId);
-          },
-        );
-        menuItems.forEach((item) => item.destroy());
+        finish(floor.floorMapId);
       });
       menuItems.push(label);
     });
@@ -242,9 +247,12 @@ export class TileViewerOverlays {
     cancel.on("pointerover", () => cancel.setColor("#ffff00"));
     cancel.on("pointerout", () => cancel.setColor("#aaaaaa"));
     cancel.on("pointerdown", () => {
-      menuItems.forEach((item) => item.destroy());
+      finish();
     });
     menuItems.push(cancel);
+    this.configureUI(menuItems);
+    if(signal.aborted)abort();
+    });
   }
 
   cleanup(): void {

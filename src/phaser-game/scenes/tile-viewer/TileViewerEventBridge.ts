@@ -15,7 +15,6 @@ interface TileViewerEventBridgeDeps {
 
 export class TileViewerEventBridge {
   private safariUnsubscribe:(()=>void)|null=null;
-  private elevatorFloorsHandler: ((e: Event) => void) | null = null;
 
 
 
@@ -27,16 +26,6 @@ export class TileViewerEventBridge {
   constructor(private readonly deps: TileViewerEventBridgeDeps) {}
 
   register(): void {
-    this.elevatorFloorsHandler = (event: Event) => {
-      const floors = (event as CustomEvent).detail as Array<{
-        floorMapId: number;
-        floorLabel: string;
-      }>;
-      console.log(`[Elevator] Received ${floors.length} floors`);
-      this.deps.overlays.showElevatorMenu(floors);
-    };
-    window.addEventListener("elevatorFloors", this.elevatorFloorsHandler);
-
  this.safariUnsubscribe=bindSafariVisitView(view=>{if(view?.active)this.deps.overlays.updateSafariHUD(view.stepsLeft,view.ballsLeft);else this.deps.overlays.destroySafariHUD();});
 
     this.gameCornerPrizeHandler = (event: Event) => {
@@ -99,10 +88,6 @@ export class TileViewerEventBridge {
   }
 
   cleanup(): void {
-    if (this.elevatorFloorsHandler) {
-      window.removeEventListener("elevatorFloors", this.elevatorFloorsHandler);
-      this.elevatorFloorsHandler = null;
-    }
  this.safariUnsubscribe?.();this.safariUnsubscribe=null;
     if (this.gameCornerPrizeHandler) {
       window.removeEventListener("gameCornerPrizeList", this.gameCornerPrizeHandler);

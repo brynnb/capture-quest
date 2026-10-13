@@ -200,7 +200,7 @@ export class NetworkBridge {
 
       // Elevator floor list (Phase 9.7)
       case OpCodes.ElevatorFloorsResponse:
-        this.handleElevatorFloorsResponse(data as { floors: Array<{ floorMapId: number; floorLabel: string; destX: number; destY: number }>; message?: string });
+        if(typeof (data as {requestId?:unknown})?.requestId === "string")import("@/phaser-game/services/PhaserNetworkService").then(module=>module.dispatchPhaserResponse(opcode,data));
         break;
 
       // Repel (Phase 11.2)
@@ -387,20 +387,6 @@ export class NetworkBridge {
     }
 
     console.log("[NetworkBridge] Dialogue choice response:", data.choice ? "YES" : "NO");
-  }
-
-  private handleElevatorFloorsResponse(data: { floors: Array<{ floorMapId: number; floorLabel: string; destX: number; destY: number }>; message?: string }) {
-    console.log("[NetworkBridge] Elevator floors:", data);
-    if (data.message) {
-      // No accessible floors (e.g. missing LIFT KEY) — show message as dialogue
-      const dialogueStore = usePokemonDialogueStore.getState();
-      dialogueStore.openDialogue([data.message]);
-      return;
-    }
-    // Dispatch elevator floor list for the UI to display
-    window.dispatchEvent(
-      new CustomEvent("elevatorFloors", { detail: data.floors })
-    );
   }
 
   private handleRepelEvent(data: { message?: string }) {
