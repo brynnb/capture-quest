@@ -118,7 +118,7 @@ func TestFieldStateSnapshotRequiresOwnerAndRejectsCorruption(t *testing.T) {
 
 func TestTaggedLegacyFieldPoliciesCannotBypassCommandAdmission(t *testing.T) {
 	database, wh, ses, messages := battleTestWorld(t)
-	for _, move := range []string{"DIG", "TELEPORT", "FLY"} {
+	for _, move := range []string{"FLY"} {
 		messages.streams = nil
 		battleDispatch(t, wh, ses, opcodes.FieldMoveUseRequest, fmt.Sprintf(`{"moveName":%q,"requestId":"mixed-policy","characterId":42,"commandRevision":0,"mapId":50,"fromX":0,"fromY":0}`, move))
 		var reply InventoryCommandError

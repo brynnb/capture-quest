@@ -65,7 +65,7 @@ func HandleFieldMoveUse(ses *session.Session, payload []byte, wh *WorldHandler) 
 		}
 	}
 
-	if move := normalizeFieldMoveName(req.MoveName); move != "STRENGTH" && move != "FLASH" && move != "CUT" {
+	if move := normalizeFieldMoveName(req.MoveName); move != "STRENGTH" && move != "FLASH" && move != "CUT" && move != "DIG" && move != "TELEPORT" {
 		if req.RequestID != "" || req.CharacterID != 0 || req.CommandRevision != nil || req.FromX != nil || req.FromY != nil || req.CutScope != "" {
 			sendInventoryCommandError(ses, req.RequestID, opcodes.FieldMoveUseResponse, "Tagged command is unsupported for this field move.")
 			return false
@@ -93,10 +93,12 @@ func HandleFieldMoveUse(ses *session.Session, payload []byte, wh *WorldHandler) 
 			return false
 		}
 		return handleStateFieldMove(ses, req, wh)
-	case "DIG":
-		return handleEscapeFieldMove(ses, req, wh)
-	case "TELEPORT":
-		return handleTeleportFieldMove(ses, req, wh)
+	case "DIG", "TELEPORT":
+		if err := decodePlayerMovement(payload, &req); err != nil {
+			sendInventoryCommandError(ses, req.RequestID, opcodes.FieldMoveUseResponse, "Invalid field travel command.")
+			return false
+		}
+		return handleTravelFieldMove(ses, req, wh)
 	case "FLY":
 		return handleFlyFieldMove(ses, req, wh)
 	default:
@@ -258,39 +260,53 @@ func handleStateFieldMove(ses *session.Session, req FieldMoveUseRequestPayload, 
 	return false
 }
 
-func handleEscapeFieldMove(ses *session.Session, req FieldMoveUseRequestPayload, wh *WorldHandler) bool {
-	return handleTravelFieldMove(ses, wh, "DIG")
-}
-func handleTeleportFieldMove(ses *session.Session, req FieldMoveUseRequestPayload, wh *WorldHandler) bool {
-	return handleTravelFieldMove(ses, wh, "TELEPORT")
-}
-
-func handleTravelFieldMove(ses *session.Session, wh *WorldHandler, moveName string) bool {
-	if wh == nil || wh.database == nil {
-		sendFieldMoveUseError(ses, "Field travel unavailable.")
+func handleTravelFieldMove(ses *session.Session, req FieldMoveUseRequestPayload, wh *WorldHandler) bool {
+	reject := func(message string) {
+		sendInventoryCommandError(ses, req.RequestID, opcodes.FieldMoveUseResponse, message)
+	}
+	charID := int64(ses.Client.CharData().ID)
+	moveName := normalizeFieldMoveName(req.MoveName)
+	if wh == nil || wh.database == nil || req.RequestID == "" || len(req.RequestID) > 64 || req.CharacterID != charID || req.CommandRevision == nil || req.MapID == nil || req.FromX == nil || req.FromY == nil {
+		reject("Invalid field travel command.")
 		return false
 	}
-	source := wh.ownedPlayerSnapshot(ses, "")
-	result, err := useTravelFieldMove(ses.CommandContext(), wh.database, int64(ses.Client.CharData().ID), moveName, source.MapID, source.X, source.Y, func(mapID int) int { return normalizedVisiblePlayerMapID(wh, mapID) })
+	input, _ := json.Marshal(req)
+	var result fieldTravelResult
+	encoded, replay, err := db.ExecuteFieldCommand(ses.CommandContext(), wh.database, charID, "travel", req.RequestID, req.CommandRevision, input, func(tx db.DBTX) ([]byte, error) {
+		var err error
+		result, err = useTravelFieldMove(ses.CommandContext(), tx, charID, moveName, *req.MapID, *req.FromX, *req.FromY, func(id int) int { return normalizedVisiblePlayerMapID(wh, id) })
+		if err != nil {
+			return nil, err
+		}
+		message := "Dug out of the dungeon."
+		if moveName == "TELEPORT" {
+			message = "Teleported to safety."
+		}
+		if result.Permission.KnownByName != "" {
+			message = result.Permission.KnownByName + " used " + moveName + "!"
+		}
+		return json.Marshal(StateFieldResponse{Success: true, RequestID: req.RequestID, CharacterID: charID, MoveName: moveName, MapID: result.MapID, Message: message})
+	})
 	if err != nil {
 		var denied *itemuse.Rejection
 		if errors.As(err, &denied) {
-			sendFieldMoveUseError(ses, denied.Message)
+			reject(denied.Message)
 		} else {
-			logutil.Debugf("[FieldTravel] character=%d move=%s: %v", ses.Client.CharData().ID, moveName, err)
-			sendFieldMoveUseError(ses, "Could not read or save field travel. Please try again.")
+			logutil.Debugf("[FieldTravel] character=%d move=%s: %v", charID, moveName, err)
+			reject("Field travel state changed or could not be read. Recover before trying again.")
 		}
 		return false
 	}
-	publishCommittedTeleport(ses, wh, result.MapID, result.X, result.Y)
-	message := "Dug out of the dungeon."
-	if moveName == "TELEPORT" {
-		message = "Teleported to safety."
+	var reply StateFieldResponse
+	if err := json.Unmarshal(encoded, &reply); err != nil || !reply.Success || reply.CharacterID != charID || reply.RequestID != req.RequestID || reply.MoveName != moveName || reply.MapID <= 0 || reply.Message == "" {
+		reject("Invalid committed travel result.")
+		return false
 	}
-	if result.Permission.KnownByName != "" {
-		message = result.Permission.KnownByName + " used " + moveName + "!"
+	if !replay {
+		refreshSafariFlags(ses, wh, charID)
+		publishCommittedPlayerPosition(ses, wh, result.MapID, result.X, result.Y, "DOWN")
 	}
-	ses.SendStreamJSON(FieldMoveUseResponsePayload{Success: true, Message: message, MoveName: moveName, MapID: result.MapID, TargetX: result.X, TargetY: result.Y}, opcodes.FieldMoveUseResponse)
+	ses.SendStreamJSON(reply, opcodes.FieldMoveUseResponse)
 	return false
 }
 

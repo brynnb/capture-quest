@@ -102,7 +102,7 @@ func useFly(ctx context.Context, database *sql.DB, charID int64, mapID, x, y int
 
 // Ability travel joins permission, expected source, destination selection and
 // the existing movement/route/presentation retirement in one character commit.
-func useTravelFieldMove(ctx context.Context, database *sql.DB, charID int64, moveName string, sourceMap, sourceX, sourceY int, normalizeMap func(int) int) (fieldTravelResult, error) {
+func useTravelFieldMove(ctx context.Context, database db.DBTX, charID int64, moveName string, sourceMap, sourceX, sourceY int, normalizeMap func(int) int) (fieldTravelResult, error) {
 	var result fieldTravelResult
 	err := db.Transaction(ctx, database, func(tx db.DBTX) error {
 		if err := db.LockCharacter(tx, charID); err != nil {

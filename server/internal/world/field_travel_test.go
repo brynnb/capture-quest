@@ -43,7 +43,7 @@ func TestAbilityTravelPermissionSourceAndDestinationShareCommit(t *testing.T) {
 				previous := db.GlobalWorldDB
 				db.GlobalWorldDB = nil
 				t.Cleanup(func() { db.GlobalWorldDB = previous })
-				battleDispatch(t, wh, ses, opcodes.FieldMoveUseRequest, fmt.Sprintf(`{"moveName":%q}`, move.name))
+				battleDispatch(t, wh, ses, opcodes.FieldMoveUseRequest, fmt.Sprintf(`{"moveName":%q,"requestId":"travel-test","characterId":42,"commandRevision":0,"mapId":50,"fromX":7,"fromY":8}`, move.name))
 				want := kind == "success" || kind == "single-connection"
 				var response FieldMoveUseResponsePayload
 				for _, packet := range messages.streams {
@@ -77,5 +77,37 @@ func TestAbilityTravelPermissionSourceAndDestinationShareCommit(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestTravelReceiptRollbackAndReplayNeverReprojectsOldDestination(t *testing.T) {
+	database, wh, ses, messages := battleTestWorld(t)
+	testdb.Exec(t, database, `INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(50,'ROOM',10,10,0),(60,'SAFE',10,10,0),(70,'NEWER',10,10,0);UPDATE character_data SET map_id=50,x=7,y=8 WHERE id=42;INSERT INTO character_bind(id,slot,map_id,x,y,z,heading) VALUES(42,0,60,3,4,0,0);INSERT INTO phaser_moves(id,constant_name,name,short_name,effect,power,type,accuracy,pp) VALUES(100,'TELEPORT','TELEPORT','TELEPORT','NO_ADDITIONAL_EFFECT',0,'NORMAL',0,15);UPDATE character_pokemon SET move1_id=100,move1_pp=15 WHERE character_id=42;CREATE FUNCTION reject_travel_receipt() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'late travel receipt';END $$;CREATE CONSTRAINT TRIGGER reject_travel_receipt AFTER UPDATE ON character_field_command_state DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_travel_receipt()`)
+	ses.Client.CharData().MapID, ses.Client.CharData().X, ses.Client.CharData().Y = 50, 7, 8
+	request := `{"moveName":"TELEPORT","requestId":"travel:one","characterId":42,"commandRevision":0,"mapId":50,"fromX":7,"fromY":8}`
+	battleDispatch(t, wh, ses, opcodes.FieldMoveUseRequest, request)
+	var saved, revision int
+	if err := database.QueryRow(`SELECT map_id FROM character_data WHERE id=42`).Scan(&saved); err != nil || saved != 50 || ses.Client.CharData().MapID != 50 {
+		t.Fatal("receipt failure published destination")
+	}
+	testdb.Exec(t, database, `DROP TRIGGER reject_travel_receipt ON character_field_command_state`)
+	messages.streams = nil
+	battleDispatch(t, wh, ses, opcodes.FieldMoveUseRequest, request)
+	if err := database.QueryRow(`SELECT map_id FROM character_data WHERE id=42`).Scan(&saved); err != nil || saved != 60 {
+		t.Fatal("travel did not commit")
+	}
+	testdb.Exec(t, database, `UPDATE character_data SET map_id=70,x=9,y=9 WHERE id=42;DELETE FROM character_bind;UPDATE character_pokemon SET move1_id=0 WHERE character_id=42`)
+	ses.Client.CharData().MapID, ses.Client.CharData().X, ses.Client.CharData().Y = 70, 9, 9
+	messages.streams = nil
+	battleDispatch(t, wh, ses, opcodes.FieldMoveUseRequest, request)
+	var reply StateFieldResponse
+	if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &reply) != nil || !reply.Success || reply.MapID != 60 {
+		t.Fatal("matching travel receipt not acknowledged")
+	}
+	if err := database.QueryRow(`SELECT map_id FROM character_data WHERE id=42`).Scan(&saved); err != nil || saved != 70 || ses.Client.CharData().MapID != 70 {
+		t.Fatal("replay reprojected historical destination")
+	}
+	if err := database.QueryRow(`SELECT revision FROM character_field_command_state WHERE character_id=42 AND domain='travel'`).Scan(&revision); err != nil || revision != 1 {
+		t.Fatalf("replay revision=%d %v", revision, err)
 	}
 }

@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+DIG/TELEPORT scoped field receipts and current owned movement recovery,
+following `6033d06`:
 DIG/TELEPORT join durable permission/source/destination selection with movement,
 following `b51cb49`:
 CUT receipt/publication and delayed texture review plus native reset acceptance,
@@ -121,6 +123,50 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## DIG/TELEPORT correlated source and current movement recovery (2026-10-13)
+
+Live party-HUD ability travel now enters the existing movement-owned field slot
+and shared correlated command path. Generated request/character identity,
+expected field revision and complete source map/X/Y are required; untagged old
+ability requests reject. `db.ExecuteFieldCommand` domain `travel` owns the bounded
+latest result while `useTravelFieldMove` joins its supplied transaction. Permission,
+source, selected exit/bind and position/route/plan retirement commit with the
+receipt; no travel-specific coordinator or inventory resource counter is added.
+
+New committed travel updates server ownership through the existing Escape Rope
+publication pattern without an unsolicited client warp. Matching replay returns
+historical acknowledgement only and does not update the position cache, broadcast
+or reselect a destination. The client reads current gameplay through the reviewed
+field-publication owner and projects its owned pose, never a historical response
+map. Retirement discards the old caller. Unknown delivery triggers a read without
+another mutation; failed current recovery locks movement until reconnect. Global
+untagged DIG/TELEPORT successes no longer open dialogue. Remaining legacy FLY
+rejects mixed tagged envelopes until its own migration.
+
+Focused prior travel/source/bind/Escape Rope/FLY checks pass (3.4s). Added real
+Postgres deferred receipt failure preserves original saved/cache pose, and exact
+replay after a newer pose/removed bind/move leaves that newer pose and revision 1
+intact, publishing only the historical response. Full world (80.1s), simulator
+(1.5s) race suites, all Go package compilation, typecheck and diff checks pass.
+All 602 client tests pass (4.9s), including uncertainty single-send/shared recovery
+and retired travel ignoring late acknowledgement without old-scene recovery.
+All four rendered Chromium/WebSocket party-HUD outdoor DIG rejection, normal
+TELEPORT, held duplicate timeout and same-character reentry checks pass (28.5s;
+`/var/tmp/capturequest-rendered.bkTOHn`). The browser sends once, transport injects
+an exact duplicate, equal receipt replies leave revision 1, and actual late
+acknowledgement after recovery/reentry cannot change pose or reopen dialogue.
+DIG positive dungeon travel is covered by PostgreSQL domain checks, not claimed
+as rendered here. Native/process and shared transition review remain open.
+
+Matching frontend/backend activation is required; existing field receipt schema
+is reused. No schema, generated asset, push or production change occurred.
+Remaining: source/lifecycle/shared publication review, native/process acceptance
+and FLY policy migration remain open. The full five-area goal and original restore
+attribution are incomplete; these changes do not claim the historical cause.
+
+Next: review travel acknowledgement versus scene-transition lifetime and finish
+native/current-state acceptance before migrating FLY or another command family.
 
 ## DIG/TELEPORT permission and destination commit prerequisite (2026-10-13)
 

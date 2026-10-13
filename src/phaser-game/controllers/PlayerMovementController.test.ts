@@ -742,3 +742,15 @@ test("CUT discarded projection cannot present a historical success",async()=>{
  vi.mocked(movement.requestCut).mockResolvedValueOnce({success:true,requestId:"done",characterId:42,moveName:"CUT",mapId:9999,cutScope:"visit",targetX:9,targetY:0,message:"Used CUT!"});
  await controller.cut(9,0,"LEFT");expect(open).not.toHaveBeenCalled();open.mockRestore();
 });
+
+
+test("ability travel uncertainty uses shared owned publication without resend",async()=>{
+ const {controller}=buildLedgeController();usePlayerCharacterStore.getState().setCharacterProfile({id:42});
+ vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce({fieldCommands:{travel:2}} as any);vi.mocked(movement.requestStateField).mockRejectedValueOnce(new Error("lost reply"));
+ await controller.travelByMove("TELEPORT");expect(movement.requestStateField).toHaveBeenCalledOnce();expect(vi.mocked(movement.requestStateField).mock.calls[0][0]).toMatchObject({moveName:"TELEPORT",characterId:42,commandRevision:2});expect(battlePublication.recoverFieldPublication).toHaveBeenCalledWith(expect.any(AbortSignal));
+});
+test("retired ability travel ignores old acknowledgement and recovery",async()=>{
+ const {controller}=buildLedgeController();usePlayerCharacterStore.getState().setCharacterProfile({id:42});
+ vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce({fieldCommands:{}} as any);let resolve!:(reply:any)=>void;
+ vi.mocked(movement.requestStateField).mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));const pending=controller.travelByMove("DIG");await Promise.resolve();controller.retireFieldCommands();resolve({success:true,requestId:"old",characterId:42,moveName:"DIG",mapId:50,message:"Dug out"});await pending;expect(battlePublication.recoverFieldPublication).not.toHaveBeenCalled();
+});

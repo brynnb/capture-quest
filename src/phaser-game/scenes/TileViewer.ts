@@ -127,6 +127,7 @@ export class TileViewer extends Scene {
   private actorDespawnUnsubscribe: (() => void) | null = null;
   private gameStatusUnsubscribe: (() => void) | null = null;
   private battleInputFreezeUnsubscribe: (() => void) | null = null;
+  private readonly fieldTravelUseHandler=(event:Event)=>{const move=(event as CustomEvent<{moveName:string}>).detail?.moveName;if(move==="DIG" || move==="TELEPORT")void this.playerMovementController.travelByMove(move);};
   private readonly stateFieldUseHandler=(event:Event)=>{const move=(event as CustomEvent<{moveName:string}>).detail?.moveName;if(move==="STRENGTH" || move==="FLASH")void this.playerMovementController.activateFieldState(move);};
   private readonly fishingUseHandler=(event:Event)=>{void this.playerMovementController.fish((event as CustomEvent<{instanceId:number}>).detail.instanceId);};
   private readonly bicycleUseHandler = (event: Event) => {
@@ -341,6 +342,7 @@ export class TileViewer extends Scene {
           const dx = direction === "LEFT" ? -1 : direction === "RIGHT" ? 1 : 0;
           const dy = direction === "UP" ? -1 : direction === "DOWN" ? 1 : 0;
           if(command.useFieldMove.moveName.toUpperCase()==="CUT")void this.playerMovementController.cut(command.useFieldMove.targetX??position.x+dx,command.useFieldMove.targetY??position.y+dy,direction);
+          else if(["DIG","TELEPORT"].includes(command.useFieldMove.moveName.toUpperCase()))void this.playerMovementController.travelByMove(command.useFieldMove.moveName.toUpperCase() as "DIG"|"TELEPORT");
           else PhaserNet.requestFieldMoveUse(
             command.useFieldMove.moveName,
             command.useFieldMove.targetX ?? position.x + dx,
@@ -540,6 +542,7 @@ export class TileViewer extends Scene {
     });
     window.addEventListener("cq:fishingUse",this.fishingUseHandler);
     window.addEventListener("cq:stateFieldUse",this.stateFieldUseHandler);
+    window.addEventListener("cq:fieldTravelUse",this.fieldTravelUseHandler);
     window.addEventListener("cq:bicycleUse", this.bicycleUseHandler);
     window.addEventListener("cq:escapeRopeUse", this.escapeRopeUseHandler);
     this.bicycleStateUnsubscribe = useAudioActivityStore.subscribe((state) => {
@@ -2100,6 +2103,7 @@ export class TileViewer extends Scene {
     this.actorDespawnMarkers.clear();
     window.removeEventListener("cq:fishingUse",this.fishingUseHandler);
     window.removeEventListener("cq:stateFieldUse",this.stateFieldUseHandler);
+    window.removeEventListener("cq:fieldTravelUse",this.fieldTravelUseHandler);
     window.removeEventListener("cq:bicycleUse", this.bicycleUseHandler);
     window.removeEventListener("cq:escapeRopeUse", this.escapeRopeUseHandler);
     this.playerMovementController?.retireFieldCommands();
