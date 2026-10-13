@@ -555,6 +555,7 @@ func TestSafariDirectEntryRequiresVisibleSourceWorker(t *testing.T) {
 	ses.Client.CharData().MapID = 156
 	ses.Client.CharData().X = 4
 	ses.Client.CharData().Y = 2
+	testdb.Exec(t, database, `UPDATE character_data SET map_id=156,x=4,y=2 WHERE id=42`)
 	previous := db.GlobalWorldDB
 	db.GlobalWorldDB = nil
 	t.Cleanup(func() { db.GlobalWorldDB = previous })

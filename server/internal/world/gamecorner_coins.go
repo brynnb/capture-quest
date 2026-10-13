@@ -2,13 +2,12 @@ package world
 
 import (
 	"context"
-	"database/sql"
 
 	"capturequest/internal/db"
 	"capturequest/internal/db/cqitems"
 )
 
-func buyGameCornerCoins(ctx context.Context, database *sql.DB, charID int64) (GameCornerCoinPurchaseResult, error) {
+func buyGameCornerCoins(ctx context.Context, database db.DBTX, charID int64) (GameCornerCoinPurchaseResult, error) {
 	var result GameCornerCoinPurchaseResult
 	previousCoins, previousMoney := 0, 0
 	err := db.Transaction(ctx, database, func(tx db.DBTX) error {

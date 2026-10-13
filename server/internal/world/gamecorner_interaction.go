@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"capturequest/internal/db"
 	"capturequest/internal/session"
 )
 
@@ -126,16 +127,47 @@ func (wh *WorldHandler) authorizePrizeWindow(ses *session.Session, prizeID int) 
 // an actor ID. Both prize windows and the coin clerk use the same bounded,
 // fail-closed identity and runtime reach/visibility boundary.
 func (wh *WorldHandler) authorizeSourceInteraction(ses *session.Session, mapID int, text string) error {
-	ctx, cancel := context.WithTimeout(ses.CommandContext(), 5*time.Second)
-	defer cancel()
+	return db.Transaction(ses.CommandContext(), wh.database, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, int64(ses.Client.CharData().ID)); err != nil {
+			return err
+		}
+		return wh.authorizeSourceInteractionIn(ses.CommandContext(), tx, ses, mapID, text)
+	})
+}
+
+// Source admission shares the mutation's retained character/query owner. Runtime
+// position, durable pose, flags and actor overrides must agree before spending.
+func (wh *WorldHandler) authorizeSourceInteractionIn(ctx context.Context, tx db.DBTX, ses *session.Session, mapID int, text string) error {
+	if err := db.RequireTransaction(tx); err != nil {
+		return err
+	}
+	charID := int64(ses.Client.CharData().ID)
+	if err := requireNoOwnedBattleIn(tx, charID); err != nil {
+		return err
+	}
+	position := wh.ownedPlayerSnapshot(ses, "")
+	if position.ServerMovementPending {
+		return errScriptInteractionDenied
+	}
+	var source interactionPosition
+	if err := tx.QueryRow(`SELECT map_id,CAST(x AS INTEGER),CAST(y AS INTEGER) FROM character_data WHERE id=$1`, charID).Scan(&source.MapID, &source.X, &source.Y); err != nil {
+		return err
+	}
+	if normalizedVisiblePlayerMapID(wh, source.MapID) != position.MapID || source.X != position.X || source.Y != position.Y {
+		return errScriptInteractionDenied
+	}
 	var objectID *int
 	var count int
-	if err := wh.database.QueryRowContext(ctx, `SELECT MIN(id),COUNT(*) FROM phaser_objects WHERE map_id=$1 AND text=$2`, mapID, text).Scan(&objectID, &count); err != nil {
+	if err := tx.QueryRow(`SELECT MIN(id),COUNT(*) FROM phaser_objects WHERE map_id=$1 AND text=$2`, mapID, text).Scan(&objectID, &count); err != nil {
 		return err
 	}
 	if count != 1 || objectID == nil {
 		return fmt.Errorf("source interaction map=%d text=%q has %d actors", mapID, text, count)
 	}
-	_, _, err := wh.scriptInteractionTargetContext(ctx, ses, *objectID)
+	flags, err := eventFlagSnapshotIn(tx, charID)
+	if err != nil {
+		return err
+	}
+	_, _, err = wh.scriptInteractionTargetFrom(ctx, tx.(db.ContextDBTX), ses, *objectID, flags, source)
 	return err
 }

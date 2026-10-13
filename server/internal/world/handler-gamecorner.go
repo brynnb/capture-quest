@@ -262,16 +262,29 @@ func HandleGameCornerBuyCoins(ses *session.Session, payload []byte, wh *WorldHan
 	}
 	charID := int64(char.ID)
 
-	if err := wh.authorizeSourceInteraction(ses, GameCornerMapID, "TEXT_GAMECORNER_CLERK1"); err != nil {
-		if !errors.Is(err, errScriptInteractionDenied) {
-			log.Printf("authorize Game Corner coin clerk for character %d: %v", charID, err)
+	var result GameCornerCoinPurchaseResult
+	err := db.Transaction(ses.CommandContext(), wh.database, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, charID); err != nil {
+			return err
 		}
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Move to the coin clerk first."}, opcodes.GameCornerCoinBalanceResponse)
-		return false
-	}
-	result, err := buyGameCornerCoins(ses.CommandContext(), wh.database, charID)
+		if err := wh.authorizeSourceInteractionIn(ses.CommandContext(), tx, ses, GameCornerMapID, "TEXT_GAMECORNER_CLERK1"); err != nil {
+			return err
+		}
+		var err error
+		result, err = buyGameCornerCoins(ses.CommandContext(), tx, charID)
+		return err
+	})
 	if err != nil {
-		log.Printf("Game Corner coin purchase character %d: %v", charID, err)
+		message := "Could not buy coins."
+		if errors.Is(err, errScriptInteractionDenied) {
+			message = "Move to the coin clerk first."
+		} else {
+			log.Printf("Game Corner coin purchase character %d: %v", charID, err)
+		}
+		// The inner domain result is provisional until this outer commit succeeds.
+		// Do not publish its debited balances on a deferred commit rejection.
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": message}, opcodes.GameCornerCoinBalanceResponse)
+		return false
 	}
 	if !result.Success {
 		ses.SendStreamJSON(map[string]interface{}{

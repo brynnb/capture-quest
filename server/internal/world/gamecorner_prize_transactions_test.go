@@ -75,6 +75,7 @@ func TestGameCornerPrizeCommitFailureDispatcherAndOwnedDatabase(t *testing.T) {
 	db.GlobalWorldDB = nil
 	request := func(want bool) {
 		t.Helper()
+		testdb.Exec(t, database, `UPDATE character_data SET map_id=$1,x=$2,y=$3 WHERE id=42`, ses.Client.CharData().MapID, ses.Client.CharData().X, ses.Client.CharData().Y)
 		messages.streams = nil
 		battleDispatch(t, wh, ses, opcodes.GameCornerPrizeBuyRequest, `{"prizeId":7}`)
 		var result struct {

@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+Game Corner clerk admission joins the existing coin-payment transaction; shared
+source-reader consumers and held-lock/deferred rollback verified, following `78c31cf`:
 Warp Home rendered rejection/owned-read failure and Game Corner source/payment
 audit, following `1fe0e8d`:
 Warp Home held action/reset reentry and native exact-process acceptance,
@@ -150,6 +152,50 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Game Corner coin source/payment transaction prerequisite (2026-10-13)
+
+Coin purchase now retains one character transaction across clerk source admission,
+Coin Case/wallet reads, debit and coin award. `buyGameCornerCoins` accepts the
+existing DBTX owner and joins rather than acquiring a parallel connection. The
+shared `authorizeSourceInteractionIn` requires retained transaction ownership,
+rejects durable battle/pending movement, compares saved pose with owned pose, then
+resolves unique source identity, flags and character-specific actor visibility/
+positions through the existing actor resolver. Source read failures and missing/
+ambiguous catalog records reject; source definition errors retain their exact
+map/text/count diagnostic rather than becoming guessed availability.
+
+The existing prize/Safari source-reader wrapper uses the same owned helper. Their
+payment transactions are still separate and remain queued for their own joined
+admission review; this does not silently claim their mutation boundaries closed.
+Cache-only coin/prize/Safari fixtures were aligned with their intended durable
+positions. New stale-source tests separately assert rejection of disagreement.
+
+A real held character lock is observed through pg_blocking_pids for the exact
+holder backend. The purchase waits; the holder commits saved x=10 while cached
+source stays (135,5,8). After acquiring ownership the purchase rejects, leaving
+money 2000 and coins 3. Single-connection success (1000/53), moved clerk, cold
+durable battle and deferred outer commit rejection also pass. The handler treats
+the joined domain result as provisional until outer commit: rejection publishes
+no debited money/coin fields or success. No new money store or inventory executor
+is introduced.
+
+Final focused coin/prize/Safari/source PostgreSQL race checks pass (4.3s), plus
+all-package compilation and diff checks. The broad world run's only failure was
+Safari's cache-only source fixture; it was corrected and verified in the final
+focused run. Simulator passed (1.5s); that broad world run is not reported as a
+passing final suite. Rendered Chromium/WebSocket Coin Case/purchase/slots, prize
+exchange and Safari gate acceptance pass (25.0s;
+`/var/tmp/capturequest-rendered.Wz9sPY`). No frontend/wire, schema or source asset
+changes. Local checkpoint only; no push or deployment.
+
+Remaining: coin typed/scoped requests, revision/duplicate protection, source-owned
+presentation and coherent current coin/wallet recovery need coordinated migration.
+Prize/slot source/payment joins and all currency/party writers require review.
+Wider five-area criteria and original restore attribution remain open.
+
+Next: review the retained source reader and wallet/coin recovery model, then
+migrate coin buying through the appropriate existing command/recovery boundaries.
 
 ## Warp Home rendered failures and Game Corner next-family audit (2026-10-13)
 
