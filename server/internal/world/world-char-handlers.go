@@ -66,6 +66,10 @@ func HandleEnterWorld(ses *session.Session, payload []byte, wh *WorldHandler) bo
 	if ses.HasValidClient() {
 		charID := int64(ses.Client.CharData().ID)
 		restoreStarted := time.Now()
+		restoreBudget := "none"
+		if deadline, ok := ses.CommandContext().Deadline(); ok {
+			restoreBudget = time.Until(deadline).String()
+		}
 		poolBefore := wh.database.Stats()
 		battle, err := restoreBattleOnLogin(ses.CommandContext(), wh.database, charID)
 		if err != nil {
@@ -73,9 +77,9 @@ func HandleEnterWorld(ses *session.Session, payload []byte, wh *WorldHandler) bo
 			// Keep diagnostics on failure only; pool deltas cover all users of this DB
 			// and are evidence of contention, not attribution to this character.
 			poolAfter := wh.database.Stats()
-			log.Printf("[PokeBattle] Restore failed for character %d (login_elapsed=%s restore_elapsed=%s db_open=%d db_in_use=%d pool_waits=%d pool_wait=%s): %v",
+			log.Printf("[PokeBattle] Restore failed for character %d (login_elapsed=%s restore_elapsed=%s db_open=%d db_in_use=%d pool_waits=%d pool_wait=%s restore_deadline_remaining_at_start=%s command_error=%v): %v",
 				charID, time.Since(loginStarted), time.Since(restoreStarted), poolAfter.OpenConnections, poolAfter.InUse,
-				poolAfter.WaitCount-poolBefore.WaitCount, poolAfter.WaitDuration-poolBefore.WaitDuration, err)
+				poolAfter.WaitCount-poolBefore.WaitCount, poolAfter.WaitDuration-poolBefore.WaitDuration, restoreBudget, ses.CommandContext().Err(), err)
 			ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not restore your battle. Please reconnect."}, opcodes.PokeBattleStartResponse)
 			ses.Close()
 			return false

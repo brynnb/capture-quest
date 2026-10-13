@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+restore deadline audit records remaining inherited budget and controlled admission/
+ownership classification, following `f6cae59`:
 ItemPickup reconciliation review and native no-fallback process acceptance pass,
 following `adf7234`:
 ItemPickup uses generated inventory command identity/revision and scene-owned
@@ -99,6 +101,50 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Bounded restore deadline audit (2026-10-13)
+
+Current-source review confirms `HandleWorldPacket` starts its five-second context
+before `Session.ExecuteCommand` admission. `HandleEnterWorld.loginStarted` starts
+after that gate, and character loading, handoff, Safari/flags and restoration share
+the remaining parent deadline. `ResumeBattle` uses the existing transaction owner,
+character lock and classified saved-state/party/legacy-upgrade errors. It does not
+restart an independent full budget or acquire a parallel query pool inside its
+transaction. Existing held ownership/saved-state/party regressions remain valid.
+
+The failure-only restore log now includes
+`restore_deadline_remaining_at_start` and `command_error` alongside login/restore
+elapsed time and pool deltas. This distinguishes inherited budget exhaustion from
+an operation given a full interval; login_elapsed alone excludes pre-handler gate
+wait. Pool metrics still describe all database users and cannot independently
+attribute a wait to the character. No deadlines or recovery behavior were relaxed.
+
+A real session-command/PostgreSQL regression performs preceding entry-like SQL
+work and then blocks restore on character ownership or an occupied one-connection
+pool. Observed fields were: ownership budget 99.212396ms, command_error=context
+deadline exceeded, pool_waits=0; pool-admission budget 99.646213ms, same command
+error, pool_waits=1. Stage errors were respectively `resume character ownership`
+and `begin transaction`. Neither failure publishes a battle. The short fixture
+budgets test propagation and classification, not production tuning, and a bounded
+release guard prevents a regressed parent-dropping implementation from hanging.
+
+The new and existing restore ownership/relation-wait checks pass in world (1.5s)
+and battle (1.9s) PostgreSQL race suites; all Go packages compile and diff checks
+pass. This narrow diagnostic change does not require another rendered reentry
+run. Recent rendered reentries remain successful but are not root-cause evidence.
+
+The historical five-second failure remains unattributed: its missing queue/
+remaining-budget/lock trace cannot be reconstructed from these controlled cases.
+This audit establishes a diagnostic gap and proves the current budget boundary;
+it does not claim an original-cause fix or close the issue. The five-area roadmap
+remains incomplete. No push, production deployment, schema or asset changes.
+
+Next: use these failure fields in any bounded reproduction, retain the issue as
+open, and continue the finite matrix with the existing FieldMoveUse family.
+Source inspection confirms its entry still uses cached battle admission, an
+uncorrelated envelope and action-specific handlers (CUT, STRENGTH/FLASH,
+DIG/TELEPORT/FLY); audit their existing execution owners before choosing a shared
+permission/recovery policy rather than building another coordinator.
 
 ## ItemPickup reconciliation review and native acceptance (2026-10-13)
 
