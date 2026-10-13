@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+STRENGTH/FLASH durable activation shares one primitive with boulder activation,
+following `f18fcab`:
 restore deadline audit records remaining inherited budget and controlled admission/
 ownership classification, following `f6cae59`:
 ItemPickup reconciliation review and native no-fallback process acceptance pass,
@@ -101,6 +103,52 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## FieldMoveUse corpus audit and state activation prerequisite (2026-10-13)
+
+The registered family contains six move policies: CUT, STRENGTH/FLASH state,
+DIG escape, TELEPORT bind and FLY catalog travel. Source inspection found different
+existing owners rather than a missing universal executor. FLY already has a
+transactional destination/catalog policy. CUT has transient cut-map state and a
+replacement-tile read. DIG/TELEPORT permission and destination work remain split.
+Do not route those movement/travel effects through the inventory coordinator.
+
+STRENGTH/FLASH activation previously used cached map/badge/battle admission and
+independent global party/state queries. It now locks the character and evaluates
+durable battle ownership, saved map and permission before committing state.
+`prepareStateFieldMoveIn` joins the supplied transaction and is also used by
+boulder activation, retiring its duplicate permission/state-upsert implementation.
+The state-record primitive requires an existing transaction. Error/permission
+messages and activation are private until the outer commit; no success or active
+state survives late deferred failure. Cached battle admission remains on the
+unmigrated branches, not these two state moves.
+
+Repository-wide caller inventory found no live uses of `TryUseFieldMove` or
+`IsFieldMoveActive`; both obsolete global paths are removed. The global
+`recordFieldMoveState` writer is replaced by the owned primitive. Ordinary field
+permission consumers still using `CanUseFieldMove` are not silently migrated or
+claimed complete. No generated contract, source rule or schema changes occur.
+
+Focused PostgreSQL race checks pass (2.4s) for both state moves, proving durable
+badge/party/map decisions over cache, durable battle denial despite absent cache,
+acceptance despite an obsolete cached battle, one-connection ownership and late
+commit rollback. Existing boulder/FLY/rule/upsert checks pass. The new fixture's
+parameterized SQL statements were separated after PostgreSQL rejected batching;
+assertions were not changed. Full world (63.6s), simulator (1.5s) race suites and
+all-package Go compilation pass. The rendered Chromium/WebSocket boulder
+activation/push/follow-up-step check passes (4.6s;
+`/var/tmp/capturequest-rendered.gmViAP`). This does not claim explicit FLASH
+presentation or correlated state-move recovery acceptance.
+
+Remaining: state-move request identity, source expectations, bounded replay and
+scene-owned response/recovery still need migration; the legacy global reply must
+be retired with that change. CUT and DIG/TELEPORT/FLY retain their listed permission,
+source, publication and recovery audits. The five-area roadmap and historical
+restore timeout remain open. No push or production deployment is authorized.
+
+Next: review this state activation boundary, then migrate its explicit commands
+and current state recovery through the existing field/movement owners before
+another policy. Keep transient CUT state and travel destination semantics distinct.
 
 ## Bounded restore deadline audit (2026-10-13)
 

@@ -101,54 +101,45 @@ func fieldMovePermissionIn(database db.DBTX, charID int64, moveName string, hasF
 	return result, nil
 }
 
-func TryUseFieldMove(charID int64, mapID int, moveName string, efm *EventFlagManager) FieldMoveUseResult {
-	permission := CanUseFieldMove(charID, moveName, efm)
-	result := FieldMoveUseResult{
-		Permission: permission,
-		MoveName:   permission.MoveName,
-		MapID:      mapID,
+// State activation joins the caller's character transaction. Permission and
+// map-scoped activation must observe one durable owner for both consumers.
+func prepareStateFieldMoveIn(tx db.DBTX, charID int64, mapID int, moveName string) (FieldMoveUseResult, error) {
+	if err := db.RequireTransaction(tx); err != nil {
+		return FieldMoveUseResult{}, err
 	}
+	moveName = normalizeFieldMoveName(moveName)
+	if moveName != "STRENGTH" && moveName != "FLASH" {
+		return FieldMoveUseResult{}, fmt.Errorf("unsupported state field move %s", moveName)
+	}
+	permission, err := fieldMovePermissionIn(tx, charID, moveName, func(flag string) (bool, error) { return queryEventFlag(tx, charID, flag) })
+	if err != nil {
+		return FieldMoveUseResult{}, err
+	}
+	result := FieldMoveUseResult{Permission: permission, MoveName: permission.MoveName, MapID: mapID, Message: permission.Message}
 	if !permission.Allowed {
-		result.Message = permission.Message
-		return result
+		return result, nil
 	}
-
-	switch normalizeFieldMoveName(permission.MoveName) {
-	case "STRENGTH":
-		if _, err := db.GlobalWorldDB.DB.Exec(`
-			INSERT INTO character_field_move_state (character_id, move_name, map_id, active)
-			VALUES ($1, 'STRENGTH', $2, 1)
-			ON CONFLICT (character_id, move_name) DO UPDATE SET
-				map_id = EXCLUDED.map_id,
-				active = 1`,
-			charID,
-			mapID,
-		); err != nil {
-			result.Message = fmt.Sprintf("Failed to use STRENGTH: %v", err)
-			return result
+	if err := recordFieldMoveStateIn(tx, charID, mapID, moveName); err != nil {
+		return FieldMoveUseResult{}, err
+	}
+	result.Success = true
+	result.Message = permission.MoveName + " is ready."
+	if permission.KnownByName != "" {
+		if moveName == "STRENGTH" {
+			result.Message = fmt.Sprintf("%s used STRENGTH. %s can move boulders.", permission.KnownByName, permission.KnownByName)
+		} else {
+			result.Message = permission.KnownByName + " used FLASH."
 		}
-		result.Success = true
-		result.Message = fmt.Sprintf("%s used STRENGTH. %s can move boulders.", permission.KnownByName, permission.KnownByName)
-	default:
-		result.Success = true
-		result.Message = permission.MoveName + " is ready."
 	}
-	return result
+	return result, nil
 }
 
-func IsFieldMoveActive(charID int64, mapID int, moveName string) bool {
-	var active int
-	if err := db.GlobalWorldDB.DB.QueryRow(`
-		SELECT active
-		FROM character_field_move_state
-		WHERE character_id = $1 AND map_id = $2 AND move_name = $3`,
-		charID,
-		mapID,
-		normalizeFieldMoveName(moveName),
-	).Scan(&active); err != nil {
-		return false
+func recordFieldMoveStateIn(tx db.DBTX, charID int64, mapID int, moveName string) error {
+	if err := db.RequireTransaction(tx); err != nil {
+		return err
 	}
-	return active != 0
+	_, err := tx.Exec(`INSERT INTO character_field_move_state(character_id,move_name,map_id,active,updated_at) VALUES($1,$2,$3,1,CURRENT_TIMESTAMP) ON CONFLICT(character_id,move_name) DO UPDATE SET map_id=EXCLUDED.map_id,active=1,updated_at=CURRENT_TIMESTAMP`, charID, normalizeFieldMoveName(moveName), mapID)
+	return err
 }
 
 func fieldMoveRuleForName(moveName string) (fieldMoveRule, bool) {

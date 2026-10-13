@@ -37,12 +37,6 @@ func HandleFieldMoveUse(ses *session.Session, payload []byte, wh *WorldHandler) 
 	if !ses.HasValidClient() {
 		return false
 	}
-	if char := ses.Client.CharData(); char != nil {
-		if battle := getBattle(int64(char.ID)); battle != nil && !battle.IsOver() {
-			sendFieldMoveUseError(ses, "Field moves can't be used during a battle.")
-			return false
-		}
-	}
 
 	var req FieldMoveUseRequestPayload
 	if len(payload) > 0 {
@@ -50,6 +44,16 @@ func HandleFieldMoveUse(ses *session.Session, payload []byte, wh *WorldHandler) 
 			sendFieldMoveUseError(ses, "Invalid field move request.")
 			return false
 		}
+	}
+
+	if move := normalizeFieldMoveName(req.MoveName); move != "STRENGTH" && move != "FLASH" {
+		if char := ses.Client.CharData(); char != nil {
+			if battle := getBattle(int64(char.ID)); battle != nil && !battle.IsOver() {
+				sendFieldMoveUseError(ses, "Field moves can't be used during a battle.")
+				return false
+			}
+		}
+
 	}
 
 	switch normalizeFieldMoveName(req.MoveName) {
@@ -157,49 +161,37 @@ func handleCutFieldMove(ses *session.Session, req FieldMoveUseRequestPayload, wh
 }
 
 func handleStateFieldMove(ses *session.Session, req FieldMoveUseRequestPayload, wh *WorldHandler) bool {
-	charData := ses.Client.CharData()
-	if charData == nil {
+	if wh == nil || wh.database == nil {
+		sendFieldMoveUseError(ses, "Field move state unavailable.")
 		return false
 	}
-
-	moveName := normalizeFieldMoveName(req.MoveName)
-	charID := int64(charData.ID)
-	mapID := int(charData.MapID)
-	if wh != nil && wh.ActorManager != nil && wh.ActorManager.IsOverworld(mapID) {
-		mapID = UnifiedOverworldMapID
-	}
-	if wh != nil && wh.PlayerMovement != nil {
-		if _, _, movementMapID, ok := wh.PlayerMovement.GetPosition(int(charData.ID)); ok {
-			mapID = movementMapID
+	charID := int64(ses.Client.CharData().ID)
+	var result FieldMoveUseResult
+	err := db.Transaction(ses.CommandContext(), wh.database, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, charID); err != nil {
+			return err
 		}
-	}
-
-	permission := CanUseFieldMove(charID, moveName, eventFlagsForFieldMove(wh))
-	if !permission.Allowed {
-		sendFieldMoveUseError(ses, permission.Message)
-		return false
-	}
-	if err := recordFieldMoveState(charID, mapID, moveName); err != nil {
+		if err := requireNoOwnedBattleIn(tx, charID); err != nil {
+			return err
+		}
+		var mapID int
+		if err := tx.QueryRow(`SELECT map_id FROM character_data WHERE id=$1`, charID).Scan(&mapID); err != nil {
+			return err
+		}
+		mapID = normalizedVisiblePlayerMapID(wh, mapID)
+		var err error
+		result, err = prepareStateFieldMoveIn(tx, charID, mapID, req.MoveName)
+		return err
+	})
+	if err != nil {
 		sendFieldMoveUseError(ses, "That move can't be used here.")
 		return false
 	}
-
-	message := permission.MoveName + " is ready."
-	if permission.KnownByName != "" {
-		switch moveName {
-		case "STRENGTH":
-			message = permission.KnownByName + " used STRENGTH. " + permission.KnownByName + " can move boulders."
-		case "FLASH":
-			message = permission.KnownByName + " used FLASH."
-		}
+	if !result.Success {
+		sendFieldMoveUseError(ses, result.Message)
+		return false
 	}
-
-	ses.SendStreamJSON(FieldMoveUseResponsePayload{
-		Success:  true,
-		Message:  message,
-		MoveName: permission.MoveName,
-		MapID:    mapID,
-	}, opcodes.FieldMoveUseResponse)
+	ses.SendStreamJSON(FieldMoveUseResponsePayload{Success: true, Message: result.Message, MoveName: result.MoveName, MapID: result.MapID}, opcodes.FieldMoveUseResponse)
 	return false
 }
 
@@ -391,21 +383,6 @@ func eventFlagsForFieldMove(wh *WorldHandler) *EventFlagManager {
 		return nil
 	}
 	return wh.EventFlags
-}
-
-func recordFieldMoveState(charID int64, mapID int, moveName string) error {
-	_, err := db.GlobalWorldDB.DB.Exec(`
-		INSERT INTO character_field_move_state (character_id, move_name, map_id, active, updated_at)
-		VALUES ($1, $2, $3, 1, CURRENT_TIMESTAMP)
-		ON CONFLICT (character_id, move_name) DO UPDATE SET
-			map_id = EXCLUDED.map_id,
-			active = 1,
-			updated_at = CURRENT_TIMESTAMP`,
-		charID,
-		normalizeFieldMoveName(moveName),
-		mapID,
-	)
-	return err
 }
 
 func characterBindDestination(charID uint32) (int, int, int, error) {

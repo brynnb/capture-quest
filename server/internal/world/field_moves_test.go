@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"database/sql"
 	"testing"
 
@@ -56,10 +57,10 @@ func TestFieldMoveNoBadgeRequiredRules(t *testing.T) {
 func TestRecordFieldMoveStateUpsertsMapState(t *testing.T) {
 	raw := setupFieldMoveStateTestDB(t)
 
-	if err := recordFieldMoveState(7, 40, "flash"); err != nil {
+	if err := db.Transaction(context.Background(), raw, func(tx db.DBTX) error { return recordFieldMoveStateIn(tx, 7, 40, "flash") }); err != nil {
 		t.Fatalf("record FLASH state: %v", err)
 	}
-	if err := recordFieldMoveState(7, 41, "FLASH"); err != nil {
+	if err := db.Transaction(context.Background(), raw, func(tx db.DBTX) error { return recordFieldMoveStateIn(tx, 7, 41, "FLASH") }); err != nil {
 		t.Fatalf("update FLASH state: %v", err)
 	}
 

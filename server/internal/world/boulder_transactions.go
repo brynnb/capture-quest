@@ -59,21 +59,15 @@ func pushBoulder(ctx context.Context, database *sql.DB, charID int64, mapID, pla
 		result.FromX, result.FromY = boulder.X, boulder.Y
 		result.ToX, result.ToY = boulder.X+dx, boulder.Y+dy
 		if activate {
-			permission, err := fieldMovePermissionIn(tx, charID, "STRENGTH", func(flag string) (bool, error) { return queryEventFlag(tx, charID, flag) })
+			used, err := prepareStateFieldMoveIn(tx, charID, mapID, "STRENGTH")
 			if err != nil {
 				return err
 			}
-			used := FieldMoveUseResult{Permission: permission, MoveName: permission.MoveName, MapID: mapID, Message: permission.Message}
 			result.StrengthUsed = &used
-			if !permission.Allowed {
-				result.Message = permission.Message
+			if !used.Success {
+				result.Message = used.Message
 				return nil
 			}
-			if _, err := tx.Exec(`INSERT INTO character_field_move_state(character_id,move_name,map_id,active) VALUES($1,'STRENGTH',$2,1) ON CONFLICT(character_id,move_name) DO UPDATE SET map_id=EXCLUDED.map_id,active=1`, charID, mapID); err != nil {
-				return err
-			}
-			used.Success = true
-			used.Message = fmt.Sprintf("%s used STRENGTH. %s can move boulders.", permission.KnownByName, permission.KnownByName)
 		}
 		var active int
 		err = tx.QueryRow(`SELECT active FROM character_field_move_state WHERE character_id=$1 AND map_id=$2 AND move_name='STRENGTH'`, charID, mapID).Scan(&active)
