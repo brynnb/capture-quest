@@ -760,3 +760,9 @@ test("failed ability travel recovery keeps subsequent field mutations inadmissib
  vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce({fieldCommands:{}} as any);vi.mocked(movement.requestStateField).mockRejectedValueOnce(new Error("lost reply"));vi.mocked(battlePublication.recoverFieldPublication).mockResolvedValueOnce(false);
  await controller.travelByMove("TELEPORT");await controller.travelByMove("TELEPORT");expect(movement.requestStateField).toHaveBeenCalledOnce();expect(battlePublication.recoverFieldPublication).toHaveBeenCalledOnce();
 });
+
+test("FLY forwards catalog identity separately from expected source",async()=>{
+ const {controller}=buildLedgeController();usePlayerCharacterStore.getState().setCharacterProfile({id:42});
+ vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce({fieldCommands:{travel:3}} as any);vi.mocked(movement.requestStateField).mockRejectedValueOnce(new Error("lost reply"));
+ await controller.travelByMove("FLY",{mapId:60,x:3,y:4});expect(movement.requestStateField).toHaveBeenCalledOnce();expect(vi.mocked(movement.requestStateField).mock.calls[0][0]).toMatchObject({mapId:9999,destinationMapId:60,targetX:3,targetY:4,moveName:"FLY",characterId:42,commandRevision:3});expect(battlePublication.recoverFieldPublication).toHaveBeenCalledOnce();
+});

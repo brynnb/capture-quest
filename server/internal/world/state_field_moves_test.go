@@ -122,7 +122,7 @@ func TestTaggedLegacyFieldPoliciesCannotBypassCommandAdmission(t *testing.T) {
 		messages.streams = nil
 		battleDispatch(t, wh, ses, opcodes.FieldMoveUseRequest, fmt.Sprintf(`{"moveName":%q,"requestId":"mixed-policy","characterId":42,"commandRevision":0,"mapId":50,"fromX":0,"fromY":0}`, move))
 		var reply InventoryCommandError
-		if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &reply) != nil || reply.Success || reply.RequestID != "mixed-policy" || reply.Error != "Tagged command is unsupported for this field move." {
+		if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &reply) != nil || reply.Success || reply.RequestID != "mixed-policy" || reply.Error != "Choose where to FLY." {
 			t.Fatalf("mixed policy entered legacy adapter: %+v", messages.streams)
 		}
 	}

@@ -7,6 +7,9 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+FLY uses scoped source/catalog identity, the shared travel receipt and owned
+current-position recovery; its selector retires with its source lifetime,
+following `0ee1098`:
 FLY shares durable travel source/battle admission while retaining catalog policy,
 following `32be2b4`:
 ability travel shared failure/retirement review and native process acceptance,
@@ -127,6 +130,41 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## FLY shared travel and selector checkpoint (2026-10-13)
+
+FLY now joins DIG/TELEPORT in the existing travel command adapter. `mapId` and
+`fromX/fromY` describe the expected source; `destinationMapId` and `targetX/Y`
+describe the unique served catalog choice. Character/request identity and the
+travel revision are required. The same transaction commits catalog permission,
+position and the bounded latest receipt. Duplicate requests replay the receipt
+without moving again or publishing a historical destination.
+
+The party selector uses the existing current-character lifetime and position
+watcher. Source movement, scene/character/transport retirement or unmount closes
+it. Selection enters the movement-owned field slot; success and uncertain replies
+recover current owned state through the shared publication coordinator. The old
+raw FLY sender, unsolicited warp and global field-response handler are retired.
+The generated wire contract was regenerated through `npm run tygo`.
+
+Verification: focused server checks, full world (85.3s) and simulator (1.5s)
+race suites, 604 client tests and typecheck pass. Rendered Chromium/WebSocket
+normal catalog selection and exact duplicate/lost-reply cases pass (4.5s, 4.3s,
+14.6s; `/var/tmp/capturequest-rendered.0CPk8o`). Selector source replacement passes
+(4.0s; `/var/tmp/capturequest-rendered.s6gDkf`) with zero travel receipts. The first
+selector test attempted to click the scenario menu behind the modal and timed out;
+the corrected fixture sends the existing debug scene request directly, preserving
+real scene replacement and selector/no-mutation assertions. No schema or generated
+asset changes are involved. The user authorized pushing this stopping checkpoint
+to the existing `codex/server-foundations` GitHub branch; no deployment is requested.
+
+Remaining: native FLY process acceptance and held-reply/selector lifetime review
+remain open. Wider command coverage and all five original roadmap areas remain
+incomplete; the historical restore timeout is still unattributed. This checkpoint
+is a stopping point for publication, not completion of the active goal.
+
+Next: review FLY replay/current-position and selector retirement across reentry,
+then verify native transport/process recovery before migrating another family.
 
 ## FLY source/battle/catalog prerequisite review (2026-10-13)
 

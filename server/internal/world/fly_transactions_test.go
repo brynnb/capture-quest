@@ -22,7 +22,7 @@ func TestFlyDispatcherValidatesDurableEligibilityAndCatalogBeforeCommit(t *testi
 	deny := func(mapID, x, y int, want string) {
 		t.Helper()
 		messages.streams = nil
-		battleDispatch(t, wh, ses, opcodes.FieldMoveUseRequest, fmt.Sprintf(`{"moveName":"FLY","mapId":%d,"targetX":%d,"targetY":%d}`, mapID, x, y))
+		battleDispatch(t, wh, ses, opcodes.FieldMoveUseRequest, fmt.Sprintf(`{"moveName":"FLY","mapId":50,"destinationMapId":%d,"targetX":%d,"targetY":%d,"requestId":"fly-test","characterId":42,"commandRevision":0,"fromX":7,"fromY":8}`, mapID, x, y))
 		if len(messages.streams) != 1 || messages.streams[0].opcode != opcodes.FieldMoveUseResponse {
 			t.Fatalf("denial messages %+v", messages.streams)
 		}
@@ -49,23 +49,23 @@ func TestFlyDispatcherValidatesDurableEligibilityAndCatalogBeforeCommit(t *testi
 	deny(9999, 3, 4, "Choose a valid FLY destination.")
 	deny(60, -999, 4, "Choose a valid FLY destination.")
 	testdb.Exec(t, database, `INSERT INTO poke_start_cities(id,map_id,name,spawn_x,spawn_y) VALUES(2,60,'Duplicate',3,4)`)
-	deny(60, 3, 4, "Could not FLY. Please try again.")
+	deny(60, 3, 4, "Field travel state changed or could not be read. Recover before trying again.")
 	testdb.Exec(t, database, `DELETE FROM poke_start_cities WHERE id=2;
  CREATE FUNCTION reject_fly_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'reject fly commit'; END $$;
  CREATE CONSTRAINT TRIGGER reject_fly_commit AFTER UPDATE ON character_data DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (NEW.map_id=60) EXECUTE FUNCTION reject_fly_commit();`)
-	deny(60, 3, 4, "Could not FLY. Please try again.")
+	deny(60, 3, 4, "Field travel state changed or could not be read. Recover before trying again.")
 	testdb.Exec(t, database, `DROP TRIGGER reject_fly_commit ON character_data`)
 	battleTestStart(t, database, false, nil)
 	forgetBattle(42, getBattle(42)) // Cold cache cannot bypass durable ownership.
-	deny(60, 3, 4, "Could not FLY. Please try again.")
+	deny(60, 3, 4, "Field travel state changed or could not be read. Recover before trying again.")
 	testdb.Exec(t, database, `DELETE FROM character_battle_state WHERE character_id=42`)
 	messages.streams = nil
-	battleDispatch(t, wh, ses, opcodes.FieldMoveUseRequest, `{"moveName":"FLY","mapId":60,"targetX":3,"targetY":4}`)
-	if len(messages.streams) != 2 || messages.streams[0].opcode != opcodes.WarpTileTeleportNotify || messages.streams[1].opcode != opcodes.FieldMoveUseResponse {
+	battleDispatch(t, wh, ses, opcodes.FieldMoveUseRequest, `{"moveName":"FLY","mapId":50,"destinationMapId":60,"targetX":3,"targetY":4,"requestId":"fly-test","characterId":42,"commandRevision":0,"fromX":7,"fromY":8}`)
+	if len(messages.streams) != 1 || messages.streams[0].opcode != opcodes.FieldMoveUseResponse {
 		t.Fatalf("success messages %+v", messages.streams)
 	}
-	var response FieldMoveUseResponsePayload
-	if err := json.Unmarshal(messages.streams[1].payload, &response); err != nil || !response.Success || response.MapID != 60 || response.TargetX != 3 || response.TargetY != 4 {
+	var response StateFieldResponse
+	if err := json.Unmarshal(messages.streams[0].payload, &response); err != nil || !response.Success || response.MapID != 60 {
 		t.Fatalf("success response %+v: %v", response, err)
 	}
 	var savedMap int
@@ -97,7 +97,7 @@ func TestFlySourceAndPoolOwnershipBeforeCatalogCommit(t *testing.T) {
 			old := db.GlobalWorldDB
 			db.GlobalWorldDB = nil
 			t.Cleanup(func() { db.GlobalWorldDB = old })
-			battleDispatch(t, wh, ses, opcodes.FieldMoveUseRequest, `{"moveName":"FLY","mapId":60,"targetX":3,"targetY":4}`)
+			battleDispatch(t, wh, ses, opcodes.FieldMoveUseRequest, `{"moveName":"FLY","mapId":50,"destinationMapId":60,"targetX":3,"targetY":4,"requestId":"fly-test","characterId":42,"commandRevision":0,"fromX":7,"fromY":8}`)
 			want := kind == "single-connection"
 			var reply FieldMoveUseResponsePayload
 			for _, packet := range messages.streams {

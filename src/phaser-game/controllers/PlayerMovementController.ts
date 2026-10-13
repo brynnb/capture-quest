@@ -156,14 +156,14 @@ export class PlayerMovementController {
     }
   }
 
-  async travelByMove(moveName:"DIG"|"TELEPORT"):Promise<void>{
+  async travelByMove(moveName:"DIG"|"TELEPORT"|"FLY",destination?:{mapId:number;x:number;y:number}):Promise<void>{
     if(this.isMoving || this.issuedStep || this.serverMovementInProgress)return;
     return this.runOwnedFieldCommand(async(characterId,signal,current)=>{
       const source={mapId:this.currentMapId,fromX:this.currentTileX,fromY:this.currentTileY};let rejection:string|undefined;
       try{
         const before=await readCurrentGameplayState(signal);if(!current())return;if(!before.fieldCommands)throw new Error("Missing travel revision");
         const commandRevision=before.fieldCommands.travel??0;if(!Number.isSafeInteger(commandRevision) || commandRevision<0)throw new Error("Invalid travel revision");
-        const reply=await requestStateField({...source,characterId,commandRevision,moveName},signal);if(!current())return;
+        const reply=await requestStateField({...source,characterId,commandRevision,moveName,...(destination?{destinationMapId:destination.mapId,targetX:destination.x,targetY:destination.y}:{})},signal);if(!current())return;
         if(reply.characterId!==characterId || reply.moveName!==moveName || !Number.isSafeInteger(reply.mapId) || reply.mapId<=0 || typeof reply.message!=="string")throw new Error("Invalid travel outcome");
       }catch(error){if(!current())return;if(error instanceof CorrelatedResponseError)rejection=error.message;}
       const recovered=await recoverFieldPublication(signal);if(!current())return;

@@ -9,13 +9,13 @@ import { createPortal } from "react-dom";
 import styled from "styled-components";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
 import useCQInventoryStore from "@/stores/CQInventoryStore";
-import { sendPartyReorderCommand } from "@/phaser-game/services/InventoryCommandService";
+import { sendPartyReorderCommand, watchInteractionPosition } from "@/phaser-game/services/InventoryCommandService";
 import useGameStatusStore from "@/stores/GameStatusStore";
 import useStaticDataStore from "@/stores/StaticDataStore";
 import type { MoveDTO, PokemonDTO } from "@/net/generated/world_api";
 import type { HomeTownData } from "@/services/characterService";
 import PokemonDetailModal from "./PokemonDetailModal";
-import { WorldSocket, OpCodes } from "@/net";
+import {readForCurrentCharacter} from "@/phaser-game/services/CorrelatedRequest";
 
 const PartyContainer = styled.div<{ $embedded: boolean }>`
   position: absolute;
@@ -427,6 +427,7 @@ const PartyPokemonHUD: React.FC<PartyPokemonHUDProps> = ({
   const isLoadingCharCreate = useStaticDataStore((s) => s.isLoadingCharCreate);
   const loadCharCreateData = useStaticDataStore((s) => s.loadCharCreateData);
   const [selectedPokemon, setSelectedPokemon] = useState<PokemonDTO | null>(null);
+  const flyChoice=useRef<((choice:HomeTownData|undefined)=>void)|null>(null);
   const [pendingFlyMoveName, setPendingFlyMoveName] = useState<string | null>(null);
   const [cursorItemPoint, setCursorItemPoint] = useState<{ x: number; y: number } | null>(null);
   const [, forceRender] = useState(0);
@@ -564,6 +565,23 @@ const PartyPokemonHUD: React.FC<PartyPokemonHUDProps> = ({
     loadCharCreateData();
   }, [homeTowns.length, isLoadingCharCreate, loadCharCreateData, pendingFlyMoveName]);
 
+  useEffect(()=>{
+    if(!pendingFlyMoveName)return;
+    const controller=new AbortController();
+    let settle:((choice:HomeTownData|undefined)=>void)|null=null;
+    void readForCurrentCharacter(async(_character,signal)=>{
+      const stopPosition=watchInteractionPosition(()=>controller.abort());
+      const abort=()=>settle?.(undefined);
+      try{
+        return await new Promise<HomeTownData|undefined>(resolve=>{settle=resolve;flyChoice.current=resolve;signal.addEventListener("abort",abort,{once:true});if(signal.aborted)abort();});
+      }finally{stopPosition();signal.removeEventListener("abort",abort);if(flyChoice.current===settle)flyChoice.current=null;}
+    },controller.signal).then(destination=>{
+      if(destination && !controller.signal.aborted)window.dispatchEvent(new CustomEvent("cq:fieldTravelUse",{detail:{moveName:"FLY",destination:{mapId:destination.mapId,x:destination.spawnX,y:destination.spawnY}}}));
+    }).catch(()=>{}).finally(()=>{if(!controller.signal.aborted)setPendingFlyMoveName(null);});
+    const close=()=>{settle?.(undefined);setPendingFlyMoveName(null);};controller.signal.addEventListener("abort",close,{once:true});
+    return ()=>{controller.signal.removeEventListener("abort",close);controller.abort();if(flyChoice.current===settle)flyChoice.current=null;};
+  },[pendingFlyMoveName]);
+
   const handleGrabMouseDown = useCallback((e: React.MouseEvent, origIdx: number, displayIdx: number) => {
     e.preventDefault();
     e.stopPropagation();
@@ -600,19 +618,12 @@ const PartyPokemonHUD: React.FC<PartyPokemonHUDProps> = ({
     const moveName=normalizeMoveName(move.name);
     if(moveName==="DIG" || moveName==="TELEPORT")window.dispatchEvent(new CustomEvent("cq:fieldTravelUse",{detail:{moveName}}));
     else if(moveName==="STRENGTH" || moveName==="FLASH")window.dispatchEvent(new CustomEvent("cq:stateFieldUse",{detail:{moveName}}));
-    else WorldSocket.sendJsonMessage(OpCodes.FieldMoveUseRequest,{moveName:move.name});
+
     setSelectedPokemon(null);
   }, []);
 
   const handleFlyDestinationClick = useCallback((destination: HomeTownData) => {
-    if (!pendingFlyMoveName) return;
-    WorldSocket.sendJsonMessage(OpCodes.FieldMoveUseRequest, {
-      moveName: pendingFlyMoveName,
-      mapId: destination.mapId,
-      targetX: destination.spawnX,
-      targetY: destination.spawnY,
-    });
-    setPendingFlyMoveName(null);
+    if(pendingFlyMoveName)flyChoice.current?.(destination);
   }, [pendingFlyMoveName]);
 
   if (party.length === 0) {

@@ -169,7 +169,7 @@ export class NetworkBridge {
         break;
       case OpCodes.FieldMoveUseResponse:
         if(typeof (data as Record<string,unknown>).requestId==="string")import("@/phaser-game/services/PhaserNetworkService").then(module=>module.dispatchPhaserResponse(opcode,data));
-        else if(!["CUT","STRENGTH","FLASH","DIG","TELEPORT"].includes(String((data as Record<string,unknown>).moveName).toUpperCase()))this.handleFieldMoveUseResponse(data as Record<string, unknown>);
+
         break;
       case OpCodes.ItemPickupResponse:
         import("@/phaser-game/services/PhaserNetworkService").then(module=>module.dispatchPhaserResponse(opcode,data));
@@ -366,49 +366,6 @@ export class NetworkBridge {
 
     this.playSourceSFX("SFX_PRESS_AB", 0.75);
     console.log("[NetworkBridge] Used item:", data.message);
-  }
-
-  private handleFieldMoveUseResponse(data: Record<string, unknown>) {
-    if (!data.success) {
-      const error = String(data.error || "That move can't be used here.");
-      console.warn("[NetworkBridge] Field move failed:", error);
-      usePokemonDialogueStore.getState().openDialogue([error]);
-      return;
-    }
-
-    const tile = data.tile as
-      | {
-          x: number;
-          y: number;
-          tileImageId: number;
-          collisionType: number;
-          rawFootTileId?: number;
-          talkOverTile?: boolean;
-          erased?: boolean;
-        }
-      | undefined;
-    if (tile) {
-      window.dispatchEvent(
-        new CustomEvent("worldTileUpdate", {
-          detail: {
-            mapId: data.mapId,
-            tiles: [tile],
-          },
-        }),
-      );
-      window.dispatchEvent(
-        new CustomEvent("tileEditorBroadcast", {
-          detail: {
-            mapId: data.mapId,
-            tiles: [tile],
-          },
-        }),
-      );
-    }
-
-    if (data.message) {
-      usePokemonDialogueStore.getState().openDialogue([String(data.message)]);
-    }
   }
 
   private handleDialogueChoiceResponse(data: Record<string, unknown>) {

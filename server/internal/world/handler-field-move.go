@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
@@ -28,17 +27,18 @@ type CutFieldResponse struct {
 	TargetY            int    `json:"targetY"`
 }
 type FieldMoveUseRequestPayload struct {
-	CutScope        string `json:"cutScope,omitempty"`
-	RequestID       string `json:"requestId,omitempty"`
-	CharacterID     int64  `json:"characterId,omitempty"`
-	CommandRevision *int64 `json:"commandRevision,omitempty"`
-	FromX           *int   `json:"fromX,omitempty"`
-	FromY           *int   `json:"fromY,omitempty"`
-	MoveName        string `json:"moveName"`
-	TargetX         *int   `json:"targetX,omitempty"`
-	TargetY         *int   `json:"targetY,omitempty"`
-	MapID           *int   `json:"mapId,omitempty"`
-	Direction       string `json:"direction,omitempty"`
+	DestinationMapID *int   `json:"destinationMapId,omitempty"`
+	CutScope         string `json:"cutScope,omitempty"`
+	RequestID        string `json:"requestId,omitempty"`
+	CharacterID      int64  `json:"characterId,omitempty"`
+	CommandRevision  *int64 `json:"commandRevision,omitempty"`
+	FromX            *int   `json:"fromX,omitempty"`
+	FromY            *int   `json:"fromY,omitempty"`
+	MoveName         string `json:"moveName"`
+	TargetX          *int   `json:"targetX,omitempty"`
+	TargetY          *int   `json:"targetY,omitempty"`
+	MapID            *int   `json:"mapId,omitempty"`
+	Direction        string `json:"direction,omitempty"`
 }
 
 type FieldMoveUseResponsePayload struct {
@@ -65,14 +65,6 @@ func HandleFieldMoveUse(ses *session.Session, payload []byte, wh *WorldHandler) 
 		}
 	}
 
-	if move := normalizeFieldMoveName(req.MoveName); move != "STRENGTH" && move != "FLASH" && move != "CUT" && move != "DIG" && move != "TELEPORT" {
-		if req.RequestID != "" || req.CharacterID != 0 || req.CommandRevision != nil || req.FromX != nil || req.FromY != nil || req.CutScope != "" {
-			sendInventoryCommandError(ses, req.RequestID, opcodes.FieldMoveUseResponse, "Tagged command is unsupported for this field move.")
-			return false
-		}
-
-	}
-
 	switch normalizeFieldMoveName(req.MoveName) {
 	case "CUT":
 		if err := decodePlayerMovement(payload, &req); err != nil {
@@ -86,14 +78,12 @@ func HandleFieldMoveUse(ses *session.Session, payload []byte, wh *WorldHandler) 
 			return false
 		}
 		return handleStateFieldMove(ses, req, wh)
-	case "DIG", "TELEPORT":
+	case "DIG", "TELEPORT", "FLY":
 		if err := decodePlayerMovement(payload, &req); err != nil {
 			sendInventoryCommandError(ses, req.RequestID, opcodes.FieldMoveUseResponse, "Invalid field travel command.")
 			return false
 		}
 		return handleTravelFieldMove(ses, req, wh)
-	case "FLY":
-		return handleFlyFieldMove(ses, req, wh)
 	default:
 		sendFieldMoveUseError(ses, "That move can't be used here.")
 		return false
@@ -263,17 +253,28 @@ func handleTravelFieldMove(ses *session.Session, req FieldMoveUseRequestPayload,
 		reject("Invalid field travel command.")
 		return false
 	}
+	if moveName == "FLY" && (req.DestinationMapID == nil || req.TargetX == nil || req.TargetY == nil) {
+		reject("Choose where to FLY.")
+		return false
+	}
 	input, _ := json.Marshal(req)
 	var result fieldTravelResult
 	encoded, replay, err := db.ExecuteFieldCommand(ses.CommandContext(), wh.database, charID, "travel", req.RequestID, req.CommandRevision, input, func(tx db.DBTX) ([]byte, error) {
 		var err error
-		result, err = useTravelFieldMove(ses.CommandContext(), tx, charID, moveName, *req.MapID, *req.FromX, *req.FromY, func(id int) int { return normalizedVisiblePlayerMapID(wh, id) })
+		normalize := func(id int) int { return normalizedVisiblePlayerMapID(wh, id) }
+		if moveName == "FLY" {
+			result, err = useFly(ses.CommandContext(), tx, charID, *req.MapID, *req.FromX, *req.FromY, *req.DestinationMapID, *req.TargetX, *req.TargetY, normalize)
+		} else {
+			result, err = useTravelFieldMove(ses.CommandContext(), tx, charID, moveName, *req.MapID, *req.FromX, *req.FromY, func(id int) int { return normalizedVisiblePlayerMapID(wh, id) })
+		}
 		if err != nil {
 			return nil, err
 		}
 		message := "Dug out of the dungeon."
 		if moveName == "TELEPORT" {
 			message = "Teleported to safety."
+		} else if moveName == "FLY" {
+			message = "Flew to destination."
 		}
 		if result.Permission.KnownByName != "" {
 			message = result.Permission.KnownByName + " used " + moveName + "!"
@@ -300,49 +301,6 @@ func handleTravelFieldMove(ses *session.Session, req FieldMoveUseRequestPayload,
 		publishCommittedPlayerPosition(ses, wh, result.MapID, result.X, result.Y, "DOWN")
 	}
 	ses.SendStreamJSON(reply, opcodes.FieldMoveUseResponse)
-	return false
-}
-
-func handleFlyFieldMove(ses *session.Session, req FieldMoveUseRequestPayload, wh *WorldHandler) bool {
-	charData := ses.Client.CharData()
-	if charData == nil {
-		return false
-	}
-
-	if req.MapID == nil || req.TargetX == nil || req.TargetY == nil {
-		sendFieldMoveUseError(ses, "Choose where to FLY.")
-		return false
-	}
-
-	source := wh.ownedPlayerSnapshot(ses, "")
-	result, err := useFly(ses.CommandContext(), wh.database, int64(charData.ID), source.MapID, source.X, source.Y, *req.MapID, *req.TargetX, *req.TargetY, func(mapID int) int {
-		return normalizedVisiblePlayerMapID(wh, mapID)
-	})
-	if err != nil {
-		message := "Could not FLY. Please try again."
-		var rejection *itemuse.Rejection
-		if errors.As(err, &rejection) {
-			message = rejection.Message
-		} else {
-			log.Printf("[FieldMove] FLY failed for character %d: %v", charData.ID, err)
-		}
-		sendFieldMoveUseError(ses, message)
-		return false
-	}
-	publishCommittedTeleport(ses, wh, result.MapID, result.X, result.Y)
-
-	message := "Flew to destination."
-	if result.Permission.KnownByName != "" {
-		message = result.Permission.KnownByName + " used FLY!"
-	}
-	ses.SendStreamJSON(FieldMoveUseResponsePayload{
-		Success:  true,
-		Message:  message,
-		MoveName: result.Permission.MoveName,
-		MapID:    result.MapID,
-		TargetX:  result.X,
-		TargetY:  result.Y,
-	}, opcodes.FieldMoveUseResponse)
 	return false
 }
 

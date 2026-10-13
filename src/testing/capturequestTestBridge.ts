@@ -674,11 +674,11 @@ async function waitUntil(
 }
 
 function sendFieldMoveCommand(command: Extract<EngineProbeCommand, { useFieldMove: unknown }>): void {
-  WorldSocket.sendJsonMessage(OpCodes.FieldMoveUseRequest, {
-    moveName: command.useFieldMove.moveName,
-    targetX: command.useFieldMove.targetX,
-    targetY: command.useFieldMove.targetY,
-  });
+ const detail=command.useFieldMove;const moveName=detail.moveName.toUpperCase();
+ if(moveName==="CUT")window.dispatchEvent(new CustomEvent("cq:cutUse",{detail}));
+ else if(moveName==="STRENGTH" || moveName==="FLASH")window.dispatchEvent(new CustomEvent("cq:stateFieldUse",{detail:{moveName}}));
+ else if(moveName==="DIG" || moveName==="TELEPORT")window.dispatchEvent(new CustomEvent("cq:fieldTravelUse",{detail:{moveName}}));
+ else throw new Error("Use the owned FLY destination selector.");
 }
 
 async function sendScenarioCommand(

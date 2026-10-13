@@ -166,22 +166,6 @@ export function onSurf(receive: (reply: SurfReply) => void): () => void {
 /**
  * Request a contextual field move against a target tile.
  */
-export function requestFieldMoveUse(
-  moveName: string,
-  targetX: number,
-  targetY: number,
-  mapId: number,
-  direction: string,
-): void {
-  if (!WorldSocket.isConnected) {
-    console.warn(`[PhaserNetwork] Not connected - cannot request ${moveName}`);
-    return;
-  }
-  NetworkBridge.send(
-    { moveName, targetX, targetY, mapId, direction },
-    OpCodes.FieldMoveUseRequest,
-  );
-}
 
 /**
  * Request elevator floor list (player clicked elevator control panel)
