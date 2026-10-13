@@ -1,3 +1,4 @@
+import {openCeladonElevatorPanel,clickOverlayText} from "./helpers/elevator";
 import {expect,test,type Page} from "@playwright/test";
 import {createGuestCharacterAndEnterWorld,enterWorld,quitToCharacterSelect} from "./helpers/auth";
 import {isolatedCrashRuntime} from "./helpers/processRecovery";
@@ -119,11 +120,11 @@ test("native CUT process reset restores base tree without replaying receipt",asy
  await page.screenshot({path:info.outputPath("native-cut-reset.png")});await record({family:"native-cut",id,before,after,receipt,oldScope,newScope,image:current.tileImageId,revision:1});await quitToCharacterSelect(page);
 });
 
-for(const move of ["DIG","TELEPORT","FLY"] as const)test(`native ${move} commits current travel and restores its pose after process replacement`,async({page},info)=>{
+for(const move of ["DIG","TELEPORT","FLY","ELEVATOR"] as const)test(`native ${move} commits current travel and restores its pose after process replacement`,async({page},info)=>{
  test.skip(process.env.CQ_E2E_TRANSPORT!=="native" || process.env.CQ_E2E_CRASH_RECOVERY!=="true","Requires native exact-process runner");test.setTimeout(120000);
  const {sql,crash,record}=await isolatedCrashRuntime();const character=await createGuestCharacterAndEnterWorld(page);
  const scenarios=await import("./helpers/scenarioDebugger");const state=await import("./helpers/state");
- await scenarios.jumpToScenario(page,move==="DIG"?"debug_escape_rope_ready":move==="FLY"?"field_move_fly_with_thunder_badge":"field_move_teleport_no_badge_required");await state.waitForNoMapLoading(page);await waitForPlayerIdle(page);const id=(await state.getGameState(page)).player.internalId!;
+ await scenarios.jumpToScenario(page,move==="ELEVATOR"?"celadon_mart_elevator_floors":move==="DIG"?"debug_escape_rope_ready":move==="FLY"?"field_move_fly_with_thunder_badge":"field_move_teleport_no_badge_required");await state.waitForNoMapLoading(page);await waitForPlayerIdle(page);const id=(await state.getGameState(page)).player.internalId!;
  if(move==="DIG"){
   await sql(`UPDATE character_pokemon SET move1_id=(SELECT id FROM phaser_moves WHERE constant_name='DIG'),move1_pp=10 WHERE character_id=${id} AND party_slot=0`);
   await page.evaluate(async()=>{const path="/src/phaser-game/services/InventoryCommandService.ts";await (await import(path)).refreshOwnedGameplayResources();});
@@ -131,7 +132,7 @@ for(const move of ["DIG","TELEPORT","FLY"] as const)test(`native ${move} commits
   const destination=await sql("SELECT id FROM phaser_maps WHERE name='REDS_HOUSE_2F'");expect(destination).toMatch(/^\d+$/);await sql(`INSERT INTO character_bind(id,slot,map_id,x,y,z,heading) VALUES(${id},0,${destination},3,6,0,0) ON CONFLICT(id,slot) DO UPDATE SET map_id=EXCLUDED.map_id,x=EXCLUDED.x,y=EXCLUDED.y`);
  }
  const before=await assertNative(page);const origin=(await state.getGameState(page)).player;
- await page.locator("#party-pokemon-hud [data-cq-party-entry='true']").first().click();await page.getByText(move.toLowerCase(),{exact:true}).click();
+ if(move==="ELEVATOR"){await openCeladonElevatorPanel(page);await clickOverlayText(page,"5F");await waitForMap(page,"CELADON_MART_5F");await waitForPlayerTile(page,1,1);}else{await page.locator("#party-pokemon-hud [data-cq-party-entry='true']").first().click();await page.getByText(move.toLowerCase(),{exact:true}).click();}
  if(move==="FLY"){
   const choice=JSON.parse(await sql("SELECT json_build_object('name',c.name,'mapId',CASE WHEN m.is_overworld=1 THEN 9999 ELSE c.map_id END,'x',c.spawn_x,'y',c.spawn_y) FROM poke_start_cities c JOIN phaser_maps m ON m.id=c.map_id ORDER BY c.id LIMIT 1"));
   await page.getByText(choice.name,{exact:true}).click();await state.waitForMap(page,choice.mapId);await waitForPlayerTile(page,choice.x,choice.y);

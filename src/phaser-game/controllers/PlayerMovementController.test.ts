@@ -788,3 +788,14 @@ test("cancelled elevator selector sends no mutation and performs no recovery",as
  vi.mocked(movement.requestElevator).mockResolvedValueOnce({success:true,requestId:"list",characterId:42,kind:"list",mapId:9999,floors:[{floorMapId:60,floorLabel:"2F",destX:3,destY:4}],message:""});
  await controller.useElevator(async()=>undefined);expect(movement.requestElevator).toHaveBeenCalledOnce();expect(battlePublication.recoverFieldPublication).not.toHaveBeenCalled();
 });
+
+
+test("elevator list read retires after moving away and back to identical coordinates",async()=>{
+ const {controller}=buildLedgeController();usePlayerCharacterStore.getState().setCharacterProfile({id:42});
+ useGameStatusStore.setState({playerTileContext:{mapId:9999,x:10,y:0,direction:"UP"}});
+ let resolve!:(reply:any)=>void;vi.mocked(movement.requestElevator).mockImplementationOnce(()=>new Promise(done=>{resolve=done}));const choose=vi.fn();const pending=controller.useElevator(choose);
+ const signal=vi.mocked(movement.requestElevator).mock.calls[0][2]!;
+ useGameStatusStore.setState({playerTileContext:{mapId:9999,x:11,y:0,direction:"UP"}});useGameStatusStore.setState({playerTileContext:{mapId:9999,x:10,y:0,direction:"UP"}});
+ expect(signal.aborted).toBe(true);resolve({success:true,requestId:"old",characterId:42,kind:"list",mapId:9999,floors:[{floorMapId:60,floorLabel:"2F",destX:3,destY:4}],message:""});await pending;
+ expect(choose).not.toHaveBeenCalled();expect(movement.requestElevator).toHaveBeenCalledOnce();expect(battlePublication.recoverFieldPublication).not.toHaveBeenCalled();
+});

@@ -16,6 +16,13 @@ export class TileViewerOverlays {
 
   constructor(private readonly scene: Scene, private readonly configureUI:(elements:Phaser.GameObjects.GameObject[])=>void) {}
 
+  // Keep the menu alive through pointer-up and consume the whole gesture.
+  // Destroying it on pointer-down lets the release activate the world beneath it.
+  private bindMenuChoice(item:Phaser.GameObjects.Text,choose:()=>void):void{
+    item.on("pointerdown",(_pointer:Phaser.Input.Pointer,_x:number,_y:number,event:Phaser.Types.Input.EventData)=>event.stopPropagation());
+    item.on("pointerup",(_pointer:Phaser.Input.Pointer,_x:number,_y:number,event:Phaser.Types.Input.EventData)=>{event.stopPropagation();choose();});
+  }
+
   isSlotMachineTile(x: number, y: number): boolean {
     const slotPositions = new Set([
       "18,15", "18,14", "18,13", "18,12", "18,11", "18,10",
@@ -82,7 +89,7 @@ export class TileViewerOverlays {
         btn.setInteractive({ useHandCursor: true });
         btn.on("pointerover", () => btn.setColor("#ffff00"));
         btn.on("pointerout", () => btn.setColor("#ffffff"));
-        btn.on("pointerdown", () => {
+        this.bindMenuChoice(btn, () => {
           import("@/phaser-game/services/PhaserNetworkService").then(
             (PhaserNet) => {
               PhaserNet.buyPrize(prize.id);
@@ -106,7 +113,7 @@ export class TileViewerOverlays {
       .setDepth(10000)
       .setScrollFactor(0)
       .setInteractive({ useHandCursor: true });
-    closeBtn.on("pointerdown", () => this.closeGameCornerUI());
+    this.bindMenuChoice(closeBtn, () => this.closeGameCornerUI());
     this.gameCornerMenuItems.push(closeBtn);
     this.configureUI(this.gameCornerMenuItems);
   }
@@ -225,7 +232,7 @@ export class TileViewerOverlays {
 
       label.on("pointerover", () => label.setColor("#ffff00"));
       label.on("pointerout", () => label.setColor("#ffffff"));
-      label.on("pointerdown", () => {
+      this.bindMenuChoice(label, () => {
         finish(floor.floorMapId);
       });
       menuItems.push(label);
@@ -246,7 +253,7 @@ export class TileViewerOverlays {
       .setInteractive({ useHandCursor: true });
     cancel.on("pointerover", () => cancel.setColor("#ffff00"));
     cancel.on("pointerout", () => cancel.setColor("#aaaaaa"));
-    cancel.on("pointerdown", () => {
+    this.bindMenuChoice(cancel, () => {
       finish();
     });
     menuItems.push(cancel);

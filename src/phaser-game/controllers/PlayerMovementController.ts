@@ -1,3 +1,4 @@
+import {watchInteractionPosition} from "../services/InventoryCommandService";
 import {recoverFieldPublication} from "../services/BattleCommandService";
 import type { OwnedPlayerPositionResponse, PlayerStepResponse, PlayerStepError } from "@/net/generated/protocol";
 import { requestElevator, requestCut, requestStateField, requestSurf, requestFishing, requestEscapeRope, requestBicycleState, requestPlayerFacing, requestPlayerStep, completePlayerStep, readOwnedPlayerPosition } from "../services/PlayerMovementService";
@@ -167,14 +168,19 @@ export class PlayerMovementController {
     return this.runOwnedFieldCommand(async(characterId,signal,current)=>{
       const source={mapId:this.currentMapId,fromX:this.currentTileX,fromY:this.currentTileY};
       const atSource=()=>current() && this.currentMapId===source.mapId && this.currentTileX===source.fromX && this.currentTileY===source.fromY && !this.isMoving && !this.issuedStep && !this.serverMovementInProgress;
-      let list;
-      try{list=await requestElevator({...source,characterId},false,signal);}
-      catch(error){if(atSource())useChatStore.getState().addMessage(error instanceof Error?error.message:"Elevator unavailable",MessageType.SYSTEM_ERROR);return;}
-      if(!atSource())return;
+      let list;let floorMapId:number|undefined;
+      const sourceRead=new AbortController();const abortSource=()=>sourceRead.abort();
+      const stopSource=watchInteractionPosition(abortSource,true);signal.addEventListener("abort",abortSource,{once:true});if(signal.aborted)abortSource();
+      try {
+      try{list=await requestElevator({...source,characterId},false,sourceRead.signal);}
+      catch(error){if(atSource() && !sourceRead.signal.aborted)useChatStore.getState().addMessage(error instanceof Error?error.message:"Elevator unavailable",MessageType.SYSTEM_ERROR);return;}
+      if(!atSource() || sourceRead.signal.aborted)return;
       if(list.kind!=="list" || list.characterId!==characterId || list.mapId!==source.mapId || !Array.isArray(list.floors) || list.floors.some(floor=>!Number.isSafeInteger(floor.floorMapId)||floor.floorMapId<=0||typeof floor.floorLabel!=="string"||!floor.floorLabel))throw new Error("Invalid elevator list");
       if(list.floors.length===0){if(list.message)usePokemonDialogueStore.getState().openDialogue([list.message]);return;}
-      const floorMapId=await choose(list.floors,signal);if(floorMapId===undefined || !atSource())return;
+      floorMapId=await choose(list.floors,sourceRead.signal);if(floorMapId===undefined || !atSource() || sourceRead.signal.aborted)return;
       if(!list.floors.some(floor=>floor.floorMapId===floorMapId))throw new Error("Invalid elevator selection");
+      }finally{stopSource();signal.removeEventListener("abort",abortSource);}
+      if(sourceRead.signal.aborted || floorMapId===undefined || !atSource())return;
       let rejection:string|undefined;
       try{
         const before=await readCurrentGameplayState(signal);if(!atSource())return;

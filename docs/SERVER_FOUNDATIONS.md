@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+elevator source/menu/gesture lifetime review and native process acceptance,
+following `c7180c8`:
 elevator scoped list/selection uses shared travel receipts and owned recovery,
 following `558ccfb`:
 elevator runtime listing/selection shares actor reach/visibility authorization,
@@ -140,6 +142,46 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Elevator lifetime/gesture review and native acceptance (2026-10-13)
+
+The elevator list/menu source watcher now spans the full unsent read/choice phase,
+so a retired source cannot revive after coordinates return to their old values.
+It is released before selection; the sent mutation uses the existing movement
+owner/current recovery. A focused source-view away/return regression proves list
+signal cancellation and zero selection/presentation. All 610 client tests and
+typecheck pass.
+
+The field-command slot intentionally freezes keyboard movement while reads or
+menus are pending. Rendered tests now verify blocked movement, menu cancellation
+and subsequent movement, rather than incorrectly expecting movement through an
+active slot. Explicit owned warp/return tests retirement while list replies are
+held. A failing cancellation case established an actual input defect: destroying
+a menu on pointer-down exposed its pointer-up to the world, moving the player to
+(3,3). The shared elevator/prize menu-choice binder consumes both events and
+settles on pointer-up. This is the input boundary fix, not a looser assertion.
+
+All eight final Chromium/WebSocket checks pass (47.6s;
+`/var/tmp/capturequest-rendered.cgiYVp`): duplicate/timeout, cancel, blocked keyboard
+then movement, same-scene replacement, held list/selection across reentry, actual
+late dispatch and source warp/return. Cancelled reads/menus have zero travel
+receipts; committed selection remains revision 1 and late replies open no menu or
+dialogue and do not replace current position. Native elevator panel/menu travel and
+exact-process restart pass (8.4s; `/var/tmp/capturequest-rendered.ZWNA7e`) with
+WebSocket fallback false before/after, matching durable/recovered map/coordinates
+and revision 1. Native acceptance waits for the fifth-floor destination explicitly:
+the initial generic changed-position wait had mistaken walking to the panel for
+completed travel (browser 127,3,1 versus committed 136,1,1).
+
+Remaining: native loss at the exact commit/reply boundary, original auto-approach
+behavior and prize-menu-specific gesture acceptance are not newly proven here.
+Shared correlation and prior server/domain evidence remain reusable. Wider finite
+matrix and all five roadmap areas remain open, including historical restore timeout
+attribution. No schema or generated contract change. Local checkpoint only; no push
+or deployment.
+
+Next: audit/migrate Warp Home's scoped identity, replay and owned recovery while
+preserving its deliberate atomic battle/Safari clearing policy.
 
 ## Elevator scoped list/selection and shared travel recovery (2026-10-13)
 
