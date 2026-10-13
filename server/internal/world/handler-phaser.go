@@ -518,6 +518,9 @@ func HandlePhaserTilesRequest(ses *session.Session, payload []byte, wh *WorldHan
 			}
 		}
 
+		if ses.HasValidClient() && wh != nil && wh.CutTiles != nil {
+			tiles = wh.CutTiles.ApplyToTiles(int64(ses.Client.CharData().ID), req.MapID, tiles)
+		}
 		return tiles, nil
 	})
 	if err != nil {

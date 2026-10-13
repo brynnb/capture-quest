@@ -243,3 +243,50 @@ func TestOwnedPathfindingHonorsPoolWaitDeadline(t *testing.T) {
 		t.Fatalf("owned pathfinding escaped pool deadline: %v %v", path, err)
 	}
 }
+
+func TestTileReadProjectsOwnedCutArtAndResetWithoutEditingBase(t *testing.T) {
+	database, wh, ses, messages := battleTestWorld(t)
+	wh.CutTiles = NewCutTileManager()
+	testdb.Exec(t, database, `INSERT INTO character_data(id,name) VALUES(43,'other');INSERT INTO phaser_maps(id,name,width,height) VALUES(50,'ROOM',4,4);
+ INSERT INTO phaser_tile_images(id,image_path,raw_foot_tile_id) VALUES(100,'tree.png',61),(200,'ground.png',82),(300,'event.png',61);
+ INSERT INTO phaser_tiles(map_id,source_map_id,x,y,local_x,local_y,tile_image_id,raw_foot_tile_id,collision_type,is_native_game_data,coordinate_origin,content_origin) VALUES(50,50,1,0,1,0,100,61,0,true,'native','native');
+ INSERT INTO phaser_event_tile_overrides(map_id,map_name,x,y,tile_image_id,collision_type) VALUES(50,'ROOM',1,0,300,0)`)
+	raw := cutTreeReplacementRawFoot
+	wh.CutTiles.MarkCut(42, 50, TileEdit{X: 1, Y: 0, TileImageID: 200, CollisionType: collisionLand, RawFootTileID: &raw, TalkOverTile: true})
+	raw = 99 // Mutating caller-owned memory cannot alter the stored cut.
+	read := func() PhaserTile {
+		messages.streams = nil
+		HandlePhaserTilesRequest(ses, []byte(`{"mapId":50,"requestId":"cut:read"}`), wh)
+		var response PhaserTilesResponse
+		if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &response) != nil || !response.Success || len(response.Tiles) != 1 {
+			t.Fatalf("bad tile read: %+v", messages.streams)
+		}
+		return response.Tiles[0]
+	}
+	projected := read()
+	if projected.TileImageID != 200 || projected.CollisionType != collisionLand || projected.RawFootTileID == nil || *projected.RawFootTileID != 82 || !projected.TalkOverTile || projected.ContentOrigin != "cut" || projected.CoordinateOrigin != "native" || !projected.IsNativeGameData {
+		t.Fatalf("CUT projection/provenance: %+v", projected)
+	}
+	*projected.RawFootTileID = 17
+	if got := read(); *got.RawFootTileID != 82 {
+		t.Fatal("published pointer mutated owner")
+	}
+	ses.Client.CharData().ID = 43
+	if got := read(); got.TileImageID != 300 {
+		t.Fatal("CUT leaked to another character")
+	}
+	ses.Client.CharData().ID = 42
+	wh.CutTiles.ClearMap(42, 50)
+	if got := read(); got.TileImageID != 300 || got.ContentOrigin != "event" {
+		t.Fatalf("map reset did not restore event view: %+v", got)
+	}
+	wh.CutTiles.MarkCut(42, 50, TileEdit{X: 1, Y: 0, TileImageID: 200, CollisionType: collisionLand, RawFootTileID: &raw})
+	wh.CutTiles.ClearCharacter(42)
+	if got := read(); got.TileImageID != 300 {
+		t.Fatal("character reset retained CUT")
+	}
+	var image int
+	if err := database.QueryRow(`SELECT tile_image_id FROM phaser_tiles WHERE map_id=50 AND x=1 AND y=0`).Scan(&image); err != nil || image != 100 {
+		t.Fatalf("CUT mutated authored base: %d %v", image, err)
+	}
+}

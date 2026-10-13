@@ -158,8 +158,8 @@ func handleCutFieldMove(ses *session.Session, req FieldMoveUseRequestPayload, wh
 	}
 	// Transient collision/presentation is publishable only after every read and
 	// the owner's final commit have succeeded. Never turn SQL failure into art.
-	wh.CutTiles.MarkCut(charID, mapID, targetX, targetY)
 	replacement.X, replacement.Y = targetX, targetY
+	wh.CutTiles.MarkCut(charID, mapID, replacement)
 	message := "Used CUT!"
 	if permission.KnownByName != "" {
 		message = permission.KnownByName + " used CUT!"

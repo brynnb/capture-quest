@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+CUT transient owner retains full replacement metadata and projects owned tile reads,
+following `9aadcd1`:
 CUT prepares durable source/permission and replacement before transient marking,
 following `8b7189e`:
 held state replies across reentry/source replacement and inactive recovery pass,
@@ -111,6 +113,45 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## CUT transient replacement and owned tile projection (2026-10-13)
+
+The existing `CutTileManager` now retains a complete prepared replacement tile,
+not a boolean that only movement can interpret. Collision/raw-foot overrides and
+tile-read image/collision/foot/talk-over projection derive from that same record.
+Marking and publication copy pointer fields; caller or returned-read mutation
+cannot corrupt the owner. The old coordinate-only marking API is replaced at its
+few inventoried callers rather than retained as a parallel fallback.
+
+Owned `PhaserTilesResponse` applies CUT after character event overrides, matching
+movement's existing priority. Native coordinates, source IDs and base data remain
+intact; current content origin becomes `cut`. Projection does not mutate authored
+rows or generated assets. Existing map/character clearing remains authoritative,
+and a cleared owner reveals the underlying current event/base tile again. There
+is no new persistent world-edit system or durable replay of expired CUT state.
+
+Focused PostgreSQL race checks pass (3.0s), including real public tile reads,
+full art/collision/foot/talk-over agreement, event priority, other-character
+isolation, pointer copies, native provenance, map/character reset and unchanged
+base rows. Full world (62.4s) and simulator (1.5s) race suites, all Go package
+compilation and diff checks pass. The rendered Chromium/WebSocket bounded
+CUT tile reread and walk-through check passes (5.3s;
+`/var/tmp/capturequest-rendered.6IwbOH`): repeated reads retain replacement
+image/foot/collision and provenance after actual input. This is current projection
+and gameplay acceptance, not a claim that lost acknowledgement is yet handled.
+
+Remaining: this supplies the read projection needed for uncertain command
+recovery, but CUT still uses its legacy global acknowledgement. Correlation,
+source lifetime, idempotency and reset-generation handling need a reviewed policy;
+a durable receipt must never reconstruct a cut after map exit, reentry or process
+replacement. Native block-swap art fidelity remains the documented approximation
+and producing-provenance gap. Travel/other matrix families and the original
+five-area goal remain incomplete; historical restore attribution is still open.
+No push, deployment, schema or generated runtime artifact change occurred.
+
+Next: migrate CUT command identity/current tile reconciliation through its existing
+movement/session owner, explicitly fencing the transient reset lifetime before
+expanding another field policy.
 
 ## CUT coherent preparation and catalog failure boundary (2026-10-13)
 
