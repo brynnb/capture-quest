@@ -171,7 +171,7 @@ export class NetworkBridge {
         this.handleFieldMoveUseResponse(data as Record<string, unknown>);
         break;
       case OpCodes.ItemPickupResponse:
-        this.handleItemPickupResponse(data as Record<string, unknown>);
+        import("@/phaser-game/services/PhaserNetworkService").then(module=>module.dispatchPhaserResponse(opcode,data));
         break;
 
       // Pokémon PC (Phase 6.5)
@@ -408,27 +408,6 @@ export class NetworkBridge {
     if (data.message) {
       usePokemonDialogueStore.getState().openDialogue([String(data.message)]);
     }
-  }
-
-  private handleItemPickupResponse(data: Record<string, unknown>) {
-    if (!data.success) {
-      console.warn("[NetworkBridge] Item pickup failed:", data.error);
-      return;
-    }
-    const actorId = data.actorId as number;
-    const itemName = data.itemName as string;
-    const message =
-      typeof data.message === "string" && data.message.length > 0
-        ? data.message
-        : `Picked up ${itemName || "item"}.`;
-    console.log(`[NetworkBridge] Picked up ${itemName} (actor ${actorId})`);
-    useChatStore.getState().addMessage(message, MessageType.LOOT);
-    this.playSourceSFX("SFX_GET_ITEM_1", 0.9);
-
-    // Notify Phaser scene to remove the actor sprite
-    window.dispatchEvent(
-      new CustomEvent("itemPickedUp", { detail: { actorId, itemName } }),
-    );
   }
 
   private handleDialogueChoiceResponse(data: Record<string, unknown>) {

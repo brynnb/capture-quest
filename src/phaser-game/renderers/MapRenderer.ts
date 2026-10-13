@@ -70,7 +70,6 @@ export class MapRenderer {
   private movementController: ActorMovementController;
   private actorManager: ActorManager;
   private warnedMissingActors: Set<number> = new Set();
-  private itemPickupHandler: ((e: Event) => void) | null = null;
   public localPlayerInternalId: number | null = null;
 
   // Tile editor: individual sprites for tiles placed outside the RenderTexture bounds
@@ -121,14 +120,6 @@ export class MapRenderer {
       );
       graphics.destroy();
     }
-
-    // Listen for item pickup events to remove actor sprites
-    this.itemPickupHandler = (e: Event) => {
-      const { actorId, itemName } = (e as CustomEvent).detail;
-      this.removeActor(actorId);
-      console.log(`[MapRenderer] Removed item ball sprite for ${itemName} (actor ${actorId})`);
-    };
-    window.addEventListener("itemPickedUp", this.itemPickupHandler);
 
     // Load tile animation definitions from server
     this.loadTileAnimations();
@@ -1516,10 +1507,7 @@ export class MapRenderer {
     this.chatBubbleTimers.clear();
 
     this.clear();
-    if (this.itemPickupHandler) {
-      window.removeEventListener("itemPickedUp", this.itemPickupHandler);
-      this.itemPickupHandler = null;
-    }
+
   }
 
   // --- Tile Editor Methods ---

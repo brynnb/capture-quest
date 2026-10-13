@@ -1,6 +1,6 @@
 import { beforeEach, afterEach, expect, test, vi } from "vitest";
 const net = vi.hoisted(() => ({ listeners:new Map<number,Set<(reply:any)=>void>>(),send:vi.fn(),read:vi.fn(),generation:0,retired:new Set<()=>void>() }));
-vi.mock("@/net",()=>({OpCodes:{PokemonPCOpenRequest:108,PokemonPCOpenResponse:109,PokemonPCDepositRequest:110,PokemonPCDepositResponse:111,PokemonPCWithdrawRequest:112,PokemonPCWithdrawResponse:113,PokemonPCReleaseRequest:114,PokemonPCReleaseResponse:115,PokemonPCSwitchBoxRequest:116,PokemonPCSwitchBoxResponse:117,PokemonPartyReorderRequest:90,PokemonPartyReorderResponse:91,CQItemUseRequest:100,CQItemUseResponse:101,RepelUseRequest:143,RepelUseResponse:144,CQMerchantOpenRequest:94,CQMerchantOpenResponse:95,CQMerchantBuyRequest:96,CQMerchantBuyResponse:97,CQMerchantSellRequest:98,CQMerchantSellResponse:99},WorldSocket:{sendStreamJsonMessage:net.send,get sessionGeneration(){return net.generation;},subscribeSessionRetirement:(receive:()=>void)=>{net.retired.add(receive);return()=>net.retired.delete(receive);}}}));
+vi.mock("@/net",()=>({OpCodes:{PokemonPCOpenRequest:108,PokemonPCOpenResponse:109,PokemonPCDepositRequest:110,PokemonPCDepositResponse:111,PokemonPCWithdrawRequest:112,PokemonPCWithdrawResponse:113,PokemonPCReleaseRequest:114,PokemonPCReleaseResponse:115,PokemonPCSwitchBoxRequest:116,PokemonPCSwitchBoxResponse:117,PokemonPartyReorderRequest:90,PokemonPartyReorderResponse:91,CQItemUseRequest:100,CQItemUseResponse:101,ItemPickupRequest:106,ItemPickupResponse:107,RepelUseRequest:143,RepelUseResponse:144,CQMerchantOpenRequest:94,CQMerchantOpenResponse:95,CQMerchantBuyRequest:96,CQMerchantBuyResponse:97,CQMerchantSellRequest:98,CQMerchantSellResponse:99},WorldSocket:{sendStreamJsonMessage:net.send,get sessionGeneration(){return net.generation;},subscribeSessionRetirement:(receive:()=>void)=>{net.retired.add(receive);return()=>net.retired.delete(receive);}}}));
 vi.mock("./PhaserNetworkService",()=>({isConnected:()=>true,onInventoryCommand:(opcode:number,receive:(reply:any)=>void)=>{
   if (!net.listeners.has(opcode)) net.listeners.set(opcode,new Set());
   const listeners=net.listeners.get(opcode)!;listeners.add(receive);return()=>listeners.delete(receive);
@@ -13,7 +13,7 @@ import useCQInventoryStore from "@/stores/CQInventoryStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import {openShopForActor,buyShopItem,sellShopItem} from "./ShopCommandService";
 
-import {bindInventoryScene,sendPartyItemCommand,sendRepelItemCommand,sendPartyReorderCommand,refreshOwnedGameplayResources,acceptResourceChangeNotification} from "./InventoryCommandService";
+import {bindInventoryScene,sendPickupCommand,sendPartyItemCommand,sendRepelItemCommand,sendPartyReorderCommand,refreshOwnedGameplayResources,acceptResourceChangeNotification} from "./InventoryCommandService";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
 import useGameScreenStore from "@/stores/GameScreenStore";
 import useGameStatusStore from "@/stores/GameStatusStore";
@@ -378,4 +378,29 @@ test.each(["screen","transport"])("%s retirement during recovery ignores an even
  expect(signal.aborted).toBe(true);
  resolve({position:{mapId:50},eventFlags:[],pc:{currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]},inventory:[],wallet:{characterId:42,pokedollars:800},commandRevision:5,party:[]});
  await run;expect(useCQInventoryStore.getState().money).toBe(1000);expect(net.send).toHaveBeenCalledOnce();expect(net.retired.size).toBe(0);
+});
+
+
+test("pickup joins inventory admission and reconciles actors after the committed bag",async()=>{
+ const reconcile=vi.fn(async()=>{expect(useCQInventoryStore.getState().commandRevision).toBe(5);});
+ const run=sendPickupCommand(14,reconcile);await sendPickupCommand(14,reconcile);
+ expect(net.send).toHaveBeenCalledOnce();expect(net.send.mock.calls[0][1]).toMatchObject({actorId:14,command:{characterId:42,revision:4}});
+ emit(107,{...reply(id()),actorId:14,itemId:1,itemName:"Potion"});await run;
+ expect(reconcile).toHaveBeenCalledOnce();expect(net.read).not.toHaveBeenCalled();expect(useCQInventoryStore.getState().money).toBe(900);
+});
+
+test("pickup timeout recovers bag and actors without another grant or late reply application",async()=>{
+ net.read.mockResolvedValueOnce({position:{mapId:50},eventFlags:[],pc:{currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]},inventory:[],wallet:{characterId:42,pokedollars:800},commandRevision:5,party:[]});
+ const reconcile=vi.fn(async()=>{});const run=sendPickupCommand(14,reconcile);const request=id();
+ await vi.advanceTimersByTimeAsync(10001);await run;
+ expect(reconcile).toHaveBeenCalledOnce();expect(net.send).toHaveBeenCalledOnce();expect(useCQInventoryStore.getState().money).toBe(800);
+ emit(107,{...reply(request),actorId:14,itemId:1,itemName:"Potion"});expect(reconcile).toHaveBeenCalledOnce();expect(useCQInventoryStore.getState().money).toBe(800);
+});
+
+test("retiring during actor reconciliation prevents pickup presentation in the next scene",async()=>{
+ let finish!:()=>void;let signal!:AbortSignal;
+ const reconcile=vi.fn((owned:AbortSignal)=>{signal=owned;return new Promise<void>(done=>{finish=done;});});
+ const run=sendPickupCommand(14,reconcile);emit(107,{...reply(id()),actorId:14,itemId:1,itemName:"Potion"});await Promise.resolve();
+ retire();retire=bindInventoryScene();expect(signal.aborted).toBe(true);finish();await run;
+ expect(AudioManager.playSFX).not.toHaveBeenCalled();expect(net.send).toHaveBeenCalledOnce();
 });

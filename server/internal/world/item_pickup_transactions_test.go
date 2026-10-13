@@ -23,7 +23,7 @@ func TestItemPickupRollbackPublicationAndRetry(t *testing.T) {
 	testdb.Exec(t, database, `UPDATE character_data SET map_id=1,x=0,y=0 WHERE id=42`)
 	actorID := wh.ActorRegistry.GetPhaserID(ActorTypeNPC, 10)
 	db.GlobalWorldDB = nil // The dispatcher and grant must use owned dependencies.
-	request := fmt.Sprintf(`{"actorId":%d}`, actorID)
+	request := fmt.Sprintf(`{"actorId":%d,"requestId":"pickup-test","command":{"characterId":42,"revision":0}}`, actorID)
 	battleDispatch(t, wh, ses, opcodes.ItemPickupRequest, request)
 	if len(messages.streams) != 1 {
 		t.Fatalf("failure publication: %+v", messages.streams)
@@ -34,6 +34,10 @@ func TestItemPickupRollbackPublicationAndRetry(t *testing.T) {
 	}
 	if err := json.Unmarshal(messages.streams[0].payload, &response); err != nil || response.Success {
 		t.Fatalf("failure response: %+v %v", response, err)
+	}
+	var revision int
+	if err := database.QueryRow(`SELECT COALESCE((SELECT revision FROM character_shop_state WHERE character_id=42),0)`).Scan(&revision); err != nil || revision != 0 {
+		t.Fatalf("failed collection changed revision: %d %v", revision, err)
 	}
 	var count int
 	if err := database.QueryRow(`SELECT COUNT(*) FROM cq_character_inventory WHERE character_id=42`).Scan(&count); err != nil || count != 0 {
@@ -58,6 +62,9 @@ func TestItemPickupRollbackPublicationAndRetry(t *testing.T) {
 	}
 	if err := database.QueryRow(`SELECT SUM(ii.quantity) FROM cq_character_inventory ci JOIN cq_item_instances ii ON ii.id=ci.item_instance_id WHERE ci.character_id=42`).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("duplicate grant: %d %v", count, err)
+	}
+	if err := database.QueryRow(`SELECT revision FROM character_shop_state WHERE character_id=42`).Scan(&revision); err != nil || revision != 1 {
+		t.Fatalf("duplicate changed revision: %d %v", revision, err)
 	}
 }
 
@@ -104,7 +111,7 @@ func TestItemPickupRejectsRemoteHiddenAndCounterTargets(t *testing.T) {
 	deny := func() {
 		t.Helper()
 		messages.streams = nil
-		battleDispatch(t, wh, ses, opcodes.ItemPickupRequest, fmt.Sprintf(`{"actorId":%d}`, actorID))
+		battleDispatch(t, wh, ses, opcodes.ItemPickupRequest, fmt.Sprintf(`{"actorId":%d,"requestId":"pickup-test","command":{"characterId":42,"revision":0}}`, actorID))
 		var response struct{ Success bool }
 		if len(messages.streams) != 1 {
 			t.Fatalf("denial publication: %+v", messages.streams)
@@ -159,7 +166,7 @@ func TestItemPickupUsesLockedDurableSourceVisibilityAndBattle(t *testing.T) {
 				database.SetMaxOpenConns(1)
 			}
 			actorID := wh.ActorRegistry.GetPhaserID(ActorTypeNPC, 10)
-			battleDispatch(t, wh, ses, opcodes.ItemPickupRequest, fmt.Sprintf(`{"actorId":%d}`, actorID))
+			battleDispatch(t, wh, ses, opcodes.ItemPickupRequest, fmt.Sprintf(`{"actorId":%d,"requestId":"pickup-test","command":{"characterId":42,"revision":0}}`, actorID))
 			allowed := kind == "cached-source-remote" || kind == "cached-hidden" || kind == "single-connection"
 			var reply struct{ Success bool }
 			if len(messages.streams) == 0 || json.Unmarshal(messages.streams[0].payload, &reply) != nil || reply.Success != allowed {
@@ -180,5 +187,25 @@ func TestItemPickupUsesLockedDurableSourceVisibilityAndBattle(t *testing.T) {
 				t.Fatalf("grant=%d marker=%d wanted=%d", grants, markers, want)
 			}
 		})
+	}
+}
+
+func TestItemPickupRejectsRetiredAndForeignCommandEnvelopes(t *testing.T) {
+	database, wh, ses, messages := battleTestWorld(t)
+	wh.ActorRegistry = NewActorRegistry()
+	wh.ActorManager = NewPhaserActorManager(wh)
+	testdb.Exec(t, database, `INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(1,'ROOM',10,10,0); INSERT INTO phaser_objects(id,map_id,x,y,object_type,name,item_id) VALUES(10,1,1,0,'item','POTION',1);UPDATE character_data SET map_id=1,x=0,y=0 WHERE id=42`)
+	actor := wh.ActorRegistry.GetPhaserID(ActorTypeNPC, 10)
+	for _, payload := range []string{fmt.Sprintf(`{"actorId":%d}`, actor), fmt.Sprintf(`{"actorId":%d,"requestId":"foreign","command":{"characterId":43,"revision":0}}`, actor), fmt.Sprintf(`{"actorId":%d,"requestId":"missing-revision","command":{"characterId":42}}`, actor), fmt.Sprintf(`{"actorId":%d,"requestId":"unknown","command":{"characterId":42,"revision":0},"legacy":true}`, actor)} {
+		messages.streams = nil
+		battleDispatch(t, wh, ses, opcodes.ItemPickupRequest, payload)
+		var reply struct{ Success bool }
+		if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &reply) != nil || reply.Success {
+			t.Fatal("retired/foreign envelope accepted")
+		}
+	}
+	var markers, grants, states int
+	if err := database.QueryRow(`SELECT (SELECT count(*) FROM character_collected_items),(SELECT count(*) FROM cq_character_inventory),(SELECT count(*) FROM character_shop_state)`).Scan(&markers, &grants, &states); err != nil || markers != 0 || grants != 0 || states != 0 {
+		t.Fatalf("invalid envelope mutated state: %d %d %d %v", markers, grants, states, err)
 	}
 }

@@ -3,7 +3,6 @@ package world
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -17,6 +16,23 @@ import (
 
 var errItemAlreadyCollected = errors.New("Already collected")
 
+type ItemPickupRequest struct {
+	RequestID string                    `json:"requestId"`
+	ActorID   int                       `json:"actorId"`
+	Command   *InventoryCommandIdentity `json:"command" tstype:"InventoryCommandIdentity"`
+}
+type ItemPickupResponse struct {
+	Success     bool                        `json:"success" tstype:"true"`
+	RequestID   string                      `json:"requestId"`
+	CharacterID int64                       `json:"characterId"`
+	ActorID     int                         `json:"actorId"`
+	ItemName    string                      `json:"itemName"`
+	ItemID      int32                       `json:"itemId"`
+	InstanceID  int32                       `json:"instanceId"`
+	Message     string                      `json:"message"`
+	Inventory   cqitems.CQInventorySnapshot `json:"inventory" tstype:"import(\"./cqitems\").CQInventorySnapshot"`
+}
+
 // HandleItemPickup handles a request to pick up an overworld item ball.
 // The client sends the runtime actor ID; we reverse-map it to the DB object ID,
 // verify it's an uncollected item object, add the item to the player's CQ inventory,
@@ -25,14 +41,13 @@ func HandleItemPickup(ses *session.Session, payload []byte, wh *WorldHandler) bo
 	if !ses.HasValidClient() {
 		return false
 	}
-	var req struct {
-		ActorID int `json:"actorId"`
-	}
-	if err := json.Unmarshal(payload, &req); err != nil {
-		return false
-	}
+	var req ItemPickupRequest
 	fail := func(err error) {
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.ItemPickupResponse)
+		sendInventoryCommandError(ses, req.RequestID, opcodes.ItemPickupResponse, err.Error())
+	}
+	if err := decodePlayerMovement(payload, &req); err != nil || !validInventoryCommand(ses, req.RequestID, req.Command) || req.ActorID <= 0 {
+		fail(fmt.Errorf("Invalid item pickup command."))
+		return false
 	}
 	if wh.ActorRegistry == nil {
 		fail(fmt.Errorf("Unknown actor"))
@@ -46,7 +61,12 @@ func HandleItemPickup(ses *session.Session, payload []byte, wh *WorldHandler) bo
 	ctx, cancel := context.WithTimeout(ses.CommandContext(), 5*time.Second)
 	defer cancel()
 	charID := int32(ses.Client.CharData().ID)
-	result, err := collectOwnedItem(ctx, wh, ses, charID, objectID)
+	var result *collectedItem
+	snapshot, err := cqitems.NewStore(wh.database).ExecuteCommand(ctx, charID, *req.Command.Revision, func(tx db.DBTX) error {
+		var err error
+		result, err = collectOwnedItem(ctx, tx, wh, ses, charID, objectID)
+		return err
+	})
 	if err != nil {
 		if errors.Is(err, errScriptInteractionDenied) {
 			fail(fmt.Errorf("Item unavailable or out of reach"))
@@ -60,10 +80,8 @@ func HandleItemPickup(ses *session.Session, payload []byte, wh *WorldHandler) bo
 		}
 		return false
 	}
-	ses.SendStreamJSON(map[string]interface{}{
-		"success": true, "actorId": req.ActorID, "itemName": result.item.Name,
-		"itemId": result.item.ID, "instanceId": result.instanceID, "message": itemPickupMessage(result.item.Name),
-	}, opcodes.ItemPickupResponse)
+	ses.SendStreamJSON(ItemPickupResponse{Success: true, RequestID: req.RequestID, CharacterID: int64(charID), ActorID: req.ActorID, ItemName: result.item.Name, ItemID: result.item.ID, InstanceID: result.instanceID, Message: itemPickupMessage(result.item.Name), Inventory: snapshot}, opcodes.ItemPickupResponse)
+
 	notifyResourceChange(ses)
 	return false
 }
@@ -71,8 +89,6 @@ func HandleItemPickup(ses *session.Session, payload []byte, wh *WorldHandler) bo
 type collectedItem struct {
 	item       *cqitems.CQItem
 	instanceID int32
-	inventory  []cqitems.CQInventoryItem
-	money      int64
 }
 
 // Collection identity and the grant share the same lock and commit. The snapshot
@@ -111,12 +127,7 @@ func collectItem(ctx context.Context, database db.DBTX, charID int32, objectID i
 		if _, err := tx.Exec(`INSERT INTO character_collected_items(character_id,object_id) VALUES($1,$2)`, charID, objectID); err != nil {
 			return err
 		}
-		result.inventory, err = store.GetCharacterInventory(charID)
-		if err != nil {
-			return err
-		}
-		result.money, err = store.GetCharacterMoney(charID)
-		return err
+		return nil
 	})
 	if err != nil {
 		return nil, err
@@ -125,9 +136,9 @@ func collectItem(ctx context.Context, database db.DBTX, charID int32, objectID i
 }
 
 // The runtime owns source/visibility admission and award in one character lock.
-func collectOwnedItem(ctx context.Context, wh *WorldHandler, ses *session.Session, charID int32, objectID int) (*collectedItem, error) {
+func collectOwnedItem(ctx context.Context, database db.DBTX, wh *WorldHandler, ses *session.Session, charID int32, objectID int) (*collectedItem, error) {
 	var result *collectedItem
-	err := db.Transaction(ctx, wh.database, func(tx db.DBTX) error {
+	err := db.Transaction(ctx, database, func(tx db.DBTX) error {
 		if err := db.LockCharacter(tx, int64(charID)); err != nil {
 			return err
 		}

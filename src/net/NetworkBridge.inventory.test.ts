@@ -1,7 +1,7 @@
 import { beforeEach, expect, test, vi } from "vitest";
 import { NetworkBridge } from "./NetworkBridge";
 import { WorldSocket } from "./index";
-import { CQItemUseResponse, CQInventoryResponse, CQMerchantBuyResponse, CQMerchantSellResponse, RepelUseResponse, PokemonPartyResponse, PokemonPartyReorderResponse, PokemonPCOpenResponse, PokemonPCDepositResponse, PokemonPCWithdrawResponse, PokemonPCReleaseResponse, PokemonPCSwitchBoxResponse, ResourcesChangedNotify, GameplayStateRequest, GameplayStateResponse } from "./generated/opcodes";
+import { ItemPickupResponse, CQItemUseResponse, CQInventoryResponse, CQMerchantBuyResponse, CQMerchantSellResponse, RepelUseResponse, PokemonPartyResponse, PokemonPartyReorderResponse, PokemonPCOpenResponse, PokemonPCDepositResponse, PokemonPCWithdrawResponse, PokemonPCReleaseResponse, PokemonPCSwitchBoxResponse, ResourcesChangedNotify, GameplayStateRequest, GameplayStateResponse } from "./generated/opcodes";
 import {bindInventoryScene} from "@/phaser-game/services/InventoryCommandService";
 import type { CQInventoryItem } from "./generated/cqitems";
 import useCQInventoryStore from "@/stores/CQInventoryStore";
@@ -32,7 +32,7 @@ beforeEach(() => {
   vi.spyOn(AudioManager, "playSFX").mockResolvedValue(undefined);
 });
 
-test.each([CQMerchantBuyResponse,CQMerchantSellResponse,CQItemUseResponse,RepelUseResponse,PokemonPartyResponse,PokemonPartyReorderResponse,PokemonPCOpenResponse,PokemonPCDepositResponse,PokemonPCWithdrawResponse,PokemonPCReleaseResponse,PokemonPCSwitchBoxResponse])("unsolicited inventory reply %d cannot apply a historical bag or party", async opcode => {
+test.each([ItemPickupResponse,CQMerchantBuyResponse,CQMerchantSellResponse,CQItemUseResponse,RepelUseResponse,PokemonPartyResponse,PokemonPartyReorderResponse,PokemonPCOpenResponse,PokemonPCDepositResponse,PokemonPCWithdrawResponse,PokemonPCReleaseResponse,PokemonPCSwitchBoxResponse])("unsolicited inventory reply %d cannot apply a historical bag or party", async opcode => {
   const party=usePokemonPartyStore.getState().party;
   WorldSocket.onJson?.(opcode,{success:true,requestId:"retired",party:[],inventory:{items:[],money:0,commandRevision:1}});
   await Promise.resolve();

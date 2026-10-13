@@ -1,3 +1,4 @@
+import {sendPickupCommand} from "../../services/InventoryCommandService";
 import { Scene } from "phaser";
 import {WorldSocket} from "@/net/index";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
@@ -573,7 +574,7 @@ export class TileViewerInteractionController {
       console.log(
         `[TileViewer] Item ball clicked: ${actor.name} (actor ${actor.id})`,
       );
-      PhaserNet.sendItemPickup(actor.id);
+      void sendPickupCommand(actor.id,signal=>this.deps.playerMovementController().reconcileActors(signal));
       return;
     }
 

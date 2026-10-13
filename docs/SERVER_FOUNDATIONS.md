@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+ItemPickup uses generated inventory command identity/revision and scene-owned
+actor reconciliation, following `34c359e`:
 shared inventory command/recovery lifetime now uses character/screen/transport
 retirement before pickup protocol migration, following `4ab4d4c`:
 ItemPickup durable source/visibility admission joins its existing award transaction,
@@ -95,6 +97,58 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## ItemPickup inventory command and actor recovery (2026-10-13)
+
+Pickup now uses generated request/character/inventory-revision identity and the
+existing `cqitems.Store.ExecuteCommand`. Its prior durable source/visibility and
+award operations join that owner. Bag revision, collection marker and grant commit
+together; failed source/award/commit rolls them back. Superseded duplicates reject
+without another grant or revision increment, while the natural character/object
+collection marker remains the durable once-only identity. No additional ledger
+or schema was introduced. Actor-only/foreign/missing-revision/unknown-field
+requests reject before mutation.
+
+The scene interaction adapter sends through `runInventoryRequest`. An optional
+owned reconciliation callback runs after committed bag application and after
+uncertain-result current-resource recovery, before releasing admission. Pickup
+uses the movement scene's existing actor reader there; current snapshots remove
+collected actors instead of trusting a response's runtime ID. Callback completion
+and presentation remain character/screen/transport/scene fenced. Late replies do
+not trigger another actor read or loot presentation, and the mutation is never
+resent automatically.
+
+The global NetworkBridge pickup handler, itemPickedUp event, MapRenderer listener
+and raw sender are removed. Redundant bag/wallet reloads inside the low-level
+award primitive are retired; the shared command produces the one authoritative
+bag projection. The wire outcome is validated before application/presentation.
+Existing scripted interaction and collection behavior remain authoritative.
+
+Full world (59.0s) and simulator (1.5s) race suites pass. Focused checks preserve
+source/cache disagreement, visibility/battle denial, one-connection join and
+rollback/concurrent single award, and add required-envelope/zero-mutation and
+resource-revision rollback/duplicate checks. All 592 client tests pass (4.8s),
+with typecheck, canonical tygo and diff checks. Added client checks prove actor
+reconciliation follows bag projection, timeout recovers without resend, and
+retirement while reconciling prevents next-scene presentation. All four rendered
+Chromium/WebSocket cases pass (38.5s;
+`/var/tmp/capturequest-rendered.ME2ad2`): normal, held-reply timeout, same-character
+reentry and exact-process replacement. Transport faults duplicate the identical
+command; every case asserts one award, collection marker and inventory revision,
+owned actor-list removal, and no bag/actor reapplication after actual late reply
+delivery. The browser sends one mutation; duplicate injection is deliberate test
+traffic. An initial harness run failed before gameplay because receipt observation
+was installed on the blank page and was corrected to bind after application
+navigation. Assertions remain intact. Native pickup acceptance is still open.
+
+Activation needs matching frontend/backend; old actor-only bundles receive a
+terminal invalid-command response. The already-existing inventory revision schema
+is reused. No push, deployment, schema or generated runtime asset change occurred.
+Broader writer/source coverage and the original five-area roadmap remain open,
+as does historical restore/Repel attribution.
+
+Next: review the pickup source/revision/reconciliation boundary and finish native
+and lost-acknowledgement acceptance before migrating another family.
 
 ## Shared inventory lifetime review before pickup migration (2026-10-13)
 

@@ -17,7 +17,7 @@ let scene: symbol | null = null;
 let active: AbortController | null = null;
 let resourcesDirtyCharacter=0;
 let resourcesDirtyGeneration=0;
-type Reply = import("@/net/generated/world_api").GameplayStateResponse | import("@/net/generated/world_api").PokemonPCResponse | CQMerchantOpenResponse | CQMerchantBuyResponse | CQMerchantSellResponse | CQPartyItemUseResponse | RepelUseResponse | PokemonPartyReorderResponse;
+type Reply = import("@/net/generated/world_api").ItemPickupResponse | import("@/net/generated/world_api").GameplayStateResponse | import("@/net/generated/world_api").PokemonPCResponse | CQMerchantOpenResponse | CQMerchantBuyResponse | CQMerchantSellResponse | CQPartyItemUseResponse | RepelUseResponse | PokemonPartyReorderResponse;
 
 export function bindInventoryScene(): () => void {
   resourcesDirtyCharacter=0;
@@ -63,6 +63,7 @@ export async function runInventoryRequest<T extends Reply>(options: {
   validate?: (reply: T) => void;
   apply?: (reply: T) => void;
   present: (reply: T) => void;
+  reconcile?: (signal: AbortSignal) => Promise<void>;
   readError?: string;
   recoveryMessage?: string;
 } & ({read: (signal: AbortSignal) => Promise<T>; mutation: false; opcode?: never; responseOpcode?: never; payload?: never} | {read?: never; opcode: number; responseOpcode: number; payload: Record<string,unknown>})): Promise<void> {
@@ -110,6 +111,8 @@ export async function runInventoryRequest<T extends Reply>(options: {
           usePlayerCharacterStore.getState().handleCharacterWalletData({characterId, pokedollars: reply.inventory.money});
         }
         options.apply?.(reply);
+        await options.reconcile?.(lifetimeSignal);
+        if (!current()) return;
         if (presentationCurrent) options.present(reply);
       } catch (error) {
         if (!current()) return;
@@ -124,6 +127,8 @@ export async function runInventoryRequest<T extends Reply>(options: {
           if (!current()) return;
           applyGameplayResourceSnapshot(snapshot);
           useCQInventoryStore.getState().setPendingTMHM(null);
+          await options.reconcile?.(lifetimeSignal);
+          if (!current()) return;
           useChatStore.getState().addMessage(error instanceof CorrelatedResponseError ? error.message : (options.recoveryMessage ?? "Inventory state refreshed. Check your bag and party before trying again."), MessageType.SYSTEM);
         } catch {
           if (current()) reportError("Could not restore inventory state. Please reconnect.");
@@ -235,4 +240,18 @@ export function sendPartyItemCommand(instanceId: number, partySlot: number, move
       if (sound) void AudioManager.playSFX(sound, 0.8);
     },
   });
+}
+
+// Pickup shares bag admission/revision and reconciliation with other inventory
+// commands. Actors are refreshed from the current scene's owned read, not an ID
+// in a possibly historical success packet.
+export function sendPickupCommand(actorId:number,reconcile:(signal:AbortSignal)=>Promise<void>):Promise<void>{
+ return runInventoryRequest<import("@/net/generated/world_api").ItemPickupResponse>({
+  mutation:true,opcode:OpCodes.ItemPickupRequest,responseOpcode:OpCodes.ItemPickupResponse,payload:{actorId},
+  watchPresentation:retire=>watchInteractionPosition(retire),
+  validate:reply=>{if(reply.characterId!==usePlayerCharacterStore.getState().characterProfile.id || reply.actorId!==actorId || !Number.isSafeInteger(reply.instanceId) || reply.instanceId<=0 || !Number.isSafeInteger(reply.itemId) || reply.itemId<=0 || typeof reply.itemName!=="string" || typeof reply.message!=="string")throw new Error("Invalid pickup outcome");},
+  reconcile,
+  present:reply=>{useChatStore.getState().addMessage(reply.message,MessageType.LOOT);const path=sfxPathForConstant("SFX_GET_ITEM_1");if(path)void AudioManager.playSFX(path,0.9);},
+  recoveryMessage:"Item state refreshed. Check your bag before trying again.",
+ });
 }

@@ -771,6 +771,22 @@ export type GameCornerRandom = any;
 //////////
 // source: handler-item-pickup.go
 
+export interface ItemPickupRequest {
+  requestId: string;
+  actorId: number /* int */;
+  command?: InventoryCommandIdentity;
+}
+export interface ItemPickupResponse {
+  success: true;
+  requestId: string;
+  characterId: number /* int64 */;
+  actorId: number /* int */;
+  itemName: string;
+  itemId: number /* int32 */;
+  instanceId: number /* int32 */;
+  message: string;
+  inventory: import("./cqitems").CQInventorySnapshot;
+}
 
 //////////
 // source: handler-party-commands.go
@@ -1553,6 +1569,10 @@ export interface SafariEntryResult {
  */
 export interface SafariZoneManager {
 }
+
+//////////
+// source: script_interaction.go
+
 
 //////////
 // source: scripted_battle.go
