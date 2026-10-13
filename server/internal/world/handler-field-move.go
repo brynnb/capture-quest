@@ -1,7 +1,6 @@
 package world
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,7 +8,6 @@ import (
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
-	db_character "capturequest/internal/db/character"
 	"capturequest/internal/itemuse"
 	"capturequest/internal/logutil"
 	"capturequest/internal/session"
@@ -72,7 +70,7 @@ func HandleFieldMoveUse(ses *session.Session, payload []byte, wh *WorldHandler) 
 			sendInventoryCommandError(ses, req.RequestID, opcodes.FieldMoveUseResponse, "Tagged command is unsupported for this field move.")
 			return false
 		}
-		if move != "CUT" {
+		if move == "FLY" {
 			if char := ses.Client.CharData(); char != nil {
 				if battle := getBattle(int64(char.ID)); battle != nil && !battle.IsOver() {
 					sendFieldMoveUseError(ses, "Field moves can't be used during a battle.")
@@ -261,78 +259,38 @@ func handleStateFieldMove(ses *session.Session, req FieldMoveUseRequestPayload, 
 }
 
 func handleEscapeFieldMove(ses *session.Session, req FieldMoveUseRequestPayload, wh *WorldHandler) bool {
-	charData := ses.Client.CharData()
-	if charData == nil {
-		return false
-	}
-
-	permission := CanUseFieldMove(int64(charData.ID), "DIG", eventFlagsForFieldMove(wh))
-	if !permission.Allowed {
-		sendFieldMoveUseError(ses, permission.Message)
-		return false
-	}
-
-	destMapID, destX, destY, err := escapeRopeDestination(ses, wh)
-	if err != nil {
-		sendFieldMoveUseError(ses, err.Error())
-		return false
-	}
-	if err := teleportPlayerTo(ses, wh, destMapID, destX, destY); err != nil {
-		log.Printf("[FieldMove] Teleport for %d: %v", charData.ID, err)
-		sendFieldMoveUseError(ses, "Could not save the destination. Please try again.")
-		return false
-	}
-
-	message := "Dug out of the dungeon."
-	if permission.KnownByName != "" {
-		message = permission.KnownByName + " used DIG!"
-	}
-	ses.SendStreamJSON(FieldMoveUseResponsePayload{
-		Success:  true,
-		Message:  message,
-		MoveName: permission.MoveName,
-		MapID:    destMapID,
-		TargetX:  destX,
-		TargetY:  destY,
-	}, opcodes.FieldMoveUseResponse)
-	return false
+	return handleTravelFieldMove(ses, wh, "DIG")
+}
+func handleTeleportFieldMove(ses *session.Session, req FieldMoveUseRequestPayload, wh *WorldHandler) bool {
+	return handleTravelFieldMove(ses, wh, "TELEPORT")
 }
 
-func handleTeleportFieldMove(ses *session.Session, req FieldMoveUseRequestPayload, wh *WorldHandler) bool {
-	charData := ses.Client.CharData()
-	if charData == nil {
+func handleTravelFieldMove(ses *session.Session, wh *WorldHandler, moveName string) bool {
+	if wh == nil || wh.database == nil {
+		sendFieldMoveUseError(ses, "Field travel unavailable.")
 		return false
 	}
-
-	permission := CanUseFieldMove(int64(charData.ID), "TELEPORT", eventFlagsForFieldMove(wh))
-	if !permission.Allowed {
-		sendFieldMoveUseError(ses, permission.Message)
-		return false
-	}
-
-	destMapID, destX, destY, err := characterBindDestination(charData.ID)
+	source := wh.ownedPlayerSnapshot(ses, "")
+	result, err := useTravelFieldMove(ses.CommandContext(), wh.database, int64(ses.Client.CharData().ID), moveName, source.MapID, source.X, source.Y, func(mapID int) int { return normalizedVisiblePlayerMapID(wh, mapID) })
 	if err != nil {
-		sendFieldMoveUseError(ses, "TELEPORT can't be used here.")
+		var denied *itemuse.Rejection
+		if errors.As(err, &denied) {
+			sendFieldMoveUseError(ses, denied.Message)
+		} else {
+			logutil.Debugf("[FieldTravel] character=%d move=%s: %v", ses.Client.CharData().ID, moveName, err)
+			sendFieldMoveUseError(ses, "Could not read or save field travel. Please try again.")
+		}
 		return false
 	}
-	if err := teleportPlayerTo(ses, wh, destMapID, destX, destY); err != nil {
-		log.Printf("[FieldMove] Teleport for %d: %v", charData.ID, err)
-		sendFieldMoveUseError(ses, "Could not save the destination. Please try again.")
-		return false
+	publishCommittedTeleport(ses, wh, result.MapID, result.X, result.Y)
+	message := "Dug out of the dungeon."
+	if moveName == "TELEPORT" {
+		message = "Teleported to safety."
 	}
-
-	message := "Teleported to safety."
-	if permission.KnownByName != "" {
-		message = permission.KnownByName + " used TELEPORT!"
+	if result.Permission.KnownByName != "" {
+		message = result.Permission.KnownByName + " used " + moveName + "!"
 	}
-	ses.SendStreamJSON(FieldMoveUseResponsePayload{
-		Success:  true,
-		Message:  message,
-		MoveName: permission.MoveName,
-		MapID:    destMapID,
-		TargetX:  destX,
-		TargetY:  destY,
-	}, opcodes.FieldMoveUseResponse)
+	ses.SendStreamJSON(FieldMoveUseResponsePayload{Success: true, Message: message, MoveName: moveName, MapID: result.MapID, TargetX: result.X, TargetY: result.Y}, opcodes.FieldMoveUseResponse)
 	return false
 }
 
@@ -419,14 +377,6 @@ func eventFlagsForFieldMove(wh *WorldHandler) *EventFlagManager {
 		return nil
 	}
 	return wh.EventFlags
-}
-
-func characterBindDestination(charID uint32) (int, int, int, error) {
-	bind, err := db_character.GetCharacterBind(context.Background(), charID)
-	if err != nil {
-		return RecoverySpawnMap, int(RecoverySpawnX), int(RecoverySpawnY), nil
-	}
-	return int(bind.MapID), int(bind.X), int(bind.Y), nil
 }
 
 func sendFieldMoveUseError(ses *session.Session, message string) {

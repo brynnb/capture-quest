@@ -57,13 +57,13 @@ func useEscapeRope(ctx context.Context, database *sql.DB, charID, instanceID int
 	return result, nil
 }
 
-type flyResult struct {
+type fieldTravelResult struct {
 	MapID, X, Y int
 	Permission  FieldMovePermissionResult
 }
 
-func useFly(ctx context.Context, database *sql.DB, charID int64, mapID, x, y int, normalizeMap func(int) int) (flyResult, error) {
-	var result flyResult
+func useFly(ctx context.Context, database *sql.DB, charID int64, mapID, x, y int, normalizeMap func(int) int) (fieldTravelResult, error) {
+	var result fieldTravelResult
 	err := db.Transaction(ctx, database, func(tx db.DBTX) error {
 		if err := db.LockCharacter(tx, charID); err != nil {
 			return err
@@ -95,9 +95,71 @@ func useFly(ctx context.Context, database *sql.DB, charID int64, mapID, x, y int
 		return saveFieldDestinationIn(tx, charID, result.MapID, result.X, result.Y)
 	})
 	if err != nil {
-		return flyResult{}, err
+		return fieldTravelResult{}, err
 	}
 	return result, nil
+}
+
+// Ability travel joins permission, expected source, destination selection and
+// the existing movement/route/presentation retirement in one character commit.
+func useTravelFieldMove(ctx context.Context, database *sql.DB, charID int64, moveName string, sourceMap, sourceX, sourceY int, normalizeMap func(int) int) (fieldTravelResult, error) {
+	var result fieldTravelResult
+	err := db.Transaction(ctx, database, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, charID); err != nil {
+			return err
+		}
+		if err := requireNoOwnedBattleIn(tx, charID); err != nil {
+			return err
+		}
+		var mapID, x, y int
+		if err := tx.QueryRow(`SELECT map_id,x,y FROM character_data WHERE id=$1`, charID).Scan(&mapID, &x, &y); err != nil {
+			return err
+		}
+		if normalizeMap(mapID) != sourceMap || x != sourceX || y != sourceY {
+			return &itemuse.Rejection{Message: "Your position changed. Check your current location before using the move."}
+		}
+		var err error
+		result.Permission, err = fieldMovePermissionIn(tx, charID, moveName, func(flag string) (bool, error) { return queryEventFlag(tx, charID, flag) })
+		if err != nil {
+			return err
+		}
+		if !result.Permission.Allowed {
+			return &itemuse.Rejection{Message: result.Permission.Message}
+		}
+		switch moveName {
+		case "DIG":
+			result.MapID, result.X, result.Y, err = escapeRopeDestinationIn(tx, sourceMap)
+		case "TELEPORT":
+			result.MapID, result.X, result.Y, err = characterBindDestinationIn(tx, uint32(charID))
+		default:
+			return fmt.Errorf("unsupported field travel %s", moveName)
+		}
+		if err != nil {
+			return err
+		}
+		result.MapID = normalizeMap(result.MapID)
+		return saveFieldDestinationIn(tx, charID, result.MapID, result.X, result.Y)
+	})
+	if err != nil {
+		return fieldTravelResult{}, err
+	}
+	return result, nil
+}
+
+// Only absent primary bind retains the established recovery-spawn policy.
+// Query failure is not evidence of absence and must not authorize a teleport.
+func characterBindDestinationIn(q db.DBTX, charID uint32) (int, int, int, error) {
+	var mapID int
+	var x, y float64
+	err := q.QueryRow(`SELECT map_id,x,y FROM character_bind WHERE id=$1 AND slot=0`, charID).Scan(&mapID, &x, &y)
+	if err == sql.ErrNoRows {
+		return RecoverySpawnMap, int(RecoverySpawnX), int(RecoverySpawnY), nil
+	}
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("read primary bind for character %d: %w", charID, err)
+	}
+	// Preserve the current 2D bind projection's truncation policy.
+	return mapID, int(x), int(y), nil
 }
 
 func saveFieldDestinationIn(tx db.DBTX, charID int64, mapID, x, y int) error {

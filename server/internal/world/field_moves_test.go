@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"capturequest/internal/db"
-	"capturequest/internal/session"
 
 	_ "modernc.org/sqlite"
 )
@@ -89,7 +88,7 @@ func TestCharacterBindDestinationUsesPrimaryBind(t *testing.T) {
 		t.Fatalf("insert bind: %v", err)
 	}
 
-	mapID, x, y, err := characterBindDestination(9)
+	mapID, x, y, err := characterBindDestinationIn(db.GlobalWorldDB.DB, 9)
 	if err != nil {
 		t.Fatalf("characterBindDestination: %v", err)
 	}
@@ -101,7 +100,7 @@ func TestCharacterBindDestinationUsesPrimaryBind(t *testing.T) {
 func TestCharacterBindDestinationFallsBackToRecoverySpawn(t *testing.T) {
 	setupFieldMoveStateTestDB(t)
 
-	mapID, x, y, err := characterBindDestination(999)
+	mapID, x, y, err := characterBindDestinationIn(db.GlobalWorldDB.DB, 999)
 	if err != nil {
 		t.Fatalf("characterBindDestination fallback: %v", err)
 	}
@@ -118,7 +117,7 @@ func TestEscapeRopeDestinationPrefersOverworldExit(t *testing.T) {
 	insertFieldMoveWarp(t, raw, 1, 50, 60, 11, 12)
 	insertFieldMoveWarp(t, raw, 2, 50, 16, 197, -135)
 
-	mapID, x, y, err := escapeRopeDestination(&session.Session{MapID: 50, X: 4, Y: 7}, nil)
+	mapID, x, y, err := escapeRopeDestinationIn(db.GlobalWorldDB.DB, 50)
 	if err != nil {
 		t.Fatalf("escapeRopeDestination: %v", err)
 	}
@@ -130,7 +129,7 @@ func TestEscapeRopeDestinationPrefersOverworldExit(t *testing.T) {
 func TestEscapeRopeDestinationRejectsUnifiedOverworld(t *testing.T) {
 	setupFieldMoveStateTestDB(t)
 
-	if _, _, _, err := escapeRopeDestination(&session.Session{MapID: UnifiedOverworldMapID}, nil); err == nil {
+	if _, _, _, err := escapeRopeDestinationIn(db.GlobalWorldDB.DB, UnifiedOverworldMapID); err == nil {
 		t.Fatal("escapeRopeDestination on unified overworld succeeded, want error")
 	}
 }
@@ -141,7 +140,7 @@ func TestEscapeRopeDestinationRejectsLocalOverworldMap(t *testing.T) {
 	insertFieldMoveMap(t, raw, 67, "CERULEAN_MART", 0)
 	insertFieldMoveWarp(t, raw, 1, 16, 67, 3, 7)
 
-	if _, _, _, err := escapeRopeDestination(&session.Session{MapID: 16}, nil); err == nil {
+	if _, _, _, err := escapeRopeDestinationIn(db.GlobalWorldDB.DB, 16); err == nil {
 		t.Fatal("escapeRopeDestination on local overworld map succeeded, want error")
 	}
 }
@@ -150,7 +149,7 @@ func TestEscapeRopeDestinationRequiresExitWarp(t *testing.T) {
 	raw := setupFieldMoveStateTestDB(t)
 	insertFieldMoveMap(t, raw, 50, "ROCK_TUNNEL_B1F", 0)
 
-	if _, _, _, err := escapeRopeDestination(&session.Session{MapID: 50}, nil); err == nil {
+	if _, _, _, err := escapeRopeDestinationIn(db.GlobalWorldDB.DB, 50); err == nil {
 		t.Fatal("escapeRopeDestination with no exit warp succeeded, want error")
 	}
 }

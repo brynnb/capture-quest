@@ -82,14 +82,6 @@ func itemfinderMessage(ses *session.Session, wh *WorldHandler) string {
 	return "Nope! There's no response."
 }
 
-func escapeRopeDestination(ses *session.Session, wh *WorldHandler) (int, int, int, error) {
-	_, _, mapID := currentTilePosition(ses, wh)
-	if wh != nil {
-		return escapeRopeDestinationIn(wh.database, mapID)
-	}
-	return escapeRopeDestinationIn(db.GlobalWorldDB.DB, mapID)
-}
-
 func escapeRopeDestinationIn(database db.DBTX, mapID int) (int, int, int, error) {
 	if mapID == UnifiedOverworldMapID {
 		return 0, 0, 0, &itemuse.Rejection{Message: "Can't use that here"}

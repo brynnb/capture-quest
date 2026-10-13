@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+DIG/TELEPORT join durable permission/source/destination selection with movement,
+following `b51cb49`:
 CUT receipt/publication and delayed texture review plus native reset acceptance,
 following `b66d5a0`:
 CUT correlated source/visit commands and reset-safe current tile recovery,
@@ -119,6 +121,53 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## DIG/TELEPORT permission and destination commit prerequisite (2026-10-13)
+
+The live party-HUD travel paths previously checked moves through the global party
+reader, selected exit/bind outside the position transaction, and then invoked a
+separate teleport. TELEPORT converted every bind query error into a default spawn.
+Runtime DIG/TELEPORT now share `useTravelFieldMove`: character lock, durable battle
+admission, expected server-owned source, ability eligibility and authoritative
+destination all join the existing movement/route/plan-retirement commit. Position
+and notifications publish only after the final transaction succeeds. They do not
+use the inventory coordinator or consume a new travel-specific resource model.
+
+DIG reuses `escapeRopeDestinationIn` with the saved source under ownership.
+TELEPORT uses an injected primary-bind selector. Only actual sql.ErrNoRows retains
+the existing recovery-spawn policy; SQL failure cannot masquerade as a missing
+bind or authorize movement. The existing 2D integer truncation of bind coordinates
+is preserved and commented. Cached battle admission is removed for these moves.
+The legacy session/global escape destination and bind-destination wrappers are
+retired after caller inventory; selector tests use owned dependencies. Existing
+FLY catalog logic remains separate. The internal shared travel result name now
+reflects all consumers rather than a FLY-only container.
+
+Focused PostgreSQL race checks pass (3.0s) for both abilities: missing move,
+stale source, destination read failure, deferred position commit rejection,
+durable battle with absent cache, one-connection execution and success without
+the global DB. Failure preserves durable pose and publishes no warp. Primary bind,
+missing-bind fallback, Escape Rope and FLY regression checks remain passing.
+Full world (63.9s), simulator (1.5s) race suites and all Go package compilation
+pass; final selector/compile checks after wrapper removal and diff checks pass.
+
+Both rendered Chromium/WebSocket party-HUD cases pass (9.2s;
+`/var/tmp/capturequest-rendered.FUeYc2`): DIG from an outdoor source rejects and
+keeps (9999,10,10); TELEPORT uses a primary bind in the private fixture, persists
+the destination and arrives at REDS_HOUSE_2F (3,6). The bind uses a map ID resolved
+from the real catalog and is private player state, not a production/content repair.
+This is domain success/rejection evidence, not lost-acknowledgement, source-lifetime
+or native acceptance for travel.
+
+Remaining: travel still uses actor-only legacy field envelopes/global replies;
+correlation, source expectations, duplicate/uncertain result handling and owned
+movement publication need migration. FLY's source/battle/catalog and lifecycle
+review remain open. The original five-area roadmap and historical restore issue
+remain incomplete. No push, deployment, schema or generated-asset change occurred.
+
+Next: review the joined travel primitive, then migrate DIG/TELEPORT identity/source
+and owned current-position recovery through the existing field/session owner,
+retiring global travel reply effects with the coordinated adapter change.
 
 ## CUT publication/texture review and native reset acceptance (2026-10-13)
 
