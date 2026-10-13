@@ -711,3 +711,12 @@ test("retired state field ignores late reply and cannot recover an old scene",as
  vi.mocked(movement.requestStateField).mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));
  const pending=controller.activateFieldState("FLASH");await Promise.resolve();controller.retireFieldCommands();resolve({success:true,requestId:"old",characterId:42,moveName:"FLASH",mapId:9999,message:"Ready"});await pending;expect(recovery.readCurrentGameplayState).toHaveBeenCalledOnce();
 });
+
+
+test("historical field success cannot present activation over inactive owned state",async()=>{
+ const {controller}=buildLedgeController();usePlayerCharacterStore.getState().setCharacterProfile({id:42});
+ const open=vi.spyOn(usePokemonDialogueStore.getState(),"openDialogue");
+ vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce({fieldCommands:{}} as any).mockResolvedValueOnce({fieldState:{mapId:9999,strength:false,flash:false},position:{mapId:9999,x:10,y:0,direction:"UP",serverMovementPending:false}} as any);
+ vi.mocked(movement.requestStateField).mockResolvedValueOnce({success:true,requestId:"old",characterId:42,moveName:"FLASH",mapId:9999,message:"PIKACHU used FLASH."});
+ await controller.activateFieldState("FLASH");expect(open).toHaveBeenCalledWith(["FLASH state refreshed for your current location."]);expect(movement.requestStateField).toHaveBeenCalledOnce();open.mockRestore();
+});

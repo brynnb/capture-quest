@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+held state replies across reentry/source replacement and inactive recovery pass,
+following `59e55b5`:
 state-field mixed-envelope/snapshot review and explicit FLASH acceptance,
 following `90149e4`:
 explicit STRENGTH/FLASH use scoped field identity, bounded receipts and owned
@@ -107,6 +109,37 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## State-field held response and source retirement acceptance (2026-10-13)
+
+The existing field slot/recovery boundary passes the held-outcome review without
+another production implementation change. A new unit regression supplies a
+historical successful FLASH acknowledgement followed by an inactive current
+snapshot. Presentation describes refreshed current state rather than claiming a
+new FLASH activation, and no second command is sent. All 49 movement controller
+checks, typecheck and diff checks pass.
+
+Both rendered Chromium/WebSocket held-FLASH cases pass (11.8s;
+`/var/tmp/capturequest-rendered.Xq4msa`): same-character reentry and same-map
+source/scene replacement. Each observes actual late receipt delivery after the
+new owner is ready, with no reopened dialogue, position/direction/sprite-state
+change, second command or revision increment. Reentry retains the committed
+active state. The private source fixture reset clears activation; late historical
+success does not reactivate it. The field receipt remains at revision 1. This is
+rendered lifecycle/current-state evidence, not a new FLASH visual-lighting feature.
+
+Prior native process, normal/lost-reply duplicate, source/battle permission and
+late receipt rollback checks retain their scoped evidence. State activation,
+identity and current recovery have a reviewed local baseline. The rest of
+FieldMoveUse, wider writer/catalog/actor publication and the original five-area
+goal remain incomplete. Historical restore attribution remains open. No push,
+deployment, schema or generated runtime asset changes occurred.
+
+Next: audit CUT's existing transient map lifetime and tile replacement producer.
+Current source marks the cut before resolving replacement through a global read
+with a fallback; determine the authoritative replacement rule and failure policy
+before changing it or adding command recovery. Preserve transient CUT semantics
+rather than building a second persistent world-edit system.
 
 ## State-field envelope/snapshot review and FLASH acceptance (2026-10-13)
 
