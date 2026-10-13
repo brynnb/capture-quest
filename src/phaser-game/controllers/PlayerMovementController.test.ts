@@ -724,12 +724,21 @@ test("historical field success cannot present activation over inactive owned sta
 
 
 test("CUT unknown delivery reconciles one current scoped tile without resend",async()=>{
- const {controller}=buildLedgeController();usePlayerCharacterStore.getState().setCharacterProfile({id:42});const reconcile=vi.fn(async()=>{});controller.setTileReconciler(reconcile);
+ const {controller}=buildLedgeController();usePlayerCharacterStore.getState().setCharacterProfile({id:42});const reconcile=vi.fn(async()=>true);controller.setTileReconciler(reconcile);
  vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce({cutScope:"visit",fieldCommands:{cut:0}} as any).mockResolvedValueOnce({cutScope:"visit",position:{mapId:9999}} as any);
  vi.mocked(movement.requestCut).mockRejectedValueOnce(new Error("lost reply"));await controller.cut(9,0,"LEFT");expect(movement.requestCut).toHaveBeenCalledOnce();expect(reconcile).toHaveBeenCalledWith(9999,9,0,"visit",expect.any(AbortSignal));
 });
 test("CUT unknown result cannot reconcile a replacement visit",async()=>{
- const {controller}=buildLedgeController();usePlayerCharacterStore.getState().setCharacterProfile({id:42});const reconcile=vi.fn(async()=>{});controller.setTileReconciler(reconcile);
+ const {controller}=buildLedgeController();usePlayerCharacterStore.getState().setCharacterProfile({id:42});const reconcile=vi.fn(async()=>true);controller.setTileReconciler(reconcile);
  vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce({cutScope:"old",fieldCommands:{}} as any).mockResolvedValueOnce({cutScope:"new",position:{mapId:9999}} as any);
  vi.mocked(movement.requestCut).mockRejectedValueOnce(new Error("lost reply"));await controller.cut(9,0,"LEFT");expect(reconcile).not.toHaveBeenCalled();expect(movement.requestCut).toHaveBeenCalledOnce();
+});
+
+
+test("CUT discarded projection cannot present a historical success",async()=>{
+ const {controller}=buildLedgeController();usePlayerCharacterStore.getState().setCharacterProfile({id:42});controller.setTileReconciler(async()=>false);
+ const open=vi.spyOn(usePokemonDialogueStore.getState(),"openDialogue");
+ vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce({cutScope:"visit",fieldCommands:{}} as any).mockResolvedValueOnce({cutScope:"visit",position:{mapId:9999}} as any);
+ vi.mocked(movement.requestCut).mockResolvedValueOnce({success:true,requestId:"done",characterId:42,moveName:"CUT",mapId:9999,cutScope:"visit",targetX:9,targetY:0,message:"Used CUT!"});
+ await controller.cut(9,0,"LEFT");expect(open).not.toHaveBeenCalled();open.mockRestore();
 });

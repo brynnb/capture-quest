@@ -104,3 +104,17 @@ test("native FLASH keeps scoped activation across process replacement",async({pa
  const owned=await page.evaluate(async()=>{const path="/src/phaser-game/services/GameplayRecoveryService.ts";const snapshot=await (await import(path)).readCurrentGameplayState();return {field:snapshot.fieldState,position:snapshot.position,revision:snapshot.fieldCommands["field-state"]};});expect(owned.field.flash).toBe(true);expect(owned.field.mapId).toBe(owned.position.mapId);expect(owned.revision).toBe(1);
  await page.screenshot({path:info.outputPath("native-flash-restored.png")});await record({family:"native-state-field",id,before,after,receipt,owned,revision:1});await quitToCharacterSelect(page);
 });
+
+
+test("native CUT process reset restores base tree without replaying receipt",async({page},info)=>{
+ test.skip(process.env.CQ_E2E_TRANSPORT!=="native" || process.env.CQ_E2E_CRASH_RECOVERY!=="true","Requires native exact-process runner");test.setTimeout(120000);
+ const {sql,crash,record}=await isolatedCrashRuntime();const character=await createGuestCharacterAndEnterWorld(page);
+ const scenarios=await import("./helpers/scenarioDebugger");const state=await import("./helpers/state");const input=await import("./helpers/input");
+ await scenarios.jumpToScenario(page,"debug_field_move_cut_ready");await state.waitForNoMapLoading(page);await waitForPlayerIdle(page);const before=await assertNative(page);const id=(await state.getGameState(page)).player.internalId!;
+ const read=()=>page.evaluate(async()=>{const path="/src/phaser-game/services/MapDataService.ts";return (await new (await import(path)).MapDataService().fetchTilesInBounds(9999,{minX:189,maxX:189,minY:-170,maxY:-170}))[0];});
+ const scope=()=>page.evaluate(async()=>{const path="/src/phaser-game/services/GameplayRecoveryService.ts";return (await (await import(path)).readCurrentGameplayState()).cutScope;});
+ const original=await read();const oldScope=await scope();await input.pressSpace(page);await expect.poll(async()=>(await state.getGameState(page)).dialogue.isOpen).toBe(true);await input.dismissDialogue(page);expect((await read()).rawFootTileId).toBe(0x52);
+ const receipt=await crash();await expect(page.getByRole("button",{name:"PLAY AS GUEST"})).toBeVisible({timeout:20000});await page.getByRole("button",{name:"PLAY AS GUEST"}).click();await expect(page.getByRole("heading",{name:"SELECT A CHARACTER"})).toBeVisible();await enterWorld(page,character);await state.waitForNoMapLoading(page);const after=await assertNative(page);
+ const current=await read();expect(current.tileImageId).toBe(original.tileImageId);expect(current.rawFootTileId).toBe(0x3d);const newScope=await scope();expect(newScope).not.toBe(oldScope);expect(await sql(`SELECT revision FROM character_field_command_state WHERE character_id=${id} AND domain='cut'`)).toBe("1");
+ await page.screenshot({path:info.outputPath("native-cut-reset.png")});await record({family:"native-cut",id,before,after,receipt,oldScope,newScope,image:current.tileImageId,revision:1});await quitToCharacterSelect(page);
+});

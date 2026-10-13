@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+CUT receipt/publication and delayed texture review plus native reset acceptance,
+following `b66d5a0`:
 CUT correlated source/visit commands and reset-safe current tile recovery,
 following `02bd973`:
 CUT transient visit scope fences prepared marking across reset/replacement,
@@ -117,6 +119,52 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## CUT publication/texture review and native reset acceptance (2026-10-13)
+
+The receipt/transient gap is now explicitly tested. A committed authorization
+whose in-memory tile is absent rejects replay even while that visit identity is
+still current; replay cannot reconstruct the effect from stored art/history.
+The same test retains deferred receipt rollback and expired-visit rejection.
+Focused PostgreSQL preparation/receipt checks pass (2.1s). The gap is deliberate:
+CUT art is ephemeral, and current owner state—not a durable acknowledgement—is
+authority for application. No persistent cut ledger is introduced.
+
+Texture review found the visit was checked before the asynchronous load. The
+existing reconciliation is mechanically extracted into a cohesive scene method,
+and the current owned scope is checked after texture completion immediately
+before presentation/collision writes. A real-method deferred-texture regression
+replaces the visit while loading and proves no tile or collision application.
+Its Phaser scene constructor is mocked because no renderer instance is required;
+production method/order is exercised. A second review found void reconciliation
+could still let the caller show old success after discarding projection. It now
+returns acceptance, and the field caller suppresses presentation when discarded.
+
+All 600 client tests in 60 files pass (4.8s), with typecheck and diff checks.
+All three final rendered Chromium/WebSocket timeout, reset/late delivery and
+current reread/walk-through checks pass (30.1s;
+`/var/tmp/capturequest-rendered.COImcn`) after the explicit projection acceptance
+result. Deferred-texture unit evidence and rendered gameplay evidence retain
+their distinct scopes.
+
+Native CUT process/reset acceptance passes (14.1s;
+`/var/tmp/capturequest-rendered.ENN5fn`). Connected/native are true and WebSocket
+false before/after exact-process replacement. The base tree image/foot returns,
+visit UUID changes, and the durable cut receipt remains revision 1 rather than
+reactivating transient art. Receipt records old PID 1070524, replacement 1070868,
+exit 137. That run includes the post-texture scope ordering; the later boolean
+presentation refinement retains unit/WebSocket verification. Native packet-loss
+injection remains separate from the prior WebSocket held-reply evidence.
+
+Remaining: exact native block-swap art still needs producing-layer provenance,
+and broader tile/actor publication/catalog races remain in the finite matrix.
+The original five-area goal and historical restore attribution are incomplete.
+No push, production deployment, schema or generated-asset changes occurred;
+unrelated deployment work is preserved.
+
+Next: audit DIG/TELEPORT permission and destination selection against the existing
+movement transaction before migrating their shared opcode path. Keep FLY catalog
+policy and CUT's transient lifetime distinct.
 
 ## CUT correlated visit admission and current tile recovery (2026-10-13)
 

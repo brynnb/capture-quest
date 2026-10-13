@@ -572,19 +572,7 @@ export class TileViewer extends Scene {
 
     // Subscribe to pushed actor lists (e.g. player spawn)
     this.playerMovementController.setActorReconciler(signal => this.reconcileActors(signal));
-    this.playerMovementController.setTileReconciler(async(mapId,x,y,scope,signal)=>{
-      const character=usePlayerCharacterStore.getState().characterProfile.id;
-      const current=()=>!signal.aborted && this.sys.isActive() && this.playerMovementController.getCurrentMapId()===mapId && usePlayerCharacterStore.getState().characterProfile.id===character;
-      this.mapLoader.invalidateOwnedTileProjection(mapId,x,y);
-      const tiles=await this.mapDataService.fetchTilesInBounds(mapId,{minX:x,maxX:x,minY:y,maxY:y},signal);
-      if(!current())return;
-      const owned=await readCurrentGameplayState(signal);if(!current() || owned.cutScope!==scope)return;
-      if(tiles.length!==1)throw new Error("CUT target square is unavailable");
-      const tile=tiles[0];await this.mapRenderer.loadTileTextureIfNeeded(tile.tileImageId);if(!current())return;
-      this.mapRenderer.addTile(tile.x,tile.y,tile.tileImageId);
-      this.updateTileEditorLookup(tile.x,tile.y,tile.tileImageId,tile.collisionType,tile.rawFootTileId,tile.talkOverTile);
-      this.playerMovementController.updateCollisionTile(tile.x,tile.y,tile.collisionType,false,tile.rawFootTileId,tile.talkOverTile);
-    });
+    this.playerMovementController.setTileReconciler((mapId,x,y,scope,signal)=>this.reconcileCutTile(mapId,x,y,scope,signal));
 
     // Check if we have data passed from resetScene
     let destinationMapId = null;
@@ -1732,6 +1720,24 @@ export class TileViewer extends Scene {
     }
     if(edits.length)this.worldTileUpdateHandler?.(new CustomEvent("worldTileUpdate",{detail:{mapId:map.id,tiles:edits}}));
     if(current())this.tiles=tiles;
+  }
+
+  private async reconcileCutTile(mapId:number,x:number,y:number,scope:string,signal:AbortSignal):Promise<boolean>{
+
+      const character=usePlayerCharacterStore.getState().characterProfile.id;
+      const current=()=>!signal.aborted && this.sys.isActive() && this.playerMovementController.getCurrentMapId()===mapId && usePlayerCharacterStore.getState().characterProfile.id===character;
+      this.mapLoader.invalidateOwnedTileProjection(mapId,x,y);
+      const tiles=await this.mapDataService.fetchTilesInBounds(mapId,{minX:x,maxX:x,minY:y,maxY:y},signal);
+      if(!current())return false;
+      if(tiles.length!==1)throw new Error("CUT target square is unavailable");
+      const tile=tiles[0];await this.mapRenderer.loadTileTextureIfNeeded(tile.tileImageId);if(!current())return false;
+      // Texture work is asynchronous. Validate the visit after it settles,
+      // immediately before changing presentation/collision, not before the wait.
+      const owned=await readCurrentGameplayState(signal);if(!current() || owned.cutScope!==scope)return false;
+      this.mapRenderer.addTile(tile.x,tile.y,tile.tileImageId);
+      this.updateTileEditorLookup(tile.x,tile.y,tile.tileImageId,tile.collisionType,tile.rawFootTileId,tile.talkOverTile);
+      this.playerMovementController.updateCollisionTile(tile.x,tile.y,tile.collisionType,false,tile.rawFootTileId,tile.talkOverTile);
+      return true;
   }
 
   private async reconcileActors(signal: AbortSignal): Promise<void> {

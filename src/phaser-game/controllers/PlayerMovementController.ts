@@ -125,8 +125,8 @@ export class PlayerMovementController {
   private actorReconciler: (signal: AbortSignal) => Promise<void> = async () => {};
   setActorReconciler(reconcile: (signal: AbortSignal) => Promise<void>): void { this.actorReconciler = reconcile; }
   reconcileActors(signal: AbortSignal): Promise<void> { return this.actorReconciler(signal); }
-  private tileReconciler:(mapId:number,x:number,y:number,scope:string,signal:AbortSignal)=>Promise<void>=async()=>{throw new Error("Tile recovery is not bound");};
-  setTileReconciler(reconcile:(mapId:number,x:number,y:number,scope:string,signal:AbortSignal)=>Promise<void>):void{this.tileReconciler=reconcile;}
+  private tileReconciler:(mapId:number,x:number,y:number,scope:string,signal:AbortSignal)=>Promise<boolean>=async()=>{throw new Error("Tile recovery is not bound");};
+  setTileReconciler(reconcile:(mapId:number,x:number,y:number,scope:string,signal:AbortSignal)=>Promise<boolean>):void{this.tileReconciler=reconcile;}
   private fieldCommandAbort: AbortController | null = null;
   private fieldCommandsRetired = false;
 
@@ -174,7 +174,7 @@ export class PlayerMovementController {
         const owned=await readCurrentGameplayState(signal,()=>this.capturePositionView());if(!current())return;
         if(!cutScope || owned.cutScope!==cutScope || owned.position.mapId!==source.mapId)return;
         applyGameplayResourceSnapshot(owned);
-        await this.tileReconciler(source.mapId,targetX,targetY,cutScope,signal);if(!current())return;
+        if(!(await this.tileReconciler(source.mapId,targetX,targetY,cutScope,signal)) || !current())return;
         usePokemonDialogueStore.getState().openDialogue([message??"CUT state refreshed. Check the current tile before trying again."]);
       }catch{if(current()){this.movementRecoveryRequired=true;useChatStore.getState().addMessage("CUT state could not be recovered. Reconnect before moving.",MessageType.SYSTEM_ERROR);}}
     });

@@ -111,6 +111,17 @@ func TestCutReceiptCannotRecreateAnExpiredVisit(t *testing.T) {
 	if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &replay) != nil || !replay.Success {
 		t.Fatal("same visit duplicate did not acknowledge receipt")
 	}
+	// Model a receipt that committed but whose transient publication is absent.
+	// Acknowledgement alone cannot recreate the effect, even in this same visit.
+	wh.CutTiles.mu.Lock()
+	delete(wh.CutTiles.tiles[42][50], tileKey(1, 0))
+	wh.CutTiles.mu.Unlock()
+	messages.streams = nil
+	battleDispatch(t, wh, ses, opcodes.FieldMoveUseRequest, request)
+	var missing InventoryCommandError
+	if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &missing) != nil || missing.Success || missing.Error == "" || wh.CutTiles.HasCut(42, 50, scope, 1, 0) {
+		t.Fatal("receipt recreated absent transient publication")
+	}
 	wh.CutTiles.ClearMap(42, 50)
 	current := wh.CutTiles.Scope(42, 50)
 	messages.streams = nil
