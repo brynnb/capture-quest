@@ -217,8 +217,16 @@ func commitClientPlayerPosition(ctx context.Context, database *sql.DB, charID in
 
 // Invalid-position recovery uses the existing zero-elevation destination policy
 // and preserves entry's post-drain saved heading in the same position commit.
+// RecoverySpawnMap identifies Pallet's source catalog for asset reads. Runtime
+// overworld position storage/publication uses the unified identity, as ordinary
+// travel does; saving raw map 0 would make owned current recovery disagree.
+func recoverySpawnDestination() fieldTravelResult {
+	return fieldTravelResult{MapID: UnifiedOverworldMapID, X: int(RecoverySpawnX), Y: int(RecoverySpawnY)}
+}
+
 func commitRecoveryPlayerPosition(ctx context.Context, database *sql.DB, charID int64, heading float64) error {
-	return commitPosition(ctx, database, charID, RecoverySpawnMap, int(RecoverySpawnX), int(RecoverySpawnY), false, heading)
+	destination := recoverySpawnDestination()
+	return commitPosition(ctx, database, charID, destination.MapID, destination.X, destination.Y, false, heading)
 }
 
 func commitPosition(ctx context.Context, database *sql.DB, charID int64, mapID, x, y int, validateCatalog bool, heading float64) error {

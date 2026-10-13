@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+Warp Home scoped emergency admission, travel receipts and owned recovery, with
+canonical saved/published recovery identity, following `125ad84`:
 awaited field recovery cannot report projection success while battle ownership is
 pending; Warp Home emergency admission requirements audited, following `f6353ed`:
 elevator source/menu/gesture lifetime review and native process acceptance,
@@ -144,6 +146,62 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Warp Home scoped emergency ownership, receipt and current recovery (2026-10-13)
+
+Warp Home now uses request/character identity and the existing travel revision and
+latest receipt. Its existing battle deletion, Safari termination and destination/
+route/plan retirement remain one character transaction. Exact replay acknowledges
+history without clearing a newer battle/Safari visit or reprojecting a newer pose.
+The typed current/reset reply includes explicit current mode and revision; legacy
+empty requests and foreign identity reject. No unsolicited warp is sent.
+
+Emergency admission is an explicit policy of the existing movement field slot:
+it can replace an ordinary waiter and operate despite movement-recovery lock,
+but duplicate active emergencies and retired scenes reject. Cancelling callbacks
+cannot cancel a possibly committed server operation. The existing battle coordinator
+retains the emergency owner in its active slot and suspends queued presentation
+without declaring battle absence. Generation-guarded retirement releases that slot;
+owned recovery forces current presentation even when the retained battle revision
+matches. Ordinary battle commands remain blocked during that ownership. The raw
+BottomHUD sender and global Home reply/SFX/battle effects are retired together.
+
+A full gameplay snapshot cannot supply emergency admission when the source pose or
+battle payload is broken. The correlated ownership read therefore uses the existing
+character lock and `FieldCommandRevisions`, reading no pose, party or battle JSON
+and performing no mutation. The subsequent reset still checks its expected travel
+revision. A PostgreSQL regression demonstrates read-only admission with inconsistent
+saved/owned source and malformed `battle_json`, followed by successful reset.
+An initial fixture used nonexistent `state_json`; it was corrected to the actual
+schema column without changing assertions.
+
+Rendered testing exposed a pre-existing identity mismatch: Home saved raw Pallet
+map 0 while runtime publication normalized to 9999, so current recovery rejected it.
+Local catalog `maps(id=0,name=PALLET_TOWN,is_overworld=1)` and runtime normalization
+confirm the distinction. `recoverySpawnDestination` now supplies the canonical
+runtime (9999,9,4) to both emergency Home and entry's invalid-position recovery,
+while `RecoverySpawnMap=0` remains source catalog identity for asset reads. Saved,
+session and published identities agree; entry heading/elevation/route atomicity is
+preserved. Recovery mismatch errors now include actual saved and owned coordinates.
+The first browser fixture also assumed creation spawn (38,3,6); it now asserts the
+existing documented recovery destination, including durable coordinates.
+
+Full world (65.7s), simulator (1.9s) race suites and all-package compilation pass;
+618 client tests/typecheck and focused emergency ownership/recovery checks pass.
+Final Chromium/WebSocket Safari-battle duplicate/withheld reset replies pass
+(20.2s; `/var/tmp/capturequest-rendered.On3T2Y`): one browser reset, travel revision
+1, no durable battle/Safari and visible/saved Pallet (9999,9,4), with screenshot
+inspection. This is rendered WebSocket evidence, not native or production proof.
+
+Remaining: held battle-action/reset replies across reentry, emergency rejection/
+recovery failure, source/scene/process races and native acceptance need review before
+another family. The coordinated current/reset wire requires client/server activation
+together; no schema or source asset changes. Wider matrix, all original five areas
+and historical restore attribution remain open. Local checkpoint only; no push or
+deployment.
+
+Next: review Home against an already-pending battle action and held reset reentry,
+then native exact-process restoration through the existing harness.
 
 ## Warp Home emergency-owner audit and awaited recovery correction (2026-10-13)
 

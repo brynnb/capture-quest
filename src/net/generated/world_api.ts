@@ -1336,6 +1336,22 @@ export interface TrainerBattleStartRequest {
 //////////
 // source: handler-warp-home.go
 
+export interface WarpHomeRequest {
+  requestId: string;
+  characterId: number /* int64 */;
+  commandRevision?: number /* int64 */;
+  current?: boolean;
+}
+export interface WarpHomeResponse {
+  success: true;
+  requestId: string;
+  characterId: number /* int64 */;
+  moveName: string;
+  mapId: number /* int */;
+  message: string;
+  current: boolean;
+  revision: number /* int64 */;
+}
 
 //////////
 // source: handler_bicycle.go

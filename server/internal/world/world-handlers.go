@@ -140,9 +140,10 @@ func sendCharacterStateFromDB(ses *session.Session, wh *WorldHandler, characterN
 	ses.CharacterName = characterName
 
 	if isInvalidZeroPlayerPosition(int(charData.X), int(charData.Y)) {
+		destination := recoverySpawnDestination()
 		log.Printf("[WORLD] Recovering invalid saved position for character %s (%d) to map %d (%d,%d)",
-			charData.Name, charData.ID, RecoverySpawnMap, int(RecoverySpawnX), int(RecoverySpawnY))
-		charData.MapID = RecoverySpawnMap
+			charData.Name, charData.ID, destination.MapID, destination.X, destination.Y)
+		charData.MapID = uint32(destination.MapID)
 		charData.X = RecoverySpawnX
 		charData.Y = RecoverySpawnY
 		charData.Z = RecoverySpawnZ

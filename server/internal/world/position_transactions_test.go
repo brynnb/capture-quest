@@ -85,7 +85,7 @@ func TestRecoveryPositionAndElevationCommitTogether(t *testing.T) {
 	if err := commitRecoveryPlayerPosition(context.Background(), database, 42, 9); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.QueryRow(`SELECT map_id,x,y,z,heading,time_played FROM character_data WHERE id=42`).Scan(&mapID, &x, &y, &z, &heading, &playtime); err != nil || mapID != RecoverySpawnMap || x != int(RecoverySpawnX) || y != int(RecoverySpawnY) || z != int(RecoverySpawnZ) || heading != 9 || playtime != 20 {
+	if err := database.QueryRow(`SELECT map_id,x,y,z,heading,time_played FROM character_data WHERE id=42`).Scan(&mapID, &x, &y, &z, &heading, &playtime); err != nil || mapID != UnifiedOverworldMapID || x != int(RecoverySpawnX) || y != int(RecoverySpawnY) || z != int(RecoverySpawnZ) || heading != 9 || playtime != 20 {
 		t.Fatalf("recovered pose=(%d,%d,%d,%d) heading=%d playtime=%d %v", mapID, x, y, z, heading, playtime, err)
 	}
 	if err := database.QueryRow(`SELECT count(*) FROM character_movement_routes WHERE character_id=42`).Scan(&count); err != nil || count != 0 {

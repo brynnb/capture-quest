@@ -195,7 +195,7 @@ export class NetworkBridge {
         this.handleWarpTileTeleport(data as ProtocolTypes.WarpTileTeleportNotify);
         break;
       case OpCodes.WarpHomeResponse:
-        this.handleWarpHomeResponse(data as Record<string, unknown>);
+        if(typeof (data as {requestId?:unknown})?.requestId==="string")import("@/phaser-game/services/PhaserNetworkService").then(module=>module.dispatchPhaserResponse(opcode,data));
         break;
 
       // Elevator floor list (Phase 9.7)
@@ -418,23 +418,6 @@ export class NetworkBridge {
     window.dispatchEvent(
       new CustomEvent("warpTileTeleport", { detail: { ...data, serverCommitted: true } })
     );
-  }
-
-  private handleWarpHomeResponse(data: Record<string, unknown>) {
-    const chat = useChatStore.getState();
-    if (data.success) {
-      this.playSourceSFX("SFX_GO_OUTSIDE", 0.85);
-      const battleStore = usePokeBattleStore.getState();
-      if (battleStore.isInBattle) {
-        battleStore.retireBattle();
-      }
-      chat.addMessage((data.message as string) || "Warped home.", MessageType.SYSTEM);
-    } else {
-      chat.addMessage(
-        `Warp home failed: ${(data.error as string) || "unknown error"}`,
-        MessageType.SYSTEM_ERROR,
-      );
-    }
   }
 
   private handleCutsceneStartNotify(data: Record<string, unknown>) {

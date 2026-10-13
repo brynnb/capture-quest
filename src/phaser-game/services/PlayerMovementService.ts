@@ -74,3 +74,7 @@ export function requestCut(request:Omit<import("@/net/generated/world_api").Fiel
 export function requestElevator(request:Omit<import("@/net/generated/world_api").ElevatorFloorsRequestPayload,"requestId"> | Omit<import("@/net/generated/world_api").ElevatorSelectRequestPayload,"requestId">,select:boolean,signal?:AbortSignal){
  return correlatedRequest<import("@/net/generated/world_api").ElevatorResponse>(PhaserNet.onElevator,id=>PhaserNet.requestElevator({...request,requestId:id},select),signal);
 }
+
+export function requestWarpHome(request:Omit<import("@/net/generated/world_api").WarpHomeRequest,"requestId">,signal?:AbortSignal){return correlatedRequest<import("@/net/generated/world_api").WarpHomeResponse>(PhaserNet.onWarpHome,id=>PhaserNet.requestWarpHome({...request,requestId:id}),signal);}
+
+export function readWarpHomeRevision(characterId:number,signal?:AbortSignal){return requestWarpHome({characterId,current:true},signal);}

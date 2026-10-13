@@ -504,7 +504,7 @@ const BottomHUD = () => {
   };
 
   const handleWarpHome = async () => {
-    await WorldSocket.sendJsonMessage(OpCodes.WarpHomeRequest, {});
+    window.dispatchEvent(new CustomEvent("cq:warpHomeUse"));
   };
 
   const locationName = currentMap == null

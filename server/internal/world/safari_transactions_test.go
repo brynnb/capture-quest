@@ -476,7 +476,7 @@ func TestWarpHomeCommitsBattleSafariAndPositionTogether(t *testing.T) {
 	previous := db.GlobalWorldDB
 	db.GlobalWorldDB = nil
 	t.Cleanup(func() { db.GlobalWorldDB = previous })
-	battleDispatch(t, wh, ses, opcodes.WarpHomeRequest, `{}`)
+	battleDispatch(t, wh, ses, opcodes.WarpHomeRequest, `{"requestId":"warp-home","characterId":42,"commandRevision":0}`)
 	if len(messages.streams) != 1 || messages.streams[0].opcode != opcodes.WarpHomeResponse {
 		t.Fatalf("failed warp published=%+v", messages.streams)
 	}
@@ -494,7 +494,7 @@ func TestWarpHomeCommitsBattleSafariAndPositionTogether(t *testing.T) {
 	}
 	testdb.Exec(t, database, `DROP TRIGGER reject_home_commit ON character_safari_state`)
 	messages.streams = nil
-	battleDispatch(t, wh, ses, opcodes.WarpHomeRequest, `{}`)
+	battleDispatch(t, wh, ses, opcodes.WarpHomeRequest, `{"requestId":"warp-home","characterId":42,"commandRevision":0}`)
 	saved, err = pokebattle.ResumeBattle(context.Background(), database, 42)
 	if err != nil || saved != nil || getBattle(42) != nil {
 		t.Fatalf("battle retained=%+v %v", saved, err)
@@ -503,8 +503,42 @@ func TestWarpHomeCommitsBattleSafariAndPositionTogether(t *testing.T) {
 	if err != nil || s != nil {
 		t.Fatalf("safari retained=%+v %v", s, err)
 	}
-	if err := database.QueryRow(`SELECT map_id FROM character_data WHERE id=42`).Scan(&mapID); err != nil || mapID != RecoverySpawnMap {
+	if err := database.QueryRow(`SELECT map_id FROM character_data WHERE id=42`).Scan(&mapID); err != nil || mapID != UnifiedOverworldMapID {
 		t.Fatalf("home=%d %v", mapID, err)
+	}
+
+	if len(messages.streams) != 1 || messages.streams[0].opcode != opcodes.WarpHomeResponse {
+		t.Fatalf("home unsolicited publication %+v", messages.streams)
+	}
+	historical := string(messages.streams[0].payload)
+	newerBattle := battleTestStart(t, database, false, nil)
+	if err := wh.Safari.SetSession(context.Background(), 42, SafariSession{Active: true, BallsLeft: 20, StepsLeft: 123}); err != nil {
+		t.Fatal(err)
+	}
+	testdb.Exec(t, database, `UPDATE character_data SET map_id=50,x=9,y=8 WHERE id=42`)
+	ses.Client.CharData().MapID, ses.Client.CharData().X, ses.Client.CharData().Y = 50, 9, 8
+	messages.streams = nil
+	battleDispatch(t, wh, ses, opcodes.WarpHomeRequest, `{"requestId":"warp-home","characterId":42,"commandRevision":0}`)
+	if len(messages.streams) != 1 || string(messages.streams[0].payload) != historical {
+		t.Fatal("home receipt not replayed")
+	}
+	if getBattle(42) != newerBattle {
+		t.Fatal("home replay removed newer cached battle")
+	}
+	saved, err = pokebattle.ResumeBattle(context.Background(), database, 42)
+	if err != nil || saved == nil || saved.BattleID != newerBattle.BattleID {
+		t.Fatal("home replay removed newer durable battle")
+	}
+	s, err = wh.Safari.GetSession(context.Background(), 42)
+	if err != nil || s == nil || !s.Active || s.StepsLeft != 123 {
+		t.Fatal("home replay removed newer Safari visit")
+	}
+	var revision int
+	if err := database.QueryRow(`SELECT revision FROM character_field_command_state WHERE character_id=42 AND domain='travel'`).Scan(&revision); err != nil || revision != 1 {
+		t.Fatalf("home replay revision=%d %v", revision, err)
+	}
+	if err := database.QueryRow(`SELECT map_id FROM character_data WHERE id=42`).Scan(&mapID); err != nil || mapID != 50 || ses.Client.CharData().MapID != 50 {
+		t.Fatal("home replay reprojected historical destination")
 	}
 }
 

@@ -128,6 +128,7 @@ export class TileViewer extends Scene {
   private gameStatusUnsubscribe: (() => void) | null = null;
   private battleInputFreezeUnsubscribe: (() => void) | null = null;
   private readonly cutUseHandler=(event:Event)=>{const detail=(event as CustomEvent<{targetX?:number;targetY?:number}>).detail;const movement=this.playerMovementController;const point=movement.getCurrentPosition();const direction=movement.getCurrentDirection();const dx=direction==="LEFT"?-1:direction==="RIGHT"?1:0;const dy=direction==="UP"?-1:direction==="DOWN"?1:0;void movement.cut(detail?.targetX??point.x+dx,detail?.targetY??point.y+dy,direction);};
+  private readonly warpHomeUseHandler=()=>{void this.playerMovementController.warpHome();};
   private readonly fieldTravelUseHandler=(event:Event)=>{const detail=(event as CustomEvent<{moveName:string;destination?:{mapId:number;x:number;y:number}}>).detail;const move=detail?.moveName;if(move==="DIG" || move==="TELEPORT" || move==="FLY")void this.playerMovementController.travelByMove(move,detail.destination);};
   private readonly stateFieldUseHandler=(event:Event)=>{const move=(event as CustomEvent<{moveName:string}>).detail?.moveName;if(move==="STRENGTH" || move==="FLASH")void this.playerMovementController.activateFieldState(move);};
   private readonly fishingUseHandler=(event:Event)=>{void this.playerMovementController.fish((event as CustomEvent<{instanceId:number}>).detail.instanceId);};
@@ -546,6 +547,7 @@ export class TileViewer extends Scene {
     });
     window.addEventListener("cq:fishingUse",this.fishingUseHandler);
     window.addEventListener("cq:stateFieldUse",this.stateFieldUseHandler);
+    window.addEventListener("cq:warpHomeUse",this.warpHomeUseHandler);
     window.addEventListener("cq:fieldTravelUse",this.fieldTravelUseHandler);
     window.addEventListener("cq:cutUse",this.cutUseHandler);
     window.addEventListener("cq:bicycleUse", this.bicycleUseHandler);
@@ -2108,6 +2110,7 @@ export class TileViewer extends Scene {
     this.actorDespawnMarkers.clear();
     window.removeEventListener("cq:fishingUse",this.fishingUseHandler);
     window.removeEventListener("cq:stateFieldUse",this.stateFieldUseHandler);
+    window.removeEventListener("cq:warpHomeUse",this.warpHomeUseHandler);
     window.removeEventListener("cq:fieldTravelUse",this.fieldTravelUseHandler);
     window.removeEventListener("cq:cutUse",this.cutUseHandler);
     window.removeEventListener("cq:bicycleUse", this.bicycleUseHandler);

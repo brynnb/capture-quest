@@ -25,7 +25,7 @@ vi.mock("@/services/audio/AudioManager", () => ({ default: { playMusic: vi.fn(),
 import usePokeBattleStore from "@/stores/PokeBattleStore";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
 import usePokemonDialogueStore from "@/stores/PokemonDialogueStore";
-import { bindBattleScene, sendBattleAction, sendBattleSwitch, sendMoveLearningChoice, closeOrdinaryBattle, sendSafariAction, closeSafariBattle } from "./BattleCommandService";
+import { bindBattleScene, suspendBattleCommandForEmergency, sendBattleAction, sendBattleSwitch, sendMoveLearningChoice, closeOrdinaryBattle, sendSafariAction, closeSafariBattle } from "./BattleCommandService";
 
 const pokemon: PokemonDTO = { id: 25, name: "PIKACHU", level: 5, type1: "ELECTRIC", type2: "", curHp: 1, maxHp: 20, attack: 10, defense: 10, speed: 10, special: 10, exp: 125, expToNextLevel: 91, status: "", isWild: false, boxSlot: 0, moves: [] };
 const battle = (revision = 2): GameplayBattleState => ({ battleId: "battle", revision, phase: "action_select", turnNumber: revision - 1, playerPokemon: pokemon, enemyPokemon: pokemon, playerParty: [pokemon], playerActive: 0, battleType: "wild", allowedActions: [], guaranteedCatch: false, trainerClass: "", trainerName: "" });
@@ -311,4 +311,13 @@ test("a replacement scene can dismiss a recovered terminal battle before the ret
   subscribed.mockRestore();
   expect(usePokeBattleStore.getState()).toMatchObject({ isInBattle: false, battleCommandPending: false });
   expect(vi.getTimerCount()).toBe(0);
+});
+
+
+test("emergency retirement cancels an old battle reply without declaring deletion",async()=>{
+ const old=sendBattleAction({action:"fight"});const oldID=sentID();
+ suspendBattleCommandForEmergency();await old;
+ expect(usePokeBattleStore.getState()).toMatchObject({isInBattle:true,battleCommandPending:true,phase:"animating"});
+ emit(71,reply(oldID,99));expect(usePokeBattleStore.getState().revision).toBe(2);expect(project).not.toHaveBeenCalled();
+ await sendBattleAction({action:"fight"});expect(net.send).toHaveBeenCalledOnce();
 });

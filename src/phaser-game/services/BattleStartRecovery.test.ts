@@ -5,7 +5,7 @@ vi.mock("@/net/index",()=>({WorldSocket:{get sessionGeneration(){return mock.gen
 vi.mock("./GameplayRecoveryService",()=>({readCurrentGameplayState:mock.read,applyGameplaySnapshot:vi.fn(),applyGameplayResourceSnapshot:vi.fn()}));
 vi.mock("@/services/audio/AudioManager",()=>({default:{playSFX:vi.fn(),playMusic:vi.fn()}}));
 import AudioManager from "@/services/audio/AudioManager";
-import {bindBattleScene,recoverBattlePublication,recoverFieldPublication} from "./BattleCommandService";
+import {bindBattleScene,recoverBattlePublication,recoverFieldPublication,suspendBattleCommandForEmergency} from "./BattleCommandService";
 import usePokeBattleStore from "@/stores/PokeBattleStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import useGameScreenStore from "@/stores/GameScreenStore";
@@ -122,4 +122,26 @@ test("battle admission during an owned field read prevents success and projectio
  const held=deferred();mock.read.mockReturnValueOnce(held.promise);const pending=recoverFieldPublication(new AbortController().signal);
  usePokeBattleStore.setState({battleCommandPending:true});held.resolve({...snapshot(null),position:{success:true,requestId:"old",mapId:50,x:7,y:8,direction:"UP",serverMovementPending:false}});
  expect(await pending).toBe(false);expect(project).not.toHaveBeenCalled();expect(usePokeBattleStore.getState().battleCommandPending).toBe(true);
+});
+
+
+test.each([false,true])("emergency recovery retires presentation but reads battle existence (deleted=%s)",async deleted=>{
+ cleanup();const project=vi.fn(async()=>{});cleanup=bindBattleScene(project);
+ usePokeBattleStore.getState().startBattle(battle("current",3));const generation=usePokeBattleStore.getState().presentationGeneration;
+ suspendBattleCommandForEmergency();
+ expect(usePokeBattleStore.getState()).toMatchObject({isInBattle:true,battleId:"current",revision:3,battleCommandPending:true,phase:"animating",eventQueue:[]});expect(usePokeBattleStore.getState().presentationGeneration).toBe(generation+1);
+ expect(mock.read).not.toHaveBeenCalled();const position={success:true,requestId:"current",mapId:50,x:8,y:8,direction:"RIGHT",serverMovementPending:false};
+ mock.read.mockResolvedValue({...snapshot(deleted?null:battle("current",3)),position});
+ expect(await recoverFieldPublication(new AbortController().signal,true)).toBe(true);expect(project).toHaveBeenCalledWith(position);
+ expect(usePokeBattleStore.getState()).toMatchObject({isInBattle:!deleted,battleCommandPending:false,commandError:null,phase:deleted?"none":"action_select"});
+});
+
+
+test("scene retirement releases emergency admission and restores the retained battle from an owned read",async()=>{
+ usePokeBattleStore.getState().startBattle(battle("retained",3));suspendBattleCommandForEmergency();cleanup();
+ const project=vi.fn(async()=>{});cleanup=bindBattleScene(project);
+ expect(usePokeBattleStore.getState()).toMatchObject({isInBattle:true,battleCommandPending:false});
+ const position={success:true,requestId:"fresh",mapId:50,x:7,y:8,direction:"UP",serverMovementPending:false};
+ mock.read.mockResolvedValue({...snapshot(battle("retained",3)),position});expect(await recoverFieldPublication(new AbortController().signal)).toBe(true);
+ expect(usePokeBattleStore.getState()).toMatchObject({phase:"action_select",battleCommandPending:false,commandError:null});expect(project).toHaveBeenCalledWith(position);
 });

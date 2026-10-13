@@ -140,7 +140,7 @@ func readGameplayState(ctx context.Context, ses *session.Session, wh *WorldHandl
 			return err
 		}
 		if mapID != result.Position.MapID || x != result.Position.X || y != result.Position.Y {
-			return fmt.Errorf("saved recovery source differs from owned source")
+			return fmt.Errorf("saved recovery source differs from owned source: saved=(map_id=%d,x=%d,y=%d), owned=(mapId=%d,x=%d,y=%d)", mapID, x, y, result.Position.MapID, result.Position.X, result.Position.Y)
 		}
 		inventory, err := cqitems.NewStore(tx).GetCharacterSnapshot(ctx, int32(charID))
 		if err != nil {

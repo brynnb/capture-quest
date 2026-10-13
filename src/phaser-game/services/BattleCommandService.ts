@@ -23,6 +23,7 @@ type Projection = (position: OwnedPlayerPositionResponse) => Promise<void>;
 let sceneProjection: Projection | null = null;
 let scenePositionView: (()=>unknown)|undefined;
 let active: AbortController | null = null;
+let emergencyPresentationGeneration:number|null=null;
 let publicationRead: AbortController | null = null;
 let fieldPublication: Promise<boolean> | null = null;
 let retireExit:(()=>void)|null=null;
@@ -63,10 +64,28 @@ export function bindBattleScene(reconcile: Projection, capturePositionView?:()=>
 // All producers use the same owned read; commands are never resent here.
 // Field commands await this read to release movement admission. Notifications
 // wait for it instead of aborting a successful commit's position recovery.
-export async function recoverFieldPublication(signal: AbortSignal): Promise<boolean> {
+// Retire callbacks and queued presentation, not authoritative battle existence.
+// Only the owned read after the emergency command can replace battle state.
+export function suspendBattleCommandForEmergency():()=>void{
+ active?.abort();publicationRead?.abort();publicationRead=null;fieldPublication=null;
+ const controller=new AbortController();active=controller;
+ const state=usePokeBattleStore.getState();const generation=state.presentationGeneration+1;
+ if(state.isInBattle){
+  emergencyPresentationGeneration=generation;
+  usePokeBattleStore.setState({presentationGeneration:generation,battleCommandPending:true,phase:"animating",eventQueue:[],currentEventIndex:0,commandError:null});
+ }
+ controller.signal.addEventListener("abort",()=>{
+  if(active===controller)active=null;
+  if(state.isInBattle && usePokeBattleStore.getState().presentationGeneration===generation)usePokeBattleStore.setState({battleCommandPending:false,commandError:"Recovering current state..."});
+ },{once:true});
+ return ()=>controller.abort();
+}
+
+export async function recoverFieldPublication(signal: AbortSignal, emergency = false): Promise<boolean> {
  if(signal.aborted)return false;
  if(fieldPublication)return fieldPublication;
- const run=readBattlePublication({success:true},"standalone-end",signal,true);
+ if(emergency){active?.abort();active=null;usePokeBattleStore.setState({battleCommandPending:false,commandError:"Recovering current state..."});}
+ const run=readBattlePublication({success:true},"standalone-end",signal,true,emergency);
  fieldPublication=run;
  try{return await run;}
  finally{if(fieldPublication===run)fieldPublication=null;}
@@ -81,7 +100,7 @@ export async function recoverBattlePublication(notice:Record<string,unknown>,kin
  return readBattlePublication(notice,kind,signal);
 }
 
-async function readBattlePublication(notice:Record<string,unknown>,kind:"ordinary-start"|"safari-start"|"standalone-end"|"safari-visit"|"safari-exit"="ordinary-start",signal?:AbortSignal, fieldPosition=false):Promise<boolean>{
+async function readBattlePublication(notice:Record<string,unknown>,kind:"ordinary-start"|"safari-start"|"standalone-end"|"safari-visit"|"safari-exit"="ordinary-start",signal?:AbortSignal, fieldPosition=false,restorePresentation=false):Promise<boolean>{
  if(signal?.aborted)return false;
  if((kind==="ordinary-start" && notice.success!==true) || !sceneProjection || useGameScreenStore.getState().currentScreen!=="game")return false;
  const initial=usePokeBattleStore.getState();
@@ -122,7 +141,8 @@ async function readBattlePublication(notice:Record<string,unknown>,kind:"ordinar
  const duplicate=owned
  ? state.isInBattle && state.battleId===owned.battleId && state.revision>=owned.revision
  : !!snapshot.safari?.pokemon && state.isSafari && state.battleId===snapshot.safari.battleId && typeof snapshot.safari.revision==="number" && state.revision>=snapshot.safari.revision;
- if(!duplicate && (owned || snapshot.safari?.pokemon || state.isInBattle)){
+ if(restorePresentation || emergencyPresentationGeneration===state.presentationGeneration || !duplicate && (owned || snapshot.safari?.pokemon || state.isInBattle)){
+ emergencyPresentationGeneration=null;
  const events=kind==="ordinary-start" && owned && notice.battleId===owned.battleId && notice.revision===owned.revision && !owned.needsDismissal && Array.isArray(notice.events)
  ? notice.events as BattleEvent[] : [];
  state.restoreGameplay(snapshot,events);
@@ -177,7 +197,7 @@ export function presentBattleEnd(end: BattleEndOutcome): void {
 }
 
 async function sendBattleCommand(opcode: number, responseOpcode: number, command: TurnCommand | SwitchCommand | LearnCommand | Omit<SafariBattleActionRequest, "battle" | "requestId"> | Record<string, never>): Promise<void> {
-  if (active) return;
+  if (active || fieldPublication || usePokeBattleStore.getState().battleCommandPending) return;
   const initial = usePokeBattleStore.getState();
   const { battleId, revision, presentationGeneration } = initial;
   const project = sceneProjection;

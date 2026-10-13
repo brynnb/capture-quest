@@ -291,6 +291,7 @@ export function onInventoryCommand<T extends InventoryReply>(opcode: number, rec
 }
 
 const handlers = {
+ warpHome:new Set<(data:import("@/net/generated/world_api").WarpHomeResponse|PlayerStepError)=>void>(),
  elevator: new Set<(data: import("@/net/generated/world_api").ElevatorResponse | PlayerStepError)=>void>(),
   escapeRope: new Set<(data: import("@/net/generated/world_api").EscapeRopeUseResponse | PlayerStepError) => void>(),
   staticContent: new Set<(data: import("@/net/generated/world_api").StaticDataResponse | PlayerStepError) => void>(),
@@ -315,6 +316,8 @@ const handlers = {
   trainerEncounter: new Set<TrainerEncounterHandler>(),
 };
 
+export function onWarpHome(handler:(data:import("@/net/generated/world_api").WarpHomeResponse|PlayerStepError)=>void):()=>void{handlers.warpHome.add(handler);return()=>handlers.warpHome.delete(handler);}
+export function requestWarpHome(request:import("@/net/generated/world_api").WarpHomeRequest):Promise<void>{return NetworkBridge.send(request,OpCodes.WarpHomeRequest);}
 export function onElevator(handler:(data:import("@/net/generated/world_api").ElevatorResponse | PlayerStepError)=>void):()=>void{handlers.elevator.add(handler);return()=>handlers.elevator.delete(handler);}
 export function requestElevator(request:import("@/net/generated/world_api").ElevatorFloorsRequestPayload | import("@/net/generated/world_api").ElevatorSelectRequestPayload,select:boolean):Promise<void>{return NetworkBridge.send(request,select?OpCodes.ElevatorSelectRequest:OpCodes.ElevatorFloorsRequest);}
 export function onEscapeRope(handler: (data: import("@/net/generated/world_api").EscapeRopeUseResponse | PlayerStepError) => void): () => void {
@@ -537,6 +540,7 @@ export function dispatchPhaserResponse(opcode: number, data: unknown): void {
     case OpCodes.SetOption:
       handlers.preferences.forEach(handler => handler(data as import("@/net/generated/world_api").PreferenceResponse | PlayerStepError));
       break;
+    case OpCodes.WarpHomeResponse:handlers.warpHome.forEach(handler=>handler(data as import("@/net/generated/world_api").WarpHomeResponse|PlayerStepError));break;
     case OpCodes.ElevatorFloorsResponse:
       handlers.elevator.forEach(handler=>handler(data as import("@/net/generated/world_api").ElevatorResponse | PlayerStepError));
       break;

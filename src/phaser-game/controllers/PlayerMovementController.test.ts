@@ -1,9 +1,11 @@
-vi.mock("../services/BattleCommandService",()=>({recoverBattlePublication:vi.fn(async()=>true),recoverFieldPublication:vi.fn(async()=>true)}));
+vi.mock("../services/BattleCommandService",()=>({suspendBattleCommandForEmergency:vi.fn(()=>()=>{}),recoverBattlePublication:vi.fn(async()=>true),recoverFieldPublication:vi.fn(async()=>true)}));
 import * as battlePublication from "../services/BattleCommandService";
 import { afterEach, beforeEach } from "vitest";
 import { CorrelatedResponseError } from "../services/CorrelatedRequest";
 import * as movement from "../services/PlayerMovementService";
 vi.mock("../services/PlayerMovementService", () => ({
+  readWarpHomeRevision:vi.fn(async()=>({success:true,requestId:"read",characterId:42,current:true,revision:2,moveName:"WARP_HOME",mapId:9999,message:"current"})),
+  requestWarpHome:vi.fn(),
   requestElevator:vi.fn(),
   requestCut:vi.fn(),
   requestStateField:vi.fn(),
@@ -798,4 +800,24 @@ test("elevator list read retires after moving away and back to identical coordin
  useGameStatusStore.setState({playerTileContext:{mapId:9999,x:11,y:0,direction:"UP"}});useGameStatusStore.setState({playerTileContext:{mapId:9999,x:10,y:0,direction:"UP"}});
  expect(signal.aborted).toBe(true);resolve({success:true,requestId:"old",characterId:42,kind:"list",mapId:9999,floors:[{floorMapId:60,floorLabel:"2F",destX:3,destY:4}],message:""});await pending;
  expect(choose).not.toHaveBeenCalled();expect(movement.requestElevator).toHaveBeenCalledOnce();expect(battlePublication.recoverFieldPublication).not.toHaveBeenCalled();
+});
+
+
+test("emergency home rescues movement-recovery lock through owned recovery without resend",async()=>{
+ const {controller}=buildLedgeController();usePlayerCharacterStore.getState().setCharacterProfile({id:42});
+ vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce({fieldCommands:{travel:2}} as any);vi.mocked(movement.readWarpHomeRevision).mockResolvedValueOnce({success:true,requestId:"read",characterId:42,current:true,revision:3,moveName:"WARP_HOME",mapId:9999,message:"current"});
+ vi.mocked(movement.requestStateField).mockRejectedValueOnce(new Error("lost travel reply"));vi.mocked(battlePublication.recoverFieldPublication).mockResolvedValueOnce(false);
+ await controller.travelByMove("TELEPORT");vi.mocked(movement.requestWarpHome).mockRejectedValueOnce(new Error("lost home reply"));
+ await controller.warpHome();expect(movement.requestWarpHome).toHaveBeenCalledOnce();expect(vi.mocked(movement.requestWarpHome).mock.calls[0][0]).toEqual({characterId:42,commandRevision:3});
+ expect(battlePublication.suspendBattleCommandForEmergency).toHaveBeenCalledOnce();expect(battlePublication.recoverFieldPublication).toHaveBeenLastCalledWith(expect.any(AbortSignal),true);
+});
+
+test("emergency home replaces an older field owner but rejects duplicate home clicks",async()=>{
+ const {controller}=buildLedgeController();usePlayerCharacterStore.getState().setCharacterProfile({id:42});
+ vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce({fieldCommands:{travel:2}} as any);
+ let finishOld!:(reply:any)=>void;vi.mocked(movement.requestStateField).mockImplementationOnce(()=>new Promise(done=>{finishOld=done}));const old=controller.travelByMove("TELEPORT");await Promise.resolve();
+ let finishHome!:(reply:any)=>void;vi.mocked(movement.requestWarpHome).mockImplementationOnce(()=>new Promise(done=>{finishHome=done}));const home=controller.warpHome();await Promise.resolve();await controller.warpHome();
+ expect(vi.mocked(movement.requestStateField).mock.calls[0][1]!.aborted).toBe(true);expect(movement.requestWarpHome).toHaveBeenCalledOnce();
+ finishOld({success:true,requestId:"old",characterId:42,moveName:"TELEPORT",mapId:50,message:"old"});await old;
+ finishHome({success:true,requestId:"home",characterId:42,current:false,revision:3,moveName:"WARP_HOME",mapId:9999,message:"home"});await home;expect(battlePublication.recoverFieldPublication).toHaveBeenCalledOnce();
 });

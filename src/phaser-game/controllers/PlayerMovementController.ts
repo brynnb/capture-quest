@@ -1,7 +1,7 @@
 import {watchInteractionPosition} from "../services/InventoryCommandService";
-import {recoverFieldPublication} from "../services/BattleCommandService";
+import {recoverFieldPublication,suspendBattleCommandForEmergency} from "../services/BattleCommandService";
 import type { OwnedPlayerPositionResponse, PlayerStepResponse, PlayerStepError } from "@/net/generated/protocol";
-import { requestElevator, requestCut, requestStateField, requestSurf, requestFishing, requestEscapeRope, requestBicycleState, requestPlayerFacing, requestPlayerStep, completePlayerStep, readOwnedPlayerPosition } from "../services/PlayerMovementService";
+import { readWarpHomeRevision, requestWarpHome, requestElevator, requestCut, requestStateField, requestSurf, requestFishing, requestEscapeRope, requestBicycleState, requestPlayerFacing, requestPlayerStep, completePlayerStep, readOwnedPlayerPosition } from "../services/PlayerMovementService";
 import { WorldSocket } from "@/net/index";
 import useGameScreenStore from "@/stores/GameScreenStore";
 import { CorrelatedResponseError, readForCurrentCharacter } from "../services/CorrelatedRequest";
@@ -129,6 +129,7 @@ export class PlayerMovementController {
   private tileReconciler:(mapId:number,x:number,y:number,scope:string,signal:AbortSignal)=>Promise<boolean>=async()=>{throw new Error("Tile recovery is not bound");};
   setTileReconciler(reconcile:(mapId:number,x:number,y:number,scope:string,signal:AbortSignal)=>Promise<boolean>):void{this.tileReconciler=reconcile;}
   private fieldCommandAbort: AbortController | null = null;
+  private fieldCommandKind:"ordinary"|"emergency"|null=null;
   private fieldCommandsRetired = false;
 
   retireFieldCommands(): void {
@@ -136,12 +137,14 @@ export class PlayerMovementController {
     this.fieldCommandAbort?.abort();
   }
 
-  private async runOwnedFieldCommand(operation: (characterId: number, signal: AbortSignal, current: () => boolean) => Promise<void>): Promise<void> {
-    if (this.fieldCommandAbort || this.fieldCommandsRetired || this.movementRecoveryRequired || this.playerId === null) return;
+  private async runOwnedFieldCommand(operation: (characterId: number, signal: AbortSignal, current: () => boolean) => Promise<void>, kind:"ordinary"|"emergency"="ordinary"): Promise<void> {
+    if(this.fieldCommandsRetired || this.playerId===null || this.fieldCommandKind==="emergency")return;
+    if(kind==="ordinary" && (this.fieldCommandAbort || this.movementRecoveryRequired))return;
     const characterId = usePlayerCharacterStore.getState().characterProfile.id;
     if (!characterId) return;
+    if(kind==="emergency")this.fieldCommandAbort?.abort();
     const abort = new AbortController();
-    this.fieldCommandAbort = abort;
+    this.fieldCommandAbort = abort;this.fieldCommandKind=kind;
     try {
       await readForCurrentCharacter(async (owner, signal) => {
         const current = () => !signal.aborted && !this.fieldCommandsRetired
@@ -153,7 +156,7 @@ export class PlayerMovementController {
       // recovers durable state; it must never revive this owner's callback.
       if (!(error instanceof DOMException && error.name === "AbortError")) throw error;
     } finally {
-      if (this.fieldCommandAbort === abort) this.fieldCommandAbort = null;
+      if (this.fieldCommandAbort === abort){this.fieldCommandAbort = null;this.fieldCommandKind=null;}
     }
   }
 
@@ -161,6 +164,25 @@ export class PlayerMovementController {
     const recovered=await recoverFieldPublication(signal);if(!current())return;
     if(!recovered){this.movementRecoveryRequired=true;useChatStore.getState().addMessage("Travel state could not be recovered. Reconnect before moving.",MessageType.SYSTEM_ERROR);}
     else if(rejection)usePokemonDialogueStore.getState().openDialogue([rejection]);
+  }
+
+  async warpHome():Promise<void>{
+    return this.runOwnedFieldCommand(async(characterId,signal,current)=>{
+      // Cancel local callbacks, not their possibly committed server effects.
+      this.stopMovement(true);const release=suspendBattleCommandForEmergency();
+      signal.addEventListener("abort",release,{once:true});if(signal.aborted)release();
+      try {let rejection:string|undefined;
+      try{
+        const before=await readWarpHomeRevision(characterId,signal);if(!current())return;
+        const commandRevision=before.revision;if(before.current!==true || before.characterId!==characterId || !Number.isSafeInteger(commandRevision)||commandRevision<0)throw new Error("Invalid recovery travel revision");
+        const reply=await requestWarpHome({characterId,commandRevision},signal);if(!current())return;
+        if(reply.current!==false || reply.revision!==commandRevision+1 || reply.characterId!==characterId || reply.moveName!=="WARP_HOME" || !Number.isSafeInteger(reply.mapId)||reply.mapId<=0)throw new Error("Invalid recovery travel outcome");
+      }catch(error){if(!current())return;if(error instanceof CorrelatedResponseError)rejection=error.message;}
+      release();const recovered=await recoverFieldPublication(signal,true);if(!current())return;
+      if(!recovered){this.movementRecoveryRequired=true;useChatStore.getState().addMessage("Current state could not be recovered. Reconnect or try Warp Home again.",MessageType.SYSTEM_ERROR);}
+      else if(rejection)usePokemonDialogueStore.getState().openDialogue([rejection]);
+      }finally{signal.removeEventListener("abort",release);release();}
+    },"emergency");
   }
 
   async useElevator(choose:(floors:import("@/net/generated/world_api").ElevatorFloor[],signal:AbortSignal)=>Promise<number|undefined>):Promise<void>{
