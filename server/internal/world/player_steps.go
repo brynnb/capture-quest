@@ -20,6 +20,7 @@ import (
 // token supplied by the client. Re-registration and teleports discard it.
 type issuedPlayerStep struct {
 	token                   string
+	parentToken             string // only a prepared continuation belongs to a prior receipt
 	sourceX, sourceY, mapID int
 	x, y                    int
 	direction               string
@@ -217,8 +218,17 @@ func HandlePlayerStepCompleteRequest(ses *session.Session, payload []byte, wh *W
 	var req protocol.PlayerStepCompleteRequest
 	err := decodePlayerMovement(payload, &req)
 	fail := func() { sendPlayerStepError(ses, wh, req.RequestID, opcodes.PlayerStepCompleteResponse) }
-	if err != nil || req.RequestID == "" || len(req.RequestID) > 64 || !validMovementToken(req.StepToken) || wh.PlayerMovement == nil {
+	if err != nil || req.RequestID == "" || len(req.RequestID) > 64 || !validMovementToken(req.StepToken) || wh.PlayerMovement == nil ||
+		(req.NextDirection != "" && normalizeWarpDirection(req.NextDirection) == "") || (req.Cancel && req.NextDirection != "") {
 		fail()
+		return false
+	}
+	if req.Cancel {
+		// Idempotent retirement of one exact authorization. A late cancellation
+		// cannot consume a replacement token or undo an already committed step.
+		wh.PlayerMovement.rejectPlayerStep(ses, req.StepToken)
+		owned := wh.ownedPlayerSnapshot(ses, req.RequestID)
+		ses.SendStreamJSON(protocol.PlayerStepCompleteResponse{Success: true, Cancelled: true, RequestID: req.RequestID, MapID: owned.MapID, X: owned.X, Y: owned.Y, Direction: owned.Direction}, opcodes.PlayerStepCompleteResponse)
 		return false
 	}
 	receipt, err := loadMovementReceipt(ses.CommandContext(), wh.database, int64(ses.Client.CharData().ID), req.StepToken)
@@ -228,6 +238,9 @@ func HandlePlayerStepCompleteRequest(ses *session.Session, payload []byte, wh *W
 		return false
 	}
 	if receipt != nil {
+		// A lost publication may have prepared an unobserved continuation. Retire
+		// only that receipt's child, never a newer independently issued token.
+		wh.PlayerMovement.retirePreparedContinuation(ses, req.StepToken)
 		// Historical success acknowledges the lost reply only. Never rewind live
 		// state, republish triggers, or replay counters/battles on a duplicate.
 		ses.SendStreamJSON(protocol.PlayerStepCompleteResponse{Success: true, RequestID: req.RequestID, MapID: receipt.MapID, X: receipt.X, Y: receipt.Y, Direction: receipt.Direction, Replayed: true}, opcodes.PlayerStepCompleteResponse)
@@ -240,7 +253,19 @@ func HandlePlayerStepCompleteRequest(ses *session.Session, payload []byte, wh *W
 		fail()
 		return false
 	}
-	ses.SendStreamJSON(protocol.PlayerStepCompleteResponse{Success: true, RequestID: req.RequestID, MapID: step.mapID, X: step.x, Y: step.y, Direction: step.direction}, opcodes.PlayerStepCompleteResponse)
+	response := protocol.PlayerStepCompleteResponse{Success: true, RequestID: req.RequestID, MapID: step.mapID, X: step.x, Y: step.y, Direction: step.direction, StopPath: !allowsPlayerStepContinuation(step.effects)}
+	if req.NextDirection != "" && !response.StopPath {
+		// The previous move is already committed. An unavailable continuation is
+		// not a failure of that commit; ordinary input can revalidate next time.
+		next, nextErr := wh.PlayerMovement.issuePlayerStep(ses, protocol.PlayerStepRequest{MapID: step.mapID, FromX: &step.x, FromY: &step.y, Direction: req.NextDirection, RequestID: req.RequestID})
+		if nextErr == nil {
+			wh.PlayerMovement.mu.Lock()
+			next.parentToken = req.StepToken
+			wh.PlayerMovement.mu.Unlock()
+			response.NextStep = &protocol.PlayerStepResponse{Success: true, RequestID: req.RequestID, StepToken: next.token, MapID: next.mapID, X: next.x, Y: next.y, Direction: next.direction, LedgeJump: next.ledgeJump}
+		}
+	}
+	ses.SendStreamJSON(response, opcodes.PlayerStepCompleteResponse)
 	// Effects run only for a successfully committed issued step. Duplicate/stale
 	// acknowledgements never re-run encounters, Safari counters or script triggers.
 	broadcastCommittedPlayerStep(ses, wh, step.x, step.y, step.mapID, step.direction, step.sourceMapID)
@@ -323,6 +348,19 @@ func (m *PlayerMovementManager) completePlayerStep(ses *session.Session, token s
 		m.mu.Unlock()
 	}
 	return step, nil
+}
+
+func allowsPlayerStepContinuation(result movementStepResult) bool {
+	return !result.StopPath && !result.Teleport && len(result.ForcedPath) == 0 && result.Trainer == nil && result.Cutscene == nil && result.Wild.Battle == nil
+}
+
+func (m *PlayerMovementManager) retirePreparedContinuation(ses *session.Session, parentToken string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	state := m.players[int(ses.Client.CharData().ID)]
+	if state != nil && state.SessionID == ses.SessionID && state.pendingStep != nil && state.pendingStep.parentToken == parentToken {
+		state.pendingStep = nil
+	}
 }
 
 func (m *PlayerMovementManager) rejectPlayerStep(ses *session.Session, token string) {

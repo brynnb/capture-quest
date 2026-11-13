@@ -99,13 +99,11 @@ export class TileManager {
 
       this.loadingTextures.add(tileKey);
       completions.push(
-        new Promise<void>((resolve) => {
+        new Promise<void>((resolve, reject) => {
           const completeEvent = `filecomplete-image-${tileKey}`;
           const timeoutId = setTimeout(() => {
             cleanup();
-            console.warn(`Timed out loading tile ${tileId}, using fallback`);
-            this.createFallbackTile(tileKey, tileId.toString());
-            resolve();
+            reject(new Error(`Timed out loading terrain image ${tileId}`));
           }, TILE_IMAGE_LOAD_WATCHDOG_MS);
           const cleanup = () => {
             clearTimeout(timeoutId);
@@ -120,10 +118,7 @@ export class TileManager {
           const onError = (fileObj: Phaser.Loader.File) => {
             if (fileObj.key !== tileKey) return;
             cleanup();
-            const displayId = fileObj.key.replace("tile-", "");
-            console.warn(`Error loading tile ${displayId}, using fallback`);
-            this.createFallbackTile(fileObj.key, displayId);
-            resolve();
+            reject(new Error(`Could not load terrain image ${tileId}`));
           };
 
           this.scene.load.once(completeEvent, onComplete);
@@ -138,31 +133,12 @@ export class TileManager {
 
     if (completions.length === 0) return;
     if (!this.scene.load.isLoading()) this.scene.load.start();
-    await Promise.all(completions);
-  }
-
-  // Helper method to create a fallback tile texture
-  createFallbackTile(key: string, tileId: string) {
-    // Create a new graphics object for this specific missing tile
-    const graphics = this.scene.make.graphics({ x: 0, y: 0 });
-    graphics.fillStyle(0xcccccc); // Light gray color for placeholder tiles
-    graphics.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
-    graphics.lineStyle(1, 0x000000);
-    graphics.strokeRect(0, 0, TILE_SIZE, TILE_SIZE);
-
-    // Draw the tile ID on the texture for debugging
-    const text = this.scene.add.text(TILE_SIZE / 2, TILE_SIZE / 2, tileId, {
-      fontSize: "8px",
-      color: "#000000",
-    });
-    text.setOrigin(0.5);
-
-    // Generate the texture
-    graphics.generateTexture(key, TILE_SIZE, TILE_SIZE);
-
-    // Clean up
-    graphics.destroy();
-    text.destroy();
+    // Drain the batch before another owner reuses Phaser's loader. Missing
+    // required terrain is a retryable load failure, never a successful world
+    // made from placeholder textures cached under real tile identities.
+    const results = await Promise.allSettled(completions);
+    const failed = results.find((result) => result.status === "rejected");
+    if (failed?.status === "rejected") throw failed.reason;
   }
 
   preloadCommonTiles() {

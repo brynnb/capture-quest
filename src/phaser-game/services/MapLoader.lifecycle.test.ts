@@ -5,6 +5,9 @@ import * as recovery from "./GameplayRecoveryService";
 afterEach(() => vi.clearAllMocks());
 
 import { MapLoader } from "./MapLoader";
+import useGameStatusStore from "@/stores/GameStatusStore";
+import * as PhaserNet from "./PhaserNetworkService";
+afterEach(() => useGameStatusStore.getState().setIsMapLoading(false));
 
 function deferred() {
   let resolve!: () => void;
@@ -52,6 +55,10 @@ function createFailedOverworldLoader() {
     mapLoadInProgress: false,
     game: {
       registry: { get: vi.fn(() => undefined), remove: vi.fn() },
+      events: {
+        on: vi.fn((_event: string, listener: () => void) => queueMicrotask(listener)),
+        off: vi.fn(),
+      },
     },
     cameras: {
       main: {
@@ -228,7 +235,7 @@ describe("MapLoader async lifecycle", () => {
     expect(state.tiles).toEqual([]);
     expect(scene.mapLoadInProgress).toBe(true);
     expect(setLoadingText).toHaveBeenLastCalledWith(
-      expect.stringContaining("required exact chunk timed out"),
+      "The world could not be loaded. Please try again.",
     );
   });
 
@@ -313,4 +320,135 @@ it("initial tile presentation rereads changes during image preparation before re
  const images=vi.fn(async()=>{accepted=fetch.mock.calls.length===1?old:current});raw.tileManager={loadTileImages:images};
  const result=await raw.prepareTilePresentation(50,old,new AbortController().signal);
  expect(result).toBe(current);expect(fetch).toHaveBeenCalledTimes(2);expect(images).toHaveBeenCalledTimes(2);
+});
+
+function createInteriorLoader() {
+  const harness = createFailedOverworldLoader();
+  const raw = harness.raw as Record<string, any>;
+  const listeners = new Set<() => void>();
+  const camera = { ...harness.scene.cameras.main, fadeEffect: { isRunning: true } };
+  Object.assign(harness.scene.cameras, { main: camera });
+  Object.assign(harness.scene.game, { events: {
+    on: (_event: string, listener: () => void) => listeners.add(listener),
+    off: (_event: string, listener: () => void) => listeners.delete(listener),
+  } });
+  Object.assign(raw.mapDataService, {
+    fetchMapInfo: vi.fn(async () => ({ id: 50, name: "Test room", width: 10, height: 10, isOverworld: 0 })),
+    fetchTiles: vi.fn(async () => []),
+    fetchItems: vi.fn(async () => []),
+    isTileReadCurrent: () => true,
+  });
+  Object.assign(raw.playerMovementController, {
+    capturePositionView: () => () => true,
+    projectOwnedPosition: vi.fn(),
+  });
+  raw.removeMapLegend = vi.fn();
+  vi.spyOn(PhaserNet, "requestMapScripts").mockImplementation(() => undefined);
+  return { ...harness, raw, camera, render: () => { for (const listener of [...listeners]) listener(); }, listeners };
+}
+
+it("keeps the opaque loading owner through terrain, recovery and the first unfaded frame", async () => {
+  const { loader, raw, scene, camera, render, listeners } = createInteriorLoader();
+  const terrain = deferred();
+  raw.tileManager.loadTileImages.mockImplementationOnce(() => terrain.promise);
+  let recover!: (value: any) => void;
+  vi.mocked(recovery.readCurrentGameplayState).mockImplementationOnce(() => new Promise(resolve => { recover = resolve; }));
+  const pending = loader.loadMapData(50);
+  await vi.waitFor(() => expect(raw.tileManager.loadTileImages).toHaveBeenCalled());
+  expect(useGameStatusStore.getState()).toMatchObject({ isMapLoading: true, mapLoading: { message: "Loading terrain...", failed: false } });
+  expect(scene.mapLoadInProgress).toBe(true);
+  expect(raw.mapRenderer.renderMap).not.toHaveBeenCalled();
+  terrain.resolve();
+  await vi.waitFor(() => expect(recovery.readCurrentGameplayState).toHaveBeenCalled());
+  expect(useGameStatusStore.getState().isMapLoading).toBe(true);
+  recover({ position: { mapId: 50, x: 2, y: 3, direction: "DOWN" } });
+  await vi.waitFor(() => expect(listeners.size).toBe(1));
+  render();
+  expect(useGameStatusStore.getState().isMapLoading).toBe(true);
+  camera.fadeEffect.isRunning = false;
+  render();
+  await pending;
+  expect(scene.mapLoadInProgress).toBe(false);
+  expect(useGameStatusStore.getState()).toMatchObject({ isMapLoading: false, mapLoading: null });
+  expect(listeners.size).toBe(0);
+});
+
+it.each(["terrain", "characters"])("keeps an interior locked after missing %s and lets Retry start a new owned load", async resource => {
+  const { loader, raw, scene } = createInteriorLoader();
+  const failingRead = resource === "terrain" ? raw.tileManager.loadTileImages : raw.mapDataService.fetchActors;
+  failingRead.mockRejectedValueOnce(new Error(`missing ${resource}`));
+  await loader.loadMapData(50);
+  expect(scene.mapLoadInProgress).toBe(true);
+  expect(useGameStatusStore.getState()).toMatchObject({ isMapLoading: true, mapLoading: { failed: true } });
+  expect(raw.mapRenderer.renderMap).not.toHaveBeenCalled();
+  const owner = useGameStatusStore.getState().mapLoading;
+  const nextTerrain = deferred();
+  raw.tileManager.loadTileImages.mockImplementationOnce(() => nextTerrain.promise);
+  owner!.retry();
+  expect(useGameStatusStore.getState().mapLoading?.owner).not.toBe(owner!.owner);
+  expect(useGameStatusStore.getState().mapLoading?.failed).toBe(false);
+  loader.cleanup();
+  nextTerrain.resolve();
+});
+
+it("a retired scene cannot dismiss another scene's loading screen", async () => {
+  const first = createPendingLoader();
+  const next = createPendingLoader();
+  const firstLoad = first.loader.loadMapData(50);
+  const nextLoad = next.loader.loadMapData(51);
+  const nextOwner = useGameStatusStore.getState().mapLoading?.owner;
+  first.loader.cleanup();
+  expect(useGameStatusStore.getState().isMapLoading).toBe(true);
+  expect(useGameStatusStore.getState().mapLoading?.owner).toBe(nextOwner);
+  next.loader.cleanup();
+  first.compatibility.resolve();
+  next.compatibility.resolve();
+  await Promise.all([firstLoad, nextLoad]);
+  expect(useGameStatusStore.getState().isMapLoading).toBe(false);
+});
+
+it("retires a pending render-frame wait during scene cleanup", async () => {
+  const { loader, raw, listeners } = createInteriorLoader();
+  vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce({ position: { mapId: 50 } } as any);
+  const pending = loader.loadMapData(50);
+  await vi.waitFor(() => expect(listeners.size).toBe(1));
+  loader.cleanup();
+  await pending;
+  expect(listeners.size).toBe(0);
+  expect(raw.uiManager.hideLoadingText).not.toHaveBeenCalled();
+  expect(useGameStatusStore.getState().isMapLoading).toBe(false);
+});
+
+it("plans initial overview readiness from the newly rendered camera instead of its previous indoor transform", async () => {
+  const { loader, raw, scene, camera, render, listeners } = createInteriorLoader();
+  raw.mapDataService.fetchMapInfo.mockResolvedValue({
+    id: 9999, name: "Unified Overworld", width: 1024, height: 1024,
+    isOverworld: 1, tileMinX: 0, tileMinY: 0, tileMaxX: 1023, tileMaxY: 1023,
+  });
+  let renderedScale = 1;
+  camera.getWorldPoint = vi.fn((x: number, y: number) => ({ x: x * renderedScale, y: y * renderedScale }));
+  const visibleTerrain = deferred();
+  raw.overworldOverviewLayer.sync.mockImplementationOnce(() => visibleTerrain.promise);
+  const pending = loader.loadOverworldData({ viewOnly: true });
+  await vi.waitFor(() => expect(listeners.size).toBe(1));
+  expect(camera.getWorldPoint).not.toHaveBeenCalled();
+  expect(raw.mapDataService.fetchTilesInBounds).not.toHaveBeenCalled();
+  expect(raw.overworldOverviewLayer.sync).not.toHaveBeenCalled();
+  // Phaser updates its camera matrix at preRender, before this frame event.
+  renderedScale = 16;
+  render();
+  await vi.waitFor(() => expect(raw.overworldOverviewLayer.sync).toHaveBeenCalledOnce());
+  const requiredKeys = raw.overworldOverviewLayer.sync.mock.calls[0][3] as ReadonlySet<string>;
+  expect(requiredKeys.size).toBeGreaterThan(1);
+  expect(loader.getOverworldChunkStatus()?.mode).toBe("overview");
+  expect(raw.mapDataService.fetchTilesInBounds).not.toHaveBeenCalled();
+  expect(useGameStatusStore.getState().isMapLoading).toBe(true);
+  expect(scene.mapLoadInProgress).toBe(true);
+  visibleTerrain.resolve();
+  await vi.waitFor(() => expect(listeners.size).toBe(1));
+  camera.fadeEffect.isRunning = false;
+  render();
+  await pending;
+  expect(useGameStatusStore.getState().isMapLoading).toBe(false);
+  loader.cleanup();
 });

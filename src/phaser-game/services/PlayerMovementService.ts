@@ -6,8 +6,8 @@ export function requestPlayerStep(request: Omit<PlayerStepRequest, "requestId">,
   return correlatedRequest<PlayerStepResponse>(PhaserNet.onPlayerStep, (requestId) => PhaserNet.requestPlayerStep({ ...request, requestId }), signal);
 }
 
-export async function completePlayerStep(stepToken: string, signal?: AbortSignal): Promise<PlayerStepCompleteResponse> {
-  const complete = () => correlatedRequest<PlayerStepCompleteResponse>(PhaserNet.onPlayerStepComplete, (requestId) => PhaserNet.completePlayerStep({ stepToken, requestId }), signal);
+export async function completePlayerStep(stepToken: string, signal?: AbortSignal, nextDirection?: string): Promise<PlayerStepCompleteResponse> {
+  const complete = () => correlatedRequest<PlayerStepCompleteResponse>(PhaserNet.onPlayerStepComplete, (requestId) => PhaserNet.completePlayerStep({ stepToken, requestId, ...(nextDirection ? { nextDirection } : {}) }), signal);
   try { return await complete(); }
   catch (error) {
     // Only a lost reply retries, once, with the same server-issued authorization.
@@ -19,6 +19,17 @@ export async function completePlayerStep(stepToken: string, signal?: AbortSignal
 
 export function requestPlayerFacing(request: Omit<PlayerFacingRequest, "requestId">, signal?: AbortSignal): Promise<PlayerFacingResponse> {
   return correlatedRequest<PlayerFacingResponse>(PhaserNet.onPlayerFacing, (requestId) => PhaserNet.requestPlayerFacing({ ...request, requestId }), signal);
+}
+
+// Cancelling an unused prepared token cannot commit movement or undo an old
+// commit. Keep input owned until the exact-token cancellation is acknowledged.
+export async function cancelPlayerStep(stepToken: string, signal?: AbortSignal): Promise<PlayerStepCompleteResponse> {
+  const cancel = () => correlatedRequest<PlayerStepCompleteResponse>(PhaserNet.onPlayerStepComplete, requestId => PhaserNet.completePlayerStep({ stepToken, requestId, cancel: true }), signal);
+  try { return await cancel(); }
+  catch (error) {
+    if (!(error instanceof CorrelatedRequestTimeoutError) || signal?.aborted) throw error;
+    return cancel();
+  }
 }
 
 // Position recovery is a read serialized after any preceding accepted command.

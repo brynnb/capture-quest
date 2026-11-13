@@ -423,3 +423,29 @@ describe("OverworldOverviewLayer", () => {
     expect(textures.remove).toHaveBeenCalledWith("overworld-overview-2--3-0");
   });
 });
+
+it("initial world readiness waits for all visible terrain without waiting for offscreen prefetch", async () => {
+  const { layer, requests, completeRequest } = createHarness(64, false);
+  const ready = vi.fn();
+  const pending = layer.sync([chunk(0, 0), chunk(1, 0), chunk(2, 0)], () => 0, undefined, new Set(["0,0", "1,0"])).then(ready);
+  completeRequest(requests[0].key);
+  await vi.waitFor(() => expect(requests[0].completed).toBe(true));
+  await Promise.resolve();
+  expect(ready).not.toHaveBeenCalled();
+  completeRequest(requests[1].key);
+  await pending;
+  expect(ready).toHaveBeenCalledOnce();
+  expect(requests[2].completed).toBe(false);
+  completeRequest(requests[2].key);
+  layer.clear();
+});
+
+it("a missing required overview image rejects instead of declaring a partial world ready", async () => {
+  const { layer, requests, completeRequest, failRequest } = createHarness(64, false);
+  const pending = layer.sync([chunk(0, 0), chunk(1, 0)], () => 0, undefined, new Set(["0,0", "1,0"]));
+  const rejected = expect(pending).rejects.toThrow();
+  completeRequest(requests[0].key);
+  failRequest(requests[1].key);
+  await rejected;
+  layer.clear();
+});

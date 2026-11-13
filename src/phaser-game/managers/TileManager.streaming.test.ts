@@ -53,7 +53,7 @@ function createHarness() {
     }),
   };
   const complete = (key: string) => {
-    const request = requests.find((candidate) => candidate.key === key);
+    const request = requests.find((candidate) => candidate.key === key && !candidate.complete);
     if (!request) throw new Error(`missing request ${key}`);
     request.complete = true;
     textures.add(key);
@@ -61,7 +61,7 @@ function createHarness() {
     isLoading = requests.some((candidate) => !candidate.complete);
   };
   const fail = (key: string) => {
-    const request = requests.find((candidate) => candidate.key === key);
+    const request = requests.find((candidate) => candidate.key === key && !candidate.complete);
     if (!request) throw new Error(`missing request ${key}`);
     request.complete = true;
     emit("loaderror", { key });
@@ -72,7 +72,6 @@ function createHarness() {
     string,
     unknown
   >;
-  const createFallbackTile = vi.fn();
   rawManager.scene = {
     textures: { exists: (key: string) => textures.has(key) },
     load,
@@ -80,7 +79,6 @@ function createHarness() {
   rawManager.tileImageCache = new Map();
   rawManager.loadingTextures = new Set();
   rawManager.tileImageLoadQueue = Promise.resolve();
-  rawManager.createFallbackTile = createFallbackTile;
 
   return {
     manager: rawManager as unknown as TileManager,
@@ -89,7 +87,6 @@ function createHarness() {
     complete,
     fail,
     emit,
-    createFallbackTile,
   };
 }
 
@@ -119,38 +116,38 @@ describe("TileManager streamed texture loading", () => {
     expect(requests[0].xhrSettings?.timeout).toBe(12_000);
   });
 
-  it("removes only its own error listener and resolves with a fallback", async () => {
-    const { manager, load, requests, fail, emit, createFallbackTile } =
+  it("rejects missing terrain without caching a placeholder and can retry", async () => {
+    const { manager, load, requests, fail, complete, emit } =
       createHarness();
     const unrelatedErrorListener = vi.fn();
     load.on("loaderror", unrelatedErrorListener);
 
     const loading = manager.loadTileImages([{ id: 7 }]);
     await vi.waitFor(() => expect(requests).toHaveLength(1));
+    const rejected = expect(loading).rejects.toThrow("Could not load terrain image 7");
     fail("tile-7");
-    await loading;
+    await rejected;
     emit("loaderror", { key: "someone-else" });
 
-    expect(createFallbackTile).toHaveBeenCalledWith("tile-7", "7");
     expect(unrelatedErrorListener).toHaveBeenCalledTimes(2);
     expect(load.off).not.toHaveBeenCalledWith("loaderror");
+    const retried = manager.loadTileImages([{ id: 7 }]);
+    await vi.waitFor(() => expect(requests).toHaveLength(2));
+    complete("tile-7");
+    await retried;
   });
 
-  it("resolves a stalled tile request with a fallback after a bounded wait", async () => {
+  it("rejects a stalled terrain request after a bounded wait", async () => {
     vi.useFakeTimers();
-    const { manager, requests, createFallbackTile } = createHarness();
-    const warning = vi
-      .spyOn(console, "warn")
-      .mockImplementation(() => undefined);
+    const { manager, requests } = createHarness();
 
     const loading = manager.loadTileImages([{ id: 9 }]);
     await Promise.resolve();
-    const completion = expect(loading).resolves.toBeUndefined();
+    const completion = expect(loading).rejects.toThrow("Timed out loading terrain image 9");
     await vi.runOnlyPendingTimersAsync();
     await completion;
 
     expect(requests[0].xhrSettings?.timeout).toBe(12_000);
-    expect(createFallbackTile).toHaveBeenCalledWith("tile-9", "9");
-    warning.mockRestore();
+
   });
 });

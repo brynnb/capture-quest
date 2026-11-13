@@ -184,19 +184,27 @@ type PlayerStepResponse struct {
 	LedgeJump bool   `json:"ledgeJump"`
 }
 
-// PlayerStepCompleteRequest acknowledges issued movement, never coordinates.
+// PlayerStepCompleteRequest completes an issued token, never client coordinates.
+// Completion may arrive during its animation; the server enforces the not-before
+// time. NextDirection prepares at most one uncommitted continuation after commit.
+// Cancel retires only the matching uncommitted token without moving the player.
 type PlayerStepCompleteRequest struct {
-	StepToken string `json:"stepToken"`
-	RequestID string `json:"requestId"`
+	StepToken     string `json:"stepToken"`
+	RequestID     string `json:"requestId"`
+	NextDirection string `json:"nextDirection,omitempty"`
+	Cancel        bool   `json:"cancel,omitempty"`
 }
 type PlayerStepCompleteResponse struct {
-	Replayed  bool   `json:"replayed,omitempty"`
-	Success   bool   `json:"success" tstype:"true"`
-	RequestID string `json:"requestId"`
-	MapID     int    `json:"mapId"`
-	X         int    `json:"x"`
-	Y         int    `json:"y"`
-	Direction string `json:"direction"`
+	Replayed  bool                `json:"replayed,omitempty"`
+	Cancelled bool                `json:"cancelled,omitempty"`
+	StopPath  bool                `json:"stopPath,omitempty"`
+	NextStep  *PlayerStepResponse `json:"nextStep,omitempty"`
+	Success   bool                `json:"success" tstype:"true"`
+	RequestID string              `json:"requestId"`
+	MapID     int                 `json:"mapId"`
+	X         int                 `json:"x"`
+	Y         int                 `json:"y"`
+	Direction string              `json:"direction"`
 }
 
 // PlayerStepError returns the owned location so rejected animations can reconcile.

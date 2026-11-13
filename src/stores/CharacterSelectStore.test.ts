@@ -83,7 +83,8 @@ describe("owned character entry", () => {
     reply.resolve(true);
     await expect(first).resolves.toBe(true);
     expect(useGameScreenStore.getState().currentScreen).toBe("game");
-    expect(useGameStatusStore.getState().isMapLoading).toBe(false);
+    // Server entry is confirmed before the browser finishes terrain loading.
+    expect(useGameStatusStore.getState().isMapLoading).toBe(true);
     expect(useCharacterSelectStore.getState().isEnteringWorld).toBe(false);
     expect(mocks.socket.close).not.toHaveBeenCalled();
     expect(mocks.clearMessages).toHaveBeenCalledTimes(1);

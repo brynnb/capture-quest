@@ -374,6 +374,9 @@ export class OverworldChunkStream {
           gameplayPlan,
           generation,
           signature,
+          throwOnFailure ? new Set(overworldChunksCoveringBounds(
+            plan.visibleTileBounds, this.options.mapBounds,
+          ).map(chunk => chunk.key)) : undefined,
         );
       } else {
         if (!exactPlan) {
@@ -400,6 +403,7 @@ export class OverworldChunkStream {
     gameplayPlan: Extract<OverworldChunkPlan, { mode: "exact" }> | null,
     generation: number,
     signature: string,
+    requiredChunkKeys?: ReadonlySet<string>,
   ): Promise<void> {
     const prioritizedChunks = this.prioritizeOverviewChunks(chunks, camera);
     this.overviewChunkKeys = prioritizedChunks.map((chunk) => chunk.key);
@@ -421,6 +425,9 @@ export class OverworldChunkStream {
           );
         }
       },
+      // A new world view stays covered until its entire visible footprint is
+      // present. Offscreen prefetch and later camera motion remain progressive.
+      requiredChunkKeys,
     );
     if (!this.isCurrent(generation)) return;
 

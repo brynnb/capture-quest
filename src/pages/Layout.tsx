@@ -165,8 +165,14 @@ const MainContainer = styled.div<MainContainerProps>`
 
 const GlobalLoadingOverlay = () => {
   const isMapLoading = useGameStatusStore((state) => state.isMapLoading);
+  const loading = useGameStatusStore((state) => state.mapLoading);
   if (!isMapLoading) return null;
-  return <LoadingScreen isIndeterminate isGlobal />;
+  return <LoadingScreen
+    isIndeterminate={!loading?.failed}
+    isGlobal
+    message={loading?.message ?? "Entering the world..."}
+    onRetry={loading?.failed ? loading.retry : undefined}
+  />;
 };
 
 import { LayoutProvider, useLayout } from "@/contexts/LayoutContext";

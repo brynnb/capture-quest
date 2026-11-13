@@ -1,7 +1,7 @@
 import {watchInteractionPosition} from "../services/InventoryCommandService";
 import {recoverFieldPublication,suspendBattleCommandForEmergency} from "../services/BattleCommandService";
-import type { OwnedPlayerPositionResponse, PlayerStepResponse, PlayerStepError } from "@/net/generated/protocol";
-import { readWarpHomeRevision, requestWarpHome, requestElevator, requestCut, requestStateField, requestSurf, requestFishing, requestEscapeRope, requestBicycleState, requestPlayerFacing, requestPlayerStep, completePlayerStep, readOwnedPlayerPosition } from "../services/PlayerMovementService";
+import type { OwnedPlayerPositionResponse, PlayerStepResponse, PlayerStepCompleteResponse, PlayerStepError } from "@/net/generated/protocol";
+import { readWarpHomeRevision, requestWarpHome, requestElevator, requestCut, requestStateField, requestSurf, requestFishing, requestEscapeRope, requestBicycleState, requestPlayerFacing, requestPlayerStep, completePlayerStep, cancelPlayerStep, readOwnedPlayerPosition } from "../services/PlayerMovementService";
 import { WorldSocket } from "@/net/index";
 import useGameScreenStore from "@/stores/GameScreenStore";
 import { CorrelatedResponseError, readForCurrentCharacter } from "../services/CorrelatedRequest";
@@ -123,6 +123,9 @@ export class PlayerMovementController {
   private facingRequestKey: string | null = null;
   private stepAbort: AbortController | null = null;
   private issuedStep: PlayerStepResponse | null = null;
+  private stepCompletion: Promise<{ result: PlayerStepCompleteResponse; error?: never } | { error: unknown; result?: never }> | null = null;
+  private preparedStep: { step: PlayerStepResponse; sourceX: number; sourceY: number; mapId: number } | null = null;
+  private stepCancellationPending = false;
   private actorReconciler: (signal: AbortSignal) => Promise<void> = async () => {};
   setActorReconciler(reconcile: (signal: AbortSignal) => Promise<void>): void { this.actorReconciler = reconcile; }
   reconcileActors(signal: AbortSignal): Promise<void> { return this.actorReconciler(signal); }
@@ -1877,8 +1880,13 @@ export class PlayerMovementController {
         if (!abort || issued.x !== x || issued.y !== y || issued.mapId !== this.currentMapId) {
           throw new Error("Movement animation disagrees with the issued step");
         }
-        const result = await completePlayerStep(issued.stepToken, abort.signal);
+        const completion = this.stepCompletion;
+        if (!completion) throw new Error("Movement animation has no owned completion");
+        const settled = await completion;
         if (generation !== this.movementGeneration || abort.signal.aborted) return;
+        if ("error" in settled) throw settled.error;
+        const result = settled.result;
+        if (result.cancelled) throw new Error("Movement completion was unexpectedly cancelled");
         if (result.replayed) {
           // A receipt is historical. Read the current owned location before
           // projecting recovery, and discard future path/arrival callbacks.
@@ -1905,6 +1913,25 @@ export class PlayerMovementController {
         }
         this.issuedStep = null;
         this.stepAbort = null;
+        this.stepCompletion = null;
+        if (result.mapId !== issued.mapId || result.x !== issued.x || result.y !== issued.y) {
+          this.stopMovement(true);
+          if (result.mapId === this.currentMapId) {
+            this.syncPosition(result.x, result.y);
+            this.syncDirection(result.direction);
+            this.mapRenderer?.snapActorPosition(actorId, result.x, result.y, result.direction);
+          } else {
+            window.dispatchEvent(new CustomEvent("warpTileTeleport", { detail: { ...result, serverCommitted: true, sfxAlreadyPlayed: true } }));
+          }
+          return;
+        }
+        if (result.stopPath) {
+          this.stopMovement();
+          return;
+        }
+        if (result.nextStep) {
+          this.preparedStep = { step: result.nextStep, sourceX: x, sourceY: y, mapId: this.currentMapId };
+        }
       } else {
         // Only an issued step may trigger acknowledgement and local arrival
         // effects. Server animations must explicitly use serverStep.
@@ -1973,6 +2000,7 @@ export class PlayerMovementController {
 
       if (!this.isMoving) {
         this.continueHeldKeyboardMove();
+        if (!this.isMoving) this.cancelPreparedStep();
       }
     }
   }
@@ -2028,16 +2056,103 @@ export class PlayerMovementController {
     const generation = this.movementGeneration;
     const abort = new AbortController();
     this.stepAbort = abort;
-    void requestPlayerStep({ mapId, fromX: sourceX, fromY: sourceY, direction }, abort.signal).then((step) => {
+    const begin = (step: PlayerStepResponse) => {
       if (abort.signal.aborted || generation !== this.movementGeneration) return;
-      if (step.mapId !== mapId || step.x !== nextTile.x || step.y !== nextTile.y) {
+      if (step.mapId !== mapId || step.x !== nextTile.x || step.y !== nextTile.y || step.direction !== direction) {
         throw new Error("Movement destination disagrees with server collision data");
       }
       this.issuedStep = step;
       this.currentDirection = step.direction;
+      // Commit during presentation, not after it. The server owns the earliest
+      // commit time and validates collision again. Preparing one next token in
+      // that response overlaps both network round trips with this animation.
+      const nextDirection = this.continuationDirection(step);
+      const completion = nextDirection
+        ? completePlayerStep(step.stepToken, abort.signal, nextDirection)
+        : completePlayerStep(step.stepToken, abort.signal);
+      this.stepCompletion = completion.then(result => ({ result }), error => ({ error }));
       mapRenderer.updateActorPosition(playerId, sourceX, sourceY, step.x, step.y, step.direction, undefined, step.ledgeJump ? { ledgeJump: true } : undefined);
-    }).catch((error: unknown) => {
-      if (generation === this.movementGeneration && !abort.signal.aborted) this.handleStepFailure(error);
+    };
+    const prepared = this.preparedStep;
+    this.preparedStep = null;
+    if (prepared && prepared.mapId === mapId && prepared.sourceX === sourceX && prepared.sourceY === sourceY
+      && prepared.step.direction === direction && prepared.step.x === nextTile.x && prepared.step.y === nextTile.y) {
+      try { begin(prepared.step); } catch (error) { this.handleStepFailure(error); }
+      return;
+    }
+    // A turn or changed path can leave the prepared token unused. Retire that
+    // exact token before requesting another, so rejection cannot strand it.
+    const request = () => requestPlayerStep({ mapId, fromX: sourceX, fromY: sourceY, direction }, abort.signal);
+    let accepted: Promise<PlayerStepResponse | undefined>;
+    if (prepared) {
+      const intent = this.activeMoveDestination;
+      this.stepCancellationPending = true;
+      accepted = cancelPlayerStep(prepared.step.stepToken, abort.signal).then(result => {
+        if (generation !== this.movementGeneration || abort.signal.aborted) return;
+        if (!result.cancelled) throw new Error("Prepared movement was not cancelled");
+        this.stepCancellationPending = false;
+        if (this.inputFrozenChecker() || this.activeMoveDestination !== intent) {
+          // A panel may open and close during cancellation. Discard its old
+          // captured movement intent even if input is no longer frozen now.
+          this.stepAbort = null;
+          this.isMoving = false;
+          this.syncDirection(result.direction);
+          if (this.activeMoveDestination && this.currentPath.length > 0 && !this.inputFrozenChecker()) {
+            this.isMoving = true;
+            this.moveToNextTile();
+          }
+          return;
+        }
+        return request();
+      });
+    } else {
+      accepted = request();
+    }
+    void accepted.then(step => { if (step) begin(step); }).catch((error: unknown) => {
+      if (generation !== this.movementGeneration || abort.signal.aborted) return;
+      if (this.stepCancellationPending) this.movementRecoveryRequired = true;
+      this.handleStepFailure(error);
+    });
+  }
+
+  private continuationDirection(step: PlayerStepResponse): MovementDirection | undefined {
+    if (this.inputFrozenChecker() || this.arrivalCallback || this.warpAtProvider(step.x, step.y)) return undefined;
+    const next = this.currentPath[0];
+    if (next) {
+      if (next.x > step.x) return "RIGHT";
+      if (next.x < step.x) return "LEFT";
+      if (next.y > step.y) return "DOWN";
+      if (next.y < step.y) return "UP";
+      return undefined;
+    }
+    if (this.lastInputSource !== "keyboard") return undefined;
+    const held = this.heldKeyboardDirectionProvider();
+    if (!held) return undefined;
+    const x = step.x + (held === "LEFT" ? -1 : held === "RIGHT" ? 1 : 0);
+    const y = step.y + (held === "UP" ? -1 : held === "DOWN" ? 1 : 0);
+    // Leave warp activation and ledges to their existing boundary handlers.
+    return this.isWalkable(x, y) && !this.warpAtProvider(x, y) ? held : undefined;
+  }
+
+  private cancelPreparedStep(): void {
+    const prepared = this.preparedStep;
+    if (!prepared) return;
+    this.preparedStep = null;
+    const abort = new AbortController();
+    const generation = this.movementGeneration;
+    this.stepAbort = abort;
+    this.isMoving = true;
+    this.stepCancellationPending = true;
+    void cancelPlayerStep(prepared.step.stepToken, abort.signal).then(result => {
+      if (generation !== this.movementGeneration || abort.signal.aborted) return;
+      if (!result.cancelled) throw new Error("Prepared movement was not cancelled");
+      this.stepCancellationPending = false;
+      this.stepAbort = null;
+      this.isMoving = false;
+    }).catch(error => {
+      if (generation !== this.movementGeneration || abort.signal.aborted) return;
+      this.movementRecoveryRequired = true;
+      this.handleStepFailure(error);
     });
   }
 
@@ -2332,17 +2447,23 @@ export class PlayerMovementController {
     // Input focus discards the future path but lets the current issued animation
     // finish and acknowledge through its issued token.
     // Scene retirement and authoritative snaps explicitly retire that animation.
-    if (retireIssued || !this.issuedStep) {
+    if (retireIssued || (!this.issuedStep && !this.stepCancellationPending)) {
       this.movementGeneration++;
       this.stepAbort?.abort();
       this.stepAbort = null;
       this.issuedStep = null;
+      this.stepCompletion = null;
+      if (retireIssued) {
+        this.preparedStep = null;
+        this.stepCancellationPending = false;
+      }
     }
     this.currentPath = [];
     // Keep the current issued animation/completion exclusive until its response.
-    this.isMoving = this.issuedStep !== null || this.serverMovementInProgress;
+    this.isMoving = this.issuedStep !== null || this.serverMovementInProgress || this.stepCancellationPending;
     this.arrivalCallback = null;
     this.activeMoveDestination = null;
+    if (!retireIssued && !this.issuedStep) this.cancelPreparedStep();
   }
 
   getIsMoving(): boolean {

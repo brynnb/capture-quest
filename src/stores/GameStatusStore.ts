@@ -6,6 +6,13 @@ import { displayLocationNameForMap } from "@utils/locationNames";
 import type { InstantWarpTarget } from "@/phaser-game/instantWarp";
 import AudioManager from "@/services/audio/AudioManager";
 
+interface MapLoadingState {
+  owner: symbol;
+  message: string;
+  failed: boolean;
+  retry: () => void;
+}
+
 interface GameStatusStore {
   maps: MapData[];
   currentMap: number | null;
@@ -63,7 +70,11 @@ interface GameStatusStore {
   resetPanelStates: () => void;
 
   isMapLoading: boolean;
+  mapLoading: MapLoadingState | null;
   setIsMapLoading: (isLoading: boolean) => void;
+  beginMapLoading: (owner: symbol, retry: () => void) => void;
+  updateMapLoading: (owner: symbol, message: string, failed?: boolean) => void;
+  finishMapLoading: (owner: symbol) => void;
   uiScale: number;
   setUIScale: (scale: number) => void;
   isCameraFollowEnabled: boolean;
@@ -309,11 +320,25 @@ const useGameStatusStore = create<GameStatusStore>()(
         },
 
         isMapLoading: false,
+        mapLoading: null,
         setIsMapLoading: (isLoading) => {
           set({
             isMapLoading: isLoading,
+            mapLoading: null,
             ...(isLoading ? { pendingInstantWarpTarget: null } : {}),
           });
+        },
+        beginMapLoading: (owner, retry) => set({
+          isMapLoading: true,
+          mapLoading: { owner, message: "Preparing the world...", failed: false, retry },
+          pendingInstantWarpTarget: null,
+        }),
+        updateMapLoading: (owner, message, failed = false) => {
+          const loading = get().mapLoading;
+          if (loading?.owner === owner) set({ mapLoading: { ...loading, message, failed } });
+        },
+        finishMapLoading: (owner) => {
+          if (get().mapLoading?.owner === owner) set({ isMapLoading: false, mapLoading: null });
         },
         uiScale: 1,
         setUIScale: (scale) => set({ uiScale: scale }),

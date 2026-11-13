@@ -22,6 +22,7 @@ interface OverviewSyncJob {
   generation: number;
   remaining: number;
   ready: boolean;
+  requiredPending: Set<string> | null;
   firstError: unknown;
   resolve: () => void;
   reject: (error: unknown) => void;
@@ -62,6 +63,7 @@ export class OverworldOverviewLayer {
     chunks: readonly OverviewChunkRef[],
     revisionForKey: (key: string) => number,
     onBackgroundFailure?: (error: unknown) => void,
+    requiredChunkKeys?: ReadonlySet<string>,
   ): Promise<void> {
     this.cancelActiveReadiness?.();
     this.cancelActiveReadiness = null;
@@ -85,7 +87,10 @@ export class OverworldOverviewLayer {
     });
     if (pendingChunks.length === 0) return;
 
-    const alreadyReady = chunks.some((chunk) => {
+    const requiredPending = requiredChunkKeys
+      ? new Set(pendingChunks.filter(chunk => requiredChunkKeys.has(chunk.key)).map(chunk => chunk.key))
+      : null;
+    const alreadyReady = requiredPending ? requiredPending.size === 0 : chunks.some((chunk) => {
       const entry = this.entries.get(chunk.key);
       return entry?.revision === revisionForKey(chunk.key);
     });
@@ -101,6 +106,7 @@ export class OverworldOverviewLayer {
       generation,
       remaining: pendingChunks.length,
       ready: alreadyReady,
+      requiredPending,
       firstError: undefined,
       resolve: resolveReadiness,
       reject: rejectReadiness,
@@ -221,10 +227,12 @@ export class OverworldOverviewLayer {
       this.activeLoadCount += 1;
       void this.ensure(queued.chunk, queued.revision, queued.job.generation)
         .then(() => {
+          const ownsPixels = queued.job.generation === this.syncGeneration &&
+            this.entries.get(queued.chunk.key)?.revision === queued.revision;
+          if (ownsPixels) queued.job.requiredPending?.delete(queued.chunk.key);
           if (
-            queued.job.generation === this.syncGeneration &&
-            this.entries.get(queued.chunk.key)?.revision === queued.revision &&
-            !queued.job.ready
+            ownsPixels && !queued.job.ready &&
+            (!queued.job.requiredPending || queued.job.requiredPending.size === 0)
           ) {
             queued.job.ready = true;
             if (queued.job.readinessTimeoutId !== undefined) {
@@ -237,6 +245,13 @@ export class OverworldOverviewLayer {
         })
         .catch((error: unknown) => {
           queued.job.firstError ??= error;
+          if (queued.job.generation === this.syncGeneration &&
+              !queued.job.ready && queued.job.requiredPending?.has(queued.chunk.key)) {
+            queued.job.ready = true;
+            if (queued.job.readinessTimeoutId !== undefined) clearTimeout(queued.job.readinessTimeoutId);
+            this.cancelActiveReadiness = null;
+            queued.job.reject(error);
+          }
           if (queued.job.generation === this.syncGeneration) {
             console.warn(
               `[OverworldOverview] Failed to load chunk ${queued.chunk.key}:`,

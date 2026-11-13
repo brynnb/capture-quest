@@ -26,6 +26,9 @@ const App = () => {
       console.log("Disconnected from the Pokémon world - returning to title");
       useCharacterSelectStore.getState().reset();
       useGameScreenStore.getState().setScreen("title");
+      // Disconnection can retire entry during Phaser preload, before a
+      // MapLoader exists to release its loading screen on scene cleanup.
+      useGameStatusStore.getState().setIsMapLoading(false);
       useGameStatusStore.setState({ currentMap: null });
     };
   }, [isTileUpscaleTool]);

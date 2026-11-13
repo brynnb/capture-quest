@@ -332,14 +332,22 @@ export interface PlayerStepResponse {
   ledgeJump: boolean;
 }
 /**
- * PlayerStepCompleteRequest acknowledges issued movement, never coordinates.
+ * PlayerStepCompleteRequest completes an issued token, never client coordinates.
+ * Completion may arrive during its animation; the server enforces the not-before
+ * time. NextDirection prepares at most one uncommitted continuation after commit.
+ * Cancel retires only the matching uncommitted token without moving the player.
  */
 export interface PlayerStepCompleteRequest {
   stepToken: string;
   requestId: string;
+  nextDirection?: string;
+  cancel?: boolean;
 }
 export interface PlayerStepCompleteResponse {
   replayed?: boolean;
+  cancelled?: boolean;
+  stopPath?: boolean;
+  nextStep?: PlayerStepResponse;
   success: true;
   requestId: string;
   mapId: number /* int */;

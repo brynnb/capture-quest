@@ -74,6 +74,7 @@ export class MapLoader {
   private createMapLegend: (maps: PhaserMapInfo[]) => void;
   private captureActorReadView: () => (actors: PhaserActor[]) => PhaserActor[];
   private mapLoadGeneration = 0;
+  private mapLoadingOwner: symbol | null = null;
   private mapRequestAbort: AbortController | null = null;
   private overworldChunkStream: OverworldChunkStream | null = null;
   private readonly overworldOverviewLayer: OverworldOverviewLayer;
@@ -123,6 +124,8 @@ export class MapLoader {
 
   async loadMapData(mapId: number) {
     const loadGeneration = ++this.mapLoadGeneration;
+    this.beginLoading(loadGeneration, () => { void this.loadMapData(mapId); });
+    let readyForWorldInput = false;
     this.mapRequestAbort?.abort();
     const mapRequestAbort = new AbortController();
     this.mapRequestAbort = mapRequestAbort;
@@ -132,17 +135,13 @@ export class MapLoader {
     try {
       // Check if network is ready
       if (!this.mapDataService.isReady()) {
-        this.uiManager.setLoadingText(
-          "Waiting for server connection...\nPlease log in to continue.",
-        );
-        console.log("[MapLoader] Waiting for WebTransport connection...");
-        return;
+        throw new Error("The server connection is not ready.");
       }
       await this.mapDataService.ensureRuntimeTileCatalogCurrent(true);
       if (!this.isLoadCurrent(loadGeneration)) return;
 
       // Show loading text
-      this.uiManager.setLoadingText(`Loading map data for map ${mapId}...`);
+      this.setLoadingText("Loading your destination...");
 
       // Always clear existing data
       this.mapRenderer.clearLocalActorPositionOverrides();
@@ -189,13 +188,13 @@ export class MapLoader {
       this.setState({ mapInfo });
       void useGameStatusStore.getState().setCurrentMap(mapId);
 
-      this.uiManager.setLoadingText("Loading tiles...");
+      this.setLoadingText("Loading terrain...");
 
       // Fetch tiles
       let tiles = await this.mapDataService.fetchTiles(mapId, mapRequestAbort.signal);
       if (!this.isLoadCurrent(loadGeneration)) return;
 
-      this.uiManager.setLoadingText("Loading tile images...");
+      this.setLoadingText("Loading terrain...");
 
       // Fetch tile images
       const tileImagesData = await this.mapDataService.fetchTileImages();
@@ -205,7 +204,7 @@ export class MapLoader {
       await this.tileManager.loadTileImages(tileImagesData);
       if (!this.isLoadCurrent(loadGeneration)) return;
 
-      this.uiManager.setLoadingText("Loading items...");
+      this.setLoadingText("Preparing the area...");
 
       let items: any[] = []; // eslint-disable-line @typescript-eslint/no-explicit-any
       try {
@@ -222,7 +221,7 @@ export class MapLoader {
       }
       if (!this.isLoadCurrent(loadGeneration)) return;
 
-      this.uiManager.setLoadingText("Loading warps...");
+      this.setLoadingText("Preparing the area...");
 
       let warps: PhaserWarp[] = [];
       try {
@@ -235,7 +234,7 @@ export class MapLoader {
       }
       if (!this.isLoadCurrent(loadGeneration)) return;
 
-      this.uiManager.setLoadingText("Loading Actors...");
+      this.setLoadingText("Preparing characters...");
 
       const prepareActors = this.captureActorReadView();
       let actors = [...playerActors];
@@ -246,8 +245,8 @@ export class MapLoader {
         // Initialize with default if null, but preserve existing actors (like player)
 
         if (allActors.length > 0) {
-          this.uiManager.setLoadingText(
-            `Preloading ${allActors.length} actor sprites...`,
+          this.setLoadingText(
+            "Preparing characters...",
           );
           await this.actorManager.preloadActorSprites(allActors);
           if (!this.isLoadCurrent(loadGeneration)) return;
@@ -260,8 +259,9 @@ export class MapLoader {
           else actors[index] = actor;
         });
       } catch (actorError) {
-        console.error("Error loading actors:", actorError);
-        actors = [];
+        // A missing actor snapshot is not a successfully prepared world.
+        // Keep the loading owner and let the same explicit retry recover it.
+        throw actorError;
       }
       if (!this.isLoadCurrent(loadGeneration)) return;
 
@@ -346,8 +346,7 @@ export class MapLoader {
       // Fade in from black (matches the fade-out in WarpManager)
       this.scene.cameras.main.fadeIn(200, 0, 0, 0);
 
-      // Hide loading text
-      this.uiManager.hideLoadingText();
+      this.setLoadingText("Preparing your character...");
       await (this.scene as any).playPendingWarpExitAnimation?.(200); // eslint-disable-line @typescript-eslint/no-explicit-any
       if (!this.isLoadCurrent(loadGeneration)) return;
       await this.recoverLoadedOwnership(loadGeneration, mapRequestAbort.signal);
@@ -355,27 +354,27 @@ export class MapLoader {
       if (mapInfo.name) {
         PhaserNet.requestMapScripts(mapInfo.name);
       }
+      await this.waitForPresentedFrame(mapRequestAbort.signal);
+      if (!this.isLoadCurrent(loadGeneration)) return;
+      readyForWorldInput = true;
     } catch (error: unknown) {
       if (!this.isLoadCurrent(loadGeneration)) return;
       if (error instanceof RuntimeAssetReloadRequestedError) {
-        this.uiManager.setLoadingText("Updating game assets...");
+        this.setLoadingText("Updating game assets...");
         return;
       }
       console.error("Error loading map data:", error);
-      this.uiManager.setLoadingText(
-        `Error loading map data: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }. Check console for details.`,
-      );
+      this.showLoadingFailure("The world could not be loaded. Please try again.");
     } finally {
-      if (this.isLoadCurrent(loadGeneration)) {
-        (this.scene as any).mapLoadInProgress = false; // eslint-disable-line @typescript-eslint/no-explicit-any
+      if (this.isLoadCurrent(loadGeneration) && readyForWorldInput) {
+        this.finishLoading();
       }
     }
   }
 
   async loadOverworldData(options: MapLoadOptions = {}) {
     const loadGeneration = ++this.mapLoadGeneration;
+    this.beginLoading(loadGeneration, () => { void this.loadOverworldData(options); });
     this.mapRequestAbort?.abort();
     const mapRequestAbort = new AbortController();
     this.mapRequestAbort = mapRequestAbort;
@@ -386,17 +385,13 @@ export class MapLoader {
     try {
       // Check if network is ready
       if (!this.mapDataService.isReady()) {
-        this.uiManager.setLoadingText(
-          "Waiting for server connection...\nPlease log in to continue.",
-        );
-        console.log("[MapLoader] Waiting for WebTransport connection...");
-        return;
+        throw new Error("The server connection is not ready.");
       }
       await this.mapDataService.ensureRuntimeTileCatalogCurrent(true);
       if (!this.isLoadCurrent(loadGeneration)) return;
 
       // Show loading text
-      this.uiManager.setLoadingText("Loading overworld data...");
+      this.setLoadingText("Loading the overworld...");
 
       // Always clear existing data
       this.mapRenderer.clearLocalActorPositionOverrides();
@@ -423,7 +418,7 @@ export class MapLoader {
       // Set camera to overworld mode
       this.cameraController.setViewMode(true);
 
-      this.uiManager.setLoadingText("Loading unified overworld...");
+      this.setLoadingText("Loading your destination...");
 
       // Overview fetches metadata only. Gameplay loads first await arrival.
       const sceneForDest = this.scene as any; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -455,7 +450,7 @@ export class MapLoader {
       // Items are no longer fetched separately - they come as part of NPCs/objects
       const items: any[] = []; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-      this.uiManager.setLoadingText("Loading actors and warps...");
+      this.setLoadingText("Preparing the area...");
 
       // Load actors and warps for the unified map
       const prepareActors = this.captureActorReadView();
@@ -468,8 +463,8 @@ export class MapLoader {
 
       // Preload actor sprites before rendering
       if (allActors.length > 0) {
-        this.uiManager.setLoadingText(
-          `Preloading ${allActors.length} actor sprites...`,
+        this.setLoadingText(
+          "Preparing characters...",
         );
         await this.actorManager.preloadActorSprites(allActors);
         if (!this.isLoadCurrent(loadGeneration)) return;
@@ -646,7 +641,13 @@ export class MapLoader {
           }
         },
       });
-      this.uiManager.setLoadingText("Loading nearby overworld chunks...");
+      this.setLoadingText("Loading nearby terrain...");
+      // Phaser rebuilds the camera transform in preRender. setZoom, centering,
+      // restored scroll and following above do not immediately update the
+      // matrix used by getWorldPoint. Observe one owned frame while covered,
+      // then plan the actual viewport instead of the previous indoor frame.
+      await this.waitForPresentedFrame(mapRequestAbort.signal, false);
+      if (!this.isLoadCurrent(loadGeneration)) return;
       const initialCamera = this.currentCameraWorldView();
       await this.overworldChunkStream.initialize(initialCamera);
       if (loadGeneration !== this.mapLoadGeneration) return;
@@ -654,19 +655,20 @@ export class MapLoader {
       // Fade in from black (matches the fade-out in WarpManager)
       this.scene.cameras.main.fadeIn(200, 0, 0, 0);
 
-      // Hide loading text
-      this.uiManager.hideLoadingText();
+      this.setLoadingText("Preparing your character...");
       await (this.scene as any).playPendingWarpExitAnimation?.(200); // eslint-disable-line @typescript-eslint/no-explicit-any
       if (!this.isLoadCurrent(loadGeneration)) return;
       if (!options.viewOnly) {
         await this.recoverLoadedOwnership(loadGeneration, mapRequestAbort.signal);
         if (!this.isLoadCurrent(loadGeneration)) return;
       }
+      await this.waitForPresentedFrame(mapRequestAbort.signal);
+      if (!this.isLoadCurrent(loadGeneration)) return;
       readyForWorldInput = true;
     } catch (error: unknown) {
       if (!this.isLoadCurrent(loadGeneration)) return;
       if (error instanceof RuntimeAssetReloadRequestedError) {
-        this.uiManager.setLoadingText("Updating game assets...");
+        this.setLoadingText("Updating game assets...");
         return;
       }
       // Initialization may already have installed actors and an empty base
@@ -678,16 +680,64 @@ export class MapLoader {
       }
       this.setState({ tiles: [] });
       console.error("Error loading overworld data:", error);
-      this.uiManager.setLoadingText(
-        `Error loading overworld data: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }. Check console for details.`,
-      );
+      this.showLoadingFailure("The world could not be loaded. Please try again.");
     } finally {
       if (this.isLoadCurrent(loadGeneration) && readyForWorldInput) {
-        (this.scene as any).mapLoadInProgress = false; // eslint-disable-line @typescript-eslint/no-explicit-any
+        this.finishLoading();
       }
     }
+  }
+
+  private beginLoading(generation: number, retry: () => void): void {
+    const owner = Symbol("map loading");
+    this.mapLoadingOwner = owner;
+    useGameStatusStore.getState().beginMapLoading(owner, () => {
+      if (this.mapLoadingOwner === owner && this.isLoadCurrent(generation)) retry();
+    });
+  }
+
+  private setLoadingText(message: string): void {
+    this.uiManager.setLoadingText(message);
+    if (this.mapLoadingOwner) {
+      useGameStatusStore.getState().updateMapLoading(this.mapLoadingOwner, message);
+    }
+  }
+
+  private showLoadingFailure(message: string): void {
+    this.uiManager.setLoadingText(message);
+    if (this.mapLoadingOwner) {
+      useGameStatusStore.getState().updateMapLoading(this.mapLoadingOwner, message, true);
+    }
+  }
+
+  private finishLoading(): void {
+    this.uiManager.hideLoadingText();
+    (this.scene as any).mapLoadInProgress = false; // eslint-disable-line @typescript-eslint/no-explicit-any
+    if (this.mapLoadingOwner) useGameStatusStore.getState().finishMapLoading(this.mapLoadingOwner);
+  }
+
+  private waitForPresentedFrame(signal: AbortSignal, waitForFade = true): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const events = this.scene.game.events;
+      const cleanup = () => {
+        events.off("postrender", presented);
+        signal.removeEventListener("abort", aborted);
+      };
+      const presented = () => {
+        // Keep the opaque DOM cover until Phaser has actually drawn the map
+        // and the previous warp's black camera fade has finished.
+        if (waitForFade && this.scene.cameras.main.fadeEffect.isRunning) return;
+        cleanup();
+        resolve();
+      };
+      const aborted = () => {
+        cleanup();
+        reject(new DOMException("Map view retired", "AbortError"));
+      };
+      if (signal.aborted) { aborted(); return; }
+      signal.addEventListener("abort", aborted, { once: true });
+      events.on("postrender", presented);
+    });
   }
 
   private async recoverLoadedOwnership(generation: number, signal: AbortSignal): Promise<void> {
@@ -794,6 +844,8 @@ export class MapLoader {
     this.mapRequestAbort = null;
     this.stopOverworldStreaming();
     (this.scene as any).mapLoadInProgress = false; // eslint-disable-line @typescript-eslint/no-explicit-any
+    if (this.mapLoadingOwner) useGameStatusStore.getState().finishMapLoading(this.mapLoadingOwner);
+    this.mapLoadingOwner = null;
   }
 
   private isLoadCurrent(loadGeneration: number): boolean {

@@ -115,10 +115,12 @@ function createHarness(viewOnly = false) {
         chunks: readonly { key: string; column: number; row: number }[],
         revisionForKey: (key: string) => number,
         onBackgroundFailure?: (error: unknown) => void,
+        requiredChunkKeys?: ReadonlySet<string>,
       ) => {
         void chunks;
         void revisionForKey;
         void onBackgroundFailure;
+        void requiredChunkKeys;
       },
     ),
     setVisible: vi.fn(),

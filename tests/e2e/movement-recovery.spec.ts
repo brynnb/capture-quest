@@ -38,6 +38,7 @@ test("a lost step reply recovers once and its receipt survives character re-entr
   await page.getByRole("button", { name: "Instant Warp" }).click();
   await waitForWarpMode(page, true); await clickTile(page, 6, 7);
   await waitForWarpMode(page, false); await waitForPlayerTile(page, 6, 7);
+  await waitForNoMapLoading(page); await waitForPlayerIdle(page);
   await pressMovement(page, "left");
   await expect.poll(() => completions.length, { timeout: 20000 }).toBe(2);
   expect(dropped).toBe(true);
@@ -54,6 +55,7 @@ test("a lost step reply recovers once and its receipt survives character re-entr
   await page.getByRole("button", { name: "Instant Warp" }).click();
   await waitForWarpMode(page, true); await clickTile(page, 6, 7);
   await waitForWarpMode(page, false); await waitForPlayerTile(page, 6, 7);
+  await waitForNoMapLoading(page); await waitForPlayerIdle(page);
   await page.evaluate(async (stepToken) => {
     const bridgePath = "/src/net/NetworkBridge.ts";
     const opcodePath = "/src/net/generated/opcodes.ts";

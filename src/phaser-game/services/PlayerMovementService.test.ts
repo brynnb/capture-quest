@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import type { PlayerStepCompleteResponse } from "@/net/generated/protocol";
-import { completeCutscene, completePlayerStep, readOwnedPlayerPosition } from "./PlayerMovementService";
+import { cancelPlayerStep, completeCutscene, completePlayerStep, readOwnedPlayerPosition } from "./PlayerMovementService";
 import { CorrelatedRequestTimeoutError, CorrelatedResponseError } from "./CorrelatedRequest";
 
 type StepReply = PlayerStepCompleteResponse | { success: false; requestId: string; error: string };
@@ -104,4 +104,28 @@ test("cutscene second timeout is terminal; cancellation and rejection do not ret
   for (const receive of net.listeners) receive({ success: false, requestId: request.requestId, error: "rejected" });
   await expect(failed).rejects.toBeInstanceOf(CorrelatedResponseError);
   expect(net.complete).toHaveBeenCalledTimes(1);
+});
+
+
+test("prepared cancellation retries only the same token and remains terminal after a second timeout", async () => {
+  vi.useFakeTimers();
+  const result = cancelPlayerStep("unused-prepared");
+  const rejected = expect(result).rejects.toBeInstanceOf(CorrelatedRequestTimeoutError);
+  await vi.advanceTimersByTimeAsync(20000);
+  await rejected;
+  expect(net.complete).toHaveBeenCalledTimes(2);
+  for (const [request] of net.complete.mock.calls) expect(request).toEqual({ requestId: expect.any(String), stepToken: "unused-prepared", cancel: true });
+  expect(net.listeners.size).toBe(0);
+});
+
+test("a pipeline receipt retry keeps its original direction intent and accepts only the new correlation", async () => {
+  vi.useFakeTimers();
+  const result = completePlayerStep("issued", undefined, "RIGHT");
+  await vi.advanceTimersByTimeAsync(10000);
+  const [first, second] = net.complete.mock.calls.map(call => call[0]);
+  expect(first).toMatchObject({ stepToken: "issued", nextDirection: "RIGHT" });
+  expect(second).toMatchObject({ stepToken: "issued", nextDirection: "RIGHT" });
+  for (const receive of net.listeners) receive({ success: true, requestId: second.requestId, replayed: true, mapId: 50, x: 8, y: 8, direction: "RIGHT" });
+  await expect(result).resolves.toMatchObject({ replayed: true });
+  expect(net.listeners.size).toBe(0);
 });

@@ -213,7 +213,9 @@ const useCharacterSelectStore = create<CharacterSelectStore>((set, get) => ({
         chatStore.addMessage(`You have entered ${mapName}.`, MessageType.ZONE_ENTRY);
         useGameStatusStore.setState({ currentMap: null });
         useGameStatusStore.getState().resetPanelStates();
-        useGameStatusStore.getState().setIsMapLoading(false);
+        // The acknowledgement owns the server character, but the browser still
+        // needs terrain, textures and the current world snapshot. MapLoader
+        // releases the loading screen only after that presentation is ready.
         set({ rosterReady: false });
         useGameScreenStore.getState().setScreen("game");
         return true;
