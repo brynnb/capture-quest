@@ -6,6 +6,7 @@ import { WT_IP, WT_PORT } from "@/config";
 import { correlatedRequest } from "@/phaser-game/services/CorrelatedRequest";
 import * as PhaserNet from "@/phaser-game/services/PhaserNetworkService";
 import type { NameValidationResponse } from "@/net/generated/protocol";
+import type { CharacterListResponse, CharacterDeleteResponse } from "@/net/generated/world_api";
 import { getExistingGuestToken } from "@/utils/guestToken";
 
 // JWT Response interface
@@ -142,19 +143,25 @@ export async function enterWorld(name: string): Promise<boolean> {
     return response.value === 1;
 }
 
-/**
- * Delete a character
- */
-export async function deleteCharacter(name: string): Promise<boolean> {
-    if (!WorldSocket.isConnected) {
-        throw new Error("WorldSocket not connected");
-    }
+/** Establish a fresh authentication transport under the account operation owner. */
+export function connectForAuthentication(): Promise<boolean> {
+    return WorldSocket.connect(WT_IP, WT_PORT, () => {});
+}
 
-    await WorldSocket.sendJsonMessage(OpCodes.DeleteCharacter, {
-        value: name,
-    });
+/** Read the current authenticated account roster; never apply broadcasts globally. */
+export function readCharacterList(signal?: AbortSignal): Promise<CharacterListResponse> {
+    return correlatedRequest<CharacterListResponse>(
+        receive => PhaserNet.onCharacterCommand(OpCodes.CharacterListResponse, receive),
+        requestId => WorldSocket.sendStreamJsonMessage(OpCodes.CharacterListRequest, {requestId}), signal,
+    );
+}
 
-    return true;
+/** Delete one stable character identity and await its confirmed current roster. */
+export function deleteCharacter(characterId: number, signal?: AbortSignal): Promise<CharacterDeleteResponse> {
+    return correlatedRequest<CharacterDeleteResponse>(
+        receive => PhaserNet.onCharacterCommand(OpCodes.CharacterDeleteResponse, receive),
+        requestId => WorldSocket.sendStreamJsonMessage(OpCodes.DeleteCharacter, {requestId,characterId}), signal,
+    );
 }
 
 /**

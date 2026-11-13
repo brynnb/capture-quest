@@ -67,15 +67,21 @@ func TestNameValidationPoolWaitHonorsCallerCancellation(t *testing.T) {
 
 func TestNameFilterFailureRejectsValidationAndCreation(t *testing.T) {
 	database, wh, ses, messages := battleTestWorld(t)
+	seedCharacterCreationCatalog(t, database)
+	ses.Client, ses.AccountID = nil, 7
 	testdb.Exec(t, database, `DROP TABLE disallowed_words`)
 	HandleValidateNameRequest(ses, []byte(`{"requestId":"name:filter","name":"Freshname"}`), wh)
 	var failure protocol.NameValidationError
 	if err := json.Unmarshal(messages.streams[0].payload, &failure); err != nil || failure.Success || failure.Error == "" || failure.RequestID != "name:filter" {
 		t.Fatalf("filter failure=%+v %v", failure, err)
 	}
-	HandleCharacterCreate(ses, []byte(`{"name":"Freshname"}`), wh)
+	HandleCharacterCreate(ses, []byte(characterCreatePayload(t, validCharacterCreateRequest("Freshname"))), wh)
 	var result SimpleSuccessResponse
 	if len(messages.streams) != 2 || json.Unmarshal(messages.streams[1].payload, &result) != nil || result.Value != 0 {
 		t.Fatal("filter failure allowed creation or omitted reply")
+	}
+	var created bool
+	if err := database.QueryRow(`SELECT EXISTS(SELECT 1 FROM character_data WHERE name='Freshname')`).Scan(&created); err != nil || created {
+		t.Fatalf("filter failure created identity=%t error=%v", created, err)
 	}
 }

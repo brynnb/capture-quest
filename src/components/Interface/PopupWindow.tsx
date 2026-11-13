@@ -10,6 +10,8 @@ interface PopupWindowProps {
   onOk: () => void;
   onCancel?: () => void;
   isOpen: boolean;
+  isBusy?: boolean;
+  okDisabled?: boolean;
 }
 
 const Overlay = styled.div`
@@ -131,12 +133,14 @@ const PopupWindow = ({
   onOk,
   onCancel,
   isOpen,
+  isBusy = false,
+  okDisabled = false,
 }: PopupWindowProps) => {
   if (!isOpen) return null;
 
   return (
     <Overlay onClick={(e) => e.stopPropagation()}>
-      <WindowContainer>
+      <WindowContainer role="dialog" aria-modal="true" aria-label={title ?? "Confirmation"} aria-busy={isBusy}>
         {title && <Title>{title}</Title>}
         <MessageContainer $align={messageAlign}>{message}</MessageContainer>
         <ButtonRow>
@@ -146,6 +150,8 @@ const PopupWindow = ({
               $width="140px"
               $height="55px"
               onClick={onCancel}
+              disabled={isBusy}
+              $isDisabled={isBusy}
             >
               {cancelText || "CANCEL"}
             </SelectionButton>
@@ -158,6 +164,8 @@ const PopupWindow = ({
             $width="140px"
             $height="55px"
             onClick={onOk}
+            disabled={isBusy || okDisabled}
+            $isDisabled={isBusy || okDisabled}
           >
             {okText}
           </SelectionButton>

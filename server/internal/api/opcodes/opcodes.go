@@ -231,4 +231,7 @@ const (
 	BicycleStateResponse          OpCode = 202
 	EscapeRopeUseRequest          OpCode = 203
 	EscapeRopeUseResponse         OpCode = 204
+	CharacterListRequest          OpCode = 205
+	CharacterListResponse         OpCode = 206
+	CharacterDeleteResponse       OpCode = 207
 )

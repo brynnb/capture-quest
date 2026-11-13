@@ -163,55 +163,19 @@ func HandleEnterWorld(ses *session.Session, payload []byte, wh *WorldHandler) bo
 
 func HandleCharacterCreate(ses *session.Session, payload []byte, wh *WorldHandler) bool {
 	var req CharCreateRequest
-	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("failed to unmarshal CharCreate JSON: %v", err)
+	if err := json.Unmarshal(payload, &req); err != nil || !characterSelectSession(ses) {
+		if ses != nil && !ses.IsClosed() {
+			ses.SendStreamJSON(SimpleSuccessResponse{Value: 0}, opcodes.CharacterCreateResponse)
+		}
 		return false
 	}
-
-	name := req.Name
-	valid, _, validationErr := ValidateNameContext(ses.CommandContext(), wh.database, name)
-	if validationErr != nil {
-		log.Printf("Character name validation failed: %v", validationErr)
-		ses.SendStreamJSON(SimpleSuccessResponse{Value: 0}, opcodes.CharacterCreateResponse)
-		return false
-	}
-	if !valid {
-		ses.SendStreamJSON(SimpleSuccessResponse{Value: 0}, opcodes.CharacterCreateResponse)
-		return false
-	}
-
-	if !CharacterCreate(ses, ses.AccountID, req) {
-		log.Printf("[CharacterCreate] Failed for account %d, name %s", ses.AccountID, req.Name)
+	if _, err := CharacterCreate(ses.CommandContext(), wh.database, ses.AccountID, req); err != nil {
+		log.Printf("[CharacterCreate] Account %d name %q: %v", ses.AccountID, req.Name, err)
 		ses.SendStreamJSON(SimpleSuccessResponse{Value: 0}, opcodes.CharacterCreateResponse)
 		return false
 	}
 	ses.SendStreamJSON(SimpleSuccessResponse{Value: 1}, opcodes.CharacterCreateResponse)
-
-	sendCharInfo(ses, ses.AccountID)
-	return false
-}
-
-type CharacterDeleteRequest struct {
-	Value string `json:"value"`
-}
-
-func HandleCharacterDelete(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	log.Printf("HandleCharacterDelete called for session %d, payload len=%d", ses.SessionID, len(payload))
-	var req CharacterDeleteRequest
-	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("failed to unmarshal Delete JSON: %v", err)
-		return false
-	}
-
-	ctx := ses.CommandContext()
-	name := req.Value
-	log.Printf("Deleting character: %s for account %d", name, ses.AccountID)
-	if err := DeleteCharacter(ctx, ses.AccountID, name); err != nil {
-		log.Printf("DeleteCharacter failed: %v", err)
-		return false
-	}
-	log.Printf("Character %s deleted successfully, sending updated char info", name)
-	sendCharInfo(ses, ses.AccountID)
+	sendCharInfo(ses, wh, ses.AccountID)
 	return false
 }
 

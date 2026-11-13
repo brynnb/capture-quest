@@ -102,8 +102,50 @@ export interface BoulderObjectState {
 }
 
 //////////
+// source: character_creation.go
+
+
+//////////
 // source: character_owner.go
 
+
+//////////
+// source: character_roster.go
+
+export interface CharacterSelectEntry {
+  id: number /* uint32 */;
+  name: string;
+  factionId: number /* uint16 */;
+  class: number /* uint8 */;
+  mapId: number /* uint32 */;
+  gender: number /* uint8 */;
+  lastLogin: number /* uint32 */;
+}
+export interface CharacterListRequest {
+  requestId: string;
+}
+export interface CharacterListResponse {
+  success: true;
+  requestId: string;
+  accountId: number /* int64 */;
+  characters: CharacterSelectEntry[];
+}
+export interface CharacterDeleteRequest {
+  requestId: string;
+  characterId: number /* int64 */;
+}
+export interface CharacterDeleteResponse {
+  success: true;
+  requestId: string;
+  accountId: number /* int64 */;
+  characterId: number /* int64 */;
+  characters: CharacterSelectEntry[];
+}
+export interface CharacterCommandError {
+  success: false;
+  requestId: string;
+  error: string;
+}
 
 //////////
 // source: chat_commands.go
@@ -1953,9 +1995,6 @@ export interface EnterWorldRequest {
 export interface SimpleSuccessResponse {
   value: number /* int32 */;
 }
-export interface CharacterDeleteRequest {
-  value: string;
-}
 export interface SendChatMessageRequest {
   text: string;
 }
@@ -2012,10 +2051,6 @@ export interface CharacterCreateProfile {
   birthday: number /* int32 */;
   binds: BindPoint[];
 }
-
-//////////
-// source: world-db.go
-
 
 //////////
 // source: world-handler-registry.go

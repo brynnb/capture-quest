@@ -4,7 +4,7 @@ import {
   ClassData,
   HomeTownData,
 } from "@/services/characterService";
-import { createCharacter } from "@/services/authService";
+import useCharacterSelectStore from "./CharacterSelectStore";
 
 export interface CharacterCreatorStore {
   selectedFaction: FactionData | null;
@@ -122,7 +122,7 @@ const useCharacterCreatorStore = create<CharacterCreatorStore>()(
         return false;
       }
 
-      return await createCharacter({
+      return await useCharacterSelectStore.getState().createCharacter({
         name: state.characterName,
         rivalName: state.rivalName,
         factionId: state.selectedFaction.id,

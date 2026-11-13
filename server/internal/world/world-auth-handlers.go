@@ -64,7 +64,7 @@ func HandleJWTLogin(ses *session.Session, payload []byte, wh *WorldHandler) bool
 		log.Printf("[AUTH] Failed to record login IP for account %d: %v", accountID, err)
 	}
 
-	sendCharInfo(ses, accountID)
+	sendCharInfo(ses, wh, accountID)
 	return false
 }
 

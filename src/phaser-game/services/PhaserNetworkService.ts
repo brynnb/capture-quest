@@ -194,6 +194,20 @@ export function requestPokedexRead(opcode:OpCodes.OpCode,requestId:string):Promi
  return NetworkBridge.send({requestId},opcode);
 }
 
+// Account operations outlive a Phaser scene. Their correlated owner removes
+// these listeners; clearing gameplay handlers must not discard a roster read.
+type CharacterReply = import("@/net/generated/world_api").CharacterListResponse | import("@/net/generated/world_api").CharacterDeleteResponse | import("@/net/generated/world_api").CharacterCommandError;
+const characterCommandHandlers = new Map<number, Set<(reply: CharacterReply) => void>>([
+  [OpCodes.CharacterListResponse, new Set()], [OpCodes.CharacterDeleteResponse, new Set()],
+]);
+export function onCharacterCommand<T extends CharacterReply>(opcode: number, receive: (reply: T) => void): () => void {
+  const handlers = characterCommandHandlers.get(opcode);
+  if (!handlers) throw new Error("Unsupported character response opcode");
+  const listener = (reply: CharacterReply) => receive(reply as T);
+  handlers.add(listener);
+  return () => handlers.delete(listener);
+}
+
 // Response handler registration
 export type PhaserMapInfoHandler = (data: PhaserMapInfoResponse | PhaserMapRequestError) => void;
 export type PhaserMapLoadHandler = (data: PhaserMapLoadResponse | PhaserMapRequestError) => void;
@@ -448,6 +462,11 @@ export function dispatchPhaserResponse(opcode: number, data: unknown): void {
     case OpCodes.PokedexListResponse:
     case OpCodes.PokedexStatusResponse:
       pokedexReadHandlers.get(opcode)?.forEach(receive=>receive(data as PokedexReadReply));
+      break;
+
+    case OpCodes.CharacterListResponse:
+    case OpCodes.CharacterDeleteResponse:
+      characterCommandHandlers.get(opcode)?.forEach(receive => receive(data as CharacterReply));
       break;
 
     case OpCodes.GameCornerSlotResultResponse:

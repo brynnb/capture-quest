@@ -35,7 +35,7 @@ func HandleCharacterQuitRequest(ses *session.Session, payload []byte, wh *WorldH
 	if err := wh.cleanupCharacterSession(ses.CommandContext(), ses); err != nil {
 		log.Printf("[WORLD] Camp cleanup: %v", err)
 	}
-	sendCharInfo(ses, ses.AccountID)
+	sendCharInfo(ses, wh, ses.AccountID)
 	return false
 }
 
@@ -100,14 +100,15 @@ func (wh *WorldHandler) handleStateUpdate(ses *session.Session) {
 
 // Core Helpers
 
-func sendCharInfo(ses *session.Session, accountId int64) {
-	ctx := ses.CommandContext()
-	charInfo, err := GetCharSelectInfo(ses, ctx, accountId)
+func sendCharInfo(ses *session.Session, wh *WorldHandler, accountID int64) {
+	characters, err := readCharacterRoster(ses.CommandContext(), wh.database, accountID)
 	if err != nil {
-		log.Printf("failed to get character select info for accountID %d: %v", accountId, err)
+		log.Printf("failed to get character select info for accountID %d: %v", accountID, err)
 		return
 	}
-	ses.SendStreamJSON(charInfo, opcodes.SendCharInfo)
+	// Legacy publications share the authoritative reader. Current clients use
+	// the correlated account read, so these cannot settle a pending request.
+	ses.SendStreamJSON(CharacterListResponse{Success: true, AccountID: accountID, Characters: characters}, opcodes.SendCharInfo)
 }
 
 // prepareCharacterEntry installs the serialized character owner without publishing

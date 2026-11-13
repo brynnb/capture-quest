@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import styled from "styled-components";
 import SelectionButton from "@components/Interface/SelectionButton";
-import { login } from "@/services/authService";
 import useCharacterSelectStore from "@stores/CharacterSelectStore";
 import PopupWindow from "@components/Interface/PopupWindow";
 import { getApiUrl } from "@/config";
@@ -277,12 +276,12 @@ const LoginPage = () => {
   const { setScreen } = useGameScreenStore();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [isConnecting, setIsConnecting] = useState(false);
+  const isConnecting = useCharacterSelectStore(state => state.accountOperation === "authenticate");
   const [error, setError] = useState<string | null>(null);
   const [serverStatus, setServerStatus] = useState<
     "checking" | "online" | "offline"
   >("checking");
-  const { setIsLoading } = useCharacterSelectStore();
+
   const {
     isGuestConnecting,
     guestLoginError,
@@ -341,46 +340,13 @@ const LoginPage = () => {
     );
   };
 
-  const waitForAudioOrContinue = (audioInitPromise: Promise<void>) =>
-    Promise.race([
-      audioInitPromise,
-      new Promise((resolve) => setTimeout(resolve, 2000)),
-    ]);
-
   const handleAccountLogin = async () => {
-    if (serverStatus !== "online") {
-      setError("Server is offline");
-      return;
-    }
-
-    if (!email.trim() || !password) {
-      setError("Please enter your email and password");
-      return;
-    }
-
-    setIsConnecting(true);
+    if (useCharacterSelectStore.getState().accountOperation || useCharacterSelectStore.getState().isEnteringWorld) return;
+    if (serverStatus !== "online") { setError("Server is offline"); return; }
+    if (!email.trim() || !password) { setError("Please enter your email and password"); return; }
     setError(null);
-    setIsLoading(true);
-
-    const loginTimeout = setTimeout(() => {
-      setError("Connection timed out. Please try again.");
-      setIsConnecting(false);
-      setIsLoading(false);
-    }, 15000);
-
-    try {
-      const audioInitPromise = initializeAudioForLogin();
-      await login(email.trim(), password);
-      await waitForAudioOrContinue(audioInitPromise);
-      clearTimeout(loginTimeout);
-      console.log("[Login] Account login successful");
-    } catch (err) {
-      clearTimeout(loginTimeout);
-      console.error("Login failed:", err);
-      setError(err instanceof Error ? err.message : "Login failed");
-      setIsConnecting(false);
-      setIsLoading(false);
-    }
+    void initializeAudioForLogin();
+    await useCharacterSelectStore.getState().authenticate({kind: "login", email: email.trim(), password});
   };
 
   const handleGuestLogin = async () => {

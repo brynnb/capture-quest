@@ -1,12 +1,9 @@
 package world
 
 import (
-	"context"
-	"log"
 	"time"
 
 	db_character "capturequest/internal/db/character"
-	"capturequest/internal/session"
 )
 
 const (
@@ -59,43 +56,6 @@ type CharacterCreateProfile struct {
 	Options   *db_character.CharacterOptions `json:"-"`
 }
 
-// CharacterCreate creates the character in the database
-func CharacterCreate(ses *session.Session, accountId int64, cc CharCreateRequest) bool {
-	ctx := ses.CommandContext()
-	if !CheckCharCreateInfo(cc) {
-		log.Println("CheckCharCreateInfo failed")
-		return false
-	}
-
-	profile := &CharacterCreateProfile{
-		Binds: make([]BindPoint, 5),
-	}
-
-	// Initialize default character identity and options.
-	InitializeNewCharacterProfile(profile, cc)
-
-	log.Printf("Setting default Phaser spawn for new character")
-	ApplyDefaultSpawn(profile)
-
-	// Set bind points
-	log.Printf("Setting bind points")
-	for i := range profile.Binds {
-		profile.Binds[i] = BindPoint{
-			MapID:   profile.MapID,
-			X:       profile.X,
-			Y:       profile.Y,
-			Z:       profile.Z,
-			Heading: profile.Heading,
-		}
-	}
-
-	// Store character
-	log.Printf("Storing character to database")
-	result := SaveCharacterCreate(ctx, accountId, profile)
-	log.Printf("StoreCharacter returned: %v", result)
-	return result
-}
-
 func InitializeNewCharacterProfile(p *CharacterCreateProfile, cc CharCreateRequest) {
 	p.Name = cc.Name
 	p.FactionID = int32(cc.FactionID)
@@ -124,14 +84,4 @@ func initialPlayerDirection(mapID, x, y int) string {
 		return DefaultSpawnDirection
 	}
 	return "DOWN"
-}
-
-func CheckCharCreateInfo(cc CharCreateRequest) bool {
-	return true
-}
-
-// StoreCharacter saves the character to the database
-func StoreCharacter(accountID int64, profile *CharacterCreateProfile) bool {
-	ctx := context.Background()
-	return SaveCharacterCreate(ctx, accountID, profile)
 }

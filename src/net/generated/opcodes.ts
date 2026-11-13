@@ -248,3 +248,6 @@ export const BicycleStateRequest: OpCode = 201;
 export const BicycleStateResponse: OpCode = 202;
 export const EscapeRopeUseRequest: OpCode = 203;
 export const EscapeRopeUseResponse: OpCode = 204;
+export const CharacterListRequest: OpCode = 205;
+export const CharacterListResponse: OpCode = 206;
+export const CharacterDeleteResponse: OpCode = 207;

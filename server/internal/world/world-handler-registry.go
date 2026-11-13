@@ -27,10 +27,11 @@ type HandlerRegistry struct {
 
 func NewWorldOpCodeRegistry() *HandlerRegistry {
 	handlers := map[opcodes.OpCode]DatagramHandler{
-		opcodes.JWTLogin:        HandleJWTLogin,
-		opcodes.CharacterCreate: HandleCharacterCreate,
-		opcodes.DeleteCharacter: HandleCharacterDelete,
-		opcodes.EnterWorld:      HandleEnterWorld,
+		opcodes.JWTLogin:             HandleJWTLogin,
+		opcodes.CharacterCreate:      HandleCharacterCreate,
+		opcodes.DeleteCharacter:      HandleCharacterDelete,
+		opcodes.CharacterListRequest: HandleCharacterList,
+		opcodes.EnterWorld:           HandleEnterWorld,
 		// Data query handlers
 		opcodes.StaticDataRequest:     HandleStaticDataRequest,
 		opcodes.SendChatMessage:       HandleSendChatMessage,
@@ -230,7 +231,7 @@ func sessionAllowsOpcode(ses *session.Session, op opcodes.OpCode) bool {
 		return false
 	}
 	switch op {
-	case opcodes.CharacterCreate, opcodes.DeleteCharacter, opcodes.EnterWorld:
+	case opcodes.CharacterCreate, opcodes.DeleteCharacter, opcodes.EnterWorld, opcodes.CharacterListRequest:
 		return !ses.HasValidClient()
 	case opcodes.StaticDataRequest, opcodes.CharCreateDataRequest, opcodes.ValidateNameRequest:
 		return true

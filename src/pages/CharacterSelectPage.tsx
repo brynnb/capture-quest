@@ -15,14 +15,17 @@ const Wrapper = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   height: 100%;
+  min-height: 0;
   width: 100%;
   overflow: auto;
 `;
 
 const ContentContainer = styled.div`
   display: grid;
+  flex-shrink: 0;
+  margin-block: auto;
   width: min(1360px, 100%);
   grid-template-columns: minmax(0, 1.68fr) minmax(320px, 1fr);
   gap: 10px;
@@ -39,6 +42,33 @@ const ContentContainer = styled.div`
   @media (max-height: 650px) and (max-width: 900px),
     (max-height: 650px) and (pointer: coarse) {
     padding: 10px 10px 8px;
+  }
+`;
+
+const RosterError = styled.div`
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  box-sizing: border-box;
+  color: #2e2f66;
+  text-align: center;
+  overflow-wrap: anywhere;
+
+  & > p {
+    margin: 0;
+  }
+
+  & > button {
+    width: min(340px, 100%);
+    min-width: 0;
+    min-height: 52px;
+    height: auto;
+    padding: 10px 16px;
+    white-space: normal;
   }
 `;
 
@@ -429,6 +459,7 @@ const LocationInfo = styled.div`
 `;
 
 const EmptyMessage = styled.div`
+  margin-block: auto;
   font-family: "Times New Roman", Times, serif;
   font-size: 18px;
   color: white;
@@ -455,8 +486,9 @@ const CharacterSelectPage = () => {
   const [deleteTarget, setDeleteTarget] = useState<CharacterSelectEntry | null>(
     null,
   );
-  const { characters, selectedCharacter, setSelectedCharacter, isLoading, isEnteringWorld } =
+  const { characters, selectedCharacter, setSelectedCharacter, isLoading, isEnteringWorld, accountOperation, rosterReady, rosterError, deleteError } =
     useCharacterSelectStore();
+  const accountBusy = isEnteringWorld || accountOperation !== null;
   usePlayerCharacterStore();
   const { getClassById, loadStaticData } = useStaticDataStore();
   const gameStatus = useGameStatusStore();
@@ -481,17 +513,26 @@ const CharacterSelectPage = () => {
     }
   }, [characters, selectedCharacter?.name, setSelectedCharacter]);
 
+  useEffect(() => {
+    if (!rosterReady && !rosterError && !accountOperation) void useCharacterSelectStore.getState().refreshCharacters();
+  }, [rosterReady, rosterError, accountOperation]);
+
+  useEffect(() => {
+    if (rosterReady && deleteTarget && !characters.some(character => character.id === deleteTarget.id)) setDeleteTarget(null);
+  }, [characters, deleteTarget, rosterReady]);
+
   const getClassName = (classId: number) => {
     const charClass = getClassById(classId);
     return charClass?.name || "Unknown";
   };
 
   const handleSelectCharacter = (character: CharacterSelectEntry) => {
+    if (accountBusy) return;
     setSelectedCharacter(character);
   };
 
   const handleEnterWorld = async () => {
-    if (!selectedCharacter || useCharacterSelectStore.getState().isEnteringWorld) return;
+    if (!selectedCharacter || accountBusy || !rosterReady) return;
     const name = selectedCharacter.name;
     const success = await useCharacterSelectStore.getState().enterWorld(name);
     const current = useCharacterSelectStore.getState();
@@ -503,28 +544,22 @@ const CharacterSelectPage = () => {
   };
 
   const handleCreateNew = () => {
+    if (accountBusy || !rosterReady) return;
     setScreen("characterCreate");
   };
 
   const handleLogout = () => {
-    // Navigate home, logout handled by GameScreenManager or similar
-    setScreen("title");
+    useCharacterSelectStore.getState().logout();
   };
 
   const handleConfirmDelete = async () => {
-    if (!deleteTarget) return;
-
-    // Use centralized store action which also handles local removal
-    const success = await useCharacterSelectStore
-      .getState()
-      .deleteCharacter(deleteTarget.name);
-    if (!success) {
-      alert("Failed to delete character.");
-    }
-    setDeleteTarget(null);
+    if (!deleteTarget || useCharacterSelectStore.getState().accountOperation || !rosterReady) return;
+    const success = await useCharacterSelectStore.getState().deleteCharacter(deleteTarget.id);
+    if (success && useGameScreenStore.getState().currentScreen === "characterSelect") setDeleteTarget(null);
   };
 
   const handleCancelDelete = () => {
+    if (useCharacterSelectStore.getState().accountOperation === "delete") return;
     setDeleteTarget(null);
   };
 
@@ -564,15 +599,19 @@ const CharacterSelectPage = () => {
     handleSelectCharacter(characters[nextIndex]);
   };
 
-  // Create array of 8 slots, filling empty ones with null
+  // Keep eight creation slots while displaying every existing owned character.
   const characterSlots = Array.from(
-    { length: 8 },
+    { length: Math.max(8, characters.length) },
     (_, i) => characters[i] || null,
   );
 
   return (
     <Wrapper>
       <ContentContainer>
+        {rosterError && <RosterError role="alert">
+          <p>{rosterError}</p>
+          <SelectionButton onClick={() => { void useCharacterSelectStore.getState().refreshCharacters(); }} disabled={accountBusy} $isDisabled={accountBusy} $isSelected={false}>RETRY CHARACTERS</SelectionButton>
+        </RosterError>}
         <DesktopOnly>
           {/* Left Column - Character Selection */}
           <LeftColumn>
@@ -592,6 +631,8 @@ const CharacterSelectPage = () => {
                       handleCreateNew();
                     }
                   }}
+                  disabled={accountBusy || !rosterReady}
+                  $isDisabled={accountBusy || !rosterReady}
                   $width="690px"
                 >
                   {character ? character.name : "CREATE NEW CHARACTER"}
@@ -611,12 +652,13 @@ const CharacterSelectPage = () => {
                 <SelectionButton
                   onClick={() => {
                     if (selectedCharacter) {
+                      useCharacterSelectStore.setState({deleteError: null});
                       setDeleteTarget(selectedCharacter);
                     }
                   }}
                   $isSelected={false}
-                  $isDisabled={!selectedCharacter}
-                  disabled={!selectedCharacter}
+                  $isDisabled={!selectedCharacter || accountBusy || !rosterReady}
+                  disabled={!selectedCharacter || accountBusy || !rosterReady}
                   $width="110px"
                 >
                   DELETE
@@ -625,8 +667,8 @@ const CharacterSelectPage = () => {
               <SelectionButton
                 onClick={handleEnterWorld}
                 $isSelected={false}
-                $isDisabled={!selectedCharacter || isEnteringWorld}
-                disabled={!selectedCharacter || isEnteringWorld}
+                $isDisabled={!selectedCharacter || accountBusy || !rosterReady}
+                disabled={!selectedCharacter || accountBusy || !rosterReady}
                 $width="300px"
               >
                 ENTER WORLD
@@ -705,7 +747,7 @@ const CharacterSelectPage = () => {
                   type="button"
                   $side="left"
                   aria-label="Previous character"
-                  disabled={characters.length <= 1}
+                  disabled={characters.length <= 1 || accountBusy || !rosterReady}
                   onClick={() => cycleCharacter(-1)}
                 >
                   ‹
@@ -714,7 +756,7 @@ const CharacterSelectPage = () => {
                   type="button"
                   $side="right"
                   aria-label="Next character"
-                  disabled={characters.length <= 1}
+                  disabled={characters.length <= 1 || accountBusy || !rosterReady}
                   onClick={() => cycleCharacter(1)}
                 >
                   ›
@@ -747,16 +789,16 @@ const CharacterSelectPage = () => {
 
           {selectedCharacter ? (
             <MobilePrimaryActions>
-              <SelectionButton onClick={handleCreateNew} $isSelected={false}>
+              <SelectionButton onClick={handleCreateNew} $isSelected={false} disabled={accountBusy || !rosterReady} $isDisabled={accountBusy || !rosterReady}>
                 Create New
               </SelectionButton>
-              <SelectionButton onClick={handleEnterWorld} $isSelected={false} $isDisabled={isEnteringWorld} disabled={isEnteringWorld}>
+              <SelectionButton onClick={handleEnterWorld} $isSelected={false} $isDisabled={accountBusy || !rosterReady} disabled={accountBusy || !rosterReady}>
                 Enter World
               </SelectionButton>
             </MobilePrimaryActions>
           ) : (
             <MobileSingleAction>
-              <SelectionButton onClick={handleCreateNew} $isSelected={false}>
+              <SelectionButton onClick={handleCreateNew} $isSelected={false} disabled={accountBusy || !rosterReady} $isDisabled={accountBusy || !rosterReady}>
                 Create New Character
               </SelectionButton>
             </MobileSingleAction>
@@ -768,11 +810,11 @@ const CharacterSelectPage = () => {
             </SelectionButton>
             <SelectionButton
               onClick={() => {
-                if (selectedCharacter) setDeleteTarget(selectedCharacter);
+                if (selectedCharacter) { useCharacterSelectStore.setState({deleteError: null}); setDeleteTarget(selectedCharacter); }
               }}
               $isSelected={false}
-              $isDisabled={!selectedCharacter}
-              disabled={!selectedCharacter}
+              $isDisabled={!selectedCharacter || accountBusy || !rosterReady}
+              disabled={!selectedCharacter || accountBusy || !rosterReady}
             >
               Delete
             </SelectionButton>
@@ -784,8 +826,10 @@ const CharacterSelectPage = () => {
       <PopupWindow
         isOpen={deleteTarget !== null}
         title="Delete Character?"
-        message={`Are you sure you want to delete ${deleteTarget?.name}? This action cannot be undone.`}
-        okText="DELETE"
+        message={<div><p>{`Are you sure you want to delete ${deleteTarget?.name}? This action cannot be undone.`}</p>{deleteError && <p role="alert">{deleteError}</p>}</div>}
+        isBusy={accountOperation === "delete"}
+        okDisabled={!rosterReady}
+        okText={accountOperation === "delete" ? "DELETING..." : "DELETE"}
         cancelText="CANCEL"
         onOk={handleConfirmDelete}
         onCancel={handleCancelDelete}

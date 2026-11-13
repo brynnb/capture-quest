@@ -7,11 +7,7 @@ import * as WorldTypes from "./generated/world";
 import type * as ProtocolTypes from "@/net/generated/protocol";
 import * as ModelTypes from "./generated/models";
 import useChatStore, { MessageType } from "@/stores/ChatStore";
-import useCharacterSelectStore, {
-  type CharacterSelectEntry,
-} from "@/stores/CharacterSelectStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
-import useGameScreenStore from "@/stores/GameScreenStore";
 import usePokeBattleStore from "@/stores/PokeBattleStore";
 import useCQInventoryStore from "@/stores/CQInventoryStore";
 import usePokemonDialogueStore from "@/stores/PokemonDialogueStore";
@@ -53,9 +49,13 @@ export class NetworkBridge {
         break;
 
       case OpCodes.SendCharInfo:
-        this.handleSendCharInfo(
-          data as { characters?: CharacterSelectEntry[] },
-        );
+        // Legacy roster publications have no account/request owner. Current
+        // auth, creation, deletion and reentry read their own typed roster.
+        break;
+
+      case OpCodes.CharacterListResponse:
+      case OpCodes.CharacterDeleteResponse:
+        if (typeof (data as {requestId?:unknown})?.requestId === "string") import("@/phaser-game/services/PhaserNetworkService").then(module => module.dispatchPhaserResponse(opcode, data));
         break;
 
       case OpCodes.PostEnterWorld:
@@ -264,20 +264,6 @@ export class NetworkBridge {
 
   private handleJWTResponse(data: WorldTypes.JWTLoginResponse) {
     console.log("[NetworkBridge] JWT Response:", data);
-  }
-
-  private handleSendCharInfo(data: { characters?: CharacterSelectEntry[] }) {
-    useCharacterSelectStore.getState().setCharacters(data.characters || []);
-    useCharacterSelectStore.getState().setIsLoading(false);
-
-    const currentScreen = useGameScreenStore.getState().currentScreen;
-    if (
-      currentScreen === "title" ||
-      currentScreen === "login" ||
-      currentScreen === "register"
-    ) {
-      useGameScreenStore.getState().setScreen("characterSelect");
-    }
   }
 
   private handleSimpleSuccess(
