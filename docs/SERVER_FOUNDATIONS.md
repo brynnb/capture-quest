@@ -7,6 +7,9 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+Game Corner native coin/Safari paths, source-owned slot/prize receipts and current
+resource recovery; world entry acknowledges after restoration and drains failed
+owners, following `9b28d28`:
 Game Corner clerk admission joins the existing coin-payment transaction; shared
 source-reader consumers and held-lock/deferred rollback verified, following `78c31cf`:
 Warp Home rendered rejection/owned-read failure and Game Corner source/payment
@@ -152,6 +155,137 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Game Corner recovery and settled world entry (2026-11-13)
+
+The source/caller review changed the next step from the previous checkpoint:
+ordinary coin buying already runs the generated `GameCornerClerk1BuyCoins`
+script. Its existing issued-plan transaction and completion receipt already own
+source eligibility, payment and award. Safari entry likewise uses its generated
+gate script. The unused raw coin balance/buy and Safari entry/status network lanes
+now reject without reading or mutating storage; their numeric opcodes remain
+reserved. Coin Case uses the current owned GameplayState snapshot. The ordinary
+native dialogue/choice flows remain the runtime paths.
+
+### Current resources and typed Game Corner commands
+
+GameplayState now includes coins beside wallet, inventory, party and PC under
+the same retained character read owner. Missing coin state preserves the existing
+zero-balance policy; storage/shape failures fail the read. Scripted money/coin
+effects now coalesce through the existing resource-changed notification and
+owned current recovery rather than independently publishing a wallet fragment.
+
+Slots and prizes have real UI consumers, so their commands now carry generated
+request, character, inventory revision and source identity. Source visibility,
+reach, durable battle exclusion, catalog reads, payment and award join the same
+character transaction. The existing inventory executor gained an optional
+bounded latest receipt on `character_shop_state`; there is no second currency
+store or parallel executor. The receipt contains version/family/request/character/
+revision identity, an input fingerprint, an outcome hash and frozen narrative
+JSON. Exact duplicates return that same committed roll or prize outcome. Changed
+payload/family, foreign/corrupt receipts and superseded revisions reject.
+Ordinary inventory commands advance the same revision and clear the retained
+receipt. This is a latest-command receipt, not an unbounded request history.
+
+Slot/prize receipts deliberately carry no historical resource balances. The
+client awaits a current owned resource snapshot before presenting success, and
+requires a revision at least as new as a known committed receipt. Lost replies
+recover current resources without resending a wager or purchase. Closing a view
+retires presentation while allowing its sent mutation to reconcile; character,
+screen, source, scene and transport replacement prevent old outcomes from
+appearing in a replacement view. A failed slot read stops the animation and
+offers an explicit read-only retry. The missing response-subscriber registry
+entries found during integration are corrected and covered through the real
+NetworkBridge dispatch path.
+
+Prize listing resolves its source, Coin Case, catalog and current resource
+snapshot in one retained transaction. The native vendor script now opens the
+existing canvas choice menu after confirmed completion and owned position
+reconciliation; unsolicited server menu publication is retired. Cancel, TM
+delivery, party delivery and full-party PC delivery remain ordinary UI actions.
+
+### Entry completion and partial-owner cleanup
+
+Entry previously acknowledged success before Safari, event flags and battle
+restoration completed. The server now prepares ownership, completes required
+restores, reads initial wallet/bind through the injected database, publishes
+initial character streams and only then acknowledges success. Failed preparation,
+restoration, reads or publication closes the partial session. An installed client
+retains its character registry slot until disconnect drain cleans movement and
+caches; pre-client failure releases the slot directly. Empty/denied handler
+requests settle explicitly instead of leaving the valid caller waiting.
+
+The client owns one entry attempt, coalesces duplicate clicks, catches failure
+and clears loading. Screen/selection/transport replacement fences late replies.
+An uncertain sent entry retires only its own transport before another login can
+reuse character ownership; it cannot close a replacement connection. Both
+desktop and mobile Enter World controls disable while the attempt is pending.
+
+This fixes confirmed acknowledgement and cleanup defects. It does not establish
+the cause of the historical five-second battle-restore timeout; the existing
+deadline and remaining-budget diagnostics remain unchanged.
+
+### Verification and release boundary
+
+- All 687 frontend tests across 61 files passed, including real network routing,
+  resource/revision recovery, cutscene/menu lifetime and nine entry ownership
+  tests. TypeScript checking passed; generated wire types use canonical tygo.
+- The isolated PostgreSQL race suite passed the full database, character,
+  inventory, currency, economy, item-use, battle and world packages. World took
+  116.45s. Tests cover concurrent exact duplicates, fingerprint/corruption and
+  supersession, deferred rollback, one-connection execution, held source locks,
+  cancellation, current resource reads and actual failed-entry drain cleanup.
+  All Go packages also compiled.
+- The combined Chromium/WebSocket run passed 22 cases in 3.3 minutes at
+  `/var/tmp/capturequest-rendered.jOFxUw`. It covers normal clerk/slot/prize UI,
+  coin cancellation/duplicate/reentry and unacknowledged process-death recovery,
+  inventory items, dialogue/vendor handoff, both Repel duplicate/lost-reply cases
+  and all five Safari cases. The native-only coin case was intentionally skipped
+  in that WebSocket run. The original pre-command Repel click did not reproduce;
+  its historical cause remains unattributed.
+- Dedicated slot/prize fault acceptance passed all three cases in 31 seconds at
+  `/var/tmp/capturequest-rendered.Mz6Y9k`. Exact wager duplicates return the same
+  frozen roll and debit once; lost replies refresh current coins without another
+  wager. Old replies delivered after cabinet reopening remain inert. An actual
+  full-party prize purchase is committed, its acknowledgements withheld, and the
+  exact private server killed. Reentry plus explicit replay preserves one PC
+  reward and one debit without reopening the old menu. Initial test assertions
+  were corrected for optional wallet rows and the fixture's pre-existing PC
+  Pokemon; those were fixture errors before mutation, not production failures.
+- Native WebTransport passed six cases in 59 seconds at
+  `/var/tmp/capturequest-rendered.xRZbqL`: ordinary Game Corner flows, a committed
+  coin purchase with its decoded acknowledgement withheld from application
+  delivery before process death, and saved-battle restoration after another
+  process death. Explicit before/after checks prove no WebSocket fallback. This
+  is application-delivery fault injection on real QUIC, not packet-level loss.
+- Both rendered entry cases also passed with stronger loaded-map/input-ready
+  checks at `/var/tmp/capturequest-rendered.YyDWMW`; the unrelated initial prize/
+  slot fixture assertions in that run were corrected and rerun as recorded above.
+- The final cabinet resize sweep passed in 10 seconds at
+  `/var/tmp/capturequest-rendered.ZplSxW`: 1280x720, 390x844, 844x390 and 1280x900.
+  Actual viewport intersection and bounding edges verify the title, coin/payout
+  displays and close button; real wheel scrolling reaches Spin/Quit, the roomy
+  desktop lever remains accessible, and an actual spin/quit completes. Screenshots
+  were visually checked. This fixes the observed negative-top clipping at 720px
+  height with a slot-local aligned overlay, one scroll owner and compact short-
+  viewport styling. The initial test cleanup was corrected to open the menu that
+  resizing had collapsed; the final complete run passes.
+- Final TypeScript checking, canonical tygo generation, runtime asset validation
+  and production Vite build pass. Vite reports non-blocking mixed static/dynamic
+  import and bundle-size optimization warnings. Shell syntax and diff checks pass.
+
+The private test harness now gives normal PostgreSQL shutdown up to 180 seconds:
+a full fixture flush was observed to complete normally after the former 60-second
+limit. Durability is still enabled; this changes only exact-owned disposable
+cluster cleanup. Runtime asset validation passed with the unchanged matched
+826-tile/92-sprite/561-audio contract.
+
+Release requires the additive `character_shop_state` receipt columns
+(`request_id`, `input_hash`, `result_json`) and coordinated backend/frontend
+activation. The repository classifier selects the full deployment lane for the
+schema change. No normal application database or production server was modified,
+and no push or deployment is part of this checkpoint. The broader command matrix
+and five-area roadmap remain separate from this verified Game Corner/entry work.
 
 ## Game Corner coin source/payment transaction prerequisite (2026-10-13)
 

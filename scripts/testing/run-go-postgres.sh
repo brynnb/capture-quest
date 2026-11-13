@@ -13,7 +13,9 @@ cleanup() {
   trap - EXIT
   if [[ -s "$test_pg_dir/data/postmaster.pid" ]]; then
     # pg_ctl targets only the exact data directory created by this invocation.
-    pg_ctl -D "$test_pg_dir/data" -m fast -w stop >/dev/null || result=1
+    # A full fixture run can fsync thousands of files at shutdown; retain a
+    # bounded wait without treating the default 60-second limit as a crash.
+    pg_ctl -D "$test_pg_dir/data" -m fast -w -t 180 stop >/dev/null || result=1
   fi
   if [[ "$result" == 0 ]]; then
     rm -rf "$test_pg_dir"

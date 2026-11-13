@@ -33,7 +33,7 @@ cleanup() {
    wait "$owned_pid" 2>/dev/null || true
   fi
  done
- if [[ -s "$run_dir/pg/postmaster.pid" ]]; then pg_ctl -D "$run_dir/pg" -m fast -w stop >"$run_dir/pg-stop.log" || result=1; fi
+ if [[ -s "$run_dir/pg/postmaster.pid" ]]; then pg_ctl -D "$run_dir/pg" -m fast -w -t 180 stop >"$run_dir/pg-stop.log" || result=1; fi
  echo "Evidence retained: $run_dir"
  exit "$result"
 }
