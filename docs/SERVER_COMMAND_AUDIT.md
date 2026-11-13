@@ -18,7 +18,7 @@ a changed dependency or uncovered risk.
 
 ## Local verification checkpoint — 2026-11-13
 
-The current checkpoint passed all 687 frontend tests and the selected full Go
+The Game Corner/entry checkpoint passed all 687 frontend tests and the selected full Go
 race package suite, including `internal/world` (116.45 seconds). The integrated
 rendered run at `/var/tmp/capturequest-rendered.jOFxUw` passed 22 cases with one
 native-only skip: canonical coin dialogue No/Yes and duplicate/lost-acknowledgement
@@ -50,8 +50,13 @@ recreated-name late delivery, deletion draining another live session, bounded
 post-login roster Retry, and shared pending creator navigation. The Retry control
 was corrected from an unreachable scroll position and verified at desktop/phone
 sizes. The complete cache-restore regression and all 11 deployment-classifier
-checks pass. See the latest foundations section for the release blockers and
-pending production verification; local acceptance alone is not activation.
+checks pass. The combined schema/backend/frontend release ea4d456 succeeded in
+[run 43496720309](https://github.com/brynnb/capture-quest/actions/runs/43496720309)
+without resetting the database. Live receipt columns, readiness, served SQLite/
+tile hashes, audio, populated/stale overview behavior and backup integrity pass.
+The public browser completed guest onboarding, creation, visibly rendered world
+entry, quit and deletion with zero page/server errors. Its test characters were
+removed. The latest foundations section records exact release and asset identities.
 
 ## Registered command families
 

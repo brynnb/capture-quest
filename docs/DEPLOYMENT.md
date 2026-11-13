@@ -48,6 +48,9 @@ before enabling the workflow:
 | `DEPLOY_HOST` | Secret | SSH destination, for example `ubuntu@example.com`. |
 | `DEPLOY_APP_DIR` | Repository variable | Absolute path to the app directory on the host. |
 
+Keep `DEPLOY_HOST` set to the verified origin SSH endpoint; the public website
+hostname and SSH destination can differ.
+
 The workflow is the canonical deployment path. In `auto` mode it selects the
 smallest safe lane from the files changed by the push:
 
@@ -55,11 +58,11 @@ smallest safe lane from the files changed by the push:
 | --- | --- | --- |
 | Frontend | React, Phaser, CSS, and browser-only code | Restore the exact cached build inputs, build Vite, upload only the application shell, atomically activate it. Never run extraction. |
 | Backend | Go server code without schema/import changes | Build and replace the server binary, restart, and verify health. |
-| Code | A push containing frontend and backend code | Stage both code artifacts and activate them together without touching Postgres. |
+| Code | A push containing both components, or manual `code` mode | Stage both code artifacts and activate them together without touching Postgres. |
 | Full data | Extractor, asset/audio pipeline, importer, schema, or generated scripted-event changes | Generate or restore the asset family, test, back up and import Postgres, then activate everything together. |
 
 Documentation-only and workflow-only pushes do not redeploy the application.
-Manual runs can override `auto` with `frontend`, `backend`, or `full`.
+Manual runs can override `auto` with `frontend`, `backend`, `code`, or `full`.
 `run_tests` adds broad frontend and focused backend tests to a manual fast run;
 full-data runs always execute them. `reset_database` always selects the full
 lane and remains an explicitly destructive operation.
@@ -161,6 +164,11 @@ cache key and its compile-time manifests, and fails rather than regenerating.
 Freshly generated assets are saved immediately after those checks pass, before
 frontend tests or deployment, so a later unrelated failure does not force the
 extractor to repeat the same work on the next run.
+
+The scripted-event cache includes `scripts/`, `*.generated.json`, and
+`script_candidate_import_diagnostics.json`. The read-only importer gate checks
+this complete family. Cache generation v4 retains the diagnostics sidecar; its
+restore regression also verifies that an incomplete family is rejected.
 
 `scripts/bootstrap_capturequest.sh` must generate
 `src/constants/audio_manifest.json` before calling the combined runtime asset

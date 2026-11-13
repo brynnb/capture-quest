@@ -218,10 +218,39 @@ Manual `code` mode now selects coordinated frontend/backend activation without
 an unnecessary data import; reset still forces full mode. The next activation
 uses the full lane for the previously added receipt schema, with no reset.
 
-Production verification is a separate gate and must be recorded after the
-successful workflow. Wider account authentication/guest-upgrade ownership and
-the remaining roadmap rows are still explicit audit work; these scoped checks
-do not claim the entire project is defect-free.
+**Production activation verified.** The full, non-reset release of
+`ea4d4566c3ab2e220435d6f054de48e4e4e5520e` succeeded in
+[GitHub Actions run 43496720309](https://github.com/brynnb/capture-quest/actions/runs/43496720309).
+The service activated at 12:08:43 PST on 2026-11-13 (20:08:43 UTC), completed world
+initialization, and its binary embeds the same commit. Schema, backend and
+frontend moved together; the new request_id/input_hash/result_json receipt
+columns are present.
+
+Post-activation verification passed public readiness/online, private admin and
+tile-authoring route isolation, authenticated loopback admin, and the complete
+served artifact family. The served 35,336,192-byte SQLite database hashes to
+`0d9e97724937a1e4ef7398cdf78c0ad1946ce8854b07c025aa767968b5cd6cf1`;
+its contract and compiled frontend share the 826-tile catalog
+`858856a383892f4dae6052fc7325d0c4ea4a774e85ab761838dcfa305d9f390c`.
+All 94,876 imported tile rows satisfy the unedited-original invariant (zero
+mismatches). A populated overview returns PNG plus its strong ETag/catalog
+headers; a stale catalog returns 409. Town music returns audio/ogg and 485,281
+bytes. The verified predeploy backup is
+`capturequest-predeploy-20261113T200744Z.sql.gz` (1,432,753 compressed bytes;
+11,542,792 decompressed bytes, gzip integrity checked).
+
+The public-site browser check completed welcome/guest onboarding, new character
+creation, world entry with terrain visibly rendered in Red's House 2F, quit,
+delete and logout. It reported no page errors or server error responses and used
+WebSocket. The screenshot was inspected. Both smoke characters are soft-deleted,
+with zero active test characters left, and their sessions/actors drained. Logs:
+`/var/tmp/capturequest-20261113-production-verification.log` and
+`/var/tmp/capturequest-20261113-production-smoke.log`. Prior native transport
+acceptance remains separate evidence; this public smoke makes no native claim.
+
+Wider account authentication/guest-upgrade ownership and the remaining roadmap
+rows are still explicit audit work. This verified release closes the reproduced
+failures repaired in this pass, without claiming the entire project is defect-free.
 
 ## Game Corner recovery and settled world entry (2026-11-13)
 
