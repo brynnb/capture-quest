@@ -48,7 +48,7 @@ export function applyGameplaySnapshot(snapshot: GameplayStateResponse): void {
 // One resource projection; callers retain battle/movement/plan presentation.
 export function applyGameplayResourceSnapshot(snapshot: GameplayStateResponse): void {
   validateGameplaySnapshot(snapshot);
-  useCQInventoryStore.getState().setInventory(snapshot.inventory, snapshot.wallet.pokedollars, snapshot.commandRevision);
+  useCQInventoryStore.getState().setInventory(snapshot.inventory, snapshot.wallet.pokedollars, snapshot.commandRevision, snapshot.coins);
   usePlayerCharacterStore.getState().handleCharacterWalletData(snapshot.wallet);
   usePokemonPartyStore.getState().setParty(snapshot.party);
   usePokemonPCStore.getState().applySnapshot(snapshot.pc, snapshot.party);
@@ -74,7 +74,7 @@ export async function recoverGameplayState(mapId: number, signal?: AbortSignal):
 function captureGameplayViews() {
   const inventory = useCQInventoryStore.getState();
   const pc = usePokemonPCStore.getState();
-  return [usePokeBattleStore.getState(), inventory.items, inventory.money, inventory.commandRevision, usePlayerCharacterStore.getState().characterProfile, usePokemonPartyStore.getState().party, pc.boxPokemon, pc.currentBox, pc.sources, captureSafariVisitView()];
+  return [usePokeBattleStore.getState(), inventory.items, inventory.money, inventory.coins, inventory.commandRevision, usePlayerCharacterStore.getState().characterProfile, usePokemonPartyStore.getState().party, pc.boxPokemon, pc.currentBox, pc.sources, captureSafariVisitView()];
 }
 function gameplayViewsChanged(before: ReturnType<typeof captureGameplayViews>) {
   return captureGameplayViews().some((view, index) => view !== before[index]);
@@ -86,6 +86,7 @@ function validateGameplaySnapshot(snapshot: GameplayStateResponse): void {
   if (snapshot.pc.sources.some(source => source.mapId !== snapshot.position.mapId)) throw new Error("PC source belongs to another map");
   if (!Array.isArray(snapshot.inventory) || !Array.isArray(snapshot.party) || !Array.isArray(snapshot.eventFlags)
     || snapshot.eventFlags.some(flag => typeof flag !== "string" || !flag)
+    || !Number.isSafeInteger(snapshot.coins) || snapshot.coins < 0 || snapshot.coins > 9999
     || !Number.isSafeInteger(snapshot.commandRevision) || snapshot.commandRevision < 0
     || !Number.isSafeInteger(snapshot.wallet?.characterId) || snapshot.wallet.characterId <= 0
     || !Number.isSafeInteger(snapshot.wallet.pokedollars) || snapshot.wallet.pokedollars < 0) {

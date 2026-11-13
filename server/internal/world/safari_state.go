@@ -315,6 +315,9 @@ func startSafariVisitIn(tx db.DBTX, charID int64) (SafariEntryResult, error) {
 	result.StepsLeft = s.StepsLeft
 	return result, nil
 }
+
+// TryStartSafariZoneVisit provides bounded direct setup for simulator fixtures.
+// Live entry uses the gate script and startSafariVisitIn in its issued transaction.
 func TryStartSafariZoneVisit(ctx context.Context, charID int64, m *SafariZoneManager) (SafariEntryResult, error) {
 	var result SafariEntryResult
 	err := db.Transaction(ctx, m.database, func(tx db.DBTX) error {

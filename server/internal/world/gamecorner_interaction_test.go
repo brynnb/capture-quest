@@ -33,8 +33,9 @@ func TestSlotMachineBoundaryUsesSourceTargetAndOwnedLuck(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		testdb.Exec(t, database, `UPDATE character_data SET map_id=$1,x=$2,y=$3 WHERE id=42`, ses.Client.CharData().MapID, ses.Client.CharData().X, ses.Client.CharData().Y)
 		messages.streams = nil
-		battleDispatch(t, wh, ses, opcodes.GameCornerSlotPlayRequest, payload)
+		battleDispatch(t, wh, ses, opcodes.GameCornerSlotPlayRequest, gameCornerFixtureRequest(t, wh, ses, payload))
 		var result struct {
 			Success bool
 			Error   string
@@ -51,16 +52,17 @@ func TestSlotMachineBoundaryUsesSourceTargetAndOwnedLuck(t *testing.T) {
 		}
 	}
 	deny(`{"bet":1,"isLucky":true}`) // Old targetless packets cannot play.
-	deny(`{"bet":1,"machineX":18,"machineY":14,"isLucky":true}`)
-	deny(`{"bet":1,"machineX":17,"machineY":15,"isLucky":true}`)
+	deny(`{"bet":1,"machineX":18,"machineY":14}`)
+	deny(`{"bet":1,"machineX":17,"machineY":15}`)
 	ses.Client.CharData().Y = 13
 	deny(`{"bet":1,"machineX":18,"machineY":13}`)
 	ses.Client.CharData().Y = 15
 	ses.Client.CharData().X = 1
 	deny(`{"bet":1,"machineX":18,"machineY":15}`)
 	ses.Client.CharData().X = 17
+	testdb.Exec(t, database, `UPDATE character_data SET map_id=135,x=17,y=15 WHERE id=42`)
 	messages.streams = nil
-	battleDispatch(t, wh, ses, opcodes.GameCornerSlotPlayRequest, `{"bet":1,"machineX":18,"machineY":15,"isLucky":false}`)
+	battleDispatch(t, wh, ses, opcodes.GameCornerSlotPlayRequest, gameCornerFixtureRequest(t, wh, ses, `{"bet":1,"machineX":18,"machineY":15}`))
 	var result struct {
 		Success bool
 		IsLucky bool

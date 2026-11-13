@@ -1,7 +1,6 @@
 package world
 
 import (
-	"encoding/json"
 	"errors"
 	"log"
 
@@ -13,83 +12,15 @@ import (
 	"capturequest/internal/session"
 )
 
-// HandleSafariZoneEnter handles the player entering the Safari Zone.
-// If payload contains "statusOnly":true, it only returns existing session data
-// (used on reconnect/warp) and never creates a new session.
-// Otherwise it creates a new session (used by gate NPC interaction).
-func HandleSafariZoneEnter(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	var req struct {
-		StatusOnly bool `json:"statusOnly"`
-	}
-	if err := json.Unmarshal(payload, &req); err != nil {
-		return false
-	}
-
-	char := ses.Client.CharData()
-	if char == nil {
-		return false
-	}
-	charID := int64(char.ID)
-
-	// Check if already in safari
-	existing, err := wh.Safari.GetSession(ses.CommandContext(), charID)
-	if err != nil {
-		safariStorageError(ses, charID, err, opcodes.SafariZoneEnterResponse)
-		return false
-	}
-	if existing != nil && existing.Active {
-		sendSafariVisitState(ses, charID, existing, opcodes.SafariZoneEnterResponse)
-		sendSafariVisitState(ses, charID, existing, opcodes.SafariZoneStepUpdate)
-		// If there's an active battle, re-send it so the encounter UI resumes
-		if existing.Battle != nil && !existing.Battle.IsOver() {
-			wild := existing.Battle.WildPokemon
-			ses.SendStreamJSON(map[string]interface{}{
-				"battleId": existing.Battle.BattleID, "revision": existing.Battle.Revision,
-				"pokemon": map[string]interface{}{
-					"id":    wild.ID,
-					"name":  wild.Name,
-					"level": wild.Level,
-					"hp":    wild.CurHP,
-					"maxHp": wild.MaxHP,
-				},
-				"ballsLeft": existing.BallsLeft,
-				"stepsLeft": existing.StepsLeft,
-			}, opcodes.SafariBattleStartNotify)
-		}
-		return false
-	}
-
-	// Status-only check: no existing session, so just report no active safari
-	if req.StatusOnly {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false, "characterId": charID, "refresh": true,
-			"message": "no active safari session",
-		}, opcodes.SafariZoneEnterResponse)
-		return false
-	}
-
-	if getBattle(charID) != nil || wh.authorizeSourceInteraction(ses, SafariZoneGateMapID, "TEXT_SAFARIZONEGATE_SAFARI_ZONE_WORKER1") != nil {
-		sendSafariEntryFailure(ses, SafariEntryResult{Message: "Please check in at the counter first."})
-		return false
-	}
-	result, err := TryStartSafariZoneVisit(ses.CommandContext(), charID, wh.Safari)
-	if err != nil {
-		safariStorageError(ses, charID, err, opcodes.SafariZoneEnterResponse)
-		return false
-	}
-	refreshSafariFlags(ses, wh, charID)
-	if !result.Success {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false, "characterId": charID, "refresh": true,
-			"message": result.Message,
-			"money":   result.Money,
-		}, opcodes.SafariZoneEnterResponse)
-		return false
-	}
-
-	sendSafariVisitState(ses, charID, result.Visit, opcodes.SafariZoneEnterResponse)
-	sendSafariVisitState(ses, charID, result.Visit, opcodes.SafariZoneStepUpdate)
-
+// Opcode 126 stays reserved for an explicit stale-client rejection. Safari entry
+// is issued by the gate's canonical script; its completion commits admission,
+// payment, visit, flags and destination together. Current state is recovered
+// through GameplayStateRequest, never this former identity-free mutation/read.
+func HandleSafariZoneEnter(ses *session.Session, _ []byte, _ *WorldHandler) bool {
+	ses.SendStreamJSON(map[string]interface{}{
+		"success": false,
+		"error":   "Enter through the Safari gate conversation using the current client.",
+	}, opcodes.SafariZoneEnterResponse)
 	return false
 }
 

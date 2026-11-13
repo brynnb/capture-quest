@@ -197,7 +197,7 @@ func nullablePrizeInt(v sql.NullInt64) *int {
 
 // Prize eligibility, reward, Pokédex registration and coin payment share one
 // character lock and commit. Live callers inject their owned database.
-func buyGameCornerPrize(ctx context.Context, database *sql.DB, charID int64, prizeID int, prizeName string) (GameCornerPrizePurchaseResult, error) {
+func buyGameCornerPrize(ctx context.Context, database db.DBTX, charID int64, prizeID int, prizeName string) (GameCornerPrizePurchaseResult, error) {
 	result := GameCornerPrizePurchaseResult{PCBox: -1, PCSlot: -1}
 	previousCoins := 0
 	err := db.Transaction(ctx, database, func(tx db.DBTX) error {

@@ -209,10 +209,14 @@ export class NetworkBridge {
         break;
 
       // Game Corner (Phase 11.4)
+      // Retired identity-free coin reads/purchases cannot publish into a new view.
       case OpCodes.GameCornerCoinBalanceResponse:
+        break;
       case OpCodes.GameCornerSlotResultResponse:
       case OpCodes.GameCornerPrizeListResponse:
       case OpCodes.GameCornerPrizeBuyResponse:
+        if (typeof (data as {requestId?:unknown})?.requestId === "string") import("@/phaser-game/services/PhaserNetworkService").then(module => module.dispatchPhaserResponse(opcode, data));
+        break;
       case OpCodes.GameCornerCoinPickupNotify:
         this.handleGameCornerEvent(opcode, data);
         break;
@@ -397,10 +401,6 @@ export class NetworkBridge {
 
   private handleGameCornerEvent(opcode: number, data: unknown) {
     const eventMap: Record<number, string> = {
-      [OpCodes.GameCornerCoinBalanceResponse]: "gameCornerCoinBalance",
-      [OpCodes.GameCornerSlotResultResponse]: "gameCornerSlotResult",
-      [OpCodes.GameCornerPrizeListResponse]: "gameCornerPrizeList",
-      [OpCodes.GameCornerPrizeBuyResponse]: "gameCornerPrizeBuy",
       [OpCodes.GameCornerCoinPickupNotify]: "gameCornerCoinPickup",
     };
     const eventName = eventMap[opcode] || "gameCornerUnknown";

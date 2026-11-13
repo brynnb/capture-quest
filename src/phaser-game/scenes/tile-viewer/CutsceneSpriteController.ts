@@ -18,6 +18,7 @@ interface CutsceneSpriteControllerDeps {
   syncPlayerMovement: (x: number, y: number, direction: string) => void;
   setInputLocked: (locked: boolean) => void;
   onHideObject: (actorId: number) => void;
+  onPrizeVendor?: (prizeWindow:number, signal:AbortSignal) => Promise<void>;
   onReconcile: (position: CutsceneOwnedPosition,signal:AbortSignal) => Promise<void>;
 }
 
@@ -31,6 +32,7 @@ export class CutsceneSpriteController {
     registerCutsceneCallbacks({
       onCancelPlayback: () => this.cancelMoves(),
       onReconcile: this.deps.onReconcile,
+      onPrizeVendor: this.deps.onPrizeVendor,
       onMove: (actor: string, movements: string[]): Promise<void> => {
         return this.moveActor(actor, movements);
       },

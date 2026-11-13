@@ -18,8 +18,6 @@ export class TileViewerEventBridge {
 
 
 
-  private gameCornerPrizeHandler: ((e: Event) => void) | null = null;
-  private gameCornerBuyHandler: ((e: Event) => void) | null = null;
   private gameCornerCoinHandler: ((e: Event) => void) | null = null;
   private chatBubbleHandler: ((e: Event) => void) | null = null;
 
@@ -27,29 +25,6 @@ export class TileViewerEventBridge {
 
   register(): void {
  this.safariUnsubscribe=bindSafariVisitView(view=>{if(view?.active)this.deps.overlays.updateSafariHUD(view.stepsLeft,view.ballsLeft);else this.deps.overlays.destroySafariHUD();});
-
-    this.gameCornerPrizeHandler = (event: Event) => {
-      const data = (event as CustomEvent).detail;
-      console.log("[GameCorner] Prize list:", data);
-      this.deps.overlays.showPrizeMenu(data);
-    };
-    window.addEventListener("gameCornerPrizeList", this.gameCornerPrizeHandler);
-
-    this.gameCornerBuyHandler = (event: Event) => {
-      const data = (event as CustomEvent).detail as {
-        success: boolean;
-        coins: number;
-        prizeName?: string;
-        message?: string;
-        error?: string;
-      };
-      console.log("[GameCorner] Prize buy:", data);
-      this.deps.overlays.closeGameCornerUI();
-      usePokemonDialogueStore
-        .getState()
-        .openDialogue([data.message || data.error || "Done!"]);
-    };
-    window.addEventListener("gameCornerPrizeBuy", this.gameCornerBuyHandler);
 
     this.gameCornerCoinHandler = (event: Event) => {
       const data = (event as CustomEvent).detail as {
@@ -61,7 +36,6 @@ export class TileViewerEventBridge {
         usePokemonDialogueStore.getState().openDialogue([data.message]);
       }
     };
-    window.addEventListener("gameCornerCoinBalance", this.gameCornerCoinHandler);
     window.addEventListener("gameCornerCoinPickup", this.gameCornerCoinHandler);
 
     this.chatBubbleHandler = (event: Event) => {
@@ -89,16 +63,7 @@ export class TileViewerEventBridge {
 
   cleanup(): void {
  this.safariUnsubscribe?.();this.safariUnsubscribe=null;
-    if (this.gameCornerPrizeHandler) {
-      window.removeEventListener("gameCornerPrizeList", this.gameCornerPrizeHandler);
-      this.gameCornerPrizeHandler = null;
-    }
-    if (this.gameCornerBuyHandler) {
-      window.removeEventListener("gameCornerPrizeBuy", this.gameCornerBuyHandler);
-      this.gameCornerBuyHandler = null;
-    }
     if (this.gameCornerCoinHandler) {
-      window.removeEventListener("gameCornerCoinBalance", this.gameCornerCoinHandler);
       window.removeEventListener("gameCornerCoinPickup", this.gameCornerCoinHandler);
       this.gameCornerCoinHandler = null;
     }

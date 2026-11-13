@@ -3,8 +3,6 @@ package world
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"math/rand"
@@ -231,218 +229,22 @@ func TryBuyGameCornerCoins(charID int64) GameCornerCoinPurchaseResult {
 
 // --- Handlers ---
 
-// HandleGameCornerCoinBalance returns the player's current coin count.
-func HandleGameCornerCoinBalance(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	char := ses.Client.CharData()
-	if char == nil {
-		return false
-	}
-	var coins int
-	err := db.Transaction(ses.CommandContext(), wh.database, func(tx db.DBTX) error {
-		var err error
-		coins, err = gameCornerCoinBalance(tx, int64(char.ID))
-		return err
-	})
-	if err != nil {
-		log.Printf("Game Corner coin balance character %d: %v", char.ID, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not load coins."}, opcodes.GameCornerCoinBalanceResponse)
-		return false
-	}
+// Opcodes 133 and 135 remain reserved for explicit stale-client rejection.
+// The coin clerk sells through its source-issued script and durable completion;
+// balances belong to the same owned gameplay snapshot as the ordinary wallet.
+func HandleGameCornerCoinBalance(ses *session.Session, _ []byte, _ *WorldHandler) bool {
 	ses.SendStreamJSON(map[string]interface{}{
-		"coins": coins,
+		"success": false,
+		"error":   "Use current gameplay recovery to read coins.",
 	}, opcodes.GameCornerCoinBalanceResponse)
 	return false
 }
 
-// HandleGameCornerBuyCoins lets the player buy 50 coins for ₽1000.
-func HandleGameCornerBuyCoins(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	char := ses.Client.CharData()
-	if char == nil {
-		return false
-	}
-	charID := int64(char.ID)
-
-	var result GameCornerCoinPurchaseResult
-	err := db.Transaction(ses.CommandContext(), wh.database, func(tx db.DBTX) error {
-		if err := db.LockCharacter(tx, charID); err != nil {
-			return err
-		}
-		if err := wh.authorizeSourceInteractionIn(ses.CommandContext(), tx, ses, GameCornerMapID, "TEXT_GAMECORNER_CLERK1"); err != nil {
-			return err
-		}
-		var err error
-		result, err = buyGameCornerCoins(ses.CommandContext(), tx, charID)
-		return err
-	})
-	if err != nil {
-		message := "Could not buy coins."
-		if errors.Is(err, errScriptInteractionDenied) {
-			message = "Move to the coin clerk first."
-		} else {
-			log.Printf("Game Corner coin purchase character %d: %v", charID, err)
-		}
-		// The inner domain result is provisional until this outer commit succeeds.
-		// Do not publish its debited balances on a deferred commit rejection.
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": message}, opcodes.GameCornerCoinBalanceResponse)
-		return false
-	}
-	if !result.Success {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   result.Message,
-			"coins":   result.Coins,
-			"money":   result.Money,
-		}, opcodes.GameCornerCoinBalanceResponse)
-		return false
-	}
-
-	log.Printf("[GameCorner] Player %d bought %d coins (total: %d)", charID, CoinPurchaseAmount, result.Coins)
+func HandleGameCornerBuyCoins(ses *session.Session, _ []byte, _ *WorldHandler) bool {
 	ses.SendStreamJSON(map[string]interface{}{
-		"success": true,
-		"coins":   result.Coins,
-		"money":   result.Money,
-		"message": result.Message,
+		"success": false,
+		"error":   "Interact with the coin clerk using the current client.",
 	}, opcodes.GameCornerCoinBalanceResponse)
-	return false
-}
-
-// HandleGameCornerSlotPlay processes a slot machine spin.
-// The server is the source of truth: it picks reel positions, checks matches,
-// applies win probability flags, deducts/awards coins, and returns the result.
-func HandleGameCornerSlotPlay(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	var req GameCornerSlotPlayRequest
-	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("[GameCorner] Invalid slot request: %v", err)
-		return false
-	}
-
-	if req.Bet < 1 || req.Bet > 3 {
-		req.Bet = 1
-	}
-
-	char := ses.Client.CharData()
-	if char == nil {
-		return false
-	}
-	charID := int64(char.ID)
-
-	isLucky, err := wh.authorizeSlotMachine(ses, req)
-	if err != nil {
-		ses.SendStreamJSON(GameCornerSlotResultResponse{Error: err.Error(), Bet: req.Bet}, opcodes.GameCornerSlotResultResponse)
-		return false
-	}
-	result, err := playGameCornerSlot(ses.CommandContext(), wh.database, charID, req.Bet, isLucky, gameCornerRandSource{})
-	if err != nil {
-		log.Printf("Game Corner slots character %d: %v", charID, err)
-	}
-	if !result.Success {
-		ses.SendStreamJSON(GameCornerSlotResultResponse{Error: result.Message, Coins: &result.Coins, Bet: result.Bet}, opcodes.GameCornerSlotResultResponse)
-		return false
-	}
-	if result.Payout > 0 {
-		log.Printf("[GameCorner] Player %d won %d coins! (%s-%s-%s on %s) bet=%d",
-			charID, result.Payout, result.MatchSymbol, result.MatchSymbol, result.MatchSymbol, result.MatchLine, result.Bet)
-	}
-
-	// Return reel positions so the client can animate the reels faithfully
-	// Also return the visible symbols as names for display
-	ses.SendStreamJSON(GameCornerSlotResultResponse{
-		Success: true, ReelPositions: result.ReelPositions, Reels: result.Reels, Payout: result.Payout, MatchLine: result.MatchLine, Coins: &result.Coins, Bet: result.Bet, IsLucky: &isLucky,
-	}, opcodes.GameCornerSlotResultResponse)
-	return false
-}
-
-// HandleGameCornerPrizeList sends the list of available prizes.
-func HandleGameCornerPrizeList(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	char := ses.Client.CharData()
-	if char == nil {
-		return false
-	}
-
-	if _, err := sendGameCornerPrizeList(ses, int64(char.ID), 0); err != nil {
-		return false
-	}
-	return false
-}
-
-func sendGameCornerPrizeList(ses *session.Session, charID int64, prizeWindow int) (string, error) {
-	if ses == nil {
-		return "no session", nil
-	}
-	result, err := AvailableGameCornerPrizesForWindow(charID, prizeWindow)
-	if err != nil {
-		log.Printf("[GameCorner] Failed to load prizes: %v", err)
-		return "", err
-	}
-
-	payload := map[string]interface{}{
-		"success": result.Success,
-		"prizes":  result.Prizes,
-		"coins":   result.Coins,
-		"error":   result.Message,
-	}
-	if prizeWindow > 0 {
-		payload["prizeWindow"] = prizeWindow
-	}
-	ses.SendStreamJSON(payload, opcodes.GameCornerPrizeListResponse)
-	return fmt.Sprintf("window=%d prizes=%d success=%t", prizeWindow, len(result.Prizes), result.Success), nil
-}
-
-// HandleGameCornerPrizeBuy processes a prize purchase.
-func HandleGameCornerPrizeBuy(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	var req struct {
-		PrizeID int `json:"prizeId"`
-	}
-	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("[GameCorner] Invalid prize buy request: %v", err)
-		return false
-	}
-
-	char := ses.Client.CharData()
-	if char == nil {
-		return false
-	}
-	charID := int64(char.ID)
-
-	if err := wh.authorizePrizeWindow(ses, req.PrizeID); err != nil {
-		if !errors.Is(err, errScriptInteractionDenied) {
-			log.Printf("authorize Game Corner prize %d for character %d: %v", req.PrizeID, charID, err)
-		}
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Move to the window selling this prize first."}, opcodes.GameCornerPrizeBuyResponse)
-		return false
-	}
-	result, err := buyGameCornerPrize(ses.CommandContext(), wh.database, charID, req.PrizeID, "")
-	if err != nil {
-		log.Printf("Game Corner prize purchase character %d: %v", charID, err)
-	}
-	if !result.Success {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   result.Message,
-			"coins":   result.Coins,
-		}, opcodes.GameCornerPrizeBuyResponse)
-		return false
-	}
-
-	prizeName := ""
-	if result.Prize != nil {
-		prizeName = result.Prize.Name
-	}
-	log.Printf("[GameCorner] Player %d bought %s for coins (remaining: %d)", charID, prizeName, result.Coins)
-
-	ses.SendStreamJSON(map[string]interface{}{
-		"success":      true,
-		"coins":        result.Coins,
-		"prizeName":    prizeName,
-		"message":      result.Message,
-		"prize":        result.Prize,
-		"prizeLevel":   result.PrizeLevel,
-		"addedToParty": result.AddedToParty,
-		"pcBox":        result.PCBox,
-		"pcSlot":       result.PCSlot,
-	}, opcodes.GameCornerPrizeBuyResponse)
-
-	notifyResourceChange(ses)
 	return false
 }
 

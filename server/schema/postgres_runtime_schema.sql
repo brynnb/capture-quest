@@ -212,11 +212,18 @@ CREATE TABLE IF NOT EXISTS character_movement_routes (
     path_json text NOT NULL
 );
 
--- One durable revision serializes shop mutations across replies and reconnects.
+-- One durable revision serializes inventory commands, including slots/prizes.
+-- The bounded latest receipt stores a frozen outcome, never current resources.
 CREATE TABLE IF NOT EXISTS character_shop_state (
     character_id bigint PRIMARY KEY REFERENCES character_data(id) ON DELETE CASCADE,
-    revision bigint NOT NULL CHECK (revision BETWEEN 0 AND 9007199254740991)
+    revision bigint NOT NULL CHECK (revision BETWEEN 0 AND 9007199254740991),
+    request_id varchar(64),
+    input_hash varchar(64),
+    result_json text
 );
+ALTER TABLE character_shop_state ADD COLUMN IF NOT EXISTS request_id varchar(64);
+ALTER TABLE character_shop_state ADD COLUMN IF NOT EXISTS input_hash varchar(64);
+ALTER TABLE character_shop_state ADD COLUMN IF NOT EXISTS result_json text;
 
 CREATE TABLE IF NOT EXISTS character_repels (
     character_id bigint PRIMARY KEY REFERENCES character_data(id) ON DELETE CASCADE,

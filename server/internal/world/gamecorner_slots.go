@@ -2,7 +2,6 @@ package world
 
 import (
 	"context"
-	"database/sql"
 	"log"
 
 	"capturequest/internal/db"
@@ -28,7 +27,7 @@ func TryPlayGameCornerSlot(charID int64, bet int, isLucky bool, rng GameCornerRa
 	return result
 }
 
-func playGameCornerSlot(ctx context.Context, database *sql.DB, charID int64, bet int, isLucky bool, rng GameCornerRandom) (GameCornerSlotPlayResult, error) {
+func playGameCornerSlot(ctx context.Context, database db.DBTX, charID int64, bet int, isLucky bool, rng GameCornerRandom) (GameCornerSlotPlayResult, error) {
 	if bet < 1 || bet > 3 {
 		bet = 1
 	}

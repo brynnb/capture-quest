@@ -19,11 +19,6 @@ import {
   isCutscenePlaying,
 } from "@/phaser-game/services/CutsceneService";
 import {
-  buyCoins,
-  buyPrize,
-  playSlotMachine,
-  requestCoinBalance,
-  requestPrizeList,
   sendPokemonPartyRequest,
   sendPokemonPCOpen,
 } from "@/phaser-game/services/PhaserNetworkService";
@@ -115,6 +110,7 @@ export interface CaptureQuestTestState {
   };
   inventory: {
     money: number;
+    coins: number;
     shopOpen: boolean;
     shopName: string;
     items: Array<{
@@ -297,11 +293,6 @@ export interface CaptureQuestTestBridge {
     offset?: number;
     sourceMapId?: number;
   }) => Promise<CaptureQuestWarpProbeCasesResponse>;
-  requestGameCornerCoinBalance: () => void;
-  buyGameCornerCoins: () => void;
-  playGameCornerSlot: (bet: number, machineX: number, machineY: number) => void;
-  requestGameCornerPrizeList: () => void;
-  buyGameCornerPrize: (prizeId: number) => void;
   requestPokemonParty: () => void;
   requestPokemonPC: () => void;
 }
@@ -416,6 +407,7 @@ function baseState(): CaptureQuestTestState {
     },
     inventory: {
       money: inventory.money,
+      coins: inventory.coins,
       shopOpen: inventory.shopOpen,
       shopName: inventory.shopName,
       items: inventory.items.map((entry) => ({
@@ -985,11 +977,6 @@ export function installCaptureQuestTestBridge(): void {
     centerTileInView,
     warpToMap,
     requestWarpProbeCases,
-    requestGameCornerCoinBalance: requestCoinBalance,
-    buyGameCornerCoins: buyCoins,
-    playGameCornerSlot: (bet, machineX, machineY) => playSlotMachine(bet, machineX, machineY),
-    requestGameCornerPrizeList: requestPrizeList,
-    buyGameCornerPrize: buyPrize,
     requestPokemonParty: sendPokemonPartyRequest,
     requestPokemonPC: () => {
       const state=getState();

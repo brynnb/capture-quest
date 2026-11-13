@@ -4,7 +4,6 @@ import type { BattleCommandResponse, SafariBattleActionResponse, BattleCommandEr
 import type { GameplayStateRequest, GameplayStateResponse } from "@/net/generated/world_api";
 import type { TrainerEncounterNotifyPayload } from "@/net/generated/protocol";
 import type { CutsceneEndRequest, CutsceneEndResponse, OwnedPlayerPositionRequest, OwnedPlayerPositionResponse, ServerPlayerMovementNotify, PlayerFacingRequest, PlayerFacingResponse, PlayerStepRequest, PlayerStepResponse, PlayerStepCompleteRequest, PlayerStepCompleteResponse, PlayerStepError, PhaserMapInfoRequest, PhaserMapInfoResponse, PhaserMapLoadRequest, PhaserMapLoadResponse, PhaserMapRequestError, PhaserWarpActivateRequest, PhaserWarpActivateResponse, PhaserInstantWarpRequest, PhaserInstantWarpResponse } from "@/net/generated/protocol";
-import type { GameCornerSlotPlayRequest } from "@/net/generated/world_api";
 import type { PhaserMapScriptsRequest } from "@/net/generated/protocol";
 /**
  * Phaser Network Service
@@ -167,63 +166,6 @@ export function onSurf(receive: (reply: SurfReply) => void): () => void {
  * Request a contextual field move against a target tile.
  */
 
-/**
- * Request to enter Safari Zone (player at gate — creates new session)
- */
-export function requestSafariZoneEnter(): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({}, OpCodes.SafariZoneEnterRequest);
-}
-
-/**
- * Check for existing Safari Zone session (reconnect/warp — never creates new session)
- */
-export function requestSafariZoneStatus(): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ statusOnly: true }, OpCodes.SafariZoneEnterRequest);
-}
-
-/**
- * Request current coin balance
- */
-export function requestCoinBalance(): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({}, OpCodes.GameCornerCoinBalanceRequest);
-}
-
-/**
- * Buy 50 coins for ₽1000
- */
-export function buyCoins(): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({}, OpCodes.GameCornerBuyCoinsRequest);
-}
-
-/**
- * Play slot machine (bet 1-3 coins)
- */
-export function playSlotMachine(bet: number, machineX: number, machineY: number): void {
-  if (!WorldSocket.isConnected) return;
-  const request: GameCornerSlotPlayRequest = { bet, machineX, machineY };
-  NetworkBridge.send(request, OpCodes.GameCornerSlotPlayRequest);
-}
-
-/**
- * Request prize list
- */
-export function requestPrizeList(): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({}, OpCodes.GameCornerPrizeListRequest);
-}
-
-/**
- * Buy a prize with coins
- */
-export function buyPrize(prizeId: number): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ prizeId }, OpCodes.GameCornerPrizeBuyRequest);
-}
-
 type NameReply=import("@/net/generated/protocol").NameValidationResponse|import("@/net/generated/protocol").NameValidationError;
 const nameValidationHandlers=new Set<(reply:NameReply)=>void>();
 export function onNameValidation(receive:(reply:NameReply)=>void):()=>void {nameValidationHandlers.add(receive);return()=>nameValidationHandlers.delete(receive);}
@@ -276,8 +218,9 @@ export function onBattleCommand(opcode: number, receive: BattleCommandHandler): 
   listeners.add(receive); return () => listeners.delete(receive);
 }
 
-type InventoryReply = import("@/net/generated/world_api").ItemPickupResponse | import("@/net/generated/world_api").PokemonPCResponse | CQPartyItemUseResponse | CQMerchantOpenResponse | CQMerchantBuyResponse | CQMerchantSellResponse | RepelUseResponse | PokemonPartyReorderResponse | InventoryCommandError;
+type InventoryReply = import("@/net/generated/world_api").GameCornerSlotResultResponse | import("@/net/generated/world_api").GameCornerPrizeBuyResponse | import("@/net/generated/world_api").GameCornerPrizeListResponse | import("@/net/generated/world_api").ItemPickupResponse | import("@/net/generated/world_api").PokemonPCResponse | CQPartyItemUseResponse | CQMerchantOpenResponse | CQMerchantBuyResponse | CQMerchantSellResponse | RepelUseResponse | PokemonPartyReorderResponse | InventoryCommandError;
 const inventoryCommandHandlers = new Map<number, Set<(reply: InventoryReply) => void>>([
+ [OpCodes.GameCornerSlotResultResponse,new Set()], [OpCodes.GameCornerPrizeListResponse,new Set()], [OpCodes.GameCornerPrizeBuyResponse,new Set()],
  [OpCodes.CQItemUseResponse,new Set()], [OpCodes.CQMerchantOpenResponse,new Set()], [OpCodes.CQMerchantBuyResponse,new Set()], [OpCodes.CQMerchantSellResponse,new Set()],
  [OpCodes.RepelUseResponse,new Set()], [OpCodes.ItemPickupResponse,new Set()],
  [OpCodes.PokemonPartyReorderResponse,new Set()],
@@ -507,6 +450,9 @@ export function dispatchPhaserResponse(opcode: number, data: unknown): void {
       pokedexReadHandlers.get(opcode)?.forEach(receive=>receive(data as PokedexReadReply));
       break;
 
+    case OpCodes.GameCornerSlotResultResponse:
+    case OpCodes.GameCornerPrizeListResponse:
+    case OpCodes.GameCornerPrizeBuyResponse:
     case OpCodes.CQItemUseResponse:
     case OpCodes.CQMerchantOpenResponse:
     case OpCodes.ItemPickupResponse:

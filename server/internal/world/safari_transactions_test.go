@@ -4,6 +4,8 @@ import (
 	"capturequest/internal/protocol"
 	"context"
 	"encoding/json"
+	"fmt"
+	"os"
 	"sync"
 	"testing"
 
@@ -19,6 +21,7 @@ func safariTestWorld(t *testing.T) (*WorldHandler, *SafariZoneManager) {
 	wh.Safari = NewSafariZoneManager(database)
 	return wh, wh.Safari
 }
+
 func TestSafariConcurrentEntryChargesOnceAndRecovers(t *testing.T) {
 	wh, m := safariTestWorld(t)
 	testdb.Exec(t, wh.database, `UPDATE character_wallet SET pokedollars=2000 WHERE character_id=42`)
@@ -445,23 +448,6 @@ func TestSafariFullPartyCaptureUsesPCAndRetainsExistingIdentities(t *testing.T) 
 		t.Fatalf("PC pokemon=%d %v", species, err)
 	}
 }
-func TestSafariDirectEntryCannotChargeRemotePlayer(t *testing.T) {
-	database, wh, ses, messages := battleTestWorld(t)
-	wh.Safari = NewSafariZoneManager(database)
-	testdb.Exec(t, database, `UPDATE character_wallet SET pokedollars=1000 WHERE character_id=42`)
-	battleDispatch(t, wh, ses, opcodes.SafariZoneEnterRequest, `{}`)
-	var money int
-	if err := database.QueryRow(`SELECT pokedollars FROM character_wallet WHERE character_id=42`).Scan(&money); err != nil || money != 1000 {
-		t.Fatalf("remote charge=%d %v", money, err)
-	}
-	s, err := wh.Safari.GetSession(context.Background(), 42)
-	if err != nil || s != nil {
-		t.Fatalf("remote visit=%+v %v", s, err)
-	}
-	if len(messages.streams) == 0 {
-		t.Fatal("missing rejection")
-	}
-}
 
 func TestWarpHomeCommitsBattleSafariAndPositionTogether(t *testing.T) {
 	database, wh, ses, messages := battleTestWorld(t)
@@ -542,43 +528,58 @@ func TestWarpHomeCommitsBattleSafariAndPositionTogether(t *testing.T) {
 	}
 }
 
-func TestSafariDirectEntryRequiresVisibleSourceWorker(t *testing.T) {
-	database, wh, ses, messages := battleTestWorld(t)
-	wh.Safari = NewSafariZoneManager(database)
-	testdb.Exec(t, database, `UPDATE character_wallet SET pokedollars=1000 WHERE character_id=42;
- INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(156,'SAFARI_ZONE_GATE',8,6,0);
- INSERT INTO phaser_objects(id,map_id,x,y,object_type,name,text) VALUES(10,156,6,2,'npc','WORKER1','TEXT_SAFARIZONEGATE_SAFARI_ZONE_WORKER1');
- INSERT INTO phaser_tiles(map_id,x,y,tile_image_id,talk_over_tile) VALUES(156,5,2,1,true);
- INSERT INTO character_object_visibility_overrides(character_id,object_id,visible,source) VALUES(42,10,false,'test')`)
-	wh.ActorRegistry = NewActorRegistry()
-	wh.ActorManager = NewPhaserActorManager(wh)
-	ses.Client.CharData().MapID = 156
-	ses.Client.CharData().X = 4
-	ses.Client.CharData().Y = 2
-	testdb.Exec(t, database, `UPDATE character_data SET map_id=156,x=4,y=2 WHERE id=42`)
-	previous := db.GlobalWorldDB
-	db.GlobalWorldDB = nil
-	t.Cleanup(func() { db.GlobalWorldDB = previous })
-	battleDispatch(t, wh, ses, opcodes.SafariZoneEnterRequest, `{}`)
-	s, err := wh.Safari.GetSession(context.Background(), 42)
-	if err != nil || s != nil {
-		t.Fatalf("hidden worker granted visit=%+v %v", s, err)
-	}
-	testdb.Exec(t, database, `DELETE FROM character_object_visibility_overrides`)
-	messages.streams = nil
-	battleDispatch(t, wh, ses, opcodes.SafariZoneEnterRequest, `{}`)
-	s, err = wh.Safari.GetSession(context.Background(), 42)
-	if err != nil || s == nil || !s.Active {
-		t.Fatalf("visible worker denied visit=%+v %v messages=%+v", s, err, messages.streams)
-	}
-	var money int
-	if err := database.QueryRow(`SELECT pokedollars FROM character_wallet WHERE character_id=42`).Scan(&money); err != nil || money != 500 {
-		t.Fatalf("entry money=%d %v", money, err)
-	}
-	// Repeated status/entry recovers the same visit without a second charge.
-	battleDispatch(t, wh, ses, opcodes.SafariZoneEnterRequest, `{}`)
-	if err := database.QueryRow(`SELECT pokedollars FROM character_wallet WHERE character_id=42`).Scan(&money); err != nil || money != 500 {
-		t.Fatalf("re-entry charge=%d %v", money, err)
+func TestSafariLegacyEntryCannotCreateOrRefreshVisit(t *testing.T) {
+	for _, active := range []bool{false, true} {
+		name := "without_visit"
+		if active {
+			name = "existing_visit"
+		}
+		t.Run(name, func(t *testing.T) {
+			database, wh, ses, messages := battleTestWorld(t)
+			wh.Safari = NewSafariZoneManager(database)
+			// Even a player standing at the counter cannot bypass the issued script.
+			testdb.Exec(t, database, `UPDATE character_wallet SET pokedollars=2000 WHERE character_id=42;
+ UPDATE character_data SET map_id=156,x=4,y=2 WHERE id=42;`)
+			ses.Client.CharData().MapID = 156
+			ses.Client.CharData().X, ses.Client.CharData().Y = 4, 2
+			if active {
+				if result, err := TryStartSafariZoneVisit(context.Background(), 42, wh.Safari); err != nil || !result.Success {
+					t.Fatalf("seed visit: %+v %v", result, err)
+				}
+			}
+			var before string
+			if err := database.QueryRow(`SELECT COALESCE((SELECT state_json FROM character_safari_state WHERE character_id=42),'')`).Scan(&before); err != nil {
+				t.Fatal(err)
+			}
+			for _, payload := range []string{`{}`, `{"statusOnly":true}`, `{"statusOnly":false,"characterId":42}`} {
+				messages.streams = nil
+				battleDispatch(t, wh, ses, opcodes.SafariZoneEnterRequest, payload)
+				if len(messages.streams) != 1 || messages.streams[0].opcode != opcodes.SafariZoneEnterResponse {
+					t.Fatalf("legacy response for %s=%+v", payload, messages.streams)
+				}
+				var reply map[string]interface{}
+				if err := json.Unmarshal(messages.streams[0].payload, &reply); err != nil || reply["success"] != false || reply["error"] == "" {
+					t.Fatalf("legacy rejection=%+v %v", reply, err)
+				}
+				for _, key := range []string{"money", "visitId", "ballsLeft", "refresh"} {
+					if _, ok := reply[key]; ok {
+						t.Fatalf("retired entry published %s: %+v", key, reply)
+					}
+				}
+				var after string
+				var money int
+				if err := database.QueryRow(`SELECT COALESCE((SELECT state_json FROM character_safari_state WHERE character_id=42),'')`).Scan(&after); err != nil || after != before {
+					t.Fatalf("legacy visit changed: %q -> %q (%v)", before, after, err)
+				}
+				wantMoney := 2000
+				if active {
+					wantMoney -= SafariZoneEntryFee
+				}
+				if err := database.QueryRow(`SELECT pokedollars FROM character_wallet WHERE character_id=42`).Scan(&money); err != nil || money != wantMoney {
+					t.Fatalf("legacy money=%d want=%d %v", money, wantMoney, err)
+				}
+			}
+		})
 	}
 }
 
@@ -635,5 +636,92 @@ func TestSafariV2VisitUpgradeIsCommittedAndCurrentIdentityCorruptionRejects(t *t
 	testdb.Exec(t, database, `UPDATE character_safari_state SET state_json=jsonb_set(state_json::jsonb,'{visit,visitId}','"broken"')::text WHERE character_id=42`)
 	if got, err := manager.GetSession(context.Background(), 42); err == nil || got != nil {
 		t.Fatalf("manufactured replacement identity=%+v error=%v", got, err)
+	}
+}
+
+func TestSafariCanonicalIssuedEntryOwnsPaymentDestinationAndReplay(t *testing.T) {
+	for _, mode := range []string{"commit_and_replay", "changed_source", "deferred_commit_failure"} {
+		t.Run(mode, func(t *testing.T) {
+			database, wh, ses, messages := battleTestWorld(t)
+			wh.Safari = NewSafariZoneManager(database)
+			testdb.Exec(t, database, `UPDATE character_wallet SET pokedollars=1000 WHERE character_id=42;
+ UPDATE character_data SET map_id=156,x=4,y=2 WHERE id=42;`)
+			ses.Client.CharData().MapID = 156
+			ses.Client.CharData().X, ses.Client.CharData().Y = 4, 2
+			data, err := os.ReadFile("../../scripted_events/scripts/safari_zone_gate_entry_offer.json")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var source struct {
+				ScriptLabel        string          `json:"scriptLabel"`
+				MapName            string          `json:"mapName"`
+				RequiresFlagAbsent *string         `json:"requiresFlagAbsent"`
+				Actions            json.RawMessage `json:"actions"`
+			}
+			if err := json.Unmarshal(data, &source); err != nil {
+				t.Fatal(err)
+			}
+			script := CutsceneScript{ScriptLabel: source.ScriptLabel, MapName: source.MapName, RequiresFlagAbst: source.RequiresFlagAbsent, Actions: source.Actions}
+			SendCutsceneToPlayer(ses, &script, wh)
+			plan := issuedPlanNotify(t, messages)
+			request := fmt.Sprintf(`{"requestId":"safari-gate","scriptLabel":%q,"completionToken":%q}`, script.ScriptLabel, plan.CompletionToken)
+			if mode == "changed_source" {
+				testdb.Exec(t, database, `UPDATE character_data SET x=3 WHERE id=42`)
+			}
+			if mode == "deferred_commit_failure" {
+				testdb.Exec(t, database, `CREATE FUNCTION reject_safari_receipt() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'late Safari receipt rejection'; END $$;
+ CREATE CONSTRAINT TRIGGER reject_safari_receipt AFTER UPDATE ON character_cutscene_plans DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN(NEW.resolution='resolved') EXECUTE FUNCTION reject_safari_receipt();`)
+			}
+			messages.streams = nil
+			battleDispatch(t, wh, ses, opcodes.CutsceneEndRequest, request)
+			var money, mapID, x, y int
+			var resolution string
+			if err := database.QueryRow(`SELECT w.pokedollars,c.map_id,c.x,c.y,p.resolution FROM character_data c JOIN character_wallet w ON w.character_id=c.id JOIN character_cutscene_plans p ON p.character_id=c.id WHERE c.id=42 AND p.completion_token=$1`, plan.CompletionToken).Scan(&money, &mapID, &x, &y, &resolution); err != nil {
+				t.Fatal(err)
+			}
+			visit, err := wh.Safari.GetSession(context.Background(), 42)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if mode != "commit_and_replay" {
+				wantX := 4
+				if mode == "changed_source" {
+					wantX = 3
+				}
+				if money != 1000 || visit != nil || mapID != 156 || x != wantX || y != 2 || resolution != "pending" {
+					t.Fatalf("failed entry leaked: money=%d visit=%+v pose=%d/%d/%d resolution=%s", money, visit, mapID, x, y, resolution)
+				}
+				for _, message := range messages.streams {
+					if message.opcode == opcodes.SafariZoneEnterResponse || message.opcode == opcodes.SafariZoneStepUpdate {
+						t.Fatalf("failed entry published Safari state: %+v", message)
+					}
+				}
+				return
+			}
+			if money != 500 || visit == nil || !visit.Active || mapID != 220 || x != 14 || y != 25 || resolution != "resolved" {
+				t.Fatalf("canonical entry=%+v money=%d pose=%d/%d/%d resolution=%s", visit, money, mapID, x, y, resolution)
+			}
+			// An old acknowledged or lost-reply completion cannot pay/reopen a visit
+			// after the player has already exited and moved back to the gate.
+			if err := wh.Safari.EndSession(context.Background(), 42); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := setServerTeleportedPlayerPosition(ses, wh, 156, 3, 4, "DOWN"); err != nil {
+				t.Fatal(err)
+			}
+			messages.streams = nil
+			battleDispatch(t, wh, ses, opcodes.CutsceneEndRequest, request)
+			var reply protocol.CutsceneEndResponse
+			if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &reply) != nil || !reply.Success || !reply.Completed || !reply.Replayed || reply.MapID != 156 || reply.X != 3 || reply.Y != 4 {
+				t.Fatalf("historical entry reply=%+v messages=%+v", reply, messages.streams)
+			}
+			visit, err = wh.Safari.GetSession(context.Background(), 42)
+			if err != nil || visit != nil {
+				t.Fatalf("historical completion reopened visit=%+v %v", visit, err)
+			}
+			if err := database.QueryRow(`SELECT pokedollars FROM character_wallet WHERE character_id=42`).Scan(&money); err != nil || money != 500 {
+				t.Fatalf("historical completion paid twice: money=%d %v", money, err)
+			}
+		})
 	}
 }

@@ -26,7 +26,7 @@
  *   giveItem     — (handled server-side on CutsceneEnd, no-op client-side)
  *   takeItem     — (handled server-side on CutsceneEnd, no-op client-side)
  *   takeMoney    — (handled server-side on CutsceneEnd, no-op client-side)
- *   gameCornerPrizeVendor — (handled server-side on CutsceneEnd, no-op client-side)
+ *   gameCornerPrizeVendor — opens an owned menu after confirmed script completion
  *   startSafariSession — (handled server-side on CutsceneEnd, no-op client-side)
  *   endSafariSession — (handled server-side on CutsceneEnd, no-op client-side)
  *   startTrainerBattle — (handled server-side on CutsceneEnd, no-op client-side)
@@ -66,6 +66,7 @@ let lastCompletedScriptLabel: string | null = null;
 let activeRunId = 0;
 let activeRunAbort: AbortController | null = null;
 const queuedCutscenes: CutsceneStartPayload[] = [];
+const prizeWindowsByRun = new Map<number, number>();
 
 type CancelListener = {
   runId: number;
@@ -95,6 +96,7 @@ let onHideActor: HideActorCallback | null = null;
 let onHideObject: HideObjectCallback | null = null;
 let onFace: FaceCallback | null = null;
 let onInputLock: InputLockCallback | null = null;
+let onPrizeVendor: ((prizeWindow:number, signal:AbortSignal) => Promise<void>) | null = null;
 let onReconcile: ((position: CutsceneOwnedPosition,signal:AbortSignal) => Promise<void>) | null = null;
 let onCancelPlayback: (() => void) | null = null;
 
@@ -108,6 +110,7 @@ export function registerCutsceneCallbacks(callbacks: {
   onHideObject?: HideObjectCallback;
   onFace: FaceCallback;
   onInputLock: InputLockCallback;
+  onPrizeVendor?: (prizeWindow:number, signal:AbortSignal) => Promise<void>;
   onReconcile?: (position: CutsceneOwnedPosition,signal:AbortSignal) => Promise<void>;
   onCancelPlayback?: () => void;
 }): void {
@@ -118,6 +121,7 @@ export function registerCutsceneCallbacks(callbacks: {
   onFace = callbacks.onFace;
   onInputLock = callbacks.onInputLock;
   onReconcile = callbacks.onReconcile ?? null;
+  onPrizeVendor = callbacks.onPrizeVendor ?? null;
   onCancelPlayback = callbacks.onCancelPlayback ?? null;
 }
 
@@ -125,6 +129,7 @@ export function registerCutsceneCallbacks(callbacks: {
 export function unregisterCutsceneCallbacks(): void {
   cancelActiveCutscene("scene retired");
   onReconcile = null;
+  onPrizeVendor = null;
   onCancelPlayback = null;
   onMove = null;
   onShowActor = null;
@@ -157,6 +162,7 @@ export function cancelActiveCutscene(reason = "cancelled"): void {
   activeRunAbort?.abort();
   activeRunAbort = null;
   queuedCutscenes.length = 0;
+  prizeWindowsByRun.clear();
   onCancelPlayback?.();
   const hadActiveCutscene = isPlaying || currentScriptLabel !== null;
 
@@ -223,6 +229,7 @@ export async function handleCutsceneStart(
   // Animation does not acknowledge durable success. Keep the run/input lock
   // until the correlated commit result and owned-position projection settle.
   let reconciled = false;
+  let completionConfirmed = false;
   try {
     let position: CutsceneOwnedPosition;
     if (shouldComplete && isActiveRun(runId)) {
@@ -230,6 +237,7 @@ export async function handleCutsceneStart(
         const result = await completeCutscene(payload.scriptLabel, payload.completionToken, abort.signal);
         if (!isActiveRun(runId)) return;
         position = result;
+        completionConfirmed = result.completed;
         if (result.completed) lastCompletedScriptLabel = payload.scriptLabel;
       } catch (error) {
         if (!isActiveRun(runId) || abort.signal.aborted) return;
@@ -250,10 +258,17 @@ export async function handleCutsceneStart(
     if (!onReconcile) throw new Error("Cutscene position projection unavailable");
     await onReconcile(position,abort.signal);
     if (!isActiveRun(runId)) return;
+    const prizeWindow = prizeWindowsByRun.get(runId);
+    if (completionConfirmed && prizeWindow !== undefined) {
+      if (!onPrizeVendor) throw new Error("Prize menu view is unavailable");
+      await onPrizeVendor(prizeWindow, abort.signal);
+      if (!isActiveRun(runId)) return;
+    }
     reconciled = true;
   } catch (error) {
     if (isActiveRun(runId)) console.warn("[CutsceneService] Could not recover owned position; input remains locked until scene/session retirement:", error);
   } finally {
+    prizeWindowsByRun.delete(runId);
     removeCancelListenersForRun(runId);
     if (activeRunId === runId && reconciled) {
       activeRunAbort = null;
@@ -386,7 +401,10 @@ async function executeAction(
       return true;
 
     case "gameCornerPrizeVendor":
-      // No-op client-side — the server opens the prize menu after CutsceneEndRequest
+      // Defer the source-bound menu until this run's commit and owned projection
+      // settle. An unsolicited/historical list never opens a current view.
+      if (!Number.isInteger(action.prizeWindow) || action.prizeWindow! < 1 || action.prizeWindow! > 3) throw new Error("Invalid prize window");
+      prizeWindowsByRun.set(runId, action.prizeWindow!);
       return true;
 
     case "startSafariSession":

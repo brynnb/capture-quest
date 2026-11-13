@@ -77,7 +77,7 @@ func TestGameCornerPrizeCommitFailureDispatcherAndOwnedDatabase(t *testing.T) {
 		t.Helper()
 		testdb.Exec(t, database, `UPDATE character_data SET map_id=$1,x=$2,y=$3 WHERE id=42`, ses.Client.CharData().MapID, ses.Client.CharData().X, ses.Client.CharData().Y)
 		messages.streams = nil
-		battleDispatch(t, wh, ses, opcodes.GameCornerPrizeBuyRequest, `{"prizeId":7}`)
+		battleDispatch(t, wh, ses, opcodes.GameCornerPrizeBuyRequest, gameCornerFixtureRequest(t, wh, ses, `{"prizeId":7}`))
 		var result struct {
 			Success bool
 			Coins   int
@@ -89,8 +89,12 @@ func TestGameCornerPrizeCommitFailureDispatcherAndOwnedDatabase(t *testing.T) {
 			t.Fatalf("response %+v %v", result, err)
 		}
 		if want {
-			if len(messages.streams) != 2 || messages.streams[1].opcode != opcodes.ResourcesChangedNotify || result.Coins != 50 {
-				t.Fatalf("success publication %+v %+v", messages.streams, result)
+			var coins int
+			if err := database.QueryRow(`SELECT coins FROM character_coins WHERE character_id=42`).Scan(&coins); err != nil || coins != 50 {
+				t.Fatalf("committed coins=%d %v", coins, err)
+			}
+			if len(messages.streams) != 1 {
+				t.Fatalf("success published independent resource state %+v", messages.streams)
 			}
 		} else if len(messages.streams) != 1 {
 			t.Fatalf("failure publication %+v", messages.streams)

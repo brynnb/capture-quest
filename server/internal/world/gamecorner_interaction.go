@@ -3,39 +3,20 @@ package world
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"capturequest/internal/db"
 	"capturequest/internal/session"
 )
 
-// Coordinates identify a generated hidden-object record; the client supplies
-// neither machine availability nor luck. Pointers reject old requests that omit
-// the target rather than interpreting them as the tile at zero, zero.
-type GameCornerSlotPlayRequest struct {
-	Bet      int  `json:"bet"`
-	MachineX *int `json:"machineX"`
-	MachineY *int `json:"machineY"`
-}
-
-type GameCornerSlotResultResponse struct {
-	Success       bool       `json:"success"`
-	Error         string     `json:"error,omitempty"`
-	ReelPositions []int      `json:"reelPositions,omitempty"`
-	Reels         [][]string `json:"reels,omitempty"`
-	Payout        int        `json:"payout"`
-	MatchLine     string     `json:"matchLine"`
-	Coins         *int       `json:"coins,omitempty"`
-	Bet           int        `json:"bet"`
-	IsLucky       *bool      `json:"isLucky,omitempty"`
-}
-
-func (wh *WorldHandler) authorizeSlotMachine(ses *session.Session, req GameCornerSlotPlayRequest) (bool, error) {
+func (wh *WorldHandler) authorizeSlotMachineIn(ctx context.Context, tx db.DBTX, ses *session.Session, req GameCornerSlotPlayRequest) (bool, error) {
 	if req.MachineX == nil || req.MachineY == nil {
 		return false, fmt.Errorf("Select a slot machine first.")
 	}
-	x, y, mapID := wh.ownedPlayerPosition(ses)
-	dx, dy := x-*req.MachineX, y-*req.MachineY
+	source, err := wh.ownedSourceInteractionPositionIn(tx, ses)
+	if err != nil {
+		return false, err
+	}
+	dx, dy := source.X-*req.MachineX, source.Y-*req.MachineY
 	if dx < 0 {
 		dx = -dx
 	}
@@ -44,12 +25,10 @@ func (wh *WorldHandler) authorizeSlotMachine(ses *session.Session, req GameCorne
 	}
 	// Retain the current client's two-tile Manhattan reach, but enforce it from
 	// owned player state and recheck on every spin (including after movement).
-	if mapID != GameCornerMapID || dx+dy > 2 {
+	if normalizedVisiblePlayerMapID(wh, source.MapID) != GameCornerMapID || dx+dy > 2 {
 		return false, fmt.Errorf("Move next to the slot machine first.")
 	}
-	ctx, cancel := context.WithTimeout(ses.CommandContext(), 5*time.Second)
-	defer cancel()
-	rows, err := wh.database.QueryContext(ctx, `SELECT x,y,routine,item_or_direction FROM phaser_hidden_objects WHERE map_id=$1 ORDER BY id`, GameCornerMapID)
+	rows, err := tx.(db.ContextDBTX).QueryContext(ctx, `SELECT x,y,routine,item_or_direction FROM phaser_hidden_objects WHERE map_id=$1 ORDER BY id`, GameCornerMapID)
 	if err != nil {
 		return false, err
 	}
@@ -114,48 +93,51 @@ func (wh *WorldHandler) authorizeSlotMachine(ses *session.Session, req GameCorne
 // A prize ID selects an existing source window. The server resolves its sign
 // identity and authorizes current actor visibility/reach; being in the room is
 // insufficient. Catalog-only list requests do not authorize purchases.
-func (wh *WorldHandler) authorizePrizeWindow(ses *session.Session, prizeID int) error {
+func (wh *WorldHandler) authorizePrizeWindowIn(ctx context.Context, tx db.DBTX, ses *session.Session, prizeID int) error {
 	window := GameCornerPrizeWindowForID(prizeID)
 	if window == 0 {
 		return errScriptInteractionDenied
 	}
 	text := fmt.Sprintf("TEXT_GAMECORNERPRIZEROOM_PRIZE_VENDOR_%d", window)
-	return wh.authorizeSourceInteraction(ses, PrizeRoomMapID, text)
+	return wh.authorizeSourceInteractionIn(ctx, tx, ses, PrizeRoomMapID, text)
 }
 
-// Resolve source identity once for direct gameplay requests that do not carry
-// an actor ID. Both prize windows and the coin clerk use the same bounded,
-// fail-closed identity and runtime reach/visibility boundary.
-func (wh *WorldHandler) authorizeSourceInteraction(ses *session.Session, mapID int, text string) error {
-	return db.Transaction(ses.CommandContext(), wh.database, func(tx db.DBTX) error {
-		if err := db.LockCharacter(tx, int64(ses.Client.CharData().ID)); err != nil {
-			return err
-		}
-		return wh.authorizeSourceInteractionIn(ses.CommandContext(), tx, ses, mapID, text)
-	})
-}
-
-// Source admission shares the mutation's retained character/query owner. Runtime
-// position, durable pose, flags and actor overrides must agree before spending.
-func (wh *WorldHandler) authorizeSourceInteractionIn(ctx context.Context, tx db.DBTX, ses *session.Session, mapID int, text string) error {
+// Read the same retained character owner for hidden-object and actor purchases.
+// Source eligibility cannot be checked on a separate pool connection before the
+// mutation obtains its character lock.
+func (wh *WorldHandler) ownedSourceInteractionPositionIn(tx db.DBTX, ses *session.Session) (interactionPosition, error) {
+	var source interactionPosition
 	if err := db.RequireTransaction(tx); err != nil {
-		return err
+		return source, err
+	}
+	if ses == nil || !ses.HasValidClient() {
+		return source, errScriptInteractionDenied
 	}
 	charID := int64(ses.Client.CharData().ID)
 	if err := requireNoOwnedBattleIn(tx, charID); err != nil {
-		return err
+		return source, err
 	}
 	position := wh.ownedPlayerSnapshot(ses, "")
 	if position.ServerMovementPending {
-		return errScriptInteractionDenied
+		return source, errScriptInteractionDenied
 	}
-	var source interactionPosition
 	if err := tx.QueryRow(`SELECT map_id,CAST(x AS INTEGER),CAST(y AS INTEGER) FROM character_data WHERE id=$1`, charID).Scan(&source.MapID, &source.X, &source.Y); err != nil {
-		return err
+		return source, err
 	}
 	if normalizedVisiblePlayerMapID(wh, source.MapID) != position.MapID || source.X != position.X || source.Y != position.Y {
-		return errScriptInteractionDenied
+		return source, errScriptInteractionDenied
 	}
+	return source, nil
+}
+
+// Resolve a unique actor from the transaction-owned catalog and apply current
+// character-specific reach, flags and visibility before the purchase can spend.
+func (wh *WorldHandler) authorizeSourceInteractionIn(ctx context.Context, tx db.DBTX, ses *session.Session, mapID int, text string) error {
+	source, err := wh.ownedSourceInteractionPositionIn(tx, ses)
+	if err != nil {
+		return err
+	}
+	charID := int64(ses.Client.CharData().ID)
 	var objectID *int
 	var count int
 	if err := tx.QueryRow(`SELECT MIN(id),COUNT(*) FROM phaser_objects WHERE map_id=$1 AND text=$2`, mapID, text).Scan(&objectID, &count); err != nil {

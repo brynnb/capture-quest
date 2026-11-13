@@ -18,7 +18,7 @@ const interactionRetirements = new Set<() => void>();
 let active: AbortController | null = null;
 let resourcesDirtyCharacter=0;
 let resourcesDirtyGeneration=0;
-type Reply = import("@/net/generated/world_api").ItemPickupResponse | import("@/net/generated/world_api").GameplayStateResponse | import("@/net/generated/world_api").PokemonPCResponse | CQMerchantOpenResponse | CQMerchantBuyResponse | CQMerchantSellResponse | CQPartyItemUseResponse | RepelUseResponse | PokemonPartyReorderResponse;
+type Reply = import("@/net/generated/world_api").GameCornerSlotResultResponse | import("@/net/generated/world_api").GameCornerPrizeBuyResponse | import("@/net/generated/world_api").GameCornerPrizeListResponse | import("@/net/generated/world_api").ItemPickupResponse | import("@/net/generated/world_api").GameplayStateResponse | import("@/net/generated/world_api").PokemonPCResponse | CQMerchantOpenResponse | CQMerchantBuyResponse | CQMerchantSellResponse | CQPartyItemUseResponse | RepelUseResponse | PokemonPartyReorderResponse;
 
 export function bindInventoryScene(): () => void {
   for (const retire of [...interactionRetirements]) retire();
@@ -42,7 +42,7 @@ export function bindInventoryScene(): () => void {
 function views() {
   const bag = useCQInventoryStore.getState();
   const pc = usePokemonPCStore.getState();
-  return [bag.items, bag.money, bag.commandRevision, usePlayerCharacterStore.getState().characterProfile, usePokemonPartyStore.getState().party, pc.boxPokemon, pc.currentBox, pc.sources];
+  return [bag.items, bag.money, bag.coins, bag.commandRevision, usePlayerCharacterStore.getState().characterProfile, usePokemonPartyStore.getState().party, pc.boxPokemon, pc.currentBox, pc.sources];
 }
 
 // Source-bound menus are a view of one scene at one owned location. Scene
@@ -66,6 +66,10 @@ export function watchInteractionPosition(retire: () => void, includeFacing = fal
 // layer applies the bag. Projection application outlives a closed presentation.
 export async function runInventoryRequest<T extends Reply>(options: {
   mutation: boolean;
+  // Durable result receipts describe an action, never a current balance. These
+  // consumers reconcile the current resource snapshot before presenting it.
+  currentResources?: boolean;
+  recovered?: (snapshot: import("@/net/generated/world_api").GameplayStateResponse) => void;
   watchPresentation?: (retire: () => void) => () => void;
   validate?: (reply: T) => void;
   apply?: (reply: T) => void;
@@ -82,6 +86,7 @@ export async function runInventoryRequest<T extends Reply>(options: {
   const initial = views();
   const controller = new AbortController(); active = controller;
   let lifetimeSignal=controller.signal;
+  let minimumResourceRevision=revision;
   let stopLifetime=()=>{};
   const current = () => !lifetimeSignal.aborted && useGameScreenStore.getState().currentScreen === "game" && scene === owner && usePlayerCharacterStore.getState().characterProfile.id === characterId;
   let presentationCurrent = true;
@@ -109,7 +114,14 @@ export async function runInventoryRequest<T extends Reply>(options: {
         if (!current()) return;
         if (views().some((view, i) => view !== initial[i])) throw new Error("Inventory reply overtaken by newer state");
         options.validate?.(reply);
-        if (options.mutation) {
+        if (options.mutation && options.currentResources) {
+          if (!("commandRevision" in reply) || reply.commandRevision !== revision + 1) throw new Error("Invalid committed resource receipt");
+          minimumResourceRevision=reply.commandRevision;
+          const snapshot = await readCurrentGameplayState(lifetimeSignal);
+          if (!current()) return;
+          if (snapshot.commandRevision < minimumResourceRevision) throw new Error("Current resources precede the committed receipt");
+          applyGameplayResourceSnapshot(snapshot);
+        } else if (options.mutation) {
           if (!("inventory" in reply) || Array.isArray(reply.inventory)) throw new Error("Invalid mutation response kind");
           if (!Array.isArray(reply.inventory?.items)
             || reply.inventory.commandRevision !== revision + 1 || !Number.isSafeInteger(reply.inventory.money)
@@ -124,7 +136,7 @@ export async function runInventoryRequest<T extends Reply>(options: {
       } catch (error) {
         if (!current()) return;
         if (!options.mutation) {
-          reportError(options.readError ?? "Could not read inventory state. Please try again.");
+          reportError(error instanceof CorrelatedResponseError ? error.message : (options.readError ?? "Could not read inventory state. Please try again."));
           return;
         }
         // Even rejection cannot prove rollback after a lost earlier reply. Read
@@ -132,10 +144,12 @@ export async function runInventoryRequest<T extends Reply>(options: {
         try {
           const snapshot = await readCurrentGameplayState(lifetimeSignal);
           if (!current()) return;
+          if (options.currentResources && snapshot.commandRevision < minimumResourceRevision) throw new Error("Current resources precede the known command revision");
           applyGameplayResourceSnapshot(snapshot);
           useCQInventoryStore.getState().setPendingTMHM(null);
           await options.reconcile?.(lifetimeSignal);
           if (!current()) return;
+          if (presentationCurrent) options.recovered?.(snapshot);
           useChatStore.getState().addMessage(error instanceof CorrelatedResponseError ? error.message : (options.recoveryMessage ?? "Inventory state refreshed. Check your bag and party before trying again."), MessageType.SYSTEM);
         } catch {
           if (current()) reportError("Could not restore inventory state. Please reconnect.");

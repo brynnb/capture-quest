@@ -1,3 +1,4 @@
+import {openPrizeWindow} from "../services/GameCornerCommandService";
 import {readCurrentGameplayState} from "@/phaser-game/services/GameplayRecoveryService";
 import { ActorReadView } from "../services/ActorReadView";
 import { bindInventoryScene } from "@/phaser-game/services/InventoryCommandService";
@@ -780,6 +781,7 @@ export class TileViewer extends Scene {
     this.warpManager.setupKeyboardWarpHandlers();
 
     this.cutsceneController = new CutsceneSpriteController({
+      onPrizeVendor: (window, signal) => openPrizeWindow(window, (menu, owned) => this.overlays.showPrizeMenu(menu, owned), signal),
       onReconcile: async (position,signal) => {
         await this.warpEvents.reconcileOwnedPosition(position);
         if(signal.aborted || !this.sys.isActive())throw new DOMException("World view retired","AbortError");

@@ -356,10 +356,11 @@ func applyCutsceneActionList(ctx CutsceneActionContext, mapName string, rawActio
 			effect.Detail = detail
 			effect.Changed = true
 		case "gameCornerPrizeVendor":
-			ctx.mutation.publishActions = append(ctx.mutation.publishActions, func(p CutsceneActionContext) error {
-				_, err := sendGameCornerPrizeList(p.Session, charID, action.PrizeWindow)
-				return err
-			})
+			// The native script retains this presentation intent. After its owned
+			// completion, the client requests the current source-bound prize list.
+			// An unsolicited list here could reopen a retired window or publish
+			// balances from a different command/recovery lifetime.
+			effect.Detail = fmt.Sprintf("prizeWindow=%d", action.PrizeWindow)
 		case "healParty":
 			detail, err := applyHealPartyAction(ctx, mapName, action, charID)
 			if err != nil {
@@ -589,12 +590,9 @@ func applyTakeMoneyAction(ctx CutsceneActionContext, action CutsceneAction, char
 		return "", err
 	}
 	ctx.mutation.messages = append(ctx.mutation.messages, fmt.Sprintf("Spent %d Pokedollars.", action.Money))
-	ctx.mutation.publishActions = append(ctx.mutation.publishActions, func(p CutsceneActionContext) error {
-		if p.Session != nil {
-			p.Session.SendStreamJSON(map[string]interface{}{"characterId": charID, "pokedollars": remaining}, opcodes.CharacterWallet)
-		}
-		return nil
-	})
+	// Publish only a resource invalidation after commit. The owned snapshot
+	// reconciles ordinary money and coins together, including delayed replies.
+	ctx.mutation.inventoryChanged = true
 	return fmt.Sprintf("spent=%d money=%d", action.Money, remaining), nil
 }
 
@@ -607,6 +605,7 @@ func applyGiveCoinsAction(ctx CutsceneActionContext, action CutsceneAction, char
 		return "", err
 	}
 	ctx.mutation.messages = append(ctx.mutation.messages, fmt.Sprintf("Received %d coins!", action.Coins))
+	ctx.mutation.inventoryChanged = true
 	return fmt.Sprintf("coins=%d total=%d", action.Coins, total), nil
 }
 

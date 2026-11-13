@@ -29,7 +29,7 @@ func tryHandleFieldItemUse(ses *session.Session, wh *WorldHandler, found *cqitem
 		sendCQItemUseSuccess(ses, found, currentMapMessage(ses), found.Instance.Quantity)
 		return true
 	case "COIN_CASE":
-		sendCQItemUseSuccess(ses, found, coinCaseMessage(getCoins(int64(charID))), found.Instance.Quantity)
+		sendCQItemUseError(ses, "Use current gameplay recovery to inspect the Coin Case.")
 		return true
 	case "ITEMFINDER":
 		sendCQItemUseSuccess(ses, found, itemfinderMessage(ses, wh), found.Instance.Quantity)

@@ -3,6 +3,9 @@ import { create } from "zustand";
 export interface SlotMachineState {
   isOpen: boolean;
   coins: number;
+  coinsReady: boolean;
+  coinsLoading: boolean;
+  openVersion: number;
   bet: number;
   isSpinning: boolean;
   reelPositions: [number, number, number];
@@ -32,7 +35,10 @@ export interface SlotMachineState {
 
 const useSlotMachineStore = create<SlotMachineState>((set, get) => ({
   isOpen: false,
-  coins: 50,
+  coins: 0,
+  coinsReady: false,
+  coinsLoading: false,
+  openVersion: 0,
   bet: 1,
   isSpinning: false,
   reelPositions: [0, 0, 0],
@@ -48,6 +54,7 @@ const useSlotMachineStore = create<SlotMachineState>((set, get) => ({
   openSlotMachine: (machineX: number, machineY: number) =>
     set({
       isOpen: true,
+      coins: 0, coinsReady: false, coinsLoading: false, openVersion: get().openVersion + 1,
       machineX, machineY,
       isLuckyMachine: false,
       isSpinning: false,
@@ -57,7 +64,7 @@ const useSlotMachineStore = create<SlotMachineState>((set, get) => ({
       message: "Insert coins and pull the lever!",
     }),
 
-  closeSlotMachine: () => set({ isOpen: false }),
+  closeSlotMachine: () => set({ isOpen: false, isSpinning: false, coinsLoading: false }),
 
   setBet: (bet: number) => {
     if (!get().isSpinning) {
@@ -70,7 +77,7 @@ const useSlotMachineStore = create<SlotMachineState>((set, get) => ({
 
   startSpin: () => {
     const state = get();
-    if (state.isSpinning) return;
+    if (state.isSpinning || !state.coinsReady) return;
     if (state.coins < state.bet) {
       set({ message: "Not enough coins!" });
       return;

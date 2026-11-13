@@ -100,3 +100,29 @@ test("retiring dialogue aborts its read and ignores late text",async()=>{
  cancelActiveCutscene("quit during dialogue");expect(signal.aborted).toBe(true);
  pending.resolve(["Old"]);await run;expect(requests.complete).not.toHaveBeenCalled();expect(requests.read).not.toHaveBeenCalled();
 });
+
+
+const vendorEvent=()=>({...event("PrizeVendor"),actions:[{type:"gameCornerPrizeVendor",prizeWindow:1}]});
+function registerVendor(prize: (window:number,signal:AbortSignal)=>Promise<void>){registerCutsceneCallbacks({onMove:vi.fn(async()=>{}),onShowActor:vi.fn(),onHideActor:vi.fn(),onFace:vi.fn(),onInputLock:lock,onReconcile:reconcile,onCancelPlayback:cancel,onPrizeVendor:prize});}
+test("native prize action opens its owned menu only after completion and projection",async()=>{
+  const completion=deferred<unknown>(),projection=deferred<void>(),choice=deferred<void>();requests.complete.mockReturnValueOnce(completion.promise);reconcile.mockReturnValueOnce(projection.promise);
+  const prize=vi.fn(()=>choice.promise);registerVendor(prize);const run=handleCutsceneStart(vendorEvent());
+  await vi.waitFor(()=>expect(requests.complete).toHaveBeenCalledOnce());expect(prize).not.toHaveBeenCalled();
+  completion.resolve({...owned,success:true,completed:true});await vi.waitFor(()=>expect(reconcile).toHaveBeenCalledOnce());expect(prize).not.toHaveBeenCalled();
+  projection.resolve();await vi.waitFor(()=>expect(prize).toHaveBeenCalledWith(1,expect.any(AbortSignal)));expect(isCutscenePlaying()).toBe(true);
+  choice.resolve();await run;expect(isCutscenePlaying()).toBe(false);expect(lock).toHaveBeenLastCalledWith(false);
+});
+
+test.each(["rejected","uncertain","ineligible"])("%s vendor completion never opens an unsolicited menu",async mode=>{
+  const prize=vi.fn(async()=>{});registerVendor(prize);
+  if(mode==="ineligible")requests.complete.mockResolvedValueOnce({...owned,success:true,completed:false});
+  else if(mode==="rejected")requests.complete.mockRejectedValueOnce(new CorrelatedResponseError({...owned,success:false,requestId:"id",error:"denied"}));
+  else{requests.complete.mockRejectedValueOnce(new Error("timeout"));requests.read.mockResolvedValueOnce(owned);}
+  await handleCutsceneStart(vendorEvent());expect(prize).not.toHaveBeenCalled();expect(lock).toHaveBeenLastCalledWith(false);
+});
+
+test("retired native vendor view aborts menu choice without reopening it",async()=>{
+  requests.complete.mockResolvedValueOnce({...owned,success:true,completed:true});let signal!:AbortSignal;
+  const prize=vi.fn((_window:number,owned:AbortSignal)=>{signal=owned;return new Promise<void>(done=>owned.addEventListener("abort",()=>done(),{once:true}));});registerVendor(prize);
+  const run=handleCutsceneStart(vendorEvent());await vi.waitFor(()=>expect(prize).toHaveBeenCalledOnce());cancelActiveCutscene("scene retired");await run;expect(signal.aborted).toBe(true);expect(prize).toHaveBeenCalledOnce();
+});

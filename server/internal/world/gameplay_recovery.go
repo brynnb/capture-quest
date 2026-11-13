@@ -84,6 +84,7 @@ type GameplayStateResponse struct {
 	CommandRevision int64                                   `json:"commandRevision"`
 	Inventory       []cqitems.CQInventoryItem               `json:"inventory" tstype:"import(\"./cqitems\").CQInventoryItem[]"`
 	Wallet          model.CharacterWallet                   `json:"wallet" tstype:"import(\"./models\").CharacterWallet"`
+	Coins           int                                     `json:"coins"`
 	Party           []PokemonDTO                            `json:"party"`
 	EventFlags      []string                                `json:"eventFlags"`
 	Success         bool                                    `json:"success" tstype:"true"`
@@ -120,6 +121,12 @@ func HandleGameplayStateRequest(ses *session.Session, payload []byte, wh *WorldH
 }
 
 func readGameplayState(ctx context.Context, ses *session.Session, wh *WorldHandler, req GameplayStateRequest) (GameplayStateResponse, *pokebattle.BattleState, error) {
+	return readGameplayStateFrom(ctx, wh.database, ses, wh, req)
+}
+
+// Source-bound reads may join their retained owner; callers publish only after
+// their outer transaction commits. All existing recovery policy stays here.
+func readGameplayStateFrom(ctx context.Context, database db.DBTX, ses *session.Session, wh *WorldHandler, req GameplayStateRequest) (GameplayStateResponse, *pokebattle.BattleState, error) {
 	result := GameplayStateResponse{Success: true, RequestID: req.RequestID, Position: wh.ownedPlayerSnapshot(ses, req.RequestID)}
 	// Current recovery follows authority after a possibly committed teleport.
 	// Scene-bound reads retain their expected map; never infer current mode from
@@ -132,7 +139,7 @@ func readGameplayState(ctx context.Context, ses *session.Session, wh *WorldHandl
 	}
 	charID := int64(ses.Client.CharData().ID)
 	var battle *pokebattle.BattleState
-	err := db.Transaction(ctx, wh.database, func(tx db.DBTX) error {
+	err := db.Transaction(ctx, database, func(tx db.DBTX) error {
 		// SELECT takes the same row lock as mutations without firing UPDATE triggers.
 		// This holds party, battle, Safari and pending plans at one character boundary.
 		var mapID, x, y int
@@ -149,6 +156,13 @@ func readGameplayState(ctx context.Context, ses *session.Session, wh *WorldHandl
 		result.Wallet = model.CharacterWallet{CharacterID: uint32(charID), Pokedollars: uint32(inventory.Money)}
 		result.Inventory = inventory.Items
 		result.CommandRevision = inventory.CommandRevision
+		result.Coins, err = gameCornerCoinBalance(tx, charID)
+		if err != nil {
+			return err
+		}
+		if result.Coins < 0 || result.Coins > MaxCoins {
+			return fmt.Errorf("invalid recovery coin balance %d for character %d", result.Coins, charID)
+		}
 		result.PC, err = readPCStorageIn(tx, charID, mapID)
 		if err != nil {
 			return err

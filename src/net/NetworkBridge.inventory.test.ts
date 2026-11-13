@@ -1,7 +1,7 @@
 import { beforeEach, expect, test, vi } from "vitest";
 import { NetworkBridge } from "./NetworkBridge";
 import { WorldSocket } from "./index";
-import { ItemPickupResponse, CQItemUseResponse, CQInventoryResponse, CQMerchantBuyResponse, CQMerchantSellResponse, RepelUseResponse, PokemonPartyResponse, PokemonPartyReorderResponse, PokemonPCOpenResponse, PokemonPCDepositResponse, PokemonPCWithdrawResponse, PokemonPCReleaseResponse, PokemonPCSwitchBoxResponse, ResourcesChangedNotify, GameplayStateRequest, GameplayStateResponse } from "./generated/opcodes";
+import { GameCornerSlotResultResponse, GameCornerPrizeListResponse, GameCornerPrizeBuyResponse, GameCornerCoinBalanceResponse, ItemPickupResponse, CQItemUseResponse, CQInventoryResponse, CQMerchantBuyResponse, CQMerchantSellResponse, RepelUseResponse, PokemonPartyResponse, PokemonPartyReorderResponse, PokemonPCOpenResponse, PokemonPCDepositResponse, PokemonPCWithdrawResponse, PokemonPCReleaseResponse, PokemonPCSwitchBoxResponse, ResourcesChangedNotify, GameplayStateRequest, GameplayStateResponse } from "./generated/opcodes";
 import {bindInventoryScene} from "@/phaser-game/services/InventoryCommandService";
 import type { CQInventoryItem } from "./generated/cqitems";
 import useCQInventoryStore from "@/stores/CQInventoryStore";
@@ -59,7 +59,7 @@ test.each([ResourcesChangedNotify])("notice %d causes an owned current read, nev
   WorldSocket.onJson?.(opcode,{success:true,resourcesChanged:true,characterId:42,items:[],money:0,party:[]});
   await vi.waitFor(()=>expect(requestId).not.toBe(""));
   expect(useCQInventoryStore.getState().money).toBe(1000);
-  WorldSocket.onJson?.(GameplayStateResponse,{success:true,requestId,position:{mapId:50},inventory:[],wallet:{characterId:42,pokedollars:600},commandRevision:3,party:[],eventFlags:[],pc:{currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}});
+  WorldSocket.onJson?.(GameplayStateResponse,{success:true,requestId,position:{mapId:50},inventory:[],coins: 0, wallet:{characterId:42,pokedollars:600},commandRevision:3,party:[],eventFlags:[],pc:{currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}});
   await vi.waitFor(()=>expect(useCQInventoryStore.getState().money).toBe(600));
   expect(send).toHaveBeenCalledOnce(); retire(); send.mockRestore(); connected.mockRestore();
 });
@@ -82,4 +82,34 @@ test.each([
   expect(useCQInventoryStore.getState().items).toEqual([stack(1, 95)]);
   expect(useCQInventoryStore.getState().money).toBe(1000);
   expect(usePlayerCharacterStore.getState().characterProfile.pokedollars).toBe(1000);
+});
+
+
+test("retired coin response cannot publish a global balance or reopen dialogue",()=>{
+  useCQInventoryStore.setState({money:1234,coins:42});
+  const receive=vi.fn();window.addEventListener("gameCornerCoinBalance",receive);
+  WorldSocket.onJson?.(GameCornerCoinBalanceResponse,{success:true,coins:9999,money:0,message:"Historical coin purchase"});
+  WorldSocket.onJson?.(GameCornerCoinBalanceResponse,{success:true,requestId:"retired",characterId:42,coins:9999,money:0});
+  expect(receive).not.toHaveBeenCalled();
+  expect(useCQInventoryStore.getState()).toMatchObject({money:1234,coins:42});
+  window.removeEventListener("gameCornerCoinBalance",receive);
+});
+
+
+test.each([
+  [GameCornerSlotResultResponse,"gameCornerSlotResult"],
+  [GameCornerPrizeListResponse,"gameCornerPrizeList"],
+  [GameCornerPrizeBuyResponse,"gameCornerPrizeBuy"],
+] as const)("Game Corner reply %d only reaches its correlated subscriber",async(opcode,eventName)=>{
+  const net=await import("@/phaser-game/services/PhaserNetworkService");
+  const receive=vi.fn(),global=vi.fn();const stop=net.onInventoryCommand(opcode,receive);
+  window.addEventListener(eventName,global);
+  WorldSocket.onJson?.(opcode,{success:true,coins:9999,money:0});
+  expect(receive).not.toHaveBeenCalled();expect(global).not.toHaveBeenCalled();
+  const reply={success:false,requestId:"game-corner-route",error:"rejected"};
+  WorldSocket.onJson?.(opcode,reply);
+  await vi.waitFor(()=>expect(receive).toHaveBeenCalledWith(reply));
+  expect(receive).toHaveBeenCalledOnce();expect(global).not.toHaveBeenCalled();
+  expect(useCQInventoryStore.getState().money).toBe(1000);
+  stop();window.removeEventListener(eventName,global);
 });

@@ -19,6 +19,7 @@ import useCQInventoryStore, {
   type CQInventoryItem,
 } from "@/stores/CQInventoryStore";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
+import { showCoinCaseBalance } from "@/phaser-game/services/CoinBalanceService";
 import { sendPartyItemCommand, sendRepelItemCommand } from "@/phaser-game/services/InventoryCommandService";
 import { WorldSocket, OpCodes } from "@/net";
 
@@ -245,6 +246,12 @@ const InventorySidebar: React.FC = () => {
     }
     if (item.item.shortName === "ESCAPE_ROPE") {
       window.dispatchEvent(new CustomEvent("cq:escapeRopeUse", { detail: { instanceId: item.instance.id } }));
+      setSelectedCQItem(null);
+      setSelectedItemPointer(null);
+      return;
+    }
+    if (item.item.shortName.toUpperCase() === "COIN_CASE") {
+      void showCoinCaseBalance(item.instance.id);
       setSelectedCQItem(null);
       setSelectedItemPointer(null);
       return;

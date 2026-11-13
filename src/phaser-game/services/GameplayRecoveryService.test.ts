@@ -21,7 +21,7 @@ import useCQInventoryStore from "@/stores/CQInventoryStore";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
 import usePokemonPCStore from "@/stores/PokemonPCStore";
 import { applyGameplaySnapshot, applyGameplayResourceSnapshot, recoverGameplayState, readCurrentGameplayState } from "./GameplayRecoveryService";
-const snapshot = (requestId: string): GameplayStateResponse => ({ cutScope:"fixture-scope",fieldState:{mapId:50,strength:false,flash:false},fieldCommands:{},pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, commandRevision: 0, inventory: [], wallet: { characterId: 42, pokedollars: 0 }, party: [], eventFlags: [], success: true, requestId, position: { success: true, requestId, mapId: 50, x: 7, y: 8, direction: "UP", serverMovementPending: false }, battle: null, safari: null, trainer: null, cutscene: null });
+const snapshot = (requestId: string): GameplayStateResponse => ({ cutScope:"fixture-scope",fieldState:{mapId:50,strength:false,flash:false},fieldCommands:{},pc: {currentBox:0,boxCount:12,boxSize:20,box:[],sources:[]}, commandRevision: 0, inventory: [], coins: 0, wallet: { characterId: 42, pokedollars: 0 }, party: [], eventFlags: [], success: true, requestId, position: { success: true, requestId, mapId: 50, x: 7, y: 8, direction: "UP", serverMovementPending: false }, battle: null, safari: null, trainer: null, cutscene: null });
 const receive = (data: unknown) => state.listeners.forEach(listener => listener(data));
 beforeEach(() => { useGameScreenStore.setState({currentScreen:"game"}); useCQInventoryStore.getState().setInventory([], 0); usePokemonPartyStore.getState().clearParty(); state.current = { restoreGameplay: state.apply }; state.character = { characterProfile:{id:42},handleCharacterWalletData: state.wallet, setEventFlags: state.flags }; });
 afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); state.listeners.clear(); });
@@ -197,4 +197,22 @@ test("a newer owned Safari visit invalidates an older aggregate before applicati
  acceptOwnedSafariVisit(visit("next"));const reply=snapshot(old.requestId);reply.safari=visit("first");receive(reply);
  await Promise.resolve();await Promise.resolve();expect(state.apply).not.toHaveBeenCalled();expect(state.send).toHaveBeenCalledTimes(2);
  const current=snapshot(state.send.mock.calls[1][0].requestId);current.safari=visit("next");receive(current);await run;expect(state.apply).toHaveBeenCalledWith(current);
+});
+
+
+test("coin state overtaking a recovery read forces a current aggregate before publication",async()=>{
+  const run=recoverGameplayState(50);const first=state.send.mock.calls.at(-1)![0];
+  useCQInventoryStore.setState({coins:45});receive(snapshot(first.requestId));
+  await Promise.resolve();await Promise.resolve();
+  expect(state.send).toHaveBeenCalledTimes(2);expect(state.wallet).not.toHaveBeenCalled();
+  const current=snapshot(state.send.mock.calls.at(-1)![0].requestId);current.coins=45;current.wallet.pokedollars=123;
+  receive(current);await run;
+  expect(useCQInventoryStore.getState()).toMatchObject({coins:45,money:123});
+});
+
+test.each([undefined,-1,10000,1.5])("invalid or missing coin balance %s cannot partially publish wallet",coins=>{
+  useCQInventoryStore.setState({coins:42,money:999});
+  const current=snapshot("invalid-coins");(current as any).coins=coins;current.wallet.pokedollars=1;
+  expect(()=>applyGameplayResourceSnapshot(current)).toThrow("Incomplete owned gameplay snapshot");
+  expect(useCQInventoryStore.getState()).toMatchObject({coins:42,money:999});expect(state.wallet).not.toHaveBeenCalled();
 });

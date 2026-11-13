@@ -3,7 +3,6 @@ package world
 import (
 	"capturequest/internal/api/opcodes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"sync"
 	"testing"
@@ -159,64 +158,7 @@ func TestGameCornerSlotsRollbackAndConcurrentSpending(t *testing.T) {
 	}
 }
 
-func TestGameCornerCoinPurchaseRequiresSourceClerkReach(t *testing.T) {
-	database, wh, ses, messages := battleTestWorld(t)
-	testdb.Exec(t, database, `INSERT INTO cq_items(id,name,short_name,is_key_item) VALUES(69,'COIN CASE','COIN_CASE',true);
- UPDATE character_wallet SET pokedollars=2000 WHERE character_id=42;
- INSERT INTO character_coins(character_id,coins) VALUES(42,3);
- INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(135,'GAME_CORNER',20,20,0);
- INSERT INTO phaser_objects(id,map_id,x,y,object_type,name,text) VALUES(10,135,5,6,'npc','CLERK1','TEXT_GAMECORNER_CLERK1'),(11,135,10,6,'npc','CLERK2','TEXT_GAMECORNER_CLERK2');
- INSERT INTO phaser_tiles(map_id,x,y,tile_image_id,talk_over_tile) VALUES(135,5,7,1,true),(135,10,7,1,true)`)
-	if _, err := cqitems.NewStore(database).AddItemToInventory(42, 69, 1); err != nil {
-		t.Fatal(err)
-	}
-	wh.ActorRegistry = NewActorRegistry()
-	wh.ActorManager = NewPhaserActorManager(wh)
-	db.GlobalWorldDB = nil
-	ses.Client.CharData().MapID = GameCornerMapID
-	ses.Client.CharData().Y = 8
-	buy := func(wantSuccess bool) {
-		t.Helper()
-		messages.streams = nil
-		battleDispatch(t, wh, ses, opcodes.GameCornerBuyCoinsRequest, `{}`)
-		if len(messages.streams) == 0 {
-			t.Fatal("missing coin purchase response")
-		}
-		var response struct {
-			Success bool
-			Error   string
-		}
-		if err := json.Unmarshal(messages.streams[0].payload, &response); err != nil || response.Success != wantSuccess {
-			t.Fatalf("response %+v, want success=%v: %v", response, wantSuccess, err)
-		}
-		if !wantSuccess && (len(messages.streams) != 1 || response.Error != "Move to the coin clerk first.") {
-			t.Fatalf("denied purchase published unexpected result: %+v", messages.streams)
-		}
-	}
-	for _, x := range []float64{15, 10} {
-		ses.Client.CharData().X = x
-		testdb.Exec(t, database, `UPDATE character_data SET map_id=135,x=$1,y=8 WHERE id=42`, x)
-		buy(false)
-	}
-	ses.Client.CharData().X = 5
-	testdb.Exec(t, database, `UPDATE character_data SET map_id=135,x=5,y=8 WHERE id=42`)
-	testdb.Exec(t, database, `INSERT INTO character_object_visibility_overrides(character_id,object_id,visible,source) VALUES(42,10,false,'test')`)
-	buy(false)
-	money, err := cqitems.NewStore(database).GetCharacterMoney(42)
-	coins, coinErr := gameCornerCoinBalance(database, 42)
-	if err != nil || coinErr != nil || money != 2000 || coins != 3 {
-		t.Fatalf("denied purchase changed balances money=%d coins=%d %v %v", money, coins, err, coinErr)
-	}
-	testdb.Exec(t, database, `DELETE FROM character_object_visibility_overrides`)
-	buy(true)
-	money, err = cqitems.NewStore(database).GetCharacterMoney(42)
-	coins, coinErr = gameCornerCoinBalance(database, 42)
-	if err != nil || coinErr != nil || money != 1000 || coins != 53 {
-		t.Fatalf("valid purchase balances money=%d coins=%d %v %v", money, coins, err, coinErr)
-	}
-}
-
-func TestGameCornerCoinHandlersDoNotPublishFailedChanges(t *testing.T) {
+func TestGameCornerSlotHandlerDoesNotPublishFailedChanges(t *testing.T) {
 	database, wh, ses, messages := battleTestWorld(t)
 	testdb.Exec(t, database, `INSERT INTO cq_items(id,name,short_name,is_key_item) VALUES(69,'COIN CASE','COIN_CASE',true);
  UPDATE character_wallet SET pokedollars=2000 WHERE character_id=42;
@@ -237,9 +179,9 @@ func TestGameCornerCoinHandlersDoNotPublishFailedChanges(t *testing.T) {
 	for _, mapID := range []int{PrizeRoomMapID, GameCornerMapID} {
 		ses.Client.CharData().MapID = uint32(mapID)
 		testdb.Exec(t, database, `UPDATE character_data SET map_id=$1,x=5,y=8 WHERE id=42`, mapID)
-		for _, opcode := range []opcodes.OpCode{opcodes.GameCornerBuyCoinsRequest, opcodes.GameCornerSlotPlayRequest} {
+		for _, opcode := range []opcodes.OpCode{opcodes.GameCornerSlotPlayRequest} {
 			messages.streams = nil
-			battleDispatch(t, wh, ses, opcode, `{"bet":3,"machineX":6,"machineY":8,"isLucky":true}`)
+			battleDispatch(t, wh, ses, opcode, gameCornerFixtureRequest(t, wh, ses, `{"bet":3,"machineX":6,"machineY":8}`))
 			if len(messages.streams) != 1 {
 				t.Fatalf("failed handler publication %+v", messages.streams)
 			}
@@ -265,110 +207,5 @@ func TestGameCornerCoinHandlersDoNotPublishFailedChanges(t *testing.T) {
 	coins, coinErr := gameCornerCoinBalance(database, 42)
 	if err != nil || coinErr != nil || money != 2000 || coins != 3 {
 		t.Fatalf("failed handlers changed balances money=%d coins=%d %v %v", money, coins, err, coinErr)
-	}
-}
-
-func TestGameCornerCoinSourceAndPaymentShareRetainedOwner(t *testing.T) {
-	for _, kind := range []string{"single-connection", "stale-source", "moved-clerk", "cold-battle", "deferred-commit", "held-source"} {
-		t.Run(kind, func(t *testing.T) {
-			database, wh, ses, messages := battleTestWorld(t)
-			testdb.Exec(t, database, `INSERT INTO cq_items(id,name,short_name,is_key_item) VALUES(69,'COIN CASE','COIN_CASE',true);UPDATE character_wallet SET pokedollars=2000 WHERE character_id=42;INSERT INTO character_coins(character_id,coins) VALUES(42,3);INSERT INTO phaser_maps(id,name,width,height,is_overworld) VALUES(135,'GAME_CORNER',20,20,0);INSERT INTO phaser_objects(id,map_id,x,y,object_type,name,text) VALUES(10,135,5,6,'npc','CLERK1','TEXT_GAMECORNER_CLERK1');INSERT INTO phaser_tiles(map_id,x,y,tile_image_id,talk_over_tile) VALUES(135,5,7,1,true);UPDATE character_data SET map_id=135,x=5,y=8 WHERE id=42`)
-			if _, err := cqitems.NewStore(database).AddItemToInventory(42, 69, 1); err != nil {
-				t.Fatal(err)
-			}
-			wh.ActorRegistry = NewActorRegistry()
-			wh.ActorManager = NewPhaserActorManager(wh)
-			ses.Client.CharData().MapID, ses.Client.CharData().X, ses.Client.CharData().Y = 135, 5, 8
-			var holder *sql.Tx
-			var holderPID int
-			switch kind {
-			case "held-source":
-				var err error
-				holder, err = database.Begin()
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer holder.Rollback()
-				if err := db.LockCharacter(holder, 42); err != nil {
-					t.Fatal(err)
-				}
-				if err := holder.QueryRow(`SELECT pg_backend_pid()`).Scan(&holderPID); err != nil {
-					t.Fatal(err)
-				}
-			case "single-connection":
-				database.SetMaxOpenConns(1)
-			case "stale-source":
-				testdb.Exec(t, database, `UPDATE character_data SET x=10 WHERE id=42`)
-			case "moved-clerk":
-				testdb.Exec(t, database, `INSERT INTO character_object_positions(character_id,object_id,map_id,x,y) VALUES(42,10,135,8,8)`)
-			case "cold-battle":
-				battleTestStart(t, database, false, nil)
-				forgetBattle(42, getBattle(42))
-			case "deferred-commit":
-				testdb.Exec(t, database, `CREATE FUNCTION reject_source_coin_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'late coin payment failure';END $$;CREATE CONSTRAINT TRIGGER reject_source_coin_commit AFTER UPDATE ON character_coins DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_source_coin_commit()`)
-			}
-			old := db.GlobalWorldDB
-			db.GlobalWorldDB = nil
-			t.Cleanup(func() { db.GlobalWorldDB = old })
-			if holder == nil {
-				battleDispatch(t, wh, ses, opcodes.GameCornerBuyCoinsRequest, `{}`)
-			} else {
-				done := make(chan struct{})
-				go func() { defer close(done); battleDispatch(t, wh, ses, opcodes.GameCornerBuyCoinsRequest, `{}`) }()
-				deadline := time.Now().Add(time.Second)
-				for {
-					var waiting bool
-					if err := database.QueryRow(`SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND $1=ANY(pg_blocking_pids(pid)))`, holderPID).Scan(&waiting); err != nil {
-						holder.Rollback()
-						<-done
-						t.Fatal(err)
-					}
-					if waiting {
-						break
-					}
-					if time.Now().After(deadline) {
-						holder.Rollback()
-						<-done
-						t.Fatal("coin source did not reach retained character lock")
-					}
-					time.Sleep(time.Millisecond)
-				}
-				if _, err := holder.Exec(`UPDATE character_data SET x=10 WHERE id=42`); err != nil {
-					holder.Rollback()
-					<-done
-					t.Fatal(err)
-				}
-				if err := holder.Commit(); err != nil {
-					<-done
-					t.Fatal(err)
-				}
-				<-done
-			}
-			var reply struct {
-				Success bool
-				Coins   *int
-				Money   *int
-			}
-			if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &reply) != nil || reply.Success != (kind == "single-connection") {
-				t.Fatalf("coin source %s response %+v", kind, messages.streams)
-			}
-			money, err := cqitems.NewStore(database).GetCharacterMoney(42)
-			coins, coinErr := gameCornerCoinBalance(database, 42)
-			if err != nil || coinErr != nil {
-				t.Fatalf("read balances %v %v", err, coinErr)
-			}
-			if kind == "single-connection" {
-				if money != 1000 || coins != 53 {
-					t.Fatalf("committed %d %d", money, coins)
-				}
-			} else {
-				if money != 2000 || coins != 3 {
-					t.Fatalf("rejected payment changed balances %d %d", money, coins)
-				}
-				if kind == "deferred-commit" && (reply.Money != nil || reply.Coins != nil) {
-					t.Fatal("outer commit rejection published provisional balances")
-				}
-			}
-		})
 	}
 }

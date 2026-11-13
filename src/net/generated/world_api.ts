@@ -336,6 +336,81 @@ export interface FieldStateSnapshot {
 }
 
 //////////
+// source: gamecorner_commands.go
+
+/**
+ * Source coordinates are expectations, never a client-authored movement update.
+ * The inventory command revision owns both Game Corner mutations and their
+ * bounded latest outcome receipt.
+ */
+export interface GameCornerSlotPlayRequest {
+  requestId: string;
+  command?: InventoryCommandIdentity;
+  mapId?: number;
+  fromX?: number;
+  fromY?: number;
+  bet: number /* int */;
+  machineX?: number;
+  machineY?: number;
+}
+export interface GameCornerSlotResultResponse {
+  success: true;
+  version: 1;
+  kind: 'slot';
+  requestId: string;
+  characterId: number /* int64 */;
+  commandRevision: number /* int64 */;
+  machineX: number /* int */;
+  machineY: number /* int */;
+  bet: number /* int */;
+  reelPositions: number /* int */[];
+  reels: string[][];
+  payout: number /* int */;
+  matchLine: string;
+  isLucky: boolean;
+}
+export interface GameCornerPrizeBuyRequest {
+  requestId: string;
+  command?: InventoryCommandIdentity;
+  mapId?: number;
+  fromX?: number;
+  fromY?: number;
+  prizeId: number /* int */;
+}
+export interface GameCornerPrizeBuyResponse {
+  success: true;
+  version: 1;
+  kind: 'prize';
+  requestId: string;
+  characterId: number /* int64 */;
+  commandRevision: number /* int64 */;
+  prizeId: number /* int */;
+  prize: GameCornerPrize;
+  prizeName: string;
+  prizeLevel: number /* int */;
+  addedToParty: boolean;
+  pcBox: number /* int */;
+  pcSlot: number /* int */;
+  message: string;
+}
+export interface GameCornerPrizeListRequest {
+  requestId: string;
+  characterId: number /* int64 */;
+  mapId?: number;
+  fromX?: number;
+  fromY?: number;
+  prizeWindow: number /* int */;
+}
+export interface GameCornerPrizeListResponse {
+  success: true;
+  requestId: string;
+  characterId: number /* int64 */;
+  prizeWindow: number /* int */;
+  prizes: GameCornerPrize[];
+  snapshot: GameplayStateResponse;
+}
+
+//////////
 // source: gamecorner_hidden_coins.go
 
 export interface GameCornerHiddenCoinPickupResult {
@@ -345,31 +420,6 @@ export interface GameCornerHiddenCoinPickupResult {
   amount: number /* int */;
   coins: number /* int */;
   alreadyFound: boolean;
-}
-
-//////////
-// source: gamecorner_interaction.go
-
-/**
- * Coordinates identify a generated hidden-object record; the client supplies
- * neither machine availability nor luck. Pointers reject old requests that omit
- * the target rather than interpreting them as the tile at zero, zero.
- */
-export interface GameCornerSlotPlayRequest {
-  bet: number /* int */;
-  machineX?: number /* int */;
-  machineY?: number /* int */;
-}
-export interface GameCornerSlotResultResponse {
-  success: boolean;
-  error?: string;
-  reelPositions?: number /* int */[];
-  reels?: string[][];
-  payout: number /* int */;
-  matchLine: string;
-  coins?: number /* int */;
-  bet: number /* int */;
-  isLucky?: boolean;
 }
 
 //////////
@@ -489,6 +539,7 @@ export interface GameplayStateResponse {
   commandRevision: number /* int64 */;
   inventory: import("./cqitems").CQInventoryItem[];
   wallet: import("./models").CharacterWallet;
+  coins: number /* int */;
   party: PokemonDTO[];
   eventFlags: string[];
   success: true;
@@ -1979,6 +2030,10 @@ export type DatagramHandler = any;
 export interface HandlerRegistry {
   wH?: WorldHandler;
 }
+
+//////////
+// source: world-handlers.go
+
 
 //////////
 // source: world-query-handlers.go
