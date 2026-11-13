@@ -16,11 +16,14 @@ import (
 	"capturequest/internal/session"
 )
 
-// One outstanding step belongs to the movement registration, not a transport
-// token supplied by the client. Re-registration and teleports discard it.
+// A bounded chain of issued steps belongs to the movement registration. Tokens
+// authorize presentation only: each step still commits separately, in order,
+// after collision/effect validation. Re-registration and teleports discard it.
 type issuedPlayerStep struct {
 	token                   string
-	parentToken             string // only a prepared continuation belongs to a prior receipt
+	parentToken             string // a prepared continuation belongs to its prior token
+	next                    *issuedPlayerStep
+	retireOnParentReplay    bool
 	sourceX, sourceY, mapID int
 	x, y                    int
 	direction               string
@@ -31,6 +34,14 @@ type issuedPlayerStep struct {
 }
 
 const playerStepLifetime = 10 * time.Second
+const playerStepWindow = 8
+
+func playerStepDistance(value int) int {
+	if value < 0 {
+		return -value
+	}
+	return value
+}
 
 // Call with the movement manager write lock after checking session ownership
 // and any caller-provided source. Consumers retire expired authorization
@@ -124,7 +135,12 @@ func HandlePlayerStepRequest(ses *session.Session, payload []byte, wh *WorldHand
 		sendPlayerStepError(ses, wh, req.RequestID, opcodes.PlayerStepResponse)
 		return false
 	}
-	ses.SendStreamJSON(protocol.PlayerStepResponse{Success: true, RequestID: req.RequestID, StepToken: step.token, MapID: step.mapID, X: step.x, Y: step.y, Direction: step.direction, LedgeJump: step.ledgeJump}, opcodes.PlayerStepResponse)
+	response := playerStepResponse(step, req.RequestID)
+	response.Buffered = true
+	for next := step.next; next != nil; next = next.next {
+		response.ContinuationSteps = append(response.ContinuationSteps, playerStepResponse(next, req.RequestID))
+	}
+	ses.SendStreamJSON(response, opcodes.PlayerStepResponse)
 	return false
 }
 
@@ -133,7 +149,7 @@ func HandlePlayerStepRequest(ses *session.Session, payload []byte, wh *WorldHand
 func (m *PlayerMovementManager) issuePlayerStep(ses *session.Session, req protocol.PlayerStepRequest) (*issuedPlayerStep, error) {
 	charID := int(ses.Client.CharData().ID)
 	direction := normalizeWarpDirection(req.Direction)
-	if direction == "" || getBattle(int64(charID)) != nil {
+	if direction == "" || len(req.LookAhead) >= playerStepWindow || getBattle(int64(charID)) != nil {
 		return nil, fmt.Errorf("movement is unavailable")
 	}
 	m.mu.RLock()
@@ -164,32 +180,11 @@ func (m *PlayerMovementManager) issuePlayerStep(ses *session.Session, req protoc
 	if err != nil {
 		return nil, err
 	}
-	dx, dy := 0, 0
-	switch direction {
-	case "UP":
-		dy = -1
-	case "DOWN":
-		dy = 1
-	case "LEFT":
-		dx = -1
-	case "RIGHT":
-		dx = 1
-	}
-	next := PathNode{X: x + dx, Y: y + dy}
-	collisionType, exists := collision[tileKey(next.X, next.Y)]
-	ledge := false
-	if !exists || !isPathableCollision(collisionType, pathfindOptions{AllowWater: surfing}) {
-		next, ledge = ledgeLandingNeighbor(collision, raw, x, y, direction, dx, dy)
-		if !ledge {
-			return nil, fmt.Errorf("step is blocked")
-		}
-	}
-	token := make([]byte, 16)
-	if _, err := rand.Read(token); err != nil {
+	now := time.Now()
+	step, err := buildPlayerStepChain(collision, raw, x, y, mapID, surfing, append([]string{direction}, req.LookAhead...), now, now.Add(speed), speed)
+	if err != nil {
 		return nil, err
 	}
-	now := time.Now()
-	step := &issuedPlayerStep{token: hex.EncodeToString(token), sourceX: x, sourceY: y, mapID: mapID, x: next.X, y: next.Y, direction: direction, ledgeJump: ledge, issuedAt: now, completeAfter: now.Add(speed)}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.players[charID] != state || state.CurrentX != x || state.CurrentY != y || state.MapID != mapID || state.pendingStep != pending {
@@ -197,6 +192,121 @@ func (m *PlayerMovementManager) issuePlayerStep(ses *session.Session, req protoc
 	}
 	state.pendingStep = step
 	return step, nil
+}
+
+// Responses contain a flat window; recursive pointers never enter the protocol.
+func playerStepResponse(step *issuedPlayerStep, requestID string) protocol.PlayerStepResponse {
+	return protocol.PlayerStepResponse{Success: true, RequestID: requestID, StepToken: step.token, MapID: step.mapID, X: step.x, Y: step.y, Direction: step.direction, LedgeJump: step.ledgeJump}
+}
+
+// Validate each proposed tile with server collision. A blocked future tile ends
+// the window; it cannot undo the usable prefix or authorize movement through it.
+func buildPlayerStepChain(collision map[string]int, raw map[string]int, x, y, mapID int, surfing bool, directions []string, issuedAt, deadline time.Time, speed time.Duration) (*issuedPlayerStep, error) {
+	var head, tail *issuedPlayerStep
+	for _, proposed := range directions {
+		direction := normalizeWarpDirection(proposed)
+		if direction == "" {
+			return nil, fmt.Errorf("invalid movement direction")
+		}
+		dx, dy := 0, 0
+		switch direction {
+		case "UP":
+			dy = -1
+		case "DOWN":
+			dy = 1
+		case "LEFT":
+			dx = -1
+		case "RIGHT":
+			dx = 1
+		}
+		next := PathNode{X: x + dx, Y: y + dy}
+		value, exists := collision[tileKey(next.X, next.Y)]
+		ledge := false
+		if !exists || !isPathableCollision(value, pathfindOptions{AllowWater: surfing}) {
+			next, ledge = ledgeLandingNeighbor(collision, raw, x, y, direction, dx, dy)
+			if !ledge {
+				if head == nil {
+					return nil, fmt.Errorf("step is blocked")
+				}
+				break
+			}
+		}
+		token := make([]byte, 16)
+		if _, err := rand.Read(token); err != nil {
+			return nil, err
+		}
+		if ledge {
+			deadline = deadline.Add(speed)
+		}
+		step := &issuedPlayerStep{token: hex.EncodeToString(token), sourceX: x, sourceY: y, mapID: mapID, x: next.X, y: next.Y, direction: direction, ledgeJump: ledge, issuedAt: issuedAt, completeAfter: deadline}
+		if tail == nil {
+			head = step
+		} else {
+			tail.next = step
+			step.parentToken = tail.token
+		}
+		tail = step
+		x, y = step.x, step.y
+		deadline = deadline.Add(speed)
+	}
+	return head, nil
+}
+
+// Append only to the exact tail observed by the browser. A late refill cannot
+// replace a retargeted route, and the total pending window remains bounded.
+func (m *PlayerMovementManager) appendPlayerSteps(ses *session.Session, completed *issuedPlayerStep, afterToken string, directions []string) []protocol.PlayerStepResponse {
+	if len(directions) == 0 || len(directions) >= playerStepWindow {
+		return nil
+	}
+	charID := int(ses.Client.CharData().ID)
+	m.mu.RLock()
+	state := m.players[charID]
+	if state == nil || state.SessionID != ses.SessionID {
+		m.mu.RUnlock()
+		return nil
+	}
+	tail, count := state.pendingStep, 0
+	for next := tail; next != nil; next = next.next {
+		tail = next
+		count++
+	}
+	base := tail
+	if base == nil {
+		base = completed
+	}
+	if base.token != afterToken || count >= playerStepWindow {
+		m.mu.RUnlock()
+		return nil
+	}
+	surfing, speed := state.IsSurfing, state.MoveSpeed
+	m.mu.RUnlock()
+	if len(directions) > playerStepWindow-count {
+		directions = directions[:playerStepWindow-count]
+	}
+	collision, raw, err := m.actorManager.characterCollision(ses.CommandContext(), m.wh.database, int64(charID), base.mapID, base.x, base.y, m.wh.EventFlags)
+	if err != nil {
+		return nil
+	}
+	first, err := buildPlayerStepChain(collision, raw, base.x, base.y, base.mapID, surfing, directions, time.Now(), base.completeAfter.Add(speed), speed)
+	if err != nil || first == nil {
+		return nil
+	}
+	first.parentToken = base.token
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.players[charID] != state || (tail == nil && state.pendingStep != nil) || (tail != nil && tail.next != nil) {
+		return nil
+	}
+	if tail == nil {
+		state.pendingStep = first
+	} else {
+		tail.next = first
+	}
+	var responses []protocol.PlayerStepResponse
+	for next := first; next != nil; next = next.next {
+		responses = append(responses, playerStepResponse(next, ""))
+	}
+	return responses
 }
 
 func waitPlayerStep(ctx context.Context, until time.Time) error {
@@ -219,7 +329,7 @@ func HandlePlayerStepCompleteRequest(ses *session.Session, payload []byte, wh *W
 	err := decodePlayerMovement(payload, &req)
 	fail := func() { sendPlayerStepError(ses, wh, req.RequestID, opcodes.PlayerStepCompleteResponse) }
 	if err != nil || req.RequestID == "" || len(req.RequestID) > 64 || !validMovementToken(req.StepToken) || wh.PlayerMovement == nil ||
-		(req.NextDirection != "" && normalizeWarpDirection(req.NextDirection) == "") || (req.Cancel && req.NextDirection != "") {
+		(req.NextDirection != "" && normalizeWarpDirection(req.NextDirection) == "") || len(req.LookAhead) >= playerStepWindow || (len(req.LookAhead) != 0 && !validMovementToken(req.AfterStepToken)) || (req.Cancel && (req.NextDirection != "" || len(req.LookAhead) != 0)) {
 		fail()
 		return false
 	}
@@ -261,9 +371,25 @@ func HandlePlayerStepCompleteRequest(ses *session.Session, payload []byte, wh *W
 		if nextErr == nil {
 			wh.PlayerMovement.mu.Lock()
 			next.parentToken = req.StepToken
+			next.retireOnParentReplay = true
 			wh.PlayerMovement.mu.Unlock()
 			response.NextStep = &protocol.PlayerStepResponse{Success: true, RequestID: req.RequestID, StepToken: next.token, MapID: next.mapID, X: next.x, Y: next.y, Direction: next.direction, LedgeJump: next.ledgeJump}
 		}
+	}
+	if !response.StopPath {
+		if len(req.LookAhead) != 0 {
+			wh.PlayerMovement.appendPlayerSteps(ses, step, req.AfterStepToken, req.LookAhead)
+		}
+		// Republish the bounded pending window with every receipt. A later child
+		// response repairs a lost refill reply without replaying an old commit.
+		wh.PlayerMovement.mu.RLock()
+		state := wh.PlayerMovement.players[int(ses.Client.CharData().ID)]
+		if state != nil && state.SessionID == ses.SessionID {
+			for next := state.pendingStep; next != nil; next = next.next {
+				response.ContinuationSteps = append(response.ContinuationSteps, playerStepResponse(next, req.RequestID))
+			}
+		}
+		wh.PlayerMovement.mu.RUnlock()
 	}
 	ses.SendStreamJSON(response, opcodes.PlayerStepCompleteResponse)
 	// Effects run only for a successfully committed issued step. Duplicate/stale
@@ -301,6 +427,7 @@ func (m *PlayerMovementManager) completePlayerStep(ses *session.Session, token s
 	if err := waitPlayerStep(ses.CommandContext(), step.completeAfter); err != nil {
 		return nil, err
 	}
+	startedAt := time.Now()
 	// Revalidate dynamic collision at completion: an NPC or puzzle can change while
 	// the browser animates. Use the same rule as acceptance, never trust its target.
 	m.mu.Lock()
@@ -330,14 +457,24 @@ func (m *PlayerMovementManager) completePlayerStep(ses *session.Session, token s
 		return nil, err
 	}
 	completed := *step
+	// An empty-window refill starts from the actual paced commit, not an old
+	// issuance deadline that may already be behind after transport delay.
+	completed.completeAfter = startedAt
 	completed.effects = effects
 	completed.sourceMapID = step.mapID
 	completed.mapID, completed.x, completed.y, completed.direction = effects.MapID, effects.X, effects.Y, effects.Direction
 	step = &completed
 	// Consume the issued token even when recovery returns to the same source tile.
 	// The owning session gate excludes command/tick position writers across commit.
-	m.rejectPlayerStep(ses, token)
 	m.projectCommittedPosition(charID, step.x, step.y, step.mapID, step.direction, effects.Surfing)
+	m.mu.Lock()
+	if m.players[charID] == state && state.SessionID == ses.SessionID && allowsPlayerStepContinuation(effects) {
+		state.pendingStep = completed.next
+		if state.pendingStep != nil {
+			state.pendingStep.completeAfter = startedAt.Add(time.Duration(playerStepDistance(state.pendingStep.x-state.pendingStep.sourceX)+playerStepDistance(state.pendingStep.y-state.pendingStep.sourceY)) * state.MoveSpeed)
+		}
+	}
+	m.mu.Unlock()
 	publishCommittedPlayerLocation(ses, m.wh, step.mapID, step.x, step.y)
 	if len(effects.ForcedPath) > 0 {
 		m.mu.Lock()
@@ -358,7 +495,7 @@ func (m *PlayerMovementManager) retirePreparedContinuation(ses *session.Session,
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	state := m.players[int(ses.Client.CharData().ID)]
-	if state != nil && state.SessionID == ses.SessionID && state.pendingStep != nil && state.pendingStep.parentToken == parentToken {
+	if state != nil && state.SessionID == ses.SessionID && state.pendingStep != nil && state.pendingStep.parentToken == parentToken && state.pendingStep.retireOnParentReplay {
 		state.pendingStep = nil
 	}
 }

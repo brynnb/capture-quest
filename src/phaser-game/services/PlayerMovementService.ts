@@ -6,13 +6,13 @@ export function requestPlayerStep(request: Omit<PlayerStepRequest, "requestId">,
   return correlatedRequest<PlayerStepResponse>(PhaserNet.onPlayerStep, (requestId) => PhaserNet.requestPlayerStep({ ...request, requestId }), signal);
 }
 
-export async function completePlayerStep(stepToken: string, signal?: AbortSignal, nextDirection?: string): Promise<PlayerStepCompleteResponse> {
-  const complete = () => correlatedRequest<PlayerStepCompleteResponse>(PhaserNet.onPlayerStepComplete, (requestId) => PhaserNet.completePlayerStep({ stepToken, requestId, ...(nextDirection ? { nextDirection } : {}) }), signal);
+export async function completePlayerStep(stepToken: string, signal?: AbortSignal, nextDirection?: string, buffer?: { afterStepToken?: string; lookAhead?: string[]; retryOnTimeout?: boolean }): Promise<PlayerStepCompleteResponse> {
+  const complete = () => correlatedRequest<PlayerStepCompleteResponse>(PhaserNet.onPlayerStepComplete, (requestId) => PhaserNet.completePlayerStep({ stepToken, requestId, ...(nextDirection ? { nextDirection } : {}), ...(buffer?.lookAhead?.length ? { afterStepToken: buffer.afterStepToken, lookAhead: buffer.lookAhead } : {}) }), signal);
   try { return await complete(); }
   catch (error) {
     // Only a lost reply retries, once, with the same server-issued authorization.
     // The durable receipt makes this safe even if the first command committed.
-    if (!(error instanceof CorrelatedRequestTimeoutError) || signal?.aborted) throw error;
+    if (!(error instanceof CorrelatedRequestTimeoutError) || signal?.aborted || buffer?.retryOnTimeout === false) throw error;
     return complete();
   }
 }

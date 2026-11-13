@@ -129,3 +129,19 @@ test("a pipeline receipt retry keeps its original direction intent and accepts o
   await expect(result).resolves.toMatchObject({ replayed: true });
   expect(net.listeners.size).toBe(0);
 });
+
+test("a buffered completion publishes its exact tail and never retries an obsolete receipt on timeout", async () => {
+  vi.useFakeTimers();
+  const result = completePlayerStep("issued", undefined, undefined, {
+    afterStepToken: "tail", lookAhead: ["RIGHT", "DOWN"], retryOnTimeout: false,
+  });
+  const rejected = expect(result).rejects.toBeInstanceOf(CorrelatedRequestTimeoutError);
+  expect(net.complete).toHaveBeenCalledWith({
+    stepToken: "issued", requestId: expect.any(String),
+    afterStepToken: "tail", lookAhead: ["RIGHT", "DOWN"],
+  });
+  await vi.advanceTimersByTimeAsync(20000);
+  await rejected;
+  expect(net.complete).toHaveBeenCalledTimes(1);
+  expect(net.listeners.size).toBe(0);
+});

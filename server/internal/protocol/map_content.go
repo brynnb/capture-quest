@@ -167,44 +167,51 @@ type SafariZoneExitNotify struct {
 // PlayerStepRequest proposes one direction from an expected owned source.
 // The server resolves the target and issues a session-bound animation token.
 type PlayerStepRequest struct {
-	MapID     int    `json:"mapId"`
-	FromX     *int   `json:"fromX" tstype:"number,required"`
-	FromY     *int   `json:"fromY" tstype:"number,required"`
-	Direction string `json:"direction"`
-	RequestID string `json:"requestId"`
+	MapID     int      `json:"mapId"`
+	FromX     *int     `json:"fromX" tstype:"number,required"`
+	FromY     *int     `json:"fromY" tstype:"number,required"`
+	Direction string   `json:"direction"`
+	LookAhead []string `json:"lookAhead,omitempty"`
+	RequestID string   `json:"requestId"`
 }
 type PlayerStepResponse struct {
-	Success   bool   `json:"success" tstype:"true"`
-	RequestID string `json:"requestId"`
-	StepToken string `json:"stepToken"`
-	MapID     int    `json:"mapId"`
-	X         int    `json:"x"`
-	Y         int    `json:"y"`
-	Direction string `json:"direction"`
-	LedgeJump bool   `json:"ledgeJump"`
+	Buffered          bool                 `json:"buffered,omitempty"`
+	ContinuationSteps []PlayerStepResponse `json:"continuationSteps,omitempty"`
+	Success           bool                 `json:"success" tstype:"true"`
+	RequestID         string               `json:"requestId"`
+	StepToken         string               `json:"stepToken"`
+	MapID             int                  `json:"mapId"`
+	X                 int                  `json:"x"`
+	Y                 int                  `json:"y"`
+	Direction         string               `json:"direction"`
+	LedgeJump         bool                 `json:"ledgeJump"`
 }
 
-// PlayerStepCompleteRequest completes an issued token, never client coordinates.
-// Completion may arrive during its animation; the server enforces the not-before
-// time. NextDirection prepares at most one uncommitted continuation after commit.
-// Cancel retires only the matching uncommitted token without moving the player.
+// PlayerStepCompleteRequest completes one issued token, never client coordinates.
+// The server enforces per-tile pacing and revalidates collision/effects at commit.
+// LookAhead extends the exact observed tail within a bounded authorization window;
+// NextDirection remains compatible with older clients' single prepared step.
+// Cancel retires only the matching unused suffix without moving the player.
 type PlayerStepCompleteRequest struct {
-	StepToken     string `json:"stepToken"`
-	RequestID     string `json:"requestId"`
-	NextDirection string `json:"nextDirection,omitempty"`
-	Cancel        bool   `json:"cancel,omitempty"`
+	StepToken      string   `json:"stepToken"`
+	RequestID      string   `json:"requestId"`
+	NextDirection  string   `json:"nextDirection,omitempty"`
+	AfterStepToken string   `json:"afterStepToken,omitempty"`
+	LookAhead      []string `json:"lookAhead,omitempty"`
+	Cancel         bool     `json:"cancel,omitempty"`
 }
 type PlayerStepCompleteResponse struct {
-	Replayed  bool                `json:"replayed,omitempty"`
-	Cancelled bool                `json:"cancelled,omitempty"`
-	StopPath  bool                `json:"stopPath,omitempty"`
-	NextStep  *PlayerStepResponse `json:"nextStep,omitempty"`
-	Success   bool                `json:"success" tstype:"true"`
-	RequestID string              `json:"requestId"`
-	MapID     int                 `json:"mapId"`
-	X         int                 `json:"x"`
-	Y         int                 `json:"y"`
-	Direction string              `json:"direction"`
+	ContinuationSteps []PlayerStepResponse `json:"continuationSteps,omitempty"`
+	Replayed          bool                 `json:"replayed,omitempty"`
+	Cancelled         bool                 `json:"cancelled,omitempty"`
+	StopPath          bool                 `json:"stopPath,omitempty"`
+	NextStep          *PlayerStepResponse  `json:"nextStep,omitempty"`
+	Success           bool                 `json:"success" tstype:"true"`
+	RequestID         string               `json:"requestId"`
+	MapID             int                  `json:"mapId"`
+	X                 int                  `json:"x"`
+	Y                 int                  `json:"y"`
+	Direction         string               `json:"direction"`
 }
 
 // PlayerStepError returns the owned location so rejected animations can reconcile.

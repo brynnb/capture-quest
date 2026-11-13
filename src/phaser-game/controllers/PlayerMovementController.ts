@@ -33,6 +33,30 @@ interface MovementPathStep {
   ledgeJump?: boolean;
 }
 
+interface StagedPlayerRoute {
+  abort: AbortController;
+  generation: number;
+  revision: number;
+  sourceX: number;
+  sourceY: number;
+  targetX: number;
+  targetY: number;
+  step?: PlayerStepResponse;
+  resume?: (step: PlayerStepResponse) => void;
+}
+
+interface BufferedPlayerStep {
+  step: PlayerStepResponse;
+  sequence: number;
+  generation: number;
+  intentRevision: number;
+  abort: AbortController;
+  visualFinished: boolean;
+  continued: boolean;
+  result?: PlayerStepCompleteResponse;
+  resume?: () => void;
+}
+
 interface MovementPathNode extends MovementPathStep {
   g: number;
   h: number;
@@ -125,6 +149,18 @@ export class PlayerMovementController {
   private issuedStep: PlayerStepResponse | null = null;
   private stepCompletion: Promise<{ result: PlayerStepCompleteResponse; error?: never } | { error: unknown; result?: never }> | null = null;
   private preparedStep: { step: PlayerStepResponse; sourceX: number; sourceY: number; mapId: number } | null = null;
+  private bufferedSteps: PlayerStepResponse[] = [];
+  private bufferedCurrent: BufferedPlayerStep | null = null;
+  private bufferedPending = new Map<number, BufferedPlayerStep>();
+  private bufferedSequence = 0;
+  private bufferedConfirmed = 0;
+  private bufferedUsedTokens = new Set<string>();
+  private bufferedRefill: BufferedPlayerStep | null = null;
+  private activeStepTarget: MovementPathStep | null = null;
+  private intentRevision = 0;
+  private continuingHeldMovement = false;
+  private stagedRetarget: StagedPlayerRoute | null = null;
+  private pendingRouteAdmissions = new Set<StagedPlayerRoute>();
   private stepCancellationPending = false;
   private actorReconciler: (signal: AbortSignal) => Promise<void> = async () => {};
   setActorReconciler(reconcile: (signal: AbortSignal) => Promise<void>): void { this.actorReconciler = reconcile; }
@@ -535,6 +571,15 @@ export class PlayerMovementController {
     this.emitPlayerPositionChanged();
   }
 
+  private pathOrigin(): MovementPathStep {
+    return this.activeStepTarget ?? { x: this.currentTileX, y: this.currentTileY };
+  }
+
+  private findIntentPath(x: number, y: number): MovementPathStep[] {
+    const from = this.pathOrigin();
+    return this.findPath(from.x, from.y, x, y);
+  }
+
   private queueClientMove(
     destX: number,
     destY: number,
@@ -542,8 +587,8 @@ export class PlayerMovementController {
     inputSource: "click" | "keyboard",
     activateWarpId?: number,
   ): void {
-    const path = this.findPath(this.currentTileX, this.currentTileY, destX, destY);
-    if (path.length > 0) {
+    const path = this.findIntentPath(destX, destY);
+    if (path.length > 0 || (destX === this.pathOrigin().x && destY === this.pathOrigin().y)) {
       this.queuePredictedPathMove(
         destX,
         destY,
@@ -589,6 +634,11 @@ export class PlayerMovementController {
     activateWarpId?: number,
   ): void {
     const wasMoving = this.isMoving;
+    // A new intent replaces only the unstarted suffix. The current issued/requested
+    // tile remains owned, and every caller plans from that tile's endpoint.
+    if (this.activeStepTarget) path = this.findIntentPath(destX, destY);
+    if (!this.continuingHeldMovement) this.intentRevision++;
+    this.arrivalCallback = null;
 
     this.lastInputSource = inputSource;
     this.isMoving = true;
@@ -600,6 +650,8 @@ export class PlayerMovementController {
 
     if (!wasMoving) {
       this.moveToNextTile();
+    } else {
+      this.stageRetarget();
     }
   }
 
@@ -613,8 +665,8 @@ export class PlayerMovementController {
     if (this.inputFrozenChecker() || this.facingAbort || this.serverMovementInProgress) return false;
     if (this.playerId === null || !this.mapRenderer) return false;
 
-    const path = this.findPath(this.currentTileX, this.currentTileY, destX, destY);
-    if (path.length > 0) {
+    const path = this.findIntentPath(destX, destY);
+    if (path.length > 0 || (destX === this.pathOrigin().x && destY === this.pathOrigin().y)) {
       this.queuePredictedPathMove(
         destX,
         destY,
@@ -641,13 +693,13 @@ export class PlayerMovementController {
     if (this.playerId === null || !this.mapRenderer) return false;
     if (!this.isWalkable(destX, destY)) return false;
 
-    if (this.currentTileX === destX && this.currentTileY === destY) {
+    if (!this.isMoving && this.currentTileX === destX && this.currentTileY === destY) {
       onReach();
       return true;
     }
 
-    const path = this.findPath(this.currentTileX, this.currentTileY, destX, destY);
-    if (path.length === 0) return false;
+    const path = this.findIntentPath(destX, destY);
+    if (path.length === 0 && (destX !== this.pathOrigin().x || destY !== this.pathOrigin().y)) return false;
 
     this.queuePredictedPathMove(
       destX,
@@ -1185,7 +1237,7 @@ export class PlayerMovementController {
     if (this.playerId === null || !this.mapRenderer) return false;
     if (!this.isCuttableTile(targetX, targetY)) return false;
 
-    if (this.canInteractWithTile(targetX, targetY)) {
+    if (!this.isMoving && this.canInteractWithTile(targetX, targetY)) {
       const direction = this.directionToInteractionTile(targetX, targetY);
       if (!direction) return false;
       this.currentDirection = direction;
@@ -1251,7 +1303,7 @@ export class PlayerMovementController {
   }
 
   private requestFacing(direction: MovementDirection): void {
-    if (this.playerId === null || this.stepAbort || this.serverMovementInProgress) return;
+    if (this.playerId === null || this.stepAbort || this.pendingRouteAdmissions.size > 0 || this.serverMovementInProgress) return;
     const characterId = usePlayerCharacterStore.getState().characterProfile.id;
     const request = { mapId: this.currentMapId, fromX: this.currentTileX, fromY: this.currentTileY, direction };
     const key = [request.mapId, request.fromX, request.fromY, direction].join(":");
@@ -1483,18 +1535,13 @@ export class PlayerMovementController {
       if (!this.isWalkable(candidate.x, candidate.y)) continue;
 
       if (
-        candidate.x === this.currentTileX &&
-        candidate.y === this.currentTileY
+        candidate.x === this.pathOrigin().x &&
+        candidate.y === this.pathOrigin().y
       ) {
         return { ...candidate, pathLength: 0 };
       }
 
-      const path = this.findPath(
-        this.currentTileX,
-        this.currentTileY,
-        candidate.x,
-        candidate.y,
-      );
+      const path = this.findIntentPath(candidate.x, candidate.y);
       if (path.length === 0) continue;
       if (!best || path.length < best.pathLength) {
         best = { ...candidate, pathLength: path.length };
@@ -1507,19 +1554,15 @@ export class PlayerMovementController {
     walkTarget: { x: number; y: number },
   ): boolean {
     if (
+      !this.isMoving &&
       walkTarget.x === this.currentTileX &&
       walkTarget.y === this.currentTileY
     ) {
       return false;
     }
 
-    const path = this.findPath(
-      this.currentTileX,
-      this.currentTileY,
-      walkTarget.x,
-      walkTarget.y,
-    );
-    if (path.length === 0) {
+    const path = this.findIntentPath(walkTarget.x, walkTarget.y);
+    if (path.length === 0 && (walkTarget.x !== this.pathOrigin().x || walkTarget.y !== this.pathOrigin().y)) {
       return false;
     }
 
@@ -1541,7 +1584,7 @@ export class PlayerMovementController {
     if (this.inputFrozenChecker()) return false;
     if (this.playerId === null || !this.mapRenderer) return false;
 
-    if (this.canInteractWithTile(targetX, targetY)) {
+    if (!this.isMoving && this.canInteractWithTile(targetX, targetY)) {
       this.faceInteractionTarget(targetX, targetY);
       onReach();
       return true;
@@ -1587,7 +1630,7 @@ export class PlayerMovementController {
     const target = getTarget();
     if (!target) return false;
 
-    if (this.canInteractWithTile(target.x, target.y)) {
+    if (!this.isMoving && this.canInteractWithTile(target.x, target.y)) {
       this.faceInteractionTarget(target.x, target.y);
       onReach();
       return true;
@@ -1699,9 +1742,8 @@ export class PlayerMovementController {
    * Handle click on a tile using client-side pathing.
    */
   handleTileClick(worldX: number, worldY: number): void {
-    // A new click cannot replace a server-issued step while its animation or
-    // completion is outstanding. Scene snaps retire it explicitly instead.
-    if (this.stepAbort || this.facingAbort || this.serverMovementInProgress || this.inputFrozenChecker()) {
+    // Retarget the unstarted suffix while preserving the current issued step.
+    if (this.facingAbort || this.serverMovementInProgress || this.inputFrozenChecker()) {
       return;
     }
 
@@ -1811,13 +1853,8 @@ export class PlayerMovementController {
     debugPlayerMovement(
       `[PlayerMovement] Starting client path on map ${this.currentMapId}: destination (${targetTileX}, ${targetTileY})`,
     );
-    const path = this.findPath(
-      this.currentTileX,
-      this.currentTileY,
-      targetTileX,
-      targetTileY,
-    );
-    if (path.length === 0) {
+    const path = this.findIntentPath(targetTileX, targetTileY);
+    if (path.length === 0 && (targetTileX !== this.pathOrigin().x || targetTileY !== this.pathOrigin().y)) {
       this.queueClientMove(
         targetTileX,
         targetTileY,
@@ -1873,6 +1910,11 @@ export class PlayerMovementController {
         if (this.serverPathFinished) this.stopMovement(true);
         return;
       }
+      if (this.bufferedCurrent) {
+        this.finishBufferedVisualStep(this.bufferedCurrent, x, y);
+        return;
+      }
+      this.activeStepTarget = null;
       const issued = this.issuedStep;
       if (issued) {
         const abort = this.stepAbort;
@@ -1938,6 +1980,11 @@ export class PlayerMovementController {
         throw new Error("Movement animation completed without an issued step");
       }
 
+      this.finishArrivedStep(x, y);
+    }
+  }
+
+  private finishArrivedStep(x: number, y: number): void {
       // Finish the current visual step, then discard any queued user path as
       // soon as a panel, dialogue, battle, shop, or modal takes input focus.
       // Cutscenes are excluded because their scripted movement must continue.
@@ -2001,8 +2048,8 @@ export class PlayerMovementController {
       if (!this.isMoving) {
         this.continueHeldKeyboardMove();
         if (!this.isMoving) this.cancelPreparedStep();
+        if (!this.isMoving && this.pendingRouteAdmissions.size > 0) this.isMoving = true;
       }
-    }
   }
 
   private continueHeldKeyboardMove(): void {
@@ -2019,7 +2066,9 @@ export class PlayerMovementController {
       return;
     }
 
-    this.handleKeyboardMove(heldDirection);
+    this.continuingHeldMovement = true;
+    try { this.handleKeyboardMove(heldDirection); }
+    finally { this.continuingHeldMovement = false; }
   }
 
   /**
@@ -2039,6 +2088,7 @@ export class PlayerMovementController {
     }
 
     const nextTile = this.currentPath.shift()!;
+    this.activeStepTarget = nextTile;
     debugPlayerMovement(
       `[PlayerMovement] Moving to next tile: (${nextTile.x}, ${nextTile.y})`,
     );
@@ -2061,6 +2111,11 @@ export class PlayerMovementController {
       if (step.mapId !== mapId || step.x !== nextTile.x || step.y !== nextTile.y || step.direction !== direction) {
         throw new Error("Movement destination disagrees with server collision data");
       }
+      if (step.buffered) {
+        this.bufferedSteps = step.continuationSteps?.slice() ?? [];
+        this.beginBufferedStep(step, sourceX, sourceY, generation, abort);
+        return;
+      }
       this.issuedStep = step;
       this.currentDirection = step.direction;
       // Commit during presentation, not after it. The server owns the earliest
@@ -2073,6 +2128,25 @@ export class PlayerMovementController {
       this.stepCompletion = completion.then(result => ({ result }), error => ({ error }));
       mapRenderer.updateActorPosition(playerId, sourceX, sourceY, step.x, step.y, step.direction, undefined, step.ledgeJump ? { ledgeJump: true } : undefined);
     };
+    const staged = this.stagedRetarget;
+    if (staged && staged.revision === this.intentRevision && staged.sourceX === sourceX && staged.sourceY === sourceY && staged.targetX === nextTile.x && staged.targetY === nextTile.y) {
+      const accept = (step: PlayerStepResponse) => {
+        if (this.stagedRetarget === staged) this.stagedRetarget = null;
+        this.pendingRouteAdmissions.delete(staged);
+        try { begin(step); } catch (error) { this.handleStepFailure(error); }
+      };
+      if (staged.step) accept(staged.step); else staged.resume = accept;
+      return;
+    }
+    const buffered = this.bufferedSteps[0];
+    if (buffered && buffered.mapId === mapId && buffered.x === nextTile.x && buffered.y === nextTile.y && buffered.direction === direction) {
+      this.bufferedSteps.shift();
+      this.beginBufferedStep(buffered, sourceX, sourceY, generation, abort);
+      return;
+    }
+    // A retarget or held-key turn replaces unused authorizations. The request is
+    // ordered after already-submitted completions, so its source is authoritative.
+    this.bufferedSteps = [];
     const prepared = this.preparedStep;
     this.preparedStep = null;
     if (prepared && prepared.mapId === mapId && prepared.sourceX === sourceX && prepared.sourceY === sourceY
@@ -2082,7 +2156,7 @@ export class PlayerMovementController {
     }
     // A turn or changed path can leave the prepared token unused. Retire that
     // exact token before requesting another, so rejection cannot strand it.
-    const request = () => requestPlayerStep({ mapId, fromX: sourceX, fromY: sourceY, direction }, abort.signal);
+    const request = () => requestPlayerStep({ mapId, fromX: sourceX, fromY: sourceY, direction, lookAhead: this.lookAheadDirections(nextTile, 7) }, abort.signal);
     let accepted: Promise<PlayerStepResponse | undefined>;
     if (prepared) {
       const intent = this.activeMoveDestination;
@@ -2115,6 +2189,246 @@ export class PlayerMovementController {
     });
   }
 
+
+  // The server grants a short collision-checked route, not autonomous movement.
+  // Starting a visual tile submits only that tile. Unused grants never move the
+  // player, so releasing a key or changing destination cannot overshoot the intent.
+  private lookAheadDirections(from: MovementPathStep, limit: number): MovementDirection[] {
+    if (limit <= 0 || from.ledgeJump || this.inputFrozenChecker() || this.warpAtProvider(from.x, from.y)) return [];
+    const directions: MovementDirection[] = [];
+    let x = from.x, y = from.y;
+    if (this.lastInputSource === "keyboard") {
+      const held = this.heldKeyboardDirectionProvider();
+      if (!held) return [];
+      const { dx, dy } = this.directionDelta(held);
+      for (let i = 0; i < limit; i++) {
+        const nx = x + dx, ny = y + dy;
+        if (!this.isWalkable(nx, ny) || this.warpAtProvider(nx, ny)) break;
+        directions.push(held); x = nx; y = ny;
+      }
+      return directions;
+    }
+    const at = this.currentPath.findIndex(tile => tile.x === x && tile.y === y);
+    const remaining = at < 0 ? this.currentPath : this.currentPath.slice(at + 1);
+    for (const tile of remaining) {
+      if (directions.length >= limit || tile.ledgeJump || Math.abs(tile.x - x) + Math.abs(tile.y - y) !== 1 || !this.isWalkable(tile.x, tile.y)) break;
+      directions.push(tile.x > x ? "RIGHT" : tile.x < x ? "LEFT" : tile.y > y ? "DOWN" : "UP");
+      x = tile.x; y = tile.y;
+      if (this.warpAtProvider(x, y)) break;
+    }
+    return directions;
+  }
+
+  private beginBufferedStep(step: PlayerStepResponse, sourceX: number, sourceY: number, generation: number, abort: AbortController): void {
+    if (abort.signal.aborted || generation !== this.movementGeneration || this.playerId === null || !this.mapRenderer) return;
+    const entry: BufferedPlayerStep = {
+      step, sequence: ++this.bufferedSequence, generation,
+      intentRevision: this.intentRevision, abort, visualFinished: false, continued: false,
+    };
+    this.issuedStep = step;
+    this.stepAbort = abort;
+    this.currentDirection = step.direction;
+    this.bufferedCurrent = entry;
+    this.bufferedPending.set(entry.sequence, entry);
+    this.bufferedUsedTokens.add(step.stepToken);
+    if (this.bufferedUsedTokens.size > 64) this.bufferedUsedTokens.delete(this.bufferedUsedTokens.values().next().value!);
+    const tail = this.bufferedSteps[this.bufferedSteps.length - 1] ?? step;
+    const lookAhead = !this.bufferedRefill && this.bufferedSteps.length <= 3
+      ? this.lookAheadDirections(tail, 7 - this.bufferedSteps.length) : [];
+    if (lookAhead.length) this.bufferedRefill = entry;
+    // Do not retry a historical token in a healthy stream: a later confirmed
+    // child proves all its predecessors committed. Unknown outcomes use a read.
+    void completePlayerStep(step.stepToken, abort.signal, undefined, {
+      retryOnTimeout: false,
+      ...(lookAhead.length ? { afterStepToken: tail.stepToken, lookAhead } : {}),
+    }).then(result => this.receiveBufferedCompletion(entry, result)).catch(error => {
+      if (generation !== this.movementGeneration || abort.signal.aborted || entry.sequence <= this.bufferedConfirmed) return;
+      void this.recoverBufferedMovement(entry, error);
+    });
+    this.mapRenderer.updateActorPosition(this.playerId, sourceX, sourceY, step.x, step.y, step.direction, undefined, step.ledgeJump ? { ledgeJump: true } : undefined);
+  }
+
+  private receiveBufferedCompletion(entry: BufferedPlayerStep, result: PlayerStepCompleteResponse): void {
+    if (entry.generation !== this.movementGeneration || entry.abort.signal.aborted) return;
+    if (result.cancelled) {
+      void this.recoverBufferedMovement(entry, new Error("Movement completion was unexpectedly cancelled"));
+      return;
+    }
+    if (result.replayed) {
+      if (entry.sequence < this.bufferedConfirmed) return;
+      void this.recoverBufferedMovement(entry, new Error("Movement receipt needs current position recovery"));
+      return;
+    }
+    entry.result = result;
+    this.bufferedConfirmed = Math.max(this.bufferedConfirmed, entry.sequence);
+    // Reliable commands are serialized. A confirmed child also settles an older
+    // lost reply, without resending a token that might retire a live continuation.
+    for (const [sequence, pending] of this.bufferedPending) {
+      if (sequence < entry.sequence) {
+        this.bufferedPending.delete(sequence);
+        if (this.bufferedRefill === pending) this.bufferedRefill = null;
+        pending.abort.abort();
+      }
+    }
+    this.bufferedPending.delete(entry.sequence);
+    if (this.bufferedRefill === entry) this.bufferedRefill = null;
+    if (entry.intentRevision === this.intentRevision && !result.stopPath) {
+      const known = new Set(this.bufferedSteps.map(step => step.stepToken));
+      for (const step of result.continuationSteps ?? []) {
+        if (!this.bufferedUsedTokens.has(step.stepToken) && !known.has(step.stepToken)) {
+          this.bufferedSteps.push(step);
+          known.add(step.stepToken);
+        }
+      }
+    }
+    if (result.stopPath || result.mapId !== entry.step.mapId || result.x !== entry.step.x || result.y !== entry.step.y) {
+      this.bufferedSteps = [];
+      this.currentPath = [];
+      if (entry.continued) {
+        this.projectBufferedResult(result);
+        return;
+      }
+    }
+    entry.resume?.();
+  }
+
+  private projectBufferedResult(result: PlayerStepCompleteResponse): void {
+    const actorId = this.playerId;
+    this.stopMovement(true);
+    if (result.mapId === this.currentMapId) {
+      this.syncPosition(result.x, result.y);
+      this.syncDirection(result.direction);
+      if (actorId !== null) this.mapRenderer?.snapActorPosition(actorId, result.x, result.y, result.direction);
+    } else {
+      window.dispatchEvent(new CustomEvent("warpTileTeleport", { detail: { ...result, serverCommitted: true, sfxAlreadyPlayed: true } }));
+    }
+  }
+
+  private async recoverBufferedMovement(entry: BufferedPlayerStep, error: unknown): Promise<void> {
+    if (entry.generation !== this.movementGeneration || entry.sequence <= this.bufferedConfirmed) return;
+    this.stopMovement(true);
+    this.movementRecoveryRequired = true;
+    const generation = this.movementGeneration;
+    const abort = new AbortController();
+    this.stepAbort = abort;
+    try {
+      const owned = await readOwnedPlayerPosition(abort.signal);
+      if (generation !== this.movementGeneration || abort.signal.aborted) return;
+      this.projectOwnedPosition(owned);
+    } catch (recoveryError) {
+      if (generation !== this.movementGeneration || abort.signal.aborted) return;
+      console.error("[PlayerMovement] Could not recover movement; reconnect before moving.", error, recoveryError);
+    }
+  }
+
+  private finishBufferedVisualStep(entry: BufferedPlayerStep, x: number, y: number): void {
+    if (entry.step.x !== x || entry.step.y !== y || entry.step.mapId !== this.currentMapId) throw new Error("Movement animation disagrees with the issued step");
+    entry.visualFinished = true;
+    const finish = () => {
+      if (entry.generation !== this.movementGeneration || this.bufferedCurrent !== entry) return;
+      const result = entry.result;
+      if (result && (result.stopPath || result.mapId !== entry.step.mapId || result.x !== entry.step.x || result.y !== entry.step.y)) {
+        this.projectBufferedResult(result);
+        return;
+      }
+      this.bufferedCurrent = null;
+      this.issuedStep = null;
+      this.stepAbort = null;
+      this.stepCompletion = null;
+      this.activeStepTarget = null;
+      this.finishArrivedStep(x, y);
+    };
+    const destination = this.activeMoveDestination;
+    const atDestination = destination?.mapId === this.currentMapId && destination.x === x && destination.y === y;
+    const canContinue = !this.inputFrozenChecker() && !this.warpAtProvider(x, y)
+      && !(atDestination && this.lastInputSource !== "keyboard")
+      && this.bufferedSequence - this.bufferedConfirmed < 4;
+    if (entry.result || canContinue) {
+      entry.continued = !entry.result;
+      finish();
+    } else {
+      // Arrival callbacks, warps and uncertain network gaps require confirmed
+      // state. Ordinary intermediate boundaries consume their grant immediately.
+      entry.resume = finish;
+    }
+  }
+
+  private finishRouteAdmission(staged: StagedPlayerRoute): void {
+    this.pendingRouteAdmissions.delete(staged);
+    if (staged.generation !== this.movementGeneration || staged.abort.signal.aborted) return;
+    if (this.issuedStep || this.activeStepTarget || this.stepCancellationPending || this.serverMovementInProgress) return;
+    if (this.activeMoveDestination && this.currentPath.length > 0 && !this.inputFrozenChecker()) {
+      this.isMoving = true;
+      this.moveToNextTile();
+    } else {
+      this.isMoving = this.pendingRouteAdmissions.size > 0;
+    }
+  }
+
+  private retireRouteAdmission(staged: StagedPlayerRoute): void {
+    if (!staged.step) return; // Its correlated reply will retire the exact token.
+    const generation = staged.generation;
+    void cancelPlayerStep(staged.step.stepToken, staged.abort.signal).then(result => {
+      if (generation !== this.movementGeneration || staged.abort.signal.aborted) return;
+      if (!result.cancelled) throw new Error("Unused route was not cancelled");
+      this.finishRouteAdmission(staged);
+    }).catch(error => {
+      if (generation !== this.movementGeneration || staged.abort.signal.aborted) return;
+      this.movementRecoveryRequired = true;
+      this.handleStepFailure(error);
+    });
+  }
+
+  private stageRetarget(): void {
+    // Keep obsolete admissions correlated until their tokens are known. Aborting
+    // a local listener cannot retract an authorization already issued remotely.
+    const previous = this.stagedRetarget;
+    this.stagedRetarget = null;
+    if (previous?.step) this.retireRouteAdmission(previous);
+    const current = this.bufferedCurrent;
+    const first = this.currentPath[0];
+    if (!current || current.visualFinished || !first || !this.activeStepTarget) return;
+    const from = this.activeStepTarget;
+    const dx = first.x - from.x, dy = first.y - from.y;
+    if (Math.abs(dx) + Math.abs(dy) !== 1) return;
+    const direction: MovementDirection = dx > 0 ? "RIGHT" : dx < 0 ? "LEFT" : dy > 0 ? "DOWN" : "UP";
+    // Reusing an unchanged authorized prefix needs no new network admission.
+    const next = this.bufferedSteps[0];
+    if (next?.x === first.x && next.y === first.y && next.direction === direction) return;
+    const abort = new AbortController();
+    const staged: StagedPlayerRoute = {
+      abort, generation: this.movementGeneration, revision: this.intentRevision,
+      sourceX: from.x, sourceY: from.y, targetX: first.x, targetY: first.y,
+    };
+    this.stagedRetarget = staged;
+    this.pendingRouteAdmissions.add(staged);
+    this.bufferedSteps = [];
+    void requestPlayerStep({
+      mapId: this.currentMapId, fromX: from.x, fromY: from.y, direction,
+      lookAhead: this.lookAheadDirections(first, 7),
+    }, abort.signal).then(step => {
+      if (abort.signal.aborted || staged.generation !== this.movementGeneration) return;
+      staged.step = step;
+      if (staged.revision !== this.intentRevision || this.stagedRetarget !== staged) {
+        this.retireRouteAdmission(staged);
+        return;
+      }
+      staged.resume?.(step);
+    }).catch(error => {
+      if (abort.signal.aborted || staged.generation !== this.movementGeneration) return;
+      if (staged.revision !== this.intentRevision) {
+        if (error instanceof CorrelatedResponseError) this.finishRouteAdmission(staged);
+        else {
+          // A lost admission reply does not prove that no token was issued.
+          this.movementRecoveryRequired = true;
+          this.handleStepFailure(error);
+        }
+        return;
+      }
+      this.handleStepFailure(error);
+    });
+  }
+
   private continuationDirection(step: PlayerStepResponse): MovementDirection | undefined {
     if (this.inputFrozenChecker() || this.arrivalCallback || this.warpAtProvider(step.x, step.y)) return undefined;
     const next = this.currentPath[0];
@@ -2135,6 +2449,11 @@ export class PlayerMovementController {
   }
 
   private cancelPreparedStep(): void {
+    const buffered = this.bufferedSteps.shift();
+    if (buffered) {
+      this.bufferedSteps = [];
+      this.preparedStep = { step: buffered, sourceX: this.currentTileX, sourceY: this.currentTileY, mapId: this.currentMapId };
+    }
     const prepared = this.preparedStep;
     if (!prepared) return;
     this.preparedStep = null;
@@ -2149,6 +2468,13 @@ export class PlayerMovementController {
       this.stepCancellationPending = false;
       this.stepAbort = null;
       this.isMoving = false;
+      if (this.activeMoveDestination && this.currentPath.length > 0 && !this.inputFrozenChecker()) {
+        this.isMoving = true;
+        this.moveToNextTile();
+      } else {
+        this.continueHeldKeyboardMove();
+        if (!this.isMoving && this.pendingRouteAdmissions.size > 0) this.isMoving = true;
+      }
     }).catch(error => {
       if (generation !== this.movementGeneration || abort.signal.aborted) return;
       this.movementRecoveryRequired = true;
@@ -2440,6 +2766,18 @@ export class PlayerMovementController {
       // replacement scene creates a fresh owner after loading owned state.
       this.serverMovementInProgress = false;
       this.serverPathFinished = true;
+      for (const pending of this.bufferedPending.values()) pending.abort.abort();
+      this.bufferedPending.clear();
+      this.bufferedSteps = [];
+      this.bufferedCurrent = null;
+      this.bufferedRefill = null;
+      for (const staged of this.pendingRouteAdmissions) staged.abort.abort();
+      this.pendingRouteAdmissions.clear();
+      this.stagedRetarget = null;
+      this.bufferedSequence = 0;
+      this.bufferedConfirmed = 0;
+      this.bufferedUsedTokens.clear();
+      this.activeStepTarget = null;
       this.facingAbort?.abort();
       this.facingAbort = null;
       this.facingRequestKey = null;
@@ -2447,7 +2785,7 @@ export class PlayerMovementController {
     // Input focus discards the future path but lets the current issued animation
     // finish and acknowledge through its issued token.
     // Scene retirement and authoritative snaps explicitly retire that animation.
-    if (retireIssued || (!this.issuedStep && !this.stepCancellationPending)) {
+    if (retireIssued || (!this.issuedStep && !this.stepCancellationPending && this.pendingRouteAdmissions.size === 0)) {
       this.movementGeneration++;
       this.stepAbort?.abort();
       this.stepAbort = null;
@@ -2458,11 +2796,17 @@ export class PlayerMovementController {
         this.stepCancellationPending = false;
       }
     }
+    this.intentRevision++;
     this.currentPath = [];
     // Keep the current issued animation/completion exclusive until its response.
-    this.isMoving = this.issuedStep !== null || this.serverMovementInProgress || this.stepCancellationPending;
+    this.isMoving = this.issuedStep !== null || this.serverMovementInProgress || this.stepCancellationPending || this.pendingRouteAdmissions.size > 0;
     this.arrivalCallback = null;
     this.activeMoveDestination = null;
+    if (!retireIssued && this.stagedRetarget) {
+      const staged = this.stagedRetarget;
+      this.stagedRetarget = null;
+      if (staged.step) this.retireRouteAdmission(staged);
+    }
     if (!retireIssued && !this.issuedStep) this.cancelPreparedStep();
   }
 

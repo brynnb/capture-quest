@@ -319,9 +319,12 @@ export interface PlayerStepRequest {
   fromX: number;
   fromY: number;
   direction: string;
+  lookAhead?: string[];
   requestId: string;
 }
 export interface PlayerStepResponse {
+  buffered?: boolean;
+  continuationSteps?: PlayerStepResponse[];
   success: true;
   requestId: string;
   stepToken: string;
@@ -332,18 +335,22 @@ export interface PlayerStepResponse {
   ledgeJump: boolean;
 }
 /**
- * PlayerStepCompleteRequest completes an issued token, never client coordinates.
- * Completion may arrive during its animation; the server enforces the not-before
- * time. NextDirection prepares at most one uncommitted continuation after commit.
- * Cancel retires only the matching uncommitted token without moving the player.
+ * PlayerStepCompleteRequest completes one issued token, never client coordinates.
+ * The server enforces per-tile pacing and revalidates collision/effects at commit.
+ * LookAhead extends the exact observed tail within a bounded authorization window;
+ * NextDirection remains compatible with older clients' single prepared step.
+ * Cancel retires only the matching unused suffix without moving the player.
  */
 export interface PlayerStepCompleteRequest {
   stepToken: string;
   requestId: string;
   nextDirection?: string;
+  afterStepToken?: string;
+  lookAhead?: string[];
   cancel?: boolean;
 }
 export interface PlayerStepCompleteResponse {
+  continuationSteps?: PlayerStepResponse[];
   replayed?: boolean;
   cancelled?: boolean;
   stopPath?: boolean;

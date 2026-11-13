@@ -26,8 +26,9 @@ func validMovementToken(token string) bool {
 	return err == nil && hex.EncodeToString(decoded) == token
 }
 
-// This is bounded by the one-outstanding-step protocol. Unconfirmed acceptance,
-// failed commits, forced points and teleports cannot replace a completed receipt.
+// Keep the latest committed token. Ordered buffered movement settles older
+// tokens through confirmed children; uncertain recovery reads current state.
+// Unused grants, failed commits, forced points and teleports cannot replace it.
 func saveMovementReceiptIn(tx db.DBTX, charID int64, token string, result movementStepResult) error {
 	if err := db.RequireTransaction(tx); err != nil {
 		return err

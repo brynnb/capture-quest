@@ -287,7 +287,7 @@ describe("issued player movement lifecycle", () => {
     controller.handleKeyboardMove("DOWN");
     expect(updates).toHaveLength(0);
     await vi.waitFor(() => expect(updates).toHaveLength(1));
-    expect(movement.requestPlayerStep).toHaveBeenCalledWith({ mapId: 9999, fromX: 10, fromY: 0, direction: "DOWN" }, expect.any(AbortSignal));
+    expect(movement.requestPlayerStep).toHaveBeenCalledWith({ mapId: 9999, fromX: 10, fromY: 0, direction: "DOWN", lookAhead: [] }, expect.any(AbortSignal));
     controller.onStepComplete(1, 10, 2, "DOWN");
     await vi.waitFor(() => expect(movement.completePlayerStep).toHaveBeenCalledWith("issued", expect.any(AbortSignal)));
     expect(legacy).not.toHaveBeenCalledWith(expect.anything(), OpCodes.PhaserPlayerPositionUpdate);

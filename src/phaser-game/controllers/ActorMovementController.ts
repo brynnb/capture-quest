@@ -23,13 +23,29 @@ interface MovementUpdate {
   serverControlled?: boolean;
 }
 
+// One segment of a continuous animation. Frame time left over at its end is
+// consumed by the next segment instead of being discarded by a new tween.
+interface ActorMotion {
+  update: MovementUpdate;
+  startX: number;
+  startY: number;
+  targetX: number;
+  targetY: number;
+  direction: string;
+  duration: number;
+  elapsed: number;
+  alternateFlip: boolean;
+  isLedgeJump: boolean;
+}
+
 // State for a tracked actor
 interface ActorState {
   sprite: Phaser.GameObjects.Sprite;
   actor: PhaserActor;
   queue: MovementUpdate[];
   isAnimating: boolean;
-  currentTween: Phaser.Tweens.Tween | null;
+  currentMotion: ActorMotion | null;
+  motionGeneration: number;
   // Track position independently since actor object may be mutated externally
   currentX: number;
   currentY: number;
@@ -88,6 +104,18 @@ export class ActorMovementController {
 
   constructor(scene: Scene) {
     this.scene = scene;
+    this.scene.events.on("update", this.advanceAnimations, this);
+    this.scene.events.once("shutdown", this.shutdown, this);
+    this.scene.events.once("destroy", this.shutdown, this);
+  }
+
+  private shutdown(): void {
+    this.scene.events.off("update", this.advanceAnimations, this);
+    this.scene.events.off("shutdown", this.shutdown, this);
+    this.scene.events.off("destroy", this.shutdown, this);
+    for (const actorId of this.actorStates.keys()) {
+      this.unregisterActor(actorId);
+    }
   }
 
   /**
@@ -99,12 +127,15 @@ export class ActorMovementController {
     nameLabel?: Phaser.GameObjects.Text,
     chatBubble?: Phaser.GameObjects.Container,
   ): void {
+    // A fresh sprite registration supersedes the old animation and shadow.
+    this.unregisterActor(actor.id);
     this.actorStates.set(actor.id, {
       sprite,
       actor,
       queue: [],
       isAnimating: false,
-      currentTween: null,
+      currentMotion: null,
+      motionGeneration: 0,
       // Store initial position independently
       currentX: actor.x ?? 0,
       currentY: actor.y ?? 0,
@@ -128,7 +159,7 @@ export class ActorMovementController {
   unregisterActor(actorId: number): void {
     const state = this.actorStates.get(actorId);
     if (state) {
-      if (state.currentTween) state.currentTween.stop();
+      state.currentMotion = null;
       this.destroyJumpShadow(state);
     }
     this.actorStates.delete(actorId);
@@ -310,6 +341,7 @@ export class ActorMovementController {
    */
   private processQueue(actorId: number): void {
     const state = this.actorStates.get(actorId);
+    if (state?.currentMotion) return;
     if (!state || state.queue.length === 0) {
       if (state) {
         state.isAnimating = false;
@@ -368,14 +400,13 @@ export class ActorMovementController {
       else if (targetX > currentX) moveDirection = "RIGHT";
     }
 
-    // Calculate target pixel positions
-    const targetPosX = targetX * TILE_SIZE + TILE_SIZE / 2;
-    const targetPosY = targetY * TILE_SIZE + TILE_SIZE / 2;
-
-    // Determine animation duration
-    let duration =
-      (state.actor.moveSpeed || ActorMovementController.DEFAULT_MOVE_SPEED) *
-      Math.max(1, tileDistance);
+    // Every segment needs a finite, positive duration for frame-time budgeting.
+    const configuredSpeed = state.actor.moveSpeed;
+    const moveSpeed =
+      configuredSpeed && Number.isFinite(configuredSpeed) && configuredSpeed > 0
+        ? configuredSpeed
+        : ActorMovementController.DEFAULT_MOVE_SPEED;
+    let duration = moveSpeed * Math.max(1, tileDistance);
 
     // Speed up if queue is getting deep
     if (
@@ -399,70 +430,118 @@ export class ActorMovementController {
 
     // Start with standing frame facing the move direction
     this.updateSpriteFrame(state.sprite, "STAY", moveDirection);
-    const jumpShadow = isLedgeJump
-      ? this.createJumpShadow(state, currentX, currentY)
-      : null;
+    if (isLedgeJump) this.createJumpShadow(state, currentX, currentY);
 
-    // Create the movement tween
-    state.currentTween = this.scene.tweens.add({
-      targets: state.sprite,
-      x: targetPosX,
-      y: targetPosY,
-      duration: duration,
-      ease: "Linear",
-      onUpdate: (tween) => {
-        // Walk cycle: 2 phases per tile
-        //   First half (0-50%):  Standing frame
-        //   Second half (50-100%): Walking frame (leg out)
-        // For UP/DOWN, alternateFlip toggles between tiles for foot swap
-        const progress = tween.progress;
-        const groundX = state.sprite.x;
-        const groundY = state.sprite.y;
-        if (progress >= 0.5) {
-          this.updateSpriteFrame(state.sprite, "WALK", moveDirection, alternateFlip);
-        } else {
-          this.updateSpriteFrame(state.sprite, "STAY", moveDirection);
-        }
-        if (jumpShadow) {
-          jumpShadow.setPosition(
-            groundX,
-            groundY + ActorMovementController.LEDGE_JUMP_SHADOW_OFFSET_Y,
-          );
-          state.sprite.setY(
-            groundY - ActorMovementController.ledgeJumpYOffset(progress),
-          );
-        }
+    state.currentMotion = {
+      update,
+      startX: currentX,
+      startY: currentY,
+      targetX,
+      targetY,
+      direction: moveDirection,
+      duration,
+      elapsed: 0,
+      alternateFlip,
+      isLedgeJump,
+    };
+  }
 
-        // Sync attached objects to sprite position
-        this.syncAttachedObjects(state);
-      },
-      onComplete: () => {
-        // Update our tracked position
-        state.currentX = targetX;
-        state.currentY = targetY;
-        state.currentDirection = moveDirection;
-        state.actor.x = targetX;
-        state.actor.y = targetY;
-        state.actor.actionDirection = moveDirection;
-        state.currentTween = null;
-        state.sprite.setY(targetPosY);
+  /**
+   * Advance every actor from one scene clock. A tile boundary is an event along
+   * the route, not a reason to start another timer: consume its remaining frame
+   * time immediately in the next queued (or synchronously supplied) step.
+   */
+  private advanceAnimations(_time: number, delta: number): void {
+    if (!Number.isFinite(delta) || delta <= 0) return;
+
+    for (const [actorId, state] of Array.from(this.actorStates.entries())) {
+      let remainingTime = delta;
+      while (state.currentMotion && remainingTime > 0) {
+        const motion = state.currentMotion;
+        const consumed = Math.min(
+          remainingTime,
+          motion.duration - motion.elapsed,
+        );
+        motion.elapsed += consumed;
+        remainingTime -= consumed;
+        // Fractional frame times must not defer completion by a whole frame
+        // when only floating-point rounding separates us from the endpoint.
+        if (motion.duration - motion.elapsed < 1e-7) {
+          motion.elapsed = motion.duration;
+        }
+        this.renderMotion(state, motion);
+
+        if (motion.elapsed < motion.duration) break;
+
+        state.currentX = motion.targetX;
+        state.currentY = motion.targetY;
+        state.currentDirection = motion.direction;
+        state.actor.x = motion.targetX;
+        state.actor.y = motion.targetY;
+        state.actor.actionDirection = motion.direction;
+        state.currentMotion = null;
         this.destroyJumpShadow(state);
 
-        // Sync attached objects to final position
-        this.syncAttachedObjects(state);
+        // Keep isAnimating true while notifying the controller, so it can add
+        // the next authorized step before we decide whether this route ended.
+        const generation = state.motionGeneration;
+        this.onStepComplete?.(
+          actorId,
+          motion.targetX,
+          motion.targetY,
+          motion.direction,
+          motion.update.serverControlled ? "serverStep" : "step",
+        );
 
-        // Notify the player controller first. It can synchronously enqueue the
-        // next held-key/path step while this actor is still marked animating.
-        // That lets processQueue continue without an artificial idle delay,
-        // while a genuinely finished path immediately settles on the correct
-        // directional standing frame.
-        if (this.onStepComplete) {
-          this.onStepComplete(actorId, targetX, targetY, moveDirection, update.serverControlled ? "serverStep" : "step");
+        // Snaps, unregisters and replacement sprites retire this route. Its
+        // leftover frame time must never advance a newly started animation.
+        if (
+          this.actorStates.get(actorId) !== state ||
+          state.motionGeneration !== generation
+        ) {
+          break;
         }
         this.processQueue(actorId);
         this.resolvePathCompletions(actorId);
-      },
-    });
+        if (
+          this.actorStates.get(actorId) !== state ||
+          state.motionGeneration !== generation
+        ) {
+          break;
+        }
+      }
+    }
+  }
+
+  private renderMotion(state: ActorState, motion: ActorMotion): void {
+    const progress = motion.elapsed / motion.duration;
+    const groundX =
+      (motion.startX + (motion.targetX - motion.startX) * progress) *
+        TILE_SIZE +
+      TILE_SIZE / 2;
+    const groundY =
+      (motion.startY + (motion.targetY - motion.startY) * progress) *
+        TILE_SIZE +
+      TILE_SIZE / 2;
+
+    state.sprite.setX(groundX);
+    state.sprite.setY(
+      groundY -
+        (motion.isLedgeJump
+          ? ActorMovementController.ledgeJumpYOffset(progress)
+          : 0),
+    );
+    this.updateSpriteFrame(
+      state.sprite,
+      progress >= 0.5 ? "WALK" : "STAY",
+      motion.direction,
+      motion.alternateFlip,
+    );
+    state.jumpShadow?.setPosition(
+      groundX,
+      groundY + ActorMovementController.LEDGE_JUMP_SHADOW_OFFSET_Y,
+    );
+    this.syncAttachedObjects(state);
   }
 
   private createJumpShadow(
@@ -616,11 +695,9 @@ export class ActorMovementController {
     const state = this.actorStates.get(actorId);
     if (!state) return;
 
-    // Stop current animation
-    if (state.currentTween) {
-      state.currentTween.stop();
-      state.currentTween = null;
-    }
+    // Retire this route, including any frame time still being consumed.
+    state.currentMotion = null;
+    state.motionGeneration++;
     this.destroyJumpShadow(state);
     // Clear queue
     state.queue = [];
@@ -766,10 +843,7 @@ export class ActorMovementController {
         continue;
       }
 
-      if (state.currentTween) {
-        state.currentTween.stop();
-      }
-      this.actorStates.delete(id);
+      this.unregisterActor(id);
     }
   }
 }
