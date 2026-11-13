@@ -1,4 +1,5 @@
 import unittest
+import subprocess
 import sys
 from pathlib import Path
 
@@ -46,6 +47,16 @@ class DeploymentClassifierTest(unittest.TestCase):
         self.assertEqual(classify_paths([], "frontend")["mode"], "frontend")
         self.assertEqual(classify_paths([], "backend")["mode"], "backend")
         self.assertEqual(classify_paths([], reset=True)["mode"], "full")
+
+    def test_manual_code_cli_activates_both_components_without_import(self) -> None:
+        script = Path(__file__).resolve().parent / "classify_deployment.py"
+        output = subprocess.check_output([sys.executable, str(script), "--mode", "code"], text=True)
+        result = dict(line.split("=", 1) for line in output.splitlines())
+        self.assertEqual(result["mode"], "code")
+        self.assertEqual(result["deploy_frontend"], "true")
+        self.assertEqual(result["deploy_backend"], "true")
+        self.assertEqual(result["full_data"], "false")
+        self.assertEqual(classify_paths([], "code", reset=True)["mode"], "full")
 
     def test_audio_manifest_is_generated_before_runtime_validation(self) -> None:
         bootstrap = (Path(__file__).resolve().parent / "bootstrap_capturequest.sh").read_text()

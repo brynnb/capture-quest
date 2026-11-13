@@ -7,6 +7,8 @@ confirmed it is active. Earlier paused states and bounded stopping rules below
 describe historical checkpoints; they do not limit this renewed authorization.
 
 Working branch: `codex/server-foundations`. Latest implementation checkpoint:
+owned account/roster/deletion lifetimes and atomic character creation, with a
+reproducible full-release cache, following `7b2d091`:
 Game Corner native coin/Safari paths, source-owned slot/prize receipts and current
 resource recovery; world entry acknowledges after restoration and drains failed
 owners, following `9b28d28`:
@@ -155,6 +157,71 @@ policy), following `d638d8b` (source-authorized opening), `5ac9f66` (injected me
 reads) and `21fd084` (durable shop revisions and correlated recovery).
 Earlier checkpoints and their verification limits are recorded below and in this
 branch's Git history. The goal alone does not authorize push or deployment. The user separately authorized branch pushes for stopping checkpoints on 2026-10-07 and 2026-10-08; production deployment remains unauthorized.
+
+## Owned character lifecycle and release-cache recovery (2026-11-13)
+
+The user explicitly authorized coordinated schema/backend/frontend activation
+and continuing the most pressing audit repairs. This checkpoint fixes the next
+observed lifecycle defects and retains the existing character/inventory owners.
+
+- Character deletion now uses stable character/request/account identity. It
+  verifies ownership before draining a live session, rechecks under the retained
+  transaction, soft-deletes once, and publishes the current roster after commit.
+  Repeating an old ID cannot affect a new character reusing its former name.
+- A shared injected, cancellable roster reader replaces the global list helper.
+  It returns every existing row; the previous eight-row limit could hide a
+  still-owned target on legacy/merged accounts and falsely confirm deletion.
+- The existing client selection store owns one account or entry operation.
+  Delete keeps its row pending, rejects conflicting actions, and reads once after
+  an unknown acknowledgement without replaying the mutation. Late historical
+  replies cannot replace a newer account, screen, transport, or recreated ID.
+- Authentication and creation use a bounded correlated current-roster read after
+  their existing FIFO acknowledgement. Missing roster delivery settles into an
+  explicit read-only Retry. Untagged SendCharInfo no longer applies or navigates.
+  Creator pending state survives component remount; retired callbacks cannot
+  navigate or reset a newer editor, and Back is disabled while creation runs.
+- Creation inserts identity, profile, binds and optional local fixtures in one
+  injected transaction. The old identity-before-transaction path could leave an
+  orphan after failure and reuse/reset an existing same-name character. Account
+  row locking now serializes the eight-character creation limit, names are new
+  inserts, and catalog selections are validated before commit.
+- Rendered acceptance found the new Retry above the reachable scroll origin.
+  The error now belongs to the selection grid; overflowing content starts at its
+  real top, and the control remains fully visible at 1280x720 and 390x844.
+
+Validation: canonical type generation and TypeScript checking pass; all **720
+frontend tests in 62 files** pass. Focused real-PostgreSQL race checks for creation,
+roster, deletion, entry, name-filter rejection and ownership pass (world 5.681s).
+They include max-pool-one operation, deferred commit/late bind/fixture rollback,
+no orphan identity, same-name concurrent creation, eighth-slot serialization,
+foreign ownership, live drain, cancellation and stale-ID recreation.
+
+The initial rendered suite passed seven cases and identified the Retry layout
+failure at `/var/tmp/capturequest-rendered.XrBBRm`. After the fix, all four
+lifecycle cases passed in 38.8 seconds at `/var/tmp/capturequest-rendered.JpKPV4`:
+lost deletion acknowledgement plus late replay after same-name recreation;
+second-session deletion draining an active player; missing roster with explicit
+Retry and no second login; and creation awaiting acknowledgement while navigation
+is disabled. Both Retry viewport screenshots were inspected. Runtime validation
+still confirms 826 tiles, 92 sprites and 561 compact audio files; the production
+build passes with the existing nonblocking bundle-size warnings.
+
+Release work found three concrete blockers in run 43490800842: an unpublished
+extractor gitlink (published exact ed8b7d5), stale DEPLOY_HOST (corrected to the
+verified Lightsail target), and a generated-script diagnostics file omitted from
+the v3 cache. All three attempts stopped before production mutation. The v4
+cache includes the sidecar in restore/save and readiness checks. A regression
+restores the actual cache paths over tracked inputs and runs the real read-only
+importer --check; complete restore passes, removing the sidecar fails without
+regenerating it. Both that test and the 11 deployment-classifier tests pass.
+Manual `code` mode now selects coordinated frontend/backend activation without
+an unnecessary data import; reset still forces full mode. The next activation
+uses the full lane for the previously added receipt schema, with no reset.
+
+Production verification is a separate gate and must be recorded after the
+successful workflow. Wider account authentication/guest-upgrade ownership and
+the remaining roadmap rows are still explicit audit work; these scoped checks
+do not claim the entire project is defect-free.
 
 ## Game Corner recovery and settled world entry (2026-11-13)
 

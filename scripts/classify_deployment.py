@@ -46,7 +46,7 @@ NON_DEPLOY_FILES = {
 
 
 def classify_paths(paths: list[str], requested_mode: str = "auto", reset: bool = False) -> dict[str, str]:
-    if requested_mode not in {"auto", "frontend", "backend", "full"}:
+    if requested_mode not in {"auto", "frontend", "backend", "code", "full"}:
         raise ValueError(f"Unsupported deployment mode: {requested_mode}")
 
     if reset or requested_mode == "full":
@@ -55,6 +55,8 @@ def classify_paths(paths: list[str], requested_mode: str = "auto", reset: bool =
         frontend, backend, full = True, False, False
     elif requested_mode == "backend":
         frontend, backend, full = False, True, False
+    elif requested_mode == "code":
+        frontend, backend, full = True, True, False
     else:
         full = any(path.startswith(FULL_DATA_PREFIXES) for path in paths)
         backend = full or any(path.startswith(BACKEND_PREFIXES) for path in paths)
@@ -101,7 +103,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--before", default="")
     parser.add_argument("--after", default="HEAD")
-    parser.add_argument("--mode", choices=("auto", "frontend", "backend", "full"), default="auto")
+    parser.add_argument("--mode", choices=("auto", "frontend", "backend", "code", "full"), default="auto")
     parser.add_argument("--reset", action="store_true")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
