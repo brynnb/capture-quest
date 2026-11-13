@@ -337,3 +337,272 @@ describe("trainer dialogue source ownership",()=>{
  await internal.handleActorClicked(actor);current();expect(send).toHaveBeenCalledTimes(1);
  });
 });
+
+
+describe("TileViewerInteractionController held-key priority", () => {
+  const controllers: TileViewerInteractionController[] = [];
+
+  function keyboardHarness() {
+    vi.stubGlobal("Phaser", {
+      Input: {
+        Keyboard: {
+          KeyCodes: { UP: 38, DOWN: 40, LEFT: 37, RIGHT: 39, SPACE: 32 },
+          JustDown: () => false,
+        },
+      },
+    });
+    const state = { moving: false, frozen: false, active: true, hidden: false };
+    vi.spyOn(document, "hidden", "get").mockImplementation(() => state.hidden);
+    const listeners = new Map<string, Set<(...args: unknown[]) => void>>();
+    const events = {
+      on(event: string, callback: (...args: unknown[]) => void) {
+        const existing = listeners.get(event) ?? new Set();
+        existing.add(callback);
+        listeners.set(event, existing);
+      },
+      off(event: string, callback: (...args: unknown[]) => void) {
+        listeners.get(event)?.delete(callback);
+      },
+      emit(event: string) {
+        for (const callback of listeners.get(event) ?? []) callback();
+      },
+    };
+    const cursors = {
+      up: { isDown: false }, down: { isDown: false },
+      left: { isDown: false }, right: { isDown: false },
+    };
+    const keyboard = {
+      enabled: true,
+      createCursorKeys: vi.fn(() => cursors),
+      addKey: vi.fn(() => ({})),
+      removeCapture: vi.fn(),
+    };
+    const handleKeyboardMove = vi.fn();
+    const cameraUpdate = vi.fn();
+    const controller = new TileViewerInteractionController({
+      scene: {
+        sys: { isActive: () => state.active },
+        input: { keyboard, on: vi.fn(), off: vi.fn() },
+        events,
+      },
+      isWorldInputFrozen: () => state.frozen,
+      playerMovementController: () => ({
+        getIsMoving: () => state.moving,
+        handleKeyboardMove,
+      }),
+      cameraController: () => ({ getZoom: () => 1, update: cameraUpdate }),
+      uiManager: () => ({
+        updateInstantWarpTargetZoom: vi.fn(),
+        clearInstantWarpTarget: vi.fn(),
+        showInstantWarpTarget: vi.fn(),
+      }),
+    } as never);
+    useGameStatusStore.setState({
+      isCameraFollowEnabled: true,
+      isWarpMode: false,
+      isMapLoading: false,
+      pendingInstantWarpTarget: null,
+    });
+    controller.setup();
+    controllers.push(controller);
+    const dispatch = (type: string, code: string, repeat = false) => {
+      window.dispatchEvent(new KeyboardEvent(type, {
+        code, key: code.startsWith("Key") ? code.slice(3).toLowerCase() : code,
+        repeat, bubbles: true,
+      }));
+    };
+    return {
+      controller, state, keyboard, events, listeners, cursors,
+      handleKeyboardMove, cameraUpdate,
+      press: (code: string, repeat = false) => dispatch("keydown", code, repeat),
+      release: (code: string) => dispatch("keyup", code),
+    };
+  }
+
+  afterEach(() => {
+    for (const controller of controllers.splice(0)) controller.cleanup();
+    document.body.replaceChildren();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    useGameStatusStore.setState({ isCameraFollowEnabled: true });
+  });
+
+  it("turns W then A to LEFT immediately and falls back to W on release", () => {
+    const { controller, state, press, release, handleKeyboardMove } = keyboardHarness();
+    press("KeyW");
+    controller.update();
+    expect(handleKeyboardMove).toHaveBeenCalledWith("UP");
+    state.moving = true;
+
+    press("KeyA");
+    // A movement completion can sample the provider before the next update.
+    expect(controller.getKeyboardDirection()).toBe("LEFT");
+    controller.update();
+    // Authority can remain busy after a visual tile ends. Always offer the
+    // latest intent to the controller, which guards active visuals and arrivals.
+    expect(handleKeyboardMove).toHaveBeenCalledTimes(2);
+    expect(handleKeyboardMove).toHaveBeenLastCalledWith("LEFT");
+    release("KeyA");
+    expect(controller.getKeyboardDirection()).toBe("UP");
+    release("KeyW");
+    expect(controller.getKeyboardDirection()).toBeNull();
+  });
+
+  it("does not let operating-system repeat or duplicate keydown steal priority", () => {
+    const { controller, press, release } = keyboardHarness();
+    press("KeyW");
+    press("KeyA");
+    press("KeyW", true);
+    press("KeyW");
+    expect(controller.getKeyboardDirection()).toBe("LEFT");
+    release("KeyA");
+    expect(controller.getKeyboardDirection()).toBe("UP");
+  });
+
+  it("shares one press order between WASD and arrow keys", () => {
+    const { controller, press, release } = keyboardHarness();
+    press("ArrowUp");
+    press("KeyA");
+    press("ArrowRight");
+    expect(controller.getKeyboardDirection()).toBe("RIGHT");
+    press("ArrowUp", true);
+    expect(controller.getKeyboardDirection()).toBe("RIGHT");
+    release("ArrowRight");
+    expect(controller.getKeyboardDirection()).toBe("LEFT");
+    release("KeyA");
+    expect(controller.getKeyboardDirection()).toBe("UP");
+  });
+
+  it("chooses the latest opposite direction and keeps distinct keys with the same direction", () => {
+    const { controller, press, release } = keyboardHarness();
+    press("KeyW");
+    press("KeyS");
+    expect(controller.getKeyboardDirection()).toBe("DOWN");
+    press("ArrowUp");
+    expect(controller.getKeyboardDirection()).toBe("UP");
+    release("ArrowUp");
+    expect(controller.getKeyboardDirection()).toBe("DOWN");
+    release("KeyS");
+    expect(controller.getKeyboardDirection()).toBe("UP");
+  });
+
+  it("reserves arrows for camera panning when follow is disabled", () => {
+    const { controller, press, release, cameraUpdate, cursors } = keyboardHarness();
+    useGameStatusStore.setState({ isCameraFollowEnabled: false });
+    press("KeyW");
+    press("ArrowLeft");
+    expect(controller.getKeyboardDirection()).toBe("UP");
+    release("KeyW");
+    expect(controller.getKeyboardDirection()).toBeNull();
+    controller.update();
+    expect(cameraUpdate).toHaveBeenCalledWith(cursors);
+  });
+
+  it.each(["input", "textarea"])("retires held movement when a %s receives focus", (tagName) => {
+    const { controller, press, release } = keyboardHarness();
+    press("KeyW");
+    const input = document.createElement(tagName);
+    document.body.append(input);
+    input.focus();
+    expect(controller.getKeyboardDirection()).toBeNull();
+    press("KeyA");
+    input.blur();
+    expect(controller.getKeyboardDirection()).toBeNull();
+    press("KeyA", true);
+    expect(controller.getKeyboardDirection()).toBeNull();
+    release("KeyA");
+    press("KeyA");
+    expect(controller.getKeyboardDirection()).toBe("LEFT");
+  });
+
+  it("clears a modal's held intent while the current tile is still moving", () => {
+    const { controller, state, press, release, handleKeyboardMove } = keyboardHarness();
+    press("KeyW");
+    state.moving = true;
+    state.frozen = true;
+    controller.update();
+    state.frozen = false;
+    expect(controller.getKeyboardDirection()).toBeNull();
+    press("KeyW", true);
+    expect(controller.getKeyboardDirection()).toBeNull();
+    release("KeyW");
+    press("KeyW");
+    expect(controller.getKeyboardDirection()).toBe("UP");
+    expect(handleKeyboardMove).not.toHaveBeenCalled();
+  });
+
+  it("ignores new keys pressed inside a modal until they are released and pressed again", () => {
+    const { controller, state, press, release } = keyboardHarness();
+    state.frozen = true;
+    press("ArrowLeft");
+    state.frozen = false;
+    press("ArrowLeft", true);
+    expect(controller.getKeyboardDirection()).toBeNull();
+    release("ArrowLeft");
+    press("ArrowLeft");
+    expect(controller.getKeyboardDirection()).toBe("LEFT");
+  });
+
+  it("clears physical key history on window blur and ignores held repeat after focus returns", () => {
+    const { controller, press, release } = keyboardHarness();
+    press("KeyW");
+    press("KeyA");
+    window.dispatchEvent(new Event("blur"));
+    expect(controller.getKeyboardDirection()).toBeNull();
+    press("KeyA", true);
+    expect(controller.getKeyboardDirection()).toBeNull();
+    release("KeyA");
+    press("KeyD");
+    expect(controller.getKeyboardDirection()).toBe("RIGHT");
+    release("KeyD");
+    expect(controller.getKeyboardDirection()).toBeNull();
+  });
+
+  it("clears key history when the document becomes hidden", () => {
+    const { controller, state, press } = keyboardHarness();
+    press("KeyW");
+    state.hidden = true;
+    document.dispatchEvent(new Event("visibilitychange"));
+    state.hidden = false;
+    expect(controller.getKeyboardDirection()).toBeNull();
+  });
+
+  it.each(["pause", "sleep"])("clears held intent when the scene emits %s", (event) => {
+    const { controller, events, press } = keyboardHarness();
+    press("KeyW");
+    events.emit(event);
+    expect(controller.getKeyboardDirection()).toBeNull();
+    press("KeyW", true);
+    expect(controller.getKeyboardDirection()).toBeNull();
+  });
+
+  it("ignores keyboard input when its plugin or scene is inactive", () => {
+    const { controller, keyboard, state, press, release } = keyboardHarness();
+    keyboard.enabled = false;
+    press("KeyW");
+    keyboard.enabled = true;
+    expect(controller.getKeyboardDirection()).toBeNull();
+    release("KeyW");
+    state.active = false;
+    press("KeyA");
+    state.active = true;
+    expect(controller.getKeyboardDirection()).toBeNull();
+  });
+
+  it("removes native and scene listeners and starts a new setup with no old holds", () => {
+    const { controller, listeners, press, release } = keyboardHarness();
+    press("KeyW");
+    controller.cleanup();
+    expect(listeners.get("pause")?.size).toBe(0);
+    expect(listeners.get("sleep")?.size).toBe(0);
+    press("KeyA");
+    expect(controller.getKeyboardDirection()).toBeNull();
+
+    controller.setup();
+    press("KeyA", true);
+    expect(controller.getKeyboardDirection()).toBeNull();
+    release("KeyA");
+    press("ArrowDown");
+    expect(controller.getKeyboardDirection()).toBe("DOWN");
+  });
+});

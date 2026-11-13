@@ -1633,6 +1633,10 @@ export interface AStarNode {
 export type PriorityQueue = (AStarNode | undefined)[];
 
 //////////
+// source: player_move_intent.go
+
+
+//////////
 // source: player_steps.go
 
 

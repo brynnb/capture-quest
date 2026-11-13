@@ -23,22 +23,28 @@ const bicyclePlayerMoveSpeed = 100 * time.Millisecond
 
 // PlayerMovementState tracks a player's current movement
 type PlayerMovementState struct {
-	SessionID       int        `json:"sessionId"`
-	CharacterID     int        `json:"characterId"`
-	CurrentX        int        `json:"currentX"`
-	CurrentY        int        `json:"currentY"`
-	MapID           int        `json:"mapId"`
-	PreviousMapID   int        `json:"previousMapId,omitempty"`
-	Direction       string     `json:"direction"`
-	Path            []PathNode `json:"path"` // Remaining path to destination
-	IsSurfing       bool       `json:"isSurfing,omitempty"`
-	WantsBicycle    bool       `json:"wantsBicycle,omitempty"`
-	BicycleRevision int64      `json:"bicycleRevision"`
-	ForcedBicycle   bool       `json:"forcedBicycle,omitempty"`
-	LastMoveTime    time.Time  `json:"lastMoveTime"`
-	LastSaveTime    time.Time  `json:"lastSaveTime"` // Last time we persisted to DB
-	pendingStep     *issuedPlayerStep
-	MoveSpeed       time.Duration `json:"moveSpeed"` // Time per tile, including runtime movement effects
+	SessionID               int        `json:"sessionId"`
+	CharacterID             int        `json:"characterId"`
+	CurrentX                int        `json:"currentX"`
+	CurrentY                int        `json:"currentY"`
+	MapID                   int        `json:"mapId"`
+	PreviousMapID           int        `json:"previousMapId,omitempty"`
+	Direction               string     `json:"direction"`
+	Path                    []PathNode `json:"path"` // Remaining path to destination
+	IsSurfing               bool       `json:"isSurfing,omitempty"`
+	WantsBicycle            bool       `json:"wantsBicycle,omitempty"`
+	BicycleRevision         int64      `json:"bicycleRevision"`
+	ForcedBicycle           bool       `json:"forcedBicycle,omitempty"`
+	LastMoveTime            time.Time  `json:"lastMoveTime"`
+	LastSaveTime            time.Time  `json:"lastSaveTime"` // Last time we persisted to DB
+	pendingStep             *issuedPlayerStep
+	movementStreamID        string
+	movementSequence        uint64
+	movementCommandToken    string
+	movementInput           playerMovementInput
+	movementLedgeJump       bool
+	movementCommitStartedAt time.Time
+	MoveSpeed               time.Duration `json:"moveSpeed"` // Time per tile, including runtime movement effects
 }
 
 type playerMovementStep struct {
@@ -285,6 +291,7 @@ func (m *PlayerMovementManager) StopMovement(charID int) {
 		return
 	}
 	state.pendingStep = nil
+	state.movementStreamID = ""
 	state.Path = nil
 }
 
@@ -316,6 +323,7 @@ func (m *PlayerMovementManager) UpdateMapID(charID int, mapID int) {
 			}
 		}
 		state.pendingStep = nil
+		state.movementStreamID = ""
 		state.Path = nil // Clear any pending path on old map
 		m.applyBicycleMapRules(state)
 	}
@@ -346,6 +354,7 @@ func (m *PlayerMovementManager) projectCommittedTeleport(charID int, x, y, mapID
 		}
 	}
 	state.pendingStep = nil
+	state.movementStreamID = ""
 	state.LastSaveTime = time.Now()
 	state.CurrentX = x
 	state.CurrentY = y

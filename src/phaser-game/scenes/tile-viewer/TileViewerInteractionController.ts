@@ -39,6 +39,18 @@ import type { WorldInputFreezeReason } from "../../utils/worldInputGuard";
 
 type MovementDirection = "UP" | "DOWN" | "LEFT" | "RIGHT";
 
+const MOVEMENT_KEY_DIRECTIONS = {
+  KeyW: "UP",
+  KeyA: "LEFT",
+  KeyS: "DOWN",
+  KeyD: "RIGHT",
+  ArrowUp: "UP",
+  ArrowLeft: "LEFT",
+  ArrowDown: "DOWN",
+  ArrowRight: "RIGHT",
+} as const;
+type MovementKeyCode = keyof typeof MOVEMENT_KEY_DIRECTIONS;
+
 
 interface TileViewerInteractionDeps {
   scene: Scene;
@@ -61,12 +73,10 @@ interface TileViewerInteractionDeps {
 
 export class TileViewerInteractionController {
   private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
-  private wasdKeys?: {
-    W: Phaser.Input.Keyboard.Key;
-    A: Phaser.Input.Keyboard.Key;
-    S: Phaser.Input.Keyboard.Key;
-    D: Phaser.Input.Keyboard.Key;
-  };
+  // Insertion order records physical presses, independently of key repeat.
+  // A tile-boundary continuation reads this directly, even while moving.
+  private readonly heldMovementKeys = new Set<MovementKeyCode>();
+  private keyboardListenersBound = false;
   private spaceKey?: Phaser.Input.Keyboard.Key;
   private suppressNextWorldPointerUp = false;
   private instantWarpRequestGeneration = 0;
@@ -101,6 +111,29 @@ export class TileViewerInteractionController {
   };
   private readonly mobileInteractHandler = () => {
     this.activatePrimaryInteraction();
+  };
+  private readonly movementKeyDownHandler = (event: KeyboardEvent) => {
+    const code = this.movementKeyCode(event);
+    if (!code) return;
+    if (!this.isKeyboardMovementAvailable()) {
+      this.resetHeldMovementKeys();
+      return;
+    }
+    if (event.repeat || this.heldMovementKeys.has(code)) return;
+    this.heldMovementKeys.add(code);
+  };
+  private readonly movementKeyUpHandler = (event: KeyboardEvent) => {
+    const code = this.movementKeyCode(event);
+    if (code) this.heldMovementKeys.delete(code);
+  };
+  private readonly resetHeldMovementKeys = () => {
+    this.heldMovementKeys.clear();
+  };
+  private readonly keyboardFocusHandler = () => {
+    if (this.isTextInputFocused()) this.resetHeldMovementKeys();
+  };
+  private readonly keyboardVisibilityHandler = () => {
+    if (document.hidden) this.resetHeldMovementKeys();
   };
 
   constructor(private readonly deps: TileViewerInteractionDeps) {}
@@ -148,6 +181,7 @@ export class TileViewerInteractionController {
   }
 
   cleanup(): void {
+    this.cleanupKeyboardInput();
     this.actorInteractionGeneration += 1;
     this.actorInteractionDemand?.abort();
     this.actorInteractionDemand = null;
@@ -180,12 +214,11 @@ export class TileViewerInteractionController {
     this.handleKeyboardInteract();
 
     const movement = this.deps.playerMovementController();
-    if (!movement.getIsMoving()) {
-      const dir = this.getKeyboardDirection();
-      if (dir) {
-        movement.handleKeyboardMove(dir);
-      }
-    }
+    // The controller owns visual/input guards. Its public busy state also
+    // includes pending receipts, which must not delay a fresh movement intent.
+    // Sampling here still retires held keys promptly when a panel opens.
+    const dir = this.getKeyboardDirection();
+    if (dir) movement.handleKeyboardMove(dir);
 
     if (
       this.cursors &&
@@ -197,37 +230,63 @@ export class TileViewerInteractionController {
   }
 
   getKeyboardDirection(): MovementDirection | null {
-    if (!this.deps.scene.input.keyboard) return null;
-    if (this.isTextInputFocused()) return null;
-    if (this.deps.isWorldInputFrozen()) return null;
-
-    if (this.wasdKeys) {
-      if (this.wasdKeys.W.isDown) return "UP";
-      if (this.wasdKeys.S.isDown) return "DOWN";
-      if (this.wasdKeys.A.isDown) return "LEFT";
-      if (this.wasdKeys.D.isDown) return "RIGHT";
+    if (!this.isKeyboardMovementAvailable()) {
+      this.resetHeldMovementKeys();
+      return null;
     }
-
-    if (this.cursors && useGameStatusStore.getState().isCameraFollowEnabled) {
-      if (this.cursors.up.isDown) return "UP";
-      if (this.cursors.down.isDown) return "DOWN";
-      if (this.cursors.left.isDown) return "LEFT";
-      if (this.cursors.right.isDown) return "RIGHT";
+    const followCamera = useGameStatusStore.getState().isCameraFollowEnabled;
+    const held = Array.from(this.heldMovementKeys);
+    for (let i = held.length - 1; i >= 0; i--) {
+      const code = held[i];
+      // Arrow keys pan the free camera; WASD keeps its existing behavior.
+      if (code.startsWith("Arrow") && !followCamera) continue;
+      return MOVEMENT_KEY_DIRECTIONS[code];
     }
-
     return null;
   }
 
-  private setupKeyboardInput(): void {
-    if (!this.deps.scene.input.keyboard) return;
+  private isKeyboardMovementAvailable(): boolean {
+    return Boolean(this.deps.scene.input.keyboard) &&
+      this.deps.scene.input.keyboard?.enabled !== false &&
+      this.deps.scene.sys.isActive() &&
+      !document.hidden &&
+      !this.isTextInputFocused() &&
+      !this.deps.isWorldInputFrozen();
+  }
 
+  private movementKeyCode(event: KeyboardEvent): MovementKeyCode | null {
+    const code = event.code || (event.key.length === 1
+      ? `Key${event.key.toUpperCase()}` : event.key);
+    return Object.prototype.hasOwnProperty.call(MOVEMENT_KEY_DIRECTIONS, code)
+      ? code as MovementKeyCode : null;
+  }
+
+  private cleanupKeyboardInput(): void {
+    this.resetHeldMovementKeys();
+    if (!this.keyboardListenersBound) return;
+    window.removeEventListener("keydown", this.movementKeyDownHandler, true);
+    window.removeEventListener("keyup", this.movementKeyUpHandler, true);
+    window.removeEventListener("blur", this.resetHeldMovementKeys);
+    document.removeEventListener("focusin", this.keyboardFocusHandler);
+    document.removeEventListener("visibilitychange", this.keyboardVisibilityHandler);
+    this.deps.scene.events.off("pause", this.resetHeldMovementKeys);
+    this.deps.scene.events.off("sleep", this.resetHeldMovementKeys);
+    this.keyboardListenersBound = false;
+  }
+
+  private setupKeyboardInput(): void {
+    if (!this.deps.scene.input.keyboard || this.keyboardListenersBound) return;
+
+    this.resetHeldMovementKeys();
+    window.addEventListener("keydown", this.movementKeyDownHandler, true);
+    window.addEventListener("keyup", this.movementKeyUpHandler, true);
+    window.addEventListener("blur", this.resetHeldMovementKeys);
+    document.addEventListener("focusin", this.keyboardFocusHandler);
+    document.addEventListener("visibilitychange", this.keyboardVisibilityHandler);
+    this.deps.scene.events.on("pause", this.resetHeldMovementKeys);
+    this.deps.scene.events.on("sleep", this.resetHeldMovementKeys);
+    this.keyboardListenersBound = true;
     this.cursors = this.deps.scene.input.keyboard.createCursorKeys();
-    this.wasdKeys = {
-      W: this.deps.scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W, false),
-      A: this.deps.scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A, false),
-      S: this.deps.scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S, false),
-      D: this.deps.scene.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D, false),
-    };
     this.spaceKey = this.deps.scene.input.keyboard.addKey(
       Phaser.Input.Keyboard.KeyCodes.SPACE,
       false,

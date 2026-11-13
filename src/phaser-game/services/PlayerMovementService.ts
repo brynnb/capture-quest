@@ -6,6 +6,19 @@ export function requestPlayerStep(request: Omit<PlayerStepRequest, "requestId">,
   return correlatedRequest<PlayerStepResponse>(PhaserNet.onPlayerStep, (requestId) => PhaserNet.requestPlayerStep({ ...request, requestId }), signal);
 }
 
+export type PredictedPlayerStepCommand = Omit<PlayerStepRequest, "requestId" | "lookAhead"> & {
+  commandToken: string;
+  movementStreamId: string;
+  sequence: number;
+};
+
+// One atomic direction command per started visual tile. A timeout is recovered
+// with a current owned read, never by replaying a historical movement command.
+export function submitPredictedPlayerStep(request: PredictedPlayerStepCommand, signal?: AbortSignal): Promise<PlayerStepResponse> {
+  return correlatedRequest<PlayerStepResponse>(PhaserNet.onPlayerStep,
+    requestId => PhaserNet.requestPlayerStep({ ...request, requestId }), signal);
+}
+
 export async function completePlayerStep(stepToken: string, signal?: AbortSignal, nextDirection?: string, buffer?: { afterStepToken?: string; lookAhead?: string[]; retryOnTimeout?: boolean }): Promise<PlayerStepCompleteResponse> {
   const complete = () => correlatedRequest<PlayerStepCompleteResponse>(PhaserNet.onPlayerStepComplete, (requestId) => PhaserNet.completePlayerStep({ stepToken, requestId, ...(nextDirection ? { nextDirection } : {}), ...(buffer?.lookAhead?.length ? { afterStepToken: buffer.afterStepToken, lookAhead: buffer.lookAhead } : {}) }), signal);
   try { return await complete(); }
@@ -33,8 +46,8 @@ export async function cancelPlayerStep(stepToken: string, signal?: AbortSignal):
 }
 
 // Position recovery is a read serialized after any preceding accepted command.
-export function readOwnedPlayerPosition(signal?: AbortSignal, stepToken?: string): Promise<OwnedPlayerPositionResponse> {
-  return correlatedRequest<OwnedPlayerPositionResponse>(PhaserNet.onOwnedPlayerPosition, (requestId) => PhaserNet.requestOwnedPlayerPosition({ requestId, ...(stepToken ? { stepToken } : {}) }), signal);
+export function readOwnedPlayerPosition(signal?: AbortSignal, stepToken?: string, resetMovementStream = false): Promise<OwnedPlayerPositionResponse> {
+  return correlatedRequest<OwnedPlayerPositionResponse>(PhaserNet.onOwnedPlayerPosition, (requestId) => PhaserNet.requestOwnedPlayerPosition({ requestId, ...(stepToken ? { stepToken } : {}), ...(resetMovementStream ? { resetMovementStream: true } : {}) }), signal);
 }
 export async function completeCutscene(scriptLabel: string, completionToken: string, signal?: AbortSignal, cancel = false): Promise<CutsceneEndResponse> {
   const complete = () => correlatedRequest<CutsceneEndResponse>(PhaserNet.onCutsceneEnd, (requestId) => PhaserNet.completeCutscene({ scriptLabel, completionToken, requestId, ...(cancel ? { cancel: true } : {}) }), signal);

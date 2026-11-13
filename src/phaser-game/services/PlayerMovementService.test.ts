@@ -1,14 +1,15 @@
 import { afterEach, expect, test, vi } from "vitest";
-import type { PlayerStepCompleteResponse } from "@/net/generated/protocol";
-import { cancelPlayerStep, completeCutscene, completePlayerStep, readOwnedPlayerPosition } from "./PlayerMovementService";
+import type { OwnedPlayerPositionResponse, PlayerStepResponse, PlayerStepCompleteResponse } from "@/net/generated/protocol";
+import { cancelPlayerStep, completeCutscene, completePlayerStep, readOwnedPlayerPosition, submitPredictedPlayerStep } from "./PlayerMovementService";
 import { CorrelatedRequestTimeoutError, CorrelatedResponseError } from "./CorrelatedRequest";
 
-type StepReply = PlayerStepCompleteResponse | { success: false; requestId: string; error: string };
+type StepReply = PlayerStepCompleteResponse | PlayerStepResponse | OwnedPlayerPositionResponse | { success: false; requestId: string; error: string };
 
 const net = vi.hoisted(() => ({
   connected: true,
   listeners: new Set<(data: StepReply) => void>(),
   complete: vi.fn(),
+  request: vi.fn(),
   read: vi.fn(),
 }));
 vi.mock("./PhaserNetworkService", () => ({
@@ -16,6 +17,8 @@ vi.mock("./PhaserNetworkService", () => ({
   onPlayerStepComplete: (receive: (data: StepReply) => void) => {
     net.listeners.add(receive); return () => net.listeners.delete(receive);
   },
+  onPlayerStep: (receive: (data: StepReply) => void) => { net.listeners.add(receive); return () => net.listeners.delete(receive); },
+  requestPlayerStep: net.request,
   completePlayerStep: net.complete,
   completeCutscene: net.complete,
   onCutsceneEnd: (receive: (data: StepReply) => void) => { net.listeners.add(receive); return () => net.listeners.delete(receive); },
@@ -143,5 +146,40 @@ test("a buffered completion publishes its exact tail and never retries an obsole
   await vi.advanceTimersByTimeAsync(20000);
   await rejected;
   expect(net.complete).toHaveBeenCalledTimes(1);
+  expect(net.listeners.size).toBe(0);
+});
+
+
+test("stream initialization is an explicit owned read and accepts an omitted zero sequence", async () => {
+  const result = readOwnedPlayerPosition(undefined, undefined, true);
+  expect(net.read).toHaveBeenCalledWith({ requestId: expect.any(String), resetMovementStream: true });
+  const request = net.read.mock.calls[0][0];
+  for (const receive of net.listeners) receive({ success: true, requestId: request.requestId, mapId: 50, x: 7, y: 8, direction: "LEFT", serverMovementPending: false, movementStreamId: "a".repeat(32) });
+  await expect(result).resolves.toMatchObject({ movementStreamId: "a".repeat(32) });
+  expect(net.request).not.toHaveBeenCalled();
+  expect(net.complete).not.toHaveBeenCalled();
+});
+
+test("atomic prediction sends one source and direction command and never retries a timed-out historical move", async () => {
+  vi.useFakeTimers();
+  const command = { commandToken: "b".repeat(32), movementStreamId: "a".repeat(32), sequence: 1, mapId: 50, fromX: 7, fromY: 8, direction: "LEFT" };
+  const result = submitPredictedPlayerStep(command);
+  const rejected = expect(result).rejects.toBeInstanceOf(CorrelatedRequestTimeoutError);
+  expect(net.request).toHaveBeenCalledWith({ ...command, requestId: expect.any(String) });
+  await vi.advanceTimersByTimeAsync(20000);
+  await rejected;
+  expect(net.request).toHaveBeenCalledOnce();
+  expect(net.complete).not.toHaveBeenCalled();
+  expect(net.listeners.size).toBe(0);
+});
+
+test("a committed atomic receipt settles only its matching correlation", async () => {
+  const command = { commandToken: "b".repeat(32), movementStreamId: "a".repeat(32), sequence: 1, mapId: 50, fromX: 7, fromY: 8, direction: "LEFT" };
+  const result = submitPredictedPlayerStep(command);
+  const request = net.request.mock.calls[0][0];
+  for (const receive of net.listeners) receive({ success: true, requestId: "unrelated", committed: true, stepToken: command.commandToken, mapId: 50, x: 6, y: 8, direction: "LEFT", ledgeJump: false });
+  expect(net.listeners.size).toBe(1);
+  for (const receive of net.listeners) receive({ success: true, requestId: request.requestId, committed: true, stepToken: command.commandToken, mapId: 50, x: 6, y: 8, direction: "LEFT", ledgeJump: false });
+  await expect(result).resolves.toMatchObject({ committed: true, x: 6 });
   expect(net.listeners.size).toBe(0);
 });

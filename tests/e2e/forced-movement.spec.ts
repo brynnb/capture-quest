@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { writeFile } from "node:fs/promises";
-import type { PlayerStepCompleteRequest, PlayerStepCompleteResponse, PlayerStepError, ServerPlayerMovementNotify } from "../../src/net/generated/protocol";
+import type { PlayerStepRequest, PlayerStepResponse, PlayerStepError, ServerPlayerMovementNotify } from "../../src/net/generated/protocol";
 import * as OpCodes from "../../src/net/generated/opcodes";
 import { createGuestCharacterAndEnterWorld, enterWorld } from "./helpers/auth";
 import { collectPageErrors } from "./helpers/errors";
@@ -9,11 +9,15 @@ import { pressMovement } from "./helpers/input";
 import { jumpToScenario } from "./helpers/scenarioDebugger";
 import { getGameState, waitForNoMapLoading, waitForPlayerIdle, waitForPlayerTile } from "./helpers/state";
 
+type AtomicMovement = PlayerStepRequest & { commandToken: string; movementStreamId: string; sequence: number };
+type AtomicReceipt = PlayerStepResponse & { committed: true; stopPath?: boolean };
+
 test("ordinary walking onto an imported arrow starts its server-owned route", async ({ page }) => {
   test.skip(process.env.CQ_E2E_TRANSPORT === "native", "This assertion classifies actual WebSocket command bodies");
   const errors = collectPageErrors(page);
-  const requests: PlayerStepCompleteRequest[] = [];
-  const responses: Array<PlayerStepCompleteResponse | PlayerStepError> = [];
+  const requests: AtomicMovement[] = [];
+  const responses: Array<AtomicReceipt | PlayerStepError> = [];
+  const legacyCompletions: unknown[] = [];
   const serverPoints: ServerPlayerMovementNotify[] = [];
   const wire: Array<{ direction: string; opcode: number; at: number; data: unknown }> = [];
   let armed = false;
@@ -22,18 +26,19 @@ test("ordinary walking onto an imported arrow starts its server-owned route", as
     socket.on("framesent", ({ payload }) => {
       if (!armed || typeof payload === "string" || payload.length < 6) return;
       const opcode = payload.readUInt16LE(4);
-      if (opcode !== OpCodes.PlayerStepCompleteRequest) return;
-      const data = JSON.parse(payload.subarray(6).toString()) as PlayerStepCompleteRequest;
-      requests.push(data);
+      if (opcode !== OpCodes.PlayerStepRequest && opcode !== OpCodes.PlayerStepCompleteRequest && opcode !== OpCodes.OwnedPlayerPositionRequest) return;
+      const data = JSON.parse(payload.subarray(6).toString());
+      if (opcode === OpCodes.PlayerStepRequest && data.commandToken) requests.push(data);
+      if (opcode === OpCodes.PlayerStepCompleteRequest) legacyCompletions.push(data);
       wire.push({ direction: "sent", opcode, at: Date.now(), data });
     });
     socket.on("framereceived", ({ payload }) => {
       if (!armed || typeof payload === "string" || payload.length < 6) return;
       const opcode = payload.readUInt16LE(4);
-      if (opcode !== OpCodes.PlayerStepCompleteResponse && opcode !== OpCodes.ServerPlayerMovementNotify) return;
+      if (opcode !== OpCodes.PlayerStepResponse && opcode !== OpCodes.OwnedPlayerPositionResponse && opcode !== OpCodes.ServerPlayerMovementNotify) return;
       const data = JSON.parse(payload.subarray(6).toString());
-      if (opcode === OpCodes.PlayerStepCompleteResponse) responses.push(data);
-      else serverPoints.push(data);
+      if (opcode === OpCodes.PlayerStepResponse) responses.push(data);
+      if (opcode === OpCodes.ServerPlayerMovementNotify) serverPoints.push(data);
       wire.push({ direction: "received", opcode, at: Date.now(), data });
     });
   });
@@ -46,29 +51,21 @@ test("ordinary walking onto an imported arrow starts its server-owned route", as
     await pressMovement(page, "left");
     await waitForPlayerTile(page, 2, 9);
     await waitForPlayerIdle(page);
-    // Only the user step is committed by the client. A separately issued,
-    // unused continuation may be retired while the stopPath receipt arrives;
-    // opcode 189 carries both operations, so classify their actual bodies.
-    const commits = requests.filter((request) => request.cancel !== true);
-    const cancellations = requests.filter((request) => request.cancel === true);
-    expect(commits, "Only the ordinary step onto the arrow is client-committed").toHaveLength(1);
-    expect(cancellations.length, "At most one unused continuation needs retirement").toBeLessThanOrEqual(1);
-    await expect.poll(() => responses.find((response) => response.requestId === commits[0].requestId)?.success).toBe(true);
-    for (const cancellation of cancellations) {
-      expect(cancellation.stepToken, "Cancellation retires a different, unused authorization").not.toBe(commits[0].stepToken);
-      expect(cancellation.nextDirection).toBeUndefined();
-      expect(cancellation.lookAhead).toBeUndefined();
-      await expect.poll(() => responses.find((response) => response.requestId === cancellation.requestId)).toMatchObject({ success: true, cancelled: true });
-    }
+    expect(requests, "Only the ordinary step onto the arrow is client-committed").toHaveLength(1);
+    expect(requests[0].commandToken).toMatch(/^[a-f0-9]{32}$/i);
+    expect(requests[0].movementStreamId).toMatch(/^[a-f0-9]{32}$/i);
+    expect(Number.isSafeInteger(requests[0].sequence) && requests[0].sequence > 0).toBe(true);
+    await expect.poll(() => responses.find((response) => response.requestId === requests[0].requestId)).toMatchObject({ success: true, committed: true, stepToken: requests[0].commandToken, stopPath: true });
+    expect(legacyCompletions, "Atomic movement has no second completion or unused-grant cancellation phase").toEqual([]);
     expect(serverPoints.some((point) => point.mapId === 200 && point.x === 3 && point.y === 9), "The server publishes the intermediate forced-route point").toBe(true);
     expect(serverPoints.some((point) => point.mapId === 200 && point.x === 2 && point.y === 9 && point.pathFinished), "The server finishes its own forced route").toBe(true);
     expect((await getGameState(page)).map.id).toBe(200);
     errors.assertNoSevereErrors();
-    console.log(JSON.stringify({ forcedMovementWire: { ordinaryCommits: commits.length, cancellations: cancellations.length, cancellationAcknowledged: cancellations.every((request) => responses.some((response) => response.requestId === request.requestId && response.success && response.cancelled)), serverPoints: serverPoints.map(({ x, y, pathFinished }) => ({ x, y, pathFinished })) } }));
+    console.log(JSON.stringify({ forcedMovementWire: { atomicCommands: requests.length, legacyCompletions: legacyCompletions.length, serverPoints: serverPoints.map(({ x, y, pathFinished }) => ({ x, y, pathFinished })) } }));
     await page.screenshot({ path: test.info().outputPath("forced-arrow-arrived.png") });
   } finally {
     const path = test.info().outputPath("forced-movement-wire.json");
-    await writeFile(path, JSON.stringify({ requests, responses, serverPoints, wire }, null, 2));
+    await writeFile(path, JSON.stringify({ requests, responses, legacyCompletions, serverPoints, wire }, null, 2));
     await test.info().attach("forced-movement-wire.json", { path, contentType: "application/json" });
   }
 });
@@ -127,7 +124,7 @@ for (const boundary of [4, 3]) {
     await waitForPlayerIdle(page);
     expect(await sql(`SELECT COUNT(*) FROM character_movement_routes WHERE character_id=${charId}`)).toBe("0");
     expect(await sql(`SELECT CAST(x AS INTEGER),CAST(y AS INTEGER) FROM character_data WHERE id=${charId}`)).toBe("2|9");
-    expect(errors.sentOpcodes.filter(o => o === OpCodes.PlayerStepCompleteRequest)).toEqual([]);
+    expect(errors.sentOpcodes.filter(o => o === OpCodes.PlayerStepRequest || o === OpCodes.PlayerStepCompleteRequest)).toEqual([]);
     errors.assertNoSevereErrors();
   });
 }

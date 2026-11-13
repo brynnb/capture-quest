@@ -73,6 +73,9 @@ func (wh *WorldHandler) ownedPlayerSnapshot(ses *session.Session, requestID stri
 		if state := m.players[int(char.ID)]; state != nil && state.SessionID == ses.SessionID {
 			p.MapID, p.X, p.Y, p.Direction = state.MapID, state.CurrentX, state.CurrentY, state.Direction
 			p.ServerMovementPending = len(state.Path) != 0
+			if state.movementStreamID != "" {
+				p.MovementStreamID, p.MovementSequence = state.movementStreamID, state.movementSequence
+			}
 		}
 		m.mu.RUnlock()
 	}
@@ -94,6 +97,12 @@ func HandleOwnedPlayerPositionRequest(ses *session.Session, payload []byte, wh *
 	if decodePlayerMovement(payload, &req) != nil || req.RequestID == "" || len(req.RequestID) > 64 || (req.StepToken != "" && !validMovementToken(req.StepToken)) {
 		sendOwnedPlayerError(ses, wh, req.RequestID, opcodes.OwnedPlayerPositionResponse, "Invalid position read.")
 		return false
+	}
+	if req.ResetMovementStream {
+		if wh.PlayerMovement == nil || wh.PlayerMovement.resetPlayerMovementStream(ses) != nil {
+			sendOwnedPlayerError(ses, wh, req.RequestID, opcodes.OwnedPlayerPositionResponse, "Could not initialize movement.")
+			return false
+		}
 	}
 	snapshot := wh.ownedPlayerSnapshot(ses, req.RequestID)
 	if req.StepToken != "" {
@@ -125,6 +134,9 @@ func HandleOwnedPlayerPositionRequest(ses *session.Session, payload []byte, wh *
 func HandlePlayerStepRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
 	var req protocol.PlayerStepRequest
 	err := decodePlayerMovement(payload, &req)
+	if err == nil && (req.CommandToken != "" || req.MovementStreamID != "" || req.Sequence != 0) {
+		return handlePlayerMoveIntent(ses, req, wh)
+	}
 	if err != nil || req.RequestID == "" || len(req.RequestID) > 64 || req.FromX == nil || req.FromY == nil || wh.PlayerMovement == nil {
 		sendPlayerStepError(ses, wh, req.RequestID, opcodes.PlayerStepResponse)
 		return false
@@ -135,6 +147,8 @@ func HandlePlayerStepRequest(ses *session.Session, payload []byte, wh *WorldHand
 		sendPlayerStepError(ses, wh, req.RequestID, opcodes.PlayerStepResponse)
 		return false
 	}
+	// Only an accepted legacy admission replaces an optimistic generation.
+	wh.PlayerMovement.retireOwnedMovementStream(ses)
 	response := playerStepResponse(step, req.RequestID)
 	response.Buffered = true
 	for next := step.next; next != nil; next = next.next {
@@ -392,6 +406,11 @@ func HandlePlayerStepCompleteRequest(ses *session.Session, payload []byte, wh *W
 		wh.PlayerMovement.mu.RUnlock()
 	}
 	ses.SendStreamJSON(response, opcodes.PlayerStepCompleteResponse)
+	publishCompletedPlayerStep(ses, wh, step)
+	return false
+}
+
+func publishCompletedPlayerStep(ses *session.Session, wh *WorldHandler, step *issuedPlayerStep) {
 	// Effects run only for a successfully committed issued step. Duplicate/stale
 	// acknowledgements never re-run encounters, Safari counters or script triggers.
 	broadcastCommittedPlayerStep(ses, wh, step.x, step.y, step.mapID, step.direction, step.sourceMapID)
@@ -409,7 +428,6 @@ func HandlePlayerStepCompleteRequest(ses *session.Session, payload []byte, wh *W
 			wh.PlayerMovement.mu.RUnlock()
 		}
 	}
-	return false
 }
 
 func (m *PlayerMovementManager) completePlayerStep(ses *session.Session, token string) (*issuedPlayerStep, error) {

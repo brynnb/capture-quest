@@ -312,9 +312,13 @@ export interface SafariZoneExitNotify extends SafariVisitState, WarpTileTeleport
 }
 /**
  * PlayerStepRequest proposes one direction from an expected owned source.
- * The server resolves the target and issues a session-bound animation token.
+ * Legacy clients receive an animation token. A sequenced command commits once
+ * in the current server-issued movement stream while the client predicts locally.
  */
 export interface PlayerStepRequest {
+  commandToken?: string;
+  movementStreamId?: string;
+  sequence?: number /* uint64 */;
   mapId: number /* int */;
   fromX: number;
   fromY: number;
@@ -323,6 +327,9 @@ export interface PlayerStepRequest {
   requestId: string;
 }
 export interface PlayerStepResponse {
+  committed?: boolean;
+  stopPath?: boolean;
+  replayed?: boolean;
   buffered?: boolean;
   continuationSteps?: PlayerStepResponse[];
   success: true;
@@ -427,10 +434,13 @@ export interface CommittedPlayerStep {
   direction: string;
 }
 export interface OwnedPlayerPositionRequest {
+  resetMovementStream?: boolean;
   requestId: string;
   stepToken?: string;
 }
 export interface OwnedPlayerPositionResponse {
+  movementStreamId?: string;
+  movementSequence?: number /* uint64 */;
   committedStep?: CommittedPlayerStep;
   success: true;
   requestId: string;

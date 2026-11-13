@@ -14,7 +14,6 @@ const PIXELS_PER_MS = TILE_SIZE / WALK_DURATION_MS;
 // Varying latency may bunch packets, but must never reorder a WebSocket stream.
 const ONE_WAY_LATENCY_MS = [100, 140, 110, 150, 120, 130];
 const TRANSPORT = process.env.CQ_E2E_TRANSPORT === "native" ? "native" : "websocket";
-const MAX_ADDED_RTT_MS = TRANSPORT === "native" ? 0 : 2 * Math.max(...ONE_WAY_LATENCY_MS);
 
 type PositionSample = { t: number; wallTime: number; delta: number; x: number; y: number };
 type Packet = { direction: string; opcode: number; delayMs: number; data: unknown };
@@ -228,8 +227,8 @@ function assertRetarget(run: Run, evidence: Evidence) {
   const firstDown = samples.findIndex((sample) => sample.y > turn.y + 0.01);
   const beforeSamples = samples.slice(0, (firstTurn >= 0 ? firstTurn : firstDown - 1) + 1);
   const afterSamples = samples.slice(lastTurn >= 0 ? lastTurn : Math.max(0, firstDown - 1));
-  const before = { name: "retarget: issued horizontal segment", samples: beforeSamples, metrics: movementMetrics(beforeSamples) };
-  const after = { name: "retarget: newly authorized downward segment", samples: afterSamples, metrics: movementMetrics(afterSamples) };
+  const before = { name: "retarget: active horizontal segment", samples: beforeSamples, metrics: movementMetrics(beforeSamples) };
+  const after = { name: "retarget: optimistic downward segment", samples: afterSamples, metrics: movementMetrics(afterSamples) };
   const frames = samples.slice(1).map((sample, index) => {
     const previous = samples[index];
     const distance = Math.abs(sample.x - previous.x) + Math.abs(sample.y - previous.y);
@@ -242,10 +241,9 @@ function assertRetarget(run: Run, evidence: Evidence) {
   const slowFrames = interior.filter((frame) => frame.speedRatio < 0.92);
   const slowFrameGroups = slowFrames.reduce((groups, frame, index) => groups + (index === 0 || frame.index !== slowFrames[index - 1].index + 1 ? 1 : 0), 0);
   const authorizationGapMs = Math.max(0, interior.reduce((lost, frame) => lost + frame.delta - frame.distance / PIXELS_PER_MS, 0));
-  // Only a newly requested direction may wait once for a server grant. This is
-  // bounded by its round trip plus frame scheduling; ordinary tile boundaries
-  // retain the strict zero-dwell assertions in both uninterrupted segments.
-  const maximumAuthorizationGapMs = MAX_ADDED_RTT_MS + 2 * run.metrics.maxFrameDelta;
+  // Locally walkable retargets continue optimistically through the new turn.
+  // Only floating-point error is tolerated; no authorization frame is allowed.
+  const maximumAuthorizationGapMs = 0.001;
   evidence.retargetAuthorization = {
     boundaryTile: { x: 5, y: 6 },
     slowFrameGroups,
@@ -268,9 +266,9 @@ function assertRetarget(run: Run, evidence: Evidence) {
   }
   expect(run.metrics.distance, "Retarget travels exactly two tiles left and one down").toBeCloseTo(3 * TILE_SIZE, 3);
   expect(run.metrics.maxSpeedRatio, "Retarget never accelerates to conceal authorization delay").toBeLessThanOrEqual(1.08);
-  expect(slowFrameGroups, "At most one authorization gap occurs after changing the destination").toBeLessThanOrEqual(1);
-  expect(slowFrames.every((frame) => frame.atBoundary), "Only the exact requested turn at (5,6) may wait for its new direction").toBe(true);
-  expect(authorizationGapMs, "The new direction must start within one bounded authorization round trip").toBeLessThanOrEqual(maximumAuthorizationGapMs);
+  expect(slowFrameGroups, "Changing a walkable destination must not introduce an authorization pause").toBe(0);
+  expect(authorizationGapMs, "The new direction starts continuously before its server grant arrives").toBeLessThanOrEqual(maximumAuthorizationGapMs);
+  assertConstantSpeed(run, 3);
   assertConstantSpeed(before, 1, 3);
   assertConstantSpeed(after, 1, 3);
 }

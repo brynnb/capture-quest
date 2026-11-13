@@ -6,7 +6,10 @@ import { clickTile, pressMovement } from "./helpers/input";
 import { jumpToScenario } from "./helpers/scenarioDebugger";
 import { waitForMap, waitForNoMapLoading, waitForPlayerIdle, waitForPlayerTile } from "./helpers/state";
 import * as OpCodes from "../../src/net/generated/opcodes";
-import type { OwnedPlayerPositionResponse, PlayerStepCompleteRequest, PlayerStepCompleteResponse, PlayerStepRequest } from "../../src/net/generated/protocol";
+import type { OwnedPlayerPositionResponse, PlayerStepRequest, PlayerStepResponse, PlayerStepError } from "../../src/net/generated/protocol";
+
+type AtomicMovement = PlayerStepRequest & { commandToken: string; movementStreamId: string; sequence: number };
+type AtomicReceipt = PlayerStepResponse & { committed: true; replayed?: boolean };
 
 type Frame = { t: number; delta: number; x: number; y: number };
 
@@ -107,23 +110,26 @@ async function saveEvidence(name: string, evidence: unknown) {
   await test.info().attach(name, { path, contentType: "application/json" });
 }
 
-test("a lost final step reply recovers from owned position without retrying and its historical receipt cannot rewind re-entry", async ({ page }) => {
+test("a lost final commit reply recovers current position and a retired stream cannot rewind character re-entry", async ({ page }) => {
   test.skip(process.env.CQ_E2E_TRANSPORT === "native", "Reply dropping requires the WebSocket transport");
   test.setTimeout(120_000);
   const errors = collectPageErrors(page);
-  const completions: PlayerStepCompleteRequest[] = [];
-  const receipts: PlayerStepCompleteResponse[] = [];
-  const ownedRequests: Array<{ requestId: string }> = [];
+  const commands: AtomicMovement[] = [];
+  const receipts: Array<AtomicReceipt | PlayerStepError> = [];
+  const ownedRequests: Array<{ requestId: string; resetMovementStream?: boolean; stepToken?: string }> = [];
   const ownedPositions: OwnedPlayerPositionResponse[] = [];
-  const dropped: { receipt?: PlayerStepCompleteResponse } = {};
+  const legacyCompletions: unknown[] = [];
+  const dropped: { receipt?: AtomicReceipt } = {};
   let armed = false;
   await page.routeWebSocket("**/ws", (socket) => {
     const server = socket.connectToServer();
     socket.onMessage((message) => {
       if (armed && Buffer.isBuffer(message) && message.length >= 6) {
         const opcode = message.readUInt16LE(4);
-        if (opcode === OpCodes.PlayerStepCompleteRequest) completions.push(JSON.parse(message.subarray(6).toString()));
-        if (opcode === OpCodes.OwnedPlayerPositionRequest) ownedRequests.push(JSON.parse(message.subarray(6).toString()));
+        const data = JSON.parse(message.subarray(6).toString());
+        if (opcode === OpCodes.PlayerStepRequest && data.commandToken) commands.push(data);
+        if (opcode === OpCodes.PlayerStepCompleteRequest) legacyCompletions.push(data);
+        if (opcode === OpCodes.OwnedPlayerPositionRequest) ownedRequests.push(data);
       }
       server.send(message);
     });
@@ -131,9 +137,8 @@ test("a lost final step reply recovers from owned position without retrying and 
       if (armed && Buffer.isBuffer(message) && message.length >= 6) {
         const opcode = message.readUInt16LE(4);
         const result = JSON.parse(message.subarray(6).toString());
-        if (opcode === OpCodes.PlayerStepCompleteResponse && result.success) {
-          const request = completions.find((completion) => completion.requestId === result.requestId);
-          if (!dropped.receipt && request && !request.cancel) {
+        if (opcode === OpCodes.PlayerStepResponse) {
+          if (!dropped.receipt && result.success && result.committed) {
             dropped.receipt = result;
             return;
           }
@@ -152,58 +157,68 @@ test("a lost final step reply recovers from owned position without retrying and 
     await assertWebSocket(page);
     armed = true;
     await pressMovement(page, "left");
-    await expect.poll(() => ownedPositions.length, { timeout: 20_000 }).toBe(1);
+    const recoveryRequests = () => ownedRequests.filter((request) => request.resetMovementStream !== true);
+    await expect.poll(() => recoveryRequests().some((request) => ownedPositions.some((position) => position.requestId === request.requestId)), { timeout: 20_000 }).toBe(true);
     await assertRenderedPose(page, 5, 7);
-    const commits = completions.filter((completion) => !completion.cancel);
-    expect(commits, "A lost final reply uses a current read, never a historical-token retry").toHaveLength(1);
-    expect(dropped.receipt).toMatchObject({ success: true, mapId: 37, x: 5, y: 7 });
-    expect(ownedRequests).toHaveLength(1);
-    expect(ownedPositions[0]).toMatchObject({ requestId: ownedRequests[0].requestId, mapId: 37, x: 5, y: 7, direction: "LEFT", serverMovementPending: false });
-    expect(receipts.some((receipt) => receipt.replayed), "No automatic historical replay occurs").toBe(false);
-    expect(errors.sentOpcodes).toContain(OpCodes.OwnedPlayerPositionRequest);
+    expect(commands, "A lost final reply uses a current read, never resending its historical command").toHaveLength(1);
+    expect(dropped.receipt).toMatchObject({ success: true, committed: true, stepToken: commands[0].commandToken, mapId: 37, x: 5, y: 7 });
+    expect(recoveryRequests()).toHaveLength(1);
+    expect(ownedPositions.find((position) => position.requestId === recoveryRequests()[0].requestId)).toMatchObject({ mapId: 37, x: 5, y: 7, direction: "LEFT", serverMovementPending: false });
+    expect(legacyCompletions, "Atomic movement never falls back to the old completion phase").toEqual([]);
+    expect(receipts.some((receipt) => receipt.success && receipt.replayed), "No automatic historical replay occurs").toBe(false);
+    const original = commands[0];
 
-    // A deliberately replayed durable receipt after re-entry remains historical,
-    // even when the current owned position differs from its old successful step.
     await quitToCharacterSelect(page);
     await enterWorld(page, character);
     await waitForNoMapLoading(page);
     await waitForPlayerIdle(page);
     await placeInHouse(page, 6, 7);
+    // The old stream belongs to the retired movement owner. Even a durable
+    // command token cannot authorize movement through that old stream again.
+    await page.evaluate(async (command) => {
+      const bridgePath = "/src/net/NetworkBridge.ts";
+      const opcodePath = "/src/net/generated/opcodes.ts";
+      const { NetworkBridge } = await import(bridgePath);
+      const opcodes = await import(opcodePath);
+      NetworkBridge.send({ ...command, requestId: "retired-stream-after-reentry" }, opcodes.PlayerStepRequest);
+    }, original);
+    await expect.poll(() => receipts.find((receipt) => receipt.requestId === "retired-stream-after-reentry")?.success).toBe(false);
+    expect(receipts.find((receipt) => receipt.requestId === "retired-stream-after-reentry")).toMatchObject({ success: false, mapId: 37, x: 6, y: 7 });
+    await assertRenderedPose(page, 6, 7);
+
+    // Read the durable historical receipt explicitly, alongside the current
+    // position. Its old successful tile is evidence, never a position setter.
     await page.evaluate(async (stepToken) => {
       const bridgePath = "/src/net/NetworkBridge.ts";
       const opcodePath = "/src/net/generated/opcodes.ts";
       const { NetworkBridge } = await import(bridgePath);
       const opcodes = await import(opcodePath);
-      NetworkBridge.send({ stepToken, requestId: "after-reentry" }, opcodes.PlayerStepCompleteRequest);
-    }, commits[0].stepToken);
-    await expect.poll(() => receipts.find((receipt) => receipt.requestId === "after-reentry")?.replayed).toBe(true);
-    expect(receipts.find((receipt) => receipt.requestId === "after-reentry")).toMatchObject({ mapId: 37, x: 5, y: 7, replayed: true });
+      NetworkBridge.send({ stepToken, requestId: "historical-step-after-reentry" }, opcodes.OwnedPlayerPositionRequest);
+    }, original.commandToken);
+    await expect.poll(() => ownedPositions.find((position) => position.requestId === "historical-step-after-reentry")?.committedStep).toBeDefined();
+    expect(ownedPositions.find((position) => position.requestId === "historical-step-after-reentry")).toMatchObject({
+      mapId: 37, x: 6, y: 7,
+      committedStep: { stepToken: original.commandToken, mapId: 37, x: 5, y: 7, direction: "LEFT" },
+    });
     await assertRenderedPose(page, 6, 7);
     await page.screenshot({ path: test.info().outputPath("historical-receipt-preserves-current-position.png") });
     await quitToCharacterSelect(page);
     errors.assertNoSevereErrors();
   } finally {
-    await saveEvidence("lost-final-step-recovery.json", { dropped, completions, receipts, ownedRequests, ownedPositions });
+    await saveEvidence("lost-final-step-recovery.json", { dropped, commands, receipts, ownedRequests, ownedPositions, legacyCompletions });
   }
 });
 
-test("a later receipt restores a lost movement refill without pauses, stale retries, or stopping before the destination", async ({ page }) => {
+test("a later committed tile confirms a lost intermediate receipt without pauses, historical retries, or stopping short", async ({ page }) => {
   test.skip(process.env.CQ_E2E_TRANSPORT === "native", "Reply dropping requires the WebSocket transport");
   test.setTimeout(120_000);
   const errors = collectPageErrors(page);
-  const requests: PlayerStepRequest[] = [];
-  const completions: PlayerStepCompleteRequest[] = [];
-  const receipts: PlayerStepCompleteResponse[] = [];
-  const ownedRequests: unknown[] = [];
+  const commands: AtomicMovement[] = [];
+  const receipts: AtomicReceipt[] = [];
+  const ownedRequests: Array<{ requestId: string; resetMovementStream?: boolean }> = [];
+  const legacyCompletions: unknown[] = [];
   const failures: unknown[] = [];
-  const deliveredTokens = new Set<string>();
-  const dropped: {
-    request?: PlayerStepCompleteRequest;
-    receipt?: PlayerStepCompleteResponse;
-    at?: number;
-    newTokens?: string[];
-    restoredBy?: string;
-  } = {};
+  const dropped: { request?: AtomicMovement; receipt?: AtomicReceipt; at?: number; confirmedBy?: string } = {};
   let armed = false;
   let samples: Frame[] = [];
   await page.routeWebSocket("**/ws", (socket) => {
@@ -212,37 +227,28 @@ test("a later receipt restores a lost movement refill without pauses, stale retr
       if (armed && Buffer.isBuffer(message) && message.length >= 6) {
         const opcode = message.readUInt16LE(4);
         const request = JSON.parse(message.subarray(6).toString());
-        if (opcode === OpCodes.PlayerStepRequest) requests.push(request);
-        if (opcode === OpCodes.PlayerStepCompleteRequest) completions.push(request);
+        if (opcode === OpCodes.PlayerStepRequest && request.commandToken) commands.push(request);
+        if (opcode === OpCodes.PlayerStepCompleteRequest) legacyCompletions.push(request);
         if (opcode === OpCodes.OwnedPlayerPositionRequest) ownedRequests.push(request);
       }
       server.send(message);
     });
     server.onMessage((message) => {
-      if (armed && Buffer.isBuffer(message) && message.length >= 6) {
-        const opcode = message.readUInt16LE(4);
-        if (opcode === OpCodes.PlayerStepResponse || opcode === OpCodes.PlayerStepCompleteResponse) {
-          const result = JSON.parse(message.subarray(6).toString());
-          if (!result.success) failures.push(result);
-          const request = completions.find((completion) => completion.requestId === result.requestId);
-          if (!dropped.receipt && opcode === OpCodes.PlayerStepCompleteResponse && result.success && request?.lookAhead?.length && !request.cancel) {
-            const newTokens = (result.continuationSteps ?? []).map((step: { stepToken: string }) => step.stepToken).filter((token: string) => !deliveredTokens.has(token));
-            if (newTokens.length) {
-              dropped.request = request;
-              dropped.receipt = result;
-              dropped.newTokens = newTokens;
-              dropped.at = Date.now();
-              return;
-            }
+      if (armed && Buffer.isBuffer(message) && message.length >= 6 && message.readUInt16LE(4) === OpCodes.PlayerStepResponse) {
+        const result = JSON.parse(message.subarray(6).toString());
+        if (!result.success) failures.push(result);
+        const request = commands.find((command) => command.requestId === result.requestId);
+        if (!dropped.receipt && result.success && result.committed && request && commands.indexOf(request) === 4) {
+          dropped.request = request;
+          dropped.receipt = result;
+          dropped.at = Date.now();
+          return;
+        }
+        if (result.success && result.committed) {
+          receipts.push(result);
+          if (dropped.request && request && request.movementStreamId === dropped.request.movementStreamId && request.sequence > dropped.request.sequence) {
+            dropped.confirmedBy ??= result.requestId;
           }
-          if (opcode === OpCodes.PlayerStepCompleteResponse && result.success) {
-            receipts.push(result);
-            if (dropped.newTokens?.some((token) => result.continuationSteps?.some((step: { stepToken: string }) => step.stepToken === token))) {
-              dropped.restoredBy ??= result.requestId;
-            }
-          }
-          if (result.stepToken) deliveredTokens.add(result.stepToken);
-          for (const step of result.continuationSteps ?? []) deliveredTokens.add(step.stepToken);
         }
       }
       socket.send(message);
@@ -259,36 +265,36 @@ test("a later receipt restores a lost movement refill without pauses, stale retr
     await clickTile(page, 0, 2);
     await assertRenderedPose(page, 0, 2);
     samples = await stopFrames(page);
-    expect(dropped.receipt, "Drop a real successful refill, not an arbitrary step or cancellation").toBeDefined();
-    expect(dropped.request?.lookAhead?.length).toBeGreaterThan(0);
-    expect(dropped.restoredBy, "A subsequent successful receipt must restore the missing authorized window").toBeDefined();
-    expect(dropped.restoredBy).not.toBe(dropped.request?.requestId);
-    expect(completions.some((completion) => dropped.newTokens?.includes(completion.stepToken)), "The restored grants actually carry the player past the old window").toBe(true);
+    expect(dropped.receipt, "Drop a real committed fifth tile, not an admission or bootstrap").toBeDefined();
+    expect(dropped.confirmedBy, "A later committed sequence must confirm progress beyond the lost receipt").toBeDefined();
+    expect(dropped.confirmedBy).not.toBe(dropped.request?.requestId);
 
-    // CorrelatedRequest has a ten-second deadline. Remain in-world beyond the
-    // dropped request's deadline to catch a late historical retry or recovery.
+    // Remain in-world past the lost command's correlated-request deadline.
     await page.waitForTimeout(Math.max(0, (dropped.at ?? Date.now()) + 10_250 - Date.now()));
     await assertRenderedPose(page, 0, 2);
-    const commits = completions.filter((completion) => !completion.cancel);
-    expect(requests, "The original route continues using the restored window").toHaveLength(1);
-    expect(commits).toHaveLength(11);
-    expect(new Set(commits.map((completion) => completion.stepToken)).size, "Every visual tile is committed once; never retry a historical token").toBe(11);
+    expect(commands, "Every visible tile uses one atomic command").toHaveLength(11);
+    expect(new Set(commands.map((command) => command.commandToken)).size, "Never retry a historical command token").toBe(11);
+    expect(new Set(commands.map((command) => command.movementStreamId)).size).toBe(1);
+    expect(commands.map((command) => command.sequence)).toEqual(Array.from({ length: 11 }, (_, index) => commands[0].sequence + index));
     expect(receipts.every((receipt) => !receipt.replayed)).toBe(true);
-    expect(ownedRequests, "Later confirmation settles the lost reply without interrupting for position recovery").toEqual([]);
+    expect(ownedRequests.filter((request) => request.resetMovementStream !== true), "A later sequence settles the lost reply without a recovery read").toEqual([]);
+    expect(legacyCompletions).toEqual([]);
     expect(failures).toEqual([]);
+    const final = receipts.find((receipt) => receipt.requestId === commands[10].requestId);
+    expect(final).toMatchObject({ success: true, committed: true, stepToken: commands[10].commandToken, mapId: 37, x: 0, y: 2 });
     const metrics = frameMetrics(samples);
-    console.log(JSON.stringify({ lostRefillMovement: metrics, droppedRequestId: dropped.request?.requestId, restoredBy: dropped.restoredBy }));
+    console.log(JSON.stringify({ lostIntermediateMovement: metrics, droppedRequestId: dropped.request?.requestId, confirmedBy: dropped.confirmedBy }));
     expect(metrics.distance).toBeCloseTo(11 * 16, 3);
     expect(metrics.interiorFrames).toBeGreaterThan(20);
-    expect(metrics.stationaryFrames, "A lost refill must not reintroduce per-tile pauses").toBe(0);
+    expect(metrics.stationaryFrames, "A lost receipt must not reintroduce per-tile pauses").toBe(0);
     expect(metrics.minSpeedRatio).toBeGreaterThanOrEqual(0.92);
     expect(metrics.maxSpeedRatio).toBeLessThanOrEqual(1.08);
     expect(metrics.maxProgressError).toBeLessThanOrEqual(0.75);
-    await page.screenshot({ path: test.info().outputPath("lost-refill-arrived.png") });
+    await page.screenshot({ path: test.info().outputPath("lost-intermediate-receipt-arrived.png") });
     errors.assertNoSevereErrors();
     await quitToCharacterSelect(page);
   } finally {
     if (!samples.length) samples = await stopFrames(page).catch(() => []);
-    await saveEvidence("lost-movement-refill.json", { dropped, requests, completions, receipts, ownedRequests, failures, metrics: frameMetrics(samples), samples });
+    await saveEvidence("lost-intermediate-movement-receipt.json", { dropped, commands, receipts, ownedRequests, legacyCompletions, failures, metrics: frameMetrics(samples), samples });
   }
 });

@@ -14,10 +14,13 @@ vi.mock("../services/PlayerMovementService", () => ({
   requestEscapeRope: vi.fn(),
   requestBicycleState: vi.fn(),
   requestPlayerFacing: vi.fn(async () => ({ success: true, requestId: "face", mapId: 9999, x: 10, y: 0, direction: "LEFT" })),
+  submitPredictedPlayerStep: vi.fn(async () => ({ success: true, committed: true, requestId: "move", stepToken: "issued", mapId: 9999, x: 10, y: 2, direction: "DOWN", ledgeJump: true })),
   requestPlayerStep: vi.fn(async () => ({ success: true, requestId: "accepted", stepToken: "issued", mapId: 9999, x: 10, y: 2, direction: "DOWN", ledgeJump: true })),
   completePlayerStep: vi.fn(async () => ({ success: true, requestId: "complete", mapId: 9999, x: 10, y: 2, direction: "DOWN" })),
   cancelPlayerStep: vi.fn(async () => ({ success: true, cancelled: true, requestId: "cancel", mapId: 9999, x: 10, y: 2, direction: "DOWN" })),
-  readOwnedPlayerPosition: vi.fn(async () => ({ success: true, requestId: "owned", mapId: 9999, x: 9, y: 0, direction: "LEFT", serverMovementPending: false })),
+  readOwnedPlayerPosition: vi.fn(async (_signal: unknown, _token: unknown, reset: boolean) => reset
+    ? ({ success: true, requestId: "stream", mapId: 9999, x: 10, y: 0, direction: "DOWN", serverMovementPending: false, movementStreamId: "a".repeat(32) })
+    : ({ success: true, requestId: "owned", mapId: 9999, x: 9, y: 0, direction: "LEFT", serverMovementPending: false })),
 }));
 vi.mock("../services/GameplayRecoveryService", () => ({ readCurrentGameplayState: vi.fn(), applyGameplayResourceSnapshot: vi.fn(),applyGameplaySnapshot:vi.fn() }));
 import * as recovery from "../services/GameplayRecoveryService";
@@ -58,6 +61,10 @@ function tile(
     coordinateOrigin: "native",
     contentOrigin: "native",
   };
+}
+
+function initialOwnedPosition(): import("@/net/generated/protocol").OwnedPlayerPositionResponse {
+  return { success: true, requestId: "stream", mapId: 9999, x: 10, y: 0, direction: "DOWN", serverMovementPending: false, movementStreamId: "a".repeat(32) };
 }
 
 function buildLedgeController() {
@@ -280,70 +287,48 @@ describe("PlayerMovementController completed facing", () => {
   });
 });
 
-describe("issued player movement lifecycle", () => {
-  test("animation waits for acceptance and completion sends only the issued token", async () => {
+describe("optimistic player movement lifecycle", () => {
+  test("animation begins immediately and its atomic command never sends a legacy position setter", async () => {
     const { controller, updates } = buildLedgeController();
     const legacy = vi.spyOn(NetworkBridge, "send");
     controller.handleKeyboardMove("DOWN");
-    expect(updates).toHaveLength(0);
-    await vi.waitFor(() => expect(updates).toHaveLength(1));
-    expect(movement.requestPlayerStep).toHaveBeenCalledWith({ mapId: 9999, fromX: 10, fromY: 0, direction: "DOWN", lookAhead: [] }, expect.any(AbortSignal));
+    expect(updates).toHaveLength(1);
+    await vi.waitFor(() => expect(movement.submitPredictedPlayerStep).toHaveBeenCalledOnce());
+    expect(movement.submitPredictedPlayerStep).toHaveBeenCalledWith(expect.objectContaining({
+      mapId: 9999, fromX: 10, fromY: 0, direction: "DOWN", sequence: 1,
+    }), expect.any(AbortSignal));
     controller.onStepComplete(1, 10, 2, "DOWN");
-    await vi.waitFor(() => expect(movement.completePlayerStep).toHaveBeenCalledWith("issued", expect.any(AbortSignal)));
     expect(legacy).not.toHaveBeenCalledWith(expect.anything(), OpCodes.PhaserPlayerPositionUpdate);
     legacy.mockRestore();
     controller.clear();
   });
 
-  test("a retired scene ignores late acceptance", async () => {
-    let accept!: (value: Awaited<ReturnType<typeof movement.requestPlayerStep>>) => void;
-    vi.mocked(movement.requestPlayerStep).mockImplementationOnce(() => new Promise((resolve) => { accept = resolve; }));
+  test("a retired scene ignores late stream initialization", async () => {
+    let initialize!: (value: Awaited<ReturnType<typeof movement.readOwnedPlayerPosition>>) => void;
+    vi.mocked(movement.readOwnedPlayerPosition).mockImplementationOnce(() => new Promise(resolve => { initialize = resolve; }));
     const { controller, updates } = buildLedgeController();
     controller.handleKeyboardMove("DOWN");
     controller.clear();
-    accept({ success: true, requestId: "late", stepToken: "old", mapId: 9999, x: 10, y: 2, direction: "DOWN", ledgeJump: true });
-    await Promise.resolve();
-    expect(updates).toHaveLength(0);
+    initialize(initialOwnedPosition());
+    await Promise.resolve(); await Promise.resolve();
+    expect(updates).toHaveLength(1);
+    expect(movement.submitPredictedPlayerStep).not.toHaveBeenCalled();
     expect(controller.getIsMoving()).toBe(false);
   });
 });
 
-test("discarding a path lets its current issued animation acknowledge without a legacy report", async () => {
+test("discarding future input lets the active prediction finish without a legacy report", async () => {
   const { controller, updates } = buildLedgeController();
   const legacy = vi.spyOn(NetworkBridge, "send");
   controller.handleKeyboardMove("DOWN");
-  await vi.waitFor(() => expect(updates).toHaveLength(1));
+  expect(updates).toHaveLength(1);
   controller.stopMovement();
   controller.onStepComplete(1, 10, 2, "DOWN");
-  await vi.waitFor(() => expect(movement.completePlayerStep).toHaveBeenCalledWith("issued", expect.any(AbortSignal)));
+  await vi.waitFor(() => expect(movement.submitPredictedPlayerStep).toHaveBeenCalledOnce());
   expect(legacy).not.toHaveBeenCalledWith(expect.anything(), OpCodes.PhaserPlayerPositionUpdate);
   legacy.mockRestore();
   controller.clear();
 });
-
-describe("issued movement exclusivity", () => {
-  test("discarded future input cannot replace an issued animation or pending completion", async () => {
-    let complete!: (value: Awaited<ReturnType<typeof movement.completePlayerStep>>) => void;
-    vi.mocked(movement.completePlayerStep).mockImplementationOnce(() => new Promise((resolve) => { complete = resolve; }));
-    const { controller, updates } = buildLedgeController();
-    controller.handleKeyboardMove("DOWN");
-    await vi.waitFor(() => expect(updates).toHaveLength(1));
-    controller.stopMovement();
-    expect(controller.getIsMoving()).toBe(true);
-    expect(controller.handleKeyboardMove("LEFT")).toBe(false);
-    controller.handleTileClick(9 * TILE_SIZE + 8, 8);
-    expect(movement.requestPlayerStep).toHaveBeenCalledTimes(1);
-    controller.onStepComplete(1, 10, 2, "DOWN");
-    await vi.waitFor(() => expect(movement.completePlayerStep).toHaveBeenCalledTimes(1));
-    expect(controller.handleKeyboardMove("LEFT")).toBe(false);
-    controller.handleTileClick(9 * TILE_SIZE + 8, 2 * TILE_SIZE + 8);
-    expect(movement.requestPlayerStep).toHaveBeenCalledTimes(1);
-    complete({ success: true, requestId: "complete", mapId: 9999, x: 10, y: 2, direction: "DOWN" });
-    await vi.waitFor(() => expect(controller.getIsMoving()).toBe(false));
-    controller.clear();
-  });
-});
-
 
 describe("owned-source facing", () => {
   test("turning sends an expected source through facing without a position report", async () => {
@@ -418,10 +403,6 @@ test("facing acceptance reserves queued server movement before its first publish
   vi.mocked(movement.requestPlayerFacing).mockImplementationOnce(() => new Promise((resolve) => { settle = resolve; }));
   const { controller } = buildLedgeController();
   controller.faceTile(9, 0);
-  expect(controller.handleKeyboardMove("DOWN")).toBe(false);
-  expect(controller.requestMoveTo(9, 0)).toBe(false);
-  controller.handleTileClick(9 * TILE_SIZE + 8, 8);
-  expect(movement.requestPlayerStep).not.toHaveBeenCalled();
   settle({ serverMovementPending: true, success: true, requestId: "face", mapId: 9999, x: 10, y: 0, direction: "LEFT" });
   await vi.waitFor(() => expect(controller.getIsMoving()).toBe(true));
   expect(controller.handleKeyboardMove("DOWN")).toBe(false);
@@ -434,21 +415,21 @@ test("facing acceptance reserves queued server movement before its first publish
 });
 
 
-test("a rejected ordinary step preserves an owned unfinished server path", async () => {
+test("a rejected optimistic step recovers an owned unfinished server path", async () => {
   const error = { success: false as const, requestId: "busy", error: "server path busy", mapId: 9999, x: 10, y: 0, direction: "DOWN", serverMovementPending: true };
-  vi.mocked(movement.requestPlayerStep).mockRejectedValueOnce(new CorrelatedResponseError(error));
-  const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  vi.mocked(movement.submitPredictedPlayerStep).mockRejectedValueOnce(new CorrelatedResponseError(error));
+  vi.mocked(movement.readOwnedPlayerPosition).mockResolvedValueOnce(initialOwnedPosition())
+    .mockResolvedValueOnce({ ...initialOwnedPosition(), serverMovementPending: true });
   const { controller } = buildLedgeController();
   controller.handleKeyboardMove("DOWN");
-  await vi.waitFor(() => expect(log).toHaveBeenCalled());
+  await vi.waitFor(() => expect(movement.readOwnedPlayerPosition).toHaveBeenCalledTimes(2));
   expect(controller.getIsMoving()).toBe(true);
   expect(controller.handleKeyboardMove("LEFT")).toBe(false);
   expect(controller.requestMoveTo(9, 0)).toBe(false);
-  controller.clear(); log.mockRestore();
+  controller.clear();
 });
 
-
-test("an unissued ordinary animation cannot acknowledge or trigger arrival effects", async () => {
+test("an unpredicted ordinary animation cannot acknowledge or trigger arrival effects", async () => {
   const { controller } = buildLedgeController();
   const arrived = vi.fn(); controller.setArrivalCallback(arrived);
   const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -480,14 +461,13 @@ test("committed warp exit is a server projection and retirement ignores late com
 
 
 test("a replayed receipt reconciles current ownership and does not trigger another arrival", async () => {
-  vi.mocked(movement.completePlayerStep).mockResolvedValueOnce({ success: true, requestId: "receipt", replayed: true, mapId: 9999, x: 10, y: 2, direction: "DOWN" });
+  vi.mocked(movement.submitPredictedPlayerStep).mockResolvedValueOnce({ success: true, committed: true, stepToken: "issued", ledgeJump: true, requestId: "receipt", replayed: true, mapId: 9999, x: 10, y: 2, direction: "DOWN" });
   const { controller, mapRenderer } = buildLedgeController();
   const arrived = vi.fn(); controller.setArrivalCallback(arrived);
   controller.handleKeyboardMove("DOWN");
-  await vi.waitFor(() => expect(movement.requestPlayerStep).toHaveBeenCalled());
-  controller.onStepComplete(1, 10, 2, "DOWN");
+  await vi.waitFor(() => expect(movement.submitPredictedPlayerStep).toHaveBeenCalled());
   await vi.waitFor(() => expect(mapRenderer.snapActorPosition).toHaveBeenCalledWith(1, 9, 0, "LEFT"));
-  expect(movement.readOwnedPlayerPosition).toHaveBeenCalledWith(expect.any(AbortSignal), "issued");
+  expect(movement.readOwnedPlayerPosition).toHaveBeenLastCalledWith(expect.any(AbortSignal));
   expect(controller.getCurrentPosition()).toEqual({ x: 9, y: 0 });
   expect(controller.getIsMoving()).toBe(false);
   expect(arrived).not.toHaveBeenCalled();
@@ -495,12 +475,11 @@ test("a replayed receipt reconciles current ownership and does not trigger anoth
 });
 
 test("receipt recovery preserves a current server path instead of resuming user input", async () => {
-  vi.mocked(movement.completePlayerStep).mockResolvedValueOnce({ success: true, requestId: "receipt", replayed: true, mapId: 9999, x: 10, y: 2, direction: "DOWN" });
-  vi.mocked(movement.readOwnedPlayerPosition).mockResolvedValueOnce({ success: true, requestId: "owned", mapId: 9999, x: 9, y: 0, direction: "LEFT", serverMovementPending: true });
+  vi.mocked(movement.submitPredictedPlayerStep).mockResolvedValueOnce({ success: true, committed: true, stepToken: "issued", ledgeJump: true, requestId: "receipt", replayed: true, mapId: 9999, x: 10, y: 2, direction: "DOWN" });
+  vi.mocked(movement.readOwnedPlayerPosition).mockResolvedValueOnce(initialOwnedPosition()).mockResolvedValueOnce({ success: true, requestId: "owned", mapId: 9999, x: 9, y: 0, direction: "LEFT", serverMovementPending: true });
   const { controller, mapRenderer } = buildLedgeController();
   controller.handleKeyboardMove("DOWN");
-  await vi.waitFor(() => expect(movement.requestPlayerStep).toHaveBeenCalled());
-  controller.onStepComplete(1, 10, 2, "DOWN");
+  await vi.waitFor(() => expect(movement.submitPredictedPlayerStep).toHaveBeenCalled());
   await vi.waitFor(() => expect(mapRenderer.snapActorPosition).toHaveBeenCalled());
   expect(controller.getIsMoving()).toBe(true);
   expect(controller.handleKeyboardMove("DOWN")).toBe(false);
@@ -508,28 +487,27 @@ test("receipt recovery preserves a current server path instead of resuming user 
 });
 
 test("retirement ignores a late receipt recovery and failed recovery keeps input locked", async () => {
-  vi.mocked(movement.completePlayerStep).mockResolvedValueOnce({ success: true, requestId: "receipt", replayed: true, mapId: 9999, x: 10, y: 2, direction: "DOWN" });
+  vi.mocked(movement.submitPredictedPlayerStep).mockResolvedValueOnce({ success: true, committed: true, stepToken: "issued", ledgeJump: true, requestId: "receipt", replayed: true, mapId: 9999, x: 10, y: 2, direction: "DOWN" });
   let recover!: (value: Awaited<ReturnType<typeof movement.readOwnedPlayerPosition>>) => void;
-  vi.mocked(movement.readOwnedPlayerPosition).mockImplementationOnce(() => new Promise(resolve => { recover = resolve; }));
+  vi.mocked(movement.readOwnedPlayerPosition).mockResolvedValueOnce(initialOwnedPosition()).mockImplementationOnce(() => new Promise(resolve => { recover = resolve; }));
   const { controller, mapRenderer } = buildLedgeController();
   controller.handleKeyboardMove("DOWN");
-  await vi.waitFor(() => expect(movement.requestPlayerStep).toHaveBeenCalled());
-  controller.onStepComplete(1, 10, 2, "DOWN");
-  await vi.waitFor(() => expect(movement.readOwnedPlayerPosition).toHaveBeenCalled());
+  await vi.waitFor(() => expect(movement.submitPredictedPlayerStep).toHaveBeenCalled());
+  await vi.waitFor(() => expect(movement.readOwnedPlayerPosition).toHaveBeenCalledTimes(2));
+  const snapsBeforeRetirement = vi.mocked(mapRenderer.snapActorPosition).mock.calls.length;
   controller.clear(); controller.syncPosition(20, 20);
   recover({ success: true, requestId: "late", mapId: 9999, x: 9, y: 0, direction: "LEFT", serverMovementPending: false });
   await Promise.resolve(); await Promise.resolve();
-  expect(mapRenderer.snapActorPosition).not.toHaveBeenCalled();
+  expect(mapRenderer.snapActorPosition).toHaveBeenCalledTimes(snapsBeforeRetirement);
   expect(controller.getCurrentPosition()).toEqual({ x: 20, y: 20 });
 
   vi.clearAllMocks();
-  vi.mocked(movement.completePlayerStep).mockResolvedValueOnce({ success: true, requestId: "receipt", replayed: true, mapId: 9999, x: 10, y: 2, direction: "DOWN" });
-  vi.mocked(movement.readOwnedPlayerPosition).mockRejectedValueOnce(new Error("recovery unavailable"));
+  vi.mocked(movement.submitPredictedPlayerStep).mockResolvedValueOnce({ success: true, committed: true, stepToken: "issued", ledgeJump: true, requestId: "receipt", replayed: true, mapId: 9999, x: 10, y: 2, direction: "DOWN" });
+  vi.mocked(movement.readOwnedPlayerPosition).mockResolvedValueOnce(initialOwnedPosition()).mockRejectedValueOnce(new Error("recovery unavailable"));
   const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
   const next = buildLedgeController().controller;
   next.handleKeyboardMove("DOWN");
-  await vi.waitFor(() => expect(movement.requestPlayerStep).toHaveBeenCalled());
-  next.onStepComplete(1, 10, 2, "DOWN");
+  await vi.waitFor(() => expect(movement.submitPredictedPlayerStep).toHaveBeenCalled());
   await vi.waitFor(() => expect(log).toHaveBeenCalled());
   expect(next.handleKeyboardMove("LEFT")).toBe(false);
   expect(next.requestMoveTo(9, 0)).toBe(false);
@@ -821,148 +799,4 @@ test("emergency home replaces an older field owner but rejects duplicate home cl
  expect(vi.mocked(movement.requestStateField).mock.calls[0][1]!.aborted).toBe(true);expect(movement.requestWarpHome).toHaveBeenCalledOnce();
  finishOld({success:true,requestId:"old",characterId:42,moveName:"TELEPORT",mapId:50,message:"old"});await old;
  finishHome({success:true,requestId:"home",characterId:42,current:false,revision:3,moveName:"WARP_HOME",mapId:9999,message:"home"});await home;expect(battlePublication.recoverFieldPublication).toHaveBeenCalledOnce();
-});
-
-
-describe("continuous issued movement", () => {
-  beforeEach(() => {
-    usePokemonDialogueStore.getState().resetDialogueState();
-    vi.mocked(movement.requestPlayerStep).mockReset();
-    vi.mocked(movement.completePlayerStep).mockReset();
-    vi.mocked(movement.cancelPlayerStep).mockReset();
-  });
-  function step(x: number): import("@/net/generated/protocol").PlayerStepResponse {
-    return { success: true, requestId: `step-${x}`, stepToken: `issued-${x}`, mapId: 9999, x, y: 0, direction: "RIGHT", ledgeJump: false };
-  }
-  function straightController() {
-    const updates: { x: number; at: number }[] = [];
-    const renderer = {
-      updateActorPosition: vi.fn((_id: number, _fromX: number, _fromY: number, x: number) => updates.push({ x, at: Date.now() })),
-      getMovementController: () => ({ handleDirectionUpdate: vi.fn() }),
-      snapActorPosition: vi.fn(),
-    };
-    const controller = new PlayerMovementController({ events: { emit: vi.fn(), once: vi.fn() } } as unknown as Scene);
-    controller.buildCollisionMap(Array.from({ length: 6 }, (_, x) => tile(x + 1, x, 0, 1)));
-    controller.setPlayer(1, 0, 0, 9999, renderer as unknown as MapRenderer);
-    return { controller, updates };
-  }
-  function delayedCompletion(x: number, next?: number) {
-    return new Promise<import("@/net/generated/protocol").PlayerStepCompleteResponse>(resolve => setTimeout(() => resolve({
-      success: true, requestId: `complete-${x}`, mapId: 9999, x, y: 0, direction: "RIGHT", ...(next ? { nextStep: step(next) } : {}),
-    }), 125));
-  }
-
-  test("click paths overlap 125ms replies with animations and do not reauthorize each tile", async () => {
-    vi.useFakeTimers();
-    const { controller, updates } = straightController();
-    try {
-      vi.mocked(movement.requestPlayerStep).mockResolvedValueOnce(step(1));
-      for (let x = 1; x <= 3; x++) vi.mocked(movement.completePlayerStep).mockImplementationOnce(() => delayedCompletion(x, x < 3 ? x + 1 : undefined));
-      controller.requestMoveTo(3, 0);
-      await vi.advanceTimersByTimeAsync(0);
-      expect(updates.map(update => update.x)).toEqual([1]);
-      expect(movement.completePlayerStep).toHaveBeenCalledWith("issued-1", expect.any(AbortSignal), "RIGHT");
-      for (let x = 1; x <= 3; x++) {
-        await vi.advanceTimersByTimeAsync(200);
-        controller.onStepComplete(1, x, 0, "RIGHT");
-        await vi.advanceTimersByTimeAsync(0);
-      }
-      expect(updates.map(update => update.x)).toEqual([1, 2, 3]);
-      expect(updates.map(update => update.at - updates[0].at)).toEqual([0, 200, 400]);
-      expect(movement.requestPlayerStep).toHaveBeenCalledTimes(1);
-      expect(movement.completePlayerStep).toHaveBeenCalledTimes(3);
-      expect(controller.getIsMoving()).toBe(false);
-    } finally { controller.clear(); vi.useRealTimers(); }
-  });
-
-  test("held keys continue smoothly, release cancels one unused token, and repeated focus stops retain cancellation ownership", async () => {
-    vi.useFakeTimers();
-    const { controller, updates } = straightController();
-    let held: "RIGHT" | null = "RIGHT";
-    controller.setHeldKeyboardDirectionProvider(() => held);
-    let cancel!: (value: Awaited<ReturnType<typeof movement.cancelPlayerStep>>) => void;
-    vi.mocked(movement.cancelPlayerStep).mockImplementationOnce(() => new Promise(resolve => { cancel = resolve; }));
-    try {
-      vi.mocked(movement.requestPlayerStep).mockResolvedValueOnce(step(1));
-      for (let x = 1; x <= 3; x++) vi.mocked(movement.completePlayerStep).mockImplementationOnce(() => delayedCompletion(x, x + 1));
-      controller.handleKeyboardMove("RIGHT");
-      await vi.advanceTimersByTimeAsync(0);
-      for (let x = 1; x <= 3; x++) {
-        await vi.advanceTimersByTimeAsync(200);
-        if (x === 3) held = null;
-        controller.onStepComplete(1, x, 0, "RIGHT");
-        await vi.advanceTimersByTimeAsync(0);
-      }
-      expect(updates.map(update => update.x)).toEqual([1, 2, 3]);
-      expect(updates.map(update => update.at - updates[0].at)).toEqual([0, 200, 400]);
-      expect(movement.requestPlayerStep).toHaveBeenCalledTimes(1);
-      expect(movement.cancelPlayerStep).toHaveBeenCalledWith("issued-4", expect.any(AbortSignal));
-      const signal = vi.mocked(movement.cancelPlayerStep).mock.calls[0][1]!;
-      controller.stopMovement(); controller.stopMovement();
-      expect(signal.aborted).toBe(false);
-      expect(controller.getIsMoving()).toBe(true);
-      expect(controller.handleKeyboardMove("LEFT")).toBe(false);
-      cancel({ success: true, cancelled: true, requestId: "cancel", mapId: 9999, x: 3, y: 0, direction: "RIGHT" });
-      await vi.advanceTimersByTimeAsync(0);
-      expect(controller.getIsMoving()).toBe(false);
-      expect(movement.completePlayerStep).toHaveBeenCalledTimes(3);
-    } finally { controller.clear(); vi.useRealTimers(); }
-  });
-
-  test("changing held direction keeps cancellation owned when a panel discards the new intent", async () => {
-    const { controller, updates } = straightController();
-    let held: "RIGHT" | "LEFT" = "RIGHT";
-    controller.setHeldKeyboardDirectionProvider(() => held);
-    vi.mocked(movement.requestPlayerStep).mockResolvedValueOnce(step(1));
-    vi.mocked(movement.completePlayerStep).mockResolvedValueOnce({ success: true, requestId: "one", mapId: 9999, x: 1, y: 0, direction: "RIGHT", nextStep: step(2) });
-    let cancel!: (value: Awaited<ReturnType<typeof movement.cancelPlayerStep>>) => void;
-    vi.mocked(movement.cancelPlayerStep).mockImplementationOnce(() => new Promise(resolve => { cancel = resolve; }));
-    controller.handleKeyboardMove("RIGHT");
-    await vi.waitFor(() => expect(updates).toHaveLength(1));
-    held = "LEFT";
-    controller.onStepComplete(1, 1, 0, "RIGHT");
-    await vi.waitFor(() => expect(movement.cancelPlayerStep).toHaveBeenCalledTimes(1));
-    const signal = vi.mocked(movement.cancelPlayerStep).mock.calls[0][1]!;
-    controller.stopMovement(); controller.stopMovement();
-    expect(signal.aborted).toBe(false);
-    expect(controller.getIsMoving()).toBe(true);
-    cancel({ success: true, cancelled: true, requestId: "cancel", mapId: 9999, x: 1, y: 0, direction: "RIGHT" });
-    await vi.waitFor(() => expect(controller.getIsMoving()).toBe(false));
-    expect(movement.requestPlayerStep).toHaveBeenCalledTimes(1);
-    expect(updates).toHaveLength(1);
-    controller.clear();
-  });
-
-  test("uncertain cancellation keeps later movement locked instead of committing the unused token", async () => {
-    const { controller, updates } = straightController();
-    let held: "RIGHT" | null = "RIGHT";
-    controller.setHeldKeyboardDirectionProvider(() => held);
-    vi.mocked(movement.requestPlayerStep).mockResolvedValueOnce(step(1));
-    vi.mocked(movement.completePlayerStep).mockResolvedValueOnce({ success: true, requestId: "one", mapId: 9999, x: 1, y: 0, direction: "RIGHT", nextStep: step(2) });
-    vi.mocked(movement.cancelPlayerStep).mockRejectedValueOnce(new Error("second cancellation timeout"));
-    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    controller.handleKeyboardMove("RIGHT");
-    await vi.waitFor(() => expect(updates).toHaveLength(1));
-    held = null;
-    controller.onStepComplete(1, 1, 0, "RIGHT");
-    await vi.waitFor(() => expect(log).toHaveBeenCalled());
-    controller.stopMovement();
-    expect(controller.handleKeyboardMove("LEFT")).toBe(false);
-    expect(controller.requestMoveTo(3, 0)).toBe(false);
-    expect(movement.completePlayerStep).toHaveBeenCalledTimes(1);
-    controller.clear(); log.mockRestore();
-  });
-
-  test("a prepared token never continues a server-stopped step", async () => {
-    const { controller, updates } = straightController();
-    vi.mocked(movement.requestPlayerStep).mockResolvedValueOnce(step(1));
-    vi.mocked(movement.completePlayerStep).mockResolvedValueOnce({ success: true, requestId: "stop", mapId: 9999, x: 1, y: 0, direction: "RIGHT", stopPath: true });
-    controller.requestMoveTo(3, 0);
-    await vi.waitFor(() => expect(updates).toHaveLength(1));
-    controller.onStepComplete(1, 1, 0, "RIGHT");
-    await vi.waitFor(() => expect(controller.getIsMoving()).toBe(false));
-    expect(updates).toHaveLength(1);
-    expect(movement.requestPlayerStep).toHaveBeenCalledTimes(1);
-    controller.clear();
-  });
 });

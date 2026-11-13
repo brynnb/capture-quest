@@ -157,7 +157,7 @@ We follow a **"Model-First"** architecture. Data is categorized into distinct st
 **The server owns durable gameplay state.**
 
 - **Casing & Naming**: Keep server field names, database columns, and Go struct tags aligned with the runtime model.
-- **Movement**: Ordinary walking requests a server-issued step from its expected owned source and acknowledges its token after animation. Facing uses a direction-only command. Server-controlled path points commit before publication and use a dedicated local projection notification. The coordinate setter is retired. Ordinary completion, forced path points and target-based Surf entry share position and applicable step effects in one transaction; durable result recovery remains migration work.
+- **Movement**: Ordinary walking predicts locally as soon as input starts. Each started tile sends one sequenced direction command from its expected source; the server resolves collision, paces and commits it before replying. A server-issued movement stream fences queued commands after rejection, teleport or owner replacement. Facing uses a direction-only command. Server-controlled path points commit before publication and use a dedicated local projection notification. The coordinate setter is retired. Ordinary completion, forced path points and target-based Surf entry share position and applicable step effects in one transaction; ordinary walking also saves its durable receipt in that transaction.
 - **Adaptation**: The client code and Tygo types adapt to the server's structure. Map location state should use `mapId`; `zoneId` only remains where older protocol/data aliases still need compatibility.
 - **Automation**: Explicit JSON tags drive standard Go encoding and Tygo generation. Character state, wallet and bind streams use this contract. Remaining legacy world messages still pass through `StructToMap` while the documented migration proceeds.
 
@@ -391,14 +391,26 @@ field-name conversion or generated-name postprocessor will remain.
    the existing server-selected zero-position recovery can change location.
    Overworld arrival and script
    issuance share original-tile provenance; arrival resolves effects inside its
-   character-locked transaction. Ordinary movement now requests an issued direction step (187/188) and
-   acknowledges its token (189/190). The shared character collision model resolves
-   destinations and rechecks dynamic blockers, with injected cancellable queries.
-   Completion saves position before publication and effects. Opcode 45 is retired:
-   the session boundary rejects it and its handler/DTO/client send helper are removed.
-   Surf and committed warp exit animation explicitly project server movement;
-   unissued ordinary animation cannot acknowledge or trigger arrival effects.
-   Atomic step-effect/result recovery remains on the roadmap.
+   character-locked transaction. Ordinary movement starts visual prediction immediately,
+   independently of network replies. An ordered owned-position read (195/196) with
+   resetMovementStream creates a server-issued stream without moving the character.
+   Each started tile then sends one direction command (187) with commandToken,
+   movementStreamId, sequence and expected source. Its response (188) is committed
+   only after collision revalidation, normal per-tile pacing, position, applicable
+   effects and the durable receipt commit together. Normal walking uses 200ms per
+   tile; ledges preserve their two-tile duration. Pacing follows the previous actual
+   commit start, so admission/transaction overhead does not accumulate on each turn.
+   The client keeps at most eight unconfirmed predictions and never submits unused
+   future tiles. Its animation clock carries elapsed time through turns, and the
+   most recently pressed held movement key wins. Tile effects and field actions wait
+   for authoritative arrival. A rejection retires that stream; queued successors
+   cannot continue even if a later source happens to match. Recovery reads current
+   owned position without replaying historical mutations. A later committed sequence
+   also proves its predecessors committed, allowing lost earlier replies to settle.
+   Legacy clients retain the issued-step/completion protocol (187/188 then 189/190).
+   Opcode 45 is retired: the session boundary rejects it and its handler/DTO/client
+   send helper are removed. Surf and committed warp exit animation explicitly
+   project server movement; local prediction alone cannot trigger arrival effects.
    Facing uses expected-source direction requests (191/192), without position writes.
    Server-path points commit before live mutation/publication and project through
    typed origin notification 193; animation completion performs no coordinate echo.

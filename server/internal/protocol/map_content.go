@@ -165,16 +165,23 @@ type SafariZoneExitNotify struct {
 }
 
 // PlayerStepRequest proposes one direction from an expected owned source.
-// The server resolves the target and issues a session-bound animation token.
+// Legacy clients receive an animation token. A sequenced command commits once
+// in the current server-issued movement stream while the client predicts locally.
 type PlayerStepRequest struct {
-	MapID     int      `json:"mapId"`
-	FromX     *int     `json:"fromX" tstype:"number,required"`
-	FromY     *int     `json:"fromY" tstype:"number,required"`
-	Direction string   `json:"direction"`
-	LookAhead []string `json:"lookAhead,omitempty"`
-	RequestID string   `json:"requestId"`
+	CommandToken     string   `json:"commandToken,omitempty"`
+	MovementStreamID string   `json:"movementStreamId,omitempty"`
+	Sequence         uint64   `json:"sequence,omitempty"`
+	MapID            int      `json:"mapId"`
+	FromX            *int     `json:"fromX" tstype:"number,required"`
+	FromY            *int     `json:"fromY" tstype:"number,required"`
+	Direction        string   `json:"direction"`
+	LookAhead        []string `json:"lookAhead,omitempty"`
+	RequestID        string   `json:"requestId"`
 }
 type PlayerStepResponse struct {
+	Committed         bool                 `json:"committed,omitempty"`
+	StopPath          bool                 `json:"stopPath,omitempty"`
+	Replayed          bool                 `json:"replayed,omitempty"`
 	Buffered          bool                 `json:"buffered,omitempty"`
 	ContinuationSteps []PlayerStepResponse `json:"continuationSteps,omitempty"`
 	Success           bool                 `json:"success" tstype:"true"`
@@ -274,10 +281,13 @@ type CommittedPlayerStep struct {
 }
 
 type OwnedPlayerPositionRequest struct {
-	RequestID string `json:"requestId"`
-	StepToken string `json:"stepToken,omitempty"`
+	ResetMovementStream bool   `json:"resetMovementStream,omitempty"`
+	RequestID           string `json:"requestId"`
+	StepToken           string `json:"stepToken,omitempty"`
 }
 type OwnedPlayerPositionResponse struct {
+	MovementStreamID      string               `json:"movementStreamId,omitempty"`
+	MovementSequence      uint64               `json:"movementSequence,omitempty"`
 	CommittedStep         *CommittedPlayerStep `json:"committedStep,omitempty"`
 	Success               bool                 `json:"success" tstype:"true"`
 	RequestID             string               `json:"requestId"`
