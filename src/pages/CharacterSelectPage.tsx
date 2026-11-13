@@ -455,7 +455,7 @@ const CharacterSelectPage = () => {
   const [deleteTarget, setDeleteTarget] = useState<CharacterSelectEntry | null>(
     null,
   );
-  const { characters, selectedCharacter, setSelectedCharacter, isLoading } =
+  const { characters, selectedCharacter, setSelectedCharacter, isLoading, isEnteringWorld } =
     useCharacterSelectStore();
   usePlayerCharacterStore();
   const { getClassById, loadStaticData } = useStaticDataStore();
@@ -491,14 +491,14 @@ const CharacterSelectPage = () => {
   };
 
   const handleEnterWorld = async () => {
-    if (!selectedCharacter) return;
-    useGameStatusStore.getState().setIsMapLoading(true);
-    const success = await useCharacterSelectStore
-      .getState()
-      .enterWorld(selectedCharacter.name);
-    if (!success) {
-      useGameStatusStore.getState().setIsMapLoading(false);
-      alert("Could not enter world. Please try again.");
+    if (!selectedCharacter || useCharacterSelectStore.getState().isEnteringWorld) return;
+    const name = selectedCharacter.name;
+    const success = await useCharacterSelectStore.getState().enterWorld(name);
+    const current = useCharacterSelectStore.getState();
+    if (!success && current.entryError && !current.isEnteringWorld
+      && current.selectedCharacter?.name === name
+      && useGameScreenStore.getState().currentScreen === "characterSelect") {
+      alert(current.entryError);
     }
   };
 
@@ -625,8 +625,8 @@ const CharacterSelectPage = () => {
               <SelectionButton
                 onClick={handleEnterWorld}
                 $isSelected={false}
-                $isDisabled={!selectedCharacter}
-                disabled={!selectedCharacter}
+                $isDisabled={!selectedCharacter || isEnteringWorld}
+                disabled={!selectedCharacter || isEnteringWorld}
                 $width="300px"
               >
                 ENTER WORLD
@@ -750,7 +750,7 @@ const CharacterSelectPage = () => {
               <SelectionButton onClick={handleCreateNew} $isSelected={false}>
                 Create New
               </SelectionButton>
-              <SelectionButton onClick={handleEnterWorld} $isSelected={false}>
+              <SelectionButton onClick={handleEnterWorld} $isSelected={false} $isDisabled={isEnteringWorld} disabled={isEnteringWorld}>
                 Enter World
               </SelectionButton>
             </MobilePrimaryActions>

@@ -23,33 +23,51 @@ type SimpleSuccessResponse struct {
 }
 
 func HandleEnterWorld(ses *session.Session, payload []byte, wh *WorldHandler) bool {
+	if ses == nil || ses.IsClosed() {
+		return false
+	}
 	loginStarted := time.Now()
+	reject := func(closeOwner bool) bool {
+		if !ses.IsClosed() {
+			if err := ses.SendStreamJSON(SimpleSuccessResponse{Value: 0}, opcodes.PostEnterWorld); err != nil {
+				log.Printf("[WORLD] Session %d: entry rejection failed: %v", ses.SessionID, err)
+				closeOwner = true
+			}
+		}
+		if closeOwner {
+			// The transport's drain retires any partially installed owner before
+			// a replacement session can acquire and load this character.
+			ses.Close()
+		}
+		return false
+	}
+	if ses.HasValidClient() {
+		return reject(false)
+	}
 	var req EnterWorldRequest
 	if err := json.Unmarshal(payload, &req); err != nil {
 		log.Printf("failed to unmarshal EnterWorld JSON: %v", err)
-		return false
+		return reject(false)
+	}
+	if strings.TrimSpace(req.Name) == "" {
+		return reject(false)
 	}
 	name := req.Name
 	log.Printf("[WORLD] Session %d entering world as character %q (account %d)", ses.SessionID, name, ses.AccountID)
 	if accountMatch, err := AccountHasCharacterName(ses.CommandContext(), wh.database, ses.AccountID, name); err != nil || !accountMatch {
 		log.Printf("[WORLD] Session %d: Tried to log in unsuccessfully from account %d with character %q: %v", ses.SessionID, ses.AccountID, name, err)
-		return false
+		return reject(false)
 	}
-	if err := sendCharacterStateFromDB(ses, wh, name); err != nil {
+	if err := prepareCharacterEntry(ses, wh, name); err != nil {
 		log.Printf("[WORLD] Session %d: character entry failed: %v", ses.SessionID, err)
-		ses.SendStreamJSON(SimpleSuccessResponse{Value: 0}, opcodes.PostEnterWorld)
-		// Entry may already have installed partial character/movement ownership.
-		// Drain the failed owner instead of accepting gameplay on that state.
-		ses.Close()
-		return false
+		return reject(true)
 	}
 
 	// Resume/upgrade legacy Safari identity before the scene's read-only recovery.
 	if wh.Safari != nil && ses.HasValidClient() {
 		if _, err := wh.Safari.GetSession(ses.CommandContext(), int64(ses.Client.CharData().ID)); err != nil {
 			log.Printf("[Safari] Character resume: %v", err)
-			ses.Close()
-			return false
+			return reject(true)
 		}
 	}
 	// Load event flags for this character
@@ -57,11 +75,12 @@ func HandleEnterWorld(ses *session.Session, payload []byte, wh *WorldHandler) bo
 		charID := int64(ses.Client.CharData().ID)
 		if err := wh.EventFlags.LoadFlagsContext(ses.CommandContext(), charID); err != nil {
 			log.Printf("[WORLD] Failed to load event flags for char %d: %v", charID, err)
-			ses.Close()
-			return false
+			return reject(true)
 		}
 	}
 
+	// Stage battle publication until all restores and initial state reads succeed.
+	var restoredBattle map[string]interface{}
 	// Check for a saved battle from a previous session and restore it
 	if ses.HasValidClient() {
 		charID := int64(ses.Client.CharData().ID)
@@ -80,9 +99,7 @@ func HandleEnterWorld(ses *session.Session, payload []byte, wh *WorldHandler) bo
 			log.Printf("[PokeBattle] Restore failed for character %d (login_elapsed=%s restore_elapsed=%s db_open=%d db_in_use=%d pool_waits=%d pool_wait=%s restore_deadline_remaining_at_start=%s command_error=%v): %v",
 				charID, time.Since(loginStarted), time.Since(restoreStarted), poolAfter.OpenConnections, poolAfter.InUse,
 				poolAfter.WaitCount-poolBefore.WaitCount, poolAfter.WaitDuration-poolBefore.WaitDuration, restoreBudget, ses.CommandContext().Err(), err)
-			ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "Could not restore your battle. Please reconnect."}, opcodes.PokeBattleStartResponse)
-			ses.Close()
-			return false
+			return reject(true)
 		}
 		if battle != nil {
 			// A terminal record still owns dismissal and any post-battle plan.
@@ -108,11 +125,38 @@ func HandleEnterWorld(ses *session.Session, payload []byte, wh *WorldHandler) bo
 					resp["trainerName"] = battle.Trainer.Name
 				}
 				resp["restored"] = true
-				ses.SendStreamJSON(resp, opcodes.PokeBattleStartResponse)
+				restoredBattle = resp
 			}
 		}
 	}
 
+	initial, err := readCharacterEntryState(ses, wh)
+	if err != nil {
+		log.Printf("[WORLD] Session %d: initial character state failed: %v", ses.SessionID, err)
+		return reject(true)
+	}
+	if err := sendCharacterEntryState(ses, initial); err != nil {
+		log.Printf("[WORLD] Session %d: initial character publication failed: %v", ses.SessionID, err)
+		return reject(true)
+	}
+	if ses.IsClosed() || ses.CommandContext().Err() != nil {
+		return reject(true)
+	}
+	// Character data is available before the acknowledgement can mount gameplay.
+	// Every required restore has completed; no failed restore can follow success.
+	if err := ses.SendStreamJSON(SimpleSuccessResponse{Value: 1}, opcodes.PostEnterWorld); err != nil {
+		log.Printf("[WORLD] Session %d: entry acknowledgement failed: %v", ses.SessionID, err)
+		ses.Close()
+		return false
+	}
+	notifyResourceChange(ses)
+	if restoredBattle != nil {
+		if err := ses.SendStreamJSON(restoredBattle, opcodes.PokeBattleStartResponse); err != nil {
+			log.Printf("[WORLD] Session %d: restored battle publication failed: %v", ses.SessionID, err)
+			ses.Close()
+			return false
+		}
+	}
 	SendPlayerSpawn(ses, wh)
 	return false
 }

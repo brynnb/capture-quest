@@ -166,8 +166,15 @@ func SaveCharacterPlaytime(ctx context.Context, database *sql.DB, charID int32, 
 
 // GetCharacterBind retrieves the character's bind point
 func GetCharacterBind(ctx context.Context, charID uint32) (*model.CharacterBind, error) {
+	return GetCharacterBindContext(ctx, db.GlobalWorldDB.DB, charID)
+}
+
+// GetCharacterBindContext reads the bind through the caller's database owner.
+// A missing primary bind remains sql.ErrNoRows so callers can preserve their
+// existing optional-bind policy without treating failed reads as absence.
+func GetCharacterBindContext(ctx context.Context, database db.ContextDBTX, charID uint32) (*model.CharacterBind, error) {
 	var bind model.CharacterBind
-	if err := db.GlobalWorldDB.DB.QueryRowContext(ctx, `
+	if err := database.QueryRowContext(ctx, `
 		SELECT id, slot, map_id, x, y, z, heading
 		FROM character_bind
 		WHERE id = $1

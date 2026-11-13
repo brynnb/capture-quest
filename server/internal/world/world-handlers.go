@@ -2,12 +2,16 @@ package world
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"time"
 
 	"capturequest/internal/api/opcodes"
 	db_character "capturequest/internal/db/character"
+	db_currency "capturequest/internal/db/currency"
+	model "capturequest/internal/db/models"
 	"capturequest/internal/protocol"
 	"capturequest/internal/session"
 	"capturequest/internal/zone/client"
@@ -106,7 +110,9 @@ func sendCharInfo(ses *session.Session, accountId int64) {
 	ses.SendStreamJSON(charInfo, opcodes.SendCharInfo)
 }
 
-func sendCharacterStateFromDB(ses *session.Session, wh *WorldHandler, characterName string) (err error) {
+// prepareCharacterEntry installs the serialized character owner without publishing
+// entry success or initial state. Required restores still belong to the caller.
+func prepareCharacterEntry(ses *session.Session, wh *WorldHandler, characterName string) (err error) {
 	if ses.HasValidClient() {
 		return fmt.Errorf("session already has a character")
 	}
@@ -124,9 +130,14 @@ func sendCharacterStateFromDB(ses *session.Session, wh *WorldHandler, characterN
 		return err
 	}
 	defer func() {
-		if err != nil {
+		if err != nil && !ses.HasValidClient() {
 			wh.characterOwners.release(charID, ses)
+			ses.CharacterName = ""
+			ses.MapID = -1
 		}
+		// After Client is installed, disconnect cleanup owns movement, cached
+		// flags/battle and the registry. Releasing here would let that cleanup
+		// mistake a partially prepared character for a stale connection.
 	}()
 	// The previous owner may have flushed position/playtime during the handoff.
 	// Loading before that barrier would resurrect stale character state.
@@ -187,8 +198,59 @@ func sendCharacterStateFromDB(ses *session.Session, wh *WorldHandler, characterN
 	}
 	ses.StartPlaytime(playStartedAt, charData.TimePlayed, int32(charData.ID))
 
-	ses.SendStreamJSON(SimpleSuccessResponse{Value: 1}, opcodes.PostEnterWorld)
-	buildAndSendCharacterState(ses)
+	return nil
+}
+
+type characterEntryState struct {
+	character protocol.CharacterData
+	wallet    *model.CharacterWallet
+	bind      *model.CharacterBind
+}
+
+// Read every required initial stream before publishing any of them. Entry must
+// fail when storage is unavailable, rather than enter with a null/stale wallet.
+func readCharacterEntryState(ses *session.Session, wh *WorldHandler) (characterEntryState, error) {
+	var state characterEntryState
+	if !ses.HasValidClient() || ses.IsClosed() {
+		return state, session.ErrSessionClosed
+	}
+	char := ses.Client.CharData()
+	ctx := ses.CommandContext()
+	wallet, err := db_currency.GetCharacterWalletContext(ctx, wh.database, char.ID)
+	if err != nil {
+		return state, err
+	}
+	bind, err := db_character.GetCharacterBindContext(ctx, wh.database, char.ID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return state, err
+	}
+	if err := ctx.Err(); err != nil {
+		return state, err
+	}
+	state.character = protocol.CharacterData{CharacterData: *char, Options: ses.Client.Options()}
+	state.wallet, state.bind = wallet, bind
+	return state, nil
+}
+
+func sendCharacterEntryState(ses *session.Session, state characterEntryState) error {
+	for _, message := range []struct {
+		opcode opcodes.OpCode
+		data   interface{}
+	}{
+		{opcodes.CharacterData, state.character},
+		{opcodes.CharacterWallet, state.wallet},
+		{opcodes.CharacterBind, state.bind},
+	} {
+		if ses.IsClosed() {
+			return session.ErrSessionClosed
+		}
+		if err := ses.CommandContext().Err(); err != nil {
+			return err
+		}
+		if err := ses.SendStreamJSON(message.data, message.opcode); err != nil {
+			return fmt.Errorf("initial character stream %d: %w", message.opcode, err)
+		}
+	}
 	return nil
 }
 
