@@ -4,82 +4,87 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
+	"time"
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
-	db_character "capturequest/internal/db/character"
+	"capturequest/internal/protocol"
 	"capturequest/internal/session"
 )
 
-type TrainerInteractRequest struct {
-	ActorID int `json:"actorId"`
-}
-
-type TrainerInteractResponse struct {
-	Success        bool   `json:"success"`
-	Error          string `json:"error,omitempty"`
-	TrainerActorID int    `json:"trainerActorId,omitempty"`
-	TrainerName    string `json:"trainerName,omitempty"`
-	TrainerClass   string `json:"trainerClass,omitempty"`
-	Dialogue       string `json:"dialogue,omitempty"`
-	ShouldBattle   bool   `json:"shouldBattle"`
-	Defeated       bool   `json:"defeated"`
-}
+type TrainerInteractResponse = protocol.TrainerInteractResponse
 
 type TrainerBattleStartRequest struct {
 	TrainerActorID int `json:"trainerActorId"`
 }
 
 func HandleTrainerInteractRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	if !ses.HasValidClient() {
+	var req protocol.TrainerInteractRequest
+	err := json.Unmarshal(payload, &req)
+	var charID int64
+	if ses.HasValidClient() {
+		charID = int64(ses.Client.CharData().ID)
+	}
+	identity := protocol.TrainerInteractIdentity{RequestID: req.RequestID, CharacterID: charID, TrainerActorID: req.ActorID}
+	reject := func(message string) {
+		ses.SendStreamJSON(protocol.TrainerInteractError{TrainerInteractIdentity: identity, Error: message}, opcodes.TrainerInteractResponse)
+	}
+	if err != nil || charID == 0 || req.ActorID <= 0 {
+		reject("invalid trainer interaction request")
 		return false
 	}
-
-	var req TrainerInteractRequest
-	if err := json.Unmarshal(payload, &req); err != nil {
-		ses.SendStreamJSON(TrainerInteractResponse{
-			Success: false,
-			Error:   "invalid request",
-		}, opcodes.TrainerInteractResponse)
-		return false
-	}
-
-	trainer, err := trainerDataForRuntimeActor(wh, req.ActorID)
+	result, err := readTrainerInteraction(ses.CommandContext(), ses, wh, req.ActorID)
 	if err != nil {
-		log.Printf("[TrainerInteract] Failed to load trainer actor %d: %v", req.ActorID, err)
-		ses.SendStreamJSON(TrainerInteractResponse{
-			Success: false,
-			Error:   "trainer not found",
-		}, opcodes.TrainerInteractResponse)
+		if !errors.Is(err, errScriptInteractionDenied) {
+			log.Printf("[TrainerInteract] Failed to read trainer actor %d: %v", req.ActorID, err)
+		}
+		reject("trainer interaction unavailable")
 		return false
 	}
-
-	charID := int64(ses.Client.CharData().ID)
-	suppressedByGymLeaderDefeat := trainerBattleSuppressedByGymLeaderDefeat(charID, trainer, wh)
-	defeated := suppressedByGymLeaderDefeat || trainerDefeatedForCharacter(charID, trainer, wh)
-	shouldBattle := !defeated || (!suppressedByGymLeaderDefeat && trainerRebattleAllowed(charID))
-
-	label := trainer.BattleTextLabel
-	if defeated && !shouldBattle {
-		label = trainer.AfterBattleTextLabel
-	}
-	dialogue, err := trainerDialogueByLabel(label)
-	if err != nil && label != "" {
-		log.Printf("[TrainerInteract] Missing dialogue %s for trainer %s: %v", label, trainer.Name, err)
-	}
-
-	ses.SendStreamJSON(TrainerInteractResponse{
-		Success:        true,
-		TrainerActorID: req.ActorID,
-		TrainerName:    trainer.Name,
-		TrainerClass:   trainer.TrainerClass,
-		Dialogue:       dialogue,
-		ShouldBattle:   shouldBattle,
-		Defeated:       defeated,
-	}, opcodes.TrainerInteractResponse)
+	result.TrainerInteractIdentity = identity
+	ses.SendStreamJSON(result, opcodes.TrainerInteractResponse)
 	return false
+}
+
+// Runtime reach is checked before the database snapshot. This read never issues
+// a battle: the separate battle command must recheck reach and mutation policy.
+func readTrainerInteraction(ctx context.Context, ses *session.Session, wh *WorldHandler, actorID int) (TrainerInteractResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	trainer, err := trainerDataForRuntimeActorContext(ctx, ses, wh, actorID)
+	if err != nil {
+		return TrainerInteractResponse{}, err
+	}
+	charID := int64(ses.Client.CharData().ID)
+	return db.ReadSnapshot(ctx, wh.database, func(ctx context.Context, q db.ReadDBTX) (TrainerInteractResponse, error) {
+		flags, err := eventFlagSnapshotIn(q, charID)
+		if err != nil {
+			return TrainerInteractResponse{}, err
+		}
+		// Reload catalog labels and status on the same retained snapshot; cached
+		// defeated sets and session flags can lag a committed reward or healing reset.
+		trainer, err := trainerDataForObjectIDContext(ctx, q, trainer.ObjectID)
+		if err != nil {
+			return TrainerInteractResponse{}, err
+		}
+		defeated, suppressed, err := directTrainerDefeatStatusIn(q, charID, trainer, flags)
+		if err != nil {
+			return TrainerInteractResponse{}, err
+		}
+		shouldBattle := !defeated || (!suppressed && trainerRebattleAllowed(ses))
+		label := trainer.BattleTextLabel
+		if defeated && !shouldBattle {
+			label = trainer.AfterBattleTextLabel
+		}
+		dialogue, err := trainerDialogueByLabelContext(ctx, q, label)
+		if err != nil {
+			return TrainerInteractResponse{}, err
+		}
+		return TrainerInteractResponse{Success: true, TrainerInteractIdentity: protocol.TrainerInteractIdentity{TrainerActorID: actorID}, TrainerName: trainer.Name, TrainerClass: trainer.TrainerClass, Dialogue: dialogue, ShouldBattle: shouldBattle, Defeated: defeated}, nil
+	})
 }
 
 func HandleTrainerBattleStartRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
@@ -96,9 +101,11 @@ func HandleTrainerBattleStartRequest(ses *session.Session, payload []byte, wh *W
 		return false
 	}
 
-	trainer, err := trainerDataForRuntimeActor(wh, req.TrainerActorID)
+	trainer, err := trainerDataForRuntimeActor(ses, wh, req.TrainerActorID)
 	if err != nil {
-		log.Printf("[TrainerInteract] Failed to start trainer actor %d: %v", req.TrainerActorID, err)
+		if !errors.Is(err, errScriptInteractionDenied) {
+			log.Printf("[TrainerInteract] Failed to start trainer actor %d: %v", req.TrainerActorID, err)
+		}
 		ses.SendStreamJSON(map[string]interface{}{
 			"success": false,
 			"error":   "trainer not found",
@@ -107,34 +114,34 @@ func HandleTrainerBattleStartRequest(ses *session.Session, payload []byte, wh *W
 	}
 
 	charID := int64(ses.Client.CharData().ID)
-	if trainerBattleSuppressedByGymLeaderDefeat(charID, trainer, wh) {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "gym leader already defeated",
-		}, opcodes.PokeBattleStartResponse)
-		return false
-	}
-	if trainerDefeatedForCharacter(charID, trainer, wh) && !trainerRebattleAllowed(charID) {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "trainer already defeated",
-		}, opcodes.PokeBattleStartResponse)
-		return false
-	}
-
 	playerX, playerY := trainerInteractionPlayerPosition(ses, wh, charID)
 	postWinMapName, postWinActions := pokemonTower7FPostWinActions(trainer, playerX, playerY)
-	battle, events, err := StartScriptedTrainerBattle(charID, ScriptedTrainerBattleSpec{
+	battle, events, err := startScriptedTrainerBattle(ses.CommandContext(), wh.database, charID, ScriptedTrainerBattleSpec{
 		TrainerClass:    trainer.TrainerClass,
 		PartyIndex:      trainer.PartyIndex,
 		TrainerObjectID: trainer.ObjectID,
 		WinFlag:         trainer.EventFlag,
 		PostWinMapName:  postWinMapName,
 		PostWinActions:  postWinActions,
+	}, func(tx db.DBTX) error {
+		flags, err := eventFlagSnapshotIn(tx, charID)
+		if err != nil {
+			return err
+		}
+		defeated, suppressed, err := directTrainerDefeatStatusIn(tx, charID, trainer, flags)
+		if err != nil {
+			return err
+		}
+		if suppressed || (defeated && !trainerRebattleAllowed(ses)) {
+			return errDirectTrainerIneligible
+		}
+		return nil
 	})
 	if err != nil {
-		log.Printf("[TrainerInteract] Failed to start battle for trainer %s (%s/%d): %v",
-			trainer.Name, trainer.TrainerClass, trainer.PartyIndex, err)
+		if !errors.Is(err, errDirectTrainerIneligible) {
+			log.Printf("[TrainerInteract] Failed to start battle for trainer %s (%s/%d): %v",
+				trainer.Name, trainer.TrainerClass, trainer.PartyIndex, err)
+		}
 		ses.SendStreamJSON(map[string]interface{}{
 			"success": false,
 			"error":   err.Error(),
@@ -144,7 +151,7 @@ func HandleTrainerBattleStartRequest(ses *session.Session, payload []byte, wh *W
 
 	resp := buildBattleStateResponse(battle)
 	resp["trainerClass"] = trainer.TrainerClass
-	resp["trainerName"] = trainerDisplayName(trainer.TrainerClass)
+	resp["trainerName"] = battle.Trainer.Name
 	resp["events"] = events
 	ses.SendStreamJSON(resp, opcodes.PokeBattleStartResponse)
 	return false
@@ -171,7 +178,13 @@ func trainerInteractionPlayerPosition(ses *session.Session, wh *WorldHandler, ch
 	return x, y
 }
 
-func trainerDataForRuntimeActor(wh *WorldHandler, actorID int) (*trainerSightData, error) {
+func trainerDataForRuntimeActor(ses *session.Session, wh *WorldHandler, actorID int) (*trainerSightData, error) {
+	ctx, cancel := context.WithTimeout(ses.CommandContext(), 5*time.Second)
+	defer cancel()
+	return trainerDataForRuntimeActorContext(ctx, ses, wh, actorID)
+}
+
+func trainerDataForRuntimeActorContext(ctx context.Context, ses *session.Session, wh *WorldHandler, actorID int) (*trainerSightData, error) {
 	if wh == nil || wh.ActorRegistry == nil {
 		return nil, fmt.Errorf("actor registry unavailable")
 	}
@@ -179,10 +192,25 @@ func trainerDataForRuntimeActor(wh *WorldHandler, actorID int) (*trainerSightDat
 	if objectID == 0 {
 		return nil, fmt.Errorf("unknown actor %d", actorID)
 	}
-	return trainerDataForObjectID(objectID)
+	actor, _, err := wh.scriptInteractionTargetContext(ctx, ses, objectID)
+	if err != nil {
+		return nil, err
+	}
+	trainer, err := trainerDataForObjectIDContext(ctx, wh.database, objectID)
+	if err != nil {
+		return nil, err
+	}
+	trainer.X, trainer.Y = *actor.X, *actor.Y
+	return trainer, nil
 }
 
 func trainerDataForObjectID(objectID int) (*trainerSightData, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return trainerDataForObjectIDContext(ctx, db.GlobalWorldDB.DB, objectID)
+}
+
+func trainerDataForObjectIDContext(ctx context.Context, database db.ContextDBTX, objectID int) (*trainerSightData, error) {
 	var t trainerSightData
 	var globalX, globalY sql.NullInt64
 	var isGymLeader sql.NullInt64
@@ -190,7 +218,7 @@ func trainerDataForObjectID(objectID int) (*trainerSightData, error) {
 	var eventFlag, battleTextLabel, endBattleTextLabel, afterBattleTextLabel sql.NullString
 	var sightRange sql.NullInt64
 
-	err := db.GlobalWorldDB.DB.QueryRow(`
+	err := database.QueryRowContext(ctx, `
 		SELECT
 			po.id,
 			po.map_id,
@@ -300,11 +328,17 @@ func trainerHasRuntimeBattleMetadata(t *trainerSightData) bool {
 }
 
 func trainerDialogueByLabel(label string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return trainerDialogueByLabelContext(ctx, db.GlobalWorldDB.DB, label)
+}
+
+func trainerDialogueByLabelContext(ctx context.Context, database db.ContextDBTX, label string) (string, error) {
 	if label == "" {
 		return "", nil
 	}
 	var dialogue string
-	if err := db.GlobalWorldDB.DB.QueryRow(
+	if err := database.QueryRowContext(ctx,
 		`SELECT dialogue FROM phaser_dialogue_text WHERE label = $1`,
 		label,
 	).Scan(&dialogue); err != nil {
@@ -313,17 +347,20 @@ func trainerDialogueByLabel(label string) (string, error) {
 	return dialogue, nil
 }
 
-func trainerDefeatedForCharacter(charID int64, trainer *trainerSightData, wh *WorldHandler) bool {
-	if trainer == nil {
-		return false
-	}
-	if wh != nil && wh.TrainerEncounter != nil && wh.TrainerEncounter.IsTrainerDefeated(charID, trainer.ObjectID) {
-		return true
-	}
-	return trainer.EventFlag != "" && wh != nil && wh.EventFlags != nil && wh.EventFlags.CheckFlag(charID, trainer.EventFlag)
+func trainerRebattleAllowed(ses *session.Session) bool {
+	opts := ses.Client.Options()
+	return opts != nil && opts.AllowTrainerRebattles
 }
 
-func trainerRebattleAllowed(charID int64) bool {
-	opts, err := db_character.LoadOptions(context.Background(), int32(charID))
-	return err == nil && opts != nil && opts.AllowTrainerRebattles
+var errDirectTrainerIneligible = errors.New("trainer already defeated")
+
+// Direct clicks allow explicit rebattles; sight encounters retain their distinct
+// policy. Both use the same authoritative defeat-history query.
+func directTrainerDefeatStatusIn(q db.DBTX, charID int64, trainer *trainerSightData, flags *EventFlagManager) (bool, bool, error) {
+	history, err := trainerDefeatedIn(q, charID, trainer.ObjectID)
+	if err != nil {
+		return false, false, err
+	}
+	suppressed := trainerBattleSuppressedByGymLeaderFlags(charID, trainer, flags)
+	return suppressed || history || (trainer.EventFlag != "" && flags.CheckFlag(charID, trainer.EventFlag)), suppressed, nil
 }

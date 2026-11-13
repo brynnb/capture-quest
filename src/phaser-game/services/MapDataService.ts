@@ -1,3 +1,6 @@
+import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
+import { correlatedRequest } from "./CorrelatedRequest";
+import type { PhaserMapInfo, PhaserMapInfoResponse, PhaserMapLoadResponse, PhaserWarpActivateResponse, PhaserInstantWarpResponse } from "@/net/generated/protocol";
 /**
  * MapDataService - Phaser map data fetching via WebTransport
  *
@@ -10,7 +13,6 @@
 import * as PhaserNet from "./PhaserNetworkService";
 import { getTileImageUrl } from "../api/tileService";
 import type {
-  PhaserMapInfo,
   PhaserTile,
   PhaserTilesRequest,
   PhaserTilesResponse,
@@ -64,34 +66,40 @@ export interface CachedTileChunk {
 
 function normalizeCorrelatedTiles(data: PhaserTilesResponse): PhaserTile[] {
   const tiles = (data as { tiles?: unknown }).tiles;
-  // Go's encoding/json represents an uninitialized empty slice as null. Older
-  // servers can therefore send null for a valid sparse chunk.
-  if (tiles === null) return [];
   if (!Array.isArray(tiles)) {
     throw new Error("Invalid tile response: tiles must be an array");
   }
   return tiles as PhaserTile[];
 }
 
-/**
- * Create a promise that rejects after a timeout
- */
-function createTimeoutPromise<T>(ms: number, errorMessage: string): Promise<T> {
-  return new Promise((_, reject) => {
-    setTimeout(() => reject(new Error(errorMessage)), ms);
-  });
-}
-
 export class MapDataService {
   private static readonly MAX_CACHED_OVERWORLD_CHUNKS = 18;
   // Cache of known tile image IDs from tiles
+  private tileReadRevision = 0;
+  private tileReadViews = new WeakMap<PhaserTile[],number>();
   private knownTileImageIds: Set<number> = new Set();
   private snapshots = new MapSnapshotCache<MapDataSnapshot>(
     3,
     new Set([UNIFIED_OVERWORLD_MAP_ID]),
   );
-  private tileRequestSequence = 0;
   private overworldTileChunks = new Map<string, CachedTileChunk>();
+
+  beginOwnedTileView():void {
+    // Stream delivery is best effort. A new map/view owner must not treat
+    // retained exact chunks as proof that no update was missed while away.
+    this.tileReadRevision++;
+    this.snapshots.clear();
+    this.overworldTileChunks.clear();
+  }
+
+  isTileReadCurrent(tiles: PhaserTile[]):boolean { return this.tileReadViews.get(tiles)===this.tileReadRevision; }
+
+  recordCommittedTileUpdate(): void {
+    this.tileReadRevision++;
+    // At most three snapshots are retained. None may carry older character
+    // tile projection through a streamed change or a later map return.
+    this.snapshots.clear();
+  }
 
   getSnapshot(mapId: number): MapDataSnapshot | undefined {
     return this.snapshots.get(mapId);
@@ -172,110 +180,70 @@ export class MapDataService {
   /**
    * Fetch map info by ID - returns a Promise that resolves when data arrives
    */
-  async fetchMapInfo(mapId: number, destX?: number, destY?: number): Promise<PhaserMapInfo> {
-    if (!PhaserNet.isConnected()) {
-      throw new Error("Not connected to server - please log in first");
-    }
+  async fetchMapInfo(mapId: number, signal?: AbortSignal): Promise<PhaserMapInfo> {
+    const response = await correlatedRequest<PhaserMapInfoResponse>(
+      (receive) => PhaserNet.onMapInfo(receive),
+      (requestId) => PhaserNet.requestMapInfo({ mapId, requestId }),
+      signal,
+    );
+    if (response.id !== mapId) throw new Error("Map response identity disagrees with the request");
+    return response;
+  }
 
-    const dataPromise = new Promise<PhaserMapInfo>((resolve) => {
-      const unsubscribe = PhaserNet.onMapInfo((data) => {
-        if (data.id === mapId) {
-          unsubscribe();
-          resolve(data);
-        }
-      });
-      PhaserNet.requestMapInfo(mapId, destX, destY);
-    });
+  async prepareMapLoad(mapId: number, signal?: AbortSignal): Promise<void> {
+    await correlatedRequest<PhaserMapLoadResponse>(
+      (receive) => PhaserNet.onMapLoad(receive),
+      (requestId) => PhaserNet.requestMapLoad({ mapId, requestId }),
+      signal,
+    );
+  }
 
-    return Promise.race([
-      dataPromise,
-      createTimeoutPromise<PhaserMapInfo>(REQUEST_TIMEOUT_MS, `Timeout fetching map info for map ${mapId}`)
-    ]);
+  async instantWarp(mapId: number, x: number, y: number, direction: string, signal?: AbortSignal): Promise<PhaserInstantWarpResponse> {
+    return correlatedRequest<PhaserInstantWarpResponse>(
+      (receive) => PhaserNet.onInstantWarp(receive),
+      (requestId) => PhaserNet.requestInstantWarp({ mapId, x, y, direction, requestId }),
+      signal,
+    );
+  }
+
+  async activateWarp(warpId: number, direction: string, inputSource: "click" | "keyboard", signal?: AbortSignal): Promise<PhaserWarpActivateResponse> {
+    return correlatedRequest<PhaserWarpActivateResponse>(
+      (receive) => PhaserNet.onWarpActivation(receive),
+      (requestId) => PhaserNet.requestWarpActivation({ warpId, direction, inputSource, requestId }),
+      signal,
+    );
   }
 
   /**
    * Fetch tiles for a specific map
    */
-  async fetchTiles(mapId: number): Promise<PhaserTile[]> {
-    return (await this.requestTileBatch(mapId, {})).tiles;
+  async fetchTiles(mapId: number, signal?: AbortSignal): Promise<PhaserTile[]> {
+    return (await this.requestTileBatch(mapId, {}, signal)).tiles;
   }
 
-  async fetchTilesInBounds(mapId: number, bounds: TileBoundsRequest): Promise<PhaserTile[]> {
-    return (await this.requestTileBatch(mapId, bounds)).tiles;
+  async fetchTilesInBounds(mapId: number, bounds: TileBoundsRequest, signal?: AbortSignal): Promise<PhaserTile[]> {
+    return (await this.requestTileBatch(mapId, bounds, signal)).tiles;
   }
 
-  async fetchTilePage(mapId: number, afterId: number, limit: number): Promise<TilePage> {
-    return this.requestTileBatch(mapId, { afterId, limit });
+  async fetchTilePage(mapId: number, afterId: number, limit: number, signal?: AbortSignal): Promise<TilePage> {
+    return this.requestTileBatch(mapId, { afterId, limit }, signal);
   }
 
-  private async requestTileBatch(
-    mapId: number,
-    options: Omit<PhaserTilesRequest, "mapId" | "requestId">,
-  ): Promise<TilePage> {
+  private async requestTileBatch(mapId:number,options:Omit<PhaserTilesRequest,"mapId"|"requestId">,signal?:AbortSignal):Promise<TilePage>{
     await this.ensureRuntimeTileCatalogCurrent();
-    if (!PhaserNet.isConnected()) {
-      throw new Error("Not connected to server - please log in first");
+    const characterId=usePlayerCharacterStore.getState().characterProfile.id;
+    for(let attempt=0;attempt<2;attempt++){
+      const revision=this.tileReadRevision;
+      const response=await correlatedRequest<PhaserTilesResponse>(PhaserNet.onTiles,requestId=>PhaserNet.requestTiles({mapId,requestId,...options}),signal,mapId===UNIFIED_OVERWORLD_MAP_ID?OVERWORLD_TILE_REQUEST_TIMEOUT_MS:REQUEST_TIMEOUT_MS);
+    if(signal?.aborted || usePlayerCharacterStore.getState().characterProfile.id!==characterId) throw new DOMException("Tile view retired","AbortError");
+    if(response.mapId!==mapId || response.characterId!==characterId || !Number.isSafeInteger(response.nextAfterId) || response.nextAfterId<0 || typeof response.hasMore!=="boolean") throw new Error("Invalid owned tile response");
+    if(revision!==this.tileReadRevision)continue;
+    const tiles=normalizeCorrelatedTiles(response);
+    this.tileReadViews.set(tiles,revision);
+    for(const tile of tiles)this.knownTileImageIds.add(tile.tileImageId);
+    return {tiles,nextAfterId:response.nextAfterId,hasMore:response.hasMore};
     }
-
-    const requestId = `tiles-${++this.tileRequestSequence}`;
-    const timeoutMs = mapId === UNIFIED_OVERWORLD_MAP_ID
-      ? OVERWORLD_TILE_REQUEST_TIMEOUT_MS
-      : REQUEST_TIMEOUT_MS;
-
-    return new Promise<TilePage>((resolve, reject) => {
-      const unsubscribe = PhaserNet.onTiles((data) => {
-        // A raw array is the backward-compatible response from a server that
-        // predates request correlation and paging.
-        if (Array.isArray(data)) {
-          cleanup();
-          cacheTileImageIds(data);
-          resolve({ tiles: data, nextAfterId: 0, hasMore: false });
-          return;
-        }
-        if (data === null || typeof data !== "object") {
-          return;
-        }
-        const response = data as PhaserTilesResponse;
-        if (response.requestId !== requestId) {
-          return;
-        }
-        if (response.error) {
-          cleanup();
-          reject(new Error(response.error));
-          return;
-        }
-        let tiles: PhaserTile[];
-        try {
-          tiles = normalizeCorrelatedTiles(response);
-        } catch (error) {
-          cleanup();
-          reject(error);
-          return;
-        }
-        cleanup();
-        cacheTileImageIds(tiles);
-        resolve({
-          tiles,
-          nextAfterId: response.nextAfterId,
-          hasMore: response.hasMore,
-        });
-      });
-      const cacheTileImageIds = (tiles: PhaserTile[]) => {
-        for (const tile of tiles) {
-          this.knownTileImageIds.add(tile.tileImageId);
-        }
-      };
-      const cleanup = () => {
-        unsubscribe();
-        clearTimeout(timeoutId);
-      };
-
-      const timeoutId = setTimeout(() => {
-        cleanup();
-        reject(new Error(`Timeout fetching tiles for map ${mapId}`));
-      }, timeoutMs);
-      PhaserNet.requestTiles({ mapId, requestId, ...options });
-    });
+    throw new Error("Tiles changed during read; another owned read is required");
   }
 
   /**
@@ -296,81 +264,31 @@ export class MapDataService {
   }
 
   /**
-   * Fetch all overworld maps
-   */
-  async fetchOverworldMaps(): Promise<PhaserMapInfo[]> {
-    if (!PhaserNet.isConnected()) {
-      throw new Error("Not connected to server - please log in first");
-    }
-
-    const dataPromise = new Promise<PhaserMapInfo[]>((resolve) => {
-      const unsubscribe = PhaserNet.onOverworldMaps((data) => {
-        unsubscribe();
-        resolve(data || []);
-      });
-      PhaserNet.requestOverworldMaps();
-    });
-
-    return Promise.race([
-      dataPromise,
-      createTimeoutPromise<PhaserMapInfo[]>(REQUEST_TIMEOUT_MS, "Timeout fetching overworld maps")
-    ]);
-  }
-
-  /**
    * Fetch actors for a specific map (or all maps if mapId is omitted)
    */
-  async fetchActors(mapId?: number): Promise<PhaserActor[]> {
-    if (!PhaserNet.isConnected()) {
-      throw new Error("Not connected to server - please log in first");
-    }
-
-    // If no mapId provided, return empty - caller should use mapId
-    if (mapId === undefined) {
-      // console.warn("fetchActors called without mapId - returning empty array");
-      return [];
-    }
-
-    const dataPromise = new Promise<PhaserActor[]>((resolve) => {
-      const unsubscribe = PhaserNet.onActors((data) => {
-        unsubscribe();
-        resolve(data || []);
-      });
-      PhaserNet.requestActors(mapId);
-    });
-
-    return Promise.race([
-      dataPromise,
-      createTimeoutPromise<PhaserActor[]>(REQUEST_TIMEOUT_MS, `Timeout fetching actors for map ${mapId}`)
-    ]);
+  async fetchActors(mapId?: number, signal?: AbortSignal): Promise<PhaserActor[]> {
+    if (mapId === undefined) return [];
+    const characterId = usePlayerCharacterStore.getState().characterProfile.id;
+    if (!characterId) throw new Error("Actor view requires a selected character");
+    const response = await correlatedRequest<import("@/net/generated/world_api").PhaserActorsResponse>(
+      PhaserNet.onActors, requestId => PhaserNet.requestActors({ mapId, characterId, requestId }), signal,
+    );
+    if (signal?.aborted || usePlayerCharacterStore.getState().characterProfile.id !== characterId)
+      throw new DOMException("Actor owner retired", "AbortError");
+    if (response.characterId !== characterId || response.mapId !== mapId || !Array.isArray(response.actors))
+      throw new Error("Actor view ownership mismatch");
+    return response.actors;
   }
 
   /**
    * Fetch warps for a specific map (or empty if mapId is omitted)
    */
-  async fetchWarps(mapId?: number): Promise<PhaserWarp[]> {
-    if (!PhaserNet.isConnected()) {
-      throw new Error("Not connected to server - please log in first");
-    }
-
-    // If no mapId provided, return empty - caller should use mapId
-    if (mapId === undefined) {
-      console.warn("fetchWarps called without mapId - returning empty array");
-      return [];
-    }
-
-    const dataPromise = new Promise<PhaserWarp[]>((resolve) => {
-      const unsubscribe = PhaserNet.onWarps((data) => {
-        unsubscribe();
-        resolve(data || []);
-      });
-      PhaserNet.requestWarps(mapId);
-    });
-
-    return Promise.race([
-      dataPromise,
-      createTimeoutPromise<PhaserWarp[]>(REQUEST_TIMEOUT_MS, `Timeout fetching warps for map ${mapId}`)
-    ]);
+  async fetchWarps(mapId: number, signal?: AbortSignal): Promise<PhaserWarp[]> {
+    const characterId=usePlayerCharacterStore.getState().characterProfile.id;
+    const response=await correlatedRequest<import("@/net/generated/world_api").PhaserWarpsResponse>(PhaserNet.onWarps,id=>PhaserNet.requestWarps({mapId,requestId:id}),signal);
+    if (signal?.aborted || usePlayerCharacterStore.getState().characterProfile.id!==characterId) throw new DOMException("Warp view retired","AbortError");
+    if(response.mapId!==mapId || response.characterId!==characterId || !Array.isArray(response.warps)) throw new Error("Invalid owned warp view");
+    return response.warps;
   }
 
   /**
@@ -395,8 +313,7 @@ export class MapDataService {
    * Clear the tile image cache
    */
   clearCache(): void {
+    this.beginOwnedTileView();
     this.knownTileImageIds.clear();
-    this.snapshots.clear();
-    this.overworldTileChunks.clear();
   }
 }

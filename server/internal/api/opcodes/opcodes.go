@@ -43,10 +43,11 @@ const (
 	QuestTurnInResponse   OpCode = 33
 
 	// Phaser map/data opcodes.
-	PhaserMapInfoRequest         OpCode = 34
-	PhaserMapInfoResponse        OpCode = 35
-	PhaserTilesRequest           OpCode = 36
-	PhaserTilesResponse          OpCode = 37
+	PhaserMapInfoRequest  OpCode = 34
+	PhaserMapInfoResponse OpCode = 35
+	PhaserTilesRequest    OpCode = 36
+	PhaserTilesResponse   OpCode = 37
+	// Reserved: region metadata comes from the shared static catalog.
 	PhaserOverworldMapsRequest   OpCode = 38
 	PhaserOverworldMapsResponse  OpCode = 39
 	PhaserActorsRequest          OpCode = 40
@@ -54,7 +55,7 @@ const (
 	PhaserWarpsRequest           OpCode = 42
 	PhaserWarpsResponse          OpCode = 43
 	PhaserActorPositionUpdate    OpCode = 44
-	PhaserPlayerPositionUpdate   OpCode = 45
+	PhaserPlayerPositionUpdate   OpCode = 45 // Retired client coordinate setter; reserved and rejected.
 	PhaserActorDespawn           OpCode = 47
 	PhaserDialogueRequest        OpCode = 48
 	PhaserDialogueResponse       OpCode = 49
@@ -74,8 +75,9 @@ const (
 	PhaserItemDataResponse       OpCode = 63
 	PhaserHiddenObjectsRequest   OpCode = 64
 	PhaserHiddenObjectsResponse  OpCode = 65
-	PhaserMapMusicRequest        OpCode = 66
-	PhaserMapMusicResponse       OpCode = 67
+	// Reserved: map music is provided by the canonical browser audio manifest.
+	PhaserMapMusicRequest  OpCode = 66
+	PhaserMapMusicResponse OpCode = 67
 
 	// Battle and trainer opcodes.
 	PokeBattleStartRequest      OpCode = 68
@@ -200,9 +202,36 @@ const (
 	WarpHomeRequest               OpCode = 173
 	WarpHomeResponse              OpCode = 174
 	CharacterQuitRequest          OpCode = 175
-	MapChangeRequest              OpCode = 176
+	MapChangeRequest              OpCode = 176 // Reserved retired legacy map setter; never reuse this wire number.
 	FieldMoveUseRequest           OpCode = 177
 	FieldMoveUseResponse          OpCode = 178
 	DebugWarpProbeCasesRequest    OpCode = 179
 	DebugWarpProbeCasesResponse   OpCode = 180
+	PhaserMapLoadRequest          OpCode = 181
+	PhaserMapLoadResponse         OpCode = 182
+	PhaserWarpActivateRequest     OpCode = 183
+	PhaserWarpActivateResponse    OpCode = 184
+	PhaserInstantWarpRequest      OpCode = 185
+	PhaserInstantWarpResponse     OpCode = 186
+	PlayerStepRequest             OpCode = 187
+	PlayerStepResponse            OpCode = 188
+	PlayerStepCompleteRequest     OpCode = 189
+	PlayerStepCompleteResponse    OpCode = 190
+	PlayerFacingRequest           OpCode = 191
+	PlayerFacingResponse          OpCode = 192
+	ServerPlayerMovementNotify    OpCode = 193
+	CutsceneEndResponse           OpCode = 194
+	OwnedPlayerPositionRequest    OpCode = 195
+	OwnedPlayerPositionResponse   OpCode = 196
+	GameplayStateRequest          OpCode = 197
+	GameplayStateResponse         OpCode = 198
+	PokeBattleCloseResponse       OpCode = 199
+	ResourcesChangedNotify        OpCode = 200
+	BicycleStateRequest           OpCode = 201
+	BicycleStateResponse          OpCode = 202
+	EscapeRopeUseRequest          OpCode = 203
+	EscapeRopeUseResponse         OpCode = 204
+	CharacterListRequest          OpCode = 205
+	CharacterListResponse         OpCode = 206
+	CharacterDeleteResponse       OpCode = 207
 )

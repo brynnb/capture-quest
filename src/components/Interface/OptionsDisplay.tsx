@@ -297,6 +297,7 @@ interface OptionConfig {
   tooltip: string;
   value: boolean;
   onChange: () => void;
+  pending?: boolean;
 }
 
 interface OptionItemProps {
@@ -311,8 +312,8 @@ const OptionItem: React.FC<OptionItemProps> = ({ option, onHover }) => {
       onMouseLeave={() => onHover(null, null)}
     >
       <OptionLabel>{option.label}</OptionLabel>
-      <ToggleButton $isOn={option.value} onClick={option.onChange}>
-        {option.value ? "ON" : "OFF"}
+      <ToggleButton $isOn={option.value} onClick={option.onChange} disabled={option.pending} aria-busy={option.pending}>
+        {option.pending ? "Saving…" : option.value ? "ON" : "OFF"}
       </ToggleButton>
     </OptionCard>
   );
@@ -365,6 +366,7 @@ const OptionsDisplay: React.FC = () => {
     setAmbientVolume,
     musicVolume,
     setMusicVolume,
+    preferenceCommandPending,
     allowTrainerRebattles,
     toggleAllowTrainerRebattles,
   } = useGameStatusStore();
@@ -395,6 +397,7 @@ const OptionsDisplay: React.FC = () => {
         "When enabled, defeated trainers will challenge you again when you walk into their sight range. In the future, trainers will automatically reset after healing at a Pok\u00e9mon Center.",
       value: allowTrainerRebattles,
       onChange: toggleAllowTrainerRebattles,
+      pending: preferenceCommandPending,
     },
   ];
 

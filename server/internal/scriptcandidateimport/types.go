@@ -145,6 +145,7 @@ type candidateCondition struct {
 
 type candidateAction struct {
 	Type              string                `json:"type"`
+	HealingPolicy     string                `json:"healingPolicy"`
 	Speaker           string                `json:"speaker"`
 	Lines             []string              `json:"lines"`
 	Prompt            string                `json:"prompt"`

@@ -10,12 +10,13 @@ import (
 )
 
 type Scenario struct {
-	Name          string          `json:"name"`
-	Description   string          `json:"description"`
-	Fixture       Fixture         `json:"fixture"`
-	Trigger       Trigger         `json:"trigger"`
-	ResolveBattle *ResolveBattle  `json:"resolveBattle"`
-	Expect        ExpectedOutcome `json:"expect"`
+	CoordinateSpace string          `json:"coordinateSpace,omitempty"`
+	Name            string          `json:"name"`
+	Description     string          `json:"description"`
+	Fixture         Fixture         `json:"fixture"`
+	Trigger         Trigger         `json:"trigger"`
+	ResolveBattle   *ResolveBattle  `json:"resolveBattle"`
+	Expect          ExpectedOutcome `json:"expect"`
 }
 
 type ResolveBattle struct {
@@ -270,12 +271,20 @@ type VermilionGymTrashExpected struct {
 	SecondLockAbsent   bool `json:"secondLockAbsent,omitempty"`
 }
 
+type SourceTileIdentity struct {
+	MapName  string `json:"mapName"`
+	BlockID  *int   `json:"blockId"`
+	Position *int   `json:"position"`
+}
+
 type TileState struct {
-	X             int    `json:"x"`
-	Y             int    `json:"y"`
-	TileImageID   int    `json:"tileImageId"`
-	CollisionType int    `json:"collisionType"`
-	Label         string `json:"label,omitempty"`
+	Source        *SourceTileIdentity `json:"source,omitempty"`
+	X             int                 `json:"x"`
+	Y             int                 `json:"y"`
+	TileImageID   int                 `json:"tileImageId"`
+	CollisionType int                 `json:"collisionType"`
+	Label         string              `json:"label,omitempty"`
+	Erased        bool                `json:"erased,omitempty"`
 }
 
 type ObjectState struct {
@@ -350,6 +359,9 @@ func LoadScenario(path string) (*Scenario, error) {
 	var scenario Scenario
 	if err := json.Unmarshal(data, &scenario); err != nil {
 		return nil, fmt.Errorf("parse scenario %s: %w", path, err)
+	}
+	if scenario.CoordinateSpace != "" && scenario.CoordinateSpace != "world" && scenario.CoordinateSpace != "source" {
+		return nil, fmt.Errorf("unsupported coordinateSpace %q", scenario.CoordinateSpace)
 	}
 	if scenario.Name == "" {
 		scenario.Name = trimScenarioExt(filepath.Base(path))

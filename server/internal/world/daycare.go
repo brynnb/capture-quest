@@ -1,9 +1,9 @@
 package world
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
-	"log"
 
 	"capturequest/internal/db"
 	"capturequest/internal/pokebattle"
@@ -39,7 +39,7 @@ type DayCareWithdrawResult struct {
 }
 
 func LoadDayCareStatus(charID int64) (DayCareStatus, error) {
-	return loadDayCareStatus(db.GlobalWorldDB.DB, charID)
+	return ReadDayCareStatus(db.GlobalWorldDB.DB, charID)
 }
 
 func TryDepositDayCarePokemon(charID int64, partySlot int) DayCareDepositResult {
@@ -48,6 +48,9 @@ func TryDepositDayCarePokemon(charID int64, partySlot int) DayCareDepositResult 
 		return dayCareDepositFailure(charID, "Could not leave a Pokémon.")
 	}
 	defer tx.Rollback()
+	if err := db.LockCharacter(tx, charID); err != nil {
+		return dayCareDepositFailure(charID, "Could not leave a Pokémon.")
+	}
 
 	if active, err := dayCareActive(tx, charID); err != nil {
 		return dayCareDepositFailure(charID, "Could not leave a Pokémon.")
@@ -87,7 +90,9 @@ func TryDepositDayCarePokemon(charID int64, partySlot int) DayCareDepositResult 
 		pokebattle.BoxDayCare, dayCareSlot, rowID, charID); err != nil {
 		return dayCareDepositFailure(charID, "Could not leave that Pokémon.")
 	}
-	pokebattle.CompactPartySlots(tx, charID)
+	if err := pokebattle.CompactPartySlots(tx, charID); err != nil {
+		return dayCareDepositFailure(charID, "Could not update your party.")
+	}
 
 	if _, err := tx.Exec(`
 		INSERT INTO character_daycare (character_id, pokemon_row_id, start_level)
@@ -108,16 +113,32 @@ func TryDepositDayCarePokemon(charID int64, partySlot int) DayCareDepositResult 
 }
 
 func AdvanceDayCareSteps(charID int64, steps int) (DayCareStatus, bool, error) {
-	if steps <= 0 {
-		status, err := LoadDayCareStatus(charID)
-		return status, false, err
-	}
-	tx, err := db.GlobalWorldDB.DB.Begin()
+	var status DayCareStatus
+	var changed bool
+	err := db.Transaction(context.Background(), db.GlobalWorldDB.DB, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, charID); err != nil {
+			return err
+		}
+		var err error
+		status, changed, err = advanceDayCareStepsIn(tx, charID, steps)
+		return err
+	})
 	if err != nil {
 		return DayCareStatus{}, false, err
 	}
-	defer tx.Rollback()
+	return status, changed, nil
+}
 
+// The caller owns the character lock and commit. Movement must not open a
+// second daycare transaction or publish a status before the outer commit.
+func advanceDayCareStepsIn(tx db.DBTX, charID int64, steps int) (DayCareStatus, bool, error) {
+	if err := db.RequireTransaction(tx); err != nil {
+		return DayCareStatus{}, false, err
+	}
+	if steps <= 0 {
+		status, err := ReadDayCareStatus(tx, charID)
+		return status, false, err
+	}
 	rowID, _, pokemon, err := loadDayCarePokemon(tx, charID, false)
 	if err == sql.ErrNoRows {
 		return DayCareStatus{}, false, nil
@@ -139,10 +160,8 @@ func AdvanceDayCareSteps(charID int64, steps int) (DayCareStatus, bool, error) {
 	if err := pokebattle.SavePokemonRow(tx, rowID, pokemon); err != nil {
 		return DayCareStatus{}, false, err
 	}
-	if err := tx.Commit(); err != nil {
-		return DayCareStatus{}, false, err
-	}
-	status, err := LoadDayCareStatus(charID)
+
+	status, err := ReadDayCareStatus(tx, charID)
 	return status, pokemon.Exp != oldExp, err
 }
 
@@ -152,6 +171,9 @@ func TryWithdrawDayCarePokemon(charID int64) DayCareWithdrawResult {
 		return dayCareWithdrawFailure(charID, "Could not get your Pokémon.")
 	}
 	defer tx.Rollback()
+	if err := db.LockCharacter(tx, charID); err != nil {
+		return dayCareWithdrawFailure(charID, "Could not get your Pokémon.")
+	}
 
 	rowID, startLevel, pokemon, err := loadDayCarePokemon(tx, charID, true)
 	if err == sql.ErrNoRows {
@@ -242,12 +264,6 @@ func DayCareCost(levelsGrown int) int {
 	return (levelsGrown + 1) * 100
 }
 
-func TickDayCareStep(charID int64) {
-	if _, _, err := AdvanceDayCareSteps(charID, 1); err != nil {
-		log.Printf("[DayCare] Failed to advance Day Care EXP for char %d: %v", charID, err)
-	}
-}
-
 func dayCareDepositFailure(charID int64, message string) DayCareDepositResult {
 	status, _ := LoadDayCareStatus(charID)
 	return DayCareDepositResult{Success: false, Message: message, Status: status}
@@ -263,7 +279,7 @@ func dayCareWithdrawFailure(charID int64, message string) DayCareWithdrawResult 
 	}
 }
 
-func loadDayCareStatus(q pokebattle.DBTX, charID int64) (DayCareStatus, error) {
+func ReadDayCareStatus(q pokebattle.DBTX, charID int64) (DayCareStatus, error) {
 	_, startLevel, pokemon, err := loadDayCarePokemon(q, charID, false)
 	if err == sql.ErrNoRows {
 		return DayCareStatus{Active: false}, nil

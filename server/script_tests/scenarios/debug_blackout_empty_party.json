@@ -1,0 +1,17 @@
+{
+  "name": "debug_blackout_empty_party",
+  "description": "Integration fixture: stand in Viridian Forest without a party to exercise committed battle-start recovery.",
+  "fixture": {
+    "characterName": "DebugBlackoutEmptyParty",
+    "mapName": "VIRIDIAN_FOREST",
+    "x": 6,
+    "y": 10,
+    "direction": "DOWN",
+    "party": [],
+    "money": 1000,
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": { "type": "fixture_state", "mapName": "VIRIDIAN_FOREST" },
+  "expect": { "scriptLabel": "FixtureState", "finalX": 6, "finalY": 10, "activeBattleAbsent": true }
+}

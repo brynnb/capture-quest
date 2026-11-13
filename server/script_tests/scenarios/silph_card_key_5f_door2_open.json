@@ -19,10 +19,10 @@
     "inventoryContains": [{ "itemName": "CARD_KEY", "quantity": 1 }],
     "actionTypesContains": ["silphCardKey"],
     "tileStates": [
-      { "x": 6, "y": 12, "tileImageId": 758, "collisionType": 1, "label": "SilphCardKeyDoor_5F_2_Open_0_0" },
-      { "x": 7, "y": 12, "tileImageId": 758, "collisionType": 1, "label": "SilphCardKeyDoor_5F_2_Open_1_0" },
-      { "x": 6, "y": 13, "tileImageId": 758, "collisionType": 1, "label": "SilphCardKeyDoor_5F_2_Open_0_1" },
-      { "x": 7, "y": 13, "tileImageId": 758, "collisionType": 1, "label": "SilphCardKeyDoor_5F_2_Open_1_1" }
+      { "x": 6, "y": 12, "source": {"mapName":"SilphCo5F","blockId":14,"position":0}, "collisionType": 1, "label": "SilphCardKeyDoor_5F_2_Open_0_0" },
+      { "x": 7, "y": 12, "source": {"mapName":"SilphCo5F","blockId":14,"position":1}, "collisionType": 1, "label": "SilphCardKeyDoor_5F_2_Open_1_0" },
+      { "x": 6, "y": 13, "source": {"mapName":"SilphCo5F","blockId":14,"position":2}, "collisionType": 1, "label": "SilphCardKeyDoor_5F_2_Open_0_1" },
+      { "x": 7, "y": 13, "source": {"mapName":"SilphCo5F","blockId":14,"position":3}, "collisionType": 1, "label": "SilphCardKeyDoor_5F_2_Open_1_1" }
     ],
     "activeBattleAbsent": true
   }

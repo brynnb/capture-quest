@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
+	"capturequest/internal/db/pokedex"
 	"capturequest/internal/pokebattle"
 	"capturequest/internal/session"
 )
@@ -36,18 +38,23 @@ type inGameTradeOutcome struct {
 	Traded           bool
 	AlreadyCompleted bool
 	WrongPokemon     bool
+	party            []*pokebattle.Pokemon
 }
 
-func resolveInGameTradeDialogueEntries(textConstant string, charID int64) ([]PhaserDialogueEntry, bool) {
-	trade, err := loadInGameTradeDefinitionByText(textConstant)
+func resolveInGameTradeDialogueEntries(ctx context.Context, database db.ContextDBTX, textConstant string, charID int64) ([]PhaserDialogueEntry, error) {
+	trade, err := queryInGameTradeDefinitionByTextContext(ctx, database, textConstant)
+	if errors.Is(err, errInGameTradeNotFound) {
+		return nil, nil
+	}
 	if err != nil {
-		return nil, false
+		return nil, err
 	}
 
 	completed := false
 	if charID > 0 {
-		if done, err := characterCompletedInGameTrade(db.GlobalWorldDB.DB, charID, trade.TradeKey); err == nil {
-			completed = done
+		err = database.QueryRowContext(ctx, inGameTradeCompletionQuery, charID, trade.TradeKey).Scan(&completed)
+		if err != nil {
+			return nil, fmt.Errorf("dialogue trade completion: %w", err)
 		}
 	}
 
@@ -61,31 +68,42 @@ func resolveInGameTradeDialogueEntries(textConstant string, charID int64) ([]Pha
 		SourceFile: trade.SourceFile,
 		Dialogue:   dialogue,
 		IsTrainer:  0,
-	}}, true
+	}}, nil
 }
 
-func checkInGameTradeBranchingDialogue(textConstant string, charID int64) *BranchingDialogue {
+func checkInGameTradeBranchingDialogue(ctx context.Context, database db.ContextDBTX, textConstant string, charID int64) (*BranchingDialogue, error) {
 	if charID == 0 {
-		return nil
+		return nil, nil
 	}
-	trade, err := loadInGameTradeDefinitionByText(textConstant)
+	trade, err := queryInGameTradeDefinitionByTextContext(ctx, database, textConstant)
+	if errors.Is(err, errInGameTradeNotFound) {
+		return nil, nil
+	}
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	completed, err := characterCompletedInGameTrade(db.GlobalWorldDB.DB, charID, trade.TradeKey)
-	if err != nil || completed {
-		return nil
+	var completed bool
+	if err := database.QueryRowContext(ctx, inGameTradeCompletionQuery, charID, trade.TradeKey).Scan(&completed); err != nil {
+		return nil, err
 	}
-	return &BranchingDialogue{
-		PromptTextConstant: textConstant,
-		PromptText:         trade.promptDialogue(),
+	if completed {
+		return nil, nil
 	}
+	return &BranchingDialogue{PromptTextConstant: textConstant, PromptText: trade.promptDialogue()}, nil
 }
 
-func handleInGameTradeDialogueChoice(ses *session.Session, req DialogueChoiceRequest) bool {
-	trade, err := loadInGameTradeDefinitionByText(req.TextConstant)
-	if err != nil {
+func handleInGameTradeDialogueChoice(ctx context.Context, ses *session.Session, req DialogueChoiceRequest, wh *WorldHandler, mapName string) bool {
+	trade, err := queryInGameTradeDefinitionByTextContext(ctx, wh.database, req.TextConstant)
+	if errors.Is(err, errInGameTradeNotFound) {
 		return false
+	}
+	// Use the existing script map-identity comparison for source name representations.
+	if err != nil || !sameMapName(trade.MapName, mapName) {
+		if err != nil {
+			log.Printf("[InGameTrade] Load %s: %v", req.TextConstant, err)
+		}
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "trade unavailable"}, opcodes.DialogueChoiceResponse)
+		return true
 	}
 	if !ses.HasValidClient() {
 		ses.SendStreamJSON(map[string]interface{}{
@@ -99,7 +117,7 @@ func handleInGameTradeDialogueChoice(ses *session.Session, req DialogueChoiceReq
 	outcome := inGameTradeOutcome{Dialogue: trade.noTradeDialogue()}
 	if req.Choice {
 		var tradeErr error
-		outcome, tradeErr = performInGameTrade(db.GlobalWorldDB.DB, charID, trade)
+		outcome, tradeErr = performInGameTradeContext(ctx, wh.database, charID, trade)
 		if tradeErr != nil {
 			log.Printf("[InGameTrade] Failed to complete %s for char %d: %v", trade.TradeKey, charID, tradeErr)
 			ses.SendStreamJSON(map[string]interface{}{
@@ -122,7 +140,7 @@ func handleInGameTradeDialogueChoice(ses *session.Session, req DialogueChoiceReq
 	}, opcodes.DialogueChoiceResponse)
 
 	if outcome.Traded {
-		sendPartyUpdate(ses)
+		notifyResourceChange(ses)
 	}
 
 	log.Printf("[InGameTrade] Dialogue choice %s choice=%t traded=%t wrongPokemon=%t",
@@ -130,22 +148,25 @@ func handleInGameTradeDialogueChoice(ses *session.Session, req DialogueChoiceReq
 	return true
 }
 
-func loadInGameTradeDefinitionByText(textConstant string) (inGameTradeDefinition, error) {
-	if db.GlobalWorldDB == nil || db.GlobalWorldDB.DB == nil {
-		return inGameTradeDefinition{}, errInGameTradeNotFound
-	}
-	return queryInGameTradeDefinitionByText(db.GlobalWorldDB.DB, textConstant)
+func queryInGameTradeDefinitionByText(myDB pokebattle.DBTX, textConstant string) (inGameTradeDefinition, error) {
+	return scanInGameTradeDefinition(myDB.QueryRow(inGameTradeDefinitionQuery, textConstant))
 }
 
-func queryInGameTradeDefinitionByText(myDB pokebattle.DBTX, textConstant string) (inGameTradeDefinition, error) {
-	var trade inGameTradeDefinition
-	err := myDB.QueryRow(`
+func queryInGameTradeDefinitionByTextContext(ctx context.Context, database db.ContextDBTX, textConstant string) (inGameTradeDefinition, error) {
+	return scanInGameTradeDefinition(database.QueryRowContext(ctx, inGameTradeDefinitionQuery, textConstant))
+}
+
+const inGameTradeDefinitionQuery = `
 		SELECT trade_key, text_constant, map_name, source_file, script_label,
 		       requested_pokemon_id, requested_pokemon_name,
 		       offered_pokemon_id, offered_pokemon_name, offered_nickname,
 		       dialogue_set, COALESCE(original_trade_index, -1)
 		FROM phaser_in_game_trades
-		WHERE text_constant = $1`, textConstant).Scan(
+		WHERE text_constant = $1`
+
+func scanInGameTradeDefinition(row *sql.Row) (inGameTradeDefinition, error) {
+	var trade inGameTradeDefinition
+	err := row.Scan(
 		&trade.TradeKey,
 		&trade.TextConstant,
 		&trade.MapName,
@@ -168,26 +189,40 @@ func queryInGameTradeDefinitionByText(myDB pokebattle.DBTX, textConstant string)
 	return trade, nil
 }
 
+const inGameTradeCompletionQuery = `SELECT EXISTS (
+ SELECT 1 FROM character_in_game_trades WHERE character_id=$1 AND trade_key=$2
+)`
+
 func characterCompletedInGameTrade(myDB pokebattle.DBTX, charID int64, tradeKey string) (bool, error) {
 	var completed bool
-	err := myDB.QueryRow(`
-		SELECT EXISTS (
-			SELECT 1 FROM character_in_game_trades
-			WHERE character_id = $1 AND trade_key = $2
-		)`, charID, tradeKey).Scan(&completed)
+	err := myDB.QueryRow(inGameTradeCompletionQuery, charID, tradeKey).Scan(&completed)
 	return completed, err
 }
 
 func performInGameTrade(myDB *sql.DB, charID int64, trade inGameTradeDefinition) (inGameTradeOutcome, error) {
+	return performInGameTradeContext(context.Background(), myDB, charID, trade)
+}
+
+func performInGameTradeContext(ctx context.Context, myDB *sql.DB, charID int64, trade inGameTradeDefinition) (inGameTradeOutcome, error) {
 	if charID <= 0 {
 		return inGameTradeOutcome{}, fmt.Errorf("character id is required")
 	}
 
-	tx, err := myDB.Begin()
+	var outcome inGameTradeOutcome
+	err := db.Transaction(ctx, myDB, func(tx db.DBTX) (err error) {
+		outcome, err = performInGameTradeTransaction(tx, charID, trade)
+		return err
+	})
 	if err != nil {
-		return inGameTradeOutcome{}, fmt.Errorf("begin trade transaction: %w", err)
+		return inGameTradeOutcome{}, err
 	}
-	defer tx.Rollback()
+	return outcome, nil
+}
+
+func performInGameTradeTransaction(tx db.DBTX, charID int64, trade inGameTradeDefinition) (inGameTradeOutcome, error) {
+	if err := db.LockCharacter(tx, charID); err != nil {
+		return inGameTradeOutcome{}, fmt.Errorf("lock trading character: %w", err)
+	}
 
 	completed, err := characterCompletedInGameTrade(tx, charID, trade.TradeKey)
 	if err != nil {
@@ -217,7 +252,9 @@ func performInGameTrade(myDB *sql.DB, charID int64, trade inGameTradeDefinition)
 		WHERE id = $1 AND character_id = $2`, selectedRowID, charID); err != nil {
 		return inGameTradeOutcome{}, fmt.Errorf("remove traded pokemon: %w", err)
 	}
-	pokebattle.CompactPartySlots(tx, charID)
+	if err := pokebattle.CompactPartySlots(tx, charID); err != nil {
+		return inGameTradeOutcome{}, fmt.Errorf("compact party: %w", err)
+	}
 
 	var newPartySlot int
 	if err := tx.QueryRow(`
@@ -250,7 +287,7 @@ func performInGameTrade(myDB *sql.DB, charID int64, trade inGameTradeDefinition)
 		return inGameTradeOutcome{}, fmt.Errorf("set offered pokemon nickname: %w", err)
 	}
 
-	if err := markPokemonCaught(tx, charID, trade.OfferedPokemonID); err != nil {
+	if err := pokedex.MarkCaught(tx, charID, trade.OfferedPokemonID); err != nil {
 		return inGameTradeOutcome{}, fmt.Errorf("mark offered pokemon caught: %w", err)
 	}
 
@@ -263,11 +300,11 @@ func performInGameTrade(myDB *sql.DB, charID int64, trade inGameTradeDefinition)
 		return inGameTradeOutcome{}, fmt.Errorf("record completed trade: %w", err)
 	}
 
-	if err := tx.Commit(); err != nil {
-		return inGameTradeOutcome{}, fmt.Errorf("commit trade transaction: %w", err)
+	party, err := pokebattle.LoadParty(tx, charID)
+	if err != nil {
+		return inGameTradeOutcome{}, fmt.Errorf("load committed trade party: %w", err)
 	}
-
-	return inGameTradeOutcome{Dialogue: trade.completedTradeDialogue(), Traded: true}, nil
+	return inGameTradeOutcome{Dialogue: trade.completedTradeDialogue(), Traded: true, party: party}, nil
 }
 
 func (t inGameTradeDefinition) originalTrainerID() int64 {

@@ -1,45 +1,18 @@
 import { create } from "zustand";
 
-export interface PokedexSpecies {
-  id: number;
-  name: string;
-  type1: string;
-  type2?: string;
-  pokedexType?: string;
-  height?: string;
-  weight?: number;
-  pokedexText?: string;
-  iconImage?: string;
-  crySfx?: string;
-  cryPitch?: number;
-  cryLength?: number;
-}
+import type { PokedexSpeciesEntry, PokedexStatusEntry, TrainerCardResponse, PokedexListResponse, PokedexStatusResponse } from "@/net/generated/protocol";
 
-export interface PokedexStatus {
-  pokemonId: number;
-  seen: boolean;
-  caught: boolean;
-}
-
-export interface TrainerCardData {
-  name: string;
-  money: number;
-  timePlayed: number;
-  badges: string[];
-  badgeCount: number;
-  pokedexSeen: number;
-  pokedexCaught: number;
+function statusMap(status:PokedexStatusEntry[]) {
+  return new Map(status.map(s=>[s.pokemonId,{seen:s.seen||s.caught,caught:s.caught}]));
 }
 
 interface PokedexState {
-  species: PokedexSpecies[];
+  species: PokedexSpeciesEntry[];
   statusMap: Map<number, { seen: boolean; caught: boolean }>;
   isLoaded: boolean;
-  trainerCard: TrainerCardData | null;
+  trainerCard: TrainerCardResponse | null;
 
-  setSpecies: (species: PokedexSpecies[]) => void;
-  setStatus: (status: PokedexStatus[]) => void;
-  setTrainerCard: (card: TrainerCardData) => void;
+  applyRead: (reply:TrainerCardResponse|PokedexListResponse|PokedexStatusResponse)=>void;
   isSeen: (pokemonId: number) => boolean;
   isCaught: (pokemonId: number) => boolean;
   getSeenCount: () => number;
@@ -52,17 +25,12 @@ const usePokedexStore = create<PokedexState>((set, get) => ({
   isLoaded: false,
   trainerCard: null,
 
-  setSpecies: (species) => set({ species, isLoaded: true }),
-
-  setStatus: (status) => {
-    const map = new Map<number, { seen: boolean; caught: boolean }>();
-    for (const s of status) {
-      map.set(s.pokemonId, { seen: s.seen || s.caught, caught: s.caught });
-    }
-    set({ statusMap: map });
+  // A list is one server snapshot; observers must not see half its publication.
+  applyRead: (reply)=>{
+    if("badges" in reply)set({trainerCard:reply});
+    else if("species" in reply)set({species:reply.species,isLoaded:true,statusMap:statusMap(reply.status)});
+    else set({statusMap:statusMap(reply.status)});
   },
-
-  setTrainerCard: (card) => set({ trainerCard: card }),
 
   isSeen: (pokemonId) => {
     const entry = get().statusMap.get(pokemonId);

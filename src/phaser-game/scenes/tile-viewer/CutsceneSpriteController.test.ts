@@ -1,0 +1,20 @@
+import { expect, test, vi } from "vitest";
+const registration = vi.hoisted(() => ({ register: vi.fn(), unregister: vi.fn() }));
+vi.mock("../../services/CutsceneService", () => ({ registerCutsceneCallbacks: registration.register, unregisterCutsceneCallbacks: registration.unregister }));
+import { CutsceneSpriteController } from "./CutsceneSpriteController";
+test("retiring cutscene playback stops its tween, settles movement and ignores stale completion", async () => {
+  const stop = vi.fn(); let completed!: (() => void); let update!: ((tween: { progress: number }) => void);
+  const sprite = { active: true, x: 8, y: 8, texture: { has: () => true }, setFrame: vi.fn(), setFlipX: vi.fn() };
+  const player = { id: 12, x: 0, y: 0, actionDirection: "DOWN" };
+  const renderer = { getActorSprite: () => sprite, getActorTilePosition: () => ({ x: 0, y: 0, direction: "DOWN" }), snapActorPosition: vi.fn() };
+  const sync = vi.fn();
+  const controller = new CutsceneSpriteController({ scene: { tweens: { add: (config: { onComplete: () => void; onUpdate: (tween: { progress: number }) => void }) => { completed = config.onComplete; update = config.onUpdate; return { stop } } } }, getPlayerActor: () => player, mapRenderer: () => renderer, syncPlayerMovement: sync, setInputLocked: vi.fn(), onReconcile: vi.fn(async () => { }), onHideObject: vi.fn() } as never);
+  controller.registerCallbacks();
+  const callbacks = registration.register.mock.calls.at(-1)![0];
+  const movement = callbacks.onMove("__PLAYER__", ["RIGHT", "DOWN"]);
+  callbacks.onCancelPlayback(); await movement;
+  sprite.setFrame.mockClear(); completed(); update({ progress: 0.5 });
+  expect(sprite.setFrame).not.toHaveBeenCalled();
+  expect(stop).toHaveBeenCalledOnce(); expect(renderer.snapActorPosition).not.toHaveBeenCalled(); expect(sync).not.toHaveBeenCalled(); expect(player.x).toBe(0); expect(player.y).toBe(0);
+  controller.cleanup();
+});

@@ -2,6 +2,7 @@ package scriptedevents
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -12,7 +13,7 @@ import (
 	"sort"
 	"strings"
 
-	"capturequest/internal/pokebattle"
+	"capturequest/internal/db"
 )
 
 const (
@@ -150,7 +151,10 @@ type syncStats struct {
 
 // SyncDefault syncs scripted-event definitions from the default repo directory
 // into the runtime DB. The DB remains the hot path for existing managers.
-func SyncDefault(db pokebattle.DBTX) error {
+func SyncDefault(ctx context.Context, db *sql.DB) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	root, err := findRootDir()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -159,7 +163,7 @@ func SyncDefault(db pokebattle.DBTX) error {
 		}
 		return err
 	}
-	stats, err := Sync(db, root)
+	stats, err := Sync(ctx, db, root)
 	if err != nil {
 		return err
 	}
@@ -172,23 +176,67 @@ func SyncDefault(db pokebattle.DBTX) error {
 	return nil
 }
 
-// Sync applies all scripted-event files under root.
-func Sync(db pokebattle.DBTX, root string) (syncStats, error) {
-	if err := ensureCutsceneRequirementColumns(db); err != nil {
+// Sync publishes the complete PostgreSQL scripted-event family in one transaction.
+// Files are loaded first so malformed inputs never acquire runtime table locks.
+func Sync(ctx context.Context, database *sql.DB, root string) (syncStats, error) {
+	if err := ctx.Err(); err != nil {
 		return syncStats{}, err
 	}
-	if err := ensureConditionalDialogueColumns(db); err != nil {
-		return syncStats{}, err
+	if database == nil {
+		return syncStats{}, fmt.Errorf("scripted-event database is required")
 	}
-
 	events, err := LoadEvents(root)
 	if err != nil {
 		return syncStats{}, err
 	}
+	rules, err := LoadObjectVisibility(root)
+	if err != nil {
+		return syncStats{}, err
+	}
+	tileRules, err := LoadEventTileOverrides(root)
+	if err != nil {
+		return syncStats{}, err
+	}
+	dialogueRules, err := LoadConditionalDialogue(root)
+	if err != nil {
+		return syncStats{}, err
+	}
+	tx, err := database.BeginTx(ctx, nil)
+	if err != nil {
+		return syncStats{}, fmt.Errorf("begin scripted-event sync: %w", err)
+	}
+	defer tx.Rollback()
+	// Serialize publishers before reading the prior family. This also prevents
+	// competing schema upgrades from deadlocking when they strengthen table locks.
+	if _, err := tx.ExecContext(ctx, `LOCK TABLE phaser_cutscene_scripts,
+  phaser_conditional_dialogue, phaser_coordinate_triggers,
+  phaser_event_object_visibility, phaser_event_tile_overrides
+  IN SHARE ROW EXCLUSIVE MODE`); err != nil {
+		return syncStats{}, fmt.Errorf("lock scripted-event family: %w", err)
+	}
+	if err := ensureCutsceneRequirementColumns(ctx, tx); err != nil {
+		return syncStats{}, err
+	}
+	if err := ensureConditionalDialogueColumns(ctx, tx); err != nil {
+		return syncStats{}, err
+	}
+	stats, err := syncLoaded(ctx, tx, events, rules, tileRules, dialogueRules)
+	if err != nil {
+		return syncStats{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return syncStats{}, fmt.Errorf("commit scripted-event sync: %w", err)
+	}
+	return stats, nil
+}
+
+func syncLoaded(ctx context.Context, db db.ContextDBTX, events []EventFile,
+	rules []ObjectVisibilityRule, tileRules []EventTileOverrideRule,
+	dialogueRules []ConditionalDialogueRule) (syncStats, error) {
 
 	stats := syncStats{ScriptFiles: len(events)}
 	for _, event := range events {
-		changed, err := syncEvent(db, event)
+		changed, err := syncEvent(ctx, db, event)
 		if err != nil {
 			return stats, err
 		}
@@ -196,7 +244,7 @@ func Sync(db pokebattle.DBTX, root string) (syncStats, error) {
 			stats.ScriptsChanged++
 		}
 	}
-	deleted, err := deleteStaleExtractorTriggerScripts(db, events)
+	deleted, err := deleteStaleExtractorTriggerScripts(ctx, db, events)
 	if err != nil {
 		return stats, err
 	}
@@ -205,93 +253,72 @@ func Sync(db pokebattle.DBTX, root string) (syncStats, error) {
 	coords := ownedCoordinates(events)
 	stats.OwnedTriggerLabels = len(coords)
 	if len(coords) > 0 {
-		changed, err := syncOwnedCoordinates(db, coords)
+		changed, err := syncOwnedCoordinates(ctx, db, coords)
 		if err != nil {
 			return stats, err
 		}
 		stats.TriggerRowsChanged = changed
 	}
 
-	rules, err := LoadObjectVisibility(root)
-	if err != nil {
-		return stats, err
-	}
 	stats.VisibilityRules = len(rules)
 	if rules != nil {
-		changed, err := syncObjectVisibility(db, rules)
+		changed, err := syncObjectVisibility(ctx, db, rules)
 		if err != nil {
 			return stats, err
 		}
 		stats.VisibilityChanged = changed
 	}
 
-	tileRules, err := LoadEventTileOverrides(root)
-	if err != nil {
-		return stats, err
-	}
 	stats.EventTileRules = len(tileRules)
 	if tileRules != nil {
-		changed, err := syncEventTileOverrides(db, tileRules)
+		changed, err := syncEventTileOverrides(ctx, db, tileRules)
 		if err != nil {
 			return stats, err
 		}
 		stats.EventTilesChanged = changed
 	}
 
-	dialogueRules, err := LoadConditionalDialogue(root)
-	if err != nil {
-		return stats, err
-	}
 	stats.ConditionalDialogueRules = len(dialogueRules)
 	if dialogueRules != nil {
-		changed, err := syncConditionalDialogue(db, dialogueRules)
+		changed, err := syncConditionalDialogue(ctx, db, dialogueRules)
 		if err != nil {
 			return stats, err
 		}
 		stats.ConditionalDialogueChanged = changed
 	}
 
-	return stats, nil
+	return stats, ctx.Err()
 }
 
-func ensureCutsceneRequirementColumns(db pokebattle.DBTX) error {
+func ensureCutsceneRequirementColumns(ctx context.Context, db db.ContextDBTX) error {
 	for _, statement := range []string{
-		`ALTER TABLE phaser_cutscene_scripts ADD COLUMN requires_money INTEGER DEFAULT NULL`,
-		`ALTER TABLE phaser_cutscene_scripts ADD COLUMN requires_money_below INTEGER DEFAULT NULL`,
-		`ALTER TABLE phaser_cutscene_scripts ADD COLUMN requires_coins INTEGER DEFAULT NULL`,
-		`ALTER TABLE phaser_cutscene_scripts ADD COLUMN requires_coins_below INTEGER DEFAULT NULL`,
-		`ALTER TABLE phaser_cutscene_scripts ADD COLUMN requires_player_facing VARCHAR(10) DEFAULT NULL`,
-		`ALTER TABLE phaser_cutscene_scripts ADD COLUMN requires_flags JSONB DEFAULT NULL`,
-		`ALTER TABLE phaser_cutscene_scripts ADD COLUMN requires_flags_absent JSONB DEFAULT NULL`,
+		`ALTER TABLE phaser_cutscene_scripts ADD COLUMN IF NOT EXISTS requires_money INTEGER DEFAULT NULL`,
+		`ALTER TABLE phaser_cutscene_scripts ADD COLUMN IF NOT EXISTS requires_money_below INTEGER DEFAULT NULL`,
+		`ALTER TABLE phaser_cutscene_scripts ADD COLUMN IF NOT EXISTS requires_coins INTEGER DEFAULT NULL`,
+		`ALTER TABLE phaser_cutscene_scripts ADD COLUMN IF NOT EXISTS requires_coins_below INTEGER DEFAULT NULL`,
+		`ALTER TABLE phaser_cutscene_scripts ADD COLUMN IF NOT EXISTS requires_player_facing VARCHAR(10) DEFAULT NULL`,
+		`ALTER TABLE phaser_cutscene_scripts ADD COLUMN IF NOT EXISTS requires_flags JSONB DEFAULT NULL`,
+		`ALTER TABLE phaser_cutscene_scripts ADD COLUMN IF NOT EXISTS requires_flags_absent JSONB DEFAULT NULL`,
 	} {
-		if _, err := db.Exec(statement); err != nil && !isDuplicateColumnError(err) {
+		if _, err := db.ExecContext(ctx, statement); err != nil {
 			return fmt.Errorf("ensure cutscene requirement column: %w", err)
 		}
 	}
 	return nil
 }
 
-func ensureConditionalDialogueColumns(db pokebattle.DBTX) error {
+func ensureConditionalDialogueColumns(ctx context.Context, db db.ContextDBTX) error {
 	for _, statement := range []string{
-		`ALTER TABLE phaser_conditional_dialogue ADD COLUMN requires_flags JSONB DEFAULT NULL`,
-		`ALTER TABLE phaser_conditional_dialogue ADD COLUMN requires_flags_absent JSONB DEFAULT NULL`,
-		`ALTER TABLE phaser_conditional_dialogue ADD COLUMN dialogue_labels JSONB DEFAULT NULL`,
-		`ALTER TABLE phaser_conditional_dialogue ADD COLUMN source VARCHAR(100) DEFAULT 'manual'`,
+		`ALTER TABLE phaser_conditional_dialogue ADD COLUMN IF NOT EXISTS requires_flags JSONB DEFAULT NULL`,
+		`ALTER TABLE phaser_conditional_dialogue ADD COLUMN IF NOT EXISTS requires_flags_absent JSONB DEFAULT NULL`,
+		`ALTER TABLE phaser_conditional_dialogue ADD COLUMN IF NOT EXISTS dialogue_labels JSONB DEFAULT NULL`,
+		`ALTER TABLE phaser_conditional_dialogue ADD COLUMN IF NOT EXISTS source VARCHAR(100) DEFAULT 'manual'`,
 	} {
-		if _, err := db.Exec(statement); err != nil && !isDuplicateColumnError(err) {
+		if _, err := db.ExecContext(ctx, statement); err != nil {
 			return fmt.Errorf("ensure conditional dialogue column: %w", err)
 		}
 	}
 	return nil
-}
-
-func isDuplicateColumnError(err error) bool {
-	if err == nil {
-		return false
-	}
-	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "duplicate column") ||
-		strings.Contains(message, "already exists")
 }
 
 type loadedEventRef struct {
@@ -612,7 +639,7 @@ func normalizeEventDirection(direction string) string {
 	}
 }
 
-func syncEvent(db pokebattle.DBTX, event EventFile) (bool, error) {
+func syncEvent(ctx context.Context, db db.ContextDBTX, event EventFile) (bool, error) {
 	setsFlagsJSON, err := canonicalValue(event.SetsFlags)
 	if err != nil {
 		return false, fmt.Errorf("%s setsFlags: %w", event.ScriptLabel, err)
@@ -629,7 +656,7 @@ func syncEvent(db pokebattle.DBTX, event EventFile) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("%s actions: %w", event.ScriptLabel, err)
 	}
-	requiresItemID, requiresItemAbsentID, err := resolveEventItemRequirements(db, event)
+	requiresItemID, requiresItemAbsentID, err := resolveEventItemRequirements(ctx, db, event)
 	if err != nil {
 		return false, fmt.Errorf("%s item requirements: %w", event.ScriptLabel, err)
 	}
@@ -660,7 +687,7 @@ func syncEvent(db pokebattle.DBTX, event EventFile) (bool, error) {
 		target.WarpToY = &event.Warp.Y
 	}
 
-	existing, err := loadEventRow(db, event.ScriptLabel)
+	existing, err := loadEventRow(ctx, db, event.ScriptLabel)
 	if err != nil {
 		return false, err
 	}
@@ -668,7 +695,7 @@ func syncEvent(db pokebattle.DBTX, event EventFile) (bool, error) {
 		return false, nil
 	}
 
-	if err := upsertEventRow(db, target); err != nil {
+	if err := upsertEventRow(ctx, db, target); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -680,7 +707,7 @@ type extractorTriggerKey struct {
 	TriggerLabel string
 }
 
-func deleteStaleExtractorTriggerScripts(db pokebattle.DBTX, events []EventFile) (int, error) {
+func deleteStaleExtractorTriggerScripts(ctx context.Context, db db.ContextDBTX, events []EventFile) (int, error) {
 	labelsByTrigger := make(map[extractorTriggerKey][]string)
 	hasExtractorTrigger := make(map[extractorTriggerKey]bool)
 	for _, event := range events {
@@ -704,7 +731,7 @@ func deleteStaleExtractorTriggerScripts(db pokebattle.DBTX, events []EventFile) 
 			continue
 		}
 		query, args := staleExtractorDeleteQuery(key, labels)
-		result, err := db.Exec(query, args...)
+		result, err := db.ExecContext(ctx, query, args...)
 		if err != nil {
 			return total, fmt.Errorf("delete stale scripts for %s/%s/%s: %w", key.MapName, key.TriggerType, key.TriggerLabel, err)
 		}
@@ -730,10 +757,10 @@ func staleExtractorDeleteQuery(key extractorTriggerKey, labels []string) (string
 	return query, args
 }
 
-func resolveEventItemRequirements(db pokebattle.DBTX, event EventFile) (*int, *int, error) {
+func resolveEventItemRequirements(ctx context.Context, db db.ContextDBTX, event EventFile) (*int, *int, error) {
 	requiresItemID := event.RequiresItemID
 	if event.RequiresItemName != "" {
-		id, err := resolveEventItemID(db, event.RequiresItemName)
+		id, err := resolveEventItemID(ctx, db, event.RequiresItemName)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -742,7 +769,7 @@ func resolveEventItemRequirements(db pokebattle.DBTX, event EventFile) (*int, *i
 
 	requiresItemAbsentID := event.RequiresItemAbsentID
 	if event.RequiresItemAbsentName != "" {
-		id, err := resolveEventItemID(db, event.RequiresItemAbsentName)
+		id, err := resolveEventItemID(ctx, db, event.RequiresItemAbsentName)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -751,9 +778,9 @@ func resolveEventItemRequirements(db pokebattle.DBTX, event EventFile) (*int, *i
 	return requiresItemID, requiresItemAbsentID, nil
 }
 
-func resolveEventItemID(db pokebattle.DBTX, itemName string) (int, error) {
+func resolveEventItemID(ctx context.Context, db db.ContextDBTX, itemName string) (int, error) {
 	var id int
-	err := db.QueryRow(
+	err := db.QueryRowContext(ctx,
 		`SELECT id FROM cq_items WHERE name = $1 OR short_name = $2 LIMIT 1`,
 		itemName, itemName,
 	).Scan(&id)
@@ -787,12 +814,12 @@ type eventDBRow struct {
 	WarpToY               *int
 }
 
-func loadEventRow(db pokebattle.DBTX, label string) (*eventDBRow, error) {
+func loadEventRow(ctx context.Context, db db.ContextDBTX, label string) (*eventDBRow, error) {
 	var row eventDBRow
 	var triggerLabel, reqFlag, reqFlagAbsent, reqPlayerFacing sql.NullString
 	var reqItemID, reqItemAbsentID, reqCaught, reqMoney, reqMoneyBelow, reqCoins, reqCoinsBelow, warpMap, warpX, warpY sql.NullInt64
 	var requiresFlagsRaw, requiresFlagsAbsentRaw, setsFlagsRaw, actionsRaw []byte
-	err := db.QueryRow(`
+	err := db.QueryRowContext(ctx, `
 			SELECT script_label, map_name, trigger_type, trigger_label,
 				requires_flag, requires_flag_absent, requires_flags, requires_flags_absent, requires_item_id, requires_item_absent_id, requires_pokedex_caught,
 				requires_money, requires_money_below, requires_coins, requires_coins_below, requires_player_facing,
@@ -866,7 +893,7 @@ func (row eventDBRow) equal(other eventDBRow) bool {
 		intPtrEqual(row.WarpToY, other.WarpToY)
 }
 
-func upsertEventRow(db pokebattle.DBTX, row eventDBRow) error {
+func upsertEventRow(ctx context.Context, db db.ContextDBTX, row eventDBRow) error {
 	query := `
 		INSERT INTO phaser_cutscene_scripts (
 			script_label, map_name, trigger_type, trigger_label,
@@ -896,7 +923,7 @@ func upsertEventRow(db pokebattle.DBTX, row eventDBRow) error {
 			warp_to_map_id = EXCLUDED.warp_to_map_id,
 			warp_to_x = EXCLUDED.warp_to_x,
 			warp_to_y = EXCLUDED.warp_to_y`
-	_, err := db.Exec(query,
+	_, err := db.ExecContext(ctx, query,
 		row.ScriptLabel, row.MapName, row.TriggerType, nullableString(row.TriggerLabel),
 		nullableString(row.RequiresFlag), nullableString(row.RequiresFlagAbsent),
 		string(row.RequiresFlagsJSON), string(row.RequiresFlagsAbstJSON),
@@ -931,9 +958,9 @@ func ownedCoordinates(events []EventFile) map[string][]EventCoordinate {
 	return result
 }
 
-func syncOwnedCoordinates(db pokebattle.DBTX, coordsByLabel map[string][]EventCoordinate) (bool, error) {
+func syncOwnedCoordinates(ctx context.Context, db db.ContextDBTX, coordsByLabel map[string][]EventCoordinate) (bool, error) {
 	target := flattenCoordinates(coordsByLabel)
-	existing, err := loadCoordinateRows(db, sortedKeys(coordsByLabel))
+	existing, err := loadCoordinateRows(ctx, db, sortedKeys(coordsByLabel))
 	if err != nil {
 		return false, err
 	}
@@ -942,11 +969,11 @@ func syncOwnedCoordinates(db pokebattle.DBTX, coordsByLabel map[string][]EventCo
 	}
 
 	labels := sortedKeys(coordsByLabel)
-	if err := deleteCoordinateLabels(db, labels); err != nil {
+	if err := deleteCoordinateLabels(ctx, db, labels); err != nil {
 		return false, err
 	}
 	for _, row := range target {
-		if _, err := db.Exec(`
+		if _, err := db.ExecContext(ctx, `
 				INSERT INTO phaser_coordinate_triggers (map_name, map_id, label, x, y)
 				VALUES ($1, $2, $3, $4, $5)`,
 			row.MapName, row.MapID, row.Label, row.X, row.Y); err != nil {
@@ -981,7 +1008,7 @@ func flattenCoordinates(coordsByLabel map[string][]EventCoordinate) []coordinate
 	return rows
 }
 
-func loadCoordinateRows(db pokebattle.DBTX, labels []string) ([]coordinateRow, error) {
+func loadCoordinateRows(ctx context.Context, db db.ContextDBTX, labels []string) ([]coordinateRow, error) {
 	if len(labels) == 0 {
 		return nil, nil
 	}
@@ -993,7 +1020,7 @@ func loadCoordinateRows(db pokebattle.DBTX, labels []string) ([]coordinateRow, e
 	for i, label := range labels {
 		args[i] = label
 	}
-	rows, err := db.Query(query, args...)
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1014,7 +1041,7 @@ func loadCoordinateRows(db pokebattle.DBTX, labels []string) ([]coordinateRow, e
 	return result, nil
 }
 
-func deleteCoordinateLabels(db pokebattle.DBTX, labels []string) error {
+func deleteCoordinateLabels(ctx context.Context, db db.ContextDBTX, labels []string) error {
 	if len(labels) == 0 {
 		return nil
 	}
@@ -1023,7 +1050,7 @@ func deleteCoordinateLabels(db pokebattle.DBTX, labels []string) error {
 	for i, label := range labels {
 		args[i] = label
 	}
-	if _, err := db.Exec(query, args...); err != nil {
+	if _, err := db.ExecContext(ctx, query, args...); err != nil {
 		return err
 	}
 	return nil
@@ -1041,8 +1068,8 @@ func equalCoordinates(a, b []coordinateRow) bool {
 	return true
 }
 
-func syncObjectVisibility(db pokebattle.DBTX, rules []ObjectVisibilityRule) (bool, error) {
-	existing, err := loadCustomVisibilityRows(db)
+func syncObjectVisibility(ctx context.Context, db db.ContextDBTX, rules []ObjectVisibilityRule) (bool, error) {
+	existing, err := loadCustomVisibilityRows(ctx, db)
 	if err != nil {
 		return false, err
 	}
@@ -1050,13 +1077,13 @@ func syncObjectVisibility(db pokebattle.DBTX, rules []ObjectVisibilityRule) (boo
 		return false, nil
 	}
 
-	if _, err := db.Exec(`
+	if _, err := db.ExecContext(ctx, `
 			DELETE FROM phaser_event_object_visibility
 			WHERE label NOT LIKE $1 OR label IS NULL`, sourceMissableLabel); err != nil {
 		return false, fmt.Errorf("delete custom object visibility: %w", err)
 	}
 	for _, rule := range rules {
-		if _, err := db.Exec(`
+		if _, err := db.ExecContext(ctx, `
 				INSERT INTO phaser_event_object_visibility (
 					map_id, map_name, object_name, visible, requires_flag, requires_flag_absent, label
 				)
@@ -1069,8 +1096,8 @@ func syncObjectVisibility(db pokebattle.DBTX, rules []ObjectVisibilityRule) (boo
 	return true, nil
 }
 
-func loadCustomVisibilityRows(db pokebattle.DBTX) ([]ObjectVisibilityRule, error) {
-	rows, err := db.Query(`
+func loadCustomVisibilityRows(ctx context.Context, db db.ContextDBTX) ([]ObjectVisibilityRule, error) {
+	rows, err := db.QueryContext(ctx, `
 			SELECT map_id, map_name, object_name, visible, requires_flag, requires_flag_absent, COALESCE(label, '')
 			FROM phaser_event_object_visibility
 			WHERE label NOT LIKE $1 OR label IS NULL`, sourceMissableLabel)
@@ -1117,8 +1144,8 @@ func equalVisibilityRules(a, b []ObjectVisibilityRule) bool {
 	return true
 }
 
-func syncEventTileOverrides(db pokebattle.DBTX, rules []EventTileOverrideRule) (bool, error) {
-	existing, err := loadEventTileOverrideRows(db)
+func syncEventTileOverrides(ctx context.Context, db db.ContextDBTX, rules []EventTileOverrideRule) (bool, error) {
+	existing, err := loadEventTileOverrideRows(ctx, db)
 	if err != nil {
 		return false, err
 	}
@@ -1126,11 +1153,11 @@ func syncEventTileOverrides(db pokebattle.DBTX, rules []EventTileOverrideRule) (
 		return false, nil
 	}
 
-	if _, err := db.Exec(`DELETE FROM phaser_event_tile_overrides`); err != nil {
+	if _, err := db.ExecContext(ctx, `DELETE FROM phaser_event_tile_overrides`); err != nil {
 		return false, fmt.Errorf("delete event tile overrides: %w", err)
 	}
 	for _, rule := range rules {
-		if _, err := db.Exec(`
+		if _, err := db.ExecContext(ctx, `
 				INSERT INTO phaser_event_tile_overrides (
 					map_id, map_name, x, y, tile_image_id, collision_type, requires_flag, requires_flag_absent, label
 				)
@@ -1143,8 +1170,8 @@ func syncEventTileOverrides(db pokebattle.DBTX, rules []EventTileOverrideRule) (
 	return true, nil
 }
 
-func loadEventTileOverrideRows(db pokebattle.DBTX) ([]EventTileOverrideRule, error) {
-	rows, err := db.Query(`
+func loadEventTileOverrideRows(ctx context.Context, db db.ContextDBTX) ([]EventTileOverrideRule, error) {
+	rows, err := db.QueryContext(ctx, `
 			SELECT map_id, map_name, x, y, tile_image_id, collision_type, requires_flag, requires_flag_absent, COALESCE(label, '')
 			FROM phaser_event_tile_overrides
 			ORDER BY id`)
@@ -1203,12 +1230,12 @@ type conditionalDialogueDBRow struct {
 	DialogueLabelsJSON []byte
 }
 
-func syncConditionalDialogue(db pokebattle.DBTX, rules []ConditionalDialogueRule) (bool, error) {
-	targetRows, err := buildConditionalDialogueRows(db, rules)
+func syncConditionalDialogue(ctx context.Context, db db.ContextDBTX, rules []ConditionalDialogueRule) (bool, error) {
+	targetRows, err := buildConditionalDialogueRows(ctx, db, rules)
 	if err != nil {
 		return false, err
 	}
-	existingRows, err := loadGeneratedConditionalDialogueRows(db)
+	existingRows, err := loadGeneratedConditionalDialogueRows(ctx, db)
 	if err != nil {
 		return false, err
 	}
@@ -1216,11 +1243,11 @@ func syncConditionalDialogue(db pokebattle.DBTX, rules []ConditionalDialogueRule
 		return false, nil
 	}
 
-	if _, err := db.Exec(`DELETE FROM phaser_conditional_dialogue WHERE source = $1`, extractorSource); err != nil {
+	if _, err := db.ExecContext(ctx, `DELETE FROM phaser_conditional_dialogue WHERE source = $1`, extractorSource); err != nil {
 		return false, fmt.Errorf("delete generated conditional dialogue: %w", err)
 	}
 	for _, row := range targetRows {
-		if _, err := db.Exec(`
+		if _, err := db.ExecContext(ctx, `
 				INSERT INTO phaser_conditional_dialogue (
 					text_constant, priority, requires_flag, requires_flag_absent,
 					requires_flags, requires_flags_absent, override_dialogue,
@@ -1243,7 +1270,7 @@ func syncConditionalDialogue(db pokebattle.DBTX, rules []ConditionalDialogueRule
 	return true, nil
 }
 
-func buildConditionalDialogueRows(db pokebattle.DBTX, rules []ConditionalDialogueRule) ([]conditionalDialogueDBRow, error) {
+func buildConditionalDialogueRows(ctx context.Context, db db.ContextDBTX, rules []ConditionalDialogueRule) ([]conditionalDialogueDBRow, error) {
 	rows := make([]conditionalDialogueDBRow, 0, len(rules))
 	for _, rule := range rules {
 		requiresFlags := normalizedFlagList(appendFlag(rule.RequiresFlags, rule.RequiresFlag))
@@ -1261,7 +1288,7 @@ func buildConditionalDialogueRows(db pokebattle.DBTX, rules []ConditionalDialogu
 		if err != nil {
 			return nil, fmt.Errorf("%s dialogueLabels: %w", rule.TextConstant, err)
 		}
-		dialogue, err := resolveConditionalDialogueText(db, labels)
+		dialogue, err := resolveConditionalDialogueText(ctx, db, labels)
 		if err != nil {
 			return nil, fmt.Errorf("%s dialogue text: %w", rule.TextConstant, err)
 		}
@@ -1280,8 +1307,8 @@ func buildConditionalDialogueRows(db pokebattle.DBTX, rules []ConditionalDialogu
 	return rows, nil
 }
 
-func loadGeneratedConditionalDialogueRows(db pokebattle.DBTX) ([]conditionalDialogueDBRow, error) {
-	rows, err := db.Query(`
+func loadGeneratedConditionalDialogueRows(ctx context.Context, db db.ContextDBTX) ([]conditionalDialogueDBRow, error) {
+	rows, err := db.QueryContext(ctx, `
 			SELECT text_constant, priority, requires_flag, requires_flag_absent,
 				requires_flags, requires_flags_absent, override_dialogue, dialogue_labels
 			FROM phaser_conditional_dialogue
@@ -1333,10 +1360,10 @@ func loadGeneratedConditionalDialogueRows(db pokebattle.DBTX) ([]conditionalDial
 	return result, nil
 }
 
-func resolveConditionalDialogueText(db pokebattle.DBTX, labels []string) (string, error) {
+func resolveConditionalDialogueText(ctx context.Context, db db.ContextDBTX, labels []string) (string, error) {
 	parts := make([]string, 0, len(labels))
 	for _, label := range labels {
-		dialogue, err := resolveDialogueLabel(db, label)
+		dialogue, err := resolveDialogueLabel(ctx, db, label)
 		if err != nil {
 			return "", err
 		}
@@ -1345,7 +1372,7 @@ func resolveConditionalDialogueText(db pokebattle.DBTX, labels []string) (string
 	return strings.Join(parts, "\n"), nil
 }
 
-func resolveDialogueLabel(db pokebattle.DBTX, label string) (string, error) {
+func resolveDialogueLabel(ctx context.Context, db db.ContextDBTX, label string) (string, error) {
 	candidates := []string{label}
 	if strings.HasPrefix(label, "_") {
 		candidates = append(candidates, strings.TrimPrefix(label, "_"))
@@ -1354,7 +1381,7 @@ func resolveDialogueLabel(db pokebattle.DBTX, label string) (string, error) {
 	}
 	for _, candidate := range candidates {
 		var dialogue string
-		err := db.QueryRow(`SELECT dialogue FROM phaser_dialogue_text WHERE label = $1`, candidate).Scan(&dialogue)
+		err := db.QueryRowContext(ctx, `SELECT dialogue FROM phaser_dialogue_text WHERE label = $1`, candidate).Scan(&dialogue)
 		if err == nil {
 			return dialogue, nil
 		}

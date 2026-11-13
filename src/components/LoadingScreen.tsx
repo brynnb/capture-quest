@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import styled from "styled-components";
+import ActionButton from "./Interface/ActionButton";
 import { LoadingJokeUtil } from "@utils/getRandomLoadingJoke";
 
 const Wrapper = styled.div<{ $isGlobal?: boolean }>`
@@ -76,19 +77,20 @@ const LoadingBarFill = styled.div.attrs<{ $progress: number }>(props => ({
 `;
 
 interface LoadingScreenProps {
-  /** Optional message (currently unused - loading jokes displayed instead) */
+  /** Failure message when a retry action is provided; ordinary loads show jokes. */
   message?: string;
   progress?: number;
   isIndeterminate?: boolean;
   isGlobal?: boolean;
+  onRetry?: () => void;
 }
 
 const LoadingScreen = ({
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   message: _message,
   progress = 0,
   isIndeterminate = false,
   isGlobal = false,
+  onRetry,
 }: LoadingScreenProps) => {
 
   const [animatedProgress, setAnimatedProgress] = useState(0);
@@ -137,10 +139,11 @@ const LoadingScreen = ({
         <LoadingBarContainer>
           <LoadingBarFill $progress={animatedProgress} />
           <LoadingText>
-            {loadingJoke}
-            {dots}
+            {onRetry ? _message : loadingJoke}
+            {!onRetry && dots}
           </LoadingText>
         </LoadingBarContainer>
+        {onRetry && <LoadingBarContainer><ActionButton text="Retry" onClick={onRetry} /></LoadingBarContainer>}
       </LoadingContainer>
     </Wrapper>
   );

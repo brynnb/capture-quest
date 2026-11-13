@@ -9,6 +9,7 @@ import { jumpToScenario } from "./helpers/scenarioDebugger";
 import {
   centerTileInView,
   getGameState,
+  getEngineSnapshot,
   waitForMap,
   waitForNoMapLoading,
   waitForPlayerIdle,
@@ -128,6 +129,18 @@ test("instant warp from map view to a far overworld tile keeps the new movement 
   await centerTileInView(page, 190, -81);
 
   await instantWarpTo(page, 190, -81);
+  // Ending warp mode updates the actor immediately. Camera streaming installs
+  // exact tiles later; test the movement origin only once collision data exists.
+  await expect
+    .poll(async () => {
+      const snapshot = await getEngineSnapshot(page, {
+        bounds: { radius: 1, center: { x: 190, y: -81 } },
+      });
+      return [189, 190].map((x) =>
+        snapshot.tiles.find((tile) => tile.x === x && tile.y === -81)?.collisionType,
+      );
+    }, { timeout: 15_000 })
+    .toEqual([1, 1]);
 
   let nextPosition = waitForNextPlayerPositionEvent(page);
   await pressMovement(page, "left");

@@ -1,24 +1,32 @@
 package pokebattle
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 )
 
 // --- JSON-serializable battle state for DB persistence ---
 
 type persistedBattle struct {
-	Phase                int      `json:"phase"`
-	BattleType           int      `json:"battleType"`
-	TurnNumber           int      `json:"turnNumber"`
-	PlayerActive         int      `json:"playerActive"`
-	EnemyActive          int      `json:"enemyActive"`
-	RunAttempts          int      `json:"runAttempts"`
-	PlayerCaught         bool     `json:"playerCaught"`
-	PlayerTrainerID      int64    `json:"playerTrainerId,omitempty"`
-	PlayerObedienceLevel int      `json:"playerObedienceLevel,omitempty"`
-	AllowedActions       []string `json:"allowedActions,omitempty"`
-	GuaranteedCatch      bool     `json:"guaranteedCatch,omitempty"`
+	Version        int                   `json:"version,omitempty"`
+	BattleID       string                `json:"battleId,omitempty"`
+	Revision       int64                 `json:"revision,omitempty"`
+	PlayerVolatile []playerVolatileState `json:"playerVolatile,omitempty"`
+
+	Phase                int               `json:"phase"`
+	BattleType           int               `json:"battleType"`
+	TurnNumber           int               `json:"turnNumber"`
+	PlayerActive         int               `json:"playerActive"`
+	EnemyActive          int               `json:"enemyActive"`
+	RunAttempts          int               `json:"runAttempts"`
+	PlayerCaught         bool              `json:"playerCaught"`
+	Capture              *CapturePlacement `json:"capture,omitempty"`
+	PlayerTrainerID      int64             `json:"playerTrainerId,omitempty"`
+	PlayerObedienceLevel int               `json:"playerObedienceLevel,omitempty"`
+	AllowedActions       []string          `json:"allowedActions,omitempty"`
+	GuaranteedCatch      bool              `json:"guaranteedCatch,omitempty"`
 	// Player party is NOT stored here — it's persisted in character_pokemon
 	// and reloaded via LoadParty on restore to avoid sync issues.
 	EnemyParty          []persistedPokemon `json:"enemyParty"`
@@ -31,44 +39,56 @@ type persistedBattle struct {
 }
 
 type persistedPokemon struct {
-	ID             int              `json:"id"`
-	Name           string           `json:"name"`
-	Level          int              `json:"level"`
-	IsWild         bool             `json:"isWild"`
-	Type1          int              `json:"type1"`
-	Type2          int              `json:"type2"`
-	BaseStats      [5]int           `json:"baseStats"` // HP, Atk, Def, Spc, Spd
-	IVs            [4]int           `json:"ivs"`       // Atk, Def, Spc, Spd
-	EVs            [5]int           `json:"evs"`       // HP, Atk, Def, Spc, Spd
-	MaxHP          int              `json:"maxHp"`
-	CurHP          int              `json:"curHp"`
-	Attack         int              `json:"attack"`
-	Defense        int              `json:"defense"`
-	Special        int              `json:"special"`
-	Speed          int              `json:"speed"`
-	Moves          [4]persistedMove `json:"moves"`
-	Status         int              `json:"status"`
-	SleepTurns     int              `json:"sleepTurns"`
-	BadPoisonTurns int              `json:"badPoisonTurns,omitempty"`
-	ConfusionTurns int              `json:"confusionTurns"`
-	IsSeeded       bool             `json:"isSeeded"`
-	SubstituteHP   int              `json:"substituteHp"`
-	DireHit        bool             `json:"direHit"`
-	GuardSpec      bool             `json:"guardSpec"`
-	AtkStage       int              `json:"atkStage"`
-	DefStage       int              `json:"defStage"`
-	SpcStage       int              `json:"spcStage"`
-	SpdStage       int              `json:"spdStage"`
-	AccStage       int              `json:"accStage"`
-	EvaStage       int              `json:"evaStage"`
-	CatchRate      int              `json:"catchRate"`
-	BaseSpeed      int              `json:"baseSpeed"`
-	BaseExp        int              `json:"baseExp"`
-	GrowthRt       int              `json:"growthRate"`
-	Exp            int              `json:"exp"`
+	RowID             int64            `json:"rowId,omitempty"`
+	Nickname          string           `json:"nickname,omitempty"`
+	CrySFX            string           `json:"crySfx,omitempty"`
+	CryPitch          int              `json:"cryPitch,omitempty"`
+	CryLength         int              `json:"cryLength,omitempty"`
+	EvolveLevel       int              `json:"evolveLevel,omitempty"`
+	EvolvePokemonName string           `json:"evolvePokemonName,omitempty"`
+	OriginalTrainerID int64            `json:"originalTrainerId,omitempty"`
+	BoxSlot           int              `json:"boxSlot"`
+	ID                int              `json:"id"`
+	Name              string           `json:"name"`
+	Level             int              `json:"level"`
+	IsWild            bool             `json:"isWild"`
+	Type1             int              `json:"type1"`
+	Type2             int              `json:"type2"`
+	BaseStats         [5]int           `json:"baseStats"` // HP, Atk, Def, Spc, Spd
+	IVs               [4]int           `json:"ivs"`       // Atk, Def, Spc, Spd
+	EVs               [5]int           `json:"evs"`       // HP, Atk, Def, Spc, Spd
+	MaxHP             int              `json:"maxHp"`
+	CurHP             int              `json:"curHp"`
+	Attack            int              `json:"attack"`
+	Defense           int              `json:"defense"`
+	Special           int              `json:"special"`
+	Speed             int              `json:"speed"`
+	Moves             [4]persistedMove `json:"moves"`
+	Status            int              `json:"status"`
+	SleepTurns        int              `json:"sleepTurns"`
+	BadPoisonTurns    int              `json:"badPoisonTurns,omitempty"`
+	ConfusionTurns    int              `json:"confusionTurns"`
+	IsSeeded          bool             `json:"isSeeded"`
+	SubstituteHP      int              `json:"substituteHp"`
+	DireHit           bool             `json:"direHit"`
+	GuardSpec         bool             `json:"guardSpec"`
+	AtkStage          int              `json:"atkStage"`
+	DefStage          int              `json:"defStage"`
+	SpcStage          int              `json:"spcStage"`
+	SpdStage          int              `json:"spdStage"`
+	AccStage          int              `json:"accStage"`
+	EvaStage          int              `json:"evaStage"`
+	CatchRate         int              `json:"catchRate"`
+	BaseSpeed         int              `json:"baseSpeed"`
+	BaseExp           int              `json:"baseExp"`
+	GrowthRt          int              `json:"growthRate"`
+	Exp               int              `json:"exp"`
 }
 
 type persistedMove struct {
+	BattleSFX  string `json:"battleSfx,omitempty"`
+	SFXPitch   int    `json:"sfxPitch,omitempty"`
+	SFXTempo   int    `json:"sfxTempo,omitempty"`
 	ID         int    `json:"id"`
 	Name       string `json:"name"`
 	Type       int    `json:"type"`
@@ -109,6 +129,9 @@ func MarshalBattleState(b *BattleState) ([]byte, error) {
 		return nil, fmt.Errorf("nil battle state")
 	}
 	pb := persistedBattle{
+		Version:              2,
+		BattleID:             b.BattleID,
+		Revision:             b.Revision,
 		Phase:                int(b.Phase),
 		BattleType:           int(b.BattleType),
 		TurnNumber:           b.TurnNumber,
@@ -116,6 +139,7 @@ func MarshalBattleState(b *BattleState) ([]byte, error) {
 		EnemyActive:          b.EnemyActive,
 		RunAttempts:          b.RunAttempts,
 		PlayerCaught:         b.PlayerCaught,
+		Capture:              b.Capture,
 		PlayerTrainerID:      b.PlayerTrainerID,
 		PlayerObedienceLevel: b.PlayerObedienceLevel,
 		AllowedActions:       b.AllowedActions,
@@ -163,6 +187,11 @@ func MarshalBattleState(b *BattleState) ([]byte, error) {
 		pb.PostMoveLearnEvents = b.PostMoveLearnEvents
 	}
 
+	for _, p := range b.PlayerParty {
+		if p != nil && p.RowID > 0 {
+			pb.PlayerVolatile = append(pb.PlayerVolatile, volatileState(p))
+		}
+	}
 	return json.Marshal(pb)
 }
 
@@ -173,7 +202,17 @@ func UnmarshalBattleState(data []byte) (*BattleState, error) {
 		return nil, fmt.Errorf("unmarshal battle state: %w", err)
 	}
 
+	if pb.Version != 0 && pb.Version != 2 {
+		return nil, fmt.Errorf("unsupported saved battle version %d", pb.Version)
+	}
+	if p := pb.Capture; p != nil && (!pb.PlayerCaught || pb.Phase != int(PhaseBattleEnd) || (p.SentToPC && (p.PCBox < 0 || p.PCBox >= 12))) {
+		return nil, fmt.Errorf("invalid saved capture placement")
+	}
 	b := &BattleState{
+		BattleID:             pb.BattleID,
+		Revision:             pb.Revision,
+		persistedVersion:     pb.Version,
+		playerVolatile:       pb.PlayerVolatile,
 		Phase:                BattlePhase(pb.Phase),
 		BattleType:           BattleType(pb.BattleType),
 		TurnNumber:           pb.TurnNumber,
@@ -181,6 +220,7 @@ func UnmarshalBattleState(data []byte) (*BattleState, error) {
 		EnemyActive:          pb.EnemyActive,
 		RunAttempts:          pb.RunAttempts,
 		PlayerCaught:         pb.PlayerCaught,
+		Capture:              pb.Capture,
 		PlayerTrainerID:      pb.PlayerTrainerID,
 		PlayerObedienceLevel: pb.PlayerObedienceLevel,
 		AllowedActions:       pb.AllowedActions,
@@ -236,6 +276,8 @@ func UnmarshalBattleState(data []byte) (*BattleState, error) {
 
 func pokemonToPersisted(p *Pokemon) persistedPokemon {
 	pp := persistedPokemon{
+		RowID: p.RowID, Nickname: p.Nickname, CrySFX: p.CrySFX, CryPitch: p.CryPitch, CryLength: p.CryLength,
+		EvolveLevel: p.EvolveLevel, EvolvePokemonName: p.EvolvePokemonName, OriginalTrainerID: p.OriginalTrainerID, BoxSlot: p.BoxSlot,
 		ID:             p.ID,
 		Name:           p.Name,
 		Level:          p.Level,
@@ -272,7 +314,7 @@ func pokemonToPersisted(p *Pokemon) persistedPokemon {
 		Exp:            p.Exp,
 	}
 	for i, m := range p.Moves {
-		pp.Moves[i] = persistedMove{
+		pp.Moves[i] = persistedMove{BattleSFX: m.BattleSFX, SFXPitch: m.SFXPitch, SFXTempo: m.SFXTempo,
 			ID:         m.ID,
 			Name:       m.Name,
 			Type:       int(m.Type),
@@ -291,6 +333,8 @@ func pokemonToPersisted(p *Pokemon) persistedPokemon {
 
 func persistedToPokemon(pp persistedPokemon) *Pokemon {
 	p := &Pokemon{
+		RowID: pp.RowID, Nickname: pp.Nickname, CrySFX: pp.CrySFX, CryPitch: pp.CryPitch, CryLength: pp.CryLength,
+		EvolveLevel: pp.EvolveLevel, EvolvePokemonName: pp.EvolvePokemonName, OriginalTrainerID: pp.OriginalTrainerID, BoxSlot: pp.BoxSlot,
 		ID:     pp.ID,
 		Name:   pp.Name,
 		Level:  pp.Level,
@@ -344,7 +388,7 @@ func persistedToPokemon(pp persistedPokemon) *Pokemon {
 		Exp:            pp.Exp,
 	}
 	for i, m := range pp.Moves {
-		p.Moves[i] = MoveSlot{
+		p.Moves[i] = MoveSlot{BattleSFX: m.BattleSFX, SFXPitch: m.SFXPitch, SFXTempo: m.SFXTempo,
 			ID:         m.ID,
 			Name:       m.Name,
 			Type:       PokemonType(m.Type),
@@ -387,8 +431,11 @@ func SaveBattleState(db DBTX, characterID int64, battle *BattleState) error {
 func LoadBattleState(db DBTX, characterID int64) (*BattleState, error) {
 	var data string
 	err := db.QueryRow(`SELECT battle_json FROM character_battle_state WHERE character_id = $1`, characterID).Scan(&data)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
 	if err != nil {
-		return nil, nil // No saved battle (or error — treat as no battle)
+		return nil, fmt.Errorf("load saved battle for character %d: %w", characterID, err)
 	}
 	battle, err := UnmarshalBattleState([]byte(data))
 	if err != nil {

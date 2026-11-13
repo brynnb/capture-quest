@@ -19,10 +19,10 @@
     "inventoryContains": [{ "itemName": "CARD_KEY", "quantity": 1 }],
     "actionTypesContains": ["silphCardKey"],
     "tileStates": [
-      { "x": 18, "y": 10, "tileImageId": 758, "collisionType": 1, "label": "SilphCardKeyDoor_9F_3_Open_0_0" },
-      { "x": 19, "y": 10, "tileImageId": 758, "collisionType": 1, "label": "SilphCardKeyDoor_9F_3_Open_1_0" },
-      { "x": 18, "y": 11, "tileImageId": 758, "collisionType": 1, "label": "SilphCardKeyDoor_9F_3_Open_0_1" },
-      { "x": 19, "y": 11, "tileImageId": 758, "collisionType": 1, "label": "SilphCardKeyDoor_9F_3_Open_1_1" }
+      { "x": 18, "y": 10, "source": {"mapName":"SilphCo9F","blockId":14,"position":0}, "collisionType": 1, "label": "SilphCardKeyDoor_9F_3_Open_0_0" },
+      { "x": 19, "y": 10, "source": {"mapName":"SilphCo9F","blockId":14,"position":1}, "collisionType": 1, "label": "SilphCardKeyDoor_9F_3_Open_1_0" },
+      { "x": 18, "y": 11, "source": {"mapName":"SilphCo9F","blockId":14,"position":2}, "collisionType": 1, "label": "SilphCardKeyDoor_9F_3_Open_0_1" },
+      { "x": 19, "y": 11, "source": {"mapName":"SilphCo9F","blockId":14,"position":3}, "collisionType": 1, "label": "SilphCardKeyDoor_9F_3_Open_1_1" }
     ],
     "activeBattleAbsent": true
   }

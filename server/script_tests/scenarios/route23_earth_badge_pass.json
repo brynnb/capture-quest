@@ -1,4 +1,5 @@
 {
+  "coordinateSpace": "source",
   "name": "route23_earth_badge_pass",
   "description": "The Route 23 Earth Badge guard allows the player with the Earth Badge.",
   "fixture": {

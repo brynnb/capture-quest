@@ -1,61 +1,13 @@
 import { create } from "zustand";
 
-export interface CQItemTemplate {
-  id: number;
-  name: string;
-  shortName: string;
-  price: number;
-  vendingPrice?: number;
-  itemType: number;
-  isUsable: boolean;
-  usesPartyMenu: boolean;
-  isKeyItem: boolean;
-  isGuardDrink: boolean;
-  moveId?: number;
-  stackable: boolean;
-  stackSize: number;
-  bonusHp: number;
-  bonusAttack: number;
-  bonusDefense: number;
-  bonusSpeed: number;
-  bonusSpecial: number;
-  bonusAccuracy: number;
-  bonusEvasion: number;
-  bonusCatchRate: number;
-  bonusExp: number;
-  bonusEncounterRate: number;
-  bonusCrit: number;
-  bonusFlee: number;
-  healAmount: number;
-  statusCure?: string;
-  ppRestore: number;
-  revivePercent: number;
-  ballModifier: number;
-  loreText?: string;
-  icon: number;
-}
+import type {
+  CQItem as CQItemTemplate,
+  CQItemInstance,
+  CQInventoryItem,
+  CQMerchantItem,
+} from "@/net/generated/cqitems";
 
-export interface CQItemInstance {
-  id: number;
-  itemId: number;
-  charges: number;
-  quantity: number;
-  ownerId?: number;
-  ownerType: number;
-}
-
-export interface CQInventoryItem {
-  instance: CQItemInstance;
-  item: CQItemTemplate;
-}
-
-export interface CQMerchantItem {
-  itemId: number;
-  displayOrder: number;
-  priceOverride?: number;
-  quantity: number;
-  item: CQItemTemplate;
-}
+export type { CQItemTemplate, CQItemInstance, CQInventoryItem, CQMerchantItem };
 
 // Item type constants
 export const ITEM_TYPE_MISC = 0;
@@ -70,6 +22,7 @@ export const ITEM_TYPE_EVOLUTION_STONE = 9;
 export interface PendingTMHM {
   instanceId: number;
   partySlot: number;
+  pokemonRowId: number;
   itemName: string;
   moveId?: number;
   moveName?: string;
@@ -79,18 +32,23 @@ export interface PendingTMHM {
 interface CQInventoryState {
   items: CQInventoryItem[];
   money: number;
+  coins: number;
+  commandRevision: number;
+  inventoryCommandPending: boolean;
+  inventoryCommandError: string | null;
 
   // Merchant/shop state
   shopOpen: boolean;
   shopName: string;
   shopMerchantId: number | null;
+  shopActorId: number | null;
   shopItems: CQMerchantItem[];
 
   // TM/HM pending move forget
   pendingTMHM: PendingTMHM | null;
 
   // Actions
-  setInventory: (items: CQInventoryItem[], money: number) => void;
+  setInventory: (items: CQInventoryItem[], money: number, commandRevision?: number, coins?: number) => void;
   setMoney: (money: number) => void;
   setPendingTMHM: (pending: PendingTMHM | null) => void;
   openShop: (
@@ -98,37 +56,36 @@ interface CQInventoryState {
     name: string,
     items: CQMerchantItem[],
     money: number,
+    actorId: number,
   ) => void;
   closeShop: () => void;
-  updateAfterBuy: (
-    itemId: number,
-    quantity: number,
-    instanceId: number,
-    money: number,
-    item: CQItemTemplate,
-  ) => void;
-  updateAfterSell: (instanceId: number, money: number) => void;
 }
 
-const useCQInventoryStore = create<CQInventoryState>((set, get) => ({
+const useCQInventoryStore = create<CQInventoryState>((set) => ({
   items: [],
   money: 0,
+  coins: 0,
+  commandRevision: 0,
+  inventoryCommandPending: false,
+  inventoryCommandError: null,
   shopOpen: false,
   shopName: "",
   shopMerchantId: null,
+  shopActorId: null,
   shopItems: [],
   pendingTMHM: null,
 
-  setInventory: (items, money) => set({ items, money }),
+  setInventory: (items, money, commandRevision, coins) => set({ items, money, ...(commandRevision === undefined ? {} : {commandRevision}), ...(coins === undefined ? {} : {coins}) }),
 
   setMoney: (money) => set({ money }),
 
   setPendingTMHM: (pending) => set({ pendingTMHM: pending }),
 
-  openShop: (merchantId, name, items, money) =>
+  openShop: (merchantId, name, items, money, actorId) =>
     set({
       shopOpen: true,
       shopMerchantId: merchantId,
+      shopActorId: actorId,
       shopName: name,
       shopItems: items,
       money,
@@ -139,49 +96,9 @@ const useCQInventoryStore = create<CQInventoryState>((set, get) => ({
       shopOpen: false,
       shopName: "",
       shopMerchantId: null,
+      shopActorId: null,
       shopItems: [],
     }),
-
-  updateAfterBuy: (itemId, quantity, instanceId, money, item) => {
-    const { items } = get();
-    // Check if we stacked onto an existing item
-    const existingIdx = items.findIndex(
-      (i) => i.instance.id === instanceId,
-    );
-    if (existingIdx >= 0) {
-      // Update quantity on existing stack
-      const updated = [...items];
-      updated[existingIdx] = {
-        ...updated[existingIdx],
-        instance: {
-          ...updated[existingIdx].instance,
-          quantity: updated[existingIdx].instance.quantity + quantity,
-        },
-      };
-      set({ items: updated, money });
-    } else {
-      // New item in inventory
-      const newItem: CQInventoryItem = {
-        instance: {
-          id: instanceId,
-          itemId,
-          charges: 0,
-          quantity,
-          ownerType: 0,
-        },
-        item,
-      };
-      set({ items: [...items, newItem], money });
-    }
-  },
-
-  updateAfterSell: (instanceId, money) => {
-    const { items } = get();
-    set({
-      items: items.filter((i) => i.instance.id !== instanceId),
-      money,
-    });
-  },
 }));
 
 export default useCQInventoryStore;

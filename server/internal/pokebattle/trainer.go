@@ -25,24 +25,39 @@ func BuildTrainerParty(db DBTX, trainerClass string, partyIndex int) ([]*Pokemon
 	}
 	defer rows.Close()
 
-	var party []*Pokemon
+	type partyEntry struct {
+		name  string
+		level int
+	}
+	var entries []partyEntry
 	for rows.Next() {
-		var pokemonName string
-		var level int
-		if err := rows.Scan(&pokemonName, &level); err != nil {
-			continue
+		var entry partyEntry
+		if err := rows.Scan(&entry.name, &entry.level); err != nil {
+			return nil, fmt.Errorf("scan trainer party: %w", err)
 		}
+		entries = append(entries, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read trainer party: %w", err)
+	}
+	// A transaction owns one PostgreSQL connection. Exhaust and close its party
+	// rows before nested species/move reads; otherwise pgx reports a busy connection.
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("close trainer party: %w", err)
+	}
+	var party []*Pokemon
+	for _, entry := range entries {
 
 		// Look up Pokémon ID by name
 		var pokemonID int
-		err := db.QueryRow(`SELECT id FROM phaser_pokemon WHERE name = $1`, pokemonName).Scan(&pokemonID)
+		err := db.QueryRow(`SELECT id FROM phaser_pokemon WHERE name = $1`, entry.name).Scan(&pokemonID)
 		if err != nil {
-			return nil, fmt.Errorf("pokemon %q not found: %w", pokemonName, err)
+			return nil, fmt.Errorf("pokemon %q not found: %w", entry.name, err)
 		}
 
-		p, err := BuildWildPokemon(db, pokemonID, level)
+		p, err := BuildWildPokemon(db, pokemonID, entry.level)
 		if err != nil {
-			return nil, fmt.Errorf("build trainer pokemon %q L%d: %w", pokemonName, level, err)
+			return nil, fmt.Errorf("build trainer pokemon %q L%d: %w", entry.name, entry.level, err)
 		}
 		p.IsWild = false
 		party = append(party, p)

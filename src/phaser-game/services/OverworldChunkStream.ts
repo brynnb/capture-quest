@@ -51,6 +51,7 @@ interface OverworldChunkStreamOptions {
 
 interface QueuedExactFetch {
   chunk: OverworldChunk;
+  signal?: AbortSignal;
   resolve: (result: FetchedExactChunk) => void;
   reject: (error: unknown) => void;
 }
@@ -83,6 +84,7 @@ export class OverworldChunkStream {
   private lastPlan: OverworldChunkPlan | null = null;
   private lastMode: "exact" | "overview" = "exact";
   private stopped = false;
+  private tileReadLifetime = new AbortController();
   private overviewChunkKeys: string[] = [];
   private queuedCameraUpdate: CameraWorldView | null = null;
   private updateDrainRunning = false;
@@ -94,6 +96,7 @@ export class OverworldChunkStream {
 
   async initialize(camera: CameraWorldView): Promise<void> {
     this.stopped = false;
+    if(this.tileReadLifetime.signal.aborted)this.tileReadLifetime=new AbortController();
     await this.applyCamera(camera, true);
   }
 
@@ -235,8 +238,35 @@ export class OverworldChunkStream {
     };
   }
 
+  async reconcileResidentView(signal: AbortSignal): Promise<void> {
+    if (signal.aborted || this.stopped || !this.lastPlan) {
+      throw new DOMException("Chunk view retired", "AbortError");
+    }
+    const plan = this.lastPlan.mode === "exact"
+      ? this.lastPlan : this.planGameplayFootprint();
+    if (!plan) throw new Error("Resident gameplay chunk plan unavailable");
+    const generation = ++this.requestGeneration;
+    // Either the settlement caller or the stream owner can retire this read.
+    const owned = new AbortController();
+    const retire = () => owned.abort();
+    signal.addEventListener("abort", retire, { once: true });
+    this.tileReadLifetime.signal.addEventListener("abort", retire, { once: true });
+    try {
+      await this.loadChunks(plan.requiredChunks, generation, owned.signal);
+      if (owned.signal.aborted || !this.isCurrent(generation)) {
+        throw new DOMException("Chunk recovery retired", "AbortError");
+      }
+      this.emitTiles();
+    } finally {
+      signal.removeEventListener("abort", retire);
+      this.tileReadLifetime.signal.removeEventListener("abort", retire);
+      owned.abort();
+    }
+  }
+
   stop(): void {
     this.stopped = true;
+    this.tileReadLifetime.abort();
     this.requestGeneration += 1;
     this.queuedCameraUpdate = null;
     for (const queued of this.exactFetchQueue.splice(0)) {
@@ -357,6 +387,7 @@ export class OverworldChunkStream {
         this.planRetryDelayMs = INITIAL_PLAN_RETRY_DELAY_MS;
       }
     } catch (error) {
+      if (!this.isCurrent(generation)) return;
       this.markPlanForRetry(signature, generation);
       if (throwOnFailure) throw error;
       console.error("[OverworldChunks] Failed to apply chunk plan:", error);
@@ -484,13 +515,17 @@ export class OverworldChunkStream {
   private async loadChunks(
     chunks: readonly OverworldChunk[],
     generation: number,
+    refreshSignal?: AbortSignal,
   ): Promise<void> {
-    const missingChunks = chunks.filter(
+    const missingChunks = refreshSignal ? [...chunks] : chunks.filter(
       (chunk) => !this.loadedExactChunks.has(chunk.key),
     );
     if (missingChunks.length === 0) return;
 
+    let attempts = 0;
     for (;;) {
+      if (refreshSignal?.aborted) throw new DOMException("Chunk recovery aborted", "AbortError");
+      if (refreshSignal && attempts++ >= 2) throw new Error("Chunk recovery overtaken; another owned read is required");
       const staged: StagedExactChunk[] = [];
       for (
         let index = 0;
@@ -504,7 +539,7 @@ export class OverworldChunkStream {
         const loaded = await Promise.all(
           batch.map(async (chunk) => ({
             chunk,
-            ...(await this.fetchChunk(chunk)),
+            ...(refreshSignal ? await this.fetchFreshChunk(chunk, refreshSignal) : await this.fetchChunk(chunk)),
           })),
         );
         if (!this.isCurrent(generation)) return;
@@ -515,6 +550,8 @@ export class OverworldChunkStream {
         await this.options.mapDataService.fetchTileImages(),
       );
       if (!this.isCurrent(generation)) return;
+
+      if (refreshSignal?.aborted) throw new DOMException("Chunk recovery aborted", "AbortError");
 
       // A committed paint/erase can arrive while Phaser loads the tile image.
       // No renderer, resident lookup, or collision state is touched until every
@@ -533,7 +570,12 @@ export class OverworldChunkStream {
       // collision residency never exceeds the plan's <=3x3 desired set.
       this.evictNonDesiredExactChunks();
       for (const { chunk, tiles, renderTiles } of staged) {
-        if (this.loadedExactChunks.has(chunk.key)) continue;
+        if (this.loadedExactChunks.has(chunk.key)) {
+          if (!refreshSignal) continue;
+          if (!this.options.viewOnly) {
+            this.options.movementController.removeCollisionTiles(this.loadedExactChunks.get(chunk.key)!);
+          }
+        }
         this.options.mapRenderer.upsertTileChunk(
           chunk.key,
           chunk.chunkX,
@@ -575,6 +617,29 @@ export class OverworldChunkStream {
     return this.recoverSkippedFetch(chunk, request);
   }
 
+  private fetchFreshChunk(chunk: OverworldChunk, signal: AbortSignal): Promise<FetchedExactChunk> {
+    // Recovery bypasses cached/pending snapshots, but shares the same global
+    // network admission ceiling as camera and explicit tile reads.
+    let queued: QueuedExactFetch;
+    const retire = () => {
+      const index = this.exactFetchQueue.indexOf(queued);
+      if (index < 0) return; // Active reads already carry this signal.
+      this.exactFetchQueue.splice(index, 1);
+      queued.reject(new DOMException("Chunk recovery retired", "AbortError"));
+    };
+    const request = new Promise<FetchedExactChunk>((resolve, reject) => {
+      queued = { chunk, signal, resolve, reject };
+      if (signal.aborted) {
+        reject(new DOMException("Chunk recovery retired", "AbortError"));
+        return;
+      }
+      signal.addEventListener("abort", retire, { once: true });
+      this.exactFetchQueue.push(queued);
+      this.pumpExactFetchQueue();
+    });
+    return request.finally(() => signal.removeEventListener("abort", retire));
+  }
+
   private async recoverSkippedFetch(
     chunk: OverworldChunk,
     request: Promise<FetchedExactChunk>,
@@ -605,7 +670,7 @@ export class OverworldChunkStream {
     ) {
       const queued = this.exactFetchQueue.shift();
       if (!queued) return;
-      if (!this.shouldFetchQueuedChunk(queued.chunk.key)) {
+      if (!queued.signal && !this.shouldFetchQueuedChunk(queued.chunk.key)) {
         queued.resolve({
           tiles: [],
           renderTiles: [],
@@ -615,7 +680,7 @@ export class OverworldChunkStream {
       }
 
       this.activeExactFetches += 1;
-      void this.fetchChunkAtCurrentRevision(queued.chunk)
+      void this.fetchChunkAtCurrentRevision(queued.chunk, queued.signal)
         .then(queued.resolve, queued.reject)
         .finally(() => {
           this.activeExactFetches -= 1;
@@ -633,9 +698,15 @@ export class OverworldChunkStream {
 
   private async fetchChunkAtCurrentRevision(
     chunk: OverworldChunk,
+    signal: AbortSignal = this.tileReadLifetime.signal,
   ): Promise<FetchedExactChunk> {
     const streamGeneration = this.requestGeneration;
+    let attempts = 0;
     for (;;) {
+      if (signal.aborted) throw new DOMException("Chunk read retired", "AbortError");
+      if (signal !== this.tileReadLifetime.signal && attempts++ >= 2) {
+        throw new Error("Chunk recovery overtaken; another owned read is required");
+      }
       const revision = this.chunkRevisionByKey.get(chunk.key) ?? 0;
       // Include one neighboring row and column as a render-only halo. The
       // adjacent chunk contains the same source tiles, so their RenderTextures
@@ -648,12 +719,13 @@ export class OverworldChunkStream {
       const renderTiles = await this.options.mapDataService.fetchTilesInBounds(
         UNIFIED_OVERWORLD_MAP_ID,
         renderBounds,
+        signal,
       );
       const tiles = renderTiles.filter(
         (tile) =>
           tile.x <= chunk.bounds.maxX && tile.y <= chunk.bounds.maxY,
       );
-      if (this.stopped || streamGeneration !== this.requestGeneration) {
+      if (signal.aborted || this.stopped || streamGeneration !== this.requestGeneration) {
         // A stopped or superseded stream must never repopulate the shared LRU
         // after cleanup (especially after a committed editor invalidation).
         return { tiles: [], renderTiles: [], revision };
@@ -684,7 +756,7 @@ export class OverworldChunkStream {
   private purgeObsoleteQueuedExactFetches(): void {
     for (let index = this.exactFetchQueue.length - 1; index >= 0; index -= 1) {
       const queued = this.exactFetchQueue[index];
-      if (this.shouldFetchQueuedChunk(queued.chunk.key)) continue;
+      if (queued.signal || this.shouldFetchQueuedChunk(queued.chunk.key)) continue;
       this.exactFetchQueue.splice(index, 1);
       queued.resolve({
         tiles: [],

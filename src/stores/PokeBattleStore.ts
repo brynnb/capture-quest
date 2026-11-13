@@ -1,6 +1,6 @@
 import { create } from "zustand";
-import type { PokemonDTO } from "@/net/generated/world_api";
-import { WorldSocket, OpCodes } from "@/net";
+import type { BattleCommandIdentity, GameplayStateResponse, PokemonDTO } from "@/net/generated/world_api";
+import { closeOrdinaryBattle, closeSafariBattle } from "@/phaser-game/services/BattleCommandService";
 import useAudioActivityStore from "@/stores/AudioActivityStore";
 
 export type BattlePhase =
@@ -14,34 +14,16 @@ export type BattlePhase =
   | "battle_end"
   | "animating";
 
-export interface BattleEvent {
-  type: string;
-  message?: string;
-  attackerName?: string;
-  attackerSide?: "player" | "enemy";
-  moveName?: string;
-  moveSfx?: string;
-  moveSfxPitch?: number;
-  moveSfxTempo?: number;
-  damage?: number;
-  isCritical?: boolean;
-  effectiveness?: number;
-  targetName?: string;
-  targetSide?: "player" | "enemy";
-  targetHp?: number;
-  targetMaxHp?: number;
-  statusApplied?: string;
-  faintedName?: string;
-  expGained?: number;
-  shakes?: number;
-  newMoveId?: number;
-  newMoveName?: string;
-  learnedSlot?: number;
-  evolvedSpeciesId?: number;
-  evolvedName?: string;
-}
+import type { BattleEvent } from "@/net/generated/battle_events";
+export type { BattleEvent } from "@/net/generated/battle_events";
 
-interface PokeBattleState {
+interface PokeBattleState extends BattleCommandIdentity {
+  retireBattle: () => void;
+  presentationGeneration: number;
+  battleCommandPending: boolean;
+  commandError: string | null;
+  recoveredDismissal: boolean;
+  restoreGameplay: (snapshot: GameplayStateResponse, initialEvents?: BattleEvent[]) => void;
   isInBattle: boolean;
   phase: BattlePhase;
   pendingPhase: BattlePhase;
@@ -73,11 +55,12 @@ interface PokeBattleState {
   // Safari Zone battle state
   isSafari: boolean;
   safariBallsLeft: number;
+  safariExitMessage: string | null;
   // Caught Pokémon sent to Bill's PC (party was full)
   sentToPC: boolean;
   sentToPCBox: number | null;
 
-  startBattle: (data: {
+  startBattle: (data: BattleCommandIdentity & {
     playerPokemon: PokemonDTO;
     enemyPokemon: PokemonDTO;
     phase: string;
@@ -91,7 +74,7 @@ interface PokeBattleState {
     guaranteedCatch?: boolean;
   }) => void;
 
-  updateBattleState: (data: {
+  updateBattleState: (data: BattleCommandIdentity & {
     playerPokemon: PokemonDTO;
     enemyPokemon: PokemonDTO;
     phase: string;
@@ -108,11 +91,20 @@ interface PokeBattleState {
   closeBattle: () => void;
   setPhase: (phase: BattlePhase) => void;
   advanceEvent: () => void;
-  startSafariBattle: (data: { pokemon: { id: number; name: string; level: number; hp: number; maxHp: number }; ballsLeft: number; stepsLeft: number }) => void;
-  updateSafariState: (data: { events: BattleEvent[]; ballsLeft: number; stepsLeft: number; isOver: boolean; caught: boolean; fled: boolean; caughtPokemon?: { name: string }; sentToPC?: boolean; pcBox?: number }) => void;
+  startSafariBattle: (data: { battleId?: string; revision?: number; pokemon: { id: number; name: string; level: number; hp: number; maxHp: number }; ballsLeft: number; stepsLeft: number }) => void;
+  updateSafariState: (data: { events: BattleEvent[]; ballsLeft: number; stepsLeft: number; isOver: boolean; caught: boolean; fled: boolean; caughtPokemon?: { name: string }; exitMessage?: string; sentToPC?: boolean; pcBox?: number }) => void;
 }
 
-const usePokeBattleStore = create<PokeBattleState>((set, get) => ({
+type BattlePresentationState = Omit<PokeBattleState,
+  "retireBattle" | "restoreGameplay" | "startBattle" | "updateBattleState" | "endBattle" | "closeBattle" | "setPhase" | "advanceEvent" | "startSafariBattle" | "updateSafariState">;
+
+const initialBattleState: BattlePresentationState = {
+  presentationGeneration: 0,
+  battleCommandPending: false,
+  commandError: null,
+  recoveredDismissal: false,
+  battleId: "",
+  revision: 0,
   isInBattle: false,
   phase: "none",
   pendingPhase: "none",
@@ -137,13 +129,48 @@ const usePokeBattleStore = create<PokeBattleState>((set, get) => ({
   pendingMoveLearn: null,
   isSafari: false,
   safariBallsLeft: 0,
+  safariExitMessage: null,
   sentToPC: false,
   sentToPCBox: null,
+};
+
+const usePokeBattleStore = create<PokeBattleState>((set, get) => ({
+  ...initialBattleState,
+
+  retireBattle: () => {
+    useAudioActivityStore.getState().setBattleVictoryTrack(null);
+    set({ ...initialBattleState, presentationGeneration: get().presentationGeneration + 1 });
+  },
+
+  restoreGameplay: (snapshot, initialEvents = []) => {
+    useAudioActivityStore.getState().setBattleVictoryTrack(null);
+    if (snapshot.battle) {
+      const battle = snapshot.battle;
+      get().startBattle({ ...battle, events: initialEvents });
+      set({ recoveredDismissal: battle.needsDismissal === true });
+      if (battle.caught) {
+        set({ battleResult: "caught", sentToPC: battle.capture?.sentToPC === true, sentToPCBox: battle.capture?.sentToPC ? battle.capture.pcBox : null });
+      }
+      if (battle.pendingMove) {
+        set({ pendingMoveLearn: { moveId: battle.pendingMove.moveId, moveName: battle.pendingMove.moveName } });
+      }
+    } else if (snapshot.safari?.pokemon) {
+      get().startSafariBattle({ ...snapshot.safari, pokemon: snapshot.safari.pokemon });
+      if (snapshot.safari.isOver) get().updateSafariState({ ...snapshot.safari, isOver: true, caught: snapshot.safari.caught === true, fled: snapshot.safari.fled === true, events: [] });
+    } else {
+      // Absence retires local presentation without sending a CloseBattle command.
+      get().retireBattle();
+    }
+  },
 
   startBattle: (data) => {
     const hasEvents = data.events && data.events.length > 0;
     set({
+      ...initialBattleState,
+      presentationGeneration: get().presentationGeneration + 1,
       isInBattle: true,
+      battleId: data.battleId,
+      revision: data.revision,
       phase: hasEvents ? "animating" : (data.phase as BattlePhase),
       pendingPhase: data.phase as BattlePhase,
       turnNumber: data.turnNumber,
@@ -170,7 +197,7 @@ const usePokeBattleStore = create<PokeBattleState>((set, get) => ({
     const serverPhase = data.phase as BattlePhase;
     const hasEvents = data.events && data.events.length > 0;
     // Store faint switch data if present
-    const faintUpdate: Partial<PokeBattleState> = {};
+    const faintUpdate: Partial<PokeBattleState> = { battleId: data.battleId, revision: data.revision };
     if (data.playerParty) faintUpdate.faintSwitchParty = data.playerParty;
     if (data.playerActive !== undefined) faintUpdate.faintSwitchActive = data.playerActive;
     if (data.battleType) faintUpdate.battleType = data.battleType as "wild" | "trainer";
@@ -235,39 +262,8 @@ const usePokeBattleStore = create<PokeBattleState>((set, get) => ({
   },
 
   closeBattle: () => {
-    const { isSafari } = get();
-    // Tell the server we're done with this battle so it can clean up
-    if (!isSafari) {
-      WorldSocket.sendJsonMessage(OpCodes.PokeBattleCloseRequest, {});
-    }
-    useAudioActivityStore.getState().setBattleVictoryTrack(null);
-    set({
-      isInBattle: false,
-      phase: "none",
-      pendingPhase: "none",
-      turnNumber: 0,
-      playerPokemon: null,
-      enemyPokemon: null,
-      pendingPlayerPokemon: null,
-      pendingEnemyPokemon: null,
-      events: [],
-      eventQueue: [],
-      currentEventIndex: 0,
-      battleResult: null,
-      pendingBattleEnd: null,
-      lossMessage: null,
-      trainerClass: null,
-      blackoutWarp: null,
-      faintSwitchParty: [],
-      faintSwitchActive: 0,
-      battleType: null,
-      allowedActions: [],
-      guaranteedCatch: false,
-      isSafari: false,
-      safariBallsLeft: 0,
-      sentToPC: false,
-      sentToPCBox: null,
-    });
+    if (get().isSafari) void closeSafariBattle();
+    else void closeOrdinaryBattle();
   },
 
   setPhase: (phase) => set({ phase }),
@@ -314,8 +310,11 @@ const usePokeBattleStore = create<PokeBattleState>((set, get) => ({
       moves: [],
     };
     set({
+      ...initialBattleState,
+      presentationGeneration: get().presentationGeneration + 1,
       isInBattle: true,
       isSafari: true,
+      battleId: data.battleId ?? "", revision: data.revision ?? 0,
       safariBallsLeft: data.ballsLeft,
       phase: "action_select",
       pendingPhase: "action_select",
@@ -340,6 +339,7 @@ const usePokeBattleStore = create<PokeBattleState>((set, get) => ({
     const hasEvents = data.events && data.events.length > 0;
     const updates: Partial<PokeBattleState> = {
       safariBallsLeft: data.ballsLeft,
+      safariExitMessage: data.exitMessage ?? null,
       sentToPC: data.sentToPC || false,
       sentToPCBox: data.pcBox ?? null,
     };

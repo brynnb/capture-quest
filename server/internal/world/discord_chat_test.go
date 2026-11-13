@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"testing"
@@ -30,11 +31,12 @@ func TestDiscordChatUsesGlobalBroadcastAndOutboundSink(t *testing.T) {
 	session.InitSessionManager(manager)
 	observer := manager.CreateSession(messenger, 1, "127.0.0.1", nil)
 	observer.Authenticated = true
+	observer.PublishPresence()
 	wh := &WorldHandler{}
 	var bridged ChatMessageBroadcast
 	wh.SetPublicChatSink(func(message ChatMessageBroadcast) { bridged = message })
 
-	if err := wh.BroadcastExternalChat("Tester[Discord]", " hello   CaptureQuest "); err != nil {
+	if err := wh.BroadcastExternalChat(context.Background(), "Tester[Discord]", " hello   CaptureQuest "); err != nil {
 		t.Fatal(err)
 	}
 	if len(messenger.datagrams) != 1 || messenger.datagrams[0].opcode != opcodes.ChatMessageBroadcast {

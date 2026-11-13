@@ -96,6 +96,8 @@ var coreTables = []string{
 	"character_bind",
 	"character_battle_state",
 	"character_wallet",
+	"character_repels",
+	"character_safari_state",
 	"character_in_game_trades",
 	"character_pokemon",
 	"character_pc_state",

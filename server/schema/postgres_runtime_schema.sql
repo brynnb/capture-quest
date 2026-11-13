@@ -144,6 +144,93 @@ CREATE TABLE IF NOT EXISTS character_field_move_state (
 );
 CREATE INDEX IF NOT EXISTS character_field_move_state_map_idx ON character_field_move_state (character_id, map_id);
 
+-- Bounded latest field-command outcome plus a monotonic stale-request fence.
+CREATE TABLE IF NOT EXISTS character_field_command_state (
+ character_id bigint NOT NULL REFERENCES character_data(id) ON DELETE CASCADE,
+ domain varchar(64) NOT NULL,
+ revision bigint NOT NULL DEFAULT 0 CHECK(revision>=0),
+ request_id varchar(64),
+ input_hash varchar(64),
+ result_json text,
+ PRIMARY KEY(character_id,domain)
+);
+
+CREATE TABLE IF NOT EXISTS character_safari_state (
+    character_id bigint PRIMARY KEY REFERENCES character_data(id) ON DELETE CASCADE,
+    state_json text NOT NULL,
+    updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Durable issued scripts and bounded completion receipts, scoped to a character.
+CREATE TABLE IF NOT EXISTS character_cutscene_plans (
+    sequence bigserial UNIQUE NOT NULL,
+    character_id bigint NOT NULL REFERENCES character_data(id) ON DELETE CASCADE,
+    completion_token varchar(36) NOT NULL,
+    version integer NOT NULL,
+    script_label text NOT NULL,
+    script_json text NOT NULL,
+    map_id integer NOT NULL,
+    x integer NOT NULL,
+    y integer NOT NULL,
+    resolution text NOT NULL CHECK (resolution IN ('pending','resolved','cancelled')),
+    completed boolean NOT NULL,
+    PRIMARY KEY(character_id, completion_token)
+);
+CREATE INDEX IF NOT EXISTS character_cutscene_plans_pending_idx ON character_cutscene_plans(character_id, resolution, sequence);
+
+-- Retain the latest sight encounter and its resolution across owner replacement.
+CREATE TABLE IF NOT EXISTS character_trainer_encounters (
+    character_id bigint PRIMARY KEY REFERENCES character_data(id) ON DELETE CASCADE,
+    version integer NOT NULL,
+    encounter_token varchar(32) NOT NULL CHECK (encounter_token ~ '^[0-9a-f]{32}$'),
+    trainer_object_id integer NOT NULL,
+    trainer_map_id integer NOT NULL,
+    trainer_class text NOT NULL,
+    party_index integer NOT NULL,
+    map_id integer NOT NULL,
+    x integer NOT NULL,
+    y integer NOT NULL,
+    resolution text NOT NULL CHECK (resolution IN ('pending','battle','blackout','cancelled')),
+    updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- One outstanding ordinary step per character: retain the latest commit receipt.
+-- A receipt is replaced only by another successfully committed ordinary step.
+CREATE TABLE IF NOT EXISTS character_movement_receipts (
+    character_id bigint PRIMARY KEY REFERENCES character_data(id) ON DELETE CASCADE,
+    step_token varchar(32) NOT NULL CHECK (step_token ~ '^[0-9a-f]{32}$'),
+    result_json text NOT NULL,
+    committed_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Current remaining server route, distinct from a historical step receipt.
+CREATE TABLE IF NOT EXISTS character_movement_routes (
+    character_id bigint PRIMARY KEY REFERENCES character_data(id) ON DELETE CASCADE,
+    map_id integer NOT NULL,
+    x integer NOT NULL,
+    y integer NOT NULL,
+    path_json text NOT NULL
+);
+
+-- One durable revision serializes inventory commands, including slots/prizes.
+-- The bounded latest receipt stores a frozen outcome, never current resources.
+CREATE TABLE IF NOT EXISTS character_shop_state (
+    character_id bigint PRIMARY KEY REFERENCES character_data(id) ON DELETE CASCADE,
+    revision bigint NOT NULL CHECK (revision BETWEEN 0 AND 9007199254740991),
+    request_id varchar(64),
+    input_hash varchar(64),
+    result_json text
+);
+ALTER TABLE character_shop_state ADD COLUMN IF NOT EXISTS request_id varchar(64);
+ALTER TABLE character_shop_state ADD COLUMN IF NOT EXISTS input_hash varchar(64);
+ALTER TABLE character_shop_state ADD COLUMN IF NOT EXISTS result_json text;
+
+CREATE TABLE IF NOT EXISTS character_repels (
+    character_id bigint PRIMARY KEY REFERENCES character_data(id) ON DELETE CASCADE,
+    steps_left integer NOT NULL CHECK (steps_left > 0),
+    updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS character_object_positions (
     character_id bigint NOT NULL,
     object_id integer NOT NULL,

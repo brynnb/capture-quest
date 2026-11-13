@@ -98,14 +98,16 @@ const TitlePage = () => {
           <SelectionButton
             onClick={() => setScreen("login")}
             $isSelected={false}
-            $isDisabled={false}
+            $isDisabled={isGuestConnecting}
+            disabled={isGuestConnecting}
           >
             LOGIN
           </SelectionButton>
           <SelectionButton
             onClick={() => setScreen("register")}
             $isSelected={false}
-            $isDisabled={false}
+            $isDisabled={isGuestConnecting}
+            disabled={isGuestConnecting}
           >
             REGISTER
           </SelectionButton>

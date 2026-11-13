@@ -1,19 +1,22 @@
+import {watchInteractionPosition} from "../../services/InventoryCommandService";
 import { Scene } from "phaser";
-import usePokemonDialogueStore from "@/stores/PokemonDialogueStore";
 
-type PrizeListPayload = {
-  prizes?: Array<{ id: number; type: string; name: string; coinCost: number }>;
-  coins: number;
-  error?: string;
-  message?: string;
-};
+import type { GameCornerPrizeListResponse } from "@/net/generated/world_api";
 
 export class TileViewerOverlays {
+  private prizeChoice: (() => void) | null = null;
   private gameCornerMenuItems: Phaser.GameObjects.GameObject[] = [];
   private safariHudContainer: Phaser.GameObjects.Container | null = null;
   private safariHudText: Phaser.GameObjects.Text | null = null;
 
-  constructor(private readonly scene: Scene) {}
+  constructor(private readonly scene: Scene, private readonly configureUI:(elements:Phaser.GameObjects.GameObject[])=>void) {}
+
+  // Keep the menu alive through pointer-up and consume the whole gesture.
+  // Destroying it on pointer-down lets the release activate the world beneath it.
+  private bindMenuChoice(item:Phaser.GameObjects.Text,choose:()=>void):void{
+    item.on("pointerdown",(_pointer:Phaser.Input.Pointer,_x:number,_y:number,event:Phaser.Types.Input.EventData)=>event.stopPropagation());
+    item.on("pointerup",(_pointer:Phaser.Input.Pointer,_x:number,_y:number,event:Phaser.Types.Input.EventData)=>{event.stopPropagation();choose();});
+  }
 
   isSlotMachineTile(x: number, y: number): boolean {
     const slotPositions = new Set([
@@ -27,208 +30,59 @@ export class TileViewerOverlays {
     return slotPositions.has(`${x},${y}`);
   }
 
-  showSlotMachineUI(coins: number): void {
+  showPrizeMenu(data: GameCornerPrizeListResponse, signal: AbortSignal): Promise<number | undefined> {
     this.closeGameCornerUI();
-    const cam = this.scene.cameras.main;
-    const w = 200;
-    const h = 160;
-
-    const bg = this.scene.add
-      .rectangle(cam.width / 2, cam.height / 2, w, h, 0x000000, 0.92)
-      .setStrokeStyle(2, 0xffcc00)
-      .setDepth(9999)
-      .setScrollFactor(0)
-      .setOrigin(0.5);
-    this.gameCornerMenuItems.push(bg);
-
-    const title = this.scene.add
-      .text(cam.width / 2, bg.y - h / 2 + 14, "SLOT MACHINE", {
-        fontSize: "12px",
-        color: "#ffcc00",
-        fontFamily: "monospace",
-        align: "center",
-      })
-      .setOrigin(0.5)
-      .setDepth(10000)
-      .setScrollFactor(0);
-    this.gameCornerMenuItems.push(title);
-
-    const coinText = this.scene.add
-      .text(cam.width / 2, bg.y - h / 2 + 32, `Coins: ${coins}`, {
-        fontSize: "10px",
-        color: "#aaffaa",
-        fontFamily: "monospace",
-        align: "center",
-      })
-      .setOrigin(0.5)
-      .setDepth(10000)
-      .setScrollFactor(0);
-    this.gameCornerMenuItems.push(coinText);
-
-    const reelText = this.scene.add
-      .text(cam.width / 2, bg.y - h / 2 + 54, "[ ? ] [ ? ] [ ? ]", {
-        fontSize: "14px",
-        color: "#ffffff",
-        fontFamily: "monospace",
-        align: "center",
-      })
-      .setOrigin(0.5)
-      .setDepth(10000)
-      .setScrollFactor(0);
-    this.gameCornerMenuItems.push(reelText);
-
-    (this.scene as unknown as Record<string, unknown>)._slotReelText =
-      reelText;
-    (this.scene as unknown as Record<string, unknown>)._slotCoinText =
-      coinText;
-
-    [1, 2, 3].forEach((bet) => {
-      const yPos = bg.y - h / 2 + 80 + (bet - 1) * 22;
-      const btn = this.scene.add
-        .text(cam.width / 2, yPos, `BET ${bet}`, {
-          fontSize: "11px",
-          color: "#ffffff",
-          fontFamily: "monospace",
-          align: "center",
-          backgroundColor: "#333333",
-          padding: { x: 24, y: 3 },
-        })
-        .setOrigin(0.5)
-        .setDepth(10000)
-        .setScrollFactor(0)
-        .setInteractive({ useHandCursor: true });
-      btn.on("pointerover", () => btn.setColor("#ffff00"));
-      btn.on("pointerout", () => btn.setColor("#ffffff"));
-      btn.on("pointerdown", () => {
-        import("@/phaser-game/services/PhaserNetworkService").then(
-          (PhaserNet) => {
-            PhaserNet.playSlotMachine(bet, false);
-          },
-        );
+    return new Promise(resolve => {
+      let settled = false;
+      const finish = (prizeId?: number) => {
+        if (settled) return;
+        settled = true;
+        signal.removeEventListener("abort", abort);
+        this.prizeChoice = null;
+        this.gameCornerMenuItems.forEach(item => item.destroy());
+        this.gameCornerMenuItems = [];
+        resolve(prizeId);
+      };
+      const abort = () => finish();
+      this.prizeChoice = abort;
+      signal.addEventListener("abort", abort, {once:true});
+      const cam = this.scene.cameras.main;
+      const prizes = data.prizes;
+      const itemH = 20, w = 220, h = prizes.length * itemH + 60;
+      const bg = this.scene.add.rectangle(cam.width / 2, cam.height / 2, w, h, 0x000000, 0.92)
+        .setStrokeStyle(2, 0xffcc00).setDepth(9999).setScrollFactor(0).setOrigin(0.5);
+      this.gameCornerMenuItems.push(bg);
+      const title = this.scene.add.text(bg.x, bg.y - h / 2 + 14, `PRIZE EXCHANGE (${data.snapshot.coins} coins)`, {
+        fontSize:"10px",color:"#ffcc00",fontFamily:"monospace",align:"center",
+      }).setOrigin(0.5).setDepth(10000).setScrollFactor(0);
+      this.gameCornerMenuItems.push(title);
+      prizes.forEach((prize,i) => {
+        const canAfford = data.snapshot.coins >= prize.coinCost;
+        const button = this.scene.add.text(bg.x, bg.y - h / 2 + 36 + i * itemH, `${prize.name} - ${prize.coinCost}C`, {
+          fontSize:"10px",color:canAfford?"#ffffff":"#666666",fontFamily:"monospace",align:"center",padding:{x:4,y:2},
+        }).setOrigin(0.5).setDepth(10000).setScrollFactor(0);
+        if (canAfford) {
+          button.setInteractive({useHandCursor:true});
+          button.on("pointerover",()=>button.setColor("#ffff00"));
+          button.on("pointerout",()=>button.setColor("#ffffff"));
+          this.bindMenuChoice(button,()=>finish(prize.id));
+        }
+        this.gameCornerMenuItems.push(button);
       });
-      this.gameCornerMenuItems.push(btn);
+      const cancel = this.scene.add.text(bg.x,bg.y+h/2-14,"CANCEL",{
+        fontSize:"10px",color:"#ff6666",fontFamily:"monospace",align:"center",backgroundColor:"#333333",padding:{x:16,y:2},
+      }).setOrigin(0.5).setDepth(10000).setScrollFactor(0).setInteractive({useHandCursor:true});
+      this.bindMenuChoice(cancel,()=>finish());
+      this.gameCornerMenuItems.push(cancel);
+      this.configureUI(this.gameCornerMenuItems);
+      if(signal.aborted)abort();
     });
-
-    const closeBtn = this.scene.add
-      .text(cam.width / 2, bg.y + h / 2 - 14, "QUIT", {
-        fontSize: "10px",
-        color: "#ff6666",
-        fontFamily: "monospace",
-        align: "center",
-        backgroundColor: "#333333",
-        padding: { x: 16, y: 2 },
-      })
-      .setOrigin(0.5)
-      .setDepth(10000)
-      .setScrollFactor(0)
-      .setInteractive({ useHandCursor: true });
-    closeBtn.on("pointerdown", () => this.closeGameCornerUI());
-    this.gameCornerMenuItems.push(closeBtn);
-  }
-
-  handleSlotResult(data: {
-    success: boolean;
-    reels?: string[][];
-    payout?: number;
-    coins?: number;
-    error?: string;
-  }): void {
-    const reelText = (this.scene as unknown as Record<string, unknown>)
-      ._slotReelText as Phaser.GameObjects.Text | null;
-    const coinText = (this.scene as unknown as Record<string, unknown>)
-      ._slotCoinText as Phaser.GameObjects.Text | null;
-    if (coinText && data.coins !== undefined) {
-      coinText.setText(`Coins: ${data.coins}`);
-    }
-    if (reelText && data.reels) {
-      reelText.setText("[ ? ] [ ? ] [ ? ]");
-    }
-  }
-
-  showPrizeMenu(data: PrizeListPayload): void {
-    this.closeGameCornerUI();
-    if (data.error || data.message) {
-      usePokemonDialogueStore
-        .getState()
-        .openDialogue([data.error || data.message || "Done!"]);
-      return;
-    }
-
-    const cam = this.scene.cameras.main;
-    const prizes = data.prizes || [];
-    const itemH = 20;
-    const w = 220;
-    const h = prizes.length * itemH + 60;
-
-    const bg = this.scene.add
-      .rectangle(cam.width / 2, cam.height / 2, w, h, 0x000000, 0.92)
-      .setStrokeStyle(2, 0xffcc00)
-      .setDepth(9999)
-      .setScrollFactor(0)
-      .setOrigin(0.5);
-    this.gameCornerMenuItems.push(bg);
-
-    const title = this.scene.add
-      .text(bg.x, bg.y - h / 2 + 14, `PRIZE EXCHANGE (${data.coins} coins)`, {
-        fontSize: "10px",
-        color: "#ffcc00",
-        fontFamily: "monospace",
-        align: "center",
-      })
-      .setOrigin(0.5)
-      .setDepth(10000)
-      .setScrollFactor(0);
-    this.gameCornerMenuItems.push(title);
-
-    prizes.forEach((prize, i) => {
-      const yPos = bg.y - h / 2 + 36 + i * itemH;
-      const canAfford = data.coins >= prize.coinCost;
-      const label = `${prize.name} - ${prize.coinCost}C`;
-      const btn = this.scene.add
-        .text(bg.x, yPos, label, {
-          fontSize: "10px",
-          color: canAfford ? "#ffffff" : "#666666",
-          fontFamily: "monospace",
-          align: "center",
-          padding: { x: 4, y: 2 },
-        })
-        .setOrigin(0.5)
-        .setDepth(10000)
-        .setScrollFactor(0);
-      if (canAfford) {
-        btn.setInteractive({ useHandCursor: true });
-        btn.on("pointerover", () => btn.setColor("#ffff00"));
-        btn.on("pointerout", () => btn.setColor("#ffffff"));
-        btn.on("pointerdown", () => {
-          import("@/phaser-game/services/PhaserNetworkService").then(
-            (PhaserNet) => {
-              PhaserNet.buyPrize(prize.id);
-            },
-          );
-        });
-      }
-      this.gameCornerMenuItems.push(btn);
-    });
-
-    const closeBtn = this.scene.add
-      .text(bg.x, bg.y + h / 2 - 14, "CANCEL", {
-        fontSize: "10px",
-        color: "#ff6666",
-        fontFamily: "monospace",
-        align: "center",
-        backgroundColor: "#333333",
-        padding: { x: 16, y: 2 },
-      })
-      .setOrigin(0.5)
-      .setDepth(10000)
-      .setScrollFactor(0)
-      .setInteractive({ useHandCursor: true });
-    closeBtn.on("pointerdown", () => this.closeGameCornerUI());
-    this.gameCornerMenuItems.push(closeBtn);
   }
 
   closeGameCornerUI(): void {
-    this.gameCornerMenuItems.forEach((item) => item.destroy());
+    this.prizeChoice?.();
+    this.prizeChoice = null;
+    this.gameCornerMenuItems.forEach(item => item.destroy());
     this.gameCornerMenuItems = [];
   }
 
@@ -256,6 +110,7 @@ export class TileViewerOverlays {
         .setDepth(9998)
         .setScrollFactor(0)
         .setSize(width, height);
+      this.configureUI([this.safariHudContainer]);
     }
     this.safariHudText.setText(`SAFARI\nSTEPS ${stepsLeft}\nBALLS  ${ballsLeft}`);
     this.positionSafariHUD();
@@ -288,12 +143,15 @@ export class TileViewerOverlays {
 
   showElevatorMenu(
     floors: Array<{ floorMapId: number; floorLabel: string }>,
-  ): void {
+    signal:AbortSignal,
+  ): Promise<number|undefined> {
+    return new Promise(resolve=>{
     const cam = this.scene.cameras.main;
     const menuWidth = 120;
     const itemHeight = 24;
     const padding = 8;
-    const menuHeight = floors.length * itemHeight + padding * 2 + itemHeight;
+    // Include both the header and cancel row in the frame.
+    const menuHeight = (floors.length + 2) * itemHeight + padding * 2;
     const bg = this.scene.add
       .rectangle(cam.width / 2, cam.height / 2, menuWidth, menuHeight, 0x000000, 0.9)
       .setStrokeStyle(2, 0xffffff)
@@ -315,6 +173,10 @@ export class TileViewerOverlays {
       .setScrollFactor(0);
     menuItems.push(header);
 
+    let settled=false;
+    const finish=(floor?:number)=>{if(settled)return;settled=true;stopPosition();signal.removeEventListener("abort",abort);menuItems.forEach(item=>item.destroy());resolve(floor);};
+    const abort=()=>finish();const stopPosition=watchInteractionPosition(abort,true);
+    signal.addEventListener("abort",abort,{once:true});
     floors.forEach((floor, i) => {
       const yPos = headerY + (i + 1) * itemHeight;
       const label = this.scene.add
@@ -333,13 +195,8 @@ export class TileViewerOverlays {
 
       label.on("pointerover", () => label.setColor("#ffff00"));
       label.on("pointerout", () => label.setColor("#ffffff"));
-      label.on("pointerdown", () => {
-        import("@/phaser-game/services/PhaserNetworkService").then(
-          (PhaserNet) => {
-            PhaserNet.selectElevatorFloor(floor.floorMapId);
-          },
-        );
-        menuItems.forEach((item) => item.destroy());
+      this.bindMenuChoice(label, () => {
+        finish(floor.floorMapId);
       });
       menuItems.push(label);
     });
@@ -359,10 +216,13 @@ export class TileViewerOverlays {
       .setInteractive({ useHandCursor: true });
     cancel.on("pointerover", () => cancel.setColor("#ffff00"));
     cancel.on("pointerout", () => cancel.setColor("#aaaaaa"));
-    cancel.on("pointerdown", () => {
-      menuItems.forEach((item) => item.destroy());
+    this.bindMenuChoice(cancel, () => {
+      finish();
     });
     menuItems.push(cancel);
+    this.configureUI(menuItems);
+    if(signal.aborted)abort();
+    });
   }
 
   cleanup(): void {

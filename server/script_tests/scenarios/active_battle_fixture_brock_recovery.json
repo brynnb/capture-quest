@@ -1,0 +1,41 @@
+{
+  "name": "active_battle_fixture_brock_recovery",
+  "description": "Rendered recovery fixture: a strong grass party faces the original Brock party at the Pewter Gym reward-script location.",
+  "fixture": {
+    "characterName": "ScriptSimBrockRecovery",
+    "mapName": "PEWTER_GYM",
+    "x": 4,
+    "y": 2,
+    "direction": "UP",
+    "flags": [],
+    "inventory": [],
+    "party": [
+      {
+        "speciesId": 3,
+        "level": 60,
+        "moves": [
+          "RAZOR LEAF"
+        ]
+      }
+    ],
+    "activeBattle": {
+      "type": "trainer",
+      "trainerClass": "BROCK",
+      "partyIndex": 1,
+      "trainerName": "BROCK",
+      "winFlag": "EVENT_BEAT_BROCK"
+    }
+  },
+  "trigger": {
+    "type": "active_battle_state"
+  },
+  "expect": {
+    "scriptLabel": "ActiveBattleState",
+    "activeBattleType": "trainer",
+    "activeBattleTrainerClass": "BROCK",
+    "activeBattleEnemySpecies": [
+      74,
+      95
+    ]
+  }
+}

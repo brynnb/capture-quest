@@ -1,5 +1,6 @@
+import type { PhaserMapInfo } from "@/net/generated/protocol";
 import { Scene } from "phaser";
-import { PhaserMapInfo, PhaserTile } from "@/net/generated/world_api";
+import { PhaserTile } from "@/net/generated/world_api";
 import { UNIFIED_OVERWORLD_MAP_ID } from "../../constants";
 import { MapRenderer } from "../../renderers/MapRenderer";
 import {

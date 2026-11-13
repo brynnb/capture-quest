@@ -2,7 +2,7 @@ package world
 
 import "testing"
 
-func TestUpdateReportedPositionPreservesQueuedPathForSameTile(t *testing.T) {
+func TestCommittedPositionProjectionPreservesQueuedPathForSameTile(t *testing.T) {
 	manager := &PlayerMovementManager{
 		players: map[int]*PlayerMovementState{
 			1: {
@@ -16,7 +16,7 @@ func TestUpdateReportedPositionPreservesQueuedPathForSameTile(t *testing.T) {
 		},
 	}
 
-	manager.UpdateReportedPosition(1, 4, 10, 40, "UP")
+	manager.projectCommittedPosition(1, 4, 10, 40, "UP", false)
 
 	state := manager.players[1]
 	if state.Direction != "UP" {
@@ -26,13 +26,13 @@ func TestUpdateReportedPositionPreservesQueuedPathForSameTile(t *testing.T) {
 		t.Fatalf("path = %#v, want preserved path to (4,11)", state.Path)
 	}
 
-	manager.UpdateReportedPosition(1, 4, 10, 40, "")
+	manager.projectCommittedPosition(1, 4, 10, 40, "", false)
 	if state.Direction != "UP" {
 		t.Fatalf("empty reported direction changed direction to %q, want UP", state.Direction)
 	}
 }
 
-func TestUpdateReportedPositionClearsQueuedPathForDifferentTile(t *testing.T) {
+func TestCommittedPositionProjectionClearsQueuedPathForDifferentTile(t *testing.T) {
 	manager := &PlayerMovementManager{
 		players: map[int]*PlayerMovementState{
 			1: {
@@ -46,7 +46,7 @@ func TestUpdateReportedPositionClearsQueuedPathForDifferentTile(t *testing.T) {
 		},
 	}
 
-	manager.UpdateReportedPosition(1, 5, 10, 40, "RIGHT")
+	manager.projectCommittedPosition(1, 5, 10, 40, "RIGHT", false)
 
 	state := manager.players[1]
 	if state.CurrentX != 5 || state.CurrentY != 10 || state.Direction != "RIGHT" {

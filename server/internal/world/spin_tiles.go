@@ -1,13 +1,14 @@
 package world
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
 	"sync"
 
-	"capturequest/internal/pokebattle"
+	"context"
 )
 
 // SpinMovement represents one segment of a spin tile's forced movement.
@@ -27,14 +28,14 @@ type SpinTile struct {
 // SpinTileManager loads spin/arrow tiles from the database and provides
 // fast lookups by map name + tile position.
 type SpinTileManager struct {
-	db pokebattle.DBTX
+	db *sql.DB
 	mu sync.RWMutex
 	// byMap indexes spin tiles: mapName -> "x,y" -> SpinTile
 	byMap map[string]map[string]*SpinTile
 }
 
 // NewSpinTileManager creates a new SpinTileManager.
-func NewSpinTileManager(db pokebattle.DBTX) *SpinTileManager {
+func NewSpinTileManager(db *sql.DB) *SpinTileManager {
 	return &SpinTileManager{
 		db:    db,
 		byMap: make(map[string]map[string]*SpinTile),
@@ -42,12 +43,11 @@ func NewSpinTileManager(db pokebattle.DBTX) *SpinTileManager {
 }
 
 // Load reads all spin tiles from the database into memory.
-func (m *SpinTileManager) Load() {
-	rows, err := m.db.Query(
+func (m *SpinTileManager) Load(ctx context.Context) error {
+	rows, err := m.db.QueryContext(ctx,
 		`SELECT map_name, x, y, movements FROM phaser_spin_tiles`)
 	if err != nil {
-		log.Printf("[SpinTiles] Failed to load: %v", err)
-		return
+		return fmt.Errorf("[SpinTiles] Failed to load: %w", err)
 	}
 	defer rows.Close()
 
@@ -57,13 +57,11 @@ func (m *SpinTileManager) Load() {
 		var st SpinTile
 		var movementsJSON string
 		if err := rows.Scan(&st.MapName, &st.X, &st.Y, &movementsJSON); err != nil {
-			log.Printf("[SpinTiles] Error scanning row: %v", err)
-			continue
+			return fmt.Errorf("[SpinTiles] Error scanning row: %w", err)
 		}
 		if err := json.Unmarshal([]byte(movementsJSON), &st.Movements); err != nil {
-			log.Printf("[SpinTiles] Error parsing movements for %s (%d,%d): %v",
+			return fmt.Errorf("[SpinTiles] Error parsing movements for %s (%d,%d): %w",
 				st.MapName, st.X, st.Y, err)
-			continue
 		}
 		if byMap[st.MapName] == nil {
 			byMap[st.MapName] = make(map[string]*SpinTile)
@@ -73,11 +71,18 @@ func (m *SpinTileManager) Load() {
 		count++
 	}
 
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read spin_tiles rows: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	m.mu.Lock()
 	m.byMap = byMap
 	m.mu.Unlock()
 
 	log.Printf("[SpinTiles] Loaded %d spin tiles across %d maps", count, len(byMap))
+	return nil
 }
 
 // CheckTile returns the spin tile at a given map+tile position, or nil if none.

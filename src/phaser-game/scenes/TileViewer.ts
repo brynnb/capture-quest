@@ -1,10 +1,15 @@
+import {openPrizeWindow} from "../services/GameCornerCommandService";
+import {readCurrentGameplayState} from "@/phaser-game/services/GameplayRecoveryService";
+import { ActorReadView } from "../services/ActorReadView";
+import { bindInventoryScene } from "@/phaser-game/services/InventoryCommandService";
+import { bindBattleScene } from "@/phaser-game/services/BattleCommandService";
+import type { PhaserMapInfo } from "@/net/generated/protocol";
 import { Scene } from "phaser";
 import {
   DEFAULT_ZOOM,
   FOLLOW_ZOOM,
   OVERWORLD_MODE,
   TILE_SIZE,
-  UNIFIED_OVERWORLD_MAP_ID,
 } from "../constants";
 import { CameraController } from "../controllers/CameraController";
 import { PlayerMovementController } from "../controllers/PlayerMovementController";
@@ -15,7 +20,6 @@ import { TileManager, ActorManager, UiManager, WarpManager } from "../managers";
 import * as PhaserNet from "../services/PhaserNetworkService";
 
 import {
-  PhaserMapInfo,
   PhaserTile,
   PhaserActor,
   PhaserWarp,
@@ -43,6 +47,7 @@ import { captureTileStamp } from "./tile-viewer/tileEditorStamp";
 import {
   clearCaptureQuestTileViewerDiagnostics,
   emitCaptureQuestTestEvent,
+  warpToMap,
   setCaptureQuestTileViewerDiagnostics,
   type CaptureQuestTestActor,
 } from "@/testing/capturequestTestBridge";
@@ -86,6 +91,9 @@ function numberOrNull(value: unknown): number | null {
 }
 
 export class TileViewer extends Scene {
+  private inventorySceneUnsubscribe: (() => void) | null = null;
+  private battleSceneUnsubscribe: (() => void) | null = null;
+
   // Services and managers
   private mapDataService: MapDataService;
   private tileManager!: TileManager;
@@ -110,18 +118,33 @@ export class TileViewer extends Scene {
   private mapInfo: PhaserMapInfo | null = null;
   private items: MapItem[] = [];
   private actors: PhaserActor[] = [];
+  private actorDespawnMarkers = new Map<number, object>();
   private actorCache: Map<number, PhaserActor> = new Map();
   private playerActor: PhaserActor | null = null; // Store player separately so it's never lost
   private warps: PhaserWarp[] = [];
   private tileLookup: Map<string, PhaserTile> = new Map();
+  private serverPlayerMovementUnsubscribe: (() => void) | null = null;
   private actorUpdateUnsubscribe: (() => void) | null = null;
   private actorDespawnUnsubscribe: (() => void) | null = null;
-  private actorsUnsubscribe: (() => void) | null = null;
   private gameStatusUnsubscribe: (() => void) | null = null;
   private battleInputFreezeUnsubscribe: (() => void) | null = null;
+  private readonly cutUseHandler=(event:Event)=>{const detail=(event as CustomEvent<{targetX?:number;targetY?:number}>).detail;const movement=this.playerMovementController;const point=movement.getCurrentPosition();const direction=movement.getCurrentDirection();const dx=direction==="LEFT"?-1:direction==="RIGHT"?1:0;const dy=direction==="UP"?-1:direction==="DOWN"?1:0;void movement.cut(detail?.targetX??point.x+dx,detail?.targetY??point.y+dy,direction);};
+  private readonly warpHomeUseHandler=()=>{void this.playerMovementController.warpHome();};
+  private readonly fieldTravelUseHandler=(event:Event)=>{const detail=(event as CustomEvent<{moveName:string;destination?:{mapId:number;x:number;y:number}}>).detail;const move=detail?.moveName;if(move==="DIG" || move==="TELEPORT" || move==="FLY")void this.playerMovementController.travelByMove(move,detail.destination);};
+  private readonly stateFieldUseHandler=(event:Event)=>{const move=(event as CustomEvent<{moveName:string}>).detail?.moveName;if(move==="STRENGTH" || move==="FLASH")void this.playerMovementController.activateFieldState(move);};
+  private readonly fishingUseHandler=(event:Event)=>{void this.playerMovementController.fish((event as CustomEvent<{instanceId:number}>).detail.instanceId);};
+  private readonly bicycleUseHandler = (event: Event) => {
+    const instanceId = (event as CustomEvent<{ instanceId: number }>).detail?.instanceId;
+    if (Number.isSafeInteger(instanceId) && instanceId > 0) {
+      void this.playerMovementController.changeBicyclePreference(instanceId);
+    }
+  };
+  private readonly escapeRopeUseHandler = (event: Event) => {
+    const instanceId = (event as CustomEvent<{ instanceId: number }>).detail?.instanceId;
+    if (Number.isSafeInteger(instanceId) && instanceId > 0) void this.playerMovementController.useEscapeRope(instanceId);
+  };
   private bicycleStateUnsubscribe: (() => void) | null = null;
   private trainerEncounterUnsubscribe: (() => void) | null = null;
-  private surfSuccessHandler: ((event: Event) => void) | null = null;
   private cutsceneInputLocked: boolean = false;
 
   // View mode tracking
@@ -321,31 +344,27 @@ export class TileViewer extends Scene {
           const position = this.playerMovementController.getCurrentPosition();
           const dx = direction === "LEFT" ? -1 : direction === "RIGHT" ? 1 : 0;
           const dy = direction === "UP" ? -1 : direction === "DOWN" ? 1 : 0;
-          PhaserNet.requestFieldMoveUse(
-            command.useFieldMove.moveName,
-            command.useFieldMove.targetX ?? position.x + dx,
-            command.useFieldMove.targetY ?? position.y + dy,
-            this.playerMovementController.getCurrentMapId(),
-            direction,
-          );
+          if(command.useFieldMove.moveName.toUpperCase()==="CUT")void this.playerMovementController.cut(command.useFieldMove.targetX??position.x+dx,command.useFieldMove.targetY??position.y+dy,direction);
+          else if(["DIG","TELEPORT"].includes(command.useFieldMove.moveName.toUpperCase()))void this.playerMovementController.travelByMove(command.useFieldMove.moveName.toUpperCase() as "DIG"|"TELEPORT");
+          else if(["STRENGTH","FLASH"].includes(command.useFieldMove.moveName.toUpperCase()))void this.playerMovementController.activateFieldState(command.useFieldMove.moveName.toUpperCase() as "STRENGTH"|"FLASH");
+          else return {ok:false,error:"Use the owned FLY destination selector."};
           return { ok: true };
         }
 
         if ("warpTo" in command) {
-          window.dispatchEvent(
-            new CustomEvent("warpTileTeleport", {
-              detail: {
-                mapId: command.warpTo.mapId,
-                x: command.warpTo.x,
-                y: command.warpTo.y,
-                direction: command.warpTo.direction ?? "DOWN",
-              },
-            }),
-          );
+          await warpToMap(command.warpTo.mapId, command.warpTo.x, command.warpTo.y, command.warpTo.direction);
           return { ok: true };
         }
 
         return undefined;
+      },
+      overlayTextToViewport: text => {
+        const item=this.children.list.find(child=>child instanceof Phaser.GameObjects.Text && child.text===text && child.visible && child.active && child.scrollFactorX===0 && child.scrollFactorY===0 && child.depth>=9999) as Phaser.GameObjects.Text|undefined;
+        if(!item)return null;
+        const camera=this.cameras.getCamera("UICamera");if(!camera)return null;const origin=camera.getWorldPoint(0,0);const nextX=camera.getWorldPoint(1,0);const nextY=camera.getWorldPoint(0,1);
+        const point={x:(item.x-origin.x+camera.scrollX)/(nextX.x-origin.x),y:(item.y-origin.y+camera.scrollY)/(nextY.y-origin.y)};
+        const canvas=this.game.canvas;const rect=canvas.getBoundingClientRect();
+        return{x:rect.left+point.x*rect.width/canvas.width,y:rect.top+point.y*rect.height/canvas.height};
       },
       tileToViewport: (tileX, tileY) => {
         const camera = this.cameras.main;
@@ -432,8 +451,10 @@ export class TileViewer extends Scene {
     this.mapInfo = null;
     this.tileLookup.clear();
 
-    // Set up scene cleanup
+    // Restart emits shutdown, while game destruction emits destroy directly.
+    // Both must retire window/store subscriptions before another game is created.
     this.events.once("shutdown", this.cleanupResources, this);
+    this.events.once("destroy", this.cleanupResources, this);
 
     // Create map container - ensure any existing one is destroyed first
     const existingContainer = this.children.getByName("mapContainer");
@@ -459,23 +480,7 @@ export class TileViewer extends Scene {
     this.playerMovementController.setInputFrozenChecker(() =>
       this.isWorldInputFrozen(),
     );
-    this.surfSuccessHandler = (event: Event) => {
-      const detail = (event as CustomEvent<{
-        x: number;
-        y: number;
-        mapId: number;
-        direction?: string;
-      }>).detail;
-      if (!detail) return;
-      this.playerMovementController.applySurfingSuccess(
-        detail.x,
-        detail.y,
-        detail.mapId,
-        detail.direction,
-      );
-    };
-    window.addEventListener("pokeSurfingSuccess", this.surfSuccessHandler);
-    this.overlays = new TileViewerOverlays(this);
+    this.overlays = new TileViewerOverlays(this,elements=>this.cameraController.configureUIElements(elements));
     this.proceduralOverworldPreview = new ProceduralOverworldPreview({
       scene: this,
       mapRenderer: () => this.mapRenderer,
@@ -495,6 +500,11 @@ export class TileViewer extends Scene {
     useGameStatusStore.getState().setCameraFollowEnabled(true);
 
     // Subscribe to real-time actor updates from WebTransport
+    this.serverPlayerMovementUnsubscribe = PhaserNet.onServerPlayerMovement((position) => {
+      const player = this.playerActor;
+      if (!player || player.id !== position.actorId || this.playerMovementController.getCurrentMapId() !== position.mapId) return;
+      this.handleActorUpdate({ actor: { ...player, x: position.x, y: position.y, mapId: position.mapId, actionDirection: position.direction, moveSpeed: position.moveSpeed, spriteName: position.spriteName } }, position.pathFinished);
+    });
     this.actorUpdateUnsubscribe = PhaserNet.onActorUpdate((actor) => {
       this.handleActorUpdate({ actor });
       // If this was our player, we might need to update follow
@@ -517,8 +527,8 @@ export class TileViewer extends Scene {
 
     // Connect movement controller callbacks
     const movementController = this.mapRenderer.getMovementController();
-    movementController.setOnStepComplete((actorId, x, y, direction) => {
-      this.playerMovementController.onStepComplete(actorId, x, y, direction);
+    movementController.setOnStepComplete((actorId, x, y, direction, kind) => {
+      this.playerMovementController.onStepComplete(actorId, x, y, direction, kind);
     });
 
     // Subscribe to game status changes (for camera follow toggle)
@@ -536,6 +546,13 @@ export class TileViewer extends Scene {
       }
       wasInBattle = state.isInBattle;
     });
+    window.addEventListener("cq:fishingUse",this.fishingUseHandler);
+    window.addEventListener("cq:stateFieldUse",this.stateFieldUseHandler);
+    window.addEventListener("cq:warpHomeUse",this.warpHomeUseHandler);
+    window.addEventListener("cq:fieldTravelUse",this.fieldTravelUseHandler);
+    window.addEventListener("cq:cutUse",this.cutUseHandler);
+    window.addEventListener("cq:bicycleUse", this.bicycleUseHandler);
+    window.addEventListener("cq:escapeRopeUse", this.escapeRopeUseHandler);
     this.bicycleStateUnsubscribe = useAudioActivityStore.subscribe((state) => {
       this.updateLocalPlayerBicycleSprite(state.isBicycleActive);
     });
@@ -552,6 +569,8 @@ export class TileViewer extends Scene {
       resetScene: (resetCamera) => this.resetScene(resetCamera),
     });
     this.warpEvents.register();
+    this.inventorySceneUnsubscribe = bindInventoryScene();
+    this.battleSceneUnsubscribe = bindBattleScene(position => this.warpEvents.reconcileOwnedPosition(position), () => this.playerMovementController.capturePositionView());
 
     this.eventBridge = new TileViewerEventBridge({
       scene: this,
@@ -563,103 +582,8 @@ export class TileViewer extends Scene {
     this.eventBridge.register();
 
     // Subscribe to pushed actor lists (e.g. player spawn)
-    this.actorsUnsubscribe = PhaserNet.onActors((actors) => {
-      if (actors && actors.length > 0) {
-        console.log(
-          `[TileViewer] Received ${actors.length} actors via onActors broadcast`,
-        );
-        actors.forEach((incomingActor) => {
-          let actor = incomingActor as PhaserActor;
-          const isLocalPlayer = this.isLocalPlayerActor(actor);
-          const isFirstLocalSpawn = isLocalPlayer && !this.playerActor;
-
-          if (isLocalPlayer) {
-            if (isFirstLocalSpawn) {
-              // Initial map load or warp entry uses the saved/pending spawn.
-              this.warpManager.applyPendingWarpToActor(actor);
-            } else {
-              const current = this.playerMovementController.getCurrentPosition();
-              actor = {
-                ...actor,
-                x: current.x,
-                y: current.y,
-                mapId: this.playerMovementController.getCurrentMapId(),
-              };
-            }
-
-            // Store player separately so it's never lost during map clears
-            actor = this.cacheActor(actor);
-            this.playerActor = actor;
-
-            // Request party data on first spawn so the HUD is populated immediately
-            if (isFirstLocalSpawn) {
-              PhaserNet.sendPokemonPartyRequest();
-            }
-          } else {
-            actor = this.cacheActor(actor);
-          }
-
-          if (isLocalPlayer || this.actorBelongsToLoadedView(actor)) {
-            // Check if actor already exists
-            const existingIndex = this.actors.findIndex(
-              (a) => a.id === actor.id,
-            );
-            if (existingIndex !== -1) {
-              this.actors[existingIndex] = actor;
-            } else {
-              this.actors.push(actor);
-            }
-            this.playerMovementController.updateBlockingActor(actor);
-
-            // Skip sprite creation while a map load is in progress —
-            // renderMap handles all sprite creation to avoid timing issues
-            // with async texture loading and clear() destroying in-flight sprites.
-            if (this.mapLoadInProgress) {
-              return;
-            }
-
-            // Preload and render
-            this.actorManager.preloadActorSprites([actor]).then(() => {
-              // Re-check flag: map load may have started while we were preloading
-              if (this.mapLoadInProgress) {
-                return;
-              }
-              this.mapRenderer.renderActor(actor);
-
-              // Center camera on player once when they first appear
-              if (isLocalPlayer && isFirstLocalSpawn) {
-                console.log(
-                  `[TileViewer] Local player spawned/updated, centering camera`,
-                );
-                const actorX = actor.x ?? 0;
-                const actorY = actor.y ?? 0;
-                const posX = actorX * TILE_SIZE + TILE_SIZE / 2;
-                const posY = actorY * TILE_SIZE + TILE_SIZE / 2;
-                this.cameraController.centerOnMap(posX, posY);
-
-                // Also start following if enabled
-                this.updateCameraFollow();
-
-                // Register with player movement controller
-                const sprite = this.mapRenderer.getActorSprite(actor.id);
-                if (sprite) {
-                  this.playerMovementController.setPlayer(
-                    actor.id,
-                    actorX,
-                    actorY,
-                    actor.mapId,
-                    this.mapRenderer,
-                  );
-                }
-              }
-            });
-          }
-        });
-        emitCaptureQuestTestEvent("cq:actorsChanged", {
-          actors: this.actors.map((actor) => this.toTestActor(actor)),
-        });
-      }
-    });
+    this.playerMovementController.setActorReconciler(signal => this.reconcileActors(signal));
+    this.playerMovementController.setTileReconciler((mapId,x,y,scope,signal)=>this.reconcileCutTile(mapId,x,y,scope,signal));
 
     // Check if we have data passed from resetScene
     let destinationMapId = null;
@@ -719,12 +643,8 @@ export class TileViewer extends Scene {
       this.playerMovementController,
       this.uiManager,
       {
-        onResetScene: (resetCamera: boolean) => this.resetScene(resetCamera),
-        getPlayerActor: () => this.playerActor,
-        setPlayerActor: (actor: PhaserActor) => {
-          this.playerActor = actor;
-        },
-        getIsOverworldMode: () => this.isOverworldMode,
+        waitForPlayerIdle: () => this.playerActor?.id == null
+          ? Promise.resolve() : this.mapRenderer.waitForActorIdle(this.playerActor.id),
       },
     );
     this.playerMovementController.setWarpTileChecker((x, y) =>
@@ -734,7 +654,7 @@ export class TileViewer extends Scene {
       this.warpManager?.getWarpAt(x, y) ?? null,
     );
     this.playerMovementController.setWarpActivator((warp, direction) =>
-      this.warpManager?.activateWarp(warp, direction),
+      this.warpManager?.activateWarp(warp, direction, "keyboard"),
     );
     this.debugOverlay = new TileViewerDebugOverlay({
       scene: this,
@@ -807,8 +727,7 @@ export class TileViewer extends Scene {
         updateCameraFollow: () => this.updateCameraFollow(),
         removeMapLegend: () => this.debugOverlay.removeMapLegend(),
         createMapLegend: (maps) => this.debugOverlay.createMapLegend(maps),
-        prepareActorsForLoadedView: (actors) =>
-          this.prepareActorsForLoadedView(actors),
+        captureActorReadView: () => this.captureActorReadView(),
       },
     );
     this.installTestDiagnostics();
@@ -825,6 +744,7 @@ export class TileViewer extends Scene {
 
     this.interactionController = new TileViewerInteractionController({
       scene: this,
+      mapDataService: () => this.mapDataService,
       mapRenderer: () => this.mapRenderer,
       uiManager: () => this.uiManager,
       cameraController: () => this.cameraController,
@@ -861,6 +781,12 @@ export class TileViewer extends Scene {
     this.warpManager.setupKeyboardWarpHandlers();
 
     this.cutsceneController = new CutsceneSpriteController({
+      onPrizeVendor: (window, signal) => openPrizeWindow(window, (menu, owned) => this.overlays.showPrizeMenu(menu, owned), signal),
+      onReconcile: async (position,signal) => {
+        await this.warpEvents.reconcileOwnedPosition(position);
+        if(signal.aborted || !this.sys.isActive())throw new DOMException("World view retired","AbortError");
+        await this.reconcileResidentTiles(signal);
+      },
       scene: this,
       mapContainer: () => this.mapContainer,
       actorManager: () => this.actorManager,
@@ -869,14 +795,8 @@ export class TileViewer extends Scene {
       syncPlayerMovement: (x, y, direction) => {
         this.playerMovementController.syncPosition(x, y);
         this.playerMovementController.syncDirection(direction);
-        if (this.playerMovementController.getCurrentMapId() != null) {
-          PhaserNet.sendPlayerPosition(
-            x,
-            y,
-            this.playerMovementController.getCurrentMapId(),
-            direction,
-          );
-        }
+        // These tiles are cutscene presentation. Only token completion applies
+        // the server-issued relative movement and rewards in its transaction.
       },
       setInputLocked: (locked) => this.setCutsceneInputLocked(locked),
       onHideObject: (actorId) => this.handleActorDespawn(actorId),
@@ -893,6 +813,9 @@ export class TileViewer extends Scene {
     if (this.preloadText) {
       this.preloadText.destroy();
     }
+
+    // Observe committed updates before any awaited initial map preparation.
+    this.setupWorldTileUpdates();
 
     if (destinationMapId !== null && destinationMapId !== undefined) {
       // We're coming from a warp, load the destination map
@@ -911,16 +834,6 @@ export class TileViewer extends Scene {
         this.isOverworldMode = false;
         this.cameraController.setViewMode(false);
         this.mapLoader.loadMapData(mapId);
-
-        // Safari Zone: check for existing session when warping into a safari zone map
-        const safariZoneMapIds = [217, 218, 219, 220];
-        if (safariZoneMapIds.includes(mapId)) {
-          import("@/phaser-game/services/PhaserNetworkService").then(
-            (PhaserNet) => {
-              PhaserNet.requestSafariZoneStatus();
-            },
-          );
-        }
       }
 
       // Clear registry flags after loading
@@ -953,16 +866,6 @@ export class TileViewer extends Scene {
         this.isOverworldMode = false;
         this.cameraController.setViewMode(false);
         this.mapLoader.loadMapData(charMapId);
-
-        // Safari Zone: check for existing session if reconnecting on a safari zone map
-        const safariReconnectIds = [217, 218, 219, 220];
-        if (safariReconnectIds.includes(charMapId)) {
-          import("@/phaser-game/services/PhaserNetworkService").then(
-            (PhaserNet) => {
-              PhaserNet.requestSafariZoneStatus();
-            },
-          );
-        }
       }
 
       // Clear registry flags after loading
@@ -1068,6 +971,7 @@ export class TileViewer extends Scene {
 
   // --- Tile Editor ---
 
+  private tileTextureUpdateTokens = new Map<string,symbol>();
   private worldTileUpdateHandler: ((e: Event) => void) | null = null;
   private tileEditorMutationRejectedHandler: ((e: Event) => void) | null = null;
   private tileEditorMutationAcceptedHandler: ((e: Event) => void) | null = null;
@@ -1178,6 +1082,56 @@ export class TileViewer extends Scene {
     });
   }
 
+  private setupWorldTileUpdates():void {
+    if(this.worldTileUpdateHandler)return;
+    // Broadcast handler: committed world tile updates from the server
+    this.worldTileUpdateHandler = (e: Event) => {
+      const payload = (e as CustomEvent).detail as {
+        tiles: { x: number; y: number; tileImageId: number; collisionType: number; rawFootTileId?: number; talkOverTile?: boolean; erased?: boolean }[];
+        mapId: number;
+      };
+      if (!payload || !Array.isArray(payload.tiles)) return;
+      this.mapLoader.recordCommittedTileUpdates(payload.mapId,payload.tiles);
+      const viewCurrent=this.mapLoader.captureTilePresentationView(payload.mapId);
+      if(!viewCurrent())return;
+      for (const tile of payload.tiles) {
+        const key=`${tile.x},${tile.y}`;
+        this.tileTextureUpdateTokens.delete(key);
+        if (tile.erased || tile.tileImageId === 0) {
+          this.mapRenderer.removeTile(tile.x, tile.y);
+          this.tileLookup.delete(`${tile.x},${tile.y}`);
+          this.playerMovementController.updateCollisionTile(tile.x, tile.y, 0, true);
+        } else {
+          const token=Symbol();this.tileTextureUpdateTokens.set(key,token);
+          this.mapRenderer.loadTileTextureIfNeeded(tile.tileImageId).then(() => {
+            if(viewCurrent() && this.tileTextureUpdateTokens.get(key)===token)this.mapRenderer.addTile(tile.x,tile.y,tile.tileImageId);
+          }).catch(error=>{
+            if(viewCurrent() && this.tileTextureUpdateTokens.get(key)===token)console.error("[WorldTiles] Texture update failed:",error);
+          }).finally(()=>{
+            if(this.tileTextureUpdateTokens.get(key)===token)this.tileTextureUpdateTokens.delete(key);
+          });
+          this.updateTileEditorLookup(
+            tile.x,
+            tile.y,
+            tile.tileImageId,
+            tile.collisionType,
+            tile.rawFootTileId,
+            tile.talkOverTile === true,
+          );
+          this.playerMovementController.updateCollisionTile(
+            tile.x,
+            tile.y,
+            tile.collisionType,
+            false,
+            tile.rawFootTileId,
+            tile.talkOverTile === true,
+          );
+        }
+      }
+    };
+    window.addEventListener("worldTileUpdate", this.worldTileUpdateHandler);
+  }
+
   setupTileEditorListeners() {
     this.tileEditorStoreUnsubscribe = useTileEditorStore.subscribe(
       (state, previous) => {
@@ -1215,45 +1169,7 @@ export class TileViewer extends Scene {
       },
     );
 
-    // Broadcast handler: committed world tile updates from the server
-    this.worldTileUpdateHandler = (e: Event) => {
-      const payload = (e as CustomEvent).detail as {
-        tiles: { x: number; y: number; tileImageId: number; collisionType: number; rawFootTileId?: number; talkOverTile?: boolean; erased?: boolean }[];
-        mapId: number;
-      };
-      if (!payload || !Array.isArray(payload.tiles)) return;
-      if (payload.mapId === UNIFIED_OVERWORLD_MAP_ID) {
-        this.mapLoader.applyCommittedOverworldTileUpdates(payload.tiles);
-      }
-      for (const tile of payload.tiles) {
-        if (tile.erased || tile.tileImageId === 0) {
-          this.mapRenderer.removeTile(tile.x, tile.y);
-          this.tileLookup.delete(`${tile.x},${tile.y}`);
-          this.playerMovementController.updateCollisionTile(tile.x, tile.y, 0, true);
-        } else {
-          this.mapRenderer.loadTileTextureIfNeeded(tile.tileImageId).then(() => {
-            this.mapRenderer.addTile(tile.x, tile.y, tile.tileImageId);
-          });
-          this.updateTileEditorLookup(
-            tile.x,
-            tile.y,
-            tile.tileImageId,
-            tile.collisionType,
-            tile.rawFootTileId,
-            tile.talkOverTile === true,
-          );
-          this.playerMovementController.updateCollisionTile(
-            tile.x,
-            tile.y,
-            tile.collisionType,
-            false,
-            tile.rawFootTileId,
-            tile.talkOverTile === true,
-          );
-        }
-      }
-    };
-    window.addEventListener("worldTileUpdate", this.worldTileUpdateHandler);
+
 
     this.tileEditorMutationRejectedHandler = (e: Event) => {
       const detail = (e as CustomEvent).detail as { opcode?: number } | undefined;
@@ -1453,6 +1369,7 @@ export class TileViewer extends Scene {
     if (this.worldTileUpdateHandler) {
       window.removeEventListener("worldTileUpdate", this.worldTileUpdateHandler);
       this.worldTileUpdateHandler = null;
+      this.tileTextureUpdateTokens.clear();
     }
     if (this.tileEditorMutationRejectedHandler) {
       window.removeEventListener("tileEditorMutationRejected", this.tileEditorMutationRejectedHandler);
@@ -1792,6 +1709,72 @@ export class TileViewer extends Scene {
     this.flushTileEditorBatch();
   }
 
+  private async reconcileResidentTiles(signal: AbortSignal): Promise<void> {
+    const map = this.mapInfo;
+    if (!map) throw new Error("Resident map view unavailable");
+    if (map.isOverworld === 1) {
+      await this.mapLoader.reconcileResidentChunks(signal);
+      return;
+    }
+    const characterId=usePlayerCharacterStore.getState().characterProfile.id;
+    const viewCurrent=this.mapLoader.captureTilePresentationView(map.id);
+    const current=()=>!signal.aborted && this.sys.isActive() && viewCurrent() && usePlayerCharacterStore.getState().characterProfile.id===characterId;
+    const tiles=await this.mapDataService.fetchTiles(map.id,signal);
+    const images=await this.mapDataService.fetchTileImages();if(!current())throw new DOMException("Tile recovery view retired","AbortError");
+    await this.tileManager.loadTileImages(images);if(!current())throw new DOMException("Tile recovery view retired","AbortError");
+    if(!this.mapDataService.isTileReadCurrent(tiles))throw new Error("Tile recovery overtaken; retry current view before unlocking");
+    const next=new Map(tiles.map(tile=>[`${tile.x},${tile.y}`,tile]));
+    const edits: {x:number;y:number;tileImageId:number;collisionType:number;rawFootTileId?:number;talkOverTile?:boolean;erased?:boolean}[]=[];
+    for(const [key,tile] of this.tileLookup){if(!next.has(key))edits.push({x:tile.x,y:tile.y,tileImageId:0,collisionType:0,erased:true});}
+    for(const tile of tiles){
+      const old=this.tileLookup.get(`${tile.x},${tile.y}`);
+      if(!old || old.tileImageId!==tile.tileImageId || old.collisionType!==tile.collisionType || old.rawFootTileId!==tile.rawFootTileId || old.talkOverTile!==tile.talkOverTile)edits.push({x:tile.x,y:tile.y,tileImageId:tile.tileImageId,collisionType:tile.collisionType,rawFootTileId:tile.rawFootTileId,talkOverTile:tile.talkOverTile});
+    }
+    if(edits.length)this.worldTileUpdateHandler?.(new CustomEvent("worldTileUpdate",{detail:{mapId:map.id,tiles:edits}}));
+    if(current())this.tiles=tiles;
+  }
+
+  private async reconcileCutTile(mapId:number,x:number,y:number,scope:string,signal:AbortSignal):Promise<boolean>{
+
+      const character=usePlayerCharacterStore.getState().characterProfile.id;
+      const current=()=>!signal.aborted && this.sys.isActive() && this.playerMovementController.getCurrentMapId()===mapId && usePlayerCharacterStore.getState().characterProfile.id===character;
+      this.mapLoader.invalidateOwnedTileProjection(mapId,x,y);
+      const tiles=await this.mapDataService.fetchTilesInBounds(mapId,{minX:x,maxX:x,minY:y,maxY:y},signal);
+      if(!current())return false;
+      if(tiles.length!==1)throw new Error("CUT target square is unavailable");
+      const tile=tiles[0];await this.mapRenderer.loadTileTextureIfNeeded(tile.tileImageId);if(!current())return false;
+      // Texture work is asynchronous. Validate the visit after it settles,
+      // immediately before changing presentation/collision, not before the wait.
+      const owned=await readCurrentGameplayState(signal);if(!current() || owned.cutScope!==scope)return false;
+      this.mapRenderer.addTile(tile.x,tile.y,tile.tileImageId);
+      this.updateTileEditorLookup(tile.x,tile.y,tile.tileImageId,tile.collisionType,tile.rawFootTileId,tile.talkOverTile);
+      this.playerMovementController.updateCollisionTile(tile.x,tile.y,tile.collisionType,false,tile.rawFootTileId,tile.talkOverTile);
+      return true;
+  }
+
+  private async reconcileActors(signal: AbortSignal): Promise<void> {
+    const mapId = this.mapInfo?.id ?? this.playerMovementController.getCurrentMapId();
+    const characterId = usePlayerCharacterStore.getState().characterProfile.id;
+    const readView = new ActorReadView(this.actorCache, this.actorDespawnMarkers);
+    const current = () => !signal.aborted && this.sys.isActive()
+      && (this.mapInfo?.id ?? this.playerMovementController.getCurrentMapId()) === mapId
+      && usePlayerCharacterStore.getState().characterProfile.id === characterId;
+    const incoming = await this.mapDataService.fetchActors(mapId, signal);
+    if (!current()) return;
+    const changes = readView.changes(incoming, this.actorCache, this.actorDespawnMarkers);
+    for (const actor of changes.removals) {
+      if (!this.isLocalPlayerActor(actor) && this.actorBelongsToLoadedView(actor)) this.handleActorDespawn(actor.id);
+    }
+    this.applyActorSnapshot(changes.updates, current);
+  }
+
+  private applyActorSnapshot(actors: PhaserActor[], current: () => boolean): void {
+    for (const actor of actors) {
+      if (!current()) return;
+      this.handleActorUpdate({ actor });
+    }
+  }
+
   private isLocalPlayerActor(actor: PhaserActor): boolean {
     const localCharId = usePlayerCharacterStore.getState().characterProfile?.id;
     return actor.objectType === "player" && actor.internalId === localCharId;
@@ -1826,25 +1809,23 @@ export class TileViewer extends Scene {
     return cached;
   }
 
-  private prepareActorsForLoadedView(actors: PhaserActor[]): PhaserActor[] {
-    const freshIds = new Set(actors.map((actor) => actor.id));
-    for (const [actorId, cachedActor] of this.actorCache.entries()) {
-      if (
-        !this.isLocalPlayerActor(cachedActor) &&
-        this.actorBelongsToLoadedView(cachedActor) &&
-        !freshIds.has(actorId)
-      ) {
-        this.actorCache.delete(actorId);
+  private captureActorReadView(): (actors: PhaserActor[]) => PhaserActor[] {
+    const readView = new ActorReadView(this.actorCache, this.actorDespawnMarkers);
+    return actors => {
+      const changes = readView.changes(actors, this.actorCache, this.actorDespawnMarkers);
+      for (const actor of changes.removals) {
+        if (!this.isLocalPlayerActor(actor) && this.actorBelongsToLoadedView(actor)) this.actorCache.delete(actor.id);
       }
-    }
-
-    actors.forEach((actor) => this.cacheActor(actor));
-    return Array.from(this.actorCache.values()).filter((actor) =>
-      this.shouldRenderActorInCurrentView(actor),
-    );
+      for (const actor of changes.updates) {
+        const cached = this.cacheActor(actor);
+        if (this.isLocalPlayerActor(cached)) this.playerActor = cached;
+      }
+      return [...this.actorCache.values()].filter(actor => this.shouldRenderActorInCurrentView(actor));
+    };
   }
 
   handleActorDespawn(actorId: number) {
+    this.actorDespawnMarkers.set(actorId, {});
     this.actorCache.delete(actorId);
     if (!this.mapRenderer || !this.sys.isActive()) return;
 
@@ -1868,7 +1849,9 @@ export class TileViewer extends Scene {
     });
   }
 
-  handleActorUpdate(event: ActorUpdateEvent) {
+  handleActorUpdate(event: ActorUpdateEvent, serverPathFinished?: boolean) {
+    const serverControlled = serverPathFinished !== undefined;
+    const projectedSource = this.playerMovementController.getCurrentPosition();
     const incomingActor = event.actor;
     const isLocalUpdate = this.isLocalPlayerActor(incomingActor);
     if (isLocalUpdate && this.isWarpExitAnimationPending()) {
@@ -1876,7 +1859,7 @@ export class TileViewer extends Scene {
     }
     let actorForCache = incomingActor;
 
-    if (isLocalUpdate && incomingActor.x != null && incomingActor.y != null) {
+    if (isLocalUpdate && !serverControlled && incomingActor.x != null && incomingActor.y != null) {
       const current = this.playerMovementController.getCurrentPosition();
       actorForCache = {
         ...incomingActor,
@@ -1940,6 +1923,17 @@ export class TileViewer extends Scene {
       this.mapRenderer.getMovementController().updateActorMetadata(actor);
 
       if (isLocalUpdate) {
+        if (!serverControlled) return;
+        // Retire ordinary prediction/tweens before projecting a committed server
+        // path. Actor refreshes keep the existing local-position preservation.
+        this.mapRenderer.snapActorPosition(actor.id, projectedSource.x, projectedSource.y, actor.actionDirection ?? "DOWN");
+        if (projectedSource.x === actor.x && projectedSource.y === actor.y) {
+          this.playerMovementController.syncDirection(actor.actionDirection ?? "DOWN");
+          if (!serverPathFinished) this.playerMovementController.beginServerMovement(false);
+          return;
+        }
+        this.playerMovementController.beginServerMovement(serverPathFinished!);
+        this.mapRenderer.updateActorPosition(actor.id, projectedSource.x, projectedSource.y, actor.x ?? 0, actor.y ?? 0, actor.actionDirection, actor, { serverControlled: true });
         return;
       }
 
@@ -1982,7 +1976,11 @@ export class TileViewer extends Scene {
       });
 
       // Preload the actor sprite and then render it
+      const characterId = usePlayerCharacterStore.getState().characterProfile.id;
       this.actorManager.preloadActorSprites([actor]).then(() => {
+        if (!this.sys.isActive() || this.actorCache.get(actor.id) !== actor
+          || usePlayerCharacterStore.getState().characterProfile.id !== characterId
+          || !this.shouldRenderActorInCurrentView(actor)) return;
         this.mapRenderer.renderActor(actor);
       });
     }
@@ -2000,7 +1998,7 @@ export class TileViewer extends Scene {
   }
 
   public getWorldInputFreezeReason(): WorldInputFreezeReason | null {
-    if (this.mapLoadInProgress) return "map_loading";
+    if (this.mapLoadInProgress || this.interactionController?.isInstantWarpPending()) return "map_loading";
     const existingReason = getWorldInputFreezeReason({
       cutsceneInputLocked: this.cutsceneInputLocked || this.warpExitInputLocked,
     });
@@ -2011,7 +2009,7 @@ export class TileViewer extends Scene {
   }
 
   public isWorldInputFrozen(): boolean {
-    return this.getWorldInputFreezeReason() !== null;
+    return this.warpManager?.isActivationPending() === true || this.getWorldInputFreezeReason() !== null;
   }
 
   private setCutsceneInputLocked(locked: boolean): void {
@@ -2079,7 +2077,7 @@ export class TileViewer extends Scene {
         this.playerActor,
       );
 
-      await this.playerMovementController.animateStepToward(
+      await this.playerMovementController.animateCommittedStepToward(
         destX,
         destY,
         direction,
@@ -2111,6 +2109,23 @@ export class TileViewer extends Scene {
   }
 
   cleanupResources() {
+    this.actorDespawnMarkers.clear();
+    window.removeEventListener("cq:fishingUse",this.fishingUseHandler);
+    window.removeEventListener("cq:stateFieldUse",this.stateFieldUseHandler);
+    window.removeEventListener("cq:warpHomeUse",this.warpHomeUseHandler);
+    window.removeEventListener("cq:fieldTravelUse",this.fieldTravelUseHandler);
+    window.removeEventListener("cq:cutUse",this.cutUseHandler);
+    window.removeEventListener("cq:bicycleUse", this.bicycleUseHandler);
+    window.removeEventListener("cq:escapeRopeUse", this.escapeRopeUseHandler);
+    this.playerMovementController?.retireFieldCommands();
+    this.inventorySceneUnsubscribe?.();
+    this.inventorySceneUnsubscribe = null;
+    this.battleSceneUnsubscribe?.();
+    this.battleSceneUnsubscribe = null;
+    // Explicit reset also cleans up before Phaser shutdown. Remove both hooks
+    // so subsequent create calls install exactly one pair for the new lifetime.
+    this.events.off("shutdown", this.cleanupResources, this);
+    this.events.off("destroy", this.cleanupResources, this);
     this.warpExitInputLocked = false;
     clearCaptureQuestTileViewerDiagnostics();
 
@@ -2131,6 +2146,8 @@ export class TileViewer extends Scene {
     this.cutsceneController?.cleanup();
 
     // Clean up WebTransport subscriptions
+    this.serverPlayerMovementUnsubscribe?.();
+    this.serverPlayerMovementUnsubscribe = null;
     if (this.actorUpdateUnsubscribe) {
       this.actorUpdateUnsubscribe();
       this.actorUpdateUnsubscribe = null;
@@ -2141,10 +2158,6 @@ export class TileViewer extends Scene {
       this.actorDespawnUnsubscribe = null;
     }
 
-    if (this.actorsUnsubscribe) {
-      this.actorsUnsubscribe();
-      this.actorsUnsubscribe = null;
-    }
 
     if (this.gameStatusUnsubscribe) {
       this.gameStatusUnsubscribe();
@@ -2164,11 +2177,6 @@ export class TileViewer extends Scene {
     if (this.trainerEncounterUnsubscribe) {
       this.trainerEncounterUnsubscribe();
       this.trainerEncounterUnsubscribe = null;
-    }
-
-    if (this.surfSuccessHandler) {
-      window.removeEventListener("pokeSurfingSuccess", this.surfSuccessHandler);
-      this.surfSuccessHandler = null;
     }
 
     if (this.uiManager) {

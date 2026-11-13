@@ -495,16 +495,16 @@ const BottomHUD = () => {
       setPendingSelectName(characterProfile.name);
     }
     cancelActiveCutscene("character quit");
+    usePokeBattleStore.getState().retireBattle();
     await WorldSocket.sendJsonMessage(OpCodes.CharacterQuitRequest, {});
     AudioManager.stopMusic(true);
     AudioManager.stopAllAmbients();
     await setCurrentMap(null);
-    usePokeBattleStore.getState().closeBattle();
     setScreen("characterSelect");
   };
 
   const handleWarpHome = async () => {
-    await WorldSocket.sendJsonMessage(OpCodes.WarpHomeRequest, {});
+    window.dispatchEvent(new CustomEvent("cq:warpHomeUse"));
   };
 
   const locationName = currentMap == null

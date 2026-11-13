@@ -40,7 +40,7 @@
       {
         "x": 7,
         "y": 8,
-        "tileImageId": 560,
+        "source": {"mapName":"VictoryRoad2F","blockId":21,"position":1},
         "collisionType": 1,
         "label": "VictoryRoadBoulderBlock_2F_Switch1_15_1_0"
       }

@@ -5,7 +5,6 @@ import { UNIFIED_OVERWORLD_MAP_ID } from "../../constants";
 import { PlayerMovementController } from "../../controllers/PlayerMovementController";
 import { MapRenderer } from "../../renderers/MapRenderer";
 import { MapDataService } from "../../services/MapDataService";
-import * as PhaserNet from "../../services/PhaserNetworkService";
 import AudioManager from "@/services/audio/AudioManager";
 import { sfxPathForConstant } from "@/services/audio/pokemonMusic";
 
@@ -18,6 +17,7 @@ interface WarpTileTeleportDetail {
   animationStartX?: number;
   animationStartY?: number;
   sfxAlreadyPlayed?: boolean;
+  serverCommitted: true;
 }
 
 interface TileViewerWarpEventsDeps {
@@ -43,30 +43,9 @@ export class TileViewerWarpEvents {
         if (!pending) return;
 
         useGameStatusStore.getState().clearBlackoutWarp();
-        const destMapId = pending.mapId;
-        const destX = pending.x;
-        const destY = pending.y;
-        console.log(
-          `[Blackout] Warping to Pokémon Center (map ${destMapId}, ${destX}, ${destY})`,
-        );
-        PhaserNet.sendPlayerPosition(destX, destY, destMapId);
-
-        const playerActor = this.deps.getPlayerActor();
-        if (playerActor) {
-          playerActor.x = destX;
-          playerActor.y = destY;
-          playerActor.mapId = destMapId;
-          this.deps.setPlayerActor(playerActor);
-        }
-
-        const movement = this.deps.playerMovementController();
-        movement.stopMovement();
-        movement.syncPosition(destX, destY);
-        this.deps.scene.game.registry.set("destinationMapId", destMapId);
-        this.deps.scene.game.registry.set("destinationX", destX);
-        this.deps.scene.game.registry.set("destinationY", destY);
-        this.deps.scene.game.registry.set("useOverworldSavedCamera", false);
-        this.deps.resetScene(false);
+        void this.handleWarpTileTeleport(new CustomEvent("warpTileTeleport", {
+          detail: { ...pending, direction: "DOWN", serverCommitted: true },
+        }));
       },
     );
 
@@ -90,9 +69,40 @@ export class TileViewerWarpEvents {
     }
   }
 
+  async reconcileOwnedPosition(position: { mapId: number; x: number; y: number; direction: string; serverMovementPending: boolean }): Promise<void> {
+    const movement = this.deps.playerMovementController();
+    // A view registry is not the owned movement map. Correct the existing actor
+    // in place so an ordinary result cannot reload/retrigger a map script.
+    if (movement.getCurrentMapId() === position.mapId) {
+      movement.stopMovement(true);
+      movement.syncPosition(position.x, position.y);
+      movement.syncDirection(position.direction);
+      const player = this.deps.getPlayerActor();
+      if (player) {
+        player.x = position.x;
+        player.y = position.y;
+        player.mapId = position.mapId;
+        player.actionDirection = position.direction;
+        this.deps.setPlayerActor(player);
+        this.deps.mapRenderer().snapActorPosition(player.id, position.x, position.y, position.direction, player);
+      }
+      if (position.serverMovementPending) movement.beginServerMovement(false);
+      return;
+    }
+    await this.handleWarpTileTeleport(new CustomEvent("warpTileTeleport", {
+      detail: { ...position, serverCommitted: true, sfxAlreadyPlayed: true },
+    }));
+  }
+
   private async handleWarpTileTeleport(
     event: CustomEvent<WarpTileTeleportDetail>,
   ): Promise<void> {
+    // This local event projects an accepted server result; it cannot establish
+    // a destination. Reject stale callers before sound, movement or scene changes.
+    if (event.detail?.serverCommitted !== true) {
+      console.error("[WarpTile] Ignored teleport without a committed server result");
+      return;
+    }
     const {
       mapId,
       x,
@@ -119,23 +129,10 @@ export class TileViewerWarpEvents {
       }
     }
 
-    PhaserNet.sendPlayerPosition(
-      x,
-      y,
-      normalizedPlayerMapId,
-      direction ?? "DOWN",
-    );
     const playerActor = this.deps.getPlayerActor();
-    if (playerActor?.id != null) {
-      await Promise.race([
-        this.deps.mapRenderer().waitForActorIdle(playerActor.id),
-        new Promise<void>((resolve) => setTimeout(resolve, 1200)),
-      ]);
-      if (!this.deps.scene.sys.isActive()) return;
-    }
 
     const movement = this.deps.playerMovementController();
-    movement.stopMovement();
+    movement.stopMovement(true);
     movement.syncMapId(normalizedPlayerMapId);
 
     if (playerActor) {
@@ -143,6 +140,16 @@ export class TileViewerWarpEvents {
       playerActor.y = y;
       playerActor.mapId = normalizedPlayerMapId;
       this.deps.setPlayerActor(playerActor);
+    }
+
+    // Retire the source tween before projecting the committed arrival; its
+    // completion must not activate another local walking/warp path.
+    movement.syncPosition(x, y);
+    if (direction) movement.syncDirection(direction);
+    if (playerActor?.id != null) {
+      this.deps.mapRenderer().snapActorPosition(
+        playerActor.id, x, y, direction ?? "DOWN", playerActor,
+      );
     }
 
     if (mapId !== currentMapId) {
@@ -201,15 +208,6 @@ export class TileViewerWarpEvents {
     movement.syncPosition(x, y);
     if (direction) {
       movement.syncDirection(direction);
-    }
-    if (playerActor?.id != null) {
-      this.deps.mapRenderer().snapActorPosition(
-        playerActor.id,
-        x,
-        y,
-        direction ?? playerActor.actionDirection ?? "DOWN",
-        playerActor,
-      );
     }
   }
 }

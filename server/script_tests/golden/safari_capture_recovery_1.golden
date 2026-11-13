@@ -1,0 +1,38 @@
+Scenario: safari_capture_recovery_1
+Description: Rendered Safari capture recovery fixture using the original Magikarp and real capture/flee rolls, with party space or a full party.
+Character: ScriptSimSafariCaptureRecovery1
+
+Initial state
+  location: SAFARI_ZONE_CENTER[220] (14,24)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L50 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Resolved script
+  label: FixtureState
+  map: SAFARI_ZONE_CENTER
+  trigger: fixture_state
+
+Actions
+
+Final state
+  location: SAFARI_ZONE_CENTER[220] (14,24)
+  flags: none
+  party:
+    slot 0: #25 PIKACHU L50 moves QUICK_ATTACK, SWIFT, AGILITY, THUNDER
+  inventory:
+    none
+  hidden objects:
+    none
+  active battle:
+    none
+
+Safari session
+  active: balls=30 steps=499
+  battle: #129 MAGIKARP L5 caught=false fled=false over=false

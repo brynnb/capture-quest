@@ -4,6 +4,7 @@ package scriptedactions
 
 type Action struct {
 	Type              string         `json:"type"`
+	HealingPolicy     string         `json:"healingPolicy,omitempty"`
 	Speaker           string         `json:"speaker,omitempty"`
 	Lines             []string       `json:"lines,omitempty"`
 	Actor             string         `json:"actor,omitempty"`

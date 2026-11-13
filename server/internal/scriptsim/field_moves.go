@@ -1,6 +1,8 @@
 package scriptsim
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 
 	"capturequest/internal/world"
@@ -16,7 +18,7 @@ type FieldMoveSummary struct {
 	KnownByName       string
 }
 
-func runFieldMovePermission(scenario *Scenario, applied *AppliedFixture, initial *Snapshot, efm *world.EventFlagManager) (*Result, error) {
+func runFieldMovePermission(ctx context.Context, database *sql.DB, scenario *Scenario, applied *AppliedFixture, initial *Snapshot, efm *world.EventFlagManager) (*Result, error) {
 	moveName := scenario.Trigger.MoveName
 	if moveName == "" && scenario.Trigger.MoveID > 0 {
 		var err error
@@ -42,7 +44,7 @@ func runFieldMovePermission(scenario *Scenario, applied *AppliedFixture, initial
 		detail = fmt.Sprintf("%s message=%q", detail, summary.Message)
 	}
 
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}

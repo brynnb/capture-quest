@@ -1,4 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("./GameplayRecoveryService", () => ({ readCurrentGameplayState: vi.fn(), applyGameplaySnapshot: vi.fn() }));
+import * as recovery from "./GameplayRecoveryService";
+afterEach(() => vi.clearAllMocks());
 
 import { MapLoader } from "./MapLoader";
 
@@ -23,6 +27,7 @@ function createPendingLoader() {
   raw.scene = scene;
   raw.mapDataService = {
     isReady: () => true,
+    beginOwnedTileView: vi.fn(),
     ensureRuntimeTileCatalogCurrent: vi.fn(() => compatibility.promise),
   };
   raw.uiManager = { setLoadingText: vi.fn() };
@@ -79,9 +84,11 @@ function createFailedOverworldLoader() {
     },
     mapDataService: {
       isReady: () => true,
+      beginOwnedTileView: vi.fn(),
       ensureRuntimeTileCatalogCurrent: vi.fn(async () => undefined),
       getSnapshot: vi.fn(() => undefined),
       setSnapshot: vi.fn(),
+      prepareMapLoad: vi.fn(async () => undefined),
       fetchMapInfo: vi.fn(async () => ({
         id: 9999,
         name: "Unified Overworld",
@@ -131,7 +138,7 @@ function createFailedOverworldLoader() {
       hideLoadingText: vi.fn(),
     },
     getPlayerActor: () => null,
-    prepareActorsForLoadedView: (actors: unknown[]) => actors,
+    captureActorReadView: () => (actors: unknown[]) => actors,
     createMapLegend: vi.fn(),
     applyDestinationDirection: vi.fn(),
     updateCameraFollow: vi.fn(),
@@ -167,6 +174,21 @@ describe("MapLoader async lifecycle", () => {
     expect(scene.mapLoadInProgress).toBe(true);
   });
 
+  it("aborts requests owned by superseded loads and by scene cleanup", async () => {
+    const { loader, raw, compatibility, rendererClear } = createPendingLoader();
+    const first = loader.loadOverworldData();
+    const firstSignal = (raw.mapRequestAbort as AbortController).signal;
+    const second = loader.loadOverworldData();
+    const secondSignal = (raw.mapRequestAbort as AbortController).signal;
+    expect(firstSignal.aborted).toBe(true);
+    expect(secondSignal.aborted).toBe(false);
+    loader.cleanup();
+    expect(secondSignal.aborted).toBe(true);
+    compatibility.resolve();
+    await Promise.all([first, second]);
+    expect(rendererClear).not.toHaveBeenCalled();
+  });
+
   it("invalidates pending work and releases stream resources on cleanup", () => {
     const { loader, raw, scene, clear } = createPendingLoader();
     const stop = vi.fn();
@@ -174,8 +196,11 @@ describe("MapLoader async lifecycle", () => {
     raw.overworldChunkStream = { stop };
     scene.mapLoadInProgress = true;
 
+    const requestAbort = new AbortController();
+    raw.mapRequestAbort = requestAbort;
     loader.cleanup();
 
+    expect(requestAbort.signal.aborted).toBe(true);
     expect(raw.mapLoadGeneration).toBe(8);
     expect(stop).toHaveBeenCalledOnce();
     expect(clear).toHaveBeenCalledOnce();
@@ -236,4 +261,56 @@ describe("MapLoader async lifecycle", () => {
     loader.updateOverworldStreaming();
     expect(update).toHaveBeenCalledOnce();
   });
+});
+
+
+it("final map recovery projects missed movement before resuming plans", async () => {
+  const order: string[] = [];
+  const raw = Object.create(MapLoader.prototype) as any;
+  raw.mapLoadGeneration = 7;
+  raw.playerMovementController = {
+    getPositionGeneration: () => 3,
+    projectOwnedPosition: vi.fn(() => order.push("position")),
+  };
+  const snapshot = { position: { mapId: 200, x: 2, y: 9, direction: "LEFT" } } as any;
+  vi.mocked(recovery.readCurrentGameplayState).mockResolvedValueOnce(snapshot);
+  vi.mocked(recovery.applyGameplaySnapshot).mockImplementationOnce(() => order.push("plans"));
+  await raw.recoverLoadedOwnership(7, new AbortController().signal);
+  expect(raw.playerMovementController.projectOwnedPosition).toHaveBeenCalledWith(snapshot.position);
+  expect(order).toEqual(["position", "plans"]);
+});
+
+it("retired map loads cannot project a late current position", async () => {
+  const raw = Object.create(MapLoader.prototype) as any;
+  raw.mapLoadGeneration = 7;
+  raw.playerMovementController = { getPositionGeneration: () => 3, projectOwnedPosition: vi.fn() };
+  let resolve!: (value: any) => void;
+  vi.mocked(recovery.readCurrentGameplayState).mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+  const pending = raw.recoverLoadedOwnership(7, new AbortController().signal);
+  raw.mapLoadGeneration++;
+  resolve({ position: { mapId: 200, x: 2, y: 9, direction: "LEFT" } });
+  await pending;
+  expect(raw.playerMovementController.projectOwnedPosition).not.toHaveBeenCalled();
+  expect(recovery.applyGameplaySnapshot).not.toHaveBeenCalled();
+});
+
+it("tile presentation lease rejects another map and retires with load generation",()=>{
+ const loader=Object.create(MapLoader.prototype) as MapLoader;
+ const raw=loader as unknown as {mapLoadGeneration:number;getState:()=>unknown};raw.mapLoadGeneration=3;
+ raw.getState=()=>({mapInfo:{id:50,isOverworld:0}});
+ const current=loader.captureTilePresentationView(50);expect(current()).toBe(true);
+ expect(loader.captureTilePresentationView(51)()).toBe(false);
+ raw.mapLoadGeneration++;expect(current()).toBe(false);
+ raw.getState=()=>({mapInfo:{id:0,isOverworld:1}});expect(loader.captureTilePresentationView(9999)()).toBe(true);
+});
+
+it("initial tile presentation rereads changes during image preparation before returning a current view",async()=>{
+ const loader=Object.create(MapLoader.prototype) as MapLoader;
+ const raw=loader as unknown as {mapDataService:unknown;tileManager:unknown;prepareTilePresentation:(mapId:number,tiles:unknown[],signal:AbortSignal)=>Promise<unknown[]>};
+ const old:unknown[]=[],first:unknown[]=[],current:unknown[]=[];let accepted:unknown[]=old;
+ const fetch=vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(current);
+ raw.mapDataService={isTileReadCurrent:(tiles:unknown[])=>tiles===accepted&&tiles!==old,fetchTiles:fetch,fetchTileImages:vi.fn(async()=>[])};
+ const images=vi.fn(async()=>{accepted=fetch.mock.calls.length===1?old:current});raw.tileManager={loadTileImages:images};
+ const result=await raw.prepareTilePresentation(50,old,new AbortController().signal);
+ expect(result).toBe(current);expect(fetch).toHaveBeenCalledTimes(2);expect(images).toHaveBeenCalledTimes(2);
 });

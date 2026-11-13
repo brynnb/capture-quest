@@ -19,6 +19,8 @@ import useCQInventoryStore, {
   type CQInventoryItem,
 } from "@/stores/CQInventoryStore";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
+import { showCoinCaseBalance } from "@/phaser-game/services/CoinBalanceService";
+import { sendPartyItemCommand, sendRepelItemCommand } from "@/phaser-game/services/InventoryCommandService";
 import { WorldSocket, OpCodes } from "@/net";
 
 const InventorySidebarContainer = styled.div`
@@ -51,16 +53,13 @@ const inventoryPartyStyle: React.CSSProperties = {
 
 const directUseShortNames = new Set([
   "BICYCLE",
+  "COIN_CASE",
   "ESCAPE_ROPE",
   "EXP_ALL",
   "GOOD_ROD",
   "ITEMFINDER",
-  "MAX_REPEL",
   "OLD_ROD",
-  "POKE_FLUTE",
   "POKEDEX",
-  "REPEL",
-  "SUPER_REPEL",
   "SUPER_ROD",
   "TOWN_MAP",
 ]);
@@ -180,7 +179,7 @@ const InventorySidebar: React.FC = () => {
   const activePending: PendingItemUse | null = pendingPPRestore
     ? pendingPPRestore
     : pendingTMHM
-      ? { instanceId: pendingTMHM.instanceId, partySlot: pendingTMHM.partySlot, itemName: pendingTMHM.itemName }
+      ? { instanceId: pendingTMHM.instanceId, partySlot: pendingTMHM.partySlot, pokemonRowId: pendingTMHM.pokemonRowId, itemName: pendingTMHM.itemName }
       : null;
 
   const activeBannerText = pendingPPRestore
@@ -202,6 +201,7 @@ const InventorySidebar: React.FC = () => {
       setPendingPPRestore({
         instanceId: inv.instance.id,
         partySlot,
+        pokemonRowId: party[partySlot]?.rowId ?? 0,
         itemName: inv.item.name,
       });
       setSelectedCQItem(null);
@@ -211,14 +211,10 @@ const InventorySidebar: React.FC = () => {
 
     // TM/HM items: send with moveSlot -1 first; server will respond
     // with needsMoveSlot if 4 moves are known
-    WorldSocket.sendJsonMessage(OpCodes.CQItemUseRequest, {
-      instanceId: inv.instance.id,
-      partySlot,
-      moveSlot: -1,
-    });
+    void sendPartyItemCommand(inv.instance.id, partySlot);
     setSelectedCQItem(null);
     setSelectedItemPointer(null);
-  }, [cqItems]);
+  }, [cqItems, party]);
 
   const handleCursorItemUse = useCallback((partySlot: number) => {
     if (!selectedCQItem) return;
@@ -229,6 +225,37 @@ const InventorySidebar: React.FC = () => {
     item: CQInventoryItem,
     pointer?: { x: number; y: number },
   ) => {
+    if (["REPEL", "SUPER_REPEL", "MAX_REPEL"].includes(item.item.shortName.toUpperCase())) {
+      void sendRepelItemCommand(item.instance.id);
+      setSelectedCQItem(null);
+      setSelectedItemPointer(null);
+      return;
+    }
+    if (item.item.shortName === "POKE_FLUTE") {
+      void sendPartyItemCommand(item.instance.id, -1);
+      setSelectedCQItem(null);
+      setSelectedItemPointer(null);
+      return;
+    }
+    if(["OLD_ROD","GOOD_ROD","SUPER_ROD"].includes(item.item.shortName.toUpperCase())){
+      window.dispatchEvent(new CustomEvent("cq:fishingUse",{detail:{instanceId:item.instance.id}}));setSelectedCQItem(null);setSelectedItemPointer(null);return;
+    }
+    if (item.item.shortName === "BICYCLE") {
+      window.dispatchEvent(new CustomEvent("cq:bicycleUse",{detail:{instanceId:item.instance.id}}));
+      setSelectedCQItem(null);setSelectedItemPointer(null);return;
+    }
+    if (item.item.shortName === "ESCAPE_ROPE") {
+      window.dispatchEvent(new CustomEvent("cq:escapeRopeUse", { detail: { instanceId: item.instance.id } }));
+      setSelectedCQItem(null);
+      setSelectedItemPointer(null);
+      return;
+    }
+    if (item.item.shortName.toUpperCase() === "COIN_CASE") {
+      void showCoinCaseBalance(item.instance.id);
+      setSelectedCQItem(null);
+      setSelectedItemPointer(null);
+      return;
+    }
     if (isDirectUseItem(item)) {
       WorldSocket.sendJsonMessage(OpCodes.CQItemUseRequest, {
         instanceId: item.instance.id,
@@ -240,10 +267,7 @@ const InventorySidebar: React.FC = () => {
     }
 
     if (!isPartyTargetItem(item)) {
-      WorldSocket.sendJsonMessage(OpCodes.CQItemUseRequest, {
-        instanceId: item.instance.id,
-        ...currentItemUseWorldContext(),
-      });
+      void sendPartyItemCommand(item.instance.id, -1);
       setSelectedCQItem(null);
       setSelectedItemPointer(null);
       return;
@@ -266,21 +290,13 @@ const InventorySidebar: React.FC = () => {
 
   const handleTMHMPokemonSelected = useCallback((partySlot: number) => {
     if (!selectedTMHMItem) return;
-    WorldSocket.sendJsonMessage(OpCodes.CQItemUseRequest, {
-      instanceId: selectedTMHMItem.instance.id,
-      partySlot,
-      moveSlot: -1,
-    });
+    void sendPartyItemCommand(selectedTMHMItem.instance.id, partySlot);
     setSelectedTMHMItem(null);
   }, [selectedTMHMItem]);
 
   const handleMoveSlotSelected = useCallback((moveSlot: number) => {
     if (pendingPPRestore) {
-      WorldSocket.sendJsonMessage(OpCodes.CQItemUseRequest, {
-        instanceId: pendingPPRestore.instanceId,
-        partySlot: pendingPPRestore.partySlot,
-        moveSlot,
-      });
+      void sendPartyItemCommand(pendingPPRestore.instanceId, pendingPPRestore.partySlot, moveSlot, pendingPPRestore.pokemonRowId);
       setPendingPPRestore(null);
       setSelectedCQItem(null);
     } else if (pendingTMHM) {
@@ -297,11 +313,7 @@ const InventorySidebar: React.FC = () => {
           return;
         }
       }
-      WorldSocket.sendJsonMessage(OpCodes.CQItemUseRequest, {
-        instanceId: pendingTMHM.instanceId,
-        partySlot: pendingTMHM.partySlot,
-        moveSlot,
-      });
+      void sendPartyItemCommand(pendingTMHM.instanceId, pendingTMHM.partySlot, moveSlot, pendingTMHM.pokemonRowId);
       setPendingTMHM(null);
       setSelectedCQItem(null);
     }

@@ -1,8 +1,50 @@
 package pokebattle
 
 import (
+	"encoding/json"
 	"testing"
 )
+
+func TestCapturePlacementPersistenceAndValidation(t *testing.T) {
+	b := &BattleState{Phase: PhaseBattleEnd, PlayerCaught: true, Capture: &CapturePlacement{SentToPC: true, PCBox: 11}}
+	data, err := MarshalBattleState(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored, err := UnmarshalBattleState(data)
+	if err != nil || restored.Capture == nil || !restored.Capture.SentToPC || restored.Capture.PCBox != 11 {
+		t.Fatal("capture placement did not round trip", err)
+	}
+	clone := restored.Clone()
+	clone.Capture.PCBox = 0
+	if restored.Capture.PCBox != 11 {
+		t.Fatal("private battle clone aliases capture placement")
+	}
+	for _, bad := range []string{
+		`{"sentToPC":true,"pcBox":-1}`, `{"sentToPC":true,"pcBox":12}`,
+	} {
+		var record map[string]json.RawMessage
+		if err := json.Unmarshal(data, &record); err != nil {
+			t.Fatal(err)
+		}
+		record["capture"] = json.RawMessage(bad)
+		invalid, err := json.Marshal(record)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := UnmarshalBattleState(invalid); err == nil {
+			t.Fatal("accepted invalid PC placement", bad)
+		}
+	}
+	b.PlayerCaught = false
+	data, err = MarshalBattleState(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := UnmarshalBattleState(data); err == nil {
+		t.Fatal("accepted placement without a capture")
+	}
+}
 
 // Tests verify that enemy party, battle metadata, trainer meta, and pending move learn
 // all round-trip correctly through JSON. Player party is NOT stored in JSON — it's

@@ -1,6 +1,11 @@
-import type { PhaserMoveFull } from "@/net/generated/world_api";
+import type { PhaserMoveFull } from "@/net/generated/protocol";
 
-export const TMHM_MOVE_DATA_BY_ID: Record<number, PhaserMoveFull> = {
+// This local teaching preview contains only the fields actually stored here.
+// The complete network projection additionally contains required nullable metadata.
+export type TMHMMovePreview = Pick<PhaserMoveFull,
+ "id" | "name" | "shortName" | "power" | "type" | "accuracy" | "pp" | "isHm"> & Partial<Pick<PhaserMoveFull, "effect">>;
+
+export const TMHM_MOVE_DATA_BY_ID: Record<number, TMHMMovePreview> = {
   5: { id: 5, name: "MEGA PUNCH", shortName: "MEGA_PUNCH", power: 80, type: "NORMAL", accuracy: 85, pp: 20, isHm: 0 },
   6: { id: 6, name: "PAY DAY", shortName: "PAY_DAY", power: 40, type: "NORMAL", accuracy: 100, pp: 20, isHm: 0 },
   13: { id: 13, name: "RAZOR WIND", shortName: "RAZOR_WIND", power: 80, type: "NORMAL", accuracy: 75, pp: 10, isHm: 0 },
@@ -116,7 +121,7 @@ const TMHM_COMPATIBILITY_BY_MOVE_ID: Record<number, string> = {
   164: ",1,2,3,4,5,6,7,8,9,12,15,16,17,18,19,20,21,22,23,24,25,26,27,28,30,31,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,123,124,125,126,127,128,130,131,133,134,135,136,137,138,139,140,141,142,143,144,145,146,147,148,149,150,151,",
 };
 
-export function getTMHMMoveById(moveId?: number): PhaserMoveFull | undefined {
+export function getTMHMMoveById(moveId?: number): TMHMMovePreview | undefined {
   return moveId ? TMHM_MOVE_DATA_BY_ID[moveId] : undefined;
 }
 

@@ -28,6 +28,47 @@ Do not invent fallback destinations for incomplete warp rows. Fix the source/imp
 
 `elevator` and `inactive` rows are intentionally allowed to have incomplete destination coordinates. Smoke tests fail if any other warp type is incomplete.
 
+## Runtime normal warp boundary
+
+Normal click and keyboard warps use `PhaserWarpActivateRequest` (183) and result
+184. The browser sends the source warp ID and activation intent, waits for a
+correlated committed result, then renders the returned destination/exit animation.
+The server uses owned player coordinates and existing door/carpet activation rules;
+client metadata cannot supply the destination. Catalog resolution, dynamic LAST_MAP,
+Safari eligibility, destination validation, saved position and load effects share
+one character-locked transaction. Normal warps are unavailable during battle.
+
+The building-exit step formerly added in WarpManager is now saved before success.
+Its native exit coordinate is returned only as animation-start metadata. Normal
+warp transitions neither report the destination through opcode 45 nor resubmit it
+as map-load destination fields. Instant Warp now uses its own correlated
+ordinary-player catalog command (185/186), committing destination and arrival
+effects before shared warp presentation. Walking and cutscene completion now use
+authoritative issued commands, and the remaining animation coordinate reports
+have been removed. The server rejects retired opcode 45 in every session stage.
+The committed teleport opcode now shares an explicit generated destination DTO
+across server movement pads, elevators, field moves/items, cutscene publication,
+recovery and scenario jumps. Its presentation skips position echoes and supplied
+MapLoad coordinates. Actor snaps refresh local context without reporting a walking
+step, and retire the source tween immediately. Legacy arrival effects still occur
+in the following MapLoad transaction. Blackout/Safari store paths now project
+committed recovery locations without echoes; blackout destination, wallet and party
+healing share the initiating transaction. Test probes await explicit Instant Warp
+commands. MapLoad now rejects supplied coordinates and loads the current owned
+position. Ordinary walking now uses server-issued direction steps and token
+completion before activating a warp. Facing uses expected-source direction requests (191/192). Committed server-path
+points project through notification 193, whose animation completion sends no
+coordinate echo or local warp activation. Surf and warp exit animation use the
+same explicit server projection; local teleport events require a committed-result
+marker before changing presentation. No browser coordinate-setter helper remains.
+Ordinary step completion, forced path points and target-based Surf entry now
+commit position and applicable step effects together. Forced automatic warp
+destinations join this transaction; their map-load arrival effects still run in
+the following MapLoad. Durable result/reconnect recovery and remaining field
+mechanics are unfinished; see `SERVER_FOUNDATIONS.md`.
+
+Frontend and backend must be released together when a deployment is authorized.
+
 ## Import Order
 
 The relevant Postgres import order in `server/cmd/import-phaser/postgres.go` is:

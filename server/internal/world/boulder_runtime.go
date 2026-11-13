@@ -1,6 +1,8 @@
 package world
 
 import (
+	"capturequest/internal/api/opcodes"
+	"capturequest/internal/session"
 	"database/sql"
 	"log"
 	"strings"
@@ -43,19 +45,20 @@ func directionFromAdjacentDestination(dx, dy int) string {
 	}
 }
 
-func (m *PlayerMovementManager) tryPushBoulderFromFacingAttempt(charID int, mapID, playerX, playerY int, direction string) (BoulderPushResult, bool) {
+func (m *PlayerMovementManager) tryPushBoulderFromFacingAttempt(ses *session.Session, charID int, mapID, playerX, playerY int, direction string) (BoulderPushResult, bool, error) {
 	if m.wh == nil || m.wh.EventFlags == nil {
-		return BoulderPushResult{}, false
+		return BoulderPushResult{}, false, nil
 	}
-	result, attempted, err := TryPushBoulderFromFacingAttempt(int64(charID), mapID, playerX, playerY, direction, true, m.wh.EventFlags)
+	result, err := pushBoulder(ses.CommandContext(), m.wh.database, int64(charID), mapID, playerX, playerY, direction, true, m.wh.EventFlags)
+	attempted := result.Message != boulderNoBoulderMessage
 	if err != nil {
 		log.Printf("[PlayerMovement] Boulder push from facing attempt failed for player %d: %v", charID, err)
-		return result, attempted
+		return result, attempted, err
 	}
 	if attempted && result.Success {
 		m.broadcastBoulderPushResult(int64(charID), result)
 	}
-	return result, attempted
+	return result, attempted, nil
 }
 
 func (m *PlayerMovementManager) queueStepAfterBoulderPush(charID, startX, startY, mapID int, result BoulderPushResult) {
@@ -84,25 +87,39 @@ func (m *PlayerMovementManager) broadcastBoulderPushResult(charID int64, result 
 		return
 	}
 
+	m.mu.RLock()
+	state := m.players[int(charID)]
+	if state == nil {
+		m.mu.RUnlock()
+		return
+	}
+	sessionID := state.SessionID
+	m.mu.RUnlock()
+	ses, ok := m.wh.sessionManager.GetSession(sessionID)
+	if !ok || !ses.HasValidClient() || int64(ses.Client.CharData().ID) != charID {
+		return
+	}
+
 	if result.ObjectID > 0 {
 		runtimeID := m.wh.ActorRegistry.GetPhaserID(ActorTypeNPC, result.ObjectID)
 		if result.Dropped {
-			m.actorManager.broadcastActorDespawn(runtimeID, result.MapID)
+			ses.SendStreamJSON(map[string]int{"id": runtimeID}, opcodes.PhaserActorDespawn)
 		} else {
 			actor := boulderActorFromPushResult(m.wh.ActorRegistry, result)
-			m.actorManager.broadcastActorUpdate(&actor, 0)
+			ses.SendStreamJSON(actor, opcodes.PhaserActorPositionUpdate)
 		}
 	}
 
 	seenMaps := map[int]bool{result.MapID: true}
 	for _, mapName := range result.AffectedMaps {
-		mapID, err := mapIDForBoulderMapName(mapName)
+		var mapID int
+		err := m.wh.database.QueryRowContext(ses.CommandContext(), `SELECT id FROM phaser_maps WHERE name=$1`, mapName).Scan(&mapID)
 		if err != nil || seenMaps[mapID] {
 			continue
 		}
 		seenMaps[mapID] = true
 
-		boulders, err := BoulderObjectsForCharacter(charID, mapID, m.wh.EventFlags)
+		boulders, err := boulderObjectsForCharacterContext(ses.CommandContext(), m.wh.database, charID, mapID, m.wh.EventFlags)
 		if err != nil {
 			log.Printf("[PlayerMovement] Failed to load affected boulders for map %s: %v", mapName, err)
 			continue
@@ -112,7 +129,7 @@ func (m *PlayerMovementManager) broadcastBoulderPushResult(charID int64, result 
 				continue
 			}
 			actor := boulderActorFromState(m.wh.ActorRegistry, boulder, result.Direction)
-			m.actorManager.broadcastActorUpdate(&actor, 0)
+			ses.SendStreamJSON(actor, opcodes.PhaserActorPositionUpdate)
 		}
 	}
 }

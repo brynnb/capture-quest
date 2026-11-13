@@ -15,8 +15,8 @@
   "expect": {
     "scriptLabel": "TileState:LANCES_ROOM",
     "tileStates": [
-      { "x": 12, "y": 6, "tileImageId": 261, "collisionType": 0, "label": "LanceEntranceRightClosed_0_0" },
-      { "x": 13, "y": 4, "tileImageId": 261, "collisionType": 0, "label": "LanceEntranceLeftClosed_1_0" }
+      { "x": 12, "y": 6, "source": {"mapName":"LancesRoom","blockId":115,"position":0}, "collisionType": 0, "label": "LanceEntranceRightClosed_0_0" },
+      { "x": 13, "y": 4, "source": {"mapName":"LancesRoom","blockId":114,"position":1}, "collisionType": 0, "label": "LanceEntranceLeftClosed_1_0" }
     ]
   }
 }

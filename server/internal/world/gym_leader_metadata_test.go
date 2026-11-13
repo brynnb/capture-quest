@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"database/sql"
 	"testing"
 
@@ -91,34 +92,33 @@ func TestTrainerBattleSuppressedByGymLeaderDefeat(t *testing.T) {
 		"EVENT_BEAT_BROCK":                 true,
 		"EVENT_BEAT_VIRIDIAN_GYM_GIOVANNI": true,
 	}
-	wh := &WorldHandler{EventFlags: efm}
 
-	if !trainerBattleSuppressedByGymLeaderDefeat(charID, &trainerSightData{
+	if !trainerBattleSuppressedByGymLeaderFlags(charID, &trainerSightData{
 		MapID:        54,
 		TrainerClass: "JR_TRAINER_M",
-	}, wh) {
+	}, efm) {
 		t.Fatal("Pewter gym trainer should be suppressed after Brock is defeated")
 	}
 
-	if trainerBattleSuppressedByGymLeaderDefeat(charID, &trainerSightData{
+	if trainerBattleSuppressedByGymLeaderFlags(charID, &trainerSightData{
 		MapID:        54,
 		TrainerClass: "BROCK",
 		IsGymLeader:  true,
-	}, wh) {
+	}, efm) {
 		t.Fatal("gym leader should not be suppressed by the non-leader helper")
 	}
 
-	if trainerBattleSuppressedByGymLeaderDefeat(charID, &trainerSightData{
+	if trainerBattleSuppressedByGymLeaderFlags(charID, &trainerSightData{
 		MapID:        59,
 		TrainerClass: "YOUNGSTER",
-	}, wh) {
+	}, efm) {
 		t.Fatal("non-gym trainer should not be suppressed by Brock's flag")
 	}
 
-	if !trainerBattleSuppressedByGymLeaderDefeat(charID, &trainerSightData{
+	if !trainerBattleSuppressedByGymLeaderFlags(charID, &trainerSightData{
 		MapID:        45,
 		TrainerClass: "COOLTRAINER_M",
-	}, wh) {
+	}, efm) {
 		t.Fatal("Viridian gym trainer should be suppressed after Giovanni is defeated")
 	}
 }
@@ -127,12 +127,11 @@ func TestTrainerBattleSuppressedByLegacyGiovanniFlag(t *testing.T) {
 	charID := int64(42)
 	efm := NewEventFlagManager(nil)
 	efm.flags[charID] = map[string]bool{"EVENT_BEAT_GIOVANNI_GYM": true}
-	wh := &WorldHandler{EventFlags: efm}
 
-	if !trainerBattleSuppressedByGymLeaderDefeat(charID, &trainerSightData{
+	if !trainerBattleSuppressedByGymLeaderFlags(charID, &trainerSightData{
 		MapID:        45,
 		TrainerClass: "COOLTRAINER_M",
-	}, wh) {
+	}, efm) {
 		t.Fatal("Viridian gym trainer should be suppressed by the legacy Giovanni gym flag")
 	}
 }
@@ -147,13 +146,23 @@ func TestTrainerDataForObjectIDRejectsScriptedStoryTrainerWithoutHeader(t *testi
 
 func TestTrainerEncounterLoadMatchesHeaderByNormalizedMapName(t *testing.T) {
 	setupMtMoonTrainerAliasDB(t)
+	// This catalog-only SQLite fixture must also expose the required runtime schema.
+	if _, err := db.GlobalWorldDB.DB.Exec(`CREATE TABLE character_trainer_encounters (
+ character_id INTEGER PRIMARY KEY, version INTEGER, encounter_token TEXT,
+ trainer_object_id INTEGER, trainer_map_id INTEGER, trainer_class TEXT, party_index INTEGER,
+ map_id INTEGER, x INTEGER, y INTEGER, resolution TEXT)`); err != nil {
+		t.Fatal(err)
+	}
 
 	wh := &WorldHandler{
+		database:      db.GlobalWorldDB.DB,
 		ActorRegistry: NewActorRegistry(),
 		ActorManager:  &PhaserActorManager{overworldMapIds: map[int]bool{}},
 	}
 	mgr := NewTrainerEncounterManager(wh)
-	mgr.Load()
+	if err := mgr.Load(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 
 	trainers := mgr.byMap[59]
 	if len(trainers) != 1 {

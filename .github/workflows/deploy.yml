@@ -14,6 +14,7 @@ on:
           - auto
           - frontend
           - backend
+          - code
           - full
       run_tests:
         description: 'Run broad frontend and focused backend tests before deploying'
@@ -102,9 +103,9 @@ jobs:
             } | sha256sum | awk '{print $1}'
           )"
           release="${CAPTUREQUEST_POKEMON_RELEASE:-red}"
-          # v3 includes the tile-image, sprite, and Phaser style directories in
-          # both restore and save sets; v2 caches were permanently incomplete.
-          echo "key=cq-runtime-assets-v3-${release}-${pipeline_hash}" >> "$GITHUB_OUTPUT"
+          # v4 also retains the generated script diagnostics required by --check.
+          # v3 could build fresh but failed when replaying the incomplete cache.
+          echo "key=cq-runtime-assets-v4-${release}-${pipeline_hash}" >> "$GITHUB_OUTPUT"
 
       - name: Restore generated runtime assets
         if: steps.deployment.outputs.deploy_frontend == 'true'
@@ -128,6 +129,7 @@ jobs:
             src/constants/runtime_asset_version.ts
             server/scripted_events/scripts
             server/scripted_events/*.generated.json
+            server/scripted_events/script_candidate_import_diagnostics.json
           key: ${{ steps.asset-cache-key.outputs.key }}
 
       - name: Check generated runtime assets
@@ -158,6 +160,7 @@ jobs:
             test -s src/constants/audio_manifest.json || return 1
             test -s src/constants/pokemon_audio_manifest.json || return 1
             test -s src/constants/runtime_asset_version.ts || return 1
+            test -s server/scripted_events/script_candidate_import_diagnostics.json || return 1
             test -d server/scripted_events/scripts || return 1
             test -n "$(find server/scripted_events/scripts -name '*.json' -type f -print -quit)" || return 1
             node - <<'NODE' || return 1
@@ -244,6 +247,7 @@ jobs:
           npm run assets:validate
           test -d public/sound/pokemon
           test -s public/sound/pokemon/audio-render-manifest.json
+          test -s server/scripted_events/script_candidate_import_diagnostics.json
           test -d server/scripted_events/scripts
           test -n "$(find server/scripted_events/scripts -name '*.json' -type f -print -quit)"
           node - <<'NODE'
@@ -328,6 +332,7 @@ jobs:
             src/constants/runtime_asset_version.ts
             server/scripted_events/scripts
             server/scripted_events/*.generated.json
+            server/scripted_events/script_candidate_import_diagnostics.json
           key: ${{ steps.asset-cache-key.outputs.key }}
 
       - name: Build Frontend
@@ -351,6 +356,8 @@ jobs:
       - name: Test warp import and runtime contracts
         if: steps.deployment.outputs.full_data == 'true' || (github.event_name == 'workflow_dispatch' && inputs.run_tests)
         run: |
+          python3 -m unittest discover -s scripts -p test_classify_deployment.py
+          python3 -m unittest discover -s scripts -p test_runtime_script_cache.py
           cd server
           go test -p=1 -count=1 -run 'Warp|LastMap|WorldTile|TileEditor|PhaserTilesRequest' ./cmd/import-phaser ./internal/world
           go test -p=1 -count=1 ./internal/extractorcontract
@@ -449,7 +456,7 @@ jobs:
 
           server_ready=false
           for attempt in $(seq 1 12); do
-            if curl --fail --silent --show-error --max-time 5 https://capturequest.net/api/online >/dev/null; then
+            if curl --fail --silent --show-error --max-time 5 https://capturequest.net/api/ready >/dev/null; then
               server_ready=true
               break
             fi
@@ -571,7 +578,7 @@ jobs:
           test "$deployed_contract_sha" = "$expected_contract_sha"
           server_ready=false
           for attempt in $(seq 1 12); do
-            if curl --fail --silent --show-error --max-time 5 https://capturequest.net/api/online >/dev/null; then
+            if curl --fail --silent --show-error --max-time 5 https://capturequest.net/api/ready >/dev/null; then
               server_ready=true
               break
             fi

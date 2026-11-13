@@ -1,0 +1,16 @@
+{
+  "name": "debug_pc_indigo_ready",
+  "description": "Stand beside the source Indigo Plateau Lobby PC access tile, outside the former hardcoded center list.",
+  "fixture": {
+    "characterName": "DebugPCIndigoReady",
+    "mapName": "INDIGO_PLATEAU_LOBBY",
+    "x": 14,
+    "y": 8,
+    "direction": "RIGHT",
+    "party": [{"speciesId":1,"level":12},{"speciesId":4,"level":12}],
+    "inventory": [],
+    "hiddenObjects": []
+  },
+  "trigger": {"type":"fixture_state","mapName":"INDIGO_PLATEAU_LOBBY"},
+  "expect": {"scriptLabel":"FixtureState","finalX":14,"finalY":8,"finalDirection":"RIGHT","partySpecies":[1,4],"activeBattleAbsent":true}
+}

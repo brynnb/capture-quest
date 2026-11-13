@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { expect, type Page } from "@playwright/test";
-import { pressSpace } from "./input";
+import { pressSpace, clickTile } from "./input";
 import { sendProbeCommand } from "./probe";
 import { getEngineSnapshot, getGameState, waitForPlayerTile } from "./state";
 
@@ -32,6 +32,8 @@ export interface StoryCheckpointScenario {
     type?: string;
     bet?: number;
     isLucky?: boolean;
+    machineX?: number;
+    machineY?: number;
     mapName?: string;
     textConstant?: string;
     scriptLabel?: string;
@@ -151,21 +153,23 @@ export async function assertStoryCheckpointState(page: Page, checkpoint: StoryCh
 export async function performScenarioTrigger(page: Page, checkpoint: StoryCheckpoint) {
   switch (checkpoint.entry.driver) {
     case "gameCornerBuyCoins":
-      await page.evaluate(() => window.__capturequestTest?.buyGameCornerCoins());
+      // Coin purchases use the native issued clerk script and its Yes/No choice.
+      await pressSpace(page);
       return;
     case "gameCornerPrizeList":
-      await page.evaluate(() => window.__capturequestTest?.requestGameCornerPrizeList());
+      await pressSpace(page);
       return;
-    case "gameCornerSlotPlay":
-      await page.evaluate(
-        ([bet, isLucky]) =>
-          window.__capturequestTest?.playGameCornerSlot(
-            Number(bet) || 1,
-            Boolean(isLucky),
-          ),
-        [checkpoint.scenario.trigger?.bet, checkpoint.scenario.trigger?.isLucky],
-      );
+    case "gameCornerSlotPlay": {
+      const { machineX, machineY, bet } = checkpoint.scenario.trigger ?? {};
+      if (machineX === undefined || machineY === undefined) {
+        throw new Error("Runtime slot checkpoints require explicit machineX/machineY");
+      }
+      await clickTile(page,machineX,machineY);
+      await expect(page.getByTestId("slot-machine")).toBeVisible();
+      await page.getByTestId(`slot-machine-bet-${bet ?? 1}`).click();
+      await page.getByTestId("slot-machine-spin").click();
       return;
+    }
     case "npcClick":
     case "objectClick":
     case "dialogueChoice":

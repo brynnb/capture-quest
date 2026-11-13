@@ -67,6 +67,18 @@ function actor(overrides: Partial<PhaserActor> = {}): PhaserActor {
 }
 
 describe("ActorMovementController", () => {
+  test("committed server movement completes with its projection kind", () => {
+    const tweens: TweenConfig[] = [];
+    const controller = new ActorMovementController(fakeScene([], tweens));
+    controller.registerActor(actor(), fakeSprite());
+    const completed = vi.fn();
+    controller.setOnStepComplete(completed);
+    controller.handlePositionUpdate(1, 1, 0, "RIGHT", { serverControlled: true });
+    expect(completed).not.toHaveBeenCalled();
+    tweens[0].onComplete?.();
+    expect(completed).toHaveBeenCalledWith(1, 1, 0, "RIGHT", "serverStep");
+  });
+
   test("scales animation duration by tile distance for ledge-style two-tile movement", () => {
     const durations: number[] = [];
     const controller = new ActorMovementController(fakeScene(durations));
@@ -151,7 +163,22 @@ describe("ActorMovementController", () => {
     controller.handlePositionUpdate(1, 1, 0, "DOWN");
     tweens[0].onComplete?.();
 
-    expect(completed).toHaveBeenCalledWith(1, 1, 0, "RIGHT");
+    expect(completed).toHaveBeenCalledWith(1, 1, 0, "RIGHT", "step");
+  });
+
+  test("a snap retires the tween and queue and reports projection rather than a step", () => {
+    const controller = new ActorMovementController(fakeScene([]));
+    const completed = vi.fn();
+    controller.registerActor(actor(), fakeSprite());
+    controller.setOnStepComplete(completed);
+    controller.handlePositionUpdate(1, 1, 0, "RIGHT");
+    controller.handlePositionUpdate(1, 2, 0, "RIGHT");
+    const tween = controller.getActorState(1)?.currentTween;
+    controller.snapActorToPosition(1, 8, 9, "UP");
+    expect(tween?.stop).toHaveBeenCalledOnce();
+    expect(controller.getActorState(1)).toMatchObject({ currentX: 8, currentY: 9, isAnimating: false, queue: [] });
+    expect(completed).toHaveBeenCalledOnce();
+    expect(completed).toHaveBeenCalledWith(1, 8, 9, "UP", "snap");
   });
 
   test("reapplies the latest tracked facing after an async texture swap", () => {

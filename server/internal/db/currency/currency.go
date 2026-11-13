@@ -28,8 +28,14 @@ func AddPokedollars(ctx context.Context, charID int32, amount int) error {
 
 // GetCharacterWallet retrieves a character's Pokemon money.
 func GetCharacterWallet(ctx context.Context, charID uint32) (*model.CharacterWallet, error) {
+	return GetCharacterWalletContext(ctx, db.GlobalWorldDB.DB, charID)
+}
+
+// GetCharacterWalletContext shares the existing empty-wallet policy with owned
+// callers. New characters need no wallet row until their first currency change.
+func GetCharacterWalletContext(ctx context.Context, database db.ContextDBTX, charID uint32) (*model.CharacterWallet, error) {
 	var wallet model.CharacterWallet
-	err := db.GlobalWorldDB.DB.QueryRowContext(ctx, `
+	err := database.QueryRowContext(ctx, `
 		SELECT character_id, pokedollars
 		FROM character_wallet
 		WHERE character_id = $1`,

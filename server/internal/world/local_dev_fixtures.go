@@ -1,12 +1,9 @@
 package world
 
 import (
-	"database/sql"
 	"fmt"
-	"log"
 	"os"
 
-	"capturequest/internal/config"
 	"capturequest/internal/db"
 	"capturequest/internal/pokebattle"
 )
@@ -22,24 +19,6 @@ type localDevPokemonSpec struct {
 	setup     func(*pokebattle.Pokemon)
 }
 
-func ensureLocalDevFixtures(charID int64) {
-	cfg, err := config.Get()
-	if err != nil {
-		log.Printf("[LocalDevFixtures] Failed to read config: %v", err)
-		return
-	}
-	if !cfg.Local || !localDevFixturesEnabled() {
-		return
-	}
-
-	if err := ensureLocalDevPokemonParty(db.GlobalWorldDB.DB, charID); err != nil {
-		log.Printf("[LocalDevFixtures] Failed to seed test party for char %d: %v", charID, err)
-	}
-	if err := ensureLocalDevInventory(db.GlobalWorldDB.DB, charID); err != nil {
-		log.Printf("[LocalDevFixtures] Failed to seed test inventory for char %d: %v", charID, err)
-	}
-}
-
 func localDevFixturesEnabled() bool {
 	return captureQuestTestModeEnabled() ||
 		os.Getenv("CAPTUREQUEST_LOCAL_FIXTURES") == "true"
@@ -49,7 +28,20 @@ func captureQuestTestModeEnabled() bool {
 	return os.Getenv("CAPTUREQUEST_TEST_MODE") == "true"
 }
 
-func ensureLocalDevPokemonParty(myDB *sql.DB, charID int64) error {
+// Local party and inventory are creation fixtures. Never infer missing setup
+// from empty gameplay state on login: pre-starter scenarios legitimately have
+// no party, and reconnect must preserve that state just like consumed inventory.
+func seedLocalDevCreationFixturesIn(tx db.DBTX, charID int64) error {
+	if err := seedLocalDevPokemonPartyIn(tx, charID); err != nil {
+		return err
+	}
+	return seedLocalDevInventoryIn(tx, charID)
+}
+
+func seedLocalDevPokemonPartyIn(tx db.DBTX, charID int64) error {
+	if err := db.RequireTransaction(tx); err != nil {
+		return err
+	}
 	specs := []localDevPokemonSpec{
 		{speciesID: 4, level: 5}, // Charmander starter, healthy.
 		{speciesID: 25, level: 12, setup: func(p *pokebattle.Pokemon) {
@@ -77,9 +69,20 @@ func ensureLocalDevPokemonParty(myDB *sql.DB, charID int64) error {
 		}},
 	}
 
+	// Preserve an already populated creation record if setup is invoked again.
+	if err := db.LockCharacter(tx, charID); err != nil {
+		return err
+	}
+	var exists bool
+	if err := tx.QueryRow(`SELECT EXISTS (SELECT 1 FROM character_pokemon WHERE character_id=$1 AND box=$2)`, charID, pokebattle.BoxParty).Scan(&exists); err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
 	party := make([]*pokebattle.Pokemon, 0, len(specs))
 	for _, spec := range specs {
-		p, err := pokebattle.BuildWildPokemon(myDB, spec.speciesID, spec.level)
+		p, err := pokebattle.BuildWildPokemon(tx, spec.speciesID, spec.level)
 		if err != nil {
 			return fmt.Errorf("build species %d L%d: %w", spec.speciesID, spec.level, err)
 		}
@@ -89,20 +92,16 @@ func ensureLocalDevPokemonParty(myDB *sql.DB, charID int64) error {
 		}
 		party = append(party, p)
 	}
-
-	if err := pokebattle.SaveParty(myDB, charID, party); err != nil {
-		return fmt.Errorf("save local dev party: %w", err)
-	}
-	return nil
+	_, err := pokebattle.SavePartyInTransaction(tx, charID, party)
+	return err
 }
 
-func ensureLocalDevInventory(myDB *sql.DB, charID int64) error {
-	tx, err := myDB.Begin()
-	if err != nil {
+// Local inventory is a creation fixture, never a reconnect replenishment rule.
+// The caller owns the character creation transaction and publishes after commit.
+func seedLocalDevInventoryIn(tx db.DBTX, charID int64) error {
+	if err := db.RequireTransaction(tx); err != nil {
 		return err
 	}
-	defer tx.Rollback()
-
 	templates, err := loadLocalDevItemTemplates(tx)
 	if err != nil {
 		return err
@@ -132,7 +131,7 @@ func ensureLocalDevInventory(myDB *sql.DB, charID int64) error {
 		}
 	}
 
-	return tx.Commit()
+	return nil
 }
 
 type localDevItemTemplate struct {
@@ -145,7 +144,7 @@ type localDevItemTotals struct {
 	quantity  int
 }
 
-func loadLocalDevItemTemplates(tx *sql.Tx) ([]localDevItemTemplate, error) {
+func loadLocalDevItemTemplates(tx db.DBTX) ([]localDevItemTemplate, error) {
 	rows, err := tx.Query(`SELECT id, stackable FROM cq_items ORDER BY id`)
 	if err != nil {
 		return nil, fmt.Errorf("query cq_items: %w", err)
@@ -163,7 +162,7 @@ func loadLocalDevItemTemplates(tx *sql.Tx) ([]localDevItemTemplate, error) {
 	return items, rows.Err()
 }
 
-func loadLocalDevItemCounts(tx *sql.Tx, charID int64) (map[int32]localDevItemTotals, error) {
+func loadLocalDevItemCounts(tx db.DBTX, charID int64) (map[int32]localDevItemTotals, error) {
 	rows, err := tx.Query(`
 		SELECT ii.item_id, COUNT(*), COALESCE(SUM(ii.quantity), 0)
 		FROM cq_character_inventory ci
@@ -188,7 +187,7 @@ func loadLocalDevItemCounts(tx *sql.Tx, charID int64) (map[int32]localDevItemTot
 	return counts, rows.Err()
 }
 
-func createLocalDevInventoryItem(tx *sql.Tx, charID int64, itemID int32, quantity int) error {
+func createLocalDevInventoryItem(tx db.DBTX, charID int64, itemID int32, quantity int) error {
 	if quantity < 1 {
 		quantity = 1
 	}

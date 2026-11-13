@@ -41,6 +41,63 @@ catalog hash because numeric tile IDs are not stable across unrelated extractor
 catalogs. Never publish the database, tile directory, contract, or compiled
 frontend independently.
 
+## Collision provenance
+
+Placed-square collision uses the native bottom-left foot sample and its tileset's
+original passable list. Water classification additionally uses the original
+`WaterTilesets` allowlist and `IsNextTileShoreOrWater` tile checks, including the
+Ship Port platform exception. Numeric raw tile IDs are tileset-local; a `$14`
+inside Red's House is a walkable carpet, not water. Decorative subtiles elsewhere
+in the square do not determine terrain. The bundled extractor owns this rule;
+regenerate the atomic SQLite/art/contract family when it changes. Runtime
+movement and pathfinding consume that classification without per-map overrides.
+
+### CUT replacement provenance and current approximation
+
+The bundled pokered disassembly's `engine/overworld/cut.asm` calls
+`ReplaceTreeTileBlock` using `data/tilesets/cut_tree_blocks.asm`: CUT replaces a
+whole native block, not an arbitrary catalog square sharing a grass foot tile.
+Inspected game-data revision: `cfbd67a9f5d3469a616f83e33446d2e10b25f559`;
+extractor revision: `ed8b7d58ab3cac46401beb7e53896a88f51b9139`.
+
+Current runtime CUT retains its preexisting single-square approximation: select
+the lowest catalog image ID in the source image's tileset whose native foot is
+`$52`. This is deterministic within a catalog and is not exact native block-swap
+art fidelity. The extractor deduplicates image hashes in
+`export_scripts/create_zones_and_tiles.py`; an image's stored block/position can
+be the first occurrence, not the placed square's original block identity.
+`tiles_raw` retains native block placement in SQLite, but current Postgres placed
+tiles do not import that block index. Exact swaps require deterministic provenance
+translation through the canonical data lane, not a guessed image-ID mapping.
+
+The unsafe numeric tile-25 fallback is retired. CUT prepares source, permission,
+event override and replacement metadata through its injected character transaction
+before marking transient state. Missing catalog metadata/query failure rejects
+with the affected image/target in local diagnostics. Cleared collision is land,
+matching the character's transient collision override; sparse palette collision
+preferences do not override that gameplay result. Map exit/character retirement
+retain the current transient reset policy. No source images are hand-edited.
+
+## Shared tileset blocksets
+
+Catalog rows retain their original tileset identity when graphics/blocksets are
+shared. The extractor's `TILESET_BLOCKSET_ALIASES` defines MART→POKECENTER,
+DOJO→GYM, REDS_HOUSE_2→REDS_HOUSE_1, and FOREST_GATE/MUSEUM→GATE. The Go compiler
+and importer share `phaserdata.BlocksetTilesetID` for that contract. Do not join
+catalog rows to blocksets by direct tileset-ID equality: alias rows have no data
+under that ID and would disappear or lose native foot metadata.
+
+## Image metadata and editor properties
+
+`phaser_tile_images` is the imported catalog and owns image identity,
+`raw_foot_tile_id` and `talk_over_tile`, derived from the extractor's block data.
+`phaser_tile_properties` is a separate sparse editor table for names and collision
+preferences; the importer does not create one palette row per catalog image.
+Runtime metadata reads must start from the required image row and optionally join
+editor properties. A missing palette row is valid; a missing image row is a source
+error. Placed tiles and event rules retain their own explicit collision decision.
+The editor's absent collision preference retains its declared blocked default.
+
 ## Import Flow
 
 ```text
@@ -64,6 +121,15 @@ rejects candidate JSON whose version is unsupported or whose duplicated
 relational identity columns disagree. Runtime execution, offline simulation,
 and candidate compilation share the action wire contract in
 `server/internal/scriptedactions`.
+
+The compiler also translates the center-nurse text macro family preserved in
+`script_event_ir_blocks`, resolving its map/text identity and dialogue from the
+same negotiated SQLite source. Exact supported bodies are required; malformed
+or missing source records fail instead of producing plausible dialogue. These
+events use the shared `healParty` action with an explicit center policy and the
+same output publication plan as relational candidates. Compiler/action changes
+require the full-data deployment lane so generated events and runtime move
+together.
 
 Candidate publication is serialized per output root and prepared as one
 rollback-capable multi-file operation. To verify generated files in CI without

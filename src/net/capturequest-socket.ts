@@ -34,16 +34,23 @@ async function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
   message: string,
+  signal?:AbortSignal,
 ): Promise<T> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
+  let abort:(()=>void)|undefined;
+  const cancelled=new Promise<never>((_,reject)=>{
+    abort=()=>reject(new DOMException("Connection attempt retired","AbortError"));
+    signal?.addEventListener("abort",abort,{once:true});if(signal?.aborted)abort();
+  });
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
   });
 
   try {
-    return await Promise.race([promise, timeoutPromise]);
+    return await Promise.race([promise, timeoutPromise,cancelled]);
   } finally {
     if (timeout) clearTimeout(timeout);
+    if(abort)signal?.removeEventListener("abort",abort);
   }
 }
 
@@ -118,8 +125,27 @@ export class CaptureQuestSocket {
 
   // Heartbeat
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private cancelWebSocketConnect: (()=>void) | null = null;
+  private webSocketAttemptGeneration = 0;
+  private nativeAttempt:AbortController|null=null;
+  private nativeReaders=new Set<{cancel:(reason?:unknown)=>Promise<void>}>();
   public latency = 0;
   public onPing: ((latency: number) => void) | null = null;
+  private ownerGeneration = 0;
+  private ownerRetireListeners = new Set<() => void>();
+  public get sessionGeneration(): number { return this.ownerGeneration; }
+  public subscribeSessionRetirement(receive: () => void): () => void {
+    this.ownerRetireListeners.add(receive); return () => this.ownerRetireListeners.delete(receive);
+  }
+  private retireSessionReads(): void {
+    this.ownerGeneration++;
+    // A view subscriber must not prevent transport cleanup or another owner
+    // from receiving retirement.
+    for (const receive of [...this.ownerRetireListeners]) {
+      try { receive(); } catch (error) { console.error("[Socket] Session read retirement failed:", error); }
+    }
+  }
   public onJson: ((opcode: OpCode, data: unknown) => void) | null = null;
 
   constructor(config: { maxRetries?: number; allowReconnect?: boolean } = {}) {
@@ -138,6 +164,11 @@ export class CaptureQuestSocket {
     port: number | string,
     onClose: () => void
   ): Promise<boolean> {
+    this.clearReconnectTimer();
+    this.isConnected = false;
+    this.retireWebSocket();
+    this.retireNativeTransport();
+    this.retireSessionReads();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const WT = (window as any).WebTransport as {
       new(url: string, opts?: WebTransportOptions): WebTransport;
@@ -169,90 +200,40 @@ export class CaptureQuestSocket {
 
     this.useWebSocket = false;
 
-    // if already open, shut it down first
-    if (this.webtransport) {
-      const closedInfo = await this.webtransport.closed.catch(() => null);
-      if (!closedInfo) {
-        this.close(false);
-      }
-    }
-
+    const attempt=new AbortController();this.nativeAttempt=attempt;
+    const current=()=>this.nativeAttempt===attempt && !attempt.signal.aborted;
     try {
-      // We always fetch the certificate hash from the server because our backend
-      // generates a dynamic self-signed certificate for WebTransport (UDP).
-      // The hash is securely fetched over HTTPS (Fly.io/Let's Encrypt).
-      console.log(`[CaptureQuestSocket] Fetching certificate hash from ${getApiUrl("/hash")}...`);
-      const controller = new AbortController();
-      const fetchTimeout = setTimeout(() => controller.abort(), 5000);
-
-      const hash = await fetch(getApiUrl("/hash"), { signal: controller.signal }).then(
-        (r: Response) => r.text()
-      );
-      clearTimeout(fetchTimeout);
-      console.log(`[CaptureQuestSocket] Certificate hash received: ${hash} `);
-
-      const transportUrl = `https://${url}:${port}/cq`;
-      console.log(`[CaptureQuestSocket] Initiating WebTransport connection to ${transportUrl}...`);
-      this.webtransport = new WebTransport(transportUrl, {
-        serverCertificateHashes: [
-          { algorithm: "sha-256", value: base64ToArrayBuffer(hash) },
-        ],
+      const hash=await withTimeout(fetch(getApiUrl("/hash"),{signal:attempt.signal}).then(r=>r.text()),5000,"Certificate hash fetch timed out",attempt.signal);
+      if(!current())return false;
+      const transport=new WT(`https://${url}:${port}/cq`,{serverCertificateHashes:[{algorithm:"sha-256",value:base64ToArrayBuffer(hash)}]});
+      this.webtransport=transport;
+      const owns=()=>current() && this.webtransport===transport;
+      // Handshake failure may reject closed before the established-close hook
+      // is attached. The setup error owns reporting and fallback in that phase.
+      void transport.closed.catch(()=>{});
+      await withTimeout(transport.ready,TRANSPORT_CONNECT_TIMEOUT_MS,"WebTransport handshake timed out",attempt.signal);
+      if(!owns())return false;
+      this.datagramWriter=transport.datagrams.writable.getWriter();
+      this.startDatagramLoop(transport);
+      const streamPromise=transport.createBidirectionalStream();
+      // A stream created after cancellation is still owned by the old attempt.
+      void streamPromise.then(stream=>{
+        if(!owns()){void stream.readable.cancel().catch(()=>{});void stream.writable.abort().catch(()=>{});}
+      },()=>{});
+      const stream=await withTimeout(streamPromise,TRANSPORT_CONNECT_TIMEOUT_MS,"WebTransport control stream timed out",attempt.signal);
+      if(!owns())return false;
+      this.attachControlStream(stream,transport);
+      this.isConnected=true;this.isClosing=false;this.retryCount=0;this.startHeartbeat();
+      void transport.closed.then(()=>{if(owns())this.close(false);},error=>{
+        if(owns()){console.error("WebTransport closed with error:",error);this.close(false);}
       });
-
-      // wait for handshake
-      console.log(`[CaptureQuestSocket] Waiting for WebTransport handshake...`);
-      await withTimeout(
-        this.webtransport.ready,
-        TRANSPORT_CONNECT_TIMEOUT_MS,
-        "WebTransport handshake timed out",
-      );
-      console.log(`[CaptureQuestSocket] WebTransport connection established.`);
-
-      // ——— datagram writer & loop ———
-      this.datagramWriter = this.webtransport.datagrams.writable.getWriter();
-      this.startDatagramLoop();
-
-      const controlStream = await withTimeout(
-        this.webtransport.createBidirectionalStream(),
-        TRANSPORT_CONNECT_TIMEOUT_MS,
-        "WebTransport control stream timed out",
-      );
-      this.attachControlStream(controlStream);
-      console.log("[CaptureQuestSocket] Control stream ready");
-
-      this.isConnected = true;
-      this.isClosing = false;
-      this.retryCount = 0;
-
-      // Start heartbeat (registers handler + interval)
-      this.startHeartbeat();
-
-      // watch for close - don't auto-reconnect on normal close
-      this.webtransport.closed
-        .then((info) => {
-          console.log("WebTransport closed:", info);
-          this.close(false);
-        })
-        .catch((e) => {
-          console.error("WebTransport closed with error:", e);
-          this.close(false);
-        });
-
       return true;
-    } catch (e) {
-      console.warn(
-        "[CaptureQuestSocket] WebTransport failed; falling back to WebSocket:",
-        e,
-      );
-      this.datagramWriter?.releaseLock();
-      this.controlWriter?.releaseLock();
-      this.webtransport?.close();
-      this.webtransport = null;
-      this.datagramWriter = null;
-      this.controlWriter = null;
-
-      const connected = await this.connectWebSocket(onClose);
-      if (!connected) this.scheduleReconnect();
+    } catch(error) {
+      if(!current())return false;
+      console.warn("[CaptureQuestSocket] WebTransport failed; falling back to WebSocket:",error);
+      this.retireNativeTransport();
+      const connected=await this.connectWebSocket(onClose);
+      if(!connected)this.scheduleReconnect();
       return connected;
     }
   }
@@ -331,6 +312,7 @@ export class CaptureQuestSocket {
     data: unknown,
     timeoutMs: number = 10000
   ): Promise<TRes> {
+    if (requestOpCode === OpCodes.JWTLogin) this.retireSessionReads();
     if (!this.isConnected || (!this.controlWriter && !this.useWebSocket)) {
       throw new Error("Not connected");
     }
@@ -347,9 +329,18 @@ export class CaptureQuestSocket {
       concatUint8(new Uint8Array(op), payload)
     );
 
+    const socket=this.ws,transport=this.webtransport,writer=this.controlWriter;
+    const websocket=this.useWebSocket;
+    const owns=()=>websocket ? this.ws===socket : this.webtransport===transport;
+    let pendingRequest:PendingRequest<Uint8Array>;
+    const remove=()=>{
+      const queue=this.pendingRequests.get(responseOpCode);
+      if(queue){const index=queue.indexOf(pendingRequest);if(index!==-1)queue.splice(index,1);if(queue.length===0)this.pendingRequests.delete(responseOpCode);}
+      clearTimeout(pendingRequest.timeout);
+    };
     // Create promise for response
     const responsePromise = new Promise<TRes>((resolve, reject) => {
-      const pendingRequest: PendingRequest<Uint8Array> = {
+      pendingRequest = {
         resolve: (buf: Uint8Array) => {
           try {
             const text = new TextDecoder().decode(buf);
@@ -362,14 +353,13 @@ export class CaptureQuestSocket {
         },
         reject,
         timeout: setTimeout(() => {
-          // Remove this specific request from the queue on timeout
           const queue = this.pendingRequests.get(responseOpCode);
-          if (queue) {
-            const idx = queue.indexOf(pendingRequest);
-            if (idx !== -1) queue.splice(idx, 1);
-            if (queue.length === 0) this.pendingRequests.delete(responseOpCode);
-          }
+          if(!queue?.includes(pendingRequest))return;
+          remove();
           reject(new Error(`Request timeout for opcode ${responseOpCode}`));
+          // Untagged replies cannot be associated safely after a missing reply.
+          // Retire this connection rather than guessing on a later request.
+          if(owns())this.close(false);
         }, timeoutMs),
       };
 
@@ -379,11 +369,24 @@ export class CaptureQuestSocket {
       this.pendingRequests.set(responseOpCode, queue);
     });
 
-    // Send the request
-    if (this.useWebSocket) {
-      this.sendWsFrame(frame);
-    } else {
-      await this.controlWriter!.write(frame);
+    const sendFailed=(error:unknown)=>{
+      if(!this.pendingRequests.get(responseOpCode)?.includes(pendingRequest))return;
+      remove();pendingRequest.reject(error instanceof Error ? error : new Error(String(error)));
+      // A write failure may be ambiguous, but must not tear down a replacement.
+      if(owns())this.close(false);
+    };
+    try {
+      if(websocket){
+        if(!socket || !owns() || socket.readyState!==WebSocket.OPEN)throw new Error("WebSocket owner is unavailable");
+        socket.send(frame);
+      } else {
+        if(!writer || !owns())throw new Error("Control stream owner is unavailable");
+        // Response timeout/retirement must settle even if backpressure leaves
+        // the write pending. Its failure settles only this still-pending request.
+        void writer.write(frame).catch(sendFailed);
+      }
+    } catch(error) {
+      sendFailed(error);
     }
 
     return responsePromise;
@@ -392,31 +395,17 @@ export class CaptureQuestSocket {
 
 
   public close(scheduleReconnect: boolean = true) {
+    this.clearReconnectTimer();
+    this.retirePendingRequests();
+    // Observers must see an unavailable connection before retirement can
+    // synchronously trigger another read.
     this.isClosing = true;
     this.isConnected = false;
+    this.retireSessionReads();
 
-    // Clean up WebTransport
-    this.datagramWriter?.releaseLock();
-    this.controlWriter?.releaseLock();
-    this.webtransport?.close();
-    this.webtransport = null;
-    this.datagramWriter = null;
-    this.controlWriter = null;
+    this.retireNativeTransport();
 
-    // Clean up WebSocket
-    if (this.ws) {
-      this.ws.onclose = null; // prevent re-entrant close handler
-      this.ws.onerror = null;
-      this.ws.onmessage = null;
-      this.ws.close();
-      this.ws = null;
-    }
-    this.wsBuffer = new Uint8Array(0);
-
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval);
-      this.heartbeatInterval = null;
-    }
+    this.retireWebSocket();
 
     if (scheduleReconnect && this.allowReconnect) {
       this.scheduleReconnect();
@@ -428,7 +417,43 @@ export class CaptureQuestSocket {
 
   // ——— WebSocket fallback ———
 
+  private retireNativeTransport(){
+    if(this.webtransport || this.nativeAttempt)this.retirePendingRequests();
+    const attempt=this.nativeAttempt;this.nativeAttempt=null;attempt?.abort();
+    const transport=this.webtransport;this.webtransport=null;
+    for(const reader of this.nativeReaders)void reader.cancel().catch(()=>{});
+    this.nativeReaders.clear();
+    this.datagramWriter?.releaseLock();this.datagramWriter=null;
+    this.controlWriter?.releaseLock();this.controlWriter=null;
+    this.writeQueue=Promise.resolve();
+    transport?.close();
+  }
+
+  private retireWebSocket() {
+    if(this.ws || this.cancelWebSocketConnect)this.retirePendingRequests();
+    this.webSocketAttemptGeneration++;
+    const cancel=this.cancelWebSocketConnect;this.cancelWebSocketConnect=null;cancel?.();
+    if(this.ws){
+      const ws=this.ws;this.ws=null;
+      ws.onopen=null;ws.onclose=null;ws.onerror=null;ws.onmessage=null;ws.close();
+    }
+    this.wsBuffer=new Uint8Array(0);
+    if(this.heartbeatInterval){clearInterval(this.heartbeatInterval);this.heartbeatInterval=null;}
+  }
+
+  private retirePendingRequests() {
+    // Untagged replies cannot cross a physical transport boundary. Authentication
+    // read-generation changes on the same socket do not reorder its FIFO queue.
+    const queues=[...this.pendingRequests.values()];this.pendingRequests.clear();
+    for(const queue of queues)for(const pending of queue){
+      clearTimeout(pending.timeout);pending.reject(new Error("Connection session retired"));
+    }
+  }
+
   private async connectWebSocket(onClose: () => void): Promise<boolean> {
+    this.clearReconnectTimer();
+    this.isConnected=false;
+    this.retireWebSocket();
     this.onClose = onClose;
     this.useWebSocket = true;
 
@@ -436,26 +461,45 @@ export class CaptureQuestSocket {
       const wsUrl = getWsUrl("/ws");
       console.log(`[CaptureQuestSocket] Connecting via WebSocket to ${wsUrl}...`);
       const ws = new WebSocket(wsUrl);
+      this.ws=ws;
       ws.binaryType = "arraybuffer";
+      const owns=()=>this.ws===ws;
+      let settled=false;
+      let setupTimeout:ReturnType<typeof setTimeout>|undefined;
+      const finish=(connected:boolean)=>{
+        if(settled)return;settled=true;
+        if(setupTimeout!==undefined)clearTimeout(setupTimeout);
+        if(this.cancelWebSocketConnect===cancel)this.cancelWebSocketConnect=null;
+        resolve(connected);
+      };
+      const cancel=()=>finish(false);
+      this.cancelWebSocketConnect=cancel;
+      setupTimeout=setTimeout(()=>{
+        finish(false);
+        if(owns())this.close(true);
+      },TRANSPORT_CONNECT_TIMEOUT_MS);
 
       ws.onopen = () => {
+        if(!owns()){finish(false);return;}
         console.log("[CaptureQuestSocket] WebSocket connection established");
-        this.ws = ws;
         this.isConnected = true;
         this.isClosing = false;
         this.retryCount = 0;
         this.startHeartbeat();
-        resolve(true);
+        finish(true);
       };
 
       ws.onerror = (e) => {
+        if(!owns()){finish(false);return;}
         console.error("[CaptureQuestSocket] WebSocket error:", e);
         if (!this.isConnected) {
-          resolve(false);
+          finish(false);
         }
       };
 
       ws.onclose = () => {
+        finish(false);
+        if(!owns())return;
         if (!this.isClosing) {
           console.log("[CaptureQuestSocket] WebSocket closed unexpectedly");
           this.close(true);
@@ -463,6 +507,7 @@ export class CaptureQuestSocket {
       };
 
       ws.onmessage = (event: MessageEvent) => {
+        if(!owns())return;
         const data = new Uint8Array(event.data as ArrayBuffer);
         // Append to buffer for length-prefixed frame parsing
         this.wsBuffer = concatUint8(this.wsBuffer, data);
@@ -533,22 +578,24 @@ export class CaptureQuestSocket {
     if (!this.datagramWriter) {
       return;
     }
-    this.writeQueue = this.writeQueue.then(() =>
-      this.datagramWriter!.write(buf)
-    );
-    return this.writeQueue;
+    const writer=this.datagramWriter,transport=this.webtransport;
+    const write=this.writeQueue.then(()=>{
+      if(this.datagramWriter!==writer || this.webtransport!==transport)throw new DOMException("Datagram owner retired","AbortError");
+      return writer.write(buf);
+    });
+    // A failed/retired write rejects its caller, without poisoning later demand.
+    this.writeQueue=write.catch(()=>{});
+    return write;
   }
 
-  private startDatagramLoop() {
-    if (!this.webtransport) {
-      return;
-    }
-    const rdr = this.webtransport.datagrams.readable.getReader();
+  private startDatagramLoop(transport:WebTransport) {
+    const rdr = transport.datagrams.readable.getReader();
+    this.nativeReaders.add(rdr);
     (async () => {
       try {
         while (true) {
           const { value, done } = await rdr.read();
-          if (done) {
+          if (done || this.webtransport!==transport) {
             break;
           }
           if (!value) {
@@ -567,37 +614,40 @@ export class CaptureQuestSocket {
             }
           }
 
+          if(this.webtransport!==transport)break;
           this.opCodeHandlers[opcode]?.(payload);
         }
       } catch (e) {
         // Only log if this wasn't an intentional close
-        if (!this.isClosing) {
+        if (this.webtransport===transport && !this.isClosing) {
           console.error("Datagram loop error:", e);
         }
       } finally {
+        this.nativeReaders.delete(rdr);
         rdr.releaseLock();
       }
     })();
   }
 
-  private attachControlStream(stream: WebTransportBidirectionalStream) {
+  private attachControlStream(stream: WebTransportBidirectionalStream,transport:WebTransport) {
     this.controlWriter?.releaseLock();
     this.controlWriter = stream.writable.getWriter();
-    this.startControlReadLoop(stream.readable);
+    this.startControlReadLoop(stream.readable,transport);
   }
 
-  private startControlReadLoop(stream: ReadableStream<Uint8Array>) {
+  private startControlReadLoop(stream: ReadableStream<Uint8Array>,transport:WebTransport) {
     const rdr = stream.getReader();
+    this.nativeReaders.add(rdr);
     let buffer: Uint8Array = new Uint8Array(0);
     (async () => {
       try {
         while (true) {
           const { value, done } = await rdr.read();
-          if (done) {
+          if (done || this.webtransport!==transport) {
             break;
           }
           buffer = concatUint8(buffer, value!);
-          while (buffer.length >= 4) {
+          while (buffer.length >= 4 && this.webtransport===transport) {
             const len = new DataView(buffer.buffer).getUint32(0, true);
             if (buffer.length < 4 + len) {
               break;
@@ -618,6 +668,7 @@ export class CaptureQuestSocket {
               }
             }
 
+            if(this.webtransport!==transport)break;
             // Check if this is a response to a pending request (FIFO queue)
             const queue = this.pendingRequests.get(opcode);
             if (queue && queue.length > 0) {
@@ -634,16 +685,22 @@ export class CaptureQuestSocket {
         }
       } catch (e) {
         // Only log if this wasn't an intentional close
-        if (!this.isClosing) {
+        if (this.webtransport===transport && !this.isClosing) {
           console.error("Control stream loop error:", e);
         }
       } finally {
+        this.nativeReaders.delete(rdr);
         rdr.releaseLock();
       }
     })();
   }
 
+  private clearReconnectTimer() {
+    if(this.reconnectTimer!==null){clearTimeout(this.reconnectTimer);this.reconnectTimer=null;}
+  }
+
   private scheduleReconnect() {
+    if(this.reconnectTimer!==null || this.isConnected || this.cancelWebSocketConnect!==null || this.nativeAttempt!==null)return;
     if (
       this.retryCount >= this.maxRetries ||
       !this.onClose
@@ -662,10 +719,17 @@ export class CaptureQuestSocket {
     }
     const delay = Math.min(2 ** this.retryCount * 1000, 30_000);
     this.retryCount++;
-    setTimeout(async () => {
+    this.reconnectTimer=setTimeout(async () => {
+      this.reconnectTimer=null;
+      // A user connection owns authentication. A queued retry must never
+      // replace it with a second, unauthenticated transport.
+      if(this.isConnected)return;
       let ok: boolean;
       if (this.useWebSocket) {
-        ok = await this.connectWebSocket(this.onClose!);
+        const connecting=this.connectWebSocket(this.onClose!);
+        const generation=this.webSocketAttemptGeneration;
+        ok = await connecting;
+        if(generation!==this.webSocketAttemptGeneration)return;
       } else {
         ok = await this.connect(this.url!, this.port!, this.onClose!);
       }

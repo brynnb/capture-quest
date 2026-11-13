@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import styled from "styled-components";
+import useCQInventoryStore from "@/stores/CQInventoryStore";
 import usePokemonPCStore from "@/stores/PokemonPCStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import * as PhaserNet from "@/phaser-game/services/PhaserNetworkService";
@@ -269,10 +270,11 @@ const PokemonPC: React.FC = () => {
     closePC,
   } = usePokemonPCStore();
 
-  const [selectedPartySlot, setSelectedPartySlot] = useState<number | null>(
+  const pending = useCQInventoryStore(state => state.inventoryCommandPending);
+  const [selectedPartyId, setSelectedPartyId] = useState<number | null>(
     null,
   );
-  const [selectedBoxSlot, setSelectedBoxSlot] = useState<number | null>(null);
+  const [selectedBoxId, setSelectedBoxId] = useState<number | null>(null);
   const [screen, setScreen] = useState<"main" | "storage" | "player" | "oak">(
     "main",
   );
@@ -282,46 +284,48 @@ const PokemonPC: React.FC = () => {
   const handlePrevBox = () => {
     const prev = currentBox <= 0 ? boxCount - 1 : currentBox - 1;
     PhaserNet.sendPokemonPCSwitchBox(prev);
-    setSelectedBoxSlot(null);
+    setSelectedBoxId(null);
   };
 
   const handleNextBox = () => {
     const next = currentBox >= boxCount - 1 ? 0 : currentBox + 1;
     PhaserNet.sendPokemonPCSwitchBox(next);
-    setSelectedBoxSlot(null);
+    setSelectedBoxId(null);
   };
 
   const handleDeposit = () => {
-    if (selectedPartySlot === null) return;
+    if (selectedPartyId === null) return;
     if (party.length <= 1) return;
-    PhaserNet.sendPokemonPCDeposit(selectedPartySlot, currentBox);
-    setSelectedPartySlot(null);
+    const pokemon = party.find(p => p.rowId === selectedPartyId);
+    if (!pokemon?.rowId) return;
+    void PhaserNet.sendPokemonPCDeposit(pokemon.rowId, currentBox);
+    setSelectedPartyId(null);
   };
 
   const handleWithdraw = () => {
-    if (selectedBoxSlot === null) return;
+    if (selectedBoxId === null) return;
     if (party.length >= 6) return;
-    const pokemon = boxPokemon[selectedBoxSlot];
+    const pokemon = boxPokemon.find(p => p.rowId === selectedBoxId);
     if (!pokemon) return;
-    PhaserNet.sendPokemonPCWithdraw(currentBox, pokemon.boxSlot);
-    setSelectedBoxSlot(null);
+    PhaserNet.sendPokemonPCWithdraw(currentBox, pokemon.rowId!);
+    setSelectedBoxId(null);
   };
 
   const handleRelease = () => {
-    if (selectedBoxSlot === null) return;
-    const pokemon = boxPokemon[selectedBoxSlot];
+    if (selectedBoxId === null) return;
+    const pokemon = boxPokemon.find(p => p.rowId === selectedBoxId);
     if (!pokemon) return;
     if (!window.confirm(`Release ${pokemon.name}? This cannot be undone!`))
       return;
-    PhaserNet.sendPokemonPCRelease(currentBox, pokemon.boxSlot);
-    setSelectedBoxSlot(null);
+    PhaserNet.sendPokemonPCRelease(currentBox, pokemon.rowId!);
+    setSelectedBoxId(null);
   };
 
   const handleClose = () => {
     closePC();
     setScreen("main");
-    setSelectedPartySlot(null);
-    setSelectedBoxSlot(null);
+    setSelectedPartyId(null);
+    setSelectedBoxId(null);
   };
 
   return (
@@ -408,9 +412,9 @@ const PokemonPC: React.FC = () => {
         {screen === "storage" ? (
           <>
             <BoxNav>
-              <NavButton data-testid="pokemon-pc-prev-box" onClick={handlePrevBox}>◀</NavButton>
+              <NavButton disabled={pending} data-testid="pokemon-pc-prev-box" onClick={handlePrevBox}>◀</NavButton>
               <span data-testid="pokemon-pc-current-box">BOX {currentBox + 1}</span>
-              <NavButton data-testid="pokemon-pc-next-box" onClick={handleNextBox}>▶</NavButton>
+              <NavButton disabled={pending} data-testid="pokemon-pc-next-box" onClick={handleNextBox}>▶</NavButton>
             </BoxNav>
 
             <ContentArea data-testid="pokemon-pc-storage">
@@ -425,12 +429,12 @@ const PokemonPC: React.FC = () => {
                 ) : (
                   boxPokemon.map((p: PokemonDTO, i: number) => (
                     <PokemonSlot
-                      key={`box-${i}`}
+                      key={p.rowId}
                       data-testid={`pokemon-pc-box-slot-${i}`}
-                      $selected={selectedBoxSlot === i}
+                      $selected={selectedBoxId === p.rowId}
                       onClick={() => {
-                        setSelectedBoxSlot(i);
-                        setSelectedPartySlot(null);
+                        setSelectedBoxId(p.rowId!);
+                        setSelectedPartyId(null);
                       }}
                     >
                       <PokemonInfo>
@@ -448,12 +452,12 @@ const PokemonPC: React.FC = () => {
                 <PanelTitle>PARTY ({party.length}/6)</PanelTitle>
                 {party.map((p: PokemonDTO, i: number) => (
                   <PokemonSlot
-                    key={`party-${i}`}
+                    key={p.rowId}
                     data-testid={`pokemon-pc-party-slot-${i}`}
-                    $selected={selectedPartySlot === i}
+                    $selected={selectedPartyId === p.rowId}
                     onClick={() => {
-                      setSelectedPartySlot(i);
-                      setSelectedBoxSlot(null);
+                      setSelectedPartyId(p.rowId!);
+                      setSelectedBoxId(null);
                     }}
                   >
                     <PokemonInfo>
@@ -471,7 +475,7 @@ const PokemonPC: React.FC = () => {
               <PCButton
                 data-testid="pokemon-pc-deposit"
                 $variant="deposit"
-                disabled={selectedPartySlot === null || party.length <= 1}
+                disabled={pending || selectedPartyId === null || party.length <= 1}
                 onClick={handleDeposit}
               >
                 DEPOSIT
@@ -479,7 +483,7 @@ const PokemonPC: React.FC = () => {
               <PCButton
                 data-testid="pokemon-pc-withdraw"
                 $variant="withdraw"
-                disabled={selectedBoxSlot === null || party.length >= 6}
+                disabled={pending || selectedBoxId === null || party.length >= 6}
                 onClick={handleWithdraw}
               >
                 WITHDRAW
@@ -487,7 +491,7 @@ const PokemonPC: React.FC = () => {
               <PCButton
                 data-testid="pokemon-pc-release"
                 $variant="release"
-                disabled={selectedBoxSlot === null}
+                disabled={pending || selectedBoxId === null}
                 onClick={handleRelease}
               >
                 RELEASE
@@ -496,8 +500,8 @@ const PokemonPC: React.FC = () => {
                 data-testid="pokemon-pc-back"
                 $variant="cancel"
                 onClick={() => {
-                  setSelectedPartySlot(null);
-                  setSelectedBoxSlot(null);
+                  setSelectedPartyId(null);
+                  setSelectedBoxId(null);
                   setScreen("main");
                 }}
               >

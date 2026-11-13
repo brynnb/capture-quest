@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 	"unicode"
 
@@ -18,8 +17,9 @@ const DefaultRivalName = "Gary"
 // All fields use camelCase for JSON to match frontend conventions
 type CharacterOptions struct {
 	// UI options
-	ShowNetworkStats      bool `json:"showNetworkStats"`
-	AllowTrainerRebattles bool `json:"allowTrainerRebattles"`
+	PreferenceRevision    int64 `json:"preferenceRevision"`
+	ShowNetworkStats      bool  `json:"showNetworkStats"`
+	AllowTrainerRebattles bool  `json:"allowTrainerRebattles"`
 
 	// Pokémon Center tracking (last visited center for blackout warp)
 	LastPokeCenterMapID int `json:"lastPokeCenterMapId"`
@@ -64,14 +64,15 @@ func NormalizeRivalName(name string) string {
 
 // LoadOptions loads character options from the database
 func LoadOptions(ctx context.Context, charID int32) (*CharacterOptions, error) {
+	return LoadOptionsFrom(ctx, db.GlobalWorldDB.DB, charID)
+}
+
+func LoadOptionsFrom(ctx context.Context, database db.ContextDBTX, charID int32) (*CharacterOptions, error) {
 	query := `SELECT options FROM character_data WHERE id = $1`
 
 	var optionsJSON sql.NullString
-	err := db.GlobalWorldDB.DB.QueryRowContext(ctx, query, charID).Scan(&optionsJSON)
+	err := database.QueryRowContext(ctx, query, charID).Scan(&optionsJSON)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return DefaultOptions(), nil
-		}
 		return nil, fmt.Errorf("failed to load options for character %d: %w", charID, err)
 	}
 
@@ -80,28 +81,57 @@ func LoadOptions(ctx context.Context, charID int32) (*CharacterOptions, error) {
 		return DefaultOptions(), nil
 	}
 
+	if !strings.HasPrefix(strings.TrimSpace(optionsJSON.String), "{") {
+		return nil, fmt.Errorf("options for character %d must be an object", charID)
+	}
 	opts := DefaultOptions() // Start with defaults so missing fields get default values
 	if err := json.Unmarshal([]byte(optionsJSON.String), opts); err != nil {
-		log.Printf("Warning: failed to parse options JSON for character %d, using defaults: %v", charID, err)
-		return DefaultOptions(), nil
+		return nil, fmt.Errorf("parse options for character %d: %w", charID, err)
+	}
+	if opts.PreferenceRevision < 0 || opts.PreferenceRevision >= 9007199254740991 {
+		return nil, fmt.Errorf("invalid preference revision for character %d", charID)
 	}
 	opts.RivalName = NormalizeRivalName(opts.RivalName)
 
 	return opts, nil
 }
 
-// SaveOptions saves character options to the database
-func SaveOptions(ctx context.Context, charID int32, opts *CharacterOptions) error {
-	jsonBytes, err := json.Marshal(opts)
-	if err != nil {
-		return fmt.Errorf("failed to marshal options to JSON: %w", err)
+// SetBooleanOption owns one desired preference key. Newer center/story keys and
+// unknown options remain in the same authoritative JSON object.
+func SetBooleanOption(ctx context.Context, database *sql.DB, charID int32, key string, enabled bool, expectedRevision int64) (*CharacterOptions, error) {
+	if key != "showNetworkStats" && key != "allowTrainerRebattles" {
+		return nil, fmt.Errorf("unsupported preference key %q", key)
 	}
-
-	query := `UPDATE character_data SET options = $1 WHERE id = $2`
-	_, err = db.GlobalWorldDB.DB.ExecContext(ctx, query, string(jsonBytes), charID)
+	var snapshot *CharacterOptions
+	err := db.Transaction(ctx, database, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, int64(charID)); err != nil {
+			return err
+		}
+		// Use the same strict reader as entry/current preference reads. The shared
+		// transaction wrapper implements ContextDBTX and preserves its own deadline.
+		opts, err := LoadOptionsFrom(ctx, tx.(db.ContextDBTX), charID)
+		if err != nil {
+			return err
+		}
+		if expectedRevision < 0 || opts.PreferenceRevision != expectedRevision || expectedRevision >= 9007199254740990 {
+			return fmt.Errorf("preference revision changed; read current preferences")
+		}
+		_, err = tx.Exec(`UPDATE character_data SET options=COALESCE(options,'{}'::jsonb)||jsonb_build_object($2::text,$3::boolean,'preferenceRevision',$4::bigint) WHERE id=$1`, charID, key, enabled, expectedRevision+1)
+		if err != nil {
+			return err
+		}
+		opts.PreferenceRevision = expectedRevision + 1
+		if key == "showNetworkStats" {
+			opts.ShowNetworkStats = enabled
+		} else {
+			opts.AllowTrainerRebattles = enabled
+		}
+		snapshot = opts
+		return nil
+	})
 	if err != nil {
-		return fmt.Errorf("failed to save options for character %d: %w", charID, err)
+		return nil, err
 	}
-
-	return nil
+	// Never return a pre-commit snapshot when the owning transaction fails.
+	return snapshot, nil
 }

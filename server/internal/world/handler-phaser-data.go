@@ -1,20 +1,20 @@
 package world
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log"
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
+	"capturequest/internal/protocol"
 	"capturequest/internal/session"
 )
 
 // --- Request types ---
-
-type PhaserDialogueRequest struct {
-	TextConstant string `json:"textConstant"` // e.g. "TEXT_PALLETTOWN_FISHER"
-}
 
 type PhaserWildEncountersRequest struct {
 	MapID int `json:"mapId"`
@@ -25,43 +25,13 @@ type PhaserTrainerDataRequest struct {
 	TrainerPartyIndex int    `json:"trainerPartyIndex"` // party index within the class
 }
 
-type PhaserPokemonDataRequest struct {
-	PokemonID int `json:"pokemonId"`
-}
-
-type PhaserMoveDataRequest struct {
-	MoveID int `json:"moveId"`
-}
-
-type PhaserMapScriptsRequest struct {
-	MapName string `json:"mapName"` // CamelCase map name e.g. "PalletTown"
-}
-
-type PhaserLearnsetRequest struct {
-	PokemonID int `json:"pokemonId"`
-}
-
-type PhaserItemDataRequest struct {
-	ItemID int `json:"itemId"`
-}
-
 type PhaserHiddenObjectsRequest struct {
-	MapID int `json:"mapId"`
-}
-
-type PhaserMapMusicRequest struct {
 	MapID int `json:"mapId"`
 }
 
 // --- Response types ---
 
-type PhaserDialogueEntry struct {
-	Label      string  `json:"label"`
-	SourceFile string  `json:"sourceFile"`
-	Dialogue   string  `json:"dialogue"`
-	IsTrainer  int     `json:"isTrainer"`
-	MapName    *string `json:"mapName"`
-}
+type PhaserDialogueEntry = protocol.PhaserDialogueEntry
 
 type PhaserWildEncounter struct {
 	ID            int    `json:"id"`
@@ -111,101 +81,6 @@ type PhaserTrainerDataResponse struct {
 	Success bool                        `json:"success"`
 }
 
-type PhaserPokemonFull struct {
-	ID               int     `json:"id"`
-	Name             string  `json:"name"`
-	HP               int     `json:"hp"`
-	Atk              int     `json:"atk"`
-	Def              int     `json:"def"`
-	Spd              int     `json:"spd"`
-	Spc              int     `json:"spc"`
-	Type1            string  `json:"type1"`
-	Type2            *string `json:"type2"`
-	CatchRate        int     `json:"catchRate"`
-	BaseExp          int     `json:"baseExp"`
-	DefaultMove1     *string `json:"defaultMove1Id"`
-	DefaultMove2     *string `json:"defaultMove2Id"`
-	DefaultMove3     *string `json:"defaultMove3Id"`
-	DefaultMove4     *string `json:"defaultMove4Id"`
-	BaseCry          *int    `json:"baseCry"`
-	CryPitch         *int    `json:"cryPitch"`
-	CryLength        *int    `json:"cryLength"`
-	PokedexType      *string `json:"pokedexType"`
-	Height           *string `json:"height"`
-	Weight           *int    `json:"weight"`
-	PokedexText      *string `json:"pokedexText"`
-	EvolveLevel      *int    `json:"evolveLevel"`
-	EvolvePokemon    *string `json:"evolvePokemon"`
-	EvolvesFromTrade *int    `json:"evolvesFromTrade"`
-	IconImage        *string `json:"iconImage"`
-	PaletteType      *string `json:"paletteType"`
-}
-
-type PhaserMoveFull struct {
-	ID              int     `json:"id"`
-	Name            string  `json:"name"`
-	ShortName       string  `json:"shortName"`
-	Effect          *string `json:"effect"`
-	Power           *int    `json:"power"`
-	Type            *string `json:"type"`
-	Accuracy        *int    `json:"accuracy"`
-	PP              *int    `json:"pp"`
-	BattleAnimation *string `json:"battleAnimation"`
-	BattleSound     *string `json:"battleSound"`
-	IsHM            int     `json:"isHm"`
-	FieldMoveEffect *int    `json:"fieldMoveEffect"`
-}
-
-type PhaserItemFull struct {
-	ID            int    `json:"id"`
-	Name          string `json:"name"`
-	ShortName     string `json:"shortName"`
-	Price         *int   `json:"price"`
-	IsUsable      int    `json:"isUsable"`
-	UsesPartyMenu int    `json:"usesPartyMenu"`
-	VendingPrice  *int   `json:"vendingPrice"`
-	MoveID        *int   `json:"moveId"`
-	IsGuardDrink  int    `json:"isGuardDrink"`
-	IsKeyItem     int    `json:"isKeyItem"`
-}
-
-type PhaserLearnsetEntry struct {
-	Level    int    `json:"level"`
-	MoveName string `json:"moveName"`
-	MoveID   *int   `json:"moveId"`
-}
-
-type PhaserTMHMEntry struct {
-	TMHMName string `json:"tmHmName"`
-	MoveName string `json:"moveName"`
-	MoveID   *int   `json:"moveId"`
-	IsHM     int    `json:"isHm"`
-}
-
-type PhaserMapScript struct {
-	ScriptIndex    int     `json:"scriptIndex"`
-	ScriptLabel    string  `json:"scriptLabel"`
-	ScriptConstant string  `json:"scriptConstant"`
-	RawASM         *string `json:"rawAsm"`
-}
-
-type PhaserEventFlag struct {
-	FlagName     string  `json:"flagName"`
-	Operation    string  `json:"operation"`
-	ContextLabel *string `json:"contextLabel"`
-}
-
-type PhaserCoordinateTrigger struct {
-	Label string `json:"label"`
-	X     int    `json:"x"`
-	Y     int    `json:"y"`
-}
-
-type PhaserNPCMovement struct {
-	Label     string `json:"label"`
-	Movements string `json:"movements"` // JSON array string
-}
-
 type PhaserHiddenItem struct {
 	ID          int    `json:"id"`
 	MapConstant string `json:"mapConstant"`
@@ -227,46 +102,44 @@ type PhaserHiddenObject struct {
 
 // HandlePhaserDialogueRequest resolves a text constant to dialogue text
 func HandlePhaserDialogueRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	var req PhaserDialogueRequest
-	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("[Phaser] Invalid DialogueRequest: %v", err)
-		return false
-	}
-
+	var req protocol.PhaserDialogueRequest
+	err := json.Unmarshal(payload, &req)
 	var charID int64
 	if ses.HasValidClient() {
 		charID = int64(ses.Client.CharData().ID)
 	}
-	var efm *EventFlagManager
-	if wh != nil {
-		efm = wh.EventFlags
+	identity := protocol.PhaserDialogueIdentity{RequestID: req.RequestID, CharacterID: charID, TextConstant: req.TextConstant}
+	reject := func(message string) {
+		ses.SendStreamJSON(protocol.PhaserDialogueError{PhaserDialogueIdentity: identity, Error: message}, opcodes.PhaserDialogueResponse)
 	}
-	entries, err := resolvePhaserDialogueEntries(req.TextConstant, charID, efm)
-	if err != nil {
-		log.Printf("[Phaser] Error querying dialogue for %s: %v", req.TextConstant, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.PhaserDialogueResponse)
+	if err != nil || req.TextConstant == "" {
+		reject("Invalid dialogue request")
 		return false
 	}
-
-	res := map[string]interface{}{
-		"success":         true,
-		"textConstant":    req.TextConstant,
-		"dialogueEntries": StructToMap(entries),
+	if wh == nil {
+		reject("Dialogue unavailable")
+		return false
 	}
-
-	// Check for branching dialogue (YES/NO choices) with event flag gating.
-	if bd := branchingDialogueForResponse(req.TextConstant, charID, wh); bd != nil {
-		res["hasBranching"] = true
-		res["branchingPrompt"] = bd.PromptText
+	result, err := readPhaserDialogue(ses.CommandContext(), wh.database, req.TextConstant, charID, wh.Cutscenes)
+	if err != nil {
+		log.Printf("[Phaser] Error querying dialogue for %s: %v", req.TextConstant, err)
+		reject("Dialogue unavailable")
+		return false
 	}
-
-	ses.SendStreamJSON(res, opcodes.PhaserDialogueResponse)
-	log.Printf("[Phaser] Sent %d dialogue entries for %s", len(entries), req.TextConstant)
+	if result.entries == nil {
+		result.entries = []PhaserDialogueEntry{}
+	}
+	response := protocol.PhaserDialogueResponse{PhaserDialogueIdentity: identity, Success: true, DialogueEntries: result.entries}
+	if result.branch != nil {
+		response.HasBranching = true
+		response.BranchingPrompt = &result.branch.PromptText
+	}
+	ses.SendStreamJSON(response, opcodes.PhaserDialogueResponse)
 	return false
 }
 
-func resolvePhaserDialogueEntries(textConstant string, charID int64, efm *EventFlagManager) ([]PhaserDialogueEntry, error) {
-	rows, err := db.GlobalWorldDB.DB.Query(`
+func resolvePhaserDialogueEntries(ctx context.Context, database db.ContextDBTX, textConstant string, charID int64, efm *EventFlagManager) ([]PhaserDialogueEntry, error) {
+	rows, err := database.QueryContext(ctx, `
 		SELECT dt.label, dt.source_file, dt.dialogue, tp.is_trainer, tp.map_name
 		FROM phaser_text_pointers tp
 		LEFT JOIN phaser_dialogue_text dt ON dt.label = tp.dialogue_label
@@ -281,8 +154,7 @@ func resolvePhaserDialogueEntries(textConstant string, charID int64, efm *EventF
 		var label, sourceFile, dialogue, mapName sql.NullString
 		var isTrainer sql.NullInt64
 		if err := rows.Scan(&label, &sourceFile, &dialogue, &isTrainer, &mapName); err != nil {
-			log.Printf("[Phaser] Error scanning dialogue: %v", err)
-			continue
+			return nil, fmt.Errorf("dialogue %s scan: %w", textConstant, err)
 		}
 		if !label.Valid || !sourceFile.Valid || !dialogue.Valid {
 			continue
@@ -303,12 +175,22 @@ func resolvePhaserDialogueEntries(textConstant string, charID int64, efm *EventF
 		return nil, err
 	}
 
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
 	if len(entries) == 0 {
-		entries = resolveScriptDialogueFallbackEntries(textConstant, charID, efm)
+		entries, err = resolveInGameTradeDialogueEntries(ctx, database, textConstant, charID)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if charID > 0 && efm != nil {
-		if override := checkConditionalDialogue(textConstant, charID, efm); override != nil {
+		override, err := checkConditionalDialogue(ctx, database, textConstant, charID, efm)
+		if err != nil {
+			return nil, err
+		}
+		if override != nil {
 			entries = []PhaserDialogueEntry{{
 				Label:    override.label,
 				Dialogue: override.dialogue,
@@ -318,23 +200,44 @@ func resolvePhaserDialogueEntries(textConstant string, charID int64, efm *EventF
 	return entries, nil
 }
 
-func branchingDialogueForResponse(textConstant string, charID int64, wh *WorldHandler) *BranchingDialogue {
-	if bd := checkInGameTradeBranchingDialogue(textConstant, charID); bd != nil {
-		return bd
-	}
+type phaserDialogueRead struct {
+	entries []PhaserDialogueEntry
+	branch  *BranchingDialogue
+}
 
-	var (
-		cutscenes *CutsceneManager
-		efm       *EventFlagManager
-	)
-	if wh != nil {
-		cutscenes = wh.Cutscenes
-		efm = wh.EventFlags
+// Text, conditions, trade completion and prompt eligibility must describe one
+// durable publication; session flag caches may lag committed gameplay effects.
+func readPhaserDialogue(ctx context.Context, database *sql.DB, textConstant string, charID int64, cutscenes *CutsceneManager) (phaserDialogueRead, error) {
+	return db.ReadSnapshot(ctx, database, func(ctx context.Context, q db.ReadDBTX) (phaserDialogueRead, error) {
+		var flags *EventFlagManager
+		var err error
+		if charID > 0 {
+			flags, err = eventFlagSnapshotIn(q, charID)
+			if err != nil {
+				return phaserDialogueRead{}, err
+			}
+		}
+		entries, err := resolvePhaserDialogueEntries(ctx, q, textConstant, charID, flags)
+		if err != nil {
+			return phaserDialogueRead{}, err
+		}
+		branch, err := branchingDialogueForResponse(ctx, q, textConstant, charID, flags, cutscenes)
+		if err != nil {
+			return phaserDialogueRead{}, err
+		}
+		return phaserDialogueRead{entries: entries, branch: branch}, nil
+	})
+}
+
+func branchingDialogueForResponse(ctx context.Context, database db.ContextDBTX, textConstant string, charID int64, flags *EventFlagManager, cutscenes *CutsceneManager) (*BranchingDialogue, error) {
+	bd, err := checkInGameTradeBranchingDialogue(ctx, database, textConstant, charID)
+	if err != nil || bd != nil {
+		return bd, err
 	}
 	if cutscenes != nil && cutscenes.HasClickCutsceneForTriggerLabel(textConstant) {
-		return nil
+		return nil, nil
 	}
-	return CheckForBranchingDialogueWithFlags(textConstant, charID, efm)
+	return checkBranchingDialogueWithFlags(ctx, database, textConstant, charID, flags)
 }
 
 // HandlePhaserWildEncountersRequest returns wild encounters + slot probabilities for a map
@@ -461,167 +364,99 @@ func HandlePhaserTrainerDataRequest(ses *session.Session, payload []byte, wh *Wo
 
 // HandlePhaserPokemonDataRequest returns full Pokémon data by ID
 func HandlePhaserPokemonDataRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	var req PhaserPokemonDataRequest
+	var req protocol.PhaserPokemonDataRequest
 	if err := json.Unmarshal(payload, &req); err != nil {
 		log.Printf("[Phaser] Invalid PokemonDataRequest: %v", err)
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: "invalid pokemon data request"}, opcodes.PhaserPokemonDataResponse)
 		return false
 	}
 
-	var p PhaserPokemonFull
-	err := db.GlobalWorldDB.DB.QueryRow(`
-		SELECT id, name, hp, atk, def, spd, spc, type_1, type_2, catch_rate, base_exp,
-			default_move_1_id, default_move_2_id, default_move_3_id, default_move_4_id,
-			base_cry, cry_pitch, cry_length, pokedex_type, height, weight, pokedex_text,
-			evolve_level, evolve_pokemon, evolves_from_trade, icon_image, palette_type
-		FROM phaser_pokemon WHERE id = $1`, req.PokemonID).Scan(
-		&p.ID, &p.Name, &p.HP, &p.Atk, &p.Def, &p.Spd, &p.Spc, &p.Type1, &p.Type2, &p.CatchRate, &p.BaseExp,
-		&p.DefaultMove1, &p.DefaultMove2, &p.DefaultMove3, &p.DefaultMove4,
-		&p.BaseCry, &p.CryPitch, &p.CryLength, &p.PokedexType, &p.Height, &p.Weight, &p.PokedexText,
-		&p.EvolveLevel, &p.EvolvePokemon, &p.EvolvesFromTrade, &p.IconImage, &p.PaletteType)
+	p, err := wh.Content.Pokemon(ses.CommandContext(), req.PokemonID)
 	if err != nil {
-		log.Printf("[Phaser] Pokémon not found: %d: %v", req.PokemonID, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "pokemon not found"}, opcodes.PhaserPokemonDataResponse)
+		log.Printf("[Phaser] Pokémon query failed: %d: %v", req.PokemonID, err)
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: contentQueryError("pokemon", err)}, opcodes.PhaserPokemonDataResponse)
 		return false
 	}
 
-	res := StructToMap(p).(map[string]interface{})
-	res["success"] = true
-	ses.SendStreamJSON(res, opcodes.PhaserPokemonDataResponse)
+	ses.SendStreamJSON(protocol.PhaserPokemonDataResponse{PhaserPokemonFull: p, Success: true}, opcodes.PhaserPokemonDataResponse)
 	log.Printf("[Phaser] Sent Pokémon data for #%d %s", p.ID, p.Name)
 	return false
 }
 
 // HandlePhaserMoveDataRequest returns move data by ID
 func HandlePhaserMoveDataRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	var req PhaserMoveDataRequest
+	var req protocol.PhaserMoveDataRequest
 	if err := json.Unmarshal(payload, &req); err != nil {
 		log.Printf("[Phaser] Invalid MoveDataRequest: %v", err)
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: "invalid move data request"}, opcodes.PhaserMoveDataResponse)
 		return false
 	}
 
-	var m PhaserMoveFull
-	err := db.GlobalWorldDB.DB.QueryRow(`
-		SELECT id, name, short_name, effect, power, type, accuracy, pp, battle_animation, battle_sound, is_hm, field_move_effect
-		FROM phaser_moves WHERE id = $1`, req.MoveID).Scan(
-		&m.ID, &m.Name, &m.ShortName, &m.Effect, &m.Power, &m.Type, &m.Accuracy, &m.PP,
-		&m.BattleAnimation, &m.BattleSound, &m.IsHM, &m.FieldMoveEffect)
+	m, err := wh.Content.Move(ses.CommandContext(), req.MoveID)
 	if err != nil {
-		log.Printf("[Phaser] Move not found: %d: %v", req.MoveID, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "move not found"}, opcodes.PhaserMoveDataResponse)
+		log.Printf("[Phaser] Move query failed: %d: %v", req.MoveID, err)
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: contentQueryError("move", err)}, opcodes.PhaserMoveDataResponse)
 		return false
 	}
 
-	res := StructToMap(m).(map[string]interface{})
-	res["success"] = true
-	ses.SendStreamJSON(res, opcodes.PhaserMoveDataResponse)
+	ses.SendStreamJSON(protocol.PhaserMoveDataResponse{PhaserMoveFull: m, Success: true}, opcodes.PhaserMoveDataResponse)
 	log.Printf("[Phaser] Sent move data for #%d %s", m.ID, m.Name)
 	return false
 }
 
 // HandlePhaserMapScriptsRequest returns map scripts, event flags, coordinate triggers, and NPC movements for a map
 func HandlePhaserMapScriptsRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	var req PhaserMapScriptsRequest
+	var req protocol.PhaserMapScriptsRequest
 	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("[Phaser] Invalid MapScriptsRequest: %v", err)
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: "invalid map scripts request"}, opcodes.PhaserMapScriptsResponse)
 		return false
 	}
-
-	// Map scripts
-	scriptRows, err := db.GlobalWorldDB.DB.Query(`
-		SELECT script_index, script_label, script_constant, raw_asm
-		FROM phaser_map_scripts WHERE map_name = $1 ORDER BY script_index`, req.MapName)
+	res, err := wh.Content.MapScripts(ses.CommandContext(), req.MapName)
 	if err != nil {
-		log.Printf("[Phaser] Error querying map scripts for %s: %v", req.MapName, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.PhaserMapScriptsResponse)
+		log.Printf("[Phaser] Map script query failed for %s: %v", req.MapName, err)
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: "failed to load map scripts"}, opcodes.PhaserMapScriptsResponse)
 		return false
 	}
-	defer scriptRows.Close()
-
-	var scripts []PhaserMapScript
-	for scriptRows.Next() {
-		var s PhaserMapScript
-		if err := scriptRows.Scan(&s.ScriptIndex, &s.ScriptLabel, &s.ScriptConstant, &s.RawASM); err != nil {
-			continue
-		}
-		scripts = append(scripts, s)
+	if err := ses.SendStreamJSON(res, opcodes.PhaserMapScriptsResponse); err != nil {
+		return false
 	}
-
-	// Event flags
-	flagRows, err := db.GlobalWorldDB.DB.Query(`
-		SELECT flag_name, operation, context_label
-		FROM phaser_event_flags WHERE map_name = $1`, req.MapName)
-	if err != nil {
-		log.Printf("[Phaser] Error querying event flags for %s: %v", req.MapName, err)
-	}
-	var flags []PhaserEventFlag
-	if flagRows != nil {
-		defer flagRows.Close()
-		for flagRows.Next() {
-			var f PhaserEventFlag
-			if err := flagRows.Scan(&f.FlagName, &f.Operation, &f.ContextLabel); err != nil {
-				continue
-			}
-			flags = append(flags, f)
-		}
-	}
-
-	// Coordinate triggers
-	triggerRows, err := db.GlobalWorldDB.DB.Query(`
-		SELECT label, x, y
-		FROM phaser_coordinate_triggers WHERE map_name = $1`, req.MapName)
-	if err != nil {
-		log.Printf("[Phaser] Error querying coordinate triggers for %s: %v", req.MapName, err)
-	}
-	var triggers []PhaserCoordinateTrigger
-	if triggerRows != nil {
-		defer triggerRows.Close()
-		for triggerRows.Next() {
-			var t PhaserCoordinateTrigger
-			if err := triggerRows.Scan(&t.Label, &t.X, &t.Y); err != nil {
-				continue
-			}
-			triggers = append(triggers, t)
-		}
-	}
-
-	// NPC movement data
-	movementRows, err := db.GlobalWorldDB.DB.Query(`
-		SELECT label, movements
-		FROM phaser_npc_movement_data WHERE map_name = $1`, req.MapName)
-	if err != nil {
-		log.Printf("[Phaser] Error querying NPC movements for %s: %v", req.MapName, err)
-	}
-	var movements []PhaserNPCMovement
-	if movementRows != nil {
-		defer movementRows.Close()
-		for movementRows.Next() {
-			var m PhaserNPCMovement
-			if err := movementRows.Scan(&m.Label, &m.Movements); err != nil {
-				continue
-			}
-			movements = append(movements, m)
-		}
-	}
-
-	res := map[string]interface{}{
-		"success":            true,
-		"mapName":            req.MapName,
-		"scripts":            StructToMap(scripts),
-		"eventFlags":         StructToMap(flags),
-		"coordinateTriggers": StructToMap(triggers),
-		"npcMovements":       StructToMap(movements),
-	}
-	ses.SendStreamJSON(res, opcodes.PhaserMapScriptsResponse)
-	log.Printf("[Phaser] Sent map scripts for %s (%d scripts, %d flags, %d triggers, %d movements)",
-		req.MapName, len(scripts), len(flags), len(triggers), len(movements))
 
 	if ses.HasValidClient() && wh.Cutscenes != nil && wh.EventFlags != nil {
+		mapName, err := wh.nativeScriptMap(ses)
+		if err != nil {
+			log.Printf("[Cutscene] Resolve map-ready location: %v", err)
+			return false
+		}
+		if mapName != req.MapName {
+			return false
+		}
 		charID := int64(ses.Client.CharData().ID)
+		if battle := getBattle(charID); battle != nil && (!battle.IsOver() || battle.PendingMoveLearn != nil) {
+			return false
+		}
+		if wh.TrainerEncounter != nil {
+			resumed, err := wh.TrainerEncounter.resumePendingEncounter(ses, wh)
+			if err != nil {
+				log.Printf("[TrainerEncounter] Resume failed for %d: %v", charID, err)
+				return false
+			}
+			if resumed {
+				return false
+			}
+		}
+		resumed, err := resumePendingCutscene(ses, wh)
+		if err != nil {
+			log.Printf("[Cutscene] Resume character %d: %v", charID, err)
+			return false
+		}
+		if resumed {
+			return false
+		}
 		playerFacing := ""
 		if wh.PlayerMovement != nil {
 			playerFacing, _ = wh.PlayerMovement.GetDirection(int(charID))
 		}
-		if cs := wh.Cutscenes.FindEligibleMapScriptCutscene(req.MapName, charID, wh.EventFlags, playerFacing); cs != nil {
+		if cs := wh.Cutscenes.FindEligibleMapScriptCutscene(mapName, charID, wh.EventFlags, playerFacing); cs != nil {
 			SendCutsceneToPlayer(ses, cs, wh)
 		}
 	}
@@ -630,85 +465,38 @@ func HandlePhaserMapScriptsRequest(ses *session.Session, payload []byte, wh *Wor
 
 // HandlePhaserLearnsetRequest returns learnset + TM/HM compatibility for a Pokémon
 func HandlePhaserLearnsetRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	var req PhaserLearnsetRequest
+	var req protocol.PhaserLearnsetRequest
 	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("[Phaser] Invalid LearnsetRequest: %v", err)
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: "invalid learnset request"}, opcodes.PhaserLearnsetResponse)
 		return false
 	}
-
-	// Level-up learnset
-	learnRows, err := db.GlobalWorldDB.DB.Query(`
-		SELECT level, move_name, move_id
-		FROM phaser_pokemon_learnset WHERE pokemon_id = $1 ORDER BY level`, req.PokemonID)
+	res, err := wh.Content.Learnset(ses.CommandContext(), req.PokemonID)
 	if err != nil {
-		log.Printf("[Phaser] Error querying learnset for pokemon %d: %v", req.PokemonID, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.PhaserLearnsetResponse)
+		log.Printf("[Phaser] Learnset query failed for pokemon %d: %v", req.PokemonID, err)
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: "failed to load learnset"}, opcodes.PhaserLearnsetResponse)
 		return false
-	}
-	defer learnRows.Close()
-
-	var learnset []PhaserLearnsetEntry
-	for learnRows.Next() {
-		var e PhaserLearnsetEntry
-		if err := learnRows.Scan(&e.Level, &e.MoveName, &e.MoveID); err != nil {
-			continue
-		}
-		learnset = append(learnset, e)
-	}
-
-	// TM/HM compatibility
-	tmhmRows, err := db.GlobalWorldDB.DB.Query(`
-		SELECT tm_hm_name, move_name, move_id, is_hm
-		FROM phaser_pokemon_tmhm WHERE pokemon_id = $1 ORDER BY tm_hm_name`, req.PokemonID)
-	if err != nil {
-		log.Printf("[Phaser] Error querying TM/HM for pokemon %d: %v", req.PokemonID, err)
-	}
-	var tmhm []PhaserTMHMEntry
-	if tmhmRows != nil {
-		defer tmhmRows.Close()
-		for tmhmRows.Next() {
-			var e PhaserTMHMEntry
-			if err := tmhmRows.Scan(&e.TMHMName, &e.MoveName, &e.MoveID, &e.IsHM); err != nil {
-				continue
-			}
-			tmhm = append(tmhm, e)
-		}
-	}
-
-	res := map[string]interface{}{
-		"success":   true,
-		"pokemonId": req.PokemonID,
-		"learnset":  StructToMap(learnset),
-		"tmhm":      StructToMap(tmhm),
 	}
 	ses.SendStreamJSON(res, opcodes.PhaserLearnsetResponse)
-	log.Printf("[Phaser] Sent learnset for pokemon %d (%d level-up, %d TM/HM)", req.PokemonID, len(learnset), len(tmhm))
 	return false
 }
 
 // HandlePhaserItemDataRequest returns item data by ID
 func HandlePhaserItemDataRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	var req PhaserItemDataRequest
+	var req protocol.PhaserItemDataRequest
 	if err := json.Unmarshal(payload, &req); err != nil {
 		log.Printf("[Phaser] Invalid ItemDataRequest: %v", err)
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: "invalid item data request"}, opcodes.PhaserItemDataResponse)
 		return false
 	}
 
-	var item PhaserItemFull
-	err := db.GlobalWorldDB.DB.QueryRow(`
-		SELECT id, name, short_name, price, is_usable, uses_party_menu, vending_price, move_id, is_guard_drink, is_key_item
-		FROM phaser_items WHERE id = $1`, req.ItemID).Scan(
-		&item.ID, &item.Name, &item.ShortName, &item.Price, &item.IsUsable, &item.UsesPartyMenu,
-		&item.VendingPrice, &item.MoveID, &item.IsGuardDrink, &item.IsKeyItem)
+	item, err := wh.Content.Item(ses.CommandContext(), req.ItemID)
 	if err != nil {
-		log.Printf("[Phaser] Item not found: %d: %v", req.ItemID, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "item not found"}, opcodes.PhaserItemDataResponse)
+		log.Printf("[Phaser] Item query failed: %d: %v", req.ItemID, err)
+		ses.SendStreamJSON(protocol.ErrorResponse{Error: contentQueryError("item", err)}, opcodes.PhaserItemDataResponse)
 		return false
 	}
 
-	res := StructToMap(item).(map[string]interface{})
-	res["success"] = true
-	ses.SendStreamJSON(res, opcodes.PhaserItemDataResponse)
+	ses.SendStreamJSON(protocol.PhaserItemDataResponse{PhaserItemFull: item, Success: true}, opcodes.PhaserItemDataResponse)
 	log.Printf("[Phaser] Sent item data for #%d %s", item.ID, item.Name)
 	return false
 }
@@ -790,29 +578,16 @@ func HandlePhaserHiddenObjectsRequest(ses *session.Session, payload []byte, wh *
 	return false
 }
 
-// HandlePhaserMapMusicRequest returns the music constant for a map
+// This opcode remains reserved for stale clients. Runtime music comes from the
+// canonical generated browser manifest; never restore a second database path.
 func HandlePhaserMapMusicRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	var req PhaserMapMusicRequest
-	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("[Phaser] Invalid MapMusicRequest: %v", err)
-		return false
-	}
-
-	var musicConstant string
-	err := db.GlobalWorldDB.DB.QueryRow(`
-		SELECT music_constant FROM phaser_map_music WHERE map_id = $1`, req.MapID).Scan(&musicConstant)
-	if err != nil {
-		log.Printf("[Phaser] No music found for map %d: %v", req.MapID, err)
-		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "no music for map"}, opcodes.PhaserMapMusicResponse)
-		return false
-	}
-
-	res := map[string]interface{}{
-		"success":       true,
-		"mapId":         req.MapID,
-		"musicConstant": musicConstant,
-	}
-	ses.SendStreamJSON(res, opcodes.PhaserMapMusicResponse)
-	log.Printf("[Phaser] Sent music for map %d: %s", req.MapID, musicConstant)
+	ses.SendStreamJSON(protocol.ErrorResponse{Error: "Map music query is no longer supported; reload the client."}, opcodes.PhaserMapMusicResponse)
 	return false
+}
+
+func contentQueryError(kind string, err error) string {
+	if errors.Is(err, sql.ErrNoRows) {
+		return kind + " not found"
+	}
+	return "failed to load " + kind + " data"
 }

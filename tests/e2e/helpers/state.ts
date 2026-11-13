@@ -56,6 +56,7 @@ export async function waitForMap(page: Page, map: MapMatcher) {
         { timeout: 30_000 },
       )
       .toBe(map);
+    await waitForNoMapLoading(page);
     return;
   }
 
@@ -69,6 +70,7 @@ export async function waitForMap(page: Page, map: MapMatcher) {
         { timeout: 30_000 },
       )
       .toBe(map);
+    await waitForNoMapLoading(page);
     return;
   }
 
@@ -81,6 +83,7 @@ export async function waitForMap(page: Page, map: MapMatcher) {
       { timeout: 30_000 },
     )
     .toMatch(map);
+  await waitForNoMapLoading(page);
 }
 
 export async function waitForPlayerTile(

@@ -1,22 +1,44 @@
 package world
 
 import (
-	"context"
-	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
-	db_character "capturequest/internal/db/character"
+	"capturequest/internal/itemuse"
+	"capturequest/internal/logutil"
 	"capturequest/internal/session"
 )
 
+type StateFieldResponse struct {
+	Success     bool   `json:"success" tstype:"true"`
+	RequestID   string `json:"requestId"`
+	CharacterID int64  `json:"characterId"`
+	MoveName    string `json:"moveName"`
+	MapID       int    `json:"mapId"`
+	Message     string `json:"message"`
+}
+type CutFieldResponse struct {
+	StateFieldResponse `tstype:",extends"`
+	CutScope           string `json:"cutScope"`
+	TargetX            int    `json:"targetX"`
+	TargetY            int    `json:"targetY"`
+}
 type FieldMoveUseRequestPayload struct {
-	MoveName  string `json:"moveName"`
-	TargetX   *int   `json:"targetX,omitempty"`
-	TargetY   *int   `json:"targetY,omitempty"`
-	MapID     *int   `json:"mapId,omitempty"`
-	Direction string `json:"direction,omitempty"`
+	DestinationMapID *int   `json:"destinationMapId,omitempty"`
+	CutScope         string `json:"cutScope,omitempty"`
+	RequestID        string `json:"requestId,omitempty"`
+	CharacterID      int64  `json:"characterId,omitempty"`
+	CommandRevision  *int64 `json:"commandRevision,omitempty"`
+	FromX            *int   `json:"fromX,omitempty"`
+	FromY            *int   `json:"fromY,omitempty"`
+	MoveName         string `json:"moveName"`
+	TargetX          *int   `json:"targetX,omitempty"`
+	TargetY          *int   `json:"targetY,omitempty"`
+	MapID            *int   `json:"mapId,omitempty"`
+	Direction        string `json:"direction,omitempty"`
 }
 
 type FieldMoveUseResponsePayload struct {
@@ -45,15 +67,23 @@ func HandleFieldMoveUse(ses *session.Session, payload []byte, wh *WorldHandler) 
 
 	switch normalizeFieldMoveName(req.MoveName) {
 	case "CUT":
+		if err := decodePlayerMovement(payload, &req); err != nil {
+			sendInventoryCommandError(ses, req.RequestID, opcodes.FieldMoveUseResponse, "Invalid CUT command.")
+			return false
+		}
 		return handleCutFieldMove(ses, req, wh)
 	case "STRENGTH", "FLASH":
+		if err := decodePlayerMovement(payload, &req); err != nil {
+			sendInventoryCommandError(ses, req.RequestID, opcodes.FieldMoveUseResponse, "Invalid state field command.")
+			return false
+		}
 		return handleStateFieldMove(ses, req, wh)
-	case "DIG":
-		return handleEscapeFieldMove(ses, req, wh)
-	case "TELEPORT":
-		return handleTeleportFieldMove(ses, req, wh)
-	case "FLY":
-		return handleFlyFieldMove(ses, req, wh)
+	case "DIG", "TELEPORT", "FLY":
+		if err := decodePlayerMovement(payload, &req); err != nil {
+			sendInventoryCommandError(ses, req.RequestID, opcodes.FieldMoveUseResponse, "Invalid field travel command.")
+			return false
+		}
+		return handleTravelFieldMove(ses, req, wh)
 	default:
 		sendFieldMoveUseError(ses, "That move can't be used here.")
 		return false
@@ -61,238 +91,216 @@ func HandleFieldMoveUse(ses *session.Session, payload []byte, wh *WorldHandler) 
 }
 
 func handleCutFieldMove(ses *session.Session, req FieldMoveUseRequestPayload, wh *WorldHandler) bool {
-	if wh == nil || wh.CutTiles == nil {
-		sendFieldMoveUseError(ses, "CUT can't be used here.")
+	reject := func(message string) {
+		sendInventoryCommandError(ses, req.RequestID, opcodes.FieldMoveUseResponse, message)
+	}
+	if wh == nil || wh.database == nil || wh.CutTiles == nil {
+		reject("CUT state unavailable.")
+		return false
+	}
+	charID := int64(ses.Client.CharData().ID)
+	if req.RequestID == "" || len(req.RequestID) > 64 || req.CharacterID != charID || req.CommandRevision == nil || req.MapID == nil || req.FromX == nil || req.FromY == nil || req.TargetX == nil || req.TargetY == nil || !wh.CutTiles.MatchesScope(charID, *req.MapID, req.CutScope) {
+		reject("Invalid or retired CUT command.")
+		return false
+	}
+	var mapID, targetX, targetY int
+	cutScope := req.CutScope
+	var permission FieldMovePermissionResult
+	var replacement TileEdit
+	input, _ := json.Marshal(req)
+	encoded, replay, err := db.ExecuteFieldCommand(ses.CommandContext(), wh.database, charID, "cut", req.RequestID, req.CommandRevision, input, func(tx db.DBTX) ([]byte, error) {
+		prepareErr := func() error {
+			if err := db.LockCharacter(tx, charID); err != nil {
+				return err
+			}
+			if err := requireNoOwnedBattleIn(tx, charID); err != nil {
+				return err
+			}
+			var x, y int
+			if err := tx.QueryRow(`SELECT map_id,x,y FROM character_data WHERE id=$1`, charID).Scan(&mapID, &x, &y); err != nil {
+				return err
+			}
+			mapID = normalizedVisiblePlayerMapID(wh, mapID)
+			if !wh.CutTiles.MatchesScope(charID, mapID, cutScope) || mapID != *req.MapID || x != *req.FromX || y != *req.FromY {
+				return &itemuse.Rejection{Message: "CUT source retired or changed."}
+			}
+			if req.MapID != nil && normalizedVisiblePlayerMapID(wh, *req.MapID) != mapID {
+				return &itemuse.Rejection{Message: "CUT can't be used here."}
+			}
+			var ok bool
+			targetX, targetY, ok = fieldMoveTargetTile(x, y, req)
+			if !ok || abs(targetX-x)+abs(targetY-y) != 1 {
+				return &itemuse.Rejection{Message: "You need to be next to it."}
+			}
+			state, err := baseEventTileStateIn(tx, mapID, targetX, targetY)
+			if err != nil {
+				return fmt.Errorf("CUT map=%d target=(%d,%d): %w", mapID, targetX, targetY, err)
+			}
+			tiles, err := applyEventTileOverridesContext(ses.CommandContext(), tx.(db.ReadDBTX), charID, mapID, []PhaserTile{{X: targetX, Y: targetY, TileImageID: state.TileImageID, CollisionType: state.CollisionType, RawFootTileID: state.RawFootTileID, TalkOverTile: state.TalkOverTile}})
+			if err != nil {
+				return err
+			}
+			if tiles[0].RawFootTileID == nil || *tiles[0].RawFootTileID != cuttableTreeRawFootTileID {
+				return &itemuse.Rejection{Message: "There isn't anything to CUT."}
+			}
+			permission, err = fieldMovePermissionIn(tx, charID, "CUT", func(flag string) (bool, error) { return queryEventFlag(tx, charID, flag) })
+			if err != nil {
+				return err
+			}
+			if !permission.Allowed {
+				return &itemuse.Rejection{Message: permission.Message}
+			}
+			replacement, err = cutTreeReplacementIn(tx, tiles[0].TileImageID)
+			return err
+		}()
+		if prepareErr != nil {
+			return nil, prepareErr
+		}
+		message := "Used CUT!"
+		if permission.KnownByName != "" {
+			message = permission.KnownByName + " used CUT!"
+		}
+		return json.Marshal(CutFieldResponse{StateFieldResponse: StateFieldResponse{Success: true, RequestID: req.RequestID, CharacterID: charID, MoveName: "CUT", MapID: mapID, Message: message}, CutScope: cutScope, TargetX: targetX, TargetY: targetY})
+	})
+	if err != nil {
+		var denied *itemuse.Rejection
+		if errors.As(err, &denied) {
+			reject(denied.Message)
+		} else {
+			logutil.Debugf("[CUT] Prepare character=%d: %v", charID, err)
+			reject("Unable to read CUT state.")
+		}
 		return false
 	}
 
-	charData := ses.Client.CharData()
-	if charData == nil {
+	var reply CutFieldResponse
+	if err := json.Unmarshal(encoded, &reply); err != nil || !reply.Success || reply.CharacterID != charID || reply.RequestID != req.RequestID || reply.CutScope != cutScope || reply.MapID != *req.MapID || reply.TargetX != *req.TargetX || reply.TargetY != *req.TargetY || reply.MoveName != "CUT" || reply.Message == "" {
+		reject("Invalid committed CUT result.")
 		return false
 	}
-	charID := int64(charData.ID)
-
-	mapID := int(charData.MapID)
-	if wh.ActorManager != nil && wh.ActorManager.IsOverworld(mapID) {
-		mapID = UnifiedOverworldMapID
-	}
-	playerX, playerY := int(charData.X), int(charData.Y)
-	if wh.PlayerMovement != nil {
-		if x, y, movementMapID, ok := wh.PlayerMovement.GetPosition(int(charData.ID)); ok {
-			playerX, playerY, mapID = x, y, movementMapID
+	if replay {
+		if !wh.CutTiles.HasCut(charID, reply.MapID, cutScope, reply.TargetX, reply.TargetY) {
+			reject("CUT visit no longer contains this outcome. Refresh the current map.")
+			return false
+		}
+	} else {
+		replacement.X, replacement.Y = targetX, targetY
+		if !wh.CutTiles.MarkCut(charID, mapID, cutScope, replacement) {
+			reject("CUT source retired. Refresh the current map.")
+			return false
 		}
 	}
-
-	targetMapID := mapID
-	if req.MapID != nil {
-		targetMapID = *req.MapID
-	}
-	if wh.ActorManager != nil && wh.ActorManager.IsOverworld(targetMapID) {
-		targetMapID = UnifiedOverworldMapID
-	}
-	if targetMapID != mapID {
-		sendFieldMoveUseError(ses, "CUT can't be used here.")
-		return false
-	}
-
-	targetX, targetY, ok := fieldMoveTargetTile(playerX, playerY, req)
-	if !ok {
-		sendFieldMoveUseError(ses, "CUT can't be used here.")
-		return false
-	}
-	if abs(targetX-playerX)+abs(targetY-playerY) != 1 {
-		sendFieldMoveUseError(ses, "You need to be next to it.")
-		return false
-	}
-
-	state, err := baseEventTileState(targetMapID, targetX, targetY)
-	if err != nil || state.RawFootTileID == nil || *state.RawFootTileID != cuttableTreeRawFootTileID {
-		sendFieldMoveUseError(ses, "There isn't anything to CUT.")
-		return false
-	}
-
-	permission := CanUseFieldMove(charID, "CUT", wh.EventFlags)
-	if !permission.Allowed {
-		sendFieldMoveUseError(ses, permission.Message)
-		return false
-	}
-
-	wh.CutTiles.MarkCut(charID, targetMapID, targetX, targetY)
-
-	replacement := cutTreeReplacementForTileImage(state.TileImageID)
-	tile := TileEdit{
-		X:             targetX,
-		Y:             targetY,
-		TileImageID:   replacement.TileImageID,
-		CollisionType: replacement.CollisionType,
-		RawFootTileID: replacement.RawFootTileID,
-		TalkOverTile:  replacement.TalkOverTile,
-	}
-	message := "Used CUT!"
-	if permission.KnownByName != "" {
-		message = permission.KnownByName + " used CUT!"
-	}
-
-	ses.SendStreamJSON(FieldMoveUseResponsePayload{
-		Success:  true,
-		Message:  message,
-		MoveName: "CUT",
-		MapID:    targetMapID,
-		TargetX:  targetX,
-		TargetY:  targetY,
-		Tile:     &tile,
-	}, opcodes.FieldMoveUseResponse)
+	ses.SendStreamJSON(reply, opcodes.FieldMoveUseResponse)
 	return false
 }
 
 func handleStateFieldMove(ses *session.Session, req FieldMoveUseRequestPayload, wh *WorldHandler) bool {
-	charData := ses.Client.CharData()
-	if charData == nil {
+	reject := func(message string) {
+		sendInventoryCommandError(ses, req.RequestID, opcodes.FieldMoveUseResponse, message)
+	}
+	charID := int64(ses.Client.CharData().ID)
+	if wh == nil || wh.database == nil || req.RequestID == "" || len(req.RequestID) > 64 || req.CharacterID != charID || req.CommandRevision == nil || req.MapID == nil || req.FromX == nil || req.FromY == nil {
+		reject("Invalid state field command.")
 		return false
 	}
+	input, _ := json.Marshal(req)
+	encoded, _, err := db.ExecuteFieldCommand(ses.CommandContext(), wh.database, charID, "field-state", req.RequestID, req.CommandRevision, input, func(tx db.DBTX) ([]byte, error) {
+		if err := requireNoOwnedBattleIn(tx, charID); err != nil {
+			return nil, err
+		}
+		var mapID, x, y int
+		if err := tx.QueryRow(`SELECT map_id,x,y FROM character_data WHERE id=$1`, charID).Scan(&mapID, &x, &y); err != nil {
+			return nil, err
+		}
+		mapID = normalizedVisiblePlayerMapID(wh, mapID)
+		if mapID != *req.MapID || x != *req.FromX || y != *req.FromY {
+			return nil, fmt.Errorf("field move source changed")
+		}
+		result, err := prepareStateFieldMoveIn(tx, charID, mapID, req.MoveName)
+		if err != nil {
+			return nil, err
+		}
+		if !result.Success {
+			return nil, &itemuse.Rejection{Message: result.Message}
+		}
+		return json.Marshal(StateFieldResponse{Success: true, RequestID: req.RequestID, CharacterID: charID, MoveName: result.MoveName, MapID: mapID, Message: result.Message})
+	})
+	if err != nil {
+		var denied *itemuse.Rejection
+		if errors.As(err, &denied) {
+			reject(denied.Message)
+		} else {
+			reject("Field move state changed or could not be read. Recover before trying again.")
+		}
+		return false
+	}
+	var reply StateFieldResponse
+	if err := json.Unmarshal(encoded, &reply); err != nil || !reply.Success || reply.CharacterID != charID || reply.RequestID != req.RequestID || reply.MoveName != normalizeFieldMoveName(req.MoveName) || reply.MapID != *req.MapID || reply.Message == "" {
+		reject("Invalid committed field state result.")
+		return false
+	}
+	ses.SendStreamJSON(reply, opcodes.FieldMoveUseResponse)
+	return false
+}
 
+func handleTravelFieldMove(ses *session.Session, req FieldMoveUseRequestPayload, wh *WorldHandler) bool {
+	reject := func(message string) {
+		sendInventoryCommandError(ses, req.RequestID, opcodes.FieldMoveUseResponse, message)
+	}
+	charID := int64(ses.Client.CharData().ID)
 	moveName := normalizeFieldMoveName(req.MoveName)
-	charID := int64(charData.ID)
-	mapID := int(charData.MapID)
-	if wh != nil && wh.ActorManager != nil && wh.ActorManager.IsOverworld(mapID) {
-		mapID = UnifiedOverworldMapID
+	if wh == nil || wh.database == nil || req.RequestID == "" || len(req.RequestID) > 64 || req.CharacterID != charID || req.CommandRevision == nil || req.MapID == nil || req.FromX == nil || req.FromY == nil {
+		reject("Invalid field travel command.")
+		return false
 	}
-	if wh != nil && wh.PlayerMovement != nil {
-		if _, _, movementMapID, ok := wh.PlayerMovement.GetPosition(int(charData.ID)); ok {
-			mapID = movementMapID
+	if moveName == "FLY" && (req.DestinationMapID == nil || req.TargetX == nil || req.TargetY == nil) {
+		reject("Choose where to FLY.")
+		return false
+	}
+	input, _ := json.Marshal(req)
+	var result fieldTravelResult
+	encoded, replay, err := db.ExecuteFieldCommand(ses.CommandContext(), wh.database, charID, "travel", req.RequestID, req.CommandRevision, input, func(tx db.DBTX) ([]byte, error) {
+		var err error
+		normalize := func(id int) int { return normalizedVisiblePlayerMapID(wh, id) }
+		if moveName == "FLY" {
+			result, err = useFly(ses.CommandContext(), tx, charID, *req.MapID, *req.FromX, *req.FromY, *req.DestinationMapID, *req.TargetX, *req.TargetY, normalize)
+		} else {
+			result, err = useTravelFieldMove(ses.CommandContext(), tx, charID, moveName, *req.MapID, *req.FromX, *req.FromY, func(id int) int { return normalizedVisiblePlayerMapID(wh, id) })
 		}
-	}
-
-	permission := CanUseFieldMove(charID, moveName, eventFlagsForFieldMove(wh))
-	if !permission.Allowed {
-		sendFieldMoveUseError(ses, permission.Message)
-		return false
-	}
-	if err := recordFieldMoveState(charID, mapID, moveName); err != nil {
-		sendFieldMoveUseError(ses, "That move can't be used here.")
-		return false
-	}
-
-	message := permission.MoveName + " is ready."
-	if permission.KnownByName != "" {
-		switch moveName {
-		case "STRENGTH":
-			message = permission.KnownByName + " used STRENGTH. " + permission.KnownByName + " can move boulders."
-		case "FLASH":
-			message = permission.KnownByName + " used FLASH."
+		if err != nil {
+			return nil, err
 		}
-	}
-
-	ses.SendStreamJSON(FieldMoveUseResponsePayload{
-		Success:  true,
-		Message:  message,
-		MoveName: permission.MoveName,
-		MapID:    mapID,
-	}, opcodes.FieldMoveUseResponse)
-	return false
-}
-
-func handleEscapeFieldMove(ses *session.Session, req FieldMoveUseRequestPayload, wh *WorldHandler) bool {
-	charData := ses.Client.CharData()
-	if charData == nil {
-		return false
-	}
-
-	permission := CanUseFieldMove(int64(charData.ID), "DIG", eventFlagsForFieldMove(wh))
-	if !permission.Allowed {
-		sendFieldMoveUseError(ses, permission.Message)
-		return false
-	}
-
-	destMapID, destX, destY, err := escapeRopeDestination(ses, wh)
+		message := "Dug out of the dungeon."
+		if moveName == "TELEPORT" {
+			message = "Teleported to safety."
+		} else if moveName == "FLY" {
+			message = "Flew to destination."
+		}
+		if result.Permission.KnownByName != "" {
+			message = result.Permission.KnownByName + " used " + moveName + "!"
+		}
+		return json.Marshal(StateFieldResponse{Success: true, RequestID: req.RequestID, CharacterID: charID, MoveName: moveName, MapID: result.MapID, Message: message})
+	})
 	if err != nil {
-		sendFieldMoveUseError(ses, err.Error())
+		var denied *itemuse.Rejection
+		if errors.As(err, &denied) {
+			reject(denied.Message)
+		} else {
+			logutil.Debugf("[FieldTravel] character=%d move=%s: %v", charID, moveName, err)
+			reject("Field travel state changed or could not be read. Recover before trying again.")
+		}
 		return false
 	}
-	teleportPlayerTo(ses, wh, destMapID, destX, destY)
-
-	message := "Dug out of the dungeon."
-	if permission.KnownByName != "" {
-		message = permission.KnownByName + " used DIG!"
-	}
-	ses.SendStreamJSON(FieldMoveUseResponsePayload{
-		Success:  true,
-		Message:  message,
-		MoveName: permission.MoveName,
-		MapID:    destMapID,
-		TargetX:  destX,
-		TargetY:  destY,
-	}, opcodes.FieldMoveUseResponse)
-	return false
-}
-
-func handleTeleportFieldMove(ses *session.Session, req FieldMoveUseRequestPayload, wh *WorldHandler) bool {
-	charData := ses.Client.CharData()
-	if charData == nil {
+	var reply StateFieldResponse
+	if err := json.Unmarshal(encoded, &reply); err != nil || !reply.Success || reply.CharacterID != charID || reply.RequestID != req.RequestID || reply.MoveName != moveName || reply.MapID <= 0 || reply.Message == "" {
+		reject("Invalid committed travel result.")
 		return false
 	}
-
-	permission := CanUseFieldMove(int64(charData.ID), "TELEPORT", eventFlagsForFieldMove(wh))
-	if !permission.Allowed {
-		sendFieldMoveUseError(ses, permission.Message)
-		return false
+	if !replay {
+		refreshSafariFlags(ses, wh, charID)
+		publishCommittedPlayerPosition(ses, wh, result.MapID, result.X, result.Y, "DOWN")
 	}
-
-	destMapID, destX, destY, err := characterBindDestination(charData.ID)
-	if err != nil {
-		sendFieldMoveUseError(ses, "TELEPORT can't be used here.")
-		return false
-	}
-	teleportPlayerTo(ses, wh, destMapID, destX, destY)
-
-	message := "Teleported to safety."
-	if permission.KnownByName != "" {
-		message = permission.KnownByName + " used TELEPORT!"
-	}
-	ses.SendStreamJSON(FieldMoveUseResponsePayload{
-		Success:  true,
-		Message:  message,
-		MoveName: permission.MoveName,
-		MapID:    destMapID,
-		TargetX:  destX,
-		TargetY:  destY,
-	}, opcodes.FieldMoveUseResponse)
-	return false
-}
-
-func handleFlyFieldMove(ses *session.Session, req FieldMoveUseRequestPayload, wh *WorldHandler) bool {
-	charData := ses.Client.CharData()
-	if charData == nil {
-		return false
-	}
-
-	permission := CanUseFieldMove(int64(charData.ID), "FLY", eventFlagsForFieldMove(wh))
-	if !permission.Allowed {
-		sendFieldMoveUseError(ses, permission.Message)
-		return false
-	}
-	if req.MapID == nil || req.TargetX == nil || req.TargetY == nil {
-		sendFieldMoveUseError(ses, "Choose where to FLY.")
-		return false
-	}
-
-	destMapID := *req.MapID
-	destX := *req.TargetX
-	destY := *req.TargetY
-	teleportPlayerTo(ses, wh, destMapID, destX, destY)
-
-	message := "Flew to destination."
-	if permission.KnownByName != "" {
-		message = permission.KnownByName + " used FLY!"
-	}
-	ses.SendStreamJSON(FieldMoveUseResponsePayload{
-		Success:  true,
-		Message:  message,
-		MoveName: permission.MoveName,
-		MapID:    destMapID,
-		TargetX:  destX,
-		TargetY:  destY,
-	}, opcodes.FieldMoveUseResponse)
+	ses.SendStreamJSON(reply, opcodes.FieldMoveUseResponse)
 	return false
 }
 
@@ -314,51 +322,22 @@ func fieldMoveTargetTile(playerX, playerY int, req FieldMoveUseRequestPayload) (
 	}
 }
 
-func cutTreeReplacementForTileImage(tileImageID int) TileEdit {
-	rawFoot := cutTreeReplacementRawFoot
-	fallback := TileEdit{
-		TileImageID:   cutTreeReplacementTileImage,
-		CollisionType: collisionLand,
-		RawFootTileID: &rawFoot,
+// This retains the existing single-square approximation. Native CUT replaces
+// blocks via CutTreeBlockSwaps; placed block provenance is not yet imported.
+// Numeric image IDs are catalog-local, so missing metadata cannot use tile 25.
+func cutTreeReplacementIn(tx db.DBTX, tileImageID int) (TileEdit, error) {
+	if err := db.RequireTransaction(tx); err != nil {
+		return TileEdit{}, err
 	}
-	if db.GlobalWorldDB == nil || db.GlobalWorldDB.DB == nil {
-		return fallback
-	}
-
-	var (
-		replacementTileImageID int
-		collisionType          int
-		rawFootTileID          sql.NullInt64
-		talkOverTile           bool
-	)
-	err := db.GlobalWorldDB.DB.QueryRow(`
-		SELECT replacement.id, COALESCE(tp.collision_type, $2), replacement.raw_foot_tile_id, COALESCE(replacement.talk_over_tile, FALSE)
-		FROM phaser_tile_images source
-		JOIN phaser_tile_images replacement
-		  ON replacement.tileset_id = source.tileset_id
-		 AND replacement.raw_foot_tile_id = $3
-		LEFT JOIN phaser_tile_properties tp ON tp.tile_image_id = replacement.id
-		WHERE source.id = $1
-		ORDER BY replacement.id
-		LIMIT 1`,
-		tileImageID,
-		collisionLand,
-		cutTreeReplacementRawFoot,
-	).Scan(&replacementTileImageID, &collisionType, &rawFootTileID, &talkOverTile)
+	var id, raw int
+	var talkOver bool
+	err := tx.QueryRow(`SELECT replacement.id,replacement.raw_foot_tile_id,replacement.talk_over_tile FROM phaser_tile_images source JOIN phaser_tile_images replacement ON replacement.tileset_id=source.tileset_id AND replacement.raw_foot_tile_id=$2 WHERE source.id=$1 ORDER BY replacement.id LIMIT 1`, tileImageID, cutTreeReplacementRawFoot).Scan(&id, &raw, &talkOver)
 	if err != nil {
-		return fallback
+		return TileEdit{}, fmt.Errorf("CUT source image %d replacement foot %d: %w", tileImageID, cutTreeReplacementRawFoot, err)
 	}
-
-	replacement := TileEdit{
-		TileImageID:   replacementTileImageID,
-		CollisionType: collisionType,
-		TalkOverTile:  talkOverTile,
-	}
-	if rawFootTileID.Valid {
-		v := int(rawFootTileID.Int64)
-		replacement.RawFootTileID = &v
-	}
-	return replacement
+	// CutTileManager authorizes cleared ground as land. Palette preferences must
+	// not make the client disagree with that transient gameplay collision rule.
+	return TileEdit{TileImageID: id, CollisionType: collisionLand, RawFootTileID: &raw, TalkOverTile: talkOver}, nil
 }
 
 func eventFlagsForFieldMove(wh *WorldHandler) *EventFlagManager {
@@ -366,29 +345,6 @@ func eventFlagsForFieldMove(wh *WorldHandler) *EventFlagManager {
 		return nil
 	}
 	return wh.EventFlags
-}
-
-func recordFieldMoveState(charID int64, mapID int, moveName string) error {
-	_, err := db.GlobalWorldDB.DB.Exec(`
-		INSERT INTO character_field_move_state (character_id, move_name, map_id, active, updated_at)
-		VALUES ($1, $2, $3, 1, CURRENT_TIMESTAMP)
-		ON CONFLICT (character_id, move_name) DO UPDATE SET
-			map_id = EXCLUDED.map_id,
-			active = 1,
-			updated_at = CURRENT_TIMESTAMP`,
-		charID,
-		normalizeFieldMoveName(moveName),
-		mapID,
-	)
-	return err
-}
-
-func characterBindDestination(charID uint32) (int, int, int, error) {
-	bind, err := db_character.GetCharacterBind(context.Background(), charID)
-	if err != nil {
-		return RecoverySpawnMap, int(RecoverySpawnX), int(RecoverySpawnY), nil
-	}
-	return int(bind.MapID), int(bind.X), int(bind.Y), nil
 }
 
 func sendFieldMoveUseError(ses *session.Session, message string) {

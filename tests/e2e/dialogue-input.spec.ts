@@ -233,41 +233,16 @@ test("Game Corner prize-room background vendors route to the prize menu", async 
   const errors = collectPageErrors(page);
 
   await createGuestCharacterAndEnterWorld(page);
-  await page.evaluate(() => {
-    window.addEventListener("gameCornerPrizeList", (event) => {
-      (window as unknown as Record<string, unknown>).__lastGameCornerPrizeList =
-        (event as CustomEvent).detail;
-    });
-  });
-
   await jumpToScenario(page, "game_corner_prize_list_with_coin_case");
   await waitForMap(page, /Game Corner Prize Room|GAME_CORNER_PRIZE_ROOM/);
-  await page.evaluate(() => {
-    window.__capturequestTest?.requestGameCornerPrizeList();
-  });
-
-  await expect
-    .poll(
-      async () =>
-        page.evaluate(
-          () =>
-            (window as unknown as {
-              __lastGameCornerPrizeList?: { prizes?: unknown[]; success?: boolean };
-            }).__lastGameCornerPrizeList,
-        ),
-      { timeout: 30_000 },
-    )
-    .toMatchObject({
-      success: true,
-    });
-
-  const prizeCount = await page.evaluate(
-    () =>
-      (window as unknown as {
-        __lastGameCornerPrizeList?: { prizes?: unknown[] };
-      }).__lastGameCornerPrizeList?.prizes?.length ?? 0,
-  );
-  expect(prizeCount).toBeGreaterThan(0);
+  await pressMovement(page,"up");
+  await waitForPlayerTile(page,2,3);
+  await pressSpace(page);
+  await expect.poll(() => page.evaluate(() => window.__capturequestTest?.overlayTextToViewport("ABRA - 180C") ?? null)).not.toBeNull();
+  const cancel = await page.evaluate(() => window.__capturequestTest!.overlayTextToViewport("CANCEL"));
+  expect(cancel).toBeTruthy();
+  await page.mouse.click(cancel!.x,cancel!.y);
+  await expect.poll(async () => (await getGameState(page)).worldInput.frozen).toBe(false);
 
   await quitToCharacterSelect(page);
   errors.assertNoSevereErrors();

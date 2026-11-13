@@ -83,7 +83,7 @@ func ApplyFixture(f Fixture) (*AppliedFixture, error) {
 		if quantity <= 0 {
 			quantity = 1
 		}
-		if _, err := cqitems.AddItemToInventory(int32(charID), int32(itemID), uint16(quantity)); err != nil {
+		if _, err := cqitems.NewStore(db.GlobalWorldDB.DB).AddItemToInventory(int32(charID), int32(itemID), uint16(quantity)); err != nil {
 			return nil, fmt.Errorf("seed item %d x%d: %w", itemID, quantity, err)
 		}
 	}
@@ -136,7 +136,7 @@ func ApplyFixture(f Fixture) (*AppliedFixture, error) {
 		}
 	}
 	if f.ActiveBattle != nil {
-		if err := seedFixtureActiveBattle(charID, *f.ActiveBattle); err != nil {
+		if err := seedFixtureActiveBattle(db.GlobalWorldDB.DB, charID, *f.ActiveBattle); err != nil {
 			return nil, err
 		}
 	}
@@ -212,9 +212,9 @@ func ensureCharacter(name string, mapID, x, y int) (int64, error) {
 
 	err = db.GlobalWorldDB.DB.QueryRow(`
 		INSERT INTO character_data
-			(account_id, name, map_id, x, y, z, heading, gender, faction_id, class, level)
+			(account_id, name, map_id, x, y, z, heading, gender, faction_id, class)
 		VALUES
-			(0, $1, $2, $3, $4, 0, 0, 0, 1, 1, 1)
+			(0, $1, $2, $3, $4, 0, 0, 0, 1, 1)
 		RETURNING id`,
 		name, mapID, x, y).Scan(&id)
 	if err != nil {
@@ -231,6 +231,11 @@ func resetCharacterState(charID int64) error {
 		`DELETE FROM character_in_game_trades WHERE character_id = $1`,
 		`DELETE FROM character_pokemon WHERE character_id = $1`,
 		`DELETE FROM character_field_move_state WHERE character_id = $1`,
+		`DELETE FROM character_repels WHERE character_id = $1`,
+		`DELETE FROM character_shop_state WHERE character_id = $1`,
+		`DELETE FROM character_safari_state WHERE character_id = $1`,
+		`DELETE FROM character_trainer_encounters WHERE character_id = $1`,
+		`DELETE FROM character_cutscene_plans WHERE character_id = $1`,
 		`DELETE FROM character_object_positions WHERE character_id = $1`,
 		`DELETE FROM character_object_visibility_overrides WHERE character_id = $1`,
 		`DELETE FROM character_collected_items WHERE character_id = $1`,
@@ -243,6 +248,7 @@ func resetCharacterState(charID int64) error {
 		`DELETE FROM cq_item_instances WHERE id IN (SELECT item_instance_id FROM cq_character_inventory WHERE character_id = $1)`,
 		`DELETE FROM cq_character_inventory WHERE character_id = $1`,
 		`DELETE FROM character_battle_state WHERE character_id = $1`,
+		`DELETE FROM character_movement_routes WHERE character_id = $1`,
 	}
 	for _, stmt := range statements {
 		if _, err := db.GlobalWorldDB.DB.Exec(stmt, charID); err != nil {
@@ -276,12 +282,17 @@ func mapNameForID(mapID int) (string, error) {
 }
 
 func isOverworldMapName(mapName string) bool {
+	value, _ := isOverworldMapNameIn(db.GlobalWorldDB.DB, mapName)
+	return value
+}
+
+func isOverworldMapNameIn(q db.DBTX, mapName string) (bool, error) {
 	if mapName == "" {
-		return false
+		return false, nil
 	}
 	var isOverworld bool
-	if err := db.GlobalWorldDB.DB.QueryRow(`SELECT is_overworld FROM phaser_maps WHERE name = $1`, mapName).Scan(&isOverworld); err != nil {
-		return false
+	if err := q.QueryRow(`SELECT is_overworld FROM phaser_maps WHERE name=$1`, mapName).Scan(&isOverworld); err != nil {
+		return false, err
 	}
-	return isOverworld
+	return isOverworld, nil
 }

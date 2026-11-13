@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"testing"
 
+	"capturequest/internal/db/pokedex"
+
 	_ "modernc.org/sqlite"
 )
 
@@ -50,7 +52,7 @@ func TestPokedexSeenAndCaughtTransitions(t *testing.T) {
 	if _, err := raw.Exec(`UPDATE character_pokedex SET first_seen_at = '1998-09-28 12:00:00' WHERE character_id = 42 AND pokemon_id = 25`); err != nil {
 		t.Fatal(err)
 	}
-	if err := markPokemonCaught(raw, 42, 25); err != nil {
+	if err := pokedex.MarkCaught(raw, 42, 25); err != nil {
 		t.Fatal(err)
 	}
 	var firstSeen string
@@ -116,8 +118,8 @@ func TestPokedexRejectsInvalidIdentities(t *testing.T) {
 		characterID int64
 		pokemonID   int
 	}{{0, 25}, {42, 0}, {42, 152}} {
-		if err := markPokemonCaught(raw, test.characterID, test.pokemonID); err == nil {
-			t.Fatalf("markPokemonCaught(%d, %d) unexpectedly succeeded", test.characterID, test.pokemonID)
+		if err := pokedex.MarkCaught(raw, test.characterID, test.pokemonID); err == nil {
+			t.Fatalf("pokedex.MarkCaught(%d, %d) unexpectedly succeeded", test.characterID, test.pokemonID)
 		}
 	}
 }

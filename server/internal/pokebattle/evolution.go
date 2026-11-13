@@ -37,12 +37,14 @@ func EvolvePokemon(db DBTX, p *Pokemon, evolvedID int) error {
 		return fmt.Errorf("load evolved species %d: %w", evolvedID, err)
 	}
 
-	oldName := p.Name
 	oldMaxHP := p.MaxHP
 
 	// Update species data
 	p.ID = evolved.ID
 	p.Name = evolved.Name
+	if p.Nickname != "" {
+		p.Name = p.Nickname
+	}
 	p.Type1 = evolved.Type1
 	p.Type2 = evolved.Type2
 	p.BaseStats = evolved.BaseStats
@@ -65,6 +67,5 @@ func EvolvePokemon(db DBTX, p *Pokemon, evolvedID int) error {
 		p.CurHP = p.MaxHP
 	}
 
-	log.Printf("[Evolution] %s evolved into %s (ID %d → %d)", oldName, p.Name, evolvedID, p.ID)
 	return nil
 }

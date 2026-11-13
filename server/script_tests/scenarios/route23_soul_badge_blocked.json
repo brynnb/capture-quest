@@ -1,4 +1,5 @@
 {
+  "coordinateSpace": "source",
   "name": "route23_soul_badge_blocked",
   "description": "The Route 23 Soul Badge swimmer blocks the player without the Soul Badge.",
   "fixture": {

@@ -62,8 +62,13 @@ func scanCharacterData(scanner rowScanner) (*model.CharacterData, error) {
 
 // GetCharacterByName loads character data from the database.
 func GetCharacterByName(name string) (*model.CharacterData, error) {
-	ctx := context.Background()
-	character, err := scanCharacterData(db.GlobalWorldDB.DB.QueryRowContext(ctx, `
+	return GetCharacterByNameContext(context.Background(), db.GlobalWorldDB.DB, name)
+}
+
+// Runtime entry owns the database and cancellation for both pre-handoff identity
+// and post-drain reload. The legacy wrapper remains for un-migrated callers.
+func GetCharacterByNameContext(ctx context.Context, database db.ContextDBTX, name string) (*model.CharacterData, error) {
+	character, err := scanCharacterData(database.QueryRowContext(ctx, `
 		SELECT `+characterDataRuntimeColumns+`
 		FROM character_data
 		WHERE name = $1
@@ -90,60 +95,70 @@ func GetCharacterByID(id int32) (*model.CharacterData, error) {
 	return character, nil
 }
 
-// UpdateCharacter saves character data to the database.
-func UpdateCharacter(charData *model.CharacterData, accountID int64) error {
-	charSelectCacheKey := fmt.Sprintf("account:characters:%d", accountID)
-	cache.GetCache().Delete(charSelectCacheKey)
-
-	if _, err := db.GlobalWorldDB.DB.Exec(`
-		UPDATE character_data
-		SET map_id = $1,
-		    x = $2,
-		    y = $3,
-		    z = $4,
-		    heading = $5,
-		    last_login = $6
-		WHERE id = $7`,
-		charData.MapID,
-		charData.X,
-		charData.Y,
-		charData.Z,
-		charData.Heading,
-		charData.LastLogin,
-		charData.ID,
-	); err != nil {
-		return fmt.Errorf("failed to update character: %v", err)
+// SetCharacterLastLogin records entry metadata without replaying gameplay state.
+func SetCharacterLastLogin(ctx context.Context, database *sql.DB, charID uint32, accountID int64, lastLogin uint32) error {
+	if database == nil {
+		return fmt.Errorf("character database is required")
 	}
+
+	// Cancellation of a waiting autocommit update can return before the
+	// backend finishes. A cancelled blocked statement must have no implicit commit.
+	err := db.Transaction(ctx, database, func(tx db.DBTX) error {
+		result, err := tx.Exec(`
+		UPDATE character_data
+		SET last_login = $1
+		WHERE id = $2 AND account_id = $3 AND deleted_at IS NULL`, lastLogin, charID, accountID)
+		if err != nil {
+			return fmt.Errorf("set character last login: %w", err)
+		}
+		rows, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if rows != 1 {
+			return fmt.Errorf("last login character %d: updated %d rows", charID, rows)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	cache.GetCache().Delete(fmt.Sprintf("account:characters:%d", accountID))
 	return nil
 }
 
-// UpdateCharacterPosition updates only the position-related fields of a character.
-func UpdateCharacterPosition(charID int32, mapID uint32, x, y, z, heading float64) error {
-	if _, err := db.GlobalWorldDB.DB.Exec(`
-		UPDATE character_data
-		SET map_id = $1,
-		    x = $2,
-		    y = $3,
-		    z = $4,
-		    heading = $5
-		WHERE id = $6`,
-		mapID, x, y, z, heading, charID); err != nil {
-		return fmt.Errorf("failed to update character position: %v", err)
-	}
-	return nil
-}
-
-// AddCharacterPlaytime atomically persists active play seconds without
-// overwriting position or another session's increment.
-func AddCharacterPlaytime(charID int32, accountID int64, seconds uint32) error {
-	if seconds == 0 {
+// SaveCharacterPlaytime persists a cumulative total from the exclusive character
+// owner. Entry must load the durable baseline after the prior owner drains.
+// Repeated or older totals cannot double-count an uncertain commit or rewind it.
+// This is not an API for independently accumulating concurrent play intervals.
+func SaveCharacterPlaytime(ctx context.Context, database *sql.DB, charID int32, accountID int64, totalSeconds uint32) error {
+	if totalSeconds == 0 {
 		return nil
 	}
-	if _, err := db.GlobalWorldDB.DB.Exec(`
+	if database == nil {
+		return fmt.Errorf("playtime database is required")
+	}
+	// Cancellation of a waiting autocommit update can return before the
+	// backend finishes. A cancelled blocked statement must have no implicit commit.
+	err := db.Transaction(ctx, database, func(tx db.DBTX) error {
+		result, err := tx.Exec(`
 		UPDATE character_data
-		SET time_played = time_played + $1
-		WHERE id = $2`, seconds, charID); err != nil {
-		return fmt.Errorf("add character playtime: %w", err)
+		SET time_played = CASE WHEN time_played < $1 THEN $1 ELSE time_played END
+		WHERE id = $2`, totalSeconds, charID)
+		if err != nil {
+			return fmt.Errorf("save character playtime: %w", err)
+		}
+		rows, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if rows != 1 {
+			return fmt.Errorf("playtime character %d: updated %d rows", charID, rows)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 	cache.GetCache().Delete(fmt.Sprintf("account:characters:%d", accountID))
 	return nil
@@ -151,8 +166,15 @@ func AddCharacterPlaytime(charID int32, accountID int64, seconds uint32) error {
 
 // GetCharacterBind retrieves the character's bind point
 func GetCharacterBind(ctx context.Context, charID uint32) (*model.CharacterBind, error) {
+	return GetCharacterBindContext(ctx, db.GlobalWorldDB.DB, charID)
+}
+
+// GetCharacterBindContext reads the bind through the caller's database owner.
+// A missing primary bind remains sql.ErrNoRows so callers can preserve their
+// existing optional-bind policy without treating failed reads as absence.
+func GetCharacterBindContext(ctx context.Context, database db.ContextDBTX, charID uint32) (*model.CharacterBind, error) {
 	var bind model.CharacterBind
-	if err := db.GlobalWorldDB.DB.QueryRowContext(ctx, `
+	if err := database.QueryRowContext(ctx, `
 		SELECT id, slot, map_id, x, y, z, heading
 		FROM character_bind
 		WHERE id = $1

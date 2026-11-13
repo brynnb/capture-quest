@@ -1,9 +1,12 @@
 package world
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"log"
+	"time"
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
@@ -41,11 +44,10 @@ type DialogueChoiceResult struct {
 	Actions              json.RawMessage `json:"actions"`
 }
 
-// GetBranchingDialogue fetches branching dialogue data for a text constant
-func GetBranchingDialogue(textConstant string) (*BranchingDialogue, error) {
+func getBranchingDialogueContext(ctx context.Context, database db.ContextDBTX, textConstant string) (*BranchingDialogue, error) {
 	var bd BranchingDialogue
 	var yesActions, noActions sql.NullString
-	err := db.GlobalWorldDB.DB.QueryRow(`
+	err := database.QueryRowContext(ctx, `
 		SELECT id, map_name, prompt_text_constant, prompt_text, yes_text_constant, no_text_constant,
 			yes_dialogue, no_dialogue, requires_event_flag, sets_event_flag, yes_actions, no_actions
 		FROM phaser_branching_dialogue
@@ -67,11 +69,18 @@ func GetBranchingDialogue(textConstant string) (*BranchingDialogue, error) {
 }
 
 func ResolveDialogueChoice(textConstant string, choice bool) (*DialogueChoiceResult, error) {
-	bd, err := GetBranchingDialogue(textConstant)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	bd, err := getBranchingDialogueContext(ctx, db.GlobalWorldDB.DB, textConstant)
 	if err != nil {
 		return nil, err
 	}
 
+	return resolveDialogueChoiceContext(ctx, db.GlobalWorldDB.DB, bd, choice)
+}
+
+func resolveDialogueChoiceContext(ctx context.Context, database db.ContextDBTX, bd *BranchingDialogue, choice bool) (*DialogueChoiceResult, error) {
+	var err error
 	result := &DialogueChoiceResult{Choice: choice}
 	if bd.MapName.Valid {
 		result.MapName = bd.MapName.String
@@ -82,7 +91,10 @@ func ResolveDialogueChoice(textConstant string, choice bool) (*DialogueChoiceRes
 			result.FollowUpDialogue = bd.YesDialogue.String
 		} else if bd.YesTextConstant.Valid && bd.YesTextConstant.String != "" {
 			result.FollowUpTextConstant = bd.YesTextConstant.String
-			result.FollowUpDialogue = fetchDialogueText(result.FollowUpTextConstant)
+			result.FollowUpDialogue, err = fetchDialogueTextContext(ctx, database, result.FollowUpTextConstant)
+			if err != nil {
+				return nil, err
+			}
 		}
 		result.Actions, err = dialogueChoiceActions(bd.YesActions, bd.SetsEventFlag)
 	} else {
@@ -90,7 +102,10 @@ func ResolveDialogueChoice(textConstant string, choice bool) (*DialogueChoiceRes
 			result.FollowUpDialogue = bd.NoDialogue.String
 		} else if bd.NoTextConstant.Valid && bd.NoTextConstant.String != "" {
 			result.FollowUpTextConstant = bd.NoTextConstant.String
-			result.FollowUpDialogue = fetchDialogueText(result.FollowUpTextConstant)
+			result.FollowUpDialogue, err = fetchDialogueTextContext(ctx, database, result.FollowUpTextConstant)
+			if err != nil {
+				return nil, err
+			}
 		}
 		result.Actions, err = dialogueChoiceActions(bd.NoActions, sql.NullString{})
 	}
@@ -125,13 +140,39 @@ func HandleDialogueChoiceRequest(ses *session.Session, payload []byte, wh *World
 		return false
 	}
 
-	log.Printf("[DialogueChoice] Player chose %v for %s", req.Choice, req.TextConstant)
-
-	if handleInGameTradeDialogueChoice(ses, req) {
+	if !ses.HasValidClient() || wh == nil || wh.ActorRegistry == nil {
+		return false
+	}
+	objectID := wh.ActorRegistry.GetOriginalID(ActorTypeNPC, req.ActorID)
+	ctx, cancel := context.WithTimeout(ses.CommandContext(), 5*time.Second)
+	defer cancel()
+	actor, mapName, err := wh.scriptInteractionTargetContext(ctx, ses, objectID)
+	if err != nil || actor.Text == nil || *actor.Text != req.TextConstant {
+		if err != nil && !errors.Is(err, errScriptInteractionDenied) {
+			log.Printf("[DialogueChoice] Authorize actor %d: %v", req.ActorID, err)
+		}
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "dialogue unavailable or out of reach"}, opcodes.DialogueChoiceResponse)
 		return false
 	}
 
-	result, err := ResolveDialogueChoice(req.TextConstant, req.Choice)
+	if handleInGameTradeDialogueChoice(ctx, ses, req, wh, mapName) {
+		return false
+	}
+
+	// Catalog choices belonging to issued scripts must use their completion token.
+	if wh.Cutscenes != nil && wh.Cutscenes.HasClickCutsceneForTriggerLabel(req.TextConstant) {
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "dialogue requires its scripted event"}, opcodes.DialogueChoiceResponse)
+		return false
+	}
+	bd, err := getBranchingDialogueContext(ctx, wh.database, req.TextConstant)
+	if err == nil && bd.MapName.Valid && bd.MapName.String != "" && !sameMapName(bd.MapName.String, mapName) {
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "dialogue belongs to another map"}, opcodes.DialogueChoiceResponse)
+		return false
+	}
+	var result *DialogueChoiceResult
+	if err == nil {
+		result, err = resolveDialogueChoiceContext(ctx, wh.database, bd, req.Choice)
+	}
 	if err != nil {
 		log.Printf("[DialogueChoice] No branching dialogue for %s: %v", req.TextConstant, err)
 		ses.SendStreamJSON(map[string]interface{}{
@@ -147,87 +188,53 @@ func HandleDialogueChoiceRequest(ses *session.Session, payload []byte, wh *World
 		"followUpDialogue":     result.FollowUpDialogue,
 		"followUpTextConstant": result.FollowUpTextConstant,
 	}
-	ses.SendStreamJSON(res, opcodes.DialogueChoiceResponse)
 
-	if len(result.Actions) > 0 && ses.HasValidClient() {
+	if len(result.Actions) > 0 || bd.RequiresEventFlag.Valid {
 		charID := int64(ses.Client.CharData().ID)
-		mapName := dialogueChoiceActionMapName(req, ses, result.MapName)
-		if err := applyCutsceneServerActionList(ses, mapName, result.Actions, charID, wh); err != nil {
-			log.Printf("[DialogueChoice] Failed to apply choice actions for %s: %v", req.TextConstant, err)
-			SendSystemMessage(ses, "That choice could not be completed. Please try again.")
+		script := &CutsceneScript{MapName: mapName, Actions: result.Actions}
+		if bd.RequiresEventFlag.Valid {
+			script.RequiresFlag = &bd.RequiresEventFlag.String
+		}
+		_, completed, err := ApplyCutsceneScript(ses.CommandContext(), CutsceneActionContext{Session: ses, WorldHandler: wh, EventFlags: wh.EventFlags}, script, charID)
+		if err != nil || !completed {
+			if err != nil {
+				log.Printf("[DialogueChoice] Failed to apply choice actions for %s: %v", req.TextConstant, err)
+			}
+			ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "That choice could not be completed. Please try again."}, opcodes.DialogueChoiceResponse)
+			return false
 		}
 	}
 
+	ses.SendStreamJSON(res, opcodes.DialogueChoiceResponse)
 	log.Printf("[DialogueChoice] Sent follow-up dialogue for choice=%v", req.Choice)
 	return false
 }
 
-func dialogueChoiceActionMapName(req DialogueChoiceRequest, ses *session.Session, fallback string) string {
-	if req.ActorID > 0 {
-		var mapName string
-		err := db.GlobalWorldDB.DB.QueryRow(`
-			SELECT m.name
-			FROM phaser_objects o
-			JOIN phaser_maps m ON m.id = o.map_id
-			WHERE o.id = $1`, req.ActorID).Scan(&mapName)
-		if err == nil && mapName != "" {
-			return mapName
-		}
-	}
-	if fallback != "" {
-		return fallback
-	}
-	if ses != nil && ses.MapID > 0 {
-		var mapName string
-		if err := db.GlobalWorldDB.DB.QueryRow(`SELECT name FROM phaser_maps WHERE id = $1`, ses.MapID).Scan(&mapName); err == nil {
-			return mapName
-		}
-	}
-	return ""
-}
-
 // fetchDialogueText resolves a text constant to dialogue text
-func fetchDialogueText(textConstant string) string {
+func fetchDialogueTextContext(ctx context.Context, database db.ContextDBTX, textConstant string) (string, error) {
 	var dialogue string
-	err := db.GlobalWorldDB.DB.QueryRow(`
+	err := database.QueryRowContext(ctx, `
 		SELECT dt.dialogue
 		FROM phaser_text_pointers tp
 		LEFT JOIN phaser_dialogue_text dt ON dt.label = tp.dialogue_label
 		WHERE tp.text_constant = $1
 		LIMIT 1`, textConstant).Scan(&dialogue)
-	if err != nil {
-		log.Printf("[DialogueChoice] Could not fetch dialogue for %s: %v", textConstant, err)
-		return ""
-	}
-	return dialogue
+	return dialogue, err
 }
 
-// CheckForBranchingDialogue checks if a text constant has YES/NO branching.
-// If the branching requires an event flag, charID must be provided to check it.
-// Pass charID=0 and efm=nil to skip the flag check (e.g., from the dialogue response handler).
-func CheckForBranchingDialogue(textConstant string) *BranchingDialogue {
-	bd, err := GetBranchingDialogue(textConstant)
-	if err != nil {
-		return nil
+// Branch prerequisites are evaluated against the caller's flag snapshot.
+func checkBranchingDialogueWithFlags(ctx context.Context, database db.ContextDBTX, textConstant string, charID int64, efm *EventFlagManager) (*BranchingDialogue, error) {
+	bd, err := getBranchingDialogueContext(ctx, database, textConstant)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
 	}
-	return bd
-}
-
-// CheckForBranchingDialogueWithFlags checks if a text constant has YES/NO branching
-// and verifies the player meets the requires_event_flag condition.
-func CheckForBranchingDialogueWithFlags(textConstant string, charID int64, efm *EventFlagManager) *BranchingDialogue {
-	bd, err := GetBranchingDialogue(textConstant)
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	// If branching requires an event flag, check it
 	if bd.RequiresEventFlag.Valid && bd.RequiresEventFlag.String != "" {
-		if efm == nil || charID == 0 {
-			return nil // Can't check — skip branching
-		}
-		if !efm.CheckFlag(charID, bd.RequiresEventFlag.String) {
-			return nil // Player doesn't have the required flag
+		if efm == nil || charID == 0 || !efm.CheckFlag(charID, bd.RequiresEventFlag.String) {
+			return nil, nil
 		}
 	}
-	return bd
+	return bd, nil
 }

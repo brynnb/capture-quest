@@ -83,7 +83,7 @@ func TestCyclingRoadEntryForcesBicycleUntilInterior(t *testing.T) {
 			state.ForcedBicycle, state.MoveSpeed, bicyclePlayerMoveSpeed)
 	}
 
-	result, ok := manager.ToggleBicycle(1)
+	result, ok := manager.setBicycleForSession(manager.players[1].SessionID, 1, false, 0)
 	if !ok || !result.ForcedRiding || !result.ActiveRiding {
 		t.Fatalf("forced bicycle toggle = (%+v,%t), want forced active riding", result, ok)
 	}

@@ -1,5 +1,6 @@
+import type { PhaserMapInfo } from "@/net/generated/protocol";
 import { Scene } from "phaser";
-import { PhaserActor, PhaserMapInfo, PhaserTile, PhaserWarp } from "@/net/generated/world_api";
+import { PhaserActor, PhaserTile, PhaserWarp } from "@/net/generated/world_api";
 import { CameraController } from "../../controllers/CameraController";
 import { UiManager } from "../../managers";
 import type { MapItem } from "../../renderers/MapRenderer";

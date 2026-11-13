@@ -1,11 +1,12 @@
 package world
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"sync"
 
-	"capturequest/internal/pokebattle"
+	"context"
 )
 
 // CoordinateTrigger represents a tile that fires a script when stepped on.
@@ -21,14 +22,14 @@ type CoordinateTrigger struct {
 // CoordinateTriggerManager loads coordinate triggers from the database and
 // provides fast lookups by map+tile position.
 type CoordinateTriggerManager struct {
-	db pokebattle.DBTX
+	db *sql.DB
 	mu sync.RWMutex
 	// triggers indexed by mapID -> "x,y" -> trigger rows
 	byMap map[int]map[string][]CoordinateTrigger
 }
 
 // NewCoordinateTriggerManager creates a new CoordinateTriggerManager.
-func NewCoordinateTriggerManager(db pokebattle.DBTX) *CoordinateTriggerManager {
+func NewCoordinateTriggerManager(db *sql.DB) *CoordinateTriggerManager {
 	return &CoordinateTriggerManager{
 		db:    db,
 		byMap: make(map[int]map[string][]CoordinateTrigger),
@@ -36,12 +37,11 @@ func NewCoordinateTriggerManager(db pokebattle.DBTX) *CoordinateTriggerManager {
 }
 
 // Load reads all coordinate triggers from the database into memory.
-func (m *CoordinateTriggerManager) Load() {
-	rows, err := m.db.Query(
+func (m *CoordinateTriggerManager) Load(ctx context.Context) error {
+	rows, err := m.db.QueryContext(ctx,
 		`SELECT id, map_id, map_name, label, x, y FROM phaser_coordinate_triggers WHERE map_id IS NOT NULL`)
 	if err != nil {
-		log.Printf("[CoordTriggers] Failed to load: %v", err)
-		return
+		return fmt.Errorf("[CoordTriggers] Failed to load: %w", err)
 	}
 	defer rows.Close()
 
@@ -50,8 +50,7 @@ func (m *CoordinateTriggerManager) Load() {
 	for rows.Next() {
 		var t CoordinateTrigger
 		if err := rows.Scan(&t.ID, &t.MapID, &t.MapName, &t.Label, &t.X, &t.Y); err != nil {
-			log.Printf("[CoordTriggers] Error scanning row: %v", err)
-			continue
+			return fmt.Errorf("[CoordTriggers] Error scanning row: %w", err)
 		}
 		if byMap[t.MapID] == nil {
 			byMap[t.MapID] = make(map[string][]CoordinateTrigger)
@@ -61,11 +60,18 @@ func (m *CoordinateTriggerManager) Load() {
 		count++
 	}
 
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read coordinate_triggers rows: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	m.mu.Lock()
 	m.byMap = byMap
 	m.mu.Unlock()
 
 	log.Printf("[CoordTriggers] Loaded %d coordinate triggers across %d maps", count, len(byMap))
+	return nil
 }
 
 // CheckTileTriggers returns coordinate trigger rows at a given map+tile position, or nil if none.

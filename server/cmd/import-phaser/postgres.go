@@ -679,11 +679,13 @@ type tileImageRuntimeMetadata struct {
 
 func importTileImagesPostgres(sqlite, pg *sql.DB) (map[int64]tileImageRuntimeMetadata, error) {
 	log.Println("Importing tile_images -> phaser_tile_images...")
+	blocksets, err := loadSQLiteBlocksets(sqlite)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := sqlite.Query(`
-		SELECT ti.id, ti.image_path, ti.tileset_id, ti.block_index, ti.position, bs.block_data
+		SELECT ti.id, ti.image_path, ti.tileset_id, ti.block_index, ti.position
 		FROM tile_images ti
-		LEFT JOIN blocksets bs
-		  ON bs.tileset_id = ti.tileset_id AND bs.block_index = ti.block_index
 		ORDER BY ti.id`)
 	if err != nil {
 		return nil, fmt.Errorf("query tile_images: %w", err)
@@ -712,12 +714,12 @@ func importTileImagesPostgres(sqlite, pg *sql.DB) (map[int64]tileImageRuntimeMet
 		var (
 			id, tilesetID, blockIndex, position int64
 			imagePath                           string
-			blockData                           []byte
 			rawFootTileID                       sql.NullInt64
 		)
-		if err := rows.Scan(&id, &imagePath, &tilesetID, &blockIndex, &position, &blockData); err != nil {
+		if err := rows.Scan(&id, &imagePath, &tilesetID, &blockIndex, &position); err != nil {
 			return nil, fmt.Errorf("scan tile_image row: %w", err)
 		}
+		blockData := blocksets[phaserdata.BlocksetTilesetID(tilesetID)][blockIndex]
 		if raw, ok := phaserdata.RawFootTileIDFromBlockData(blockData, int(position)); ok {
 			rawFootTileID = sql.NullInt64{Int64: int64(raw), Valid: true}
 		}
@@ -1134,26 +1136,13 @@ func rawFootTileIDForPlacedTile(
 	}
 
 	blockIndex := int64(mapMeta.BlkData[blockOffset])
-	blockData := blocksets[blocksetTilesetID(mapMeta.TilesetID)][blockIndex]
+	blockData := blocksets[phaserdata.BlocksetTilesetID(mapMeta.TilesetID)][blockIndex]
 	if len(blockData) == 0 {
 		return 0, false
 	}
 
 	position := int((localY%2)*2 + (localX % 2))
 	return phaserdata.RawFootTileIDFromBlockData(blockData, position)
-}
-
-func blocksetTilesetID(tilesetID int64) int64 {
-	switch tilesetID {
-	case 2:
-		// MART uses POKECENTER graphics/blocksets in the extracted SQLite DB.
-		return 6
-	case 5:
-		// DOJO uses GYM graphics/blocksets in the extracted SQLite DB.
-		return 7
-	default:
-		return tilesetID
-	}
 }
 
 func loadSQLiteMapTilesetIDs(sqlite *sql.DB) (map[int64]int64, error) {

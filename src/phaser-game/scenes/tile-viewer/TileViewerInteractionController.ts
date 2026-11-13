@@ -1,5 +1,12 @@
+import {sendPickupCommand} from "../../services/InventoryCommandService";
 import { Scene } from "phaser";
+import {WorldSocket} from "@/net/index";
+import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
+import useGameScreenStore from "@/stores/GameScreenStore";
+import {readTrainerInteraction} from "../../services/TrainerInteractionService";
 import { PhaserActor } from "@/net/generated/world_api";
+import usePokemonPCStore from "@/stores/PokemonPCStore";
+import type { PCInteractionSource } from "@/net/generated/world_api";
 import useGameStatusStore from "@/stores/GameStatusStore";
 import usePokemonDialogueStore from "@/stores/PokemonDialogueStore";
 import useSlotMachineStore from "@/stores/SlotMachineStore";
@@ -12,6 +19,7 @@ import {
 import { PlayerMovementController } from "../../controllers/PlayerMovementController";
 import { WarpManager } from "../../managers";
 import { UiManager } from "../../managers/UiManager";
+import { MapDataService } from "../../services/MapDataService";
 import { MapRenderer } from "../../renderers/MapRenderer";
 import {
   fetchDialogueWithBranching,
@@ -31,17 +39,10 @@ import type { WorldInputFreezeReason } from "../../utils/worldInputGuard";
 
 type MovementDirection = "UP" | "DOWN" | "LEFT" | "RIGHT";
 
-const POKEMON_CENTER_MAP_IDS = new Set([
-  41, 58, 64, 68, 81, 89, 133, 141, 154, 171, 182,
-]);
-const POKEMON_CENTER_PC_ACCESS_TILE = { x: 13, y: 4 };
-const POKEMON_CENTER_PC_CLICK_TILES = [
-  { x: 13, y: 3 },
-  POKEMON_CENTER_PC_ACCESS_TILE,
-] as const;
 
 interface TileViewerInteractionDeps {
   scene: Scene;
+  mapDataService: () => MapDataService;
   mapRenderer: () => MapRenderer;
   uiManager: () => UiManager;
   cameraController: () => CameraController;
@@ -69,6 +70,11 @@ export class TileViewerInteractionController {
   private spaceKey?: Phaser.Input.Keyboard.Key;
   private suppressNextWorldPointerUp = false;
   private instantWarpRequestGeneration = 0;
+  private instantWarpActivation: AbortController | null = null;
+  private actorInteractionDemand: AbortController | null = null;
+  private actorInteractionGeneration = 0;
+
+  isInstantWarpPending(): boolean { return this.instantWarpActivation !== null; }
   private instantWarpTargetUnsubscribe: (() => void) | null = null;
   private instantWarpErrorTimer: Phaser.Time.TimerEvent | null = null;
   private readonly pointerUpHandler = (pointer: Phaser.Input.Pointer) => {
@@ -142,7 +148,11 @@ export class TileViewerInteractionController {
   }
 
   cleanup(): void {
+    this.actorInteractionGeneration += 1;
+    this.actorInteractionDemand?.abort();
+    this.actorInteractionDemand = null;
     this.instantWarpRequestGeneration += 1;
+    this.instantWarpActivation?.abort();
     this.clearInstantWarpLoadError();
     this.deps.scene.input.off("pointerup", this.pointerUpHandler);
     this.deps.scene.events.off("actorClicked", this.actorClickHandler);
@@ -264,8 +274,9 @@ export class TileViewerInteractionController {
 
     const clickTileX = Math.floor(worldPoint.x / TILE_SIZE);
     const clickTileY = Math.floor(worldPoint.y / TILE_SIZE);
-    if (this.isPokemonCenterPCClickTile(clickTileX, clickTileY)) {
-      this.requestPokemonPCInteraction();
+    const pcSource = this.pcSources().find(source => source.x === clickTileX && (source.y === clickTileY || source.y + 1 === clickTileY));
+    if (pcSource) {
+      this.requestPokemonPCInteraction(pcSource);
       return;
     }
 
@@ -280,8 +291,7 @@ export class TileViewerInteractionController {
       const dist =
         Math.abs(playerPos.x - clickTileX) + Math.abs(playerPos.y - clickTileY);
       if (dist <= 2) {
-        const isLucky = Math.random() < 0.125;
-        useSlotMachineStore.getState().openSlotMachine(isLucky);
+        useSlotMachineStore.getState().openSlotMachine(clickTileX, clickTileY);
         return;
       }
     }
@@ -350,7 +360,7 @@ export class TileViewerInteractionController {
       return;
     }
 
-    this.commitInstantWarp(target);
+    await this.commitInstantWarp(target);
   }
 
   private async confirmPendingInstantWarp(): Promise<void> {
@@ -404,7 +414,7 @@ export class TileViewerInteractionController {
       return;
     }
 
-    this.commitInstantWarp(target);
+    await this.commitInstantWarp(target);
   }
 
   private showInstantWarpLoadError(message: string): void {
@@ -437,98 +447,82 @@ export class TileViewerInteractionController {
     }
   }
 
-  private commitInstantWarp(target: {
+  private async commitInstantWarp(target: {
     mapId: number;
     x: number;
     y: number;
-  }): void {
-    const playerActor = this.deps.getPlayerActor();
+  }): Promise<void> {
+    if (this.instantWarpActivation) return;
+    const abort = new AbortController();
+    this.instantWarpActivation = abort;
     const movement = this.deps.playerMovementController();
-    const currentMapId = movement.getCurrentMapId() ?? playerActor?.mapId;
-    const playerId = playerActor?.id;
-    const direction = movement.getCurrentDirection();
-    const gameStatus = useGameStatusStore.getState();
-
-    gameStatus.setWarpMode(false);
     movement.stopMovement();
-
-    if (currentMapId !== target.mapId) {
-      window.dispatchEvent(
-        new CustomEvent("warpTileTeleport", {
-          detail: {
-            mapId: target.mapId,
-            x: target.x,
-            y: target.y,
-            direction,
-          },
-        }),
-      );
-      return;
-    }
-
-    movement.syncMapId(target.mapId);
-    movement.syncPosition(target.x, target.y);
-    movement.syncDirection(direction);
-    if (playerActor) {
-      playerActor.x = target.x;
-      playerActor.y = target.y;
-      playerActor.mapId = target.mapId;
-      playerActor.actionDirection = direction;
-      const actorIndex = this.deps
-        .actors()
-        .findIndex((actor) => actor.id === playerActor.id);
-      if (actorIndex !== -1) {
-        this.deps.actors()[actorIndex] = playerActor;
+    let settleTimer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const actor = this.deps.getPlayerActor();
+      if (actor) {
+        await Promise.race([
+          this.deps.mapRenderer().waitForActorIdle(actor.id),
+          new Promise<never>((_, reject) => {
+            settleTimer = setTimeout(() => reject(new Error("Movement did not settle")), 1200);
+          }),
+        ]);
       }
-    }
-    if (playerId != null) {
-      this.deps.mapRenderer().snapActorPosition(
-        playerId,
-        target.x,
-        target.y,
-        direction,
-        playerActor ?? undefined,
+      if (abort.signal.aborted || !this.deps.scene.sys.isActive()) return;
+      const result = await this.deps.mapDataService().instantWarp(
+        target.mapId, target.x, target.y, movement.getCurrentDirection(), abort.signal,
       );
+      if (abort.signal.aborted || !this.deps.scene.sys.isActive()) return;
+      useGameStatusStore.getState().setWarpMode(false);
+      window.dispatchEvent(new CustomEvent("warpTileTeleport", {
+        detail: { ...result, serverCommitted: true },
+      }));
+      if (movement.getCurrentMapId() === result.mapId) {
+        useGameStatusStore.getState().setCameraFollowEnabled(true);
+        await movement.reconcileActors(abort.signal);
+      }
+    } catch (error) {
+      if (!abort.signal.aborted) {
+        console.warn("[InstantWarp] Activation failed:", error);
+        // Release input before showing an error so Confirm/tap can retry.
+        this.instantWarpActivation = null;
+        this.showInstantWarpLoadError("Couldn't warp to that tile. Try again.");
+      }
+    } finally {
+      if (settleTimer !== undefined) clearTimeout(settleTimer);
+      if (this.instantWarpActivation === abort) this.instantWarpActivation = null;
     }
-    PhaserNet.sendPlayerPosition(target.x, target.y, target.mapId, direction);
-    gameStatus.setCameraFollowEnabled(true);
   }
 
   private async handleActorClicked(actor: PhaserActor): Promise<void> {
     if (this.deps.isWorldInputFrozen()) return;
-    if (!(await this.ensureActorInteractionReachable(actor))) return;
-    await this.performActorInteraction(actor);
+    this.actorInteractionGeneration += 1;
+    this.actorInteractionDemand?.abort();
+    const demand=new AbortController();this.actorInteractionDemand=demand;
+    try {
+      if (!(await this.ensureActorInteractionReachable(actor)) || demand.signal.aborted) return;
+      await this.performActorInteraction(actor,demand.signal);
+    } catch(error) {
+      if(!demand.signal.aborted && !(error instanceof DOMException && error.name==="AbortError"))console.warn("[TileViewer] Interaction could not complete:",error);
+    } finally {if(this.actorInteractionDemand===demand)this.actorInteractionDemand=null;}
   }
 
-  private async performActorInteraction(actor: PhaserActor): Promise<void> {
-    if (actor.spriteName === "SPRITE_NURSE") {
-      console.log(
-        `[TileViewer] Nurse Joy clicked on map ${actor.mapId}, triggering heal`,
-      );
-      PhaserNet.sendPokeCenterHeal(actor.mapId);
-      const healLines = [
-        "Welcome to our POKéMON CENTER!",
-        "We'll restore your POKéMON to full health.",
-        "...",
-        "Thank you for waiting.\nYour POKéMON are fully healed!",
-      ];
-      usePokemonDialogueStore
-        .getState()
-        .openDialogue(healLines, "NURSE JOY", actor.id, () => {
-          PhaserNet.sendPokemonPartyRequest();
-        });
-      return;
-    }
-
-    if (actor.objectType === "pc") {
-      console.log(`[TileViewer] PC clicked on map ${actor.mapId}`);
-      PhaserNet.sendPokemonPCOpen();
-      return;
-    }
-
+  private async performActorInteraction(actor: PhaserActor, signal:AbortSignal): Promise<void> {
+    const source={x:actor.x,y:actor.y,mapId:actor.mapId,text:actor.text,trainerClass:actor.trainerClass,party:actor.trainerPartyIndex};
+    const player=this.deps.playerMovementController().getCurrentPosition();
+    const displayedMap=this.deps.getDisplayedMapId();
+    const interactionGeneration=this.actorInteractionGeneration;
+    const transportGeneration=WorldSocket.sessionGeneration;
+    const characterId=usePlayerCharacterStore.getState().characterProfile.id;
+    const screen=useGameScreenStore.getState().currentScreen;
+    const current=()=>{
+      const target=this.deps.currentActorById(actor.id);
+      const position=this.deps.playerMovementController().getCurrentPosition();
+      return !signal.aborted && this.actorInteractionGeneration===interactionGeneration && WorldSocket.sessionGeneration===transportGeneration && usePlayerCharacterStore.getState().characterProfile.id===characterId && useGameScreenStore.getState().currentScreen===screen && this.deps.getDisplayedMapId()===displayedMap && position.x===player.x && position.y===player.y && !!target && target.x===source.x && target.y===source.y && target.mapId===source.mapId && target.text===source.text && target.trainerClass===source.trainerClass && target.trainerPartyIndex===source.party;
+    };
     if (this.isBikeShopClerk(actor)) {
       const startedScript = await PhaserNet.tryScriptedEventInteraction(actor.id);
-      if (startedScript) return;
+      if (startedScript || !current()) return;
 
       console.warn("[TileViewer] Bike Shop clerk has no eligible scripted event");
       return;
@@ -536,47 +530,32 @@ export class TileViewerInteractionController {
 
     if (actor.spriteName === "SPRITE_CLERK") {
       const startedScript = await PhaserNet.tryScriptedEventInteraction(actor.id);
-      if (startedScript) return;
+      if (startedScript || !current()) return;
 
       console.log(`[TileViewer] Clerk clicked on map ${actor.mapId}, opening shop`);
-      PhaserNet.sendCQMerchantOpenByMap(actor.mapId);
-      return;
-    }
-
-    if (actor.mapId === 135 && actor.objectType === "sign") {
-      console.log("[TileViewer] Game Corner slot machine clicked");
-      void import("@/phaser-game/services/PhaserNetworkService").then(
-        (network) => {
-          network.requestCoinBalance();
-        },
-      );
-      const onBalance = (event: Event) => {
-        const data = (event as CustomEvent).detail as { coins: number };
-        window.removeEventListener("gameCornerCoinBalance", onBalance);
-        this.deps.overlays().showSlotMachineUI(data.coins);
-      };
-      window.addEventListener("gameCornerCoinBalance", onBalance);
+      await PhaserNet.sendCQMerchantOpen(actor.id);
       return;
     }
 
     const elevatorMapIds = [127, 203, 236];
     if (actor.objectType === "sign" && elevatorMapIds.includes(actor.mapId)) {
       console.log(`[TileViewer] Elevator panel clicked on map ${actor.mapId}`);
-      PhaserNet.requestElevatorFloors(actor.mapId);
+      await this.deps.playerMovementController().useElevator((floors,signal)=>this.deps.overlays().showElevatorMenu(floors,signal));
       return;
     }
 
     const startedScript = await PhaserNet.tryScriptedEventInteraction(actor.id);
-    if (startedScript) return;
+    if (startedScript || !current()) return;
 
     if (actor.trainerClass && actor.trainerPartyIndex !== undefined) {
-      const trainer = await PhaserNet.requestTrainerInteraction(actor.id);
+      const trainer = await readTrainerInteraction(actor.id,signal);
+      if(!current() || this.deps.isWorldInputFrozen())return;
       if (trainer?.success) {
         const lines = trainer.dialogue
           ? parseDialogueText(trainer.dialogue)
           : [];
         const startBattle = () => {
-          if (trainer.shouldBattle) {
+          if (current() && trainer.shouldBattle) {
             PhaserNet.sendTrainerBattleStart(actor.id);
           }
         };
@@ -595,7 +574,7 @@ export class TileViewerInteractionController {
       console.log(
         `[TileViewer] Item ball clicked: ${actor.name} (actor ${actor.id})`,
       );
-      PhaserNet.sendItemPickup(actor.id);
+      void sendPickupCommand(actor.id,signal=>this.deps.playerMovementController().reconcileActors(signal));
       return;
     }
 
@@ -608,7 +587,8 @@ export class TileViewerInteractionController {
       `[TileViewer] Actor clicked: ${actor.name} (${actor.objectType}), text: ${actor.text}`,
     );
 
-    const result = await fetchDialogueWithBranching(actor.text);
+    const result = await fetchDialogueWithBranching(actor.text,signal);
+    if(!current() || this.deps.isWorldInputFrozen())return;
     if (result.lines.length === 0) {
       console.warn(`[TileViewer] No dialogue found for ${actor.text}`);
       return;
@@ -645,8 +625,10 @@ export class TileViewerInteractionController {
     if (this.deps.isWorldInputFrozen()) return;
     if (this.deps.playerMovementController().getIsMoving()) return;
 
-    if (this.isStandingOnPokemonCenterPCAccessTile()) {
-      PhaserNet.sendPokemonPCOpen();
+    const position = this.deps.playerMovementController().getCurrentPosition();
+    const pcSource = this.pcSources().find(source => source.x === position.x && source.y + 1 === position.y);
+    if (pcSource) {
+      this.requestPokemonPCInteraction(pcSource);
       return;
     }
 
@@ -697,62 +679,20 @@ export class TileViewerInteractionController {
     );
   }
 
-  private isPokemonCenterMap(): boolean {
-    const mapId = this.deps.getPlayerActor()?.mapId ?? null;
-    if (mapId != null && POKEMON_CENTER_MAP_IDS.has(mapId)) return true;
-
-    for (const viewedMapId of this.deps.viewedMapIds()) {
-      if (POKEMON_CENTER_MAP_IDS.has(viewedMapId)) return true;
-    }
-    return false;
+  private pcSources(): PCInteractionSource[] {
+    const mapId = this.deps.getPlayerActor()?.mapId;
+    return usePokemonPCStore.getState().sources.filter(source => source.mapId === mapId);
   }
 
-  private isPokemonCenterPCClickTile(x: number, y: number): boolean {
-    return (
-      this.isPokemonCenterMap() &&
-      POKEMON_CENTER_PC_CLICK_TILES.some((tile) => tile.x === x && tile.y === y)
-    );
-  }
-
-  private isStandingOnPokemonCenterPCAccessTile(): boolean {
-    if (!this.isPokemonCenterMap()) return false;
-
-    const movement = this.deps.playerMovementController();
-    const position = movement.getCurrentPosition();
-    return (
-      position.x === POKEMON_CENTER_PC_ACCESS_TILE.x &&
-      position.y === POKEMON_CENTER_PC_ACCESS_TILE.y
-    );
-  }
-
-  private requestPokemonPCInteraction(): void {
+  private requestPokemonPCInteraction(source: PCInteractionSource): void {
     const movement = this.deps.playerMovementController();
     const openPC = () => {
-      movement.faceTile(
-        POKEMON_CENTER_PC_ACCESS_TILE.x,
-        POKEMON_CENTER_PC_ACCESS_TILE.y - 1,
-      );
-      PhaserNet.sendPokemonPCOpen();
+      if (!this.pcSources().some(current => current.id === source.id)) return;
+      if (movement.faceTile(source.x,source.y)) void PhaserNet.sendPokemonPCOpen(source.id);
     };
-
     const player = movement.getCurrentPosition();
-    if (
-      player.x === POKEMON_CENTER_PC_ACCESS_TILE.x &&
-      player.y === POKEMON_CENTER_PC_ACCESS_TILE.y
-    ) {
-      openPC();
-      return;
-    }
-
-    const pathing = movement.requestPathToTile(
-      POKEMON_CENTER_PC_ACCESS_TILE.x,
-      POKEMON_CENTER_PC_ACCESS_TILE.y,
-      openPC,
-    );
-
-    if (!pathing) {
-      console.warn("[TileViewer] Pokemon Center PC is not reachable from here");
-    }
+    if (player.x === source.x && player.y === source.y+1) { openPC(); return; }
+    if (!movement.requestPathToTile(source.x,source.y+1,openPC)) console.warn("[TileViewer] PC is not reachable from here");
   }
 
   private findInteractableActorInFront(): PhaserActor | null {
@@ -814,6 +754,7 @@ export class TileViewerInteractionController {
       return true;
     }
 
+    const generation=this.actorInteractionGeneration;
     movement.requestInteractionPathToMovingTarget(
       () => {
         const latestActor = this.deps.currentActorById(actorId) ?? actor;
@@ -823,9 +764,8 @@ export class TileViewerInteractionController {
         return { x: latestActor.x, y: latestActor.y };
       },
       () => {
-        void this.performActorInteraction(
-          this.deps.currentActorById(actorId) ?? actor,
-        );
+        const current=this.deps.currentActorById(actorId);
+        if(current && generation===this.actorInteractionGeneration)void this.handleActorClicked(current);
       },
     );
     return false;

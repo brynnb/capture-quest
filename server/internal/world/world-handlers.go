@@ -2,15 +2,17 @@ package world
 
 import (
 	"context"
-	"encoding/json"
+	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"time"
 
 	"capturequest/internal/api/opcodes"
 	db_character "capturequest/internal/db/character"
-	"capturequest/internal/db/cqitems"
-	"capturequest/internal/options"
+	db_currency "capturequest/internal/db/currency"
+	model "capturequest/internal/db/models"
+	"capturequest/internal/protocol"
 	"capturequest/internal/session"
 	"capturequest/internal/zone/client"
 )
@@ -23,55 +25,17 @@ import (
 // - world-combat-handlers.go
 // - world-query-handlers.go
 
-// HandleSetOption handles all game option changes from the client
-func HandleSetOption(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	if !ses.HasValidClient() {
-		return false
-	}
-
-	var req struct {
-		OptionID options.OptionId `json:"optionId"`
-		Value    int              `json:"value"`
-	}
-	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("HandleSetOption: failed to unmarshal JSON: %v", err)
-		return false
-	}
-
-	log.Printf("SetOption for character %d: %d = %d", ses.Client.CharData().ID, req.OptionID, req.Value)
-
-	enabled := req.Value == 1
-
-	switch req.OptionID {
-	case options.OptionShowNetworkStats:
-		ses.Client.SetShowNetworkStatsEnabled(enabled)
-	case options.OptionAllowTrainerRebattles:
-		ses.Client.SetAllowTrainerRebattlesEnabled(enabled)
-	default:
-		log.Printf("SetOption: unknown option %d", req.OptionID)
-		return false
-	}
-
-	// Persist all options to database as JSON
-	if err := ses.Client.SaveOptions(); err != nil {
-		log.Printf("SetOption: failed to persist options for character %d: %v", ses.Client.CharData().ID, err)
-	}
-	return false
-}
-
-// HandleCharacterQuitRequest saves player data before returning to character select.
 func HandleCharacterQuitRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
 	if !ses.HasValidClient() {
 		return false
 	}
 
-	charData := ses.Client.CharData()
-
-	if err := db_character.UpdateCharacter(charData, ses.AccountID); err != nil {
-		log.Printf("failed to save player data on camp: %v", err)
+	// Gameplay position changes have already committed through their owners.
+	// Replaying cached character coordinates here can undo an uncertain commit.
+	if err := wh.cleanupCharacterSession(ses.CommandContext(), ses); err != nil {
+		log.Printf("[WORLD] Camp cleanup: %v", err)
 	}
-	wh.cleanupCharacterSession(ses)
-	sendCharInfo(ses, ses.AccountID)
+	sendCharInfo(ses, wh, ses.AccountID)
 	return false
 }
 
@@ -79,117 +43,53 @@ func HandleCharacterQuitRequest(ses *session.Session, payload []byte, wh *WorldH
 func HandleHeartbeat(ses *session.Session, payload []byte, wh *WorldHandler) bool {
 	// Parse request to get timestamp for latency calculation
 	var req struct {
-		Timestamp float64 `json:"timestamp"`
+		Timestamp *float64 `json:"timestamp"`
 	}
-	// Ignore error, if empty payload timestamp will be 0
-	_ = json.Unmarshal(payload, &req)
+	if decodePlayerMovement(payload, &req) != nil || req.Timestamp == nil || *req.Timestamp < 0 || ses.IsClosed() || ses.CommandContext().Err() != nil {
+		return false
+	}
 
 	// Record heartbeat time for disconnect detection
-	ses.LastHeartbeat = time.Now()
+	ses.RecordHeartbeat(time.Now())
 
-	ses.SendStreamJSON(map[string]interface{}{"status": "ok", "timestamp": req.Timestamp}, opcodes.Heartbeat)
+	ses.SendStreamJSON(map[string]interface{}{"status": "ok", "timestamp": *req.Timestamp}, opcodes.Heartbeat)
 	return false
 }
 
 // HandleValidateNameRequest handles name validation
 func HandleValidateNameRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	var req struct {
-		Name string `json:"name"`
+	var req protocol.NameValidationRequest
+	sendError := func(err error) {
+		ses.SendStreamJSON(protocol.NameValidationError{RequestID: req.RequestID, Error: err.Error()}, opcodes.ValidateNameResponse)
 	}
-	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("HandleValidateNameRequest: failed to unmarshal JSON: %v", err)
+	if err := decodePlayerMovement(payload, &req); err != nil {
+		sendError(err)
 		return false
 	}
-
-	valid, errorMsg := ValidateName(req.Name)
-	available := false
-	errorMessage := errorMsg
-
+	if req.RequestID != "" && !validBattleRequestID(req.RequestID) {
+		sendError(fmt.Errorf("invalid name validation request identity"))
+		return false
+	}
+	ctx, cancel := context.WithTimeout(ses.CommandContext(), 5*time.Second)
+	defer cancel()
+	valid, message, err := ValidateNameContext(ctx, wh.database, req.Name)
+	if err != nil {
+		sendError(err)
+		return false
+	}
+	response := protocol.NameValidationResponse{Success: true, RequestID: req.RequestID, Name: req.Name, Valid: valid, ErrorMessage: message}
 	if valid {
-		// Check database for availability
-		char, err := db_character.GetCharacterByName(req.Name)
-		if err != nil {
-			// If error is "not found", then it's available
-			available = true
-		} else if char == nil || char.ID == 0 {
-			available = true
-		} else {
-			available = false
-			errorMessage = "Name is already taken."
+		// The schema's UNIQUE(name) includes soft-deleted rows. Match that authority,
+		// and never turn a query failure into an available name.
+		if err := wh.database.QueryRowContext(ctx, `SELECT NOT EXISTS(SELECT 1 FROM character_data WHERE name=$1)`, req.Name).Scan(&response.Available); err != nil {
+			sendError(err)
+			return false
+		}
+		if !response.Available {
+			response.ErrorMessage = "Name is already taken."
 		}
 	}
-
-	ses.SendStreamJSON(map[string]interface{}{
-		"valid":        valid,
-		"available":    available,
-		"errorMessage": errorMessage,
-	}, opcodes.ValidateNameResponse)
-
-	return false
-}
-
-// PerformMapChange centralizes all logic for moving a character between maps.
-// It handles data updates, persistence, and messaging.
-func (wh *WorldHandler) PerformMapChange(ses *session.Session, mapID, instanceID int, x, y, z, heading float64) {
-	if !ses.HasValidClient() {
-		return
-	}
-
-	charData := ses.Client.CharData()
-	log.Printf("[Map] Character %s (%d) changing map: %d -> %d", charData.Name, charData.ID, ses.MapID, mapID)
-
-	// Update session and character data
-	normalizedMapID := mapID
-	if wh.ActorManager.IsOverworld(mapID) {
-		normalizedMapID = UnifiedOverworldMapID
-	}
-
-	ses.MapID = normalizedMapID
-	ses.InstanceID = instanceID
-	charData.MapID = uint32(normalizedMapID)
-	charData.X = x
-	charData.Y = y
-	charData.Z = z
-	charData.Heading = heading
-
-	// Persist change to database so it stays across logins
-	if err := db_character.UpdateCharacter(charData, ses.AccountID); err != nil {
-		log.Printf("Failed to update character map in DB: %v", err)
-	}
-
-	// Send entry message
-	SendSystemMessage(ses, fmt.Sprintf("You have entered %s.", mapEntryDisplayName(wh, mapID, x, y)))
-
-	// Notify client of the new state (zone, position, etc.)
-	buildAndSendCharacterState(ses)
-}
-
-func HandleMapChangeRequest(ses *session.Session, payload []byte, wh *WorldHandler) bool {
-	if !ses.HasValidClient() {
-		return false
-	}
-
-	var req struct {
-		MapID      int     `json:"mapId"`
-		LegacyZone int     `json:"zoneId"`
-		InstanceID int     `json:"instanceId"`
-		X          float64 `json:"x"`
-		Y          float64 `json:"y"`
-		Z          float64 `json:"z"`
-		Heading    float64 `json:"heading"`
-	}
-
-	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("HandleMapChangeRequest: failed to unmarshal JSON: %v", err)
-		return false
-	}
-
-	mapID := req.MapID
-	if mapID == 0 {
-		mapID = req.LegacyZone
-	}
-
-	wh.PerformMapChange(ses, mapID, req.InstanceID, req.X, req.Y, req.Z, req.Heading)
+	ses.SendStreamJSON(response, opcodes.ValidateNameResponse)
 	return false
 }
 
@@ -200,43 +100,69 @@ func (wh *WorldHandler) handleStateUpdate(ses *session.Session) {
 
 // Core Helpers
 
-func sendCharInfo(ses *session.Session, accountId int64) {
-	ctx := context.Background()
-	charInfo, err := GetCharSelectInfo(ses, ctx, accountId)
+func sendCharInfo(ses *session.Session, wh *WorldHandler, accountID int64) {
+	characters, err := readCharacterRoster(ses.CommandContext(), wh.database, accountID)
 	if err != nil {
-		log.Printf("failed to get character select info for accountID %d: %v", accountId, err)
+		log.Printf("failed to get character select info for accountID %d: %v", accountID, err)
 		return
 	}
-	ses.SendStreamJSON(charInfo, opcodes.SendCharInfo)
+	// Legacy publications share the authoritative reader. Current clients use
+	// the correlated account read, so these cannot settle a pending request.
+	ses.SendStreamJSON(CharacterListResponse{Success: true, AccountID: accountID, Characters: characters}, opcodes.SendCharInfo)
 }
 
-func sendCharacterStateFromDB(ses *session.Session, wh *WorldHandler, characterName string) {
+// prepareCharacterEntry installs the serialized character owner without publishing
+// entry success or initial state. Required restores still belong to the caller.
+func prepareCharacterEntry(ses *session.Session, wh *WorldHandler, characterName string) (err error) {
 	if ses.HasValidClient() {
-		wh.cleanupCharacterSession(ses)
+		return fmt.Errorf("session already has a character")
 	}
-	charData, err := db_character.GetCharacterByName(characterName)
+	charData, err := db_character.GetCharacterByNameContext(ses.CommandContext(), wh.database, characterName)
 	if err != nil {
-		log.Printf("sendCharacterState: failed to get character %q: %v", characterName, err)
-		return
+		return err
 	}
+	if int64(charData.AccountID) != ses.AccountID {
+		return fmt.Errorf("character does not belong to authenticated account")
+	}
+	charID := int64(charData.ID)
+	ctx, cancel := context.WithTimeout(ses.CommandContext(), 5*time.Second)
+	defer cancel()
+	if err = wh.characterOwners.acquire(ctx, charID, ses, wh.cleanupCharacterSession); err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil && !ses.HasValidClient() {
+			wh.characterOwners.release(charID, ses)
+			ses.CharacterName = ""
+			ses.MapID = -1
+		}
+		// After Client is installed, disconnect cleanup owns movement, cached
+		// flags/battle and the registry. Releasing here would let that cleanup
+		// mistake a partially prepared character for a stale connection.
+	}()
+	// The previous owner may have flushed position/playtime during the handoff.
+	// Loading before that barrier would resurrect stale character state.
+	charData, err = db_character.GetCharacterByNameContext(ctx, wh.database, characterName)
+	if err != nil {
+		return err
+	}
+	if int64(charData.ID) != charID || int64(charData.AccountID) != ses.AccountID {
+		return fmt.Errorf("character changed during connection handoff")
+	}
+	ses.CharacterName = characterName
 
 	if isInvalidZeroPlayerPosition(int(charData.X), int(charData.Y)) {
+		destination := recoverySpawnDestination()
 		log.Printf("[WORLD] Recovering invalid saved position for character %s (%d) to map %d (%d,%d)",
-			charData.Name, charData.ID, RecoverySpawnMap, int(RecoverySpawnX), int(RecoverySpawnY))
-		charData.MapID = RecoverySpawnMap
+			charData.Name, charData.ID, destination.MapID, destination.X, destination.Y)
+		charData.MapID = uint32(destination.MapID)
 		charData.X = RecoverySpawnX
 		charData.Y = RecoverySpawnY
 		charData.Z = RecoverySpawnZ
-		if err := db_character.UpdateCharacterPosition(
-			int32(charData.ID),
-			uint32(RecoverySpawnMap),
-			RecoverySpawnX,
-			RecoverySpawnY,
-			RecoverySpawnZ,
-			0,
-		); err != nil {
-			log.Printf("sendCharacterStateFromDB: failed to persist recovered position for %s: %v", characterName, err)
+		if err := commitRecoveryPlayerPosition(ctx, wh.database, int64(charData.ID), charData.Heading); err != nil {
+			return err
 		}
+
 	}
 
 	// Initialize session map from character data
@@ -248,15 +174,13 @@ func sendCharacterStateFromDB(ses *session.Session, wh *WorldHandler, characterN
 	// Update last login and begin the active play interval from the same instant.
 	playStartedAt := time.Now()
 	charData.LastLogin = uint32(playStartedAt.Unix())
-	if err := db_character.UpdateCharacter(charData, ses.AccountID); err != nil {
-		log.Printf("sendCharacterStateFromDB: failed to update last login for %s: %v", characterName, err)
+	if err := db_character.SetCharacterLastLogin(ctx, wh.database, charData.ID, ses.AccountID, charData.LastLogin); err != nil {
+		return fmt.Errorf("update last login for %s: %w", characterName, err)
 	}
 	applyLocalCharacterPrivileges(charData)
 
-	ensureLocalDevFixtures(int64(charData.ID))
-
 	// Create client for this character (loads inventory, etc.)
-	ses.Client, err = client.NewClient(charData, func(text string) {
+	ses.Client, err = client.NewClient(ses.CommandContext(), wh.database, charData, func(text string) {
 		SendSystemMessage(ses, text)
 	}, func(text string, msgType string) {
 		SendSpecialMessage(ses, text, msgType)
@@ -264,12 +188,71 @@ func sendCharacterStateFromDB(ses *session.Session, wh *WorldHandler, characterN
 		sendUpdatedCharacterState(ses)
 	})
 	if err != nil {
-		log.Printf("sendCharacterState: failed to create client for character %q: %v", characterName, err)
-		return
+		return err
+	}
+	// Movement ownership must exist before gameplay starts. Previously the first
+	// arbitrary browser position report created it, so fresh entry had no owner.
+	if wh.PlayerMovement != nil && wh.ActorManager != nil {
+		if err := RegisterPlayerForMovement(ses, wh); err != nil {
+			return fmt.Errorf("restore movement ownership: %w", err)
+		}
 	}
 	ses.StartPlaytime(playStartedAt, charData.TimePlayed, int32(charData.ID))
 
-	buildAndSendCharacterState(ses)
+	return nil
+}
+
+type characterEntryState struct {
+	character protocol.CharacterData
+	wallet    *model.CharacterWallet
+	bind      *model.CharacterBind
+}
+
+// Read every required initial stream before publishing any of them. Entry must
+// fail when storage is unavailable, rather than enter with a null/stale wallet.
+func readCharacterEntryState(ses *session.Session, wh *WorldHandler) (characterEntryState, error) {
+	var state characterEntryState
+	if !ses.HasValidClient() || ses.IsClosed() {
+		return state, session.ErrSessionClosed
+	}
+	char := ses.Client.CharData()
+	ctx := ses.CommandContext()
+	wallet, err := db_currency.GetCharacterWalletContext(ctx, wh.database, char.ID)
+	if err != nil {
+		return state, err
+	}
+	bind, err := db_character.GetCharacterBindContext(ctx, wh.database, char.ID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return state, err
+	}
+	if err := ctx.Err(); err != nil {
+		return state, err
+	}
+	state.character = protocol.CharacterData{CharacterData: *char, Options: ses.Client.Options()}
+	state.wallet, state.bind = wallet, bind
+	return state, nil
+}
+
+func sendCharacterEntryState(ses *session.Session, state characterEntryState) error {
+	for _, message := range []struct {
+		opcode opcodes.OpCode
+		data   interface{}
+	}{
+		{opcodes.CharacterData, state.character},
+		{opcodes.CharacterWallet, state.wallet},
+		{opcodes.CharacterBind, state.bind},
+	} {
+		if ses.IsClosed() {
+			return session.ErrSessionClosed
+		}
+		if err := ses.CommandContext().Err(); err != nil {
+			return err
+		}
+		if err := ses.SendStreamJSON(message.data, message.opcode); err != nil {
+			return fmt.Errorf("initial character stream %d: %w", message.opcode, err)
+		}
+	}
+	return nil
 }
 
 func sendUpdatedCharacterState(ses *session.Session) {
@@ -285,39 +268,20 @@ func buildAndSendCharacterState(ses *session.Session) {
 	}
 
 	charData := ses.Client.CharData()
-	ctx := context.Background()
+	ctx := ses.CommandContext()
 
-	// Send persisted character data through the owned DB model shape.
-	// We also include the options object explicitly so the client doesn't have to parse a JSON string
-	charMap, _ := StructToMap(charData).(map[string]interface{})
-	if charMap != nil {
-		charMap["options"] = ses.Client.Options()
-	}
-
-	ses.SendStreamJSON(charMap, opcodes.CharacterData)
+	ses.SendStreamJSON(protocol.CharacterData{
+		CharacterData: *charData,
+		Options:       ses.Client.Options(),
+	}, opcodes.CharacterData)
 
 	// Send wallet as its own persisted model stream.
 	wallet, _ := db_character.GetCharacterWallet(ctx, charData.ID)
-	ses.SendStreamJSON(StructToMap(wallet), opcodes.CharacterWallet)
+	ses.SendStreamJSON(wallet, opcodes.CharacterWallet)
 
-	sendCQInventorySnapshot(ses, int32(charData.ID))
+	notifyResourceChange(ses)
 
 	// Send bind data as its own persisted model stream.
 	bind, _ := db_character.GetCharacterBind(ctx, charData.ID)
-	ses.SendStreamJSON(StructToMap(bind), opcodes.CharacterBind)
-}
-
-func sendCQInventorySnapshot(ses *session.Session, charID int32) {
-	items, err := cqitems.GetCharacterInventory(charID)
-	if err != nil {
-		log.Printf("[CQItems] Failed to load inventory snapshot for char %d: %v", charID, err)
-		return
-	}
-	money, _ := cqitems.GetCharacterMoney(charID)
-	log.Printf("[CQItems] Sending inventory snapshot for char %d: %d items", charID, len(items))
-	ses.SendStreamJSON(map[string]interface{}{
-		"success": true,
-		"items":   items,
-		"money":   money,
-	}, opcodes.CQInventoryResponse)
+	ses.SendStreamJSON(bind, opcodes.CharacterBind)
 }

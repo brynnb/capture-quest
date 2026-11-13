@@ -1,12 +1,14 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
+	"database/sql"
 	b64 "encoding/base64"
-	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -16,9 +18,10 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"capturequest/internal/api/opcodes"
+	"capturequest/internal/api"
 	"capturequest/internal/cache"
 	"capturequest/internal/cert"
 	"capturequest/internal/config"
@@ -34,30 +37,67 @@ import (
 	"github.com/quic-go/webtransport-go"
 )
 
-// Server hosts a WebTransport-based world server with both datagrams and a single control stream per session.
+// worldRuntime is the transport-facing boundary of the gameplay runtime.
+type worldRuntime interface {
+	HandlePacket(*session.Session, []byte)
+	RemoveSession(int)
+	ShutdownContext(context.Context) error
+}
+
+// Server hosts HTTP, WebSocket and WebTransport connections.
 type Server struct {
-	wtServer       *webtransport.Server
-	worldHandler   *world.WorldHandler
-	sessionManager *session.SessionManager
-	sessions       map[int]*webtransport.Session
-	sessionsMu     sync.Mutex // Protects sessions map
-	udpConn        *net.UDPConn
-	gracePeriod    time.Duration
-	debugMode      bool
-	discordChat    *discordchat.Bridge
+	ready             atomic.Bool
+	draining          atomic.Bool
+	failed            atomic.Bool
+	failureOnce       sync.Once
+	failures          chan error
+	lifecycleMu       sync.Mutex
+	stopOnce          sync.Once
+	stopDone          chan struct{}
+	stopErr           error
+	started, stopping bool
+	httpServer        *http.Server
+	httpDone          chan struct{}
+	httpCancel        context.CancelFunc
+	httpHandlerMu     sync.Mutex
+	httpHandlers      sync.WaitGroup
+	database          *sql.DB
+	wtServer          *webtransport.Server
+	wtDone            chan struct{}
+	transportMu       sync.Mutex
+	transportTasks    sync.WaitGroup
+	quicConnections   map[quic.Connection]struct{}
+	worldHandler      worldRuntime
+	sessionManager    *session.SessionManager
+	sessions          map[int]*webtransport.Session
+	sessionsMu        sync.Mutex // Protects sessions map
+	udpConn           *net.UDPConn
+	gracePeriod       time.Duration
+	debugMode         bool
+	discordChat       *discordchat.Bridge
 }
 
 // NewServer constructs a new Server.
-func NewServer(dsn string, gracePeriod time.Duration, debugMode bool) (*Server, error) {
+func NewServer(ctx context.Context, dsn string, gracePeriod time.Duration, debugMode bool) (*Server, error) {
 	sessionManager := session.NewSessionManager()
 	session.InitSessionManager(sessionManager)
-	worldHandler := world.NewWorldHandler(sessionManager)
+	worldHandler, err := world.NewWorldHandler(ctx, sessionManager)
+	if err != nil {
+		return nil, fmt.Errorf("initialize world: %w", err)
+	}
+	constructed := false
+	defer func() {
+		if !constructed {
+			worldHandler.Shutdown()
+		}
+	}()
 
 	if err := cache.Init(); err != nil {
 		return nil, fmt.Errorf("failed to initialize cache: %w", err)
 	}
 
 	srv := &Server{
+		database:       db.GlobalWorldDB.DB,
 		worldHandler:   worldHandler,
 		sessionManager: sessionManager,
 		sessions:       make(map[int]*webtransport.Session),
@@ -74,11 +114,18 @@ func NewServer(dsn string, gracePeriod time.Duration, debugMode bool) (*Server, 
 			discordBridge.Enqueue(discordchat.Message{SenderName: message.SenderName, Text: message.Text})
 		})
 	}
+	constructed = true
 	return srv, nil
 }
 
 // StartServer configures TLS, QUIC, HTTP, and begins serving WebTransport.
-func (s *Server) StartServer() {
+func (s *Server) StartServer() error {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	if s.stopping || s.started {
+		return fmt.Errorf("server cannot start twice or after shutdown")
+	}
+	s.started = true
 	InitLogging()
 	if s.discordChat != nil {
 		s.discordChat.Start()
@@ -87,8 +134,7 @@ func (s *Server) StartServer() {
 	// TLS
 	tlsConf, certManager, err := cert.LoadTLSConfig()
 	if err != nil {
-		log.Printf("failed to load TLS config: %v", err)
-		return
+		return fmt.Errorf("load TLS config: %w", err)
 	}
 
 	// Bind UDP for WebTransport. Local dev can override WT_PORT when the
@@ -96,8 +142,7 @@ func (s *Server) StartServer() {
 	wtPort := envPort("WT_PORT", 4433)
 	udpConn, port, err := listenUDP(wtPort)
 	if err != nil {
-		log.Printf("UDP listen error on port %d: %v", wtPort, err)
-		return
+		return fmt.Errorf("listen UDP port %d: %w", wtPort, err)
 	}
 	s.udpConn = udpConn
 	log.Printf("WebTransport bound to UDP port: %d", port)
@@ -146,16 +191,17 @@ func (s *Server) StartServer() {
 	}
 
 	// HTTP handler for OAuth, etc.
-	cfg, _ := config.Get()
-	go s.startHTTPServer(tlsConf, certManager, cfg.HTTPPort, port)
+	cfg, err := config.Get()
+	if err != nil {
+		return err
+	}
+	if err := s.startHTTPServer(tlsConf, certManager, cfg.HTTPPort, port); err != nil {
+		return err
+	}
 
-	// Serve WebTransport on the pre-bound UDP socket
-	go func() {
-		log.Printf("Starting WebTransport server on UDP port %d (HTTP/3)", port)
-		if err := s.wtServer.Serve(udpConn); err != nil {
-			log.Printf("WebTransport server failed: %v", err)
-		}
-	}()
+	s.serveWebTransport(udpConn)
+	s.ready.Store(true)
+	return nil
 }
 
 func envPort(name string, fallback int) int {
@@ -172,107 +218,121 @@ func envPort(name string, fallback int) int {
 
 // makeCaptureQuestHandler upgrades HTTP to WebTransport and manages session lifecycles.
 func (s *Server) makeCaptureQuestHandler() http.HandlerFunc {
-	var nextID int
 	return func(rw http.ResponseWriter, r *http.Request) {
-		logutil.Debugf("Received /cq WebTransport request from %s", r.RemoteAddr)
-		logutil.Debugf("Request method: %s, URL: %s", r.Method, r.URL.String())
+		done, admitted := s.ownTransportTask()
+		if !admitted {
+			http.Error(rw, "Server shutting down", http.StatusServiceUnavailable)
+			return
+		}
+		defer done()
+		// The shipped browser reconnects by authenticating a fresh connection.
+		// Never attach an existing authenticated session using its ID or IP.
+		if r.URL.Query().Get("sid") != "" && r.URL.Query().Get("sid") != "0" {
+			http.Error(rw, "Reconnect requires authentication on a new connection", http.StatusBadRequest)
+			return
+		}
 		sess, err := s.wtServer.Upgrade(rw, r)
 		if err != nil {
-			log.Printf("Upgrade error: %v", err)
+			log.Printf("WebTransport upgrade error: %v", err)
 			return
 		}
-
 		clientIP, _, _ := net.SplitHostPort(r.RemoteAddr)
-		params := r.URL.Query()
-
-		// Try reconnect
-		var sessObj *session.Session
-		if sidStr := params.Get("sid"); sidStr != "0" {
-			if sid, e := strconv.Atoi(sidStr); e == nil {
-				if existing, e2 := s.sessionManager.GetValidSession(sid, clientIP); e2 == nil {
-					log.Printf("Reconnecting session %d from %s", sid, clientIP)
-					sessObj = existing
-					existing.Messenger = s
-					existing.SendJSON(map[string]interface{}{}, opcodes.Reconnect)
-				}
-			}
-		}
-
-		// New session
+		sessObj := s.sessionManager.CreateNextSession(s, clientIP, nil)
 		if sessObj == nil {
-			nextID++
-			sid := nextID
-			s.sessionsMu.Lock()
-			s.sessions[sid] = sess
-			s.sessionsMu.Unlock()
-
-			log.Printf("Accepted new session %d", sid)
-			sessObj = s.sessionManager.CreateSession(s, sid, clientIP, nil)
-		}
-
-		go s.acceptClientControlStreams(sessObj, sess, sessObj.SessionID, clientIP)
-
-		// Start datagram reader
-		go s.handleDatagrams(sessObj, sess)
-	}
-}
-
-func (s *Server) acceptClientControlStreams(sessObj *session.Session, sess *webtransport.Session, sid int, clientIP string) {
-	for {
-		ctrl, err := sess.AcceptStream(context.Background())
-		if err != nil {
-			logutil.Debugf("client-opened control stream accept closed (sess %d): %v", sid, err)
+			_ = sess.CloseWithError(0, "server shutting down")
 			return
 		}
-		log.Printf("Accepted client-opened control stream for session %d", sid)
-		sessObj.ControlStream = ctrl
-		go s.handleControlStream(sessObj, ctrl, sid, clientIP)
+		s.sessionsMu.Lock()
+		s.sessions[sessObj.SessionID] = sess
+		s.sessionsMu.Unlock()
+		if sessObj.IsClosed() {
+			_ = s.CloseSession(sessObj.SessionID)
+			return
+		}
+		if !s.startTransportTask(func() { s.acceptClientControlStream(sessObj, sess) }) {
+			s.handleSessionClose(sessObj.SessionID)
+		}
 	}
 }
 
-// handleDatagrams reads incoming datagrams forever.
-func (s *Server) handleDatagrams(sessObj *session.Session, sess *webtransport.Session) {
-	ctx := context.Background()
-	for {
-		data, err := sess.ReceiveDatagram(ctx)
+const clientFrameTimeout = 15 * time.Second
+const controlStreamTimeout = 10 * time.Second
+
+func (s *Server) acceptClientControlStream(sessObj *session.Session, sess *webtransport.Session) {
+	defer s.handleSessionClose(sessObj.SessionID)
+	ctx, cancel := context.WithTimeout(sess.Context(), controlStreamTimeout)
+	ctrl, err := sess.AcceptStream(ctx)
+	cancel()
+	if err != nil {
+		logutil.Debugf("control stream accept failed (sess %d): %v", sessObj.SessionID, err)
+		return
+	}
+	if !sessObj.AttachControlStream(ctrl) {
+		ctrl.CancelRead(0)
+		ctrl.CancelWrite(0)
+		return
+	}
+	// Exactly one control stream owns reliable commands and responses. Extra
+	// streams must never replace it or execute concurrent commands.
+	if !s.startTransportTask(func() {
+		extra, err := sess.AcceptStream(sess.Context())
 		if err != nil {
-			logutil.Debugf("datagram recv closed (sess %d): %v", sessObj.SessionID, err)
-			s.handleSessionClose(sessObj.SessionID)
+			return
+		}
+		extra.CancelRead(0)
+		extra.CancelWrite(0)
+		s.handleSessionClose(sessObj.SessionID)
+	}) {
+		return
+	}
+	if !s.startTransportTask(func() { s.handleDatagrams(sessObj, sess) }) {
+		return
+	}
+	s.handleControlStream(sessObj, ctrl)
+}
+
+func (s *Server) handleDatagrams(sessObj *session.Session, sess *webtransport.Session) {
+	defer s.handleSessionClose(sessObj.SessionID)
+	for {
+		data, err := sess.ReceiveDatagram(sess.Context())
+		if err != nil {
+			return
+		}
+		if len(data) < 2 || len(data) > api.MaxClientPacketSize {
 			return
 		}
 		s.worldHandler.HandlePacket(sessObj, data)
 	}
 }
 
-// handleControlStream parses length-prefixed frames on the single bidi stream.
-func (s *Server) handleControlStream(
-	sessObj *session.Session,
-	ctrl io.ReadWriteCloser,
-	sid int,
-	_ string,
-) {
-	defer ctrl.Close()
+// handleControlStream shares framing and deadlines across both transports.
+func (s *Server) handleControlStream(sessObj *session.Session, ctrl io.ReadWriteCloser) {
+	defer s.handleSessionClose(sessObj.SessionID)
 	for {
-		// read length prefix
-		var lenBuf [4]byte
-		if _, err := io.ReadFull(ctrl, lenBuf[:]); err != nil {
-			logutil.Debugf("ctrl read len error (sess %d): %v", sid, err)
-			s.handleSessionClose(sid)
+		deadlineStream, hasDeadline := ctrl.(interface{ SetReadDeadline(time.Time) error })
+		if hasDeadline {
+			if err := deadlineStream.SetReadDeadline(time.Time{}); err != nil {
+				return
+			}
+		}
+		// Heartbeats may arrive over datagrams while the reliable stream is idle.
+		// Session expiry owns idle time; a fixed frame deadline starts only once
+		// the first byte arrives, so trickling a partial command cannot extend it.
+		var first [1]byte
+		if _, err := io.ReadFull(ctrl, first[:]); err != nil {
 			return
 		}
-		n := binary.LittleEndian.Uint32(lenBuf[:])
-
-		// read payload
-		payload := make([]byte, n)
-		if _, err := io.ReadFull(ctrl, payload); err != nil {
-			logutil.Debugf("ctrl read payload error (sess %d): %v", sid, err)
-			s.handleSessionClose(sid)
+		if hasDeadline {
+			if err := deadlineStream.SetReadDeadline(time.Now().Add(clientFrameTimeout)); err != nil {
+				return
+			}
+		}
+		payload, err := api.ReadClientFrame(io.MultiReader(bytes.NewReader(first[:]), ctrl))
+		if err != nil {
+			logutil.Debugf("control frame ended (sess %d): %v", sessObj.SessionID, err)
 			return
 		}
-
-		// Handle JSON control stream messages
 		s.worldHandler.HandlePacket(sessObj, payload)
-		logutil.Debugf("sess %d control (JSON) -> %d bytes", sid, len(payload))
 	}
 }
 
@@ -282,8 +342,7 @@ func (s *Server) SendStream(sessionID int, data []byte) error {
 	if !ok {
 		return fmt.Errorf("session %d not found", sessionID)
 	}
-	_, err := sessObj.ControlStream.Write(data)
-	return err
+	return sessObj.WriteControlStream(data)
 }
 
 // SendDatagram fires a datagram packet to a client.
@@ -301,31 +360,151 @@ func (s *Server) SendDatagram(sessionID int, data []byte) error {
 	return nil
 }
 
-// handleSessionClose schedules removal after gracePeriod.
-func (s *Server) handleSessionClose(sessionID int) {
-	// Remove the WebTransport session from our map to prevent memory leak
+// CloseSession closes only the transport owned by this session. Called by
+// Session.Close after the session manager releases its membership lock.
+func (s *Server) CloseSession(sessionID int) error {
 	s.sessionsMu.Lock()
+	transport := s.sessions[sessionID]
 	delete(s.sessions, sessionID)
 	s.sessionsMu.Unlock()
-	s.worldHandler.RemoveSession(sessionID)
-	logutil.Debugf("Cleaned up session %d", sessionID)
+	if transport != nil {
+		return transport.CloseWithError(0, "session closed")
+	}
+	return nil
 }
 
-// StopServer tears down all listeners and connections.
+func (s *Server) handleSessionClose(sessionID int) {
+	s.worldHandler.RemoveSession(sessionID)
+}
+
+func (s *Server) shutdownBudget() time.Duration {
+	if s.gracePeriod > 0 {
+		return s.gracePeriod
+	}
+	return 30 * time.Second
+}
+
+// StopServer uses the configured grace period for the caller's wait.
 func (s *Server) StopServer() {
+	budget := s.shutdownBudget()
+	ctx, cancel := context.WithTimeout(context.Background(), budget)
+	defer cancel()
+	if err := s.StopServerContext(ctx); err != nil {
+		log.Printf("Server shutdown: %v", err)
+	}
+}
+
+// StopServerContext starts one owned drain and permits later callers to join it.
+// On timeout storage stays open until HTTP handlers and world work have joined.
+func (s *Server) StopServerContext(ctx context.Context) error {
+	s.stopOnce.Do(func() {
+		s.stopDone = make(chan struct{})
+		go func() { s.drain(); close(s.stopDone) }()
+	})
+	select {
+	case <-s.stopDone:
+		return s.stopErr
+	case <-ctx.Done():
+		return fmt.Errorf("server drain unfinished: %w", ctx.Err())
+	}
+}
+
+func (s *Server) drain() {
+	s.draining.Store(true)
+	s.ready.Store(false)
+	s.lifecycleMu.Lock()
+	s.stopping = true
+	s.lifecycleMu.Unlock()
+	if s.sessionManager != nil {
+		s.sessionManager.Seal()
+	}
+	// Start world retirement before joining HTTP. It registers shutdown cleanup
+	// before closing sessions, so racing transport callbacks retain save failures.
+	worldDone := make(chan error, 1)
+	go func() {
+		var err error
+		if s.worldHandler != nil {
+			err = s.worldHandler.ShutdownContext(context.Background())
+		}
+		worldDone <- err
+	}()
+	wtClosed := make(chan error, 1)
+	go func() {
+		var err error
+		s.closeQUICConnections()
+		if s.wtServer != nil {
+			err = s.wtServer.Close()
+		}
+		wtClosed <- err
+	}()
+	if s.httpCancel != nil {
+		s.httpCancel()
+	}
 	if s.discordChat != nil {
 		s.discordChat.Close()
 	}
-	if s.wtServer != nil {
-		s.wtServer.Close()
+	// Shutdown joins ordinary HTTP handlers. Hijacked WebSockets are owned by
+	// the session manager and retired by the concurrently draining world.
+	// Persistence cleanup uses its own context and is joined below.
+	if s.httpServer != nil {
+		httpDrain, cancel := context.WithTimeout(context.Background(), s.shutdownBudget())
+		err := s.httpServer.Shutdown(httpDrain)
+		cancel()
+		if err != nil {
+			s.stopErr = errors.Join(s.stopErr, fmt.Errorf("HTTP shutdown: %w", err))
+			// Close interrupts blocked socket/body reads; it does not join handlers.
+			s.stopErr = errors.Join(s.stopErr, s.httpServer.Close())
+		}
+		<-s.httpDone
+		// No handler can register after draining becomes true. Synchronize with
+		// admissions already in progress before waiting on their owned work.
+		s.httpHandlerMu.Lock()
+		s.httpHandlerMu.Unlock()
+		s.httpHandlers.Wait()
 	}
+	s.stopErr = errors.Join(s.stopErr, <-wtClosed)
 	if s.udpConn != nil {
-		s.udpConn.Close()
+		_ = s.udpConn.Close()
 	}
-	s.worldHandler.Shutdown()
-	if db.GlobalWorldDB != nil {
-		db.GlobalWorldDB.DB.Close()
+	if s.wtDone != nil {
+		<-s.wtDone
 	}
+	s.transportMu.Lock()
+	s.transportMu.Unlock()
+	s.transportTasks.Wait()
+	s.stopErr = errors.Join(s.stopErr, <-worldDone)
+	if s.database != nil {
+		s.stopErr = errors.Join(s.stopErr, s.database.Close())
+	}
+}
+
+// serveHTTP owns the listener and serve completion for the server lifecycle.
+// Startup calls it while holding lifecycleMu, after binding succeeds.
+func (s *Server) serveHTTP(listener net.Listener, handler http.Handler) {
+	httpContext, cancel := context.WithCancel(context.Background())
+	s.httpCancel = cancel
+	s.httpServer = &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			s.httpHandlerMu.Lock()
+			if s.draining.Load() {
+				s.httpHandlerMu.Unlock()
+				http.Error(w, "Server shutting down", http.StatusServiceUnavailable)
+				return
+			}
+			s.httpHandlers.Add(1)
+			s.httpHandlerMu.Unlock()
+			defer s.httpHandlers.Done()
+			handler.ServeHTTP(w, r)
+		}), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second,
+		BaseContext: func(net.Listener) context.Context { return httpContext },
+	}
+	s.httpDone = make(chan struct{})
+	go func() {
+		defer close(s.httpDone)
+		if err := s.httpServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			s.reportServeFailure(fmt.Errorf("HTTP serve: %w", err))
+		}
+	}()
 }
 
 // listenUDP binds to the given port.
@@ -345,8 +524,9 @@ func listenUDP(port int) (*net.UDPConn, int, error) {
 }
 
 // startHTTPServer serves HTTPS for other endpoints.
-func (s *Server) startHTTPServer(tlsConf *tls.Config, certManager *cert.RotatingCertManager, port int, wtPort int) {
+func (s *Server) startHTTPServer(tlsConf *tls.Config, certManager *cert.RotatingCertManager, port int, wtPort int) error {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/api/ready", s.handleReadiness)
 	mux.HandleFunc("/register", registerHandler)
 
 	// WebSocket fallback for browsers without WebTransport (Safari, iOS)
@@ -419,19 +599,23 @@ func (s *Server) startHTTPServer(tlsConf *tls.Config, certManager *cert.Rotating
 	// that handles TLS for us, so we listen on plain HTTP.
 	if port > 0 {
 		log.Printf("Starting plain HTTP server on TCP port %d (TLS terminated by proxy)", port)
-		go http.ListenAndServe(fmt.Sprintf("127.0.0.1:%d", port), mux)
-		return
+		listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		if err != nil {
+			return fmt.Errorf("listen HTTP: %w", err)
+		}
+		s.serveHTTP(listener, mux)
+		return nil
 	}
 
 	// Local mode: listen on 443 with TLS
 	listener, err := net.Listen("tcp", ":443")
 	if err != nil {
-		log.Printf("HTTPS listen error on 443: %v", err)
-		return
+		return fmt.Errorf("listen HTTPS: %w", err)
 	}
 	tlsListener := tls.NewListener(listener, tlsConf)
 	log.Printf("Starting HTTPS server on TCP port 443 (Local TLS)")
-	go http.Serve(tlsListener, mux)
+	s.serveHTTP(tlsListener, mux)
+	return nil
 }
 
 func (s *Server) registerAdminRoutes(mux *http.ServeMux) {

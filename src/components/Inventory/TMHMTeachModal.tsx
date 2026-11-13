@@ -1,7 +1,7 @@
 import React, { useEffect } from "react";
 import styled from "styled-components";
-import { canPokemonLearnTMHM } from "@/constants/tmhmMoveData";
-import type { PhaserMoveFull, PokemonDTO } from "@/net/generated/world_api";
+import { canPokemonLearnTMHM, type TMHMMovePreview } from "@/constants/tmhmMoveData";
+import type { PokemonDTO } from "@/net/generated/world_api";
 import { ITEM_TYPE_HM, type CQInventoryItem } from "@/stores/CQInventoryStore";
 
 const TYPE_COLORS: Record<string, string> = {
@@ -250,7 +250,7 @@ const CloseButton = styled.button`
 
 interface TMHMTeachModalProps {
   inventoryItem: CQInventoryItem;
-  move: PhaserMoveFull;
+  move: TMHMMovePreview;
   party: PokemonDTO[];
   onChoosePokemon: (partySlot: number) => void;
   onClose: () => void;

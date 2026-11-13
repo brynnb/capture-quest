@@ -70,6 +70,15 @@ every deployment. Import/schema details are in
 [`docs/DATABASE_BOOTSTRAP.md`](docs/DATABASE_BOOTSTRAP.md), and repository-wide
 agent constraints are in [`AGENTS.md`](AGENTS.md).
 
+## Server foundations work
+
+The active server refactor is on `codex/server-foundations`. See
+[`docs/SERVER_FOUNDATIONS.md`](docs/SERVER_FOUNDATIONS.md) for the current scope,
+implemented checkpoints, remaining work, acceptance criteria and verification
+limits. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) describes the ownership,
+transaction, lifecycle and protocol design. The goal remains in progress;
+checkpoint commits are local and do not imply a production release.
+
 ## Browser Smoke Tests
 
 CaptureQuest has a small Playwright smoke-test harness for browser-level checks.

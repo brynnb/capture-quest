@@ -1,0 +1,80 @@
+import type { CutsceneEndResponse, OwnedPlayerPositionResponse, PlayerFacingRequest, PlayerFacingResponse, PlayerStepRequest, PlayerStepResponse, PlayerStepCompleteResponse } from "@/net/generated/protocol";
+import * as PhaserNet from "./PhaserNetworkService";
+import { correlatedRequest, CorrelatedRequestTimeoutError } from "./CorrelatedRequest";
+
+export function requestPlayerStep(request: Omit<PlayerStepRequest, "requestId">, signal?: AbortSignal): Promise<PlayerStepResponse> {
+  return correlatedRequest<PlayerStepResponse>(PhaserNet.onPlayerStep, (requestId) => PhaserNet.requestPlayerStep({ ...request, requestId }), signal);
+}
+
+export async function completePlayerStep(stepToken: string, signal?: AbortSignal): Promise<PlayerStepCompleteResponse> {
+  const complete = () => correlatedRequest<PlayerStepCompleteResponse>(PhaserNet.onPlayerStepComplete, (requestId) => PhaserNet.completePlayerStep({ stepToken, requestId }), signal);
+  try { return await complete(); }
+  catch (error) {
+    // Only a lost reply retries, once, with the same server-issued authorization.
+    // The durable receipt makes this safe even if the first command committed.
+    if (!(error instanceof CorrelatedRequestTimeoutError) || signal?.aborted) throw error;
+    return complete();
+  }
+}
+
+export function requestPlayerFacing(request: Omit<PlayerFacingRequest, "requestId">, signal?: AbortSignal): Promise<PlayerFacingResponse> {
+  return correlatedRequest<PlayerFacingResponse>(PhaserNet.onPlayerFacing, (requestId) => PhaserNet.requestPlayerFacing({ ...request, requestId }), signal);
+}
+
+// Position recovery is a read serialized after any preceding accepted command.
+export function readOwnedPlayerPosition(signal?: AbortSignal, stepToken?: string): Promise<OwnedPlayerPositionResponse> {
+  return correlatedRequest<OwnedPlayerPositionResponse>(PhaserNet.onOwnedPlayerPosition, (requestId) => PhaserNet.requestOwnedPlayerPosition({ requestId, ...(stepToken ? { stepToken } : {}) }), signal);
+}
+export async function completeCutscene(scriptLabel: string, completionToken: string, signal?: AbortSignal, cancel = false): Promise<CutsceneEndResponse> {
+  const complete = () => correlatedRequest<CutsceneEndResponse>(PhaserNet.onCutsceneEnd, (requestId) => PhaserNet.completeCutscene({ scriptLabel, completionToken, requestId, ...(cancel ? { cancel: true } : {}) }), signal);
+  try { return await complete(); }
+  catch (error) {
+    // The durable script receipt makes one lost-reply retry safe. Explicit
+    // rejection and retirement never authorize another attempt.
+    if (!(error instanceof CorrelatedRequestTimeoutError) || signal?.aborted) throw error;
+    return complete();
+  }
+}
+
+export function requestBicycleState(
+  characterId: number,
+  signal: AbortSignal,
+  command?: { instanceId: number; wantsRiding: boolean; revision: number },
+): Promise<import("@/net/generated/world_api").BicycleStateResponse> {
+  return correlatedRequest<import("@/net/generated/world_api").BicycleStateResponse>(
+    PhaserNet.onBicycleState,
+    requestId => PhaserNet.requestBicycleState({ requestId, characterId, ...command }),
+    signal,
+  );
+}
+
+export function requestEscapeRope(request: Omit<import("@/net/generated/world_api").EscapeRopeUseRequest, "requestId">, signal: AbortSignal): Promise<import("@/net/generated/world_api").EscapeRopeUseResponse> {
+  return correlatedRequest<import("@/net/generated/world_api").EscapeRopeUseResponse>(
+    PhaserNet.onEscapeRope, requestId => PhaserNet.requestEscapeRope({ ...request, requestId }), signal,
+  );
+}
+
+
+export function requestFishing(request:Omit<import("@/net/generated/world_api").PokeFishingRequestPayload,"requestId">,signal?:AbortSignal):Promise<import("@/net/generated/protocol").FishingResponse>{
+ return correlatedRequest<import("@/net/generated/protocol").FishingResponse>(PhaserNet.onFishing,id=>PhaserNet.requestFishing({...request,requestId:id}),signal);
+}
+
+export function requestSurf(request: Omit<import("@/net/generated/world_api").PokeSurfingRequestPayload, "requestId">, signal: AbortSignal): Promise<import("@/net/generated/world_api").SurfResponse> {
+  return correlatedRequest<import("@/net/generated/world_api").SurfResponse>(PhaserNet.onSurf, requestId => PhaserNet.requestSurf({...request, requestId}), signal);
+}
+
+export function requestStateField(request:Omit<import("@/net/generated/world_api").FieldMoveUseRequestPayload,"requestId">,signal:AbortSignal):Promise<import("@/net/generated/world_api").StateFieldResponse>{
+ return correlatedRequest<import("@/net/generated/world_api").StateFieldResponse>(PhaserNet.onStateField,requestId=>PhaserNet.requestStateField({...request,requestId}),signal);
+}
+
+export function requestCut(request:Omit<import("@/net/generated/world_api").FieldMoveUseRequestPayload,"requestId">,signal:AbortSignal):Promise<import("@/net/generated/world_api").CutFieldResponse>{
+ return correlatedRequest<import("@/net/generated/world_api").CutFieldResponse>(receive=>PhaserNet.onStateField(reply=>receive(reply as import("@/net/generated/world_api").CutFieldResponse|import("@/net/generated/world_api").InventoryCommandError)),requestId=>PhaserNet.requestStateField({...request,requestId}),signal);
+}
+
+export function requestElevator(request:Omit<import("@/net/generated/world_api").ElevatorFloorsRequestPayload,"requestId"> | Omit<import("@/net/generated/world_api").ElevatorSelectRequestPayload,"requestId">,select:boolean,signal?:AbortSignal){
+ return correlatedRequest<import("@/net/generated/world_api").ElevatorResponse>(PhaserNet.onElevator,id=>PhaserNet.requestElevator({...request,requestId:id},select),signal);
+}
+
+export function requestWarpHome(request:Omit<import("@/net/generated/world_api").WarpHomeRequest,"requestId">,signal?:AbortSignal){return correlatedRequest<import("@/net/generated/world_api").WarpHomeResponse>(PhaserNet.onWarpHome,id=>PhaserNet.requestWarpHome({...request,requestId:id}),signal);}
+
+export function readWarpHomeRevision(characterId:number,signal?:AbortSignal){return requestWarpHome({characterId,current:true},signal);}

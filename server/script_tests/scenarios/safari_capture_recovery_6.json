@@ -1,0 +1,67 @@
+{
+  "name": "safari_capture_recovery_6",
+  "description": "Rendered Safari capture recovery fixture using the original Magikarp and real capture/flee rolls, with party space or a full party.",
+  "fixture": {
+    "characterName": "ScriptSimSafariCaptureRecovery6",
+    "mapName": "SAFARI_ZONE_CENTER",
+    "x": 14,
+    "y": 24,
+    "direction": "DOWN",
+    "flags": [],
+    "party": [
+      {
+        "speciesId": 25,
+        "level": 50
+      },
+      {
+        "speciesId": 25,
+        "level": 50
+      },
+      {
+        "speciesId": 25,
+        "level": 50
+      },
+      {
+        "speciesId": 25,
+        "level": 50
+      },
+      {
+        "speciesId": 25,
+        "level": 50
+      },
+      {
+        "speciesId": 25,
+        "level": 50
+      }
+    ],
+    "inventory": [],
+    "hiddenObjects": [],
+    "safari": {
+      "active": true,
+      "ballsLeft": 30,
+      "stepsLeft": 499,
+      "battle": {
+        "pokemonId": 129,
+        "level": 5
+      }
+    }
+  },
+  "trigger": {
+    "type": "fixture_state",
+    "mapName": "SAFARI_ZONE_CENTER"
+  },
+  "expect": {
+    "scriptLabel": "FixtureState",
+    "safariActive": true,
+    "safariBallsLeft": 30,
+    "safariStepsLeft": 499,
+    "safariBattle": {
+      "active": true,
+      "pokemonId": 129,
+      "level": 5,
+      "caught": false,
+      "fled": false
+    },
+    "activeBattleAbsent": true
+  }
+}

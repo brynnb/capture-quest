@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"database/sql"
 	"testing"
 
@@ -14,6 +15,7 @@ func TestActorForCharacterHonorsOakLabSourceVisibility(t *testing.T) {
 
 	wh := &WorldHandler{
 		ActorRegistry: NewActorRegistry(),
+		database:      db.GlobalWorldDB.DB,
 	}
 	mgr := NewPhaserActorManager(wh)
 	wh.ActorManager = mgr
@@ -67,11 +69,14 @@ func TestLoadWalkingActorsPreservesOriginalObjectID(t *testing.T) {
 
 	wh := &WorldHandler{
 		ActorRegistry: NewActorRegistry(),
+		database:      db.GlobalWorldDB.DB,
 	}
 	mgr := NewPhaserActorManager(wh)
 	wh.ActorManager = mgr
 
-	mgr.loadWalkingActors()
+	if err := mgr.Load(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 
 	runtimeID := wh.ActorRegistry.GetPhaserID(ActorTypeNPC, 101)
 	actor, ok := mgr.walkingActors[runtimeID]

@@ -77,7 +77,7 @@ test("audio requests fire for map music, doors, items, battle, surf, and bike", 
   await jumpToScenario(page, "bike_shop_already_has_bicycle");
   await page.getByRole("button", { name: "Warp Home" }).click();
   await waitForMap(page, /Kanto|Unified Overworld/);
-  await page.getByRole("button", { name: "Inventory" }).click();
+  await page.getByRole("button", { name: "Bag", exact: true }).click();
   await page.getByTestId("inventory-item-bicycle").click();
   await expect
     .poll(

@@ -2,7 +2,7 @@ import { useState } from "react";
 import styled from "styled-components";
 import useGameScreenStore from "@stores/GameScreenStore";
 import SelectionButton from "@components/Interface/SelectionButton";
-import { registerAccount } from "@/services/authService";
+import useCharacterSelectStore from "@/stores/CharacterSelectStore";
 
 const Wrapper = styled.div`
   height: 100%;
@@ -229,9 +229,7 @@ const StatusText = styled.p`
   font-weight: 600;
 `;
 
-const SuccessText = styled(StatusText)`
-  color: #4caf50;
-`;
+
 
 const StatusSlot = styled.div`
   height: 34px;
@@ -251,10 +249,11 @@ const RegisterPage = () => {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmitting = useCharacterSelectStore(state => state.accountOperation === "authenticate");
+  const accountError = useCharacterSelectStore(state => state.accountError);
 
   const handleRegister = async () => {
+    if (useCharacterSelectStore.getState().accountOperation || useCharacterSelectStore.getState().isEnteringWorld) return;
     // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!email.trim() || !emailRegex.test(email)) {
@@ -273,18 +272,8 @@ const RegisterPage = () => {
       return;
     }
 
-    setIsSubmitting(true);
     setError(null);
-    setSuccess(null);
-
-    try {
-      await registerAccount(email, password);
-      setSuccess("Account created successfully!");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Registration failed");
-    } finally {
-      setIsSubmitting(false);
-    }
+    await useCharacterSelectStore.getState().authenticate({kind: "register", email: email.trim(), password});
   };
 
   return (
@@ -323,14 +312,13 @@ const RegisterPage = () => {
           </InputGroup>
         </FormPanel>
         <StatusSlot>
-          {error && <StatusText>{error}</StatusText>}
-          {!error && success && <SuccessText>{success}</SuccessText>}
+          {(error || accountError) && <StatusText role="alert">{error || accountError}</StatusText>}
         </StatusSlot>
       </CenterContent>
 
       <BottomButtons>
         <SelectionButton
-          onClick={() => setScreen("title")}
+          onClick={() => { useCharacterSelectStore.getState().logout(); setScreen("title"); }}
           $isSelected={false}
           $isDisabled={false}
         >

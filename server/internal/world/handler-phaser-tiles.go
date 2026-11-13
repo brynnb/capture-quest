@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"log"
@@ -75,19 +76,27 @@ type tileRuntimeProperties struct {
 }
 
 func tileRuntimePropertiesForTileImage(tileImageID int) tileRuntimeProperties {
+	props, _ := tileRuntimePropertiesForTileImageContext(context.Background(), db.GlobalWorldDB.DB, tileImageID)
+	return props
+}
+
+// Imported image metadata is authoritative. Palette properties are sparse editor
+// overrides; their absent row must not make a real catalog image unavailable.
+// Event rules carry their own collision; the editor default remains blocked.
+func tileRuntimePropertiesForTileImageContext(ctx context.Context, database db.ContextDBTX, tileImageID int) (tileRuntimeProperties, error) {
 	var (
 		collisionType int
 		rawFootTileID sql.NullInt64
 		talkOverTile  bool
 	)
-	if err := db.GlobalWorldDB.DB.QueryRow(`
+	if err := database.QueryRowContext(ctx, `
 		SELECT COALESCE(tp.collision_type, 0), ti.raw_foot_tile_id, COALESCE(ti.talk_over_tile, FALSE)
-		FROM phaser_tile_properties tp
-		LEFT JOIN phaser_tile_images ti ON ti.id = tp.tile_image_id
-		WHERE tp.tile_image_id = $1`,
+		FROM phaser_tile_images ti
+		LEFT JOIN phaser_tile_properties tp ON tp.tile_image_id = ti.id
+		WHERE ti.id = $1`,
 		tileImageID,
 	).Scan(&collisionType, &rawFootTileID, &talkOverTile); err != nil {
-		return tileRuntimeProperties{}
+		return tileRuntimeProperties{}, err
 	}
 	props := tileRuntimeProperties{
 		CollisionType: collisionType,
@@ -97,12 +106,7 @@ func tileRuntimePropertiesForTileImage(tileImageID int) tileRuntimeProperties {
 		v := int(rawFootTileID.Int64)
 		props.RawFootTileID = &v
 	}
-	return props
-}
-
-func rawFootTileIDForTileImage(tileImageID int) *int {
-	props := tileRuntimePropertiesForTileImage(tileImageID)
-	return props.RawFootTileID
+	return props, nil
 }
 
 // TilePropertyUpdateReq is the request payload for updating tile properties
@@ -128,7 +132,7 @@ func HandleTileEditorPlace(ses *session.Session, payload []byte, wh *WorldHandle
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "invalid request"}, opcodes.TileEditorPlaceResponse)
 		return false
 	}
-	if !canAdminEditWorldTiles(ses) {
+	if !canAdminEditWorldTiles(ses, wh) {
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "not authorized"}, opcodes.TileEditorPlaceResponse)
 		return false
 	}
@@ -163,7 +167,7 @@ func HandleTileEditorErase(ses *session.Session, payload []byte, wh *WorldHandle
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "invalid request"}, opcodes.TileEditorEraseResponse)
 		return false
 	}
-	if !canAdminEditWorldTiles(ses) {
+	if !canAdminEditWorldTiles(ses, wh) {
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "not authorized"}, opcodes.TileEditorEraseResponse)
 		return false
 	}
@@ -202,7 +206,7 @@ func HandleTileEditorFill(ses *session.Session, payload []byte, wh *WorldHandler
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "invalid request"}, opcodes.TileEditorFillResponse)
 		return false
 	}
-	if !canAdminEditWorldTiles(ses) {
+	if !canAdminEditWorldTiles(ses, wh) {
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "not authorized"}, opcodes.TileEditorFillResponse)
 		return false
 	}
@@ -361,7 +365,7 @@ func HandleTileEditorUndo(ses *session.Session, payload []byte, wh *WorldHandler
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "invalid request"}, opcodes.TileEditorUndoResponse)
 		return false
 	}
-	if !canAdminEditWorldTiles(ses) {
+	if !canAdminEditWorldTiles(ses, wh) {
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "not authorized"}, opcodes.TileEditorUndoResponse)
 		return false
 	}
@@ -459,7 +463,7 @@ func HandleTilePropertyUpdate(ses *session.Session, payload []byte, wh *WorldHan
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "invalid request"}, opcodes.TilePropertyUpdateResponse)
 		return false
 	}
-	if !canAdminEditWorldTiles(ses) {
+	if !canAdminEditWorldTiles(ses, wh) {
 		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": "not authorized"}, opcodes.TilePropertyUpdateResponse)
 		return false
 	}
@@ -519,13 +523,14 @@ func broadcastTileChanges(wh *WorldHandler, tiles []TileEdit, mapID int, originS
 	isOverworld := mapID == UnifiedOverworldMapID
 
 	wh.sessionManager.ForEachSession(func(ses *session.Session) {
-		if !ses.Authenticated {
+		presence := ses.Presence()
+		if !presence.Authenticated {
 			return
 		}
 
 		// Check if the player is on the same map
-		playerOnOverworld := ses.MapID == UnifiedOverworldMapID || (wh.ActorManager != nil && wh.ActorManager.IsOverworld(ses.MapID))
-		if ses.MapID == mapID || (isOverworld && playerOnOverworld) {
+		playerOnOverworld := presence.MapID == UnifiedOverworldMapID || (wh.ActorManager != nil && wh.ActorManager.IsOverworld(presence.MapID))
+		if presence.MapID == mapID || (isOverworld && playerOnOverworld) {
 			ses.SendStreamJSON(data, opcodes.TileEditorBroadcast)
 		}
 	})

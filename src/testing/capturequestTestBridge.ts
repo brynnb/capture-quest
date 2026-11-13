@@ -1,3 +1,4 @@
+import { MapDataService } from "@/phaser-game/services/MapDataService";
 import { WorldSocket, OpCodes } from "@/net";
 import AudioManager from "@/services/audio/AudioManager";
 import useAudioActivityStore from "@/stores/AudioActivityStore";
@@ -18,11 +19,6 @@ import {
   isCutscenePlaying,
 } from "@/phaser-game/services/CutsceneService";
 import {
-  buyCoins,
-  buyPrize,
-  playSlotMachine,
-  requestCoinBalance,
-  requestPrizeList,
   sendPokemonPartyRequest,
   sendPokemonPCOpen,
 } from "@/phaser-game/services/PhaserNetworkService";
@@ -114,6 +110,7 @@ export interface CaptureQuestTestState {
   };
   inventory: {
     money: number;
+    coins: number;
     shopOpen: boolean;
     shopName: string;
     items: Array<{
@@ -228,6 +225,7 @@ export interface CaptureQuestTileViewerDiagnostics {
     | Promise<{ ok: boolean; events?: EngineProbeEvent[]; error?: string } | undefined>
     | { ok: boolean; events?: EngineProbeEvent[]; error?: string }
     | undefined;
+  overlayTextToViewport?: (text:string)=>TileViewportPoint|null;
   tileToViewport?: (x: number, y: number) => TileViewportPoint | null;
   centerTileInView?: (x: number, y: number) => void;
 }
@@ -286,19 +284,15 @@ export interface CaptureQuestTestBridge {
   ) => Promise<EngineProbeResult>;
   waitForIdle: (options?: { timeoutMs?: number }) => Promise<void>;
   waitForEvent: (type: string, timeoutMs?: number) => Promise<unknown>;
+  overlayTextToViewport: (text:string)=>TileViewportPoint|null;
   tileToViewport: (x: number, y: number) => TileViewportPoint | null;
   centerTileInView: (x: number, y: number) => void;
-  warpToMap: (mapId: number, x: number, y: number, direction?: string) => void;
+  warpToMap: (mapId: number, x: number, y: number, direction?: string) => Promise<void>;
   requestWarpProbeCases: (options?: {
     limit?: number;
     offset?: number;
     sourceMapId?: number;
   }) => Promise<CaptureQuestWarpProbeCasesResponse>;
-  requestGameCornerCoinBalance: () => void;
-  buyGameCornerCoins: () => void;
-  playGameCornerSlot: (bet: number, isLucky?: boolean) => void;
-  requestGameCornerPrizeList: () => void;
-  buyGameCornerPrize: (prizeId: number) => void;
   requestPokemonParty: () => void;
   requestPokemonPC: () => void;
 }
@@ -413,6 +407,7 @@ function baseState(): CaptureQuestTestState {
     },
     inventory: {
       money: inventory.money,
+      coins: inventory.coins,
       shopOpen: inventory.shopOpen,
       shopName: inventory.shopName,
       items: inventory.items.map((entry) => ({
@@ -673,11 +668,11 @@ async function waitUntil(
 }
 
 function sendFieldMoveCommand(command: Extract<EngineProbeCommand, { useFieldMove: unknown }>): void {
-  WorldSocket.sendJsonMessage(OpCodes.FieldMoveUseRequest, {
-    moveName: command.useFieldMove.moveName,
-    targetX: command.useFieldMove.targetX,
-    targetY: command.useFieldMove.targetY,
-  });
+ const detail=command.useFieldMove;const moveName=detail.moveName.toUpperCase();
+ if(moveName==="CUT")window.dispatchEvent(new CustomEvent("cq:cutUse",{detail}));
+ else if(moveName==="STRENGTH" || moveName==="FLASH")window.dispatchEvent(new CustomEvent("cq:stateFieldUse",{detail:{moveName}}));
+ else if(moveName==="DIG" || moveName==="TELEPORT")window.dispatchEvent(new CustomEvent("cq:fieldTravelUse",{detail:{moveName}}));
+ else throw new Error("Use the owned FLY destination selector.");
 }
 
 async function sendScenarioCommand(
@@ -914,7 +909,7 @@ async function sendCommand(
     } else if ("useFieldMove" in command) {
       sendFieldMoveCommand(command);
     } else if ("warpTo" in command) {
-      warpToMap(
+      await warpToMap(
         command.warpTo.mapId,
         command.warpTo.x,
         command.warpTo.y,
@@ -947,12 +942,11 @@ async function sendCommand(
   };
 }
 
-function warpToMap(mapId: number, x: number, y: number, direction = "DOWN"): void {
-  window.dispatchEvent(
-    new CustomEvent("warpTileTeleport", {
-      detail: { mapId, x, y, direction },
-    }),
-  );
+export async function warpToMap(mapId: number, x: number, y: number, direction = "DOWN"): Promise<void> {
+  const result = await new MapDataService().instantWarp(mapId, x, y, direction);
+  window.dispatchEvent(new CustomEvent("warpTileTeleport", {
+    detail: { ...result, serverCommitted: true },
+  }));
 }
 
 function requestWarpProbeCases(options: {
@@ -978,17 +972,17 @@ export function installCaptureQuestTestBridge(): void {
     sendCommand,
     waitForIdle,
     waitForEvent,
+    overlayTextToViewport:text=>tileViewerDiagnostics?.overlayTextToViewport?.(text)??null,
     tileToViewport,
     centerTileInView,
     warpToMap,
     requestWarpProbeCases,
-    requestGameCornerCoinBalance: requestCoinBalance,
-    buyGameCornerCoins: buyCoins,
-    playGameCornerSlot: (bet, isLucky = false) => playSlotMachine(bet, isLucky),
-    requestGameCornerPrizeList: requestPrizeList,
-    buyGameCornerPrize: buyPrize,
     requestPokemonParty: sendPokemonPartyRequest,
-    requestPokemonPC: sendPokemonPCOpen,
+    requestPokemonPC: () => {
+      const state=getState();
+      const source=usePokemonPCStore.getState().sources.find(source => source.mapId===state.map.id && source.x===state.player.x && source.y+1===state.player.y);
+      if (source) void sendPokemonPCOpen(source.id);
+    },
   };
 
   let previousScreen = useGameScreenStore.getState().currentScreen;

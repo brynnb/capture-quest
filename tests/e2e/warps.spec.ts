@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { createGuestCharacterAndEnterWorld, quitToCharacterSelect } from "./helpers/auth";
 import { collectPageErrors } from "./helpers/errors";
+import { PlayerStepCompleteRequest } from "../../src/net/generated/opcodes";
 import { clickTile, pressMovement } from "./helpers/input";
 import { jumpToScenario } from "./helpers/scenarioDebugger";
 import {
@@ -95,6 +96,8 @@ test("new player exits Red's House 2F through 1F into Pallet Town", async ({
   expect(outsideState.player.y).not.toBeNull();
 
   await quitToCharacterSelect(page);
+  // Prove the observer saw real gameplay traffic before trusting no legacy writes.
+  expect(errors.sentOpcodes).toContain(PlayerStepCompleteRequest);
   errors.assertNoSevereErrors();
 });
 

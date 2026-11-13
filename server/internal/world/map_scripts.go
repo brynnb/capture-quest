@@ -1,10 +1,12 @@
 package world
 
 import (
+	"database/sql"
+	"fmt"
 	"log"
 	"sync"
 
-	"capturequest/internal/pokebattle"
+	"context"
 )
 
 // MapScript represents a single script entry for a map at a given script index.
@@ -21,7 +23,7 @@ type MapScript struct {
 // per-map script lookup. In the MMO model, the "current script index"
 // is per-player (derived from event flags), not global.
 type MapScriptManager struct {
-	db pokebattle.DBTX
+	db *sql.DB
 	mu sync.RWMutex
 	// scripts indexed by mapID -> scriptIndex -> MapScript
 	byMap map[int]map[int]*MapScript
@@ -30,7 +32,7 @@ type MapScriptManager struct {
 }
 
 // NewMapScriptManager creates a new MapScriptManager.
-func NewMapScriptManager(db pokebattle.DBTX) *MapScriptManager {
+func NewMapScriptManager(db *sql.DB) *MapScriptManager {
 	return &MapScriptManager{
 		db:      db,
 		byMap:   make(map[int]map[int]*MapScript),
@@ -39,14 +41,13 @@ func NewMapScriptManager(db pokebattle.DBTX) *MapScriptManager {
 }
 
 // Load reads all map scripts from the database into memory.
-func (m *MapScriptManager) Load() {
-	rows, err := m.db.Query(
+func (m *MapScriptManager) Load(ctx context.Context) error {
+	rows, err := m.db.QueryContext(ctx,
 		`SELECT id, map_id, script_index, script_label, script_constant, raw_asm
 		 FROM phaser_map_scripts WHERE map_id IS NOT NULL
 		 ORDER BY map_id, script_index`)
 	if err != nil {
-		log.Printf("[MapScripts] Failed to load: %v", err)
-		return
+		return fmt.Errorf("[MapScripts] Failed to load: %w", err)
 	}
 	defer rows.Close()
 
@@ -56,8 +57,7 @@ func (m *MapScriptManager) Load() {
 	for rows.Next() {
 		var s MapScript
 		if err := rows.Scan(&s.ID, &s.MapID, &s.ScriptIndex, &s.ScriptLabel, &s.ScriptConstant, &s.RawASM); err != nil {
-			log.Printf("[MapScripts] Error scanning row: %v", err)
-			continue
+			return fmt.Errorf("[MapScripts] Error scanning row: %w", err)
 		}
 		if byMap[s.MapID] == nil {
 			byMap[s.MapID] = make(map[int]*MapScript)
@@ -67,12 +67,19 @@ func (m *MapScriptManager) Load() {
 		count++
 	}
 
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read map_scripts rows: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	m.mu.Lock()
 	m.byMap = byMap
 	m.ordered = ordered
 	m.mu.Unlock()
 
 	log.Printf("[MapScripts] Loaded %d scripts across %d maps", count, len(byMap))
+	return nil
 }
 
 // GetScript returns the script at a given map + script index, or nil.

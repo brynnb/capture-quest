@@ -1,3 +1,10 @@
+import type { CQPartyItemUseResponse, CQMerchantOpenResponse, CQMerchantBuyResponse, CQMerchantSellResponse, RepelUseResponse, PokemonPartyReorderResponse, InventoryCommandError } from "@/net/generated/world_api";
+import { openShopForActor, buyShopItem, sellShopItem } from "./ShopCommandService";
+import type { BattleCommandResponse, SafariBattleActionResponse, BattleCommandError } from "@/net/generated/world_api";
+import type { GameplayStateRequest, GameplayStateResponse } from "@/net/generated/world_api";
+import type { TrainerEncounterNotifyPayload } from "@/net/generated/protocol";
+import type { CutsceneEndRequest, CutsceneEndResponse, OwnedPlayerPositionRequest, OwnedPlayerPositionResponse, ServerPlayerMovementNotify, PlayerFacingRequest, PlayerFacingResponse, PlayerStepRequest, PlayerStepResponse, PlayerStepCompleteRequest, PlayerStepCompleteResponse, PlayerStepError, PhaserMapInfoRequest, PhaserMapInfoResponse, PhaserMapLoadRequest, PhaserMapLoadResponse, PhaserMapRequestError, PhaserWarpActivateRequest, PhaserWarpActivateResponse, PhaserInstantWarpRequest, PhaserInstantWarpResponse } from "@/net/generated/protocol";
+import type { PhaserMapScriptsRequest } from "@/net/generated/protocol";
 /**
  * Phaser Network Service
  *
@@ -9,13 +16,9 @@ import { WorldSocket } from "@/net/index";
 import { NetworkBridge } from "@/net/NetworkBridge";
 import * as OpCodes from "@/net/generated/opcodes";
 import type {
-  PhaserMapInfo,
-  PhaserTile,
   PhaserTilesRequest,
   PhaserTilesResponse,
   PhaserActor,
-  PhaserWarp,
-  TrainerEncounterNotifyPayload,
 } from "@/net/generated/world_api";
 
 /**
@@ -25,22 +28,43 @@ export function isConnected(): boolean {
   return WorldSocket.isConnected;
 }
 
-/**
- * Request map information for a specific map ID.
- * Optional destX/destY atomically update the player's position on the server
- * when warping to a new map, avoiding race conditions with fetchActors.
- */
-export function requestMapInfo(mapId: number, destX?: number, destY?: number): void {
-  if (!WorldSocket.isConnected) {
-    console.warn("[PhaserNetwork] Not connected - cannot request map info");
-    return;
-  }
-  const payload: Record<string, number> = { mapId: mapId };
-  if (destX !== undefined && destY !== undefined) {
-    payload.destX = destX;
-    payload.destY = destY;
-  }
-  NetworkBridge.send(payload, OpCodes.PhaserMapInfoRequest);
+/** Read-only metadata; arrivals use the separate map-load command. */
+export function requestMapInfo(request: PhaserMapInfoRequest): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.PhaserMapInfoRequest);
+}
+
+export function requestMapLoad(request: PhaserMapLoadRequest): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.PhaserMapLoadRequest);
+}
+
+export function completeCutscene(request: CutsceneEndRequest): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.CutsceneEndRequest);
+}
+export function requestGameplayState(request: GameplayStateRequest): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.GameplayStateRequest);
+}
+
+export function requestOwnedPlayerPosition(request: OwnedPlayerPositionRequest): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.OwnedPlayerPositionRequest);
+}
+
+export function requestPlayerFacing(request: PlayerFacingRequest): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.PlayerFacingRequest);
+}
+
+export function requestPlayerStep(request: PlayerStepRequest): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.PlayerStepRequest);
+}
+export function completePlayerStep(request: PlayerStepCompleteRequest): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.PlayerStepCompleteRequest);
+}
+
+export function requestInstantWarp(request: PhaserInstantWarpRequest): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.PhaserInstantWarpRequest);
+}
+
+export function requestWarpActivation(request: PhaserWarpActivateRequest): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.PhaserWarpActivateRequest);
 }
 
 /**
@@ -51,7 +75,7 @@ export function requestMapScripts(mapName: string): void {
     console.warn("[PhaserNetwork] Not connected - cannot request map scripts");
     return;
   }
-  NetworkBridge.send({ mapName }, OpCodes.PhaserMapScriptsRequest);
+  NetworkBridge.send({ mapName } satisfies PhaserMapScriptsRequest, OpCodes.PhaserMapScriptsRequest);
 }
 
 /**
@@ -86,67 +110,10 @@ export async function tryScriptedEventInteraction(
   }
 }
 
-export interface TrainerInteractResult {
-  success: boolean;
-  error?: string;
-  trainerActorId?: number;
-  trainerName?: string;
-  trainerClass?: string;
-  dialogue?: string;
-  shouldBattle?: boolean;
-  defeated?: boolean;
-}
-
-export async function requestTrainerInteraction(
-  actorId: number,
-): Promise<TrainerInteractResult | null> {
-  if (!WorldSocket.isConnected) {
-    return null;
-  }
-
-  try {
-    const response = await WorldSocket.sendJsonRequest<TrainerInteractResult>(
-      OpCodes.TrainerInteractRequest,
-      OpCodes.TrainerInteractResponse,
-      { actorId },
-      2500,
-    );
-    if (!response.success && response.error) {
-      console.warn("[PhaserNetwork] Trainer interaction failed:", response.error);
-    }
-    return response;
-  } catch (err) {
-    console.warn("[PhaserNetwork] Trainer interaction request failed:", err);
-    return null;
-  }
-}
-
-export interface MapMusicResult {
-  success: boolean;
-  mapId?: number;
-  musicConstant?: string;
-  error?: string;
-}
-
-export async function requestMapMusic(
-  mapId: number,
-): Promise<MapMusicResult | null> {
-  if (!WorldSocket.isConnected) {
-    return null;
-  }
-
-  try {
-    return await WorldSocket.sendJsonRequest<MapMusicResult>(
-      OpCodes.PhaserMapMusicRequest,
-      OpCodes.PhaserMapMusicResponse,
-      { mapId },
-      2500,
-    );
-  } catch (err) {
-    console.warn("[PhaserNetwork] Map music request failed:", err);
-    return null;
-  }
-}
+export type TrainerInteractReply = import("@/net/generated/protocol").TrainerInteractResponse | import("@/net/generated/protocol").TrainerInteractError;
+const trainerInteractHandlers=new Set<(reply:TrainerInteractReply)=>void>();
+export function onTrainerInteraction(receive:(reply:TrainerInteractReply)=>void):()=>void{trainerInteractHandlers.add(receive);return()=>trainerInteractHandlers.delete(receive);}
+export function requestTrainerInteraction(requestId:string,actorId:number):Promise<void>{return NetworkBridge.send({requestId,actorId},OpCodes.TrainerInteractRequest);}
 
 export function sendTrainerBattleStart(trainerActorId: number): void {
   if (!WorldSocket.isConnected) return;
@@ -156,215 +123,189 @@ export function sendTrainerBattleStart(trainerActorId: number): void {
 /**
  * Request tiles for a specific map ID
  */
-export function requestTiles(request: PhaserTilesRequest): void {
-  if (!WorldSocket.isConnected) {
-    console.warn("[PhaserNetwork] Not connected - cannot request tiles");
-    return;
-  }
-  NetworkBridge.send(request, OpCodes.PhaserTilesRequest);
+export function requestTiles(request: PhaserTilesRequest): Promise<void> {
+ return NetworkBridge.send(request,OpCodes.PhaserTilesRequest);
 }
 
 /**
  * Request all overworld maps
  */
-export function requestOverworldMaps(): void {
-  if (!WorldSocket.isConnected) {
-    console.warn(
-      "[PhaserNetwork] Not connected - cannot request overworld maps",
-    );
-    return;
-  }
-  NetworkBridge.send({}, OpCodes.PhaserOverworldMapsRequest);
-}
+
 
 /**
  * Request actors for a specific map ID
  */
-export function requestActors(mapId: number): void {
-  if (!WorldSocket.isConnected) {
-    console.warn("[PhaserNetwork] Not connected - cannot request actors");
-    return;
-  }
-  NetworkBridge.send({ mapId: mapId }, OpCodes.PhaserActorsRequest);
+export function requestActors(request: import("@/net/generated/world_api").PhaserActorsRequest): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.PhaserActorsRequest);
 }
 
 /**
  * Request warps for a specific map ID
  */
-export function requestWarps(mapId: number): void {
-  if (!WorldSocket.isConnected) {
-    console.warn("[PhaserNetwork] Not connected - cannot request warps");
-    return;
-  }
-  NetworkBridge.send({ mapId: mapId }, OpCodes.PhaserWarpsRequest);
-}
-
-/**
- * Send player position update to server.
- */
-export function sendPlayerPosition(
-  x: number,
-  y: number,
-  mapId: number,
-  direction?: string,
-): void {
-  if (!WorldSocket.isConnected) {
-    return; // Silent fail for position updates
-  }
-  NetworkBridge.send({ x, y, mapId, direction }, OpCodes.PhaserPlayerPositionUpdate);
-}
-
-/**
- * Send a direction-only update (player turned but didn't move, e.g. facing a wall)
- */
-export function sendDirectionUpdate(x: number, y: number, mapId: number, direction: string): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ x, y, mapId, direction }, OpCodes.PhaserPlayerPositionUpdate);
+export function requestWarps(request: import("@/net/generated/world_api").PhaserWarpsRequest): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.PhaserWarpsRequest);
 }
 
 /**
  * Request to start surfing onto an adjacent water tile.
  */
-export function requestSurf(
-  targetX: number,
-  targetY: number,
-  mapId: number,
-  direction: string,
-): void {
-  if (!WorldSocket.isConnected) {
-    console.warn("[PhaserNetwork] Not connected - cannot request Surf");
-    return;
-  }
-  NetworkBridge.send(
-    { targetX, targetY, mapId, direction },
-    OpCodes.PokeSurfingRequest,
-  );
+export function requestSurf(request: import("@/net/generated/world_api").PokeSurfingRequestPayload): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.PokeSurfingRequest);
+}
+export type StateFieldReply=import("@/net/generated/world_api").StateFieldResponse|import("@/net/generated/world_api").InventoryCommandError;
+const stateFieldHandlers=new Set<(reply:StateFieldReply)=>void>();
+export function onStateField(receive:(reply:StateFieldReply)=>void):()=>void{stateFieldHandlers.add(receive);return()=>stateFieldHandlers.delete(receive);}
+export function requestStateField(request:import("@/net/generated/world_api").FieldMoveUseRequestPayload):Promise<void>{return NetworkBridge.send(request,OpCodes.FieldMoveUseRequest);}
+export type SurfReply = import("@/net/generated/world_api").SurfResponse | import("@/net/generated/world_api").SurfError;
+const surfHandlers = new Set<(reply: SurfReply) => void>();
+export function onSurf(receive: (reply: SurfReply) => void): () => void {
+  surfHandlers.add(receive); return () => surfHandlers.delete(receive);
 }
 
 /**
  * Request a contextual field move against a target tile.
  */
-export function requestFieldMoveUse(
-  moveName: string,
-  targetX: number,
-  targetY: number,
-  mapId: number,
-  direction: string,
-): void {
-  if (!WorldSocket.isConnected) {
-    console.warn(`[PhaserNetwork] Not connected - cannot request ${moveName}`);
-    return;
-  }
-  NetworkBridge.send(
-    { moveName, targetX, targetY, mapId, direction },
-    OpCodes.FieldMoveUseRequest,
-  );
+
+type NameReply=import("@/net/generated/protocol").NameValidationResponse|import("@/net/generated/protocol").NameValidationError;
+const nameValidationHandlers=new Set<(reply:NameReply)=>void>();
+export function onNameValidation(receive:(reply:NameReply)=>void):()=>void {nameValidationHandlers.add(receive);return()=>nameValidationHandlers.delete(receive);}
+export function requestNameValidation(requestId:string,name:string):Promise<void>{return NetworkBridge.send({requestId,name},OpCodes.ValidateNameRequest);}
+
+export type DialogueReadReply = import("@/net/generated/protocol").PhaserDialogueResponse | import("@/net/generated/protocol").PhaserDialogueError;
+const dialogueReadHandlers = new Set<(reply:DialogueReadReply)=>void>();
+export function onDialogueRead(receive:(reply:DialogueReadReply)=>void):()=>void {dialogueReadHandlers.add(receive);return()=>dialogueReadHandlers.delete(receive);}
+export function requestDialogueRead(requestId:string,textConstant:string):Promise<void>{return NetworkBridge.send({requestId,textConstant},OpCodes.PhaserDialogueRequest);}
+
+export type FishingReply=import("@/net/generated/protocol").FishingResponse|import("@/net/generated/protocol").FishingError;
+const fishingHandlers=new Set<(reply:FishingReply)=>void>();
+export function onFishing(receive:(reply:FishingReply)=>void):()=>void{fishingHandlers.add(receive);return()=>fishingHandlers.delete(receive);}
+export function requestFishing(request:import("@/net/generated/world_api").PokeFishingRequestPayload):Promise<void>{return NetworkBridge.send(request,OpCodes.PokeFishingRequest);}
+
+export type PokedexReadReply = import("@/net/generated/protocol").TrainerCardResponse | import("@/net/generated/protocol").PokedexListResponse | import("@/net/generated/protocol").PokedexStatusResponse | import("@/net/generated/protocol").PokedexReadError;
+const pokedexReadHandlers = new Map<number, Set<(reply: PokedexReadReply) => void>>([
+ OpCodes.TrainerCardResponse,OpCodes.PokedexListResponse,OpCodes.PokedexStatusResponse,
+].map(opcode=>[opcode,new Set()]));
+export function onPokedexRead(opcode:number,receive:(reply:PokedexReadReply)=>void):()=>void {
+ const listeners=pokedexReadHandlers.get(opcode);
+ if(!listeners) throw new Error("Unsupported Pokedex response opcode");
+ listeners.add(receive);return()=>listeners.delete(receive);
+}
+export function requestPokedexRead(opcode:OpCodes.OpCode,requestId:string):Promise<void> {
+ return NetworkBridge.send({requestId},opcode);
 }
 
-/**
- * Request elevator floor list (player clicked elevator control panel)
- */
-export function requestElevatorFloors(mapId: number): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ mapId }, OpCodes.ElevatorFloorsRequest);
-}
-
-/**
- * Select an elevator floor (player chose a floor from the menu)
- */
-export function selectElevatorFloor(floorMapId: number): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ floorMapId }, OpCodes.ElevatorSelectRequest);
-}
-
-/**
- * Request to enter Safari Zone (player at gate — creates new session)
- */
-export function requestSafariZoneEnter(): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({}, OpCodes.SafariZoneEnterRequest);
-}
-
-/**
- * Check for existing Safari Zone session (reconnect/warp — never creates new session)
- */
-export function requestSafariZoneStatus(): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ statusOnly: true }, OpCodes.SafariZoneEnterRequest);
-}
-
-/**
- * Send a Safari Zone battle action (ball, bait, rock, run)
- */
-export function sendSafariAction(action: string): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ action }, OpCodes.SafariBattleActionRequest);
-}
-
-/**
- * Request current coin balance
- */
-export function requestCoinBalance(): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({}, OpCodes.GameCornerCoinBalanceRequest);
-}
-
-/**
- * Buy 50 coins for ₽1000
- */
-export function buyCoins(): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({}, OpCodes.GameCornerBuyCoinsRequest);
-}
-
-/**
- * Play slot machine (bet 1-3 coins)
- */
-export function playSlotMachine(bet: number, isLucky: boolean): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ bet, isLucky }, OpCodes.GameCornerSlotPlayRequest);
-}
-
-/**
- * Request prize list
- */
-export function requestPrizeList(): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({}, OpCodes.GameCornerPrizeListRequest);
-}
-
-/**
- * Buy a prize with coins
- */
-export function buyPrize(prizeId: number): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ prizeId }, OpCodes.GameCornerPrizeBuyRequest);
+// Account operations outlive a Phaser scene. Their correlated owner removes
+// these listeners; clearing gameplay handlers must not discard a roster read.
+type CharacterReply = import("@/net/generated/world_api").CharacterListResponse | import("@/net/generated/world_api").CharacterDeleteResponse | import("@/net/generated/world_api").CharacterCommandError;
+const characterCommandHandlers = new Map<number, Set<(reply: CharacterReply) => void>>([
+  [OpCodes.CharacterListResponse, new Set()], [OpCodes.CharacterDeleteResponse, new Set()],
+]);
+export function onCharacterCommand<T extends CharacterReply>(opcode: number, receive: (reply: T) => void): () => void {
+  const handlers = characterCommandHandlers.get(opcode);
+  if (!handlers) throw new Error("Unsupported character response opcode");
+  const listener = (reply: CharacterReply) => receive(reply as T);
+  handlers.add(listener);
+  return () => handlers.delete(listener);
 }
 
 // Response handler registration
-export type PhaserMapInfoHandler = (data: PhaserMapInfo) => void;
-export type PhaserTilesHandler = (data: PhaserTilesResponse | PhaserTile[]) => void;
-export type PhaserOverworldMapsHandler = (data: PhaserMapInfo[]) => void;
-export type PhaserActorsHandler = (data: PhaserActor[]) => void;
-export type PhaserWarpsHandler = (data: PhaserWarp[]) => void;
+export type PhaserMapInfoHandler = (data: PhaserMapInfoResponse | PhaserMapRequestError) => void;
+export type PhaserMapLoadHandler = (data: PhaserMapLoadResponse | PhaserMapRequestError) => void;
+export type PhaserTilesHandler = (data: PhaserTilesResponse | PlayerStepError) => void;
+export type PhaserActorsHandler = (data: import("@/net/generated/world_api").PhaserActorsResponse | PlayerStepError) => void;
+export type PhaserWarpsHandler = (data: import("@/net/generated/world_api").PhaserWarpsResponse | PlayerStepError) => void;
 export type PhaserActorUpdateHandler = (data: PhaserActor) => void;
 export type PhaserActorDespawnHandler = (data: { id: number }) => void;
 export type TrainerEncounterHandler = (
   data: TrainerEncounterNotifyPayload,
 ) => void;
-export type PhaserMapMusicHandler = (data: MapMusicResult) => void;
+
+type BattleCommandHandler = (data: BattleCommandResponse | SafariBattleActionResponse | BattleCommandError) => void;
+const battleCommandHandlers = new Map<number, Set<BattleCommandHandler>>([
+  OpCodes.SafariBattleActionResponse, OpCodes.PokeBattleActionResponse, OpCodes.PokeBattleSwitchResponse,
+  OpCodes.CQBattleItemUseResponse, OpCodes.PokeMoveLearnResponse, OpCodes.PokeBattleCloseResponse,
+].map(opcode => [opcode, new Set<BattleCommandHandler>()]));
+
+export function onBattleCommand(opcode: number, receive: BattleCommandHandler): () => void {
+  const listeners = battleCommandHandlers.get(opcode);
+  if (!listeners) throw new Error("Unsupported battle response opcode");
+  listeners.add(receive); return () => listeners.delete(receive);
+}
+
+type InventoryReply = import("@/net/generated/world_api").GameCornerSlotResultResponse | import("@/net/generated/world_api").GameCornerPrizeBuyResponse | import("@/net/generated/world_api").GameCornerPrizeListResponse | import("@/net/generated/world_api").ItemPickupResponse | import("@/net/generated/world_api").PokemonPCResponse | CQPartyItemUseResponse | CQMerchantOpenResponse | CQMerchantBuyResponse | CQMerchantSellResponse | RepelUseResponse | PokemonPartyReorderResponse | InventoryCommandError;
+const inventoryCommandHandlers = new Map<number, Set<(reply: InventoryReply) => void>>([
+ [OpCodes.GameCornerSlotResultResponse,new Set()], [OpCodes.GameCornerPrizeListResponse,new Set()], [OpCodes.GameCornerPrizeBuyResponse,new Set()],
+ [OpCodes.CQItemUseResponse,new Set()], [OpCodes.CQMerchantOpenResponse,new Set()], [OpCodes.CQMerchantBuyResponse,new Set()], [OpCodes.CQMerchantSellResponse,new Set()],
+ [OpCodes.RepelUseResponse,new Set()], [OpCodes.ItemPickupResponse,new Set()],
+ [OpCodes.PokemonPartyReorderResponse,new Set()],
+ ...[OpCodes.PokemonPCOpenResponse,OpCodes.PokemonPCDepositResponse,OpCodes.PokemonPCWithdrawResponse,OpCodes.PokemonPCReleaseResponse,OpCodes.PokemonPCSwitchBoxResponse].map(opcode => [opcode,new Set<(reply: InventoryReply) => void>()] as const),
+]);
+export function onInventoryCommand<T extends InventoryReply>(opcode: number, receive: (reply: T) => void): () => void {
+ const listeners = inventoryCommandHandlers.get(opcode);
+ if (!listeners) throw new Error("Unsupported inventory response opcode");
+ const listener = (reply: InventoryReply) => receive(reply as T);
+ listeners.add(listener); return () => listeners.delete(listener);
+}
 
 const handlers = {
+ warpHome:new Set<(data:import("@/net/generated/world_api").WarpHomeResponse|PlayerStepError)=>void>(),
+ elevator: new Set<(data: import("@/net/generated/world_api").ElevatorResponse | PlayerStepError)=>void>(),
+  escapeRope: new Set<(data: import("@/net/generated/world_api").EscapeRopeUseResponse | PlayerStepError) => void>(),
+  staticContent: new Set<(data: import("@/net/generated/world_api").StaticDataResponse | PlayerStepError) => void>(),
+  preferences: new Set<(data: import("@/net/generated/world_api").PreferenceResponse | PlayerStepError) => void>(),
+  bicycleState: new Set<(data: import("@/net/generated/world_api").BicycleStateResponse | PlayerStepError) => void>(),
+  gameplayState: new Set<(data: GameplayStateResponse | PlayerStepError) => void>(),
+  cutsceneEnd: new Set<(data: CutsceneEndResponse | PlayerStepError) => void>(),
+  ownedPlayerPosition: new Set<(data: OwnedPlayerPositionResponse | PlayerStepError) => void>(),
+  serverPlayerMovement: new Set<(data: ServerPlayerMovementNotify) => void>(),
+  playerFacing: new Set<(data: PlayerFacingResponse | PlayerStepError) => void>(),
+  playerStep: new Set<(data: PlayerStepResponse | PlayerStepError) => void>(),
+  playerStepComplete: new Set<(data: PlayerStepCompleteResponse | PlayerStepError) => void>(),
   mapInfo: new Set<PhaserMapInfoHandler>(),
+  mapLoad: new Set<PhaserMapLoadHandler>(),
+  instantWarp: new Set<(data: PhaserInstantWarpResponse | PhaserMapRequestError) => void>(),
+  warpActivation: new Set<(data: PhaserWarpActivateResponse | PhaserMapRequestError) => void>(),
   tiles: new Set<PhaserTilesHandler>(),
-  overworldMaps: new Set<PhaserOverworldMapsHandler>(),
   actors: new Set<PhaserActorsHandler>(),
   warps: new Set<PhaserWarpsHandler>(),
   actorUpdate: new Set<PhaserActorUpdateHandler>(),
   actorDespawn: new Set<PhaserActorDespawnHandler>(),
   trainerEncounter: new Set<TrainerEncounterHandler>(),
-  mapMusic: new Set<PhaserMapMusicHandler>(),
 };
+
+export function onWarpHome(handler:(data:import("@/net/generated/world_api").WarpHomeResponse|PlayerStepError)=>void):()=>void{handlers.warpHome.add(handler);return()=>handlers.warpHome.delete(handler);}
+export function requestWarpHome(request:import("@/net/generated/world_api").WarpHomeRequest):Promise<void>{return NetworkBridge.send(request,OpCodes.WarpHomeRequest);}
+export function onElevator(handler:(data:import("@/net/generated/world_api").ElevatorResponse | PlayerStepError)=>void):()=>void{handlers.elevator.add(handler);return()=>handlers.elevator.delete(handler);}
+export function requestElevator(request:import("@/net/generated/world_api").ElevatorFloorsRequestPayload | import("@/net/generated/world_api").ElevatorSelectRequestPayload,select:boolean):Promise<void>{return NetworkBridge.send(request,select?OpCodes.ElevatorSelectRequest:OpCodes.ElevatorFloorsRequest);}
+export function onEscapeRope(handler: (data: import("@/net/generated/world_api").EscapeRopeUseResponse | PlayerStepError) => void): () => void {
+  handlers.escapeRope.add(handler);
+  return () => handlers.escapeRope.delete(handler);
+}
+export function requestEscapeRope(request: import("@/net/generated/world_api").EscapeRopeUseRequest): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.EscapeRopeUseRequest);
+}
+export function onStaticContent(handler: (data: import("@/net/generated/world_api").StaticDataResponse | PlayerStepError) => void): () => void {
+  handlers.staticContent.add(handler); return () => handlers.staticContent.delete(handler);
+}
+export function requestStaticContent(requestId: string, creation: boolean): Promise<void> {
+  return NetworkBridge.send({requestId}, creation ? OpCodes.CharCreateDataRequest : OpCodes.StaticDataRequest);
+}
+export function onPreferences(handler: (data: import("@/net/generated/world_api").PreferenceResponse | PlayerStepError) => void): () => void {
+  handlers.preferences.add(handler); return () => handlers.preferences.delete(handler);
+}
+export function requestPreferences(request: import("@/net/generated/world_api").PreferenceRequest): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.SetOption);
+}
+export function onBicycleState(handler: (data: import("@/net/generated/world_api").BicycleStateResponse | PlayerStepError) => void): () => void {
+  handlers.bicycleState.add(handler);
+  return () => handlers.bicycleState.delete(handler);
+}
+export function requestBicycleState(request: import("@/net/generated/world_api").BicycleStateRequest): Promise<void> {
+  return NetworkBridge.send(request, OpCodes.BicycleStateRequest);
+}
+export function onGameplayState(handler: (data: GameplayStateResponse | PlayerStepError) => void): () => void {
+  handlers.gameplayState.add(handler); return () => handlers.gameplayState.delete(handler);
+}
 
 // Subscribe to response events
 export function onMapInfo(handler: PhaserMapInfoHandler): () => void {
@@ -372,17 +313,55 @@ export function onMapInfo(handler: PhaserMapInfoHandler): () => void {
   return () => handlers.mapInfo.delete(handler);
 }
 
+export function onCutsceneEnd(handler: (data: CutsceneEndResponse | PlayerStepError) => void): () => void {
+  handlers.cutsceneEnd.add(handler);
+  return () => { handlers.cutsceneEnd.delete(handler); };
+}
+export function onOwnedPlayerPosition(handler: (data: OwnedPlayerPositionResponse | PlayerStepError) => void): () => void {
+  handlers.ownedPlayerPosition.add(handler);
+  return () => { handlers.ownedPlayerPosition.delete(handler); };
+}
+
+export function onServerPlayerMovement(handler: (data: ServerPlayerMovementNotify) => void): () => void {
+  handlers.serverPlayerMovement.add(handler);
+  return () => { handlers.serverPlayerMovement.delete(handler); };
+}
+
+export function onPlayerFacing(handler: (data: PlayerFacingResponse | PlayerStepError) => void): () => void {
+  handlers.playerFacing.add(handler);
+  return () => { handlers.playerFacing.delete(handler); };
+}
+
+export function onPlayerStep(handler: (data: PlayerStepResponse | PlayerStepError) => void): () => void {
+  handlers.playerStep.add(handler);
+  return () => { handlers.playerStep.delete(handler); };
+}
+export function onPlayerStepComplete(handler: (data: PlayerStepCompleteResponse | PlayerStepError) => void): () => void {
+  handlers.playerStepComplete.add(handler);
+  return () => { handlers.playerStepComplete.delete(handler); };
+}
+
+export function onInstantWarp(handler: (data: PhaserInstantWarpResponse | PhaserMapRequestError) => void): () => void {
+  handlers.instantWarp.add(handler);
+  return () => { handlers.instantWarp.delete(handler); };
+}
+
+export function onWarpActivation(handler: (data: PhaserWarpActivateResponse | PhaserMapRequestError) => void): () => void {
+  handlers.warpActivation.add(handler);
+  return () => { handlers.warpActivation.delete(handler); };
+}
+
+export function onMapLoad(handler: PhaserMapLoadHandler): () => void {
+  handlers.mapLoad.add(handler);
+  return () => handlers.mapLoad.delete(handler);
+}
+
 export function onTiles(handler: PhaserTilesHandler): () => void {
   handlers.tiles.add(handler);
   return () => handlers.tiles.delete(handler);
 }
 
-export function onOverworldMaps(
-  handler: PhaserOverworldMapsHandler,
-): () => void {
-  handlers.overworldMaps.add(handler);
-  return () => handlers.overworldMaps.delete(handler);
-}
+
 
 export function onActors(handler: PhaserActorsHandler): () => void {
   handlers.actors.add(handler);
@@ -411,105 +390,37 @@ export function onTrainerEncounter(
   return () => handlers.trainerEncounter.delete(handler);
 }
 
-export function onMapMusic(handler: PhaserMapMusicHandler): () => void {
-  handlers.mapMusic.add(handler);
-  return () => handlers.mapMusic.delete(handler);
-}
+
 
 /**
  * Tell the server the local trainer approach animation has finished and battle can start.
  */
-export function sendTrainerEncounterReady(trainerActorId: number): void {
+export function sendTrainerEncounterReady(trainerActorId: number, encounterToken: string): void {
   if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ trainerActorId }, OpCodes.TrainerEncounterReady);
+  NetworkBridge.send({ trainerActorId, encounterToken }, OpCodes.TrainerEncounterReady);
 }
 
-/**
- * Send a Pokémon Center heal request to the server (triggered by clicking Nurse Joy).
- */
-export function sendPokeCenterHeal(mapId: number): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ mapId }, OpCodes.PokeCenterHealRequest);
-}
+// Both read intents share the current locked resource projection and scene owner.
+export { refreshOwnedGameplayResources as sendPokemonPartyRequest, refreshOwnedGameplayResources as sendCQInventoryRequest } from "./InventoryCommandService";
 
-/**
- * Request the player's current Pokémon party from the server.
- */
-export function sendPokemonPartyRequest(): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({}, OpCodes.PokemonPartyRequest);
-}
-
-/**
- * Request the player's CQ inventory from the server.
- */
-export function sendCQInventoryRequest(): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({}, OpCodes.CQInventoryRequest);
-}
-
-/**
- * Open a merchant shop by merchant ID or map ID.
- */
-export function sendCQMerchantOpen(merchantId: number): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ merchantId }, OpCodes.CQMerchantOpenRequest);
-}
-
-/**
- * Open a merchant shop by the map ID the clerk NPC is on.
- */
-export function sendCQMerchantOpenByMap(mapId: number): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ mapId }, OpCodes.CQMerchantOpenRequest);
-}
+export const sendCQMerchantOpen = openShopForActor;
 
 /**
  * Buy an item from a merchant.
  */
-export function sendCQMerchantBuy(
-  merchantId: number,
-  itemId: number,
-  quantity: number,
-): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send(
-    { merchantId, itemId, quantity },
-    OpCodes.CQMerchantBuyRequest,
-  );
-}
-
-/**
- * Sell an item to a merchant.
- */
-export function sendCQMerchantSell(instanceId: number): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ instanceId }, OpCodes.CQMerchantSellRequest);
-}
-
-/**
- * Use an item during battle (Poké Ball, Potion, etc.)
- */
-export function sendCQBattleItemUse(itemId: number): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ itemId }, OpCodes.CQBattleItemUseRequest);
-}
+export const sendCQMerchantBuy = buyShopItem;
+export const sendCQMerchantSell = sellShopItem;
 
 /**
  * Clear all registered handlers
  * Used during game destruction to prevent late network messages from calling stale handlers
  */
 export function clearAllHandlers(): void {
-  handlers.mapInfo.clear();
-  handlers.tiles.clear();
-  handlers.overworldMaps.clear();
-  handlers.actors.clear();
-  handlers.warps.clear();
-  handlers.actorUpdate.clear();
-  handlers.actorDespawn.clear();
-  handlers.trainerEncounter.clear();
-  handlers.mapMusic.clear();
+  for (const listeners of Object.values(handlers)) listeners.clear();
+  for (const listeners of battleCommandHandlers.values()) listeners.clear();
+  for (const listeners of inventoryCommandHandlers.values()) listeners.clear();
 }
+
 
 export function normalizePhaserArrayPayload<T>(
   data: unknown,
@@ -534,31 +445,119 @@ export function normalizePhaserArrayPayload<T>(
 // Internal: dispatch incoming Phaser responses
 export function dispatchPhaserResponse(opcode: number, data: unknown): void {
   switch (opcode) {
+    case OpCodes.FieldMoveUseResponse:
+      stateFieldHandlers.forEach(receive=>receive(data as StateFieldReply));break;
+    case OpCodes.PokeSurfingResponse:
+      surfHandlers.forEach(receive => receive(data as SurfReply)); break;
+    case OpCodes.PokeFishingResponse:
+      fishingHandlers.forEach(receive=>receive(data as FishingReply));break;
+    case OpCodes.TrainerInteractResponse:
+      trainerInteractHandlers.forEach(receive=>receive(data as TrainerInteractReply));break;
+    case OpCodes.PhaserDialogueResponse:
+      dialogueReadHandlers.forEach(receive=>receive(data as DialogueReadReply));break;
+    case OpCodes.ValidateNameResponse:
+      nameValidationHandlers.forEach(receive=>receive(data as NameReply));break;
+
+    case OpCodes.TrainerCardResponse:
+    case OpCodes.PokedexListResponse:
+    case OpCodes.PokedexStatusResponse:
+      pokedexReadHandlers.get(opcode)?.forEach(receive=>receive(data as PokedexReadReply));
+      break;
+
+    case OpCodes.CharacterListResponse:
+    case OpCodes.CharacterDeleteResponse:
+      characterCommandHandlers.get(opcode)?.forEach(receive => receive(data as CharacterReply));
+      break;
+
+    case OpCodes.GameCornerSlotResultResponse:
+    case OpCodes.GameCornerPrizeListResponse:
+    case OpCodes.GameCornerPrizeBuyResponse:
+    case OpCodes.CQItemUseResponse:
+    case OpCodes.CQMerchantOpenResponse:
+    case OpCodes.ItemPickupResponse:
+    case OpCodes.CQMerchantBuyResponse:
+    case OpCodes.CQMerchantSellResponse:
+    case OpCodes.RepelUseResponse:
+    case OpCodes.PokemonPCOpenResponse:
+    case OpCodes.PokemonPCDepositResponse:
+    case OpCodes.PokemonPCWithdrawResponse:
+    case OpCodes.PokemonPCReleaseResponse:
+    case OpCodes.PokemonPCSwitchBoxResponse:
+    case OpCodes.PokemonPartyReorderResponse:
+      inventoryCommandHandlers.get(opcode)?.forEach(receive => receive(data as InventoryReply));
+      break;
+    case OpCodes.SafariBattleActionResponse:
+    case OpCodes.PokeBattleActionResponse:
+    case OpCodes.PokeBattleSwitchResponse:
+    case OpCodes.CQBattleItemUseResponse:
+    case OpCodes.PokeMoveLearnResponse:
+    case OpCodes.PokeBattleCloseResponse:
+      battleCommandHandlers.get(opcode)?.forEach(receive => receive(data as BattleCommandResponse | SafariBattleActionResponse | BattleCommandError));
+      break;
+
+    case OpCodes.EscapeRopeUseResponse:
+      handlers.escapeRope.forEach(handler => handler(data as import("@/net/generated/world_api").EscapeRopeUseResponse | PlayerStepError));
+      break;
+    case OpCodes.StaticDataResponse:
+    case OpCodes.CharCreateDataResponse:
+      handlers.staticContent.forEach(handler => handler(data as import("@/net/generated/world_api").StaticDataResponse | PlayerStepError));
+      break;
+    case OpCodes.SetOption:
+      handlers.preferences.forEach(handler => handler(data as import("@/net/generated/world_api").PreferenceResponse | PlayerStepError));
+      break;
+    case OpCodes.WarpHomeResponse:handlers.warpHome.forEach(handler=>handler(data as import("@/net/generated/world_api").WarpHomeResponse|PlayerStepError));break;
+    case OpCodes.ElevatorFloorsResponse:
+      handlers.elevator.forEach(handler=>handler(data as import("@/net/generated/world_api").ElevatorResponse | PlayerStepError));
+      break;
+    case OpCodes.BicycleStateResponse:
+      handlers.bicycleState.forEach(handler => handler(data as import("@/net/generated/world_api").BicycleStateResponse | PlayerStepError));
+      break;
+    case OpCodes.GameplayStateResponse:
+      handlers.gameplayState.forEach(h => h(data as GameplayStateResponse | PlayerStepError));
+      break;
+    case OpCodes.CutsceneEndResponse:
+      handlers.cutsceneEnd.forEach((h) => h(data as CutsceneEndResponse | PlayerStepError));
+      break;
+    case OpCodes.OwnedPlayerPositionResponse:
+      handlers.ownedPlayerPosition.forEach((h) => h(data as OwnedPlayerPositionResponse | PlayerStepError));
+      break;
+    case OpCodes.ServerPlayerMovementNotify:
+      handlers.serverPlayerMovement.forEach((h) => h(data as ServerPlayerMovementNotify));
+      break;
+    case OpCodes.PlayerFacingResponse:
+      handlers.playerFacing.forEach((h) => h(data as PlayerFacingResponse | PlayerStepError));
+      break;
+    case OpCodes.PlayerStepResponse:
+      handlers.playerStep.forEach((h) => h(data as PlayerStepResponse | PlayerStepError));
+      break;
+    case OpCodes.PlayerStepCompleteResponse:
+      handlers.playerStepComplete.forEach((h) => h(data as PlayerStepCompleteResponse | PlayerStepError));
+      break;
     case OpCodes.PhaserMapInfoResponse:
-      handlers.mapInfo.forEach((h) => h(data as PhaserMapInfo));
+      handlers.mapInfo.forEach((h) => h(data as PhaserMapInfoResponse | PhaserMapRequestError));
+      break;
+    case OpCodes.PhaserInstantWarpResponse:
+      handlers.instantWarp.forEach((h) => h(data as PhaserInstantWarpResponse | PhaserMapRequestError));
+      break;
+    case OpCodes.PhaserWarpActivateResponse:
+      handlers.warpActivation.forEach((h) => h(data as PhaserWarpActivateResponse | PhaserMapRequestError));
+      break;
+    case OpCodes.PhaserMapLoadResponse:
+      handlers.mapLoad.forEach((h) => h(data as PhaserMapLoadResponse | PhaserMapRequestError));
       break;
     case OpCodes.PhaserTilesResponse:
-      handlers.tiles.forEach((h) => h(data as PhaserTilesResponse | PhaserTile[]));
+      handlers.tiles.forEach((h) => h(data as PhaserTilesResponse | PlayerStepError));
       break;
-    case OpCodes.PhaserOverworldMapsResponse:
-      handlers.overworldMaps.forEach((h) =>
-        h(
-          normalizePhaserArrayPayload<PhaserMapInfo>(
-            data,
-            "overworld maps response",
-          ),
-        ),
-      );
-      break;
+
     case OpCodes.PhaserActorsResponse:
       handlers.actors.forEach((h) =>
-        h(normalizePhaserArrayPayload<PhaserActor>(data, "actors response")),
+        h(data as import("@/net/generated/world_api").PhaserActorsResponse | PlayerStepError),
       );
       break;
 
     case OpCodes.PhaserWarpsResponse:
       handlers.warps.forEach((h) =>
-        h(normalizePhaserArrayPayload<PhaserWarp>(data, "warps response")),
+        h(data as import("@/net/generated/world_api").PhaserWarpsResponse | PlayerStepError),
       );
       break;
     case OpCodes.PhaserActorPositionUpdate:
@@ -572,59 +571,16 @@ export function dispatchPhaserResponse(opcode: number, data: unknown): void {
         h(data as TrainerEncounterNotifyPayload),
       );
       break;
-    case OpCodes.PhaserMapMusicResponse:
-      handlers.mapMusic.forEach((h) => h(data as MapMusicResult));
-      break;
+
   }
 }
 
 /**
  * Send an item pickup request to the server (triggered by clicking an item ball).
  */
-export function sendItemPickup(actorId: number): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ actorId }, OpCodes.ItemPickupRequest);
-}
 
-/**
- * Open the Pokémon PC (triggered by clicking a PC object).
- */
-export function sendPokemonPCOpen(): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({}, OpCodes.PokemonPCOpenRequest);
-}
 
-/**
- * Deposit a party Pokémon into a PC box.
- */
-export function sendPokemonPCDeposit(partySlot: number, box: number): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ partySlot, box }, OpCodes.PokemonPCDepositRequest);
-}
-
-/**
- * Withdraw a Pokémon from a PC box to the party.
- */
-export function sendPokemonPCWithdraw(box: number, boxSlot: number): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ box, boxSlot }, OpCodes.PokemonPCWithdrawRequest);
-}
-
-/**
- * Release a Pokémon from PC storage permanently.
- */
-export function sendPokemonPCRelease(box: number, boxSlot: number): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ box, boxSlot }, OpCodes.PokemonPCReleaseRequest);
-}
-
-/**
- * Switch to a different PC box.
- */
-export function sendPokemonPCSwitchBox(box: number): void {
-  if (!WorldSocket.isConnected) return;
-  NetworkBridge.send({ box }, OpCodes.PokemonPCSwitchBoxRequest);
-}
+export { openPokemonPC as sendPokemonPCOpen, depositPokemon as sendPokemonPCDeposit, withdrawPokemon as sendPokemonPCWithdraw, releasePokemon as sendPokemonPCRelease, switchPokemonBox as sendPokemonPCSwitchBox } from "./PCCommandService";
 
 /**
  * Send a dialogue YES/NO choice response to the server.

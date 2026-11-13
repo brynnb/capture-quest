@@ -101,6 +101,17 @@ func TestEvolvePokemon_TransformsInPlace(t *testing.T) {
 	}
 }
 
+func TestEvolutionPreservesPersistedIdentityAndNickname(t *testing.T) {
+	database := openEvolutionTestDB(t)
+	pokemon := &Pokemon{RowID: 123, ID: 4, Name: "Buddy", Nickname: "Buddy", Level: 16}
+	if err := EvolvePokemon(database, pokemon, 5); err != nil {
+		t.Fatal(err)
+	}
+	if pokemon.RowID != 123 || pokemon.ID != 5 || pokemon.Name != "Buddy" || pokemon.Nickname != "Buddy" {
+		t.Fatalf("evolution lost identity: %+v", pokemon)
+	}
+}
+
 func TestEventEvolutionType(t *testing.T) {
 	if EventEvolution != "evolution" {
 		t.Errorf("expected EventEvolution = 'evolution', got %q", EventEvolution)

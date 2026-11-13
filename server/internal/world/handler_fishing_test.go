@@ -1,6 +1,8 @@
 package world
 
 import (
+	"capturequest/internal/testdb"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"testing"
@@ -52,16 +54,16 @@ func TestFishingRequiresWaterInFacingTile(t *testing.T) {
 	}
 	wh := &WorldHandler{ActorManager: actorManager}
 
-	if !isFacingFishableWater(wh, 1, 5, 5, "UP") {
+	if fishable, err := isFacingFishableWater(context.Background(), wh, 1, 5, 5, "UP"); err != nil || !fishable {
 		t.Fatalf("expected fishing to be allowed when facing water")
 	}
-	if isFacingFishableWater(wh, 1, 5, 5, "DOWN") {
+	if fishable, err := isFacingFishableWater(context.Background(), wh, 1, 5, 5, "DOWN"); err != nil || fishable {
 		t.Fatalf("expected fishing to be blocked when facing land")
 	}
-	if isFacingFishableWater(wh, 1, 5, 5, "LEFT") {
+	if fishable, err := isFacingFishableWater(context.Background(), wh, 1, 5, 5, "LEFT"); err != nil || fishable {
 		t.Fatalf("expected fishing to be blocked when facing blocked tile")
 	}
-	if isFacingFishableWater(wh, 1, 5, 5, "RIGHT") {
+	if fishable, err := isFacingFishableWater(context.Background(), wh, 1, 5, 5, "RIGHT"); err != nil || fishable {
 		t.Fatalf("expected fishing to be blocked when facing missing tile")
 	}
 }
@@ -88,9 +90,9 @@ func TestFishingRodTypePrefersStableRodName(t *testing.T) {
 			want: "super_rod",
 		},
 		{
-			name: "legacy old rod id",
+			name: "numeric IDs are catalog selectors, not rod names",
 			req:  PokeFishingRequestPayload{ItemID: 76},
-			want: "old_rod",
+			want: "",
 		},
 		{
 			name: "unknown",
@@ -101,8 +103,8 @@ func TestFishingRodTypePrefersStableRodName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := fishingRodType(tt.req); got != tt.want {
-				t.Fatalf("fishingRodType(%#v) = %q, want %q", tt.req, got, tt.want)
+			if got := normalizeFishingRodName(tt.req.RodType); got != tt.want {
+				t.Fatalf("normalizeFishingRodName(%#v) = %q, want %q", tt.req, got, tt.want)
 			}
 		})
 	}
@@ -131,7 +133,7 @@ func TestDirectionFromCharacterHeading(t *testing.T) {
 func TestFishingOldRodFacingWaterStartsBattle(t *testing.T) {
 	testDB := openFishingTestDB(t)
 	previousWorldDB := db.GlobalWorldDB
-	db.GlobalWorldDB = &db.WorldDB{DB: testDB}
+	db.GlobalWorldDB = nil
 	t.Cleanup(func() {
 		db.GlobalWorldDB = previousWorldDB
 		activeBattlesMu.Lock()
@@ -154,6 +156,7 @@ func TestFishingOldRodFacingWaterStartsBattle(t *testing.T) {
 		}},
 	}
 	wh := &WorldHandler{
+		database: testDB,
 		ActorManager: &PhaserActorManager{
 			collisionMap: map[int]map[string]int{
 				1: {
@@ -164,7 +167,8 @@ func TestFishingOldRodFacingWaterStartsBattle(t *testing.T) {
 		},
 	}
 
-	payload, err := json.Marshal(PokeFishingRequestPayload{RodType: "OLD_ROD", Direction: "RIGHT"})
+	revision := int64(0)
+	payload, err := json.Marshal(PokeFishingRequestPayload{RequestID: "fishing:normal", CharacterID: 42, InstanceID: 1, CommandRevision: &revision, RodType: "OLD_ROD", Direction: "RIGHT"})
 	if err != nil {
 		t.Fatalf("marshal fishing request: %v", err)
 	}
@@ -219,79 +223,16 @@ func TestFishingOldRodFacingWaterStartsBattle(t *testing.T) {
 
 func openFishingTestDB(t *testing.T) *sql.DB {
 	t.Helper()
-	testDB, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
+	testDB := testdb.Postgres(t)
 	t.Cleanup(func() { testDB.Close() })
 
 	if _, err := testDB.Exec(`
-		CREATE TABLE phaser_pokemon (
-			id INTEGER PRIMARY KEY,
-			name TEXT NOT NULL,
-			type_1 TEXT NOT NULL,
-			type_2 TEXT,
-			hp INTEGER NOT NULL,
-			atk INTEGER NOT NULL,
-			def INTEGER NOT NULL,
-			spd INTEGER NOT NULL,
-			spc INTEGER NOT NULL,
-			catch_rate INTEGER NOT NULL,
-			base_exp INTEGER NOT NULL,
-			growth_rate TEXT NOT NULL,
-			default_move_1_id TEXT,
-			default_move_2_id TEXT,
-			default_move_3_id TEXT,
-			default_move_4_id TEXT,
-			base_cry INTEGER,
-			cry_pitch INTEGER,
-			cry_length INTEGER,
-			evolve_level INTEGER,
-			evolve_pokemon TEXT
-		);
-		CREATE TABLE phaser_pokemon_learnset (
-			pokemon_id INTEGER NOT NULL,
-			level INTEGER NOT NULL,
-			move_id INTEGER NOT NULL,
-			move_name TEXT NOT NULL
-		);
-		CREATE TABLE character_pokemon (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			character_id INTEGER NOT NULL,
-			party_slot INTEGER,
-			box INTEGER NOT NULL DEFAULT -1,
-			box_slot INTEGER NOT NULL DEFAULT -1,
-			pokemon_id INTEGER NOT NULL,
-			nickname TEXT DEFAULT '',
-			level INTEGER NOT NULL DEFAULT 5,
-			exp INTEGER NOT NULL DEFAULT 0,
-			growth_rate TEXT NOT NULL DEFAULT 'MEDIUM_FAST',
-			cur_hp INTEGER NOT NULL,
-			max_hp INTEGER NOT NULL,
-			iv_atk INTEGER NOT NULL DEFAULT 0,
-			iv_def INTEGER NOT NULL DEFAULT 0,
-			iv_spd INTEGER NOT NULL DEFAULT 0,
-			iv_spc INTEGER NOT NULL DEFAULT 0,
-			ev_hp INTEGER NOT NULL DEFAULT 0,
-			ev_atk INTEGER NOT NULL DEFAULT 0,
-			ev_def INTEGER NOT NULL DEFAULT 0,
-			ev_spd INTEGER NOT NULL DEFAULT 0,
-			ev_spc INTEGER NOT NULL DEFAULT 0,
-			move1_id INTEGER NOT NULL DEFAULT 0,
-			move1_pp INTEGER NOT NULL DEFAULT 0,
-			move1_pp_up INTEGER NOT NULL DEFAULT 0,
-			move2_id INTEGER NOT NULL DEFAULT 0,
-			move2_pp INTEGER NOT NULL DEFAULT 0,
-			move2_pp_up INTEGER NOT NULL DEFAULT 0,
-			move3_id INTEGER NOT NULL DEFAULT 0,
-			move3_pp INTEGER NOT NULL DEFAULT 0,
-			move3_pp_up INTEGER NOT NULL DEFAULT 0,
-			move4_id INTEGER NOT NULL DEFAULT 0,
-			move4_pp INTEGER NOT NULL DEFAULT 0,
-			move4_pp_up INTEGER NOT NULL DEFAULT 0,
-			status INTEGER NOT NULL DEFAULT 0,
-			original_trainer_id INTEGER
-		);
+        INSERT INTO character_data(id,name,map_id,x,y,heading) VALUES(42,'fishing',1,5,5,90);
+ INSERT INTO cq_items(id,name,short_name) VALUES(76,'Old Rod','OLD_ROD');
+ INSERT INTO cq_item_instances(id,item_id,quantity,owner_type,owner_id) VALUES(1,76,1,0,42);
+ INSERT INTO cq_character_inventory(character_id,item_instance_id) VALUES(42,1);
+ INSERT INTO phaser_maps(id,name,width,height) VALUES(1,'ROOM',10,10);
+ INSERT INTO phaser_tiles(map_id,x,y,tile_image_id,collision_type) VALUES(1,5,5,0,1),(1,6,5,0,2);
 		INSERT INTO phaser_pokemon (
 			id, name, type_1, type_2, hp, atk, def, spd, spc, catch_rate, base_exp, growth_rate
 		) VALUES
@@ -309,4 +250,152 @@ func openFishingTestDB(t *testing.T) *sql.DB {
 		t.Fatalf("seed fishing db: %v", err)
 	}
 	return testDB
+}
+
+func TestFishingRejectsForgedSourceUnownedRodAndFailedCommit(t *testing.T) {
+	for _, kind := range []string{"remote", "facing", "unowned", "rod-disagreement", "catalog-error", "commit-error", "moving", "owned-source", "catalog-id", "catalog-alias", "success"} {
+		t.Run(kind, func(t *testing.T) {
+			database := openFishingTestDB(t)
+			previous := db.GlobalWorldDB
+			db.GlobalWorldDB = nil
+			t.Cleanup(func() { db.GlobalWorldDB = previous; forgetBattle(42, getBattle(42)) })
+			messages := &recordingMessenger{}
+			ses := &session.Session{SessionID: 1, Authenticated: true, Messenger: messages, Client: &testSessionClient{char: &model.CharacterData{ID: 42, MapID: 1, X: 5, Y: 5, Heading: 90}}}
+			wh := &WorldHandler{database: database, ActorManager: &PhaserActorManager{collisionMap: map[int]map[string]int{}}}
+			revision := int64(0)
+			request := PokeFishingRequestPayload{CommandRevision: &revision, RequestID: "fish:owned", CharacterID: 42, InstanceID: 1, ItemID: 76, RodType: "OLD_ROD", Direction: "RIGHT"}
+			switch kind {
+			case "catalog-id":
+				request.RodType = ""
+			case "catalog-alias":
+				testdb.Exec(t, database, `INSERT INTO cq_items(id,name,short_name) VALUES(500,'Catalog Old Rod','OLD_ROD'); UPDATE cq_item_instances SET item_id=500 WHERE id=1`)
+				request.ItemID = 500
+				request.RodType = ""
+			case "moving":
+				wh.PlayerMovement = NewPlayerMovementManager(wh, wh.ActorManager)
+				wh.PlayerMovement.RegisterPlayer(ses, 42, 5, 5, 1, "RIGHT")
+				wh.PlayerMovement.players[42].Path = []PathNode{{X: 6, Y: 5}}
+			case "owned-source":
+				wh.PlayerMovement = NewPlayerMovementManager(wh, wh.ActorManager)
+				wh.PlayerMovement.RegisterPlayer(ses, 42, 5, 5, 1, "RIGHT")
+				ses.Client.CharData().X = 99
+				ses.Client.CharData().Y = 99
+			case "remote":
+				x := 99
+				request.X = &x
+			case "facing":
+				request.Direction = "LEFT"
+			case "unowned":
+				testdb.Exec(t, database, `UPDATE cq_item_instances SET owner_id=99 WHERE id=1`)
+			case "rod-disagreement":
+				request.RodType = "SUPER_ROD"
+			case "catalog-error":
+				testdb.Exec(t, database, `ALTER TABLE phaser_pokemon RENAME TO unavailable_species`)
+			case "commit-error":
+				testdb.Exec(t, database, `CREATE FUNCTION reject_fishing() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'late fishing failure'; END $$; CREATE CONSTRAINT TRIGGER reject_fishing AFTER INSERT ON character_battle_state DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_fishing()`)
+			}
+			payload, err := json.Marshal(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			HandlePokeFishing(ses, payload, wh)
+			var response struct {
+				Success bool
+				Hooked  bool
+			}
+			if len(messages.streams) == 0 || json.Unmarshal(messages.streams[0].payload, &response) != nil {
+				t.Fatal("missing terminal fishing response")
+			}
+			var envelope map[string]any
+			if json.Unmarshal(messages.streams[0].payload, &envelope) != nil || envelope["requestId"] != "fish:owned" || envelope["characterId"] != float64(42) || envelope["instanceId"] != float64(1) {
+				t.Fatalf("fishing identity=%v", envelope)
+			}
+			var battles, seen int
+			database.QueryRow(`SELECT COUNT(*) FROM character_battle_state WHERE character_id=42`).Scan(&battles)
+			database.QueryRow(`SELECT COUNT(*) FROM character_pokedex WHERE character_id=42`).Scan(&seen)
+			if kind == "success" || kind == "owned-source" || kind == "catalog-id" || kind == "catalog-alias" {
+				if !response.Success || !response.Hooked || battles != 1 || seen != 1 || getBattle(42) == nil {
+					t.Fatalf("successful fishing=%+v battles=%d seen=%d", response, battles, seen)
+				}
+				messages.streams = nil
+				HandlePokeFishing(ses, payload, wh)
+				json.Unmarshal(messages.streams[0].payload, &response)
+				if !response.Success || len(messages.streams) != 1 {
+					t.Fatal("duplicate did not replay its receipt without another battle publication")
+				}
+				testdb.Exec(t, database, `DELETE FROM character_battle_state WHERE character_id=42`)
+				forgetBattle(42, getBattle(42))
+				messages.streams = nil
+				HandlePokeFishing(ses, payload, wh)
+				database.QueryRow(`SELECT COUNT(*) FROM character_battle_state WHERE character_id=42`).Scan(&battles)
+				if len(messages.streams) != 1 || battles != 0 || getBattle(42) != nil {
+					t.Fatal("receipt replay resurrected a dismissed encounter")
+				}
+			} else if response.Success || battles != 0 || seen != 0 || getBattle(42) != nil {
+				t.Fatalf("rejected fishing=%+v battles=%d seen=%d", response, battles, seen)
+			}
+		})
+	}
+}
+
+func TestFishingNoBiteReceiptSurvivesRodRemovalAndOwnerReplacement(t *testing.T) {
+	database := openFishingTestDB(t)
+	testdb.Exec(t, database, `UPDATE cq_items SET short_name='SUPER_ROD',name='Super Rod' WHERE id=76`)
+	messages := &recordingMessenger{}
+	ses := &session.Session{SessionID: 1, Authenticated: true, Messenger: messages, Client: &testSessionClient{char: &model.CharacterData{ID: 42, MapID: 1, X: 5, Y: 5, Heading: 90}}}
+	wh := &WorldHandler{database: database, ActorManager: &PhaserActorManager{collisionMap: map[int]map[string]int{}}}
+	revision := int64(0)
+	request := PokeFishingRequestPayload{CommandRevision: &revision, RequestID: "no-bite", CharacterID: 42, InstanceID: 1, Direction: "RIGHT"}
+	payload, _ := json.Marshal(request)
+	HandlePokeFishing(ses, payload, wh)
+	if len(messages.streams) != 1 {
+		t.Fatalf("no bite packets=%d", len(messages.streams))
+	}
+	first := string(messages.streams[0].payload)
+	var result struct {
+		Success bool
+		Hooked  bool
+	}
+	json.Unmarshal(messages.streams[0].payload, &result)
+	if !result.Success || result.Hooked {
+		t.Fatalf("no-bite=%s", first)
+	}
+	testdb.Exec(t, database, `DELETE FROM cq_character_inventory WHERE character_id=42; ALTER TABLE phaser_pokemon RENAME TO unavailable_species`)
+	messages.streams = nil
+	ses.SessionID = 2
+	ses.Client.CharData().Heading = 180
+	HandlePokeFishing(ses, payload, wh)
+	if len(messages.streams) != 1 || string(messages.streams[0].payload) != first || getBattle(42) != nil {
+		t.Fatalf("replayed no-bite changed or rerolled=%+v", messages.streams)
+	}
+}
+
+func TestFishingRetiredIdentityFreeRequestsCannotMutate(t *testing.T) {
+	database := openFishingTestDB(t)
+	messages := &recordingMessenger{}
+	ses := &session.Session{SessionID: 1, Authenticated: true, Messenger: messages, Client: &testSessionClient{char: &model.CharacterData{ID: 42, MapID: 1, X: 5, Y: 5, Heading: 90}}}
+	wh := &WorldHandler{database: database, ActorManager: &PhaserActorManager{collisionMap: map[int]map[string]int{}}}
+	for _, payload := range []string{
+		`{"rodType":"OLD_ROD","direction":"RIGHT"}`,
+		`{"requestId":"current","characterId":42,"instanceId":1,"direction":"RIGHT"}`,
+		`{"requestId":"current","characterId":42,"commandRevision":0,"itemId":76,"direction":"RIGHT"}`,
+		`{"requestId":"current","characterId":99,"instanceId":1,"commandRevision":0,"direction":"RIGHT"}`,
+		`{"requestId":"current","characterId":42,"instanceId":1,"commandRevision":0,"direction":"RIGHT","unexpected":true}`,
+	} {
+		messages.streams = nil
+		HandlePokeFishing(ses, []byte(payload), wh)
+		var response struct {
+			Success bool
+			Error   string
+		}
+		if len(messages.streams) != 1 || json.Unmarshal(messages.streams[0].payload, &response) != nil || response.Success || response.Error == "" {
+			t.Fatalf("retired request accepted: %s response=%+v", payload, response)
+		}
+	}
+	for _, table := range []string{"character_battle_state", "character_pokedex", "character_field_command_state"} {
+		var count int
+		if err := database.QueryRow(`SELECT count(*) FROM ` + table + ` WHERE character_id=42`).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("retired request wrote %s: count=%d error=%v", table, count, err)
+		}
+	}
 }

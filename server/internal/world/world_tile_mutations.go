@@ -1,7 +1,9 @@
 package world
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"capturequest/internal/db"
@@ -27,11 +29,16 @@ type worldTileMutationResult struct {
 	MapID   int
 }
 
-func canAdminEditWorldTiles(ses *session.Session) bool {
-	if ses == nil || !ses.Authenticated {
+func canAdminEditWorldTiles(ses *session.Session, wh *WorldHandler) bool {
+	if ses == nil || wh == nil || !ses.Authenticated || ses.IsClosed() || ses.CommandContext().Err() != nil {
 		return false
 	}
-	if getAccountStatus(ses.AccountID) > 0 {
+	status, err := getAccountStatus(ses.CommandContext(), wh.database, ses.AccountID)
+	// A cancelled read cannot fall through to cached character authority.
+	if ses.CommandContext().Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	if status > 0 {
 		return true
 	}
 	if ses.HasValidClient() {

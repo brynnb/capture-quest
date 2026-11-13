@@ -1,7 +1,7 @@
 package world
 
 import (
-	"database/sql"
+	"capturequest/internal/testdb"
 	"encoding/json"
 	"testing"
 
@@ -13,28 +13,37 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-func TestClientReportedMapChangeDespawnsOldMapAndUpdatesNewMap(t *testing.T) {
+// Even valid catalog destinations cannot be established by the retired setter.
+func TestRetiredPositionReportsPreservePositionAndVisibility(t *testing.T) {
 	setupPlayerVisibilityTestDB(t)
-
 	wh, origin, oldMapMessenger, newMapMessenger, originMessenger := setupPlayerVisibilityWorld(t, 40, 63)
 	wh.PlayerMovement.RegisterPlayer(origin, 7, 4, 4, 40, "DOWN")
-
-	payload, err := json.Marshal(PhaserPlayerPositionUpdateRequest{
-		X:         2,
-		Y:         7,
-		MapID:     63,
-		Direction: "UP",
-	})
-	if err != nil {
-		t.Fatalf("marshal position update: %v", err)
+	registry := NewWorldOpCodeRegistry()
+	registry.WH = wh
+	for _, payload := range []string{
+		`{"x":2,"y":7,"mapId":63,"direction":"UP"}`,
+		`{"x":5,"y":4,"mapId":40,"direction":"RIGHT"}`,
+		`{"x":4,"y":4,"mapId":40,"direction":"UP"}`,
+		`{`,
+	} {
+		registry.HandleWorldPacket(origin, clientPacket(opcodes.PhaserPlayerPositionUpdate, payload))
 	}
-
-	HandlePhaserPlayerPositionUpdate(origin, payload, wh)
-
-	assertSinglePlayerDespawn(t, oldMapMessenger, wh.ActorRegistry.GetPhaserID(ActorTypePlayer, 7))
-	assertSinglePlayerUpdate(t, newMapMessenger, wh.ActorRegistry.GetPhaserID(ActorTypePlayer, 7), 63, 2, 7)
-	if got := len(originMessenger.streams); got != 0 {
-		t.Fatalf("origin messages = %d, want no multiplayer echo", got)
+	for _, messenger := range []*recordingMessenger{oldMapMessenger, newMapMessenger, originMessenger} {
+		if len(messenger.streams) != 0 {
+			t.Fatalf("retired setter published %+v", messenger.streams)
+		}
+	}
+	x, y, mapID, ok := wh.PlayerMovement.GetPosition(7)
+	direction, _ := wh.PlayerMovement.GetDirection(7)
+	if !ok || x != 4 || y != 4 || mapID != 40 || direction != "DOWN" || wh.PlayerMovement.players[7].pendingStep != nil || len(wh.PlayerMovement.players[7].Path) != 0 {
+		t.Fatal("retired setter changed owned movement")
+	}
+	char := origin.Client.CharData()
+	if origin.MapID != 40 || origin.X != 4 || origin.Y != 4 || char.MapID != 40 || char.X != 4 || char.Y != 4 {
+		t.Fatal("retired setter changed session location")
+	}
+	if err := wh.database.QueryRow(`SELECT x,y,map_id FROM character_data WHERE id=7`).Scan(&x, &y, &mapID); err != nil || x != 4 || y != 4 || mapID != 40 {
+		t.Fatalf("retired setter changed durable location: %d %d %d %v", x, y, mapID, err)
 	}
 }
 
@@ -44,9 +53,9 @@ func TestServerTeleportedPlayerDespawnsOldMapAndUpdatesNewMap(t *testing.T) {
 	wh, origin, oldMapMessenger, newMapMessenger, originMessenger := setupPlayerVisibilityWorld(t, 40, 63)
 	wh.PlayerMovement.RegisterPlayer(origin, 7, 4, 4, 40, "DOWN")
 
-	gotMapID := setServerTeleportedPlayerPosition(origin, wh, 63, 2, 7, "UP")
-	if gotMapID != 63 {
-		t.Fatalf("setServerTeleportedPlayerPosition mapID = %d, want 63", gotMapID)
+	gotMapID, err := setServerTeleportedPlayerPosition(origin, wh, 63, 2, 7, "UP")
+	if err != nil || gotMapID != 63 {
+		t.Fatalf("setServerTeleportedPlayerPosition mapID = %d, want 63: %v", gotMapID, err)
 	}
 
 	assertSinglePlayerDespawn(t, oldMapMessenger, wh.ActorRegistry.GetPhaserID(ActorTypePlayer, 7))
@@ -85,8 +94,10 @@ func setupPlayerVisibilityWorld(t *testing.T, oldMapID, newMapID int) (*WorldHan
 	newMapViewer.Authenticated = true
 	newMapViewer.MapID = newMapID
 
+	sessionManager.ForEachSession(func(s *session.Session) { s.PublishPresence() })
 	wh := &WorldHandler{
 		sessionManager: sessionManager,
+		database:       db.GlobalWorldDB.DB,
 		ActorRegistry:  NewActorRegistry(),
 		CutTiles:       NewCutTileManager(),
 	}
@@ -99,30 +110,15 @@ func setupPlayerVisibilityWorld(t *testing.T, oldMapID, newMapID int) (*WorldHan
 func setupPlayerVisibilityTestDB(t *testing.T) {
 	t.Helper()
 
-	raw, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
+	raw := testdb.Postgres(t)
 	t.Cleanup(func() {
 		raw.Close()
 	})
 
 	if _, err := raw.Exec(`
-		CREATE TABLE character_data (
-			id INTEGER PRIMARY KEY,
-			map_id INTEGER NOT NULL,
-			x REAL NOT NULL,
-			y REAL NOT NULL,
-			z REAL NOT NULL DEFAULT 0,
-			heading REAL NOT NULL DEFAULT 0
-		);
-		CREATE TABLE character_daycare (
-			character_id INTEGER PRIMARY KEY,
-			pokemon_row_id INTEGER NOT NULL,
-			start_level INTEGER NOT NULL
-		);
-		INSERT INTO character_data (id, map_id, x, y, z, heading)
-		VALUES (7, 40, 4, 4, 0, 0);
+		INSERT INTO phaser_maps(id,name,width,height) VALUES(63,'DESTINATION',20,20);
+		INSERT INTO phaser_tiles(map_id,x,y,tile_image_id) VALUES(63,2,7,1);
+		INSERT INTO character_data (id,name,map_id,x,y,z,heading) VALUES(7,'viewer',40,4,4,0,0);
 	`); err != nil {
 		t.Fatalf("create test db schema: %v", err)
 	}

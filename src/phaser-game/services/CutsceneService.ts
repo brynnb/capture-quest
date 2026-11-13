@@ -26,7 +26,7 @@
  *   giveItem     — (handled server-side on CutsceneEnd, no-op client-side)
  *   takeItem     — (handled server-side on CutsceneEnd, no-op client-side)
  *   takeMoney    — (handled server-side on CutsceneEnd, no-op client-side)
- *   gameCornerPrizeVendor — (handled server-side on CutsceneEnd, no-op client-side)
+ *   gameCornerPrizeVendor — opens an owned menu after confirmed script completion
  *   startSafariSession — (handled server-side on CutsceneEnd, no-op client-side)
  *   endSafariSession — (handled server-side on CutsceneEnd, no-op client-side)
  *   startTrainerBattle — (handled server-side on CutsceneEnd, no-op client-side)
@@ -34,9 +34,10 @@
  */
 
 import usePokemonDialogueStore from "@/stores/PokemonDialogueStore";
-import { WorldSocket } from "@/net/index";
-import { NetworkBridge } from "@/net/NetworkBridge";
-import * as OpCodes from "@/net/generated/opcodes";
+import { completeCutscene, readOwnedPlayerPosition } from "./PlayerMovementService";
+import { CorrelatedResponseError } from "./CorrelatedRequest";
+import type { CutsceneStartNotify, OwnedPlayerPositionResponse, PlayerStepError } from "@/net/generated/protocol";
+export type CutsceneOwnedPosition = Pick<OwnedPlayerPositionResponse, "mapId" | "x" | "y" | "direction" | "serverMovementPending">;
 import AudioManager from "@/services/audio/AudioManager";
 import {
   cryPathForPokemon,
@@ -52,72 +53,20 @@ import {
 
 // --- Types ---
 
-export interface CutsceneAction {
-  type: string;
-  // dialogue
-  speaker?: string;
-  lines?: string[];
-  // move / movePlayer
-  actor?: string;
-  movements?: string[];
-  // showActor
-  x?: number;
-  y?: number;
-  sprite?: string;
-  mapId?: number;
-  // delay
-  ms?: number;
-  // facePlayer
-  direction?: string;
-  // server-side item/Pokemon rewards
-  itemId?: number;
-  itemName?: string;
-  quantity?: number;
-  money?: number;
-  pokemonId?: number;
-  speciesId?: number;
-  pokemonName?: string;
-  pokemonConstant?: string;
-  sfxConstant?: string;
-  musicConstant?: string;
-  musicPath?: string;
-  loop?: boolean;
-  volume?: number;
-  level?: number;
-  message?: string;
-  // setFlag
-  flag?: string;
-  // server-side battle
-  partyByFlag?: Record<string, number>;
-  postWinActions?: CutsceneAction[];
-  actions?: CutsceneAction[];
-  // screenFade
-  fadeType?: "in" | "out";
-  // textConstant (for dialogue fetched from server)
-  textConstant?: string;
-  // choice
-  prompt?: string;
-  yesLines?: string[];
-  noLines?: string[];
-  continueOnNo?: boolean;
-  stopOnYes?: boolean;
-  actorId?: number;
-  prizeWindow?: number;
-}
-
-export interface CutsceneStartPayload {
-  scriptLabel: string;
-  mapName: string;
-  actions: CutsceneAction[];
-}
+export type CutsceneAction = import("@/net/generated/scriptedactions").Action;
+export type CutsceneStartPayload = CutsceneStartNotify;
 
 // --- State ---
 
 let isPlaying = false;
 let currentScriptLabel: string | null = null;
+let currentCompletionToken: string | null = null;
 let lastStartedScriptLabel: string | null = null;
 let lastCompletedScriptLabel: string | null = null;
 let activeRunId = 0;
+let activeRunAbort: AbortController | null = null;
+const queuedCutscenes: CutsceneStartPayload[] = [];
+const prizeWindowsByRun = new Map<number, number>();
 
 type CancelListener = {
   runId: number;
@@ -147,6 +96,9 @@ let onHideActor: HideActorCallback | null = null;
 let onHideObject: HideObjectCallback | null = null;
 let onFace: FaceCallback | null = null;
 let onInputLock: InputLockCallback | null = null;
+let onPrizeVendor: ((prizeWindow:number, signal:AbortSignal) => Promise<void>) | null = null;
+let onReconcile: ((position: CutsceneOwnedPosition,signal:AbortSignal) => Promise<void>) | null = null;
+let onCancelPlayback: (() => void) | null = null;
 
 // --- Public API ---
 
@@ -158,6 +110,9 @@ export function registerCutsceneCallbacks(callbacks: {
   onHideObject?: HideObjectCallback;
   onFace: FaceCallback;
   onInputLock: InputLockCallback;
+  onPrizeVendor?: (prizeWindow:number, signal:AbortSignal) => Promise<void>;
+  onReconcile?: (position: CutsceneOwnedPosition,signal:AbortSignal) => Promise<void>;
+  onCancelPlayback?: () => void;
 }): void {
   onMove = callbacks.onMove;
   onShowActor = callbacks.onShowActor;
@@ -165,10 +120,17 @@ export function registerCutsceneCallbacks(callbacks: {
   onHideObject = callbacks.onHideObject ?? null;
   onFace = callbacks.onFace;
   onInputLock = callbacks.onInputLock;
+  onReconcile = callbacks.onReconcile ?? null;
+  onPrizeVendor = callbacks.onPrizeVendor ?? null;
+  onCancelPlayback = callbacks.onCancelPlayback ?? null;
 }
 
 /** Unregister callbacks (e.g., when scene is destroyed). */
 export function unregisterCutsceneCallbacks(): void {
+  cancelActiveCutscene("scene retired");
+  onReconcile = null;
+  onPrizeVendor = null;
+  onCancelPlayback = null;
   onMove = null;
   onShowActor = null;
   onHideActor = null;
@@ -197,10 +159,16 @@ export function getLastCompletedCutsceneScriptLabel(): string | null {
 export function cancelActiveCutscene(reason = "cancelled"): void {
   const cancelledRunId = activeRunId;
   activeRunId++;
+  activeRunAbort?.abort();
+  activeRunAbort = null;
+  queuedCutscenes.length = 0;
+  prizeWindowsByRun.clear();
+  onCancelPlayback?.();
   const hadActiveCutscene = isPlaying || currentScriptLabel !== null;
 
   isPlaying = false;
   currentScriptLabel = null;
+  currentCompletionToken = null;
   onInputLock?.(false);
   usePokemonDialogueStore.getState().resetDialogueState();
 
@@ -221,16 +189,19 @@ export async function handleCutsceneStart(
   payload: CutsceneStartPayload,
 ): Promise<void> {
   if (isPlaying) {
-    console.warn(
-      "[CutsceneService] Already playing a cutscene, ignoring",
-      payload.scriptLabel,
-    );
+    // A committed script can publish the next script before its completion
+    // result. Preserve that issued payload until current reconciliation ends.
+    if (payload.completionToken !== currentCompletionToken && !queuedCutscenes.some((event) => event.completionToken === payload.completionToken)) queuedCutscenes.push(payload);
     return;
   }
 
   const runId = ++activeRunId;
+  const abort = new AbortController();
+  activeRunAbort = abort;
   isPlaying = true;
+  onInputLock?.(true);
   currentScriptLabel = payload.scriptLabel;
+  currentCompletionToken = payload.completionToken;
   lastStartedScriptLabel = payload.scriptLabel;
   console.log(
     `[CutsceneService] Starting cutscene: ${payload.scriptLabel} (${payload.actions.length} actions)`,
@@ -253,31 +224,61 @@ export async function handleCutsceneStart(
     shouldComplete = false;
   }
 
-  if (!shouldComplete && activeRunId === runId) {
-    onInputLock?.(false);
-  }
+  if (!shouldComplete && isActiveRun(runId)) onCancelPlayback?.();
 
-  // Notify server that cutscene is complete
-  if (
-    shouldComplete &&
-    activeRunId === runId &&
-    WorldSocket.isConnected &&
-    currentScriptLabel
-  ) {
-    lastCompletedScriptLabel = currentScriptLabel;
-    NetworkBridge.send(
-      { scriptLabel: currentScriptLabel },
-      OpCodes.CutsceneEndRequest,
-    );
-    console.log(
-      `[CutsceneService] Sent CutsceneEndRequest for ${currentScriptLabel}`,
-    );
-  }
-
-  removeCancelListenersForRun(runId);
-  if (activeRunId === runId) {
-    isPlaying = false;
-    currentScriptLabel = null;
+  // Animation does not acknowledge durable success. Keep the run/input lock
+  // until the correlated commit result and owned-position projection settle.
+  let reconciled = false;
+  let completionConfirmed = false;
+  try {
+    let position: CutsceneOwnedPosition;
+    if (shouldComplete && isActiveRun(runId)) {
+      try {
+        const result = await completeCutscene(payload.scriptLabel, payload.completionToken, abort.signal);
+        if (!isActiveRun(runId)) return;
+        position = result;
+        completionConfirmed = result.completed;
+        if (result.completed) lastCompletedScriptLabel = payload.scriptLabel;
+      } catch (error) {
+        if (!isActiveRun(runId) || abort.signal.aborted) return;
+        console.warn("[CutsceneService] Completion was not confirmed:", error);
+        // A correlated failure includes owned state. A timeout/send failure may
+        // have committed; read after the command instead of assuming rollback.
+        position = error instanceof CorrelatedResponseError
+          ? error.response as PlayerStepError
+          : await readOwnedPlayerPosition(abort.signal);
+      }
+    } else {
+      if (!isActiveRun(runId)) return;
+      // A declined choice/interrupted active playback retires its durable plan
+      // before input unlock. Scene/session retirement leaves it for reconnect.
+      position = await completeCutscene(payload.scriptLabel, payload.completionToken, abort.signal, true);
+    }
+    if (!isActiveRun(runId)) return;
+    if (!onReconcile) throw new Error("Cutscene position projection unavailable");
+    await onReconcile(position,abort.signal);
+    if (!isActiveRun(runId)) return;
+    const prizeWindow = prizeWindowsByRun.get(runId);
+    if (completionConfirmed && prizeWindow !== undefined) {
+      if (!onPrizeVendor) throw new Error("Prize menu view is unavailable");
+      await onPrizeVendor(prizeWindow, abort.signal);
+      if (!isActiveRun(runId)) return;
+    }
+    reconciled = true;
+  } catch (error) {
+    if (isActiveRun(runId)) console.warn("[CutsceneService] Could not recover owned position; input remains locked until scene/session retirement:", error);
+  } finally {
+    prizeWindowsByRun.delete(runId);
+    removeCancelListenersForRun(runId);
+    if (activeRunId === runId && reconciled) {
+      activeRunAbort = null;
+      isPlaying = false;
+      currentScriptLabel = null;
+      currentCompletionToken = null;
+      onInputLock?.(false);
+      const next = queuedCutscenes.shift();
+      if (next) void handleCutsceneStart(next);
+    }
   }
 }
 
@@ -295,7 +296,7 @@ async function executeAction(
       return true;
 
     case "unlockInput":
-      onInputLock?.(false);
+      // Unlock only after completion/reconciliation, including nested actions.
       return true;
 
     case "dialogue":
@@ -386,6 +387,10 @@ async function executeAction(
       // No-op client-side — Pokemon rewards are persisted server-side on CutsceneEnd
       return true;
 
+    case "healParty":
+      // Healing and center policy commit with the durable CutsceneEnd command.
+      return true;
+
     case "giveItem":
     case "takeItem":
       // No-op client-side — inventory is persisted server-side on CutsceneEnd
@@ -396,7 +401,10 @@ async function executeAction(
       return true;
 
     case "gameCornerPrizeVendor":
-      // No-op client-side — the server opens the prize menu after CutsceneEndRequest
+      // Defer the source-bound menu until this run's commit and owned projection
+      // settle. An unsolicited/historical list never opens a current view.
+      if (!Number.isInteger(action.prizeWindow) || action.prizeWindow! < 1 || action.prizeWindow! > 3) throw new Error("Invalid prize window");
+      prizeWindowsByRun.set(runId, action.prizeWindow!);
       return true;
 
     case "startSafariSession":
@@ -537,7 +545,7 @@ async function showDialogueAction(
 ): Promise<boolean> {
   let lines = action.lines ?? [];
   if (action.textConstant) {
-    const fetched = await fetchDialogue(action.textConstant);
+    const fetched = await fetchDialogue(action.textConstant, activeRunAbort?.signal);
     if (!isActiveRun(runId)) return false;
     if (fetched.length > 0) {
       lines = fetched;

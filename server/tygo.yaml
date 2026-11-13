@@ -1,9 +1,13 @@
 # Tygo configuration to generate TypeScript interfaces from Go structs
-# Usage: tygo generate
+# Usage: npm run tygo (from the repository root)
 
 packages:
   - path: capturequest/internal/world
     type_mappings:
+      protocol.TrainerInteractResponse: 'import("./protocol").TrainerInteractResponse'
+      protocol.PhaserDialogueEntry: 'import("./protocol").PhaserDialogueEntry'
+      pokebattle.BattleEvent: 'import("./battle_events").BattleEvent'
+      scriptedactions.Action: 'import("./scriptedactions").Action'
       int32: number
       int16: number
       int8: number
@@ -43,3 +47,34 @@ packages:
       float32: number
       float64: number
     output_path: ../src/net/generated/models.ts
+
+  - path: capturequest/internal/scriptedactions
+    include_files: [action.go]
+    output_path: ../src/net/generated/scriptedactions.ts
+
+  - path: capturequest/internal/db/cqitems
+    include_files: [types.go]
+    output_path: ../src/net/generated/cqitems.ts
+
+  - path: capturequest/internal/protocol
+    frontmatter: |
+      import type { CharacterData as CharacterBase } from "./models";
+    type_mappings:
+      models.CharacterData: CharacterBase
+      db_character.CharacterOptions: 'import("./character_options").CharacterOptions'
+    output_path: ../src/net/generated/protocol.ts
+
+  - path: capturequest/internal/db/character
+    include_files: [character-options.go]
+    output_path: ../src/net/generated/character_options.ts
+
+  - path: capturequest/internal/pokebattle
+    include_files: [battle_events.go]
+    output_path: ../src/net/generated/battle_events.ts
+
+  - path: capturequest/internal/itemuse
+    include_files: [party.go]
+    output_path: ../src/net/generated/itemuse.ts
+
+  - path: capturequest/internal/staticdata
+    output_path: ../src/net/generated/staticdata.ts

@@ -1,15 +1,37 @@
 package world
 
 import (
+	"context"
 	"database/sql"
-	"encoding/json"
+	"errors"
+	"fmt"
 	"log"
+	"time"
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
 	"capturequest/internal/db/cqitems"
 	"capturequest/internal/session"
 )
+
+var errItemAlreadyCollected = errors.New("Already collected")
+
+type ItemPickupRequest struct {
+	RequestID string                    `json:"requestId"`
+	ActorID   int                       `json:"actorId"`
+	Command   *InventoryCommandIdentity `json:"command" tstype:"InventoryCommandIdentity"`
+}
+type ItemPickupResponse struct {
+	Success     bool                        `json:"success" tstype:"true"`
+	RequestID   string                      `json:"requestId"`
+	CharacterID int64                       `json:"characterId"`
+	ActorID     int                         `json:"actorId"`
+	ItemName    string                      `json:"itemName"`
+	ItemID      int32                       `json:"itemId"`
+	InstanceID  int32                       `json:"instanceId"`
+	Message     string                      `json:"message"`
+	Inventory   cqitems.CQInventorySnapshot `json:"inventory" tstype:"import(\"./cqitems\").CQInventorySnapshot"`
+}
 
 // HandleItemPickup handles a request to pick up an overworld item ball.
 // The client sends the runtime actor ID; we reverse-map it to the DB object ID,
@@ -19,227 +41,136 @@ func HandleItemPickup(ses *session.Session, payload []byte, wh *WorldHandler) bo
 	if !ses.HasValidClient() {
 		return false
 	}
-
-	var req struct {
-		ActorID int `json:"actorId"` // Runtime actor ID (remapped by ActorRegistry)
+	var req ItemPickupRequest
+	fail := func(err error) {
+		sendInventoryCommandError(ses, req.RequestID, opcodes.ItemPickupResponse, err.Error())
 	}
-	if err := json.Unmarshal(payload, &req); err != nil {
-		log.Printf("[ItemPickup] Failed to unmarshal request: %v", err)
+	if err := decodePlayerMovement(payload, &req); err != nil || !validInventoryCommand(ses, req.RequestID, req.Command) || req.ActorID <= 0 {
+		fail(fmt.Errorf("Invalid item pickup command."))
 		return false
 	}
-
+	if wh.ActorRegistry == nil {
+		fail(fmt.Errorf("Unknown actor"))
+		return false
+	}
+	objectID := wh.ActorRegistry.GetOriginalID(ActorTypeNPC, req.ActorID)
+	if objectID == 0 {
+		fail(fmt.Errorf("Unknown actor"))
+		return false
+	}
+	ctx, cancel := context.WithTimeout(ses.CommandContext(), 5*time.Second)
+	defer cancel()
 	charID := int32(ses.Client.CharData().ID)
-	myDB := db.GlobalWorldDB.DB
-
-	// Reverse-map runtime actor ID to original DB object ID
-	dbID := wh.ActorRegistry.GetOriginalID(ActorTypeNPC, req.ActorID)
-	if dbID == 0 {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "Unknown actor",
-		}, opcodes.ItemPickupResponse)
-		return false
-	}
-
-	// Look up the object in phaser_objects
-	var objectType string
-	var itemID *int
-	var objectName *string
-	var objectX sql.NullInt64
-	var objectY sql.NullInt64
-	var objectMapID sql.NullInt64
-	err := myDB.QueryRow(`
-		SELECT object_type, item_id, name, COALESCE(x, local_x), COALESCE(y, local_y), map_id
-		FROM phaser_objects
-		WHERE id = $1`, dbID).Scan(&objectType, &itemID, &objectName, &objectX, &objectY, &objectMapID)
+	var result *collectedItem
+	snapshot, err := cqitems.NewStore(wh.database).ExecuteCommand(ctx, charID, *req.Command.Revision, func(tx db.DBTX) error {
+		var err error
+		result, err = collectOwnedItem(ctx, tx, wh, ses, charID, objectID)
+		return err
+	})
 	if err != nil {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "Object not found",
-		}, opcodes.ItemPickupResponse)
+		if errors.Is(err, errScriptInteractionDenied) {
+			fail(fmt.Errorf("Item unavailable or out of reach"))
+		} else if errors.Is(err, errBattleOwnership) {
+			fail(err)
+		} else if errors.Is(err, errItemAlreadyCollected) {
+			fail(errItemAlreadyCollected)
+		} else {
+			log.Printf("item pickup character %d object %d: %v", charID, objectID, err)
+			fail(fmt.Errorf("Could not collect item"))
+		}
 		return false
 	}
+	ses.SendStreamJSON(ItemPickupResponse{Success: true, RequestID: req.RequestID, CharacterID: int64(charID), ActorID: req.ActorID, ItemName: result.item.Name, ItemID: result.item.ID, InstanceID: result.instanceID, Message: itemPickupMessage(result.item.Name), Inventory: snapshot}, opcodes.ItemPickupResponse)
 
-	if objectType != "item" {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "Not an item",
-		}, opcodes.ItemPickupResponse)
-		return false
-	}
-
-	if itemID == nil {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "Item has no associated item data",
-		}, opcodes.ItemPickupResponse)
-		return false
-	}
-
-	objectTile, ok := itemPickupObjectTile(objectX, objectY, objectMapID, wh)
-	if !ok {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "Item position is unavailable",
-		}, opcodes.ItemPickupResponse)
-		return false
-	}
-	playerTile, ok := itemPickupPlayerTile(ses, wh, charID)
-	if !ok {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "Player position is unavailable",
-		}, opcodes.ItemPickupResponse)
-		return false
-	}
-	if !canReachItemForPickup(playerTile, objectTile) {
-		log.Printf("[ItemPickup] Char %d tried to pick up %s from map %d (%d,%d) while at map %d (%d,%d)",
-			charID, itemPickupObjectName(objectName), objectTile.MapID, objectTile.X, objectTile.Y,
-			playerTile.MapID, playerTile.X, playerTile.Y)
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "Move next to the item first.",
-		}, opcodes.ItemPickupResponse)
-		return false
-	}
-
-	// Check if already collected
-	var count int
-	myDB.QueryRow(`
-		SELECT COUNT(*) FROM character_collected_items
-		WHERE character_id = $1 AND object_id = $2`, charID, dbID).Scan(&count)
-	if count > 0 {
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "Already collected",
-		}, opcodes.ItemPickupResponse)
-		return false
-	}
-
-	// Look up the CQ item template
-	item, err := cqitems.GetItemByID(int32(*itemID))
-	if err != nil {
-		log.Printf("[ItemPickup] Item template %d not found: %v", *itemID, err)
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "Item data not found",
-		}, opcodes.ItemPickupResponse)
-		return false
-	}
-
-	// Add item to player's CQ inventory (quantity 1)
-	instanceID, err := cqitems.AddItemToInventory(charID, int32(*itemID), 1)
-	if err != nil {
-		log.Printf("[ItemPickup] Failed to add item to inventory: %v", err)
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": false,
-			"error":   "Failed to add item to inventory",
-		}, opcodes.ItemPickupResponse)
-		return false
-	}
-
-	// Mark as collected
-	_, err = myDB.Exec(`
-		INSERT INTO character_collected_items (character_id, object_id)
-		VALUES ($1, $2)`, charID, dbID)
-	if err != nil {
-		log.Printf("[ItemPickup] Failed to mark item as collected: %v", err)
-		// Item was already added to inventory, so still report success
-	}
-
-	log.Printf("[ItemPickup] Char %d picked up %s (object %d, item %d, instance %d)",
-		charID, item.Name, dbID, *itemID, instanceID)
-
-	ses.SendStreamJSON(map[string]interface{}{
-		"success":    true,
-		"actorId":    req.ActorID,
-		"itemName":   item.Name,
-		"itemId":     *itemID,
-		"instanceId": instanceID,
-		"message":    itemPickupMessage(item.Name),
-	}, opcodes.ItemPickupResponse)
-
-	// Refresh the player's CQ inventory
-	inv, invErr := cqitems.GetCharacterInventory(charID)
-	if invErr == nil {
-		money, _ := cqitems.GetCharacterMoney(charID)
-		ses.SendStreamJSON(map[string]interface{}{
-			"success": true,
-			"items":   inv,
-			"money":   money,
-		}, opcodes.CQInventoryResponse)
-	}
-
+	notifyResourceChange(ses)
 	return false
 }
 
-type itemPickupTile struct {
-	X     int
-	Y     int
-	MapID int
+type collectedItem struct {
+	item       *cqitems.CQItem
+	instanceID int32
 }
 
-func itemPickupObjectTile(objectX, objectY, objectMapID sql.NullInt64, wh *WorldHandler) (itemPickupTile, bool) {
-	if !objectX.Valid || !objectY.Valid || !objectMapID.Valid {
-		return itemPickupTile{}, false
-	}
-	return itemPickupTile{
-		X:     int(objectX.Int64),
-		Y:     int(objectY.Int64),
-		MapID: normalizeItemPickupMapID(int(objectMapID.Int64), wh),
-	}, true
-}
-
-func itemPickupPlayerTile(ses *session.Session, wh *WorldHandler, charID int32) (itemPickupTile, bool) {
-	if wh != nil && wh.PlayerMovement != nil {
-		if x, y, mapID, ok := wh.PlayerMovement.GetPosition(int(charID)); ok {
-			return itemPickupTile{
-				X:     x,
-				Y:     y,
-				MapID: normalizeItemPickupMapID(mapID, wh),
-			}, true
+// Collection identity and the grant share the same lock and commit. The snapshot
+// comes from that transaction so publication never reloads through a global DB.
+func collectItem(ctx context.Context, database db.DBTX, charID int32, objectID int) (*collectedItem, error) {
+	result := &collectedItem{}
+	err := db.Transaction(ctx, database, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, int64(charID)); err != nil {
+			return err
 		}
-	}
-	if ses == nil {
-		return itemPickupTile{}, false
-	}
-
-	x := int(ses.X)
-	y := int(ses.Y)
-	mapID := ses.MapID
-	if ses.HasValidClient() {
-		char := ses.Client.CharData()
-		if char != nil {
-			if mapID <= 0 {
-				mapID = int(char.MapID)
-			}
-			if x == 0 && y == 0 && (char.X != 0 || char.Y != 0) {
-				x = int(char.X)
-				y = int(char.Y)
-			}
+		var objectType string
+		var itemID sql.NullInt64
+		if err := tx.QueryRow(`SELECT object_type,item_id FROM phaser_objects WHERE id=$1`, objectID).Scan(&objectType, &itemID); err != nil {
+			return err
 		}
+		if objectType != "item" || !itemID.Valid {
+			return fmt.Errorf("object %d has no item data", objectID)
+		}
+		var collected bool
+		if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM character_collected_items WHERE character_id=$1 AND object_id=$2)`, charID, objectID).Scan(&collected); err != nil {
+			return err
+		}
+		if collected {
+			return errItemAlreadyCollected
+		}
+		store := cqitems.NewStore(tx)
+		var err error
+		result.item, err = store.GetItemByID(int32(itemID.Int64))
+		if err != nil {
+			return err
+		}
+		result.instanceID, err = store.AddItemToInventory(charID, int32(itemID.Int64), 1)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`INSERT INTO character_collected_items(character_id,object_id) VALUES($1,$2)`, charID, objectID); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	if mapID <= 0 {
-		return itemPickupTile{}, false
-	}
-	return itemPickupTile{
-		X:     x,
-		Y:     y,
-		MapID: normalizeItemPickupMapID(mapID, wh),
-	}, true
+	return result, nil
 }
 
-func normalizeItemPickupMapID(mapID int, wh *WorldHandler) int {
-	if mapID == UnifiedOverworldMapID {
-		return UnifiedOverworldMapID
+// The runtime owns source/visibility admission and award in one character lock.
+func collectOwnedItem(ctx context.Context, database db.DBTX, wh *WorldHandler, ses *session.Session, charID int32, objectID int) (*collectedItem, error) {
+	var result *collectedItem
+	err := db.Transaction(ctx, database, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, int64(charID)); err != nil {
+			return err
+		}
+		if err := requireNoOwnedBattleIn(tx, int64(charID)); err != nil {
+			return err
+		}
+		var source interactionPosition
+		if err := tx.QueryRow(`SELECT x,y,map_id FROM character_data WHERE id=$1`, charID).Scan(&source.X, &source.Y, &source.MapID); err != nil {
+			return err
+		}
+		flags, err := eventFlagSnapshotIn(tx, int64(charID))
+		if err != nil {
+			return err
+		}
+		actor, _, err := wh.scriptInteractionTargetFrom(ctx, tx.(db.ContextDBTX), ses, objectID, flags, source)
+		if err != nil {
+			return err
+		}
+		// Item balls require one cardinal tile even if NPC talk-over permits two.
+		if !canReachItemForPickup(interactionPosition{X: source.X, Y: source.Y, MapID: actor.MapID}, interactionPosition{X: *actor.X, Y: *actor.Y, MapID: actor.MapID}) {
+			return errScriptInteractionDenied
+		}
+		result, err = collectItem(ctx, tx, charID, objectID)
+		return err
+	})
+	if err != nil {
+		return nil, err
 	}
-	if wh != nil && wh.ActorManager != nil && wh.ActorManager.IsOverworld(mapID) {
-		return UnifiedOverworldMapID
-	}
-	return mapID
+	return result, nil
 }
 
-func canReachItemForPickup(player, item itemPickupTile) bool {
+func canReachItemForPickup(player, item interactionPosition) bool {
 	if player.MapID != item.MapID {
 		return false
 	}
@@ -252,13 +183,6 @@ func canReachItemForPickup(player, item itemPickupTile) bool {
 		dy = -dy
 	}
 	return dx+dy == 1
-}
-
-func itemPickupObjectName(name *string) string {
-	if name == nil || *name == "" {
-		return "item"
-	}
-	return *name
 }
 
 func itemPickupMessage(itemName string) string {

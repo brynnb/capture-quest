@@ -2,16 +2,17 @@ package pokebattle
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"math/rand"
+
+	"capturequest/internal/db"
 )
 
-// DBTX is the minimal query interface used by SQL DBs and transactions.
-type DBTX interface {
-	Query(query string, args ...interface{}) (*sql.Rows, error)
-	QueryRow(query string, args ...interface{}) *sql.Row
-	Exec(query string, args ...interface{}) (sql.Result, error)
-}
+// DBTX shares the runtime repository query contract.
+type DBTX = db.DBTX
+
+var ErrNoEncounter = errors.New("no encounter rows")
 
 // HighCritMoves is the set of moves with high critical hit ratios in Gen 1.
 var HighCritMoves = map[string]bool{
@@ -242,11 +243,11 @@ func GetMovesLearnedInRange(db DBTX, pokemonID, oldLevel, newLevel int) ([]Learn
 	for rows.Next() {
 		var m LearnedMove
 		if err := rows.Scan(&m.MoveID, &m.MoveName); err != nil {
-			continue
+			return nil, fmt.Errorf("scan level-up move for species %d: %w", pokemonID, err)
 		}
 		moves = append(moves, m)
 	}
-	return moves, nil
+	return moves, rows.Err()
 }
 
 // LearnedMove represents a move learned from the learnset.
@@ -427,13 +428,16 @@ func SelectWildEncounter(db DBTX, mapID int, encounterType string) (pokemonID, l
 	for rows.Next() {
 		var e encounter
 		if err := rows.Scan(&e.pokemonID, &e.level, &e.probability); err != nil {
-			continue
+			return 0, 0, fmt.Errorf("wild encounter scan: %w", err)
 		}
 		encounters = append(encounters, e)
 	}
 
+	if err := rows.Err(); err != nil {
+		return 0, 0, err
+	}
 	if len(encounters) == 0 {
-		return 0, 0, fmt.Errorf("no wild encounters for map %d (type %s)", mapID, encounterType)
+		return 0, 0, fmt.Errorf("%w for map %d (type %s)", ErrNoEncounter, mapID, encounterType)
 	}
 
 	// Roll based on cumulative probability (percentages that sum to ~100)
@@ -490,12 +494,15 @@ func SelectFishingEncounter(db DBTX, mapID int, rodType string) (pokemonID, leve
 		for rows.Next() {
 			var e enc
 			if err := rows.Scan(&e.pokemonID, &e.level); err != nil {
-				continue
+				return 0, 0, fmt.Errorf("fishing encounter scan: %w", err)
 			}
 			encounters = append(encounters, e)
 		}
+		if err := rows.Err(); err != nil {
+			return 0, 0, err
+		}
 		if len(encounters) == 0 {
-			return 0, 0, fmt.Errorf("no good_rod encounters")
+			return 0, 0, fmt.Errorf("%w for good rod", ErrNoEncounter)
 		}
 		pick := encounters[rand.Intn(len(encounters))]
 		return pick.pokemonID, pick.level, nil

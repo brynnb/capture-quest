@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	entity "capturequest/internal/zone/interface"
@@ -16,6 +17,9 @@ type ClientMessenger interface {
 
 // Session holds the context for a client session.
 type Session struct {
+	presence      atomic.Pointer[Presence]
+	commands      commandGate
+	GameCorner    GameCornerState
 	SessionID     int
 	Authenticated bool
 	AccountID     int64
@@ -28,13 +32,15 @@ type Session struct {
 	CharacterName string
 	Client        entity.Client
 	Messenger     ClientMessenger // For sending replies
-	ControlStream io.ReadWriteCloser
-	LastHeartbeat time.Time
 	// Private
 
-	sendMu   sync.Mutex
-	closed   bool
-	closedMu sync.RWMutex
+	sendMu        sync.Mutex
+	closed        bool
+	closedMu      sync.RWMutex
+	controlStream io.ReadWriteCloser // protected by closedMu; attached once
+	lastHeartbeat atomic.Int64
+	chatMu        sync.Mutex
+	lastChatSent  time.Time
 
 	playtimeMu        sync.Mutex
 	playtimeStartedAt time.Time
@@ -64,12 +70,13 @@ func (s *Session) CurrentPlaytime(now time.Time) uint32 {
 	return s.playtimePersisted + elapsedWholeSeconds(s.playtimeStartedAt, now)
 }
 
-// PersistPlaytime writes and then advances the whole-second persistence
-// boundary while holding the per-session playtime lock. Quit and periodic
-// flushes therefore cannot claim the same interval or race a rollback.
+// PersistPlaytime writes the cumulative character total, then advances the
+// whole-second boundary. The exclusively owned character was loaded after the
+// previous owner drained. A cumulative write is safe to repeat even when a
+// commit succeeded but its acknowledgement was lost; an additive write is not.
 func (s *Session) PersistPlaytime(
 	now time.Time,
-	persist func(characterID int32, seconds uint32) error,
+	persist func(characterID int32, totalSeconds uint32) error,
 ) (uint32, error) {
 	s.playtimeMu.Lock()
 	defer s.playtimeMu.Unlock()
@@ -77,7 +84,7 @@ func (s *Session) PersistPlaytime(
 	if seconds == 0 || s.playtimeCharacter == 0 {
 		return 0, nil
 	}
-	if err := persist(s.playtimeCharacter, seconds); err != nil {
+	if err := persist(s.playtimeCharacter, s.playtimePersisted+seconds); err != nil {
 		return 0, err
 	}
 	s.playtimeStartedAt = s.playtimeStartedAt.Add(time.Duration(seconds) * time.Second)
@@ -93,6 +100,22 @@ func (s *Session) StopPlaytime() {
 	s.playtimeMu.Unlock()
 }
 
+// FinishPlaytime retires the tracker and returns an immutable final cumulative
+// save. A disconnected owner's retry must not accrue time while waiting to recover.
+func (s *Session) FinishPlaytime(now time.Time) (characterID int32, totalSeconds uint32) {
+	s.playtimeMu.Lock()
+	defer s.playtimeMu.Unlock()
+	seconds := elapsedWholeSeconds(s.playtimeStartedAt, now)
+	if seconds > 0 {
+		characterID = s.playtimeCharacter
+	}
+	s.playtimePersisted += seconds
+	totalSeconds = s.playtimePersisted
+	s.playtimeStartedAt = time.Time{}
+	s.playtimeCharacter = 0
+	return
+}
+
 func elapsedWholeSeconds(start, now time.Time) uint32 {
 	if start.IsZero() || !now.After(start) {
 		return 0
@@ -102,8 +125,10 @@ func elapsedWholeSeconds(start, now time.Time) uint32 {
 
 // SessionManager manages active sessions.
 type SessionManager struct {
+	sealed   bool
 	sessions map[int]*Session // sessionID -> Session
 	mu       sync.RWMutex
+	nextID   int
 }
 
 // globalSessionManager holds the singleton SessionManager.
@@ -136,47 +161,123 @@ func NewSessionManager() *SessionManager {
 	}
 }
 
-func (sm *SessionManager) GetValidSession(sessionID int, ip string) (*Session, error) {
-	sm.mu.RLock()
-	defer sm.mu.RUnlock()
-
-	session, ok := sm.sessions[sessionID]
-	if !ok {
-		return nil, fmt.Errorf("session not found")
+// CreateNextSession uses one ID sequence across all transports. Session IDs
+// identify connections only; reconnecting always requires fresh authentication.
+func (sm *SessionManager) CreateNextSession(messenger ClientMessenger, ip string, stream io.ReadWriteCloser) *Session {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	if sm.sealed {
+		return nil
 	}
-	if session.IP != ip {
-		return nil, fmt.Errorf("IP mismatch")
-	}
-	return session, nil
+	sm.nextID++
+	return sm.createSession(messenger, sm.nextID, ip, stream)
 }
 
 // CreateSession initializes a new session with the given sessionID and accountID.
 func (sm *SessionManager) CreateSession(messenger ClientMessenger, sessionID int, ip string, stream io.ReadWriteCloser) *Session {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
+	if sm.sealed {
+		return nil
+	}
+	if sessionID > sm.nextID {
+		sm.nextID = sessionID
+	}
+	return sm.createSession(messenger, sessionID, ip, stream)
+}
 
+// Seal prevents new admissions before a shutdown snapshot is drained.
+func (sm *SessionManager) Seal() {
+	sm.mu.Lock()
+	sm.sealed = true
+	sm.mu.Unlock()
+}
+
+func (sm *SessionManager) createSession(messenger ClientMessenger, sessionID int, ip string, stream io.ReadWriteCloser) *Session {
 	session := &Session{
 		SessionID:     sessionID,
 		Authenticated: false,
 		MapID:         -1,
 		PreviousMapID: -1,
 		InstanceID:    0,
-		ControlStream: stream,
+		controlStream: stream,
 		IP:            ip,
 		Messenger:     messenger,
 	}
+	session.RecordHeartbeat(time.Now())
 	sm.sessions[sessionID] = session
 	return session
 }
 
 func (s *Session) Close() {
 	s.closedMu.Lock()
-	s.closed = true
-	s.closedMu.Unlock()
-
-	if closer, ok := s.Messenger.(io.Closer); ok {
-		_ = closer.Close()
+	if s.closed {
+		s.closedMu.Unlock()
+		return
 	}
+	s.closed = true
+	s.GameCorner.Clear()
+	stream := s.controlStream
+	s.closedMu.Unlock()
+	s.commands.init()
+	s.commands.stop()
+
+	// Messengers can serve several sessions, so close only this connection.
+	if closer, ok := s.Messenger.(interface{ CloseSession(int) error }); ok {
+		_ = closer.CloseSession(s.SessionID)
+	}
+	if stream != nil {
+		_ = stream.Close()
+	}
+}
+
+func (s *Session) IsClosed() bool {
+	s.closedMu.RLock()
+	defer s.closedMu.RUnlock()
+	return s.closed
+}
+
+func (s *Session) AttachControlStream(stream io.ReadWriteCloser) bool {
+	s.closedMu.Lock()
+	defer s.closedMu.Unlock()
+	if s.closed || s.controlStream != nil {
+		return false
+	}
+	s.controlStream = stream
+	return true
+}
+
+func (s *Session) WriteControlStream(data []byte) error {
+	s.sendMu.Lock()
+	defer s.sendMu.Unlock()
+	s.closedMu.RLock()
+	stream, closed := s.controlStream, s.closed
+	s.closedMu.RUnlock()
+	if closed || stream == nil {
+		return fmt.Errorf("session %d has no open control stream", s.SessionID)
+	}
+	if deadlineStream, ok := stream.(interface{ SetWriteDeadline(time.Time) error }); ok {
+		if err := deadlineStream.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
+			return err
+		}
+	}
+	n, err := stream.Write(data)
+	if err == nil && n != len(data) {
+		return io.ErrShortWrite
+	}
+	return err
+}
+
+func (s *Session) RecordHeartbeat(now time.Time) {
+	s.lastHeartbeat.Store(now.UnixNano())
+}
+
+func (s *Session) LastHeartbeat() time.Time {
+	n := s.lastHeartbeat.Load()
+	if n == 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, n)
 }
 
 // GetSession retrieves a session by sessionID.
@@ -207,16 +308,6 @@ func (sm *SessionManager) RemoveSession(sessionID int) (*Session, bool) {
 	return sess, true
 }
 
-// UpdateMap updates the mapID for a session.
-func (sm *SessionManager) UpdateMap(sessionID int, mapID int) {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
-	if session, ok := sm.sessions[sessionID]; ok {
-		session.MapID = mapID
-	}
-}
-
 // ForEachSession iterates over a snapshot of active sessions. Callbacks often
 // perform network writes and must never run while holding the manager lock.
 func (sm *SessionManager) ForEachSession(fn func(*Session)) {
@@ -230,4 +321,21 @@ func (sm *SessionManager) ForEachSession(fn func(*Session)) {
 	for _, session := range snapshot {
 		fn(session)
 	}
+}
+
+// AllowChatMessage stores throttle state on its connection owner; replacing a
+// session cannot inherit a reused numeric session ID's timestamp.
+func (s *Session) AllowChatMessage(now time.Time, interval time.Duration) bool {
+	if s.IsClosed() {
+		return false
+	}
+	s.chatMu.Lock()
+	defer s.chatMu.Unlock()
+	// Retain time.Now's monotonic clock, as the original throttle did. Unix
+	// timestamps could block chat after a wall-clock adjustment.
+	if !s.lastChatSent.IsZero() && now.Sub(s.lastChatSent) < interval {
+		return false
+	}
+	s.lastChatSent = now
+	return true
 }

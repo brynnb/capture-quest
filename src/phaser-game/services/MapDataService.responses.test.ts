@@ -20,6 +20,8 @@ vi.mock("./RuntimeAssetCompatibility", () => ({
   ensureRuntimeTileCatalogCurrent: vi.fn(async () => undefined),
 }));
 
+vi.mock("@/stores/PlayerCharacterStore",()=>({default:{getState:()=>({characterProfile:{id:42}})}}));
+
 import { MapDataService } from "./MapDataService";
 
 describe("MapDataService correlated tile responses", () => {
@@ -28,13 +30,14 @@ describe("MapDataService correlated tile responses", () => {
     network.requestTiles.mockReset();
   });
 
-  test("accepts a legacy null tile slice as a completed empty chunk", async () => {
+  test("accepts a complete empty tile array as a sparse chunk", async () => {
     network.requestTiles.mockImplementation((request: { requestId: string }) => {
       queueMicrotask(() => {
         network.tileHandler?.({
+          success:true, characterId:42,
           mapId: 9999,
           requestId: request.requestId,
-          tiles: null,
+          tiles: [],
           nextAfterId: 0,
           hasMore: false,
         });
@@ -56,6 +59,7 @@ describe("MapDataService correlated tile responses", () => {
     network.requestTiles.mockImplementation((request: { requestId: string }) => {
       queueMicrotask(() => {
         network.tileHandler?.({
+          success:true, characterId:42,
           mapId: 9999,
           requestId: request.requestId,
           tiles: { unexpected: true },

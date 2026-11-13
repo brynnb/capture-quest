@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 )
@@ -131,7 +132,7 @@ func TestApplyCutsceneActionListEmitsChoiceBranchDialogue(t *testing.T) {
 		}
 	]`)
 
-	effects, completed, err := ApplyCutsceneActionList(CutsceneActionContext{
+	effects, completed, err := ApplyCutsceneActionList(context.Background(), CutsceneActionContext{
 		Choice:       &choice,
 		StopAtChoice: true,
 	}, "LAVENDER_TOWN", raw, 0)

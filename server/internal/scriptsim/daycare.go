@@ -1,13 +1,15 @@
 package scriptsim
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 
 	"capturequest/internal/world"
 )
 
-func runDayCareDeposit(scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
+func runDayCareDeposit(ctx context.Context, database *sql.DB, scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
 	deposit := world.TryDepositDayCarePokemon(applied.CharacterID, scenario.Trigger.PartySlot)
 	detail := fmt.Sprintf("success=%t slot=%d", deposit.Success, scenario.Trigger.PartySlot)
 	if deposit.Status.Active {
@@ -22,7 +24,7 @@ func runDayCareDeposit(scenario *Scenario, applied *AppliedFixture, initial *Sna
 		detail = fmt.Sprintf("%s message=%q", detail, deposit.Message)
 	}
 
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +42,7 @@ func runDayCareDeposit(scenario *Scenario, applied *AppliedFixture, initial *Sna
 	return result, nil
 }
 
-func runDayCareStep(scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
+func runDayCareStep(ctx context.Context, database *sql.DB, scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
 	repeat := scenario.Trigger.Repeat
 	if repeat <= 0 {
 		repeat = 1
@@ -61,7 +63,7 @@ func runDayCareStep(scenario *Scenario, applied *AppliedFixture, initial *Snapsh
 			status.Exp)
 	}
 
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +81,7 @@ func runDayCareStep(scenario *Scenario, applied *AppliedFixture, initial *Snapsh
 	return result, nil
 }
 
-func runDayCareWithdraw(scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
+func runDayCareWithdraw(ctx context.Context, database *sql.DB, scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
 	withdraw := world.TryWithdrawDayCarePokemon(applied.CharacterID)
 	detail := fmt.Sprintf("success=%t cost=%d money=%d slot=%d",
 		withdraw.Success,
@@ -99,7 +101,7 @@ func runDayCareWithdraw(scenario *Scenario, applied *AppliedFixture, initial *Sn
 		detail = fmt.Sprintf("%s message=%q", detail, withdraw.Message)
 	}
 
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}

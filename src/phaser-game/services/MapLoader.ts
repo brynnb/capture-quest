@@ -1,3 +1,6 @@
+import {presentOwnedSafariExit} from "./BattleCommandService";
+import { readCurrentGameplayState, applyGameplaySnapshot } from "./GameplayRecoveryService";
+import type { PhaserMapInfo } from "@/net/generated/protocol";
 import { Scene } from "phaser";
 import {
   DEFAULT_ZOOM,
@@ -23,7 +26,6 @@ import useGameStatusStore from "@/stores/GameStatusStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
 import * as PhaserNet from "./PhaserNetworkService";
 import type {
-  PhaserMapInfo,
   PhaserTile,
   PhaserActor,
   PhaserWarp,
@@ -70,8 +72,9 @@ export class MapLoader {
   private updateCameraFollow: () => void;
   private removeMapLegend: () => void;
   private createMapLegend: (maps: PhaserMapInfo[]) => void;
-  private prepareActorsForLoadedView: (actors: PhaserActor[]) => PhaserActor[];
+  private captureActorReadView: () => (actors: PhaserActor[]) => PhaserActor[];
   private mapLoadGeneration = 0;
+  private mapRequestAbort: AbortController | null = null;
   private overworldChunkStream: OverworldChunkStream | null = null;
   private readonly overworldOverviewLayer: OverworldOverviewLayer;
   private lastOverworldStreamUpdateAt = 0;
@@ -93,7 +96,7 @@ export class MapLoader {
       updateCameraFollow: () => void;
       removeMapLegend: () => void;
       createMapLegend: (maps: PhaserMapInfo[]) => void;
-      prepareActorsForLoadedView: (actors: PhaserActor[]) => PhaserActor[];
+      captureActorReadView: () => (actors: PhaserActor[]) => PhaserActor[];
     },
   ) {
     this.scene = scene;
@@ -115,12 +118,16 @@ export class MapLoader {
     this.updateCameraFollow = callbacks.updateCameraFollow;
     this.removeMapLegend = callbacks.removeMapLegend;
     this.createMapLegend = callbacks.createMapLegend;
-    this.prepareActorsForLoadedView = callbacks.prepareActorsForLoadedView;
+    this.captureActorReadView = callbacks.captureActorReadView;
   }
 
   async loadMapData(mapId: number) {
     const loadGeneration = ++this.mapLoadGeneration;
+    this.mapRequestAbort?.abort();
+    const mapRequestAbort = new AbortController();
+    this.mapRequestAbort = mapRequestAbort;
     this.stopOverworldStreaming();
+    this.mapDataService.beginOwnedTileView();
     (this.scene as any).mapLoadInProgress = true; // eslint-disable-line @typescript-eslint/no-explicit-any
     try {
       // Check if network is ready
@@ -162,15 +169,16 @@ export class MapLoader {
       // Set camera to non-overworld mode - this will save the overworld camera state if needed
       this.cameraController.setViewMode(false);
 
-      // Fetch map info — pass warp destination coordinates so the server
-      // atomically updates the player position before we request actors.
+      // Await the explicit arrival command before read-only metadata/actor queries.
       const sceneForDest = this.scene as any; // eslint-disable-line @typescript-eslint/no-explicit-any
       const warpDX = sceneForDest.warpDestX ?? undefined;
       const warpDY = sceneForDest.warpDestY ?? undefined;
       const cached = this.mapDataService.getSnapshot(mapId);
       const hasWarpDestination = warpDX !== undefined && warpDY !== undefined;
+      await this.mapDataService.prepareMapLoad(mapId, mapRequestAbort.signal);
+      if (!this.isLoadCurrent(loadGeneration)) return;
       const mapInfo = hasWarpDestination || !cached
-        ? await this.mapDataService.fetchMapInfo(mapId, warpDX, warpDY)
+        ? await this.mapDataService.fetchMapInfo(mapId, mapRequestAbort.signal)
         : cached.mapInfo;
       if (!this.isLoadCurrent(loadGeneration)) return;
 
@@ -184,7 +192,7 @@ export class MapLoader {
       this.uiManager.setLoadingText("Loading tiles...");
 
       // Fetch tiles
-      const tiles = cached?.tiles ?? await this.mapDataService.fetchTiles(mapId);
+      let tiles = await this.mapDataService.fetchTiles(mapId, mapRequestAbort.signal);
       if (!this.isLoadCurrent(loadGeneration)) return;
 
       this.uiManager.setLoadingText("Loading tile images...");
@@ -219,27 +227,24 @@ export class MapLoader {
       let warps: PhaserWarp[] = [];
       try {
         // Fetch warps for this map
-        warps = cached?.warps ?? await this.mapDataService.fetchWarps(mapId);
+        warps = await this.mapDataService.fetchWarps(mapId, mapRequestAbort.signal);
       } catch (warpError) {
-        console.error("Error loading warps:", warpError);
+        // A failed owned read is not an empty warp catalog. Let the existing
+        // map-load failure boundary own retry/retirement.
+        throw warpError;
       }
       if (!this.isLoadCurrent(loadGeneration)) return;
 
       this.uiManager.setLoadingText("Loading Actors...");
 
+      const prepareActors = this.captureActorReadView();
       let actors = [...playerActors];
       try {
         // Fetch actors for this map (includes static and walking)
-        const allActors = await this.mapDataService.fetchActors(mapId);
+        const allActors = await this.mapDataService.fetchActors(mapId, mapRequestAbort.signal);
         if (!this.isLoadCurrent(loadGeneration)) return;
         // Initialize with default if null, but preserve existing actors (like player)
-        if (!allActors) {
-          actors = this.prepareActorsForLoadedView(actors);
-          this.setState({ tiles, items, warps, actors });
-          return;
-        }
 
-        // Preload actor sprites before rendering
         if (allActors.length > 0) {
           this.uiManager.setLoadingText(
             `Preloading ${allActors.length} actor sprites...`,
@@ -248,11 +253,11 @@ export class MapLoader {
           if (!this.isLoadCurrent(loadGeneration)) return;
         }
 
-        // Add to our actor list (preserving players)
+        // Fresh server actors replace startup snapshots with the same identity.
         allActors.forEach((actor) => {
-          if (!actors.find((a) => a.id === actor.id)) {
-            actors.push(actor);
-          }
+          const index = actors.findIndex((a) => a.id === actor.id);
+          if (index < 0) actors.push(actor);
+          else actors[index] = actor;
         });
       } catch (actorError) {
         console.error("Error loading actors:", actorError);
@@ -286,7 +291,10 @@ export class MapLoader {
         sceneAny.warpDestY = null;
       }
 
-      actors = this.prepareActorsForLoadedView(actors);
+      tiles=await this.prepareTilePresentation(mapId,tiles,mapRequestAbort.signal);
+      if(!this.isLoadCurrent(loadGeneration))return;
+      if(!this.mapDataService.isTileReadCurrent(tiles))throw new Error("Tile view changed before map publication");
+      actors = prepareActors(actors);
 
       this.mapDataService.setSnapshot(mapId, {
         mapInfo,
@@ -297,10 +305,6 @@ export class MapLoader {
 
       // Update state with all loaded data
       this.setState({ tiles, items, warps, actors });
-
-      // Wait a short time for updates to arrive
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      if (!this.isLoadCurrent(loadGeneration)) return;
 
       // Render the map with all actors
       const mapBounds = this.mapRenderer.renderMap(tiles, items, warps, actors);
@@ -346,6 +350,8 @@ export class MapLoader {
       this.uiManager.hideLoadingText();
       await (this.scene as any).playPendingWarpExitAnimation?.(200); // eslint-disable-line @typescript-eslint/no-explicit-any
       if (!this.isLoadCurrent(loadGeneration)) return;
+      await this.recoverLoadedOwnership(loadGeneration, mapRequestAbort.signal);
+      if (!this.isLoadCurrent(loadGeneration)) return;
       if (mapInfo.name) {
         PhaserNet.requestMapScripts(mapInfo.name);
       }
@@ -370,8 +376,12 @@ export class MapLoader {
 
   async loadOverworldData(options: MapLoadOptions = {}) {
     const loadGeneration = ++this.mapLoadGeneration;
+    this.mapRequestAbort?.abort();
+    const mapRequestAbort = new AbortController();
+    this.mapRequestAbort = mapRequestAbort;
     let readyForWorldInput = false;
     this.stopOverworldStreaming();
+    this.mapDataService.beginOwnedTileView();
     (this.scene as any).mapLoadInProgress = true; // eslint-disable-line @typescript-eslint/no-explicit-any
     try {
       // Check if network is ready
@@ -415,15 +425,18 @@ export class MapLoader {
 
       this.uiManager.setLoadingText("Loading unified overworld...");
 
-      // Fetch unified map info. Pass warp destination coordinates so the server
-      // atomically updates the player position before we request actors.
+      // Overview fetches metadata only. Gameplay loads first await arrival.
       const sceneForDest = this.scene as any; // eslint-disable-line @typescript-eslint/no-explicit-any
       const warpDX = sceneForDest.warpDestX ?? undefined;
       const warpDY = sceneForDest.warpDestY ?? undefined;
       const cached = this.mapDataService.getSnapshot(mapId);
       const hasWarpDestination = warpDX !== undefined && warpDY !== undefined;
+      if (!options.viewOnly) {
+        await this.mapDataService.prepareMapLoad(mapId, mapRequestAbort.signal);
+        if (!this.isLoadCurrent(loadGeneration)) return;
+      }
       const mapInfo = hasWarpDestination || !cached
-        ? await this.mapDataService.fetchMapInfo(mapId, warpDX, warpDY)
+        ? await this.mapDataService.fetchMapInfo(mapId, mapRequestAbort.signal)
         : cached.mapInfo;
       if (!this.isLoadCurrent(loadGeneration)) return;
       this.setState({ mapInfo });
@@ -445,11 +458,12 @@ export class MapLoader {
       this.uiManager.setLoadingText("Loading actors and warps...");
 
       // Load actors and warps for the unified map
+      const prepareActors = this.captureActorReadView();
       const allActors = options.viewOnly && cached
         ? cached.actors
-        : await this.mapDataService.fetchActors(mapId);
+        : await this.mapDataService.fetchActors(mapId, mapRequestAbort.signal);
       if (!this.isLoadCurrent(loadGeneration)) return;
-      const warps = cached?.warps ?? await this.mapDataService.fetchWarps(mapId);
+      const warps = await this.mapDataService.fetchWarps(mapId, mapRequestAbort.signal);
       if (!this.isLoadCurrent(loadGeneration)) return;
 
       // Preload actor sprites before rendering
@@ -461,12 +475,12 @@ export class MapLoader {
         if (!this.isLoadCurrent(loadGeneration)) return;
       }
 
-      // Add to our actor list (preserving players)
+      // Fresh server actors replace startup snapshots with the same identity.
       let actors = [...playerActors];
       allActors.forEach((actor) => {
-        if (!actors.find((a) => a.id === actor.id)) {
-          actors.push(actor);
-        }
+        const index = actors.findIndex((a) => a.id === actor.id);
+        if (index < 0) actors.push(actor);
+        else actors[index] = actor;
       });
 
       // Apply warp destination coordinates to the player actor (same as loadMapData)
@@ -493,7 +507,7 @@ export class MapLoader {
         sceneAnyOW.warpDestY = null;
       }
 
-      actors = this.prepareActorsForLoadedView(actors);
+      actors = prepareActors(actors);
 
       this.mapDataService.setSnapshot(mapId, {
         mapInfo,
@@ -644,6 +658,10 @@ export class MapLoader {
       this.uiManager.hideLoadingText();
       await (this.scene as any).playPendingWarpExitAnimation?.(200); // eslint-disable-line @typescript-eslint/no-explicit-any
       if (!this.isLoadCurrent(loadGeneration)) return;
+      if (!options.viewOnly) {
+        await this.recoverLoadedOwnership(loadGeneration, mapRequestAbort.signal);
+        if (!this.isLoadCurrent(loadGeneration)) return;
+      }
       readyForWorldInput = true;
     } catch (error: unknown) {
       if (!this.isLoadCurrent(loadGeneration)) return;
@@ -670,6 +688,17 @@ export class MapLoader {
         (this.scene as any).mapLoadInProgress = false; // eslint-disable-line @typescript-eslint/no-explicit-any
       }
     }
+  }
+
+  private async recoverLoadedOwnership(generation: number, signal: AbortSignal): Promise<void> {
+    const snapshot = await readCurrentGameplayState(signal, () => this.playerMovementController.capturePositionView());
+    if (!this.isLoadCurrent(generation) || signal.aborted) return;
+    // Project pose before resuming battle/plan presentation. A route may have
+    // advanced before the local actor or its notification subscriber existed.
+    this.playerMovementController.projectOwnedPosition(snapshot.position);
+    if (!this.isLoadCurrent(generation) || signal.aborted) return;
+    applyGameplaySnapshot(snapshot);
+    presentOwnedSafariExit(snapshot,signal);
   }
 
   updateOverworldStreaming(): void {
@@ -700,6 +729,51 @@ export class MapLoader {
     this.overworldChunkStream?.invalidateAt(x, y);
   }
 
+  private async prepareTilePresentation(mapId:number,tiles:PhaserTile[],signal:AbortSignal):Promise<PhaserTile[]>{
+    // Tile/image/actor preparation can be overtaken by a committed update.
+    // Re-read under the same owner; never publish a stale initialization array.
+    for(let attempt=0;attempt<2;attempt++){
+      if(signal.aborted)throw new DOMException("Map retired","AbortError");
+      if(this.mapDataService.isTileReadCurrent(tiles))return tiles;
+      tiles=await this.mapDataService.fetchTiles(mapId,signal);
+      const images=await this.mapDataService.fetchTileImages();
+      if(signal.aborted)throw new DOMException("Map retired","AbortError");
+      await this.tileManager.loadTileImages(images);
+    }
+    if(signal.aborted)throw new DOMException("Map retired","AbortError");
+    if(!this.mapDataService.isTileReadCurrent(tiles))throw new Error("Tiles changed during image preparation; retry map loading");
+    return tiles;
+  }
+
+  async reconcileResidentChunks(signal: AbortSignal): Promise<void> {
+    const generation = this.mapLoadGeneration;
+    if (!this.overworldChunkStream) throw new Error("Resident chunk owner unavailable");
+    await this.overworldChunkStream.reconcileResidentView(signal);
+    if (signal.aborted || !this.isLoadCurrent(generation)) {
+      throw new DOMException("Map recovery retired", "AbortError");
+    }
+  }
+
+  // CUT changes the current character projection, not the authored world.
+  // Invalidate cached chunks/snapshots without installing a persistent edit.
+  invalidateOwnedTileProjection(mapId:number,x:number,y:number):void {
+    this.mapDataService.recordCommittedTileUpdate();
+    if(mapId===UNIFIED_OVERWORLD_MAP_ID)this.overworldChunkStream?.invalidateAt(x,y);
+  }
+
+  recordCommittedTileUpdates(mapId:number,updates:readonly CommittedOverworldTileUpdate[]):void {
+    this.mapDataService.recordCommittedTileUpdate();
+    if(mapId===UNIFIED_OVERWORLD_MAP_ID)this.applyCommittedOverworldTileUpdates(updates);
+  }
+
+  captureTilePresentationView(mapId:number):()=>boolean {
+    const generation=this.mapLoadGeneration;
+    return ()=>{
+      const map=this.getState().mapInfo;
+      return this.isLoadCurrent(generation) && !!map && (map.id===mapId || mapId===UNIFIED_OVERWORLD_MAP_ID && map.isOverworld===1);
+    };
+  }
+
   applyCommittedOverworldTileUpdates(
     updates: readonly CommittedOverworldTileUpdate[],
   ): void {
@@ -716,6 +790,8 @@ export class MapLoader {
 
   cleanup(): void {
     this.mapLoadGeneration += 1;
+    this.mapRequestAbort?.abort();
+    this.mapRequestAbort = null;
     this.stopOverworldStreaming();
     (this.scene as any).mapLoadInProgress = false; // eslint-disable-line @typescript-eslint/no-explicit-any
   }

@@ -1,4 +1,5 @@
 {
+  "coordinateSpace": "source",
   "name": "route23_thunder_badge_blocked",
   "description": "The Route 23 Thunder Badge guard blocks the player without the Thunder Badge.",
   "fixture": {

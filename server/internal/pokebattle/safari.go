@@ -1,6 +1,9 @@
 package pokebattle
 
-import "math/rand"
+import (
+	"github.com/google/uuid"
+	"math/rand"
+)
 
 // SafariBattleState holds the state of a Safari Zone encounter.
 // Safari battles have no player Pokémon — the player throws Safari Balls,
@@ -13,6 +16,8 @@ import "math/rand"
 // - Flee check uses actual Speed stat (not base speed): X = Speed*2, angry doubles, eating /4
 // - Safari Ball = Ultra Ball (same catch algorithm as regular capture)
 type SafariBattleState struct {
+	BattleID    string `json:"battleId"`
+	Revision    int64  `json:"revision"`
 	WildPokemon *Pokemon
 	BallsLeft   int
 	StepsLeft   int
@@ -41,13 +46,6 @@ const (
 	SafariPhaseOver                      // Battle ended (caught, fled, or out of balls)
 )
 
-// SafariBattleEvent represents something that happened during a safari turn.
-type SafariBattleEvent struct {
-	Type    string `json:"type"`
-	Message string `json:"message"`
-	Shakes  int    `json:"shakes,omitempty"`
-}
-
 // NewSafariBattle creates a new Safari Zone battle.
 func NewSafariBattle(wild *Pokemon, ballsLeft, stepsLeft int) *SafariBattleState {
 	catchRate := wild.CatchRate
@@ -55,6 +53,7 @@ func NewSafariBattle(wild *Pokemon, ballsLeft, stepsLeft int) *SafariBattleState
 		catchRate = 45
 	}
 	return &SafariBattleState{
+		BattleID: uuid.NewString(), Revision: 1,
 		WildPokemon:       wild,
 		BallsLeft:         ballsLeft,
 		StepsLeft:         stepsLeft,

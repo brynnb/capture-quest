@@ -1,11 +1,8 @@
 package world
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
-
-	"capturequest/internal/db"
 )
 
 var (
@@ -15,33 +12,6 @@ var (
 	locationFloorTokenPattern    = regexp.MustCompile(`^(B?[0-9]+F|[0-9]+B)$`)
 	locationNumberTokenPattern   = regexp.MustCompile(`^[0-9]+$`)
 )
-
-func mapEntryDisplayName(wh *WorldHandler, mapID int, x, y float64) string {
-	if mapID == UnifiedOverworldMapID {
-		if name := OverworldMapLoadNameForPosition(int(x), int(y)); name != "" {
-			return formatMapDisplayName(name)
-		}
-		return "Kanto"
-	}
-
-	if raw, ok := rawMapNameByID(mapID); ok {
-		return formatMapDisplayName(raw)
-	}
-
-	if wh != nil && wh.ActorManager != nil && wh.ActorManager.IsOverworld(mapID) {
-		return "Kanto"
-	}
-
-	return fmt.Sprintf("Map %d", mapID)
-}
-
-func rawMapNameByID(mapID int) (string, bool) {
-	var name string
-	if err := dbQueryRow(`SELECT name FROM phaser_maps WHERE id = $1`, mapID).Scan(&name); err != nil {
-		return "", false
-	}
-	return name, true
-}
 
 func formatMapDisplayName(raw string) string {
 	trimmed := strings.TrimSpace(raw)
@@ -131,12 +101,4 @@ func formatLocationWord(word string) string {
 	default:
 		return strings.ToUpper(upper[:1]) + strings.ToLower(upper[1:])
 	}
-}
-
-type scanner interface {
-	Scan(dest ...any) error
-}
-
-var dbQueryRow = func(query string, args ...any) scanner {
-	return db.GlobalWorldDB.DB.QueryRow(query, args...)
 }

@@ -45,3 +45,24 @@ func characterHasEventFlag(charID int64, flag string, efm *EventFlagManager) boo
 		charID, flag,
 	).Scan(&one) == nil
 }
+
+// Transactional preparation reads flags through the owning transaction so a
+// badge granted earlier in the same script is immediately authoritative.
+func configureBattleObedienceFromDB(database db.DBTX, battle *pokebattle.BattleState, charID int64) error {
+	battle.PlayerTrainerID = charID
+	battle.PlayerObedienceLevel = pokebattle.BaseObedienceLevel
+	for _, badge := range []struct {
+		flag  string
+		level int
+	}{{"EVENT_GOT_EARTHBADGE", pokebattle.MaxObedienceLevel}, {"EVENT_GOT_MARSHBADGE", 70}, {"EVENT_GOT_RAINBOWBADGE", 50}, {"EVENT_GOT_CASCADEBADGE", 30}} {
+		on, err := queryEventFlag(database, charID, badge.flag)
+		if err != nil {
+			return err
+		}
+		if on {
+			battle.PlayerObedienceLevel = badge.level
+			break
+		}
+	}
+	return nil
+}

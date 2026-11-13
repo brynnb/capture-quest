@@ -1,54 +1,89 @@
 package world
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
-	"log"
 	"sync"
+	"time"
 
-	"capturequest/internal/pokebattle"
+	"capturequest/internal/db"
 )
 
 // EventFlagManager manages per-character event flags with an in-memory cache
 // backed by the character_event_flags table. Flags are loaded on login and
 // persisted on set/reset.
 type EventFlagManager struct {
-	db    pokebattle.DBTX
-	mu    sync.RWMutex
-	flags map[int64]map[string]bool // characterID -> set of active flag names
+	db         *sql.DB
+	mu         sync.RWMutex
+	flags      map[int64]map[string]bool // characterID -> set of active flag names
+	readTokens map[int64]*flagReadToken
 }
 
 // NewEventFlagManager creates a new EventFlagManager.
-func NewEventFlagManager(db pokebattle.DBTX) *EventFlagManager {
+func NewEventFlagManager(db *sql.DB) *EventFlagManager {
 	return &EventFlagManager{
 		db:    db,
 		flags: make(map[int64]map[string]bool),
 	}
 }
 
+// Non-zero size guarantees distinct address identities; struct{} would not.
+type flagReadToken struct{ marker byte }
+
 // LoadFlags loads all event flags for a character from the database into the cache.
 // Should be called when a character enters the world.
 func (m *EventFlagManager) LoadFlags(charID int64) error {
-	rows, err := m.db.Query(
-		`SELECT flag_name FROM character_event_flags WHERE character_id = $1`, charID)
+	return m.LoadFlagsContext(context.Background(), charID)
+}
+func (m *EventFlagManager) LoadFlagsContext(ctx context.Context, charID int64) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	token := &flagReadToken{}
+	m.mu.Lock()
+	if m.readTokens == nil {
+		m.readTokens = make(map[int64]*flagReadToken)
+	}
+	m.readTokens[charID] = token
+	m.mu.Unlock()
+	defer func() {
+		m.mu.Lock()
+		if m.readTokens[charID] == token {
+			delete(m.readTokens, charID)
+		}
+		m.mu.Unlock()
+	}()
+	rows, err := m.db.QueryContext(ctx, `SELECT flag_name FROM character_event_flags WHERE character_id=$1`, charID)
 	if err != nil {
-		return fmt.Errorf("load event flags for char %d: %w", charID, err)
+		return fmt.Errorf("load event flags for character %d: %w", charID, err)
 	}
 	defer rows.Close()
-
-	flagSet := make(map[string]bool)
+	flags := make(map[string]bool)
 	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
-			continue
+		var flag string
+		if err := rows.Scan(&flag); err != nil {
+			return err
 		}
-		flagSet[name] = true
+		flags[flag] = true
 	}
-
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	m.mu.Lock()
-	m.flags[charID] = flagSet
-	m.mu.Unlock()
-
-	log.Printf("[EventFlags] Loaded %d flags for char %d", len(flagSet), charID)
+	defer m.mu.Unlock()
+	if m.readTokens[charID] != token {
+		return nil
+	} // A newer publication/retirement owns the view.
+	if m.flags == nil {
+		m.flags = make(map[int64]map[string]bool)
+	}
+	m.flags[charID] = flags
 	return nil
 }
 
@@ -56,8 +91,30 @@ func (m *EventFlagManager) LoadFlags(charID int64) error {
 // Should be called when a character leaves the world.
 func (m *EventFlagManager) UnloadFlags(charID int64) {
 	m.mu.Lock()
+	delete(m.readTokens, charID)
 	delete(m.flags, charID)
 	m.mu.Unlock()
+}
+
+// Publish only snapshots from a completed authoritative transaction. Copying
+// keeps subsequent caller mutations outside the manager's immutable cache view.
+func (m *EventFlagManager) publishCommittedFlags(charID int64, flags map[string]bool) {
+	snapshot := make(map[string]bool, len(flags))
+	for flag, on := range flags {
+		if on {
+			snapshot[flag] = true
+		}
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.readTokens == nil {
+		m.readTokens = make(map[int64]*flagReadToken)
+	}
+	if m.flags == nil {
+		m.flags = make(map[int64]map[string]bool)
+	}
+	delete(m.readTokens, charID)
+	m.flags[charID] = snapshot
 }
 
 // CheckFlag returns true if the given flag is set for the character.
@@ -70,61 +127,67 @@ func (m *EventFlagManager) CheckFlag(charID int64, flagName string) bool {
 	return false
 }
 
-// SetFlag sets a flag for the character (persists to DB).
-func (m *EventFlagManager) SetFlag(charID int64, flagName string) error {
-	m.mu.Lock()
-	if m.flags[charID] == nil {
-		m.flags[charID] = make(map[string]bool)
-	}
-	if m.flags[charID][flagName] {
-		m.mu.Unlock()
-		return nil // Already set
-	}
-	m.flags[charID][flagName] = true
-	m.mu.Unlock()
-
-	_, err := m.db.Exec(
-		`INSERT INTO character_event_flags (character_id, flag_name)
-		VALUES ($1, $2)
-		ON CONFLICT (character_id, flag_name) DO NOTHING`,
-		charID, flagName)
-	if err != nil {
-		return fmt.Errorf("set event flag %s for char %d: %w", flagName, charID, err)
-	}
-	log.Printf("[EventFlags] Set %s for char %d", flagName, charID)
-	return nil
+// SetFlag persists a flag before refreshing its cached view.
+func (m *EventFlagManager) SetFlag(ctx context.Context, charID int64, flag string) error {
+	return m.writeFlags(ctx, charID, func(tx db.DBTX) error { return writeEventFlag(tx, charID, flag, true) })
 }
-
-// ResetFlag clears a flag for the character (removes from DB).
-func (m *EventFlagManager) ResetFlag(charID int64, flagName string) error {
-	m.mu.Lock()
-	if fs, ok := m.flags[charID]; ok {
-		delete(fs, flagName)
-	}
-	m.mu.Unlock()
-
-	_, err := m.db.Exec(
-		`DELETE FROM character_event_flags WHERE character_id = $1 AND flag_name = $2`,
-		charID, flagName)
-	if err != nil {
-		return fmt.Errorf("reset event flag %s for char %d: %w", flagName, charID, err)
-	}
-	log.Printf("[EventFlags] Reset %s for char %d", flagName, charID)
-	return nil
+func (m *EventFlagManager) ResetFlag(ctx context.Context, charID int64, flag string) error {
+	return m.writeFlags(ctx, charID, func(tx db.DBTX) error { return writeEventFlag(tx, charID, flag, false) })
 }
-
-// ToggleFlag flips a flag for the character and returns true when the flag is set after toggling.
-func (m *EventFlagManager) ToggleFlag(charID int64, flagName string) (bool, error) {
-	if m.CheckFlag(charID, flagName) {
-		if err := m.ResetFlag(charID, flagName); err != nil {
-			return false, err
+func (m *EventFlagManager) ToggleFlag(ctx context.Context, charID int64, flag string) (bool, error) {
+	var on bool
+	err := m.writeFlags(ctx, charID, func(tx db.DBTX) error {
+		previous, err := queryEventFlag(tx, charID, flag)
+		if err != nil {
+			return err
 		}
-		return false, nil
+		on = !previous
+		return writeEventFlag(tx, charID, flag, on)
+	})
+	return on, err
+}
+func (m *EventFlagManager) writeFlags(ctx context.Context, charID int64, apply func(db.DBTX) error) error {
+	var snapshot *EventFlagManager
+	err := db.Transaction(ctx, m.db, func(tx db.DBTX) error {
+		if err := db.LockCharacter(tx, charID); err != nil {
+			return err
+		}
+		if err := apply(tx); err != nil {
+			return err
+		}
+		var err error
+		snapshot, err = eventFlagSnapshotIn(tx, charID)
+		return err
+	})
+	if err != nil {
+		return err
 	}
-	if err := m.SetFlag(charID, flagName); err != nil {
-		return false, err
+	// Publication uses the committed transaction snapshot: a later refresh error
+	// must never make an accepted toggle/batch appear rejected. Live callers are
+	// serialized by their existing session owner.
+	m.publishCommittedFlags(charID, snapshot.flags[charID])
+	return nil
+}
+
+func queryEventFlag(database db.DBTX, charID int64, flag string) (bool, error) {
+	var on bool
+	err := database.QueryRow(`SELECT EXISTS(SELECT 1 FROM character_event_flags WHERE character_id=$1 AND flag_name=$2)`, charID, flag).Scan(&on)
+	return on, err
+}
+func writeEventFlag(database db.DBTX, charID int64, flag string, on bool) error {
+	if err := db.RequireTransaction(database); err != nil {
+		return err
 	}
-	return true, nil
+	if flag == "" {
+		return fmt.Errorf("event flag is required")
+	}
+	var err error
+	if on {
+		_, err = database.Exec(`INSERT INTO character_event_flags(character_id,flag_name) VALUES($1,$2) ON CONFLICT(character_id,flag_name) DO NOTHING`, charID, flag)
+	} else {
+		_, err = database.Exec(`DELETE FROM character_event_flags WHERE character_id=$1 AND flag_name=$2`, charID, flag)
+	}
+	return err
 }
 
 // GetAllFlags returns a copy of all set flags for a character.
@@ -143,11 +206,33 @@ func (m *EventFlagManager) GetAllFlags(charID int64) []string {
 }
 
 // SetFlagBatch sets multiple flags at once (e.g., after defeating a trainer).
-func (m *EventFlagManager) SetFlagBatch(charID int64, flagNames []string) error {
-	for _, name := range flagNames {
-		if err := m.SetFlag(charID, name); err != nil {
-			return err
+func (m *EventFlagManager) SetFlagBatch(ctx context.Context, charID int64, flags []string) error {
+	return m.writeFlags(ctx, charID, func(tx db.DBTX) error {
+		for _, flag := range flags {
+			if err := writeEventFlag(tx, charID, flag, true); err != nil {
+				return err
+			}
 		}
+		return nil
+	})
+}
+
+func eventFlagSnapshotIn(q db.DBTX, charID int64) (*EventFlagManager, error) {
+	rows, err := q.Query(`SELECT flag_name FROM character_event_flags WHERE character_id=$1`, charID)
+	if err != nil {
+		return nil, err
 	}
-	return nil
+	defer rows.Close()
+	flags := make(map[string]bool)
+	for rows.Next() {
+		var flag string
+		if err := rows.Scan(&flag); err != nil {
+			return nil, err
+		}
+		flags[flag] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return &EventFlagManager{flags: map[int64]map[string]bool{charID: flags}}, nil
 }

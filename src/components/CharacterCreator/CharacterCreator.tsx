@@ -1,3 +1,4 @@
+import useCharacterSelectStore from "@stores/CharacterSelectStore";
 import useCharacterCreatorStore from "@stores/CharacterCreatorStore";
 import useGameScreenStore from "@stores/GameScreenStore";
 import useStaticDataStore from "@stores/StaticDataStore";
@@ -429,6 +430,7 @@ const RadioButton = styled.div<{ $isActive: boolean }>`
 `;
 
 const CharacterCreator = () => {
+  const accountBusy = useCharacterSelectStore(state => state.accountOperation !== null || state.isEnteringWorld);
   const { setScreen } = useGameScreenStore();
   const {
     currentStep,
@@ -457,12 +459,14 @@ const CharacterCreator = () => {
   };
 
   const handleBack = () => {
+    if (useCharacterSelectStore.getState().accountOperation) return;
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
     }
   };
 
   const handleBackToCharacterSelect = () => {
+    if (useCharacterSelectStore.getState().accountOperation) return;
     resetStore();
     setScreen("characterSelect");
   };
@@ -607,7 +611,7 @@ const CharacterCreator = () => {
               $wideActions
               data-testid="character-creation-navigation"
             >
-              <SelectionButton onClick={handleBack} $isSelected={false}>
+              <SelectionButton onClick={handleBack} $isSelected={false} disabled={accountBusy} $isDisabled={accountBusy}>
                 Back
               </SelectionButton>
               <SelectionButton
@@ -630,7 +634,7 @@ const CharacterCreator = () => {
             <StepIndicator>Step 3 of 4 · Home</StepIndicator>
             <HomeTownSelector />
             <NavigationContainer data-testid="character-creation-navigation">
-              <SelectionButton onClick={handleBack} $isSelected={false}>
+              <SelectionButton onClick={handleBack} $isSelected={false} disabled={accountBusy} $isDisabled={accountBusy}>
                 Back
               </SelectionButton>
               <SelectionButton
@@ -666,7 +670,7 @@ const CharacterCreator = () => {
               $centered
               data-testid="character-creation-navigation"
             >
-              <SelectionButton onClick={handleBack} $isSelected={false}>
+              <SelectionButton onClick={handleBack} $isSelected={false} disabled={accountBusy} $isDisabled={accountBusy}>
                 Back
               </SelectionButton>
               <SubmitCharacter />

@@ -2,9 +2,14 @@ package world
 
 import (
 	"capturequest/internal/api/opcodes"
-	db_character "capturequest/internal/db/character"
+	"capturequest/internal/db"
 	"capturequest/internal/logutil"
+	"capturequest/internal/protocol"
 	"capturequest/internal/session"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"log"
 	"strings"
 	"sync"
@@ -18,20 +23,22 @@ const bicyclePlayerMoveSpeed = 100 * time.Millisecond
 
 // PlayerMovementState tracks a player's current movement
 type PlayerMovementState struct {
-	SessionID     int           `json:"sessionId"`
-	CharacterID   int           `json:"characterId"`
-	CurrentX      int           `json:"currentX"`
-	CurrentY      int           `json:"currentY"`
-	MapID         int           `json:"mapId"`
-	PreviousMapID int           `json:"previousMapId,omitempty"`
-	Direction     string        `json:"direction"`
-	Path          []PathNode    `json:"path"` // Remaining path to destination
-	IsSurfing     bool          `json:"isSurfing,omitempty"`
-	WantsBicycle  bool          `json:"wantsBicycle,omitempty"`
-	ForcedBicycle bool          `json:"forcedBicycle,omitempty"`
-	LastMoveTime  time.Time     `json:"lastMoveTime"`
-	LastSaveTime  time.Time     `json:"lastSaveTime"` // Last time we persisted to DB
-	MoveSpeed     time.Duration `json:"moveSpeed"`    // Time per tile, including runtime movement effects
+	SessionID       int        `json:"sessionId"`
+	CharacterID     int        `json:"characterId"`
+	CurrentX        int        `json:"currentX"`
+	CurrentY        int        `json:"currentY"`
+	MapID           int        `json:"mapId"`
+	PreviousMapID   int        `json:"previousMapId,omitempty"`
+	Direction       string     `json:"direction"`
+	Path            []PathNode `json:"path"` // Remaining path to destination
+	IsSurfing       bool       `json:"isSurfing,omitempty"`
+	WantsBicycle    bool       `json:"wantsBicycle,omitempty"`
+	BicycleRevision int64      `json:"bicycleRevision"`
+	ForcedBicycle   bool       `json:"forcedBicycle,omitempty"`
+	LastMoveTime    time.Time  `json:"lastMoveTime"`
+	LastSaveTime    time.Time  `json:"lastSaveTime"` // Last time we persisted to DB
+	pendingStep     *issuedPlayerStep
+	MoveSpeed       time.Duration `json:"moveSpeed"` // Time per tile, including runtime movement effects
 }
 
 type playerMovementStep struct {
@@ -41,22 +48,24 @@ type playerMovementStep struct {
 }
 
 type playerMovementSnapshot struct {
-	SessionID   int
-	CharacterID int
-	CurrentX    int
-	CurrentY    int
-	MapID       int
-	Direction   string
-	MoveSpeed   time.Duration
-	MovementSeq int
-	Bicycle     bool
-	Surfing     bool
+	SessionID    int
+	CharacterID  int
+	CurrentX     int
+	CurrentY     int
+	MapID        int
+	Direction    string
+	MoveSpeed    time.Duration
+	MovementSeq  int
+	PathFinished bool
+	Bicycle      bool
+	Surfing      bool
 }
 
 type BicycleToggleState struct {
-	WantsRiding  bool `json:"wantsRiding"`
-	ActiveRiding bool `json:"activeRiding"`
-	ForcedRiding bool `json:"forcedRiding"`
+	Revision     int64 `json:"revision"`
+	WantsRiding  bool  `json:"wantsRiding"`
+	ActiveRiding bool  `json:"activeRiding"`
+	ForcedRiding bool  `json:"forcedRiding"`
 }
 
 // PathNode represents a single tile in a path
@@ -73,8 +82,7 @@ type PlayerMovementManager struct {
 	actorManager *PhaserActorManager
 	players      map[int]*PlayerMovementState // CharacterID -> state
 	mu           sync.RWMutex
-	ticker       *time.Ticker
-	stopChan     chan struct{}
+	worker       periodicWorker
 }
 
 // NewPlayerMovementManager creates a new player movement manager
@@ -83,33 +91,16 @@ func NewPlayerMovementManager(wh *WorldHandler, actorManager *PhaserActorManager
 		wh:           wh,
 		actorManager: actorManager,
 		players:      make(map[int]*PlayerMovementState),
-		stopChan:     make(chan struct{}),
 	}
 }
 
 // Start begins the movement tick loop
 func (m *PlayerMovementManager) Start() {
-	m.ticker = time.NewTicker(50 * time.Millisecond) // Check every 50ms for smooth movement
-	go func() {
-		for {
-			select {
-			case <-m.ticker.C:
-				m.processTick()
-			case <-m.stopChan:
-				return
-			}
-		}
-	}()
-	log.Println("[PlayerMovement] Started player state manager")
+	m.worker.start(50*time.Millisecond, nil, m.processTick)
 }
 
-// Stop stops the movement tick loop
-func (m *PlayerMovementManager) Stop() {
-	if m.ticker != nil {
-		m.ticker.Stop()
-	}
-	close(m.stopChan)
-}
+// Stop waits for movement persistence and step effects already in flight.
+func (m *PlayerMovementManager) Stop() { m.worker.stop() }
 
 // RegisterPlayer adds or updates a player's movement state
 func (m *PlayerMovementManager) RegisterPlayer(ses *session.Session, charID int, x, y, mapID int, direction string) {
@@ -181,31 +172,40 @@ func (m *PlayerMovementManager) applyBicycleMapRules(state *PlayerMovementState)
 	m.updateMovementSpeed(state)
 }
 
-// FlushPlayerPosition immediately saves a player's current position to the database
-// Useful when a player disconnects or warp/teleport happens
-func (m *PlayerMovementManager) FlushPlayerPosition(charID int) {
-	m.mu.RLock()
-	state, ok := m.players[charID]
-	m.mu.RUnlock()
-
-	if ok {
-		m.savePosition(state)
+func (m *PlayerMovementManager) markPositionCommitted(charID, x, y, mapID int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if state := m.players[charID]; state != nil && state.CurrentX == x && state.CurrentY == y && state.MapID == mapID {
+		state.LastSaveTime = time.Now()
 	}
 }
 
 func (m *PlayerMovementManager) snapshotForState(state *PlayerMovementState, movementSeq int) playerMovementSnapshot {
 	return playerMovementSnapshot{
-		SessionID:   state.SessionID,
-		CharacterID: state.CharacterID,
-		CurrentX:    state.CurrentX,
-		CurrentY:    state.CurrentY,
-		MapID:       state.MapID,
-		Direction:   state.Direction,
-		MoveSpeed:   state.MoveSpeed,
-		MovementSeq: movementSeq,
-		Bicycle:     m.isBicycleActive(state),
-		Surfing:     state.IsSurfing,
+		SessionID:    state.SessionID,
+		CharacterID:  state.CharacterID,
+		CurrentX:     state.CurrentX,
+		CurrentY:     state.CurrentY,
+		MapID:        state.MapID,
+		Direction:    state.Direction,
+		MoveSpeed:    state.MoveSpeed,
+		MovementSeq:  movementSeq,
+		PathFinished: len(state.Path) == 0,
+		Bicycle:      m.isBicycleActive(state),
+		Surfing:      state.IsSurfing,
 	}
+}
+
+// Peer actor reads join immutable presence to one matching movement snapshot.
+// Character ID alone is insufficient after a session replaces its registration.
+func (m *PlayerMovementManager) snapshotForPresence(p session.Presence, mapID, x, y int) (playerMovementSnapshot, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	state := m.players[int(p.CharacterID)]
+	if state == nil || state.SessionID != p.SessionID || state.MapID != mapID || state.CurrentX != x || state.CurrentY != y {
+		return playerMovementSnapshot{}, false
+	}
+	return m.snapshotForState(state, 0), true
 }
 
 // GetMoveSpeed returns a player's current movement speed in milliseconds.
@@ -220,38 +220,34 @@ func (m *PlayerMovementManager) GetMoveSpeed(charID int) int {
 	return int(defaultPlayerMoveSpeed.Milliseconds())
 }
 
-// ToggleBicycle switches a player's bicycle preference. Riding is active only
-// on overworld maps; interiors temporarily use walking speed and walking sprite.
-func (m *PlayerMovementManager) ToggleBicycle(charID int) (BicycleToggleState, bool) {
+// Bicycle preference belongs to this registered movement session. Desired state
+// plus its revision prevents duplicate packets from toggling the preference back.
+func (m *PlayerMovementManager) bicycleStateForSession(sesID, charID int) (BicycleToggleState, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	state := m.players[charID]
+	if state == nil || state.SessionID != sesID {
+		return BicycleToggleState{}, false
+	}
+	return BicycleToggleState{Revision: state.BicycleRevision, WantsRiding: state.WantsBicycle, ActiveRiding: m.isBicycleActive(state), ForcedRiding: state.ForcedBicycle}, true
+}
+func (m *PlayerMovementManager) setBicycleForSession(sesID, charID int, wants bool, revision int64) (BicycleToggleState, bool) {
 	m.mu.Lock()
-	state, ok := m.players[charID]
-	if !ok {
+	state := m.players[charID]
+	if state == nil || state.SessionID != sesID || state.BicycleRevision != revision {
 		m.mu.Unlock()
 		return BicycleToggleState{}, false
 	}
 	if state.ForcedBicycle && m.isBicycleActive(state) {
-		result := BicycleToggleState{
-			WantsRiding:  true,
-			ActiveRiding: true,
-			ForcedRiding: true,
-		}
-		snapshot := m.snapshotForState(state, 0)
-		m.mu.Unlock()
-
-		m.broadcastSnapshot(snapshot)
-		return result, true
+		wants = state.WantsBicycle
 	}
-	state.WantsBicycle = !state.WantsBicycle
+	state.WantsBicycle = wants
+	state.BicycleRevision++
 	m.applyBicycleMapRules(state)
-	result := BicycleToggleState{
-		WantsRiding:  state.WantsBicycle,
-		ActiveRiding: m.isBicycleActive(state),
-		ForcedRiding: state.ForcedBicycle,
-	}
+	result := BicycleToggleState{Revision: state.BicycleRevision, WantsRiding: state.WantsBicycle, ActiveRiding: m.isBicycleActive(state), ForcedRiding: state.ForcedBicycle}
 	snapshot := m.snapshotForState(state, 0)
 	m.mu.Unlock()
-
-	m.broadcastSnapshot(snapshot)
+	m.broadcastSnapshot(snapshot, false)
 	return result, true
 }
 
@@ -271,8 +267,9 @@ func (m *PlayerMovementManager) IsSurfing(charID int) bool {
 	return ok && state.IsSurfing
 }
 
-// UnregisterPlayer removes a player from movement tracking
-func (m *PlayerMovementManager) UnregisterPlayer(charID int) {
+// unregisterPlayer retires the live projection. All position producers commit
+// before publishing, so disconnect never persists this potentially stale view.
+func (m *PlayerMovementManager) unregisterPlayer(charID int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.players, charID)
@@ -287,6 +284,7 @@ func (m *PlayerMovementManager) StopMovement(charID int) {
 	if !ok {
 		return
 	}
+	state.pendingStep = nil
 	state.Path = nil
 }
 
@@ -317,13 +315,16 @@ func (m *PlayerMovementManager) UpdateMapID(charID int, mapID int) {
 				ses.PreviousMapID = previousMapID
 			}
 		}
+		state.pendingStep = nil
 		state.Path = nil // Clear any pending path on old map
 		m.applyBicycleMapRules(state)
 	}
 }
 
-// UpdatePosition directly sets a player's position (for warps, spawns, etc.)
-func (m *PlayerMovementManager) UpdatePosition(charID int, x, y, mapID int, direction string) {
+// projectCommittedTeleport replaces the owner's position after a committed
+// warp/cutscene. Unlike an ordinary step, it always retires the current path.
+// It must never manufacture a deferred position write between publication calls.
+func (m *PlayerMovementManager) projectCommittedTeleport(charID int, x, y, mapID int, direction string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -344,6 +345,8 @@ func (m *PlayerMovementManager) UpdatePosition(charID int, x, y, mapID int, dire
 			}
 		}
 	}
+	state.pendingStep = nil
+	state.LastSaveTime = time.Now()
 	state.CurrentX = x
 	state.CurrentY = y
 	state.MapID = mapID
@@ -353,8 +356,8 @@ func (m *PlayerMovementManager) UpdatePosition(charID int, x, y, mapID int, dire
 	m.applyBicycleMapRules(state)
 }
 
-// UpdateReportedPosition syncs the latest client-reported position.
-func (m *PlayerMovementManager) UpdateReportedPosition(charID int, x, y, mapID int, direction string) {
+// projectCommittedPosition applies the committed result without database I/O.
+func (m *PlayerMovementManager) projectCommittedPosition(charID int, x, y, mapID int, direction string, surfing bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -367,7 +370,11 @@ func (m *PlayerMovementManager) UpdateReportedPosition(charID int, x, y, mapID i
 		state.Direction = normalizedDirection
 	}
 
+	// This is a committed result, not a deferred save obligation.
+	state.LastSaveTime = time.Now()
+	state.IsSurfing = surfing
 	if state.CurrentX == x && state.CurrentY == y && state.MapID == mapID {
+		m.applyBicycleMapRules(state)
 		return
 	}
 
@@ -389,12 +396,25 @@ func (m *PlayerMovementManager) UpdateReportedPosition(charID int, x, y, mapID i
 		}
 	}
 
+	state.pendingStep = nil
 	state.CurrentX = x
 	state.CurrentY = y
 	state.MapID = mapID
 	state.Path = nil
-	state.IsSurfing = isSurfableWaterTile(m.wh, mapID, x, y)
 	m.applyBicycleMapRules(state)
+}
+
+// ownedPlayerPosition reads the movement registration first and falls back to the
+// selected character before registration. Call from the owning session command gate.
+func (wh *WorldHandler) ownedPlayerPosition(ses *session.Session) (x, y, mapID int) {
+	char := ses.Client.CharData()
+	x, y, mapID = int(char.X), int(char.Y), int(char.MapID)
+	if wh.PlayerMovement != nil {
+		if mx, my, mm, ok := wh.PlayerMovement.GetPosition(int(char.ID)); ok {
+			x, y, mapID = mx, my, mm
+		}
+	}
+	return x, y, mapID
 }
 
 // GetPosition returns the latest server-visible position reported for a player.
@@ -423,257 +443,238 @@ func (m *PlayerMovementManager) GetDirection(charID int) (string, bool) {
 
 // processTick handles one tick of movement for all players
 func (m *PlayerMovementManager) processTick() {
-	m.mu.Lock()
-	now := time.Now()
-	updates := make([]playerMovementStep, 0)
-
-	for _, state := range m.players {
-		if len(state.Path) == 0 {
+	if m.wh == nil || m.wh.sessionManager == nil {
+		return
+	}
+	type candidate struct {
+		characterID, sessionID int
+		state                  *PlayerMovementState
+	}
+	m.mu.RLock()
+	candidates := make([]candidate, 0, len(m.players))
+	for id, state := range m.players {
+		if len(state.Path) != 0 {
+			candidates = append(candidates, candidate{id, state.SessionID, state})
+		}
+	}
+	m.mu.RUnlock()
+	for _, c := range candidates {
+		ses, ok := m.wh.sessionManager.GetSession(c.sessionID)
+		if !ok {
 			continue
 		}
-
-		// Check if enough time has passed for next move
-		if now.Sub(state.LastMoveTime) < state.MoveSpeed {
-			continue
-		}
-
-		// Pop next tile from path
-		nextTile := state.Path[0]
-		var efm *EventFlagManager
-		if m.wh != nil {
-			efm = m.wh.EventFlags
-		}
-		if m.actorManager != nil && m.actorManager.IsNPCBlockingTileForCharacter(
-			int64(state.CharacterID),
-			state.MapID,
-			nextTile.X,
-			nextTile.Y,
-			efm,
-		) {
-			log.Printf("[PlayerMovement] Stopping player %d before occupied NPC tile (%d,%d) on map %d",
-				state.CharacterID, nextTile.X, nextTile.Y, state.MapID)
-			state.Path = nil
-			updates = append(updates, playerMovementStep{state: state})
-			continue
-		}
-		state.Path = state.Path[1:]
-
-		// Calculate direction
-		if nextTile.X > state.CurrentX {
-			state.Direction = "RIGHT"
-		} else if nextTile.X < state.CurrentX {
-			state.Direction = "LEFT"
-		} else if nextTile.Y > state.CurrentY {
-			state.Direction = "DOWN"
-		} else if nextTile.Y < state.CurrentY {
-			state.Direction = "UP"
-		}
-
-		// Update position
-		state.CurrentX = nextTile.X
-		state.CurrentY = nextTile.Y
-		state.LastMoveTime = now
-		m.applyBicycleMapRules(state)
-		if state.IsSurfing && m.actorManager != nil {
-			if collisionType, exists := m.actorManager.CollisionTypeAt(state.MapID, state.CurrentX, state.CurrentY); exists && collisionType != collisionWater {
-				state.IsSurfing = false
+		// Never wait for a session gate while holding the movement lock. Packet
+		// handlers and disconnect cleanup take those locks in the reverse order.
+		_ = ses.TryExecuteCommand(func() {
+			if !ses.HasValidClient() || !m.wh.characterOwners.owns(int64(c.characterID), ses) {
+				return
 			}
-		}
-
-		// Decide if we should save to DB this tick
-		// 1. We just finished the path
-		// 2. OR it's been more than 5 seconds since last save
-		isFinished := len(state.Path) == 0
-		updates = append(updates, playerMovementStep{
-			state:             state,
-			isPathDestination: isFinished,
-			movementSeq:       nextTile.ClientSeq,
+			m.processCharacterTick(ses.CommandContext(), c.characterID, c.state)
 		})
-		shouldSave := isFinished || now.Sub(state.LastSaveTime) >= 5*time.Second
-
-		if shouldSave {
-			m.savePosition(state)
-			state.LastSaveTime = now
-		}
-	}
-	m.mu.Unlock()
-
-	// Broadcast position updates to clients (Every tick for smooth animation)
-	for _, update := range updates {
-		m.broadcastPosition(update.state, update.movementSeq)
-	}
-
-	// Check trainer sight ranges for each player that moved
-	for _, update := range updates {
-		state := update.state
-		ses, ok := m.wh.sessionManager.GetSession(state.SessionID)
-		if !ok || !ses.HasValidClient() {
-			continue
-		}
-		charID := int64(state.CharacterID)
-		if m.wh.TrainerEncounter.CheckPlayerPosition(charID, state.CurrentX, state.CurrentY, state.MapID, ses) {
-			// Trainer spotted the player. The server keeps the player in place
-			// while the client locally animates the trainer approach.
-			continue
-		}
-
-		TickDayCareStep(charID)
-
-		// Safari Zone step check (Phase 11.3) — must come before normal wild encounters
-		if m.wh.Safari != nil && IsInSafariZone(state.MapID) {
-			if CheckSafariStep(charID, state.CurrentX, state.CurrentY, state.MapID, ses, m.wh) {
-				// Safari encounter triggered or steps expired — stop movement
-				m.mu.Lock()
-				if ps, ok := m.players[state.CharacterID]; ok {
-					ps.Path = nil
-				}
-				m.mu.Unlock()
-				continue
-			}
-			// In safari zone, skip normal wild encounters
-			continue
-		}
-
-		// Coordinate-trigger cutscenes get first chance after explicit Safari/trainer
-		// movement handling. Some source scripts, like Pokemon Tower 5F's purified
-		// zone, suppress encounters before displaying their cutscene.
-		if m.tryTriggerCoordinateCutscene(state, charID, ses) {
-			continue
-		}
-
-		// Check for wild encounters on each step (Phase 5.1)
-		if m.wh.WildEncounter != nil && !m.isWildEncounterSuppressed(state, charID) {
-			if m.wh.WildEncounter.CheckPlayerStep(charID, state.CurrentX, state.CurrentY, state.MapID, ses) {
-				// Wild encounter triggered — stop the player's path
-				m.mu.Lock()
-				if ps, ok := m.players[state.CharacterID]; ok {
-					ps.Path = nil // Clear remaining path
-				}
-				m.mu.Unlock()
-				continue
-			}
-		}
-
-		// Check spin/arrow tiles — force the player to slide along a path
-		if m.wh.SpinTiles != nil {
-			mapName := ""
-			if m.wh.Cutscenes != nil {
-				mapName = m.wh.Cutscenes.MapNameForID(state.MapID)
-			}
-			if mapName != "" {
-				if st := m.wh.SpinTiles.CheckTile(mapName, state.CurrentX, state.CurrentY); st != nil {
-					logutil.Debugf("[PlayerMovement] Spin tile at (%d,%d) map %s, forcing movement",
-						state.CurrentX, state.CurrentY, mapName)
-
-					// Expand the compact movements into individual steps and prepend to path
-					expanded := ExpandMovements(st.Movements)
-					spinPath := make([]PathNode, 0, len(expanded))
-					x, y := state.CurrentX, state.CurrentY
-					for _, dir := range expanded {
-						switch dir {
-						case "UP":
-							y--
-						case "DOWN":
-							y++
-						case "LEFT":
-							x--
-						case "RIGHT":
-							x++
-						}
-						spinPath = append(spinPath, PathNode{X: x, Y: y})
-					}
-
-					// Replace the current path with the spin path
-					m.mu.Lock()
-					if ps, ok := m.players[state.CharacterID]; ok {
-						ps.Path = spinPath
-					}
-					m.mu.Unlock()
-				}
-			}
-		}
-
-		// Check Seafoam Islands currents — force the player along source movement paths.
-		if m.wh.EventFlags != nil && m.wh.Cutscenes != nil {
-			mapName := m.wh.Cutscenes.MapNameForID(state.MapID)
-			if current, ok := SeafoamCurrentAt(charID, mapName, state.CurrentX, state.CurrentY, m.wh.EventFlags); ok {
-				logutil.Debugf("[PlayerMovement] Seafoam current %s at (%d,%d), forcing movement",
-					current.Label, state.CurrentX, state.CurrentY)
-				currentPath := SeafoamCurrentPath(state.CurrentX, state.CurrentY, current.Movements)
-				m.mu.Lock()
-				if ps, ok := m.players[state.CharacterID]; ok {
-					ps.Path = currentPath
-				}
-				m.mu.Unlock()
-				continue
-			}
-		}
-
-		// Check warp pad tiles only when this step is the requested destination.
-		// Keyboard moves are single-step paths, so deliberate step-on warps still
-		// fire, while long click paths can cross exit tiles without hijacking.
-		if update.isPathDestination && m.wh.WarpTiles != nil {
-			if wt := m.wh.WarpTiles.CheckTile(state.MapID, state.CurrentX, state.CurrentY); wt != nil {
-				logutil.Debugf("[PlayerMovement] Warp tile at (%d,%d) map %d -> map %d (%d,%d)",
-					state.CurrentX, state.CurrentY, state.MapID,
-					wt.DestMapID, wt.DestX, wt.DestY)
-
-				ses, ok := m.wh.sessionManager.GetSession(state.SessionID)
-				if ok && m.isSafariEntryWarpBlocked(int64(state.CharacterID), state.MapID, wt.DestMapID, ses) {
-					state.Path = nil
-					continue
-				}
-
-				endSafariSessionIfLeavingMap(int64(state.CharacterID), state.MapID, wt.DestMapID, m.wh)
-
-				previousMapID := state.MapID
-				state.PreviousMapID = previousMapID
-
-				// Update the server-visible position for this forced warp tile.
-				state.CurrentX = wt.DestX
-				state.CurrentY = wt.DestY
-				state.MapID = wt.DestMapID
-				state.Path = nil
-				m.applyBicycleMapRules(state)
-
-				// Send teleport notification to client
-				if ok && ses.HasValidClient() {
-					ses.PreviousMapID = previousMapID
-					ses.X = float32(wt.DestX)
-					ses.Y = float32(wt.DestY)
-					if m.wh.ActorManager.IsOverworld(wt.DestMapID) {
-						ses.MapID = UnifiedOverworldMapID
-					} else {
-						ses.MapID = wt.DestMapID
-					}
-
-					if char := ses.Client.CharData(); char != nil {
-						char.X = float64(wt.DestX)
-						char.Y = float64(wt.DestY)
-						char.MapID = uint32(ses.MapID) // Use normalized ID (9999 for overworld)
-					}
-
-					broadcastPlayerVisibleMapChange(ses, m.wh, previousMapID)
-
-					ses.SendStreamJSON(map[string]interface{}{
-						"mapId": wt.DestMapID,
-						"x":     wt.DestX,
-						"y":     wt.DestY,
-					}, opcodes.WarpTileTeleportNotify)
-
-					m.savePosition(state)
-				}
-			}
-		}
 	}
 }
 
-func (m *PlayerMovementManager) isSafariEntryWarpBlocked(charID int64, sourceMapID, destMapID int, ses *session.Session) bool {
+// Called only within the owning session's command gate. The pointer check rejects
+// a movement registration replaced after the timer collected its candidates.
+func (m *PlayerMovementManager) processCharacterTick(ctx context.Context, characterID int, expected *PlayerMovementState) {
+	if ctx.Err() != nil {
+		return
+	}
+	m.mu.Lock()
+	state := m.players[characterID]
+	if state == nil || state != expected {
+		m.mu.Unlock()
+		return
+	}
+	now := time.Now()
+	if len(state.Path) == 0 || now.Sub(state.LastMoveTime) < state.MoveSpeed {
+		m.mu.Unlock()
+		return
+	}
+	planned := *state
+	planned.Path = append([]PathNode(nil), state.Path...)
+	m.mu.Unlock()
+
+	// Dynamic reads and persistence cannot hold the shared player lock. The owner
+	// gate prevents another gameplay command from replacing this source/path.
+	if m.actorManager != nil {
+		blockers, err := m.actorManager.npcBlockingPositionsContext(ctx, m.wh.database, int64(characterID), planned.MapID, m.wh.EventFlags)
+		if err != nil {
+			logutil.Debugf("[PlayerMovement] Read forced-step blockers for %d: %v", characterID, err)
+			return
+		}
+		target := planned.Path[0]
+		for _, blocker := range blockers {
+			if blocker.X == target.X && blocker.Y == target.Y {
+				err := db.Transaction(ctx, m.wh.database, func(tx db.DBTX) error {
+					if err := db.LockCharacter(tx, int64(characterID)); err != nil {
+						return err
+					}
+					route, err := loadMovementRouteIn(tx, int64(characterID))
+					if err != nil {
+						return err
+					}
+					if route != nil && (route.MapID != state.MapID || route.X != state.CurrentX || route.Y != state.CurrentY) {
+						return fmt.Errorf("blocked route source changed")
+					}
+					return saveMovementRouteIn(tx, int64(characterID), 0, 0, 0, nil, false)
+				})
+				if err != nil {
+					logutil.Debugf("[PlayerMovement] Retire blocked route for %d: %v", characterID, err)
+					m.mu.Lock()
+					if m.players[characterID] == state {
+						state.LastMoveTime = now
+					}
+					m.mu.Unlock()
+					return
+				}
+				m.mu.Lock()
+				if current := m.players[characterID]; current == state {
+					current.Path = nil
+				}
+				snapshot := m.snapshotForState(state, 0)
+				m.mu.Unlock()
+				m.broadcastSnapshot(snapshot, true)
+				return // A stopped path is not a completed step or a durable step effect.
+			}
+		}
+	}
+	update, moved, err := m.planCharacterStep(ctx, &planned, now)
+	if err != nil {
+		logutil.Debugf("[PlayerMovement] Read forced-step collision for %d: %v", characterID, err)
+		return
+	}
+	if !moved {
+		return
+	}
+	ses, ok := m.wh.sessionManager.GetSession(state.SessionID)
+	if !ok || !ses.HasValidClient() {
+		return
+	}
+	effects, err := commitMovementStep(ctx, m.wh, int64(characterID), movementStepCandidate{SourceMap: state.MapID, SourceX: state.CurrentX, SourceY: state.CurrentY, MapID: planned.MapID, X: planned.CurrentX, Y: planned.CurrentY, Direction: planned.Direction, Forced: true, Surfing: planned.IsSurfing, RemainingPath: planned.Path, PathDestination: update.isPathDestination})
+	if err != nil {
+		logutil.Debugf("[PlayerMovement] Commit forced step for %d: %v", characterID, err)
+		// A confirmed domain owner ends this path. Database/commit failures
+		// retain it for the existing retry policy; neither can publish a target.
+		if errors.Is(err, errBattleOwnership) {
+			m.mu.Lock()
+			current := m.players[characterID]
+			if current != state {
+				m.mu.Unlock()
+				return
+			}
+			state.Path = nil
+			snapshot := m.snapshotForState(state, 0)
+			m.mu.Unlock()
+			m.broadcastSnapshot(snapshot, true)
+			return
+		}
+		// Retain source/path and retry at the existing movement cadence, without
+		// publishing a position or executing effects after a failed commit.
+		m.mu.Lock()
+		if current := m.players[characterID]; current == state {
+			current.LastMoveTime = now
+		}
+		m.mu.Unlock()
+		return
+	}
+	if effects.Teleport {
+		// Publish from the previous owned map so departure visibility and map
+		// provenance survive a recovery or automatic warp in this step.
+		publishCommittedPlayerPosition(ses, m.wh, effects.MapID, effects.X, effects.Y, effects.Direction)
+	}
+	m.mu.Lock()
+	if m.players[characterID] != state {
+		m.mu.Unlock()
+		return
+	}
+	state.CurrentX, state.CurrentY, state.MapID, state.Direction = effects.X, effects.Y, effects.MapID, effects.Direction
+	state.Path, state.LastMoveTime = planned.Path, planned.LastMoveTime
+	if effects.StopPath {
+		state.Path = nil
+	}
+	if effects.ForcedPath != nil {
+		state.Path = effects.ForcedPath
+	}
+	if !effects.Teleport {
+		state.IsSurfing, state.ForcedBicycle, state.MoveSpeed = effects.Surfing, planned.ForcedBicycle, planned.MoveSpeed
+	}
+	state.LastSaveTime = now
+	update.state = state
+	m.mu.Unlock()
+	if !effects.Teleport {
+		m.broadcastPosition(state, update.movementSeq)
+	}
+	publishMovementStepEffects(ses, m.wh, int64(characterID), effects)
+}
+
+// planCharacterStep plans a detached candidate under the owner gate.
+// It does not publish or persist the candidate.
+func (m *PlayerMovementManager) planCharacterStep(ctx context.Context, state *PlayerMovementState, now time.Time) (playerMovementStep, bool, error) {
+	if len(state.Path) == 0 {
+		return playerMovementStep{}, false, nil
+	}
+
+	// Check if enough time has passed for next move
+	if now.Sub(state.LastMoveTime) < state.MoveSpeed {
+		return playerMovementStep{}, false, nil
+	}
+
+	// Pop next tile from path
+	nextTile := state.Path[0]
+	state.Path = state.Path[1:]
+
+	// Calculate direction
+	if nextTile.X > state.CurrentX {
+		state.Direction = "RIGHT"
+	} else if nextTile.X < state.CurrentX {
+		state.Direction = "LEFT"
+	} else if nextTile.Y > state.CurrentY {
+		state.Direction = "DOWN"
+	} else if nextTile.Y < state.CurrentY {
+		state.Direction = "UP"
+	}
+
+	// Update position
+	state.CurrentX = nextTile.X
+	state.CurrentY = nextTile.Y
+	state.LastMoveTime = now
+	m.applyBicycleMapRules(state)
+	if state.IsSurfing {
+		if m.actorManager == nil || m.wh == nil || m.wh.database == nil {
+			return playerMovementStep{}, false, fmt.Errorf("forced collision service unavailable")
+		}
+		collision, _, err := m.actorManager.baseCollision(ctx, m.wh.database, state.MapID, true)
+		if err != nil {
+			return playerMovementStep{}, false, err
+		}
+		if collisionType, exists := collision[tileKey(state.CurrentX, state.CurrentY)]; exists && collisionType != collisionWater {
+			state.IsSurfing = false
+		}
+	}
+
+	update := playerMovementStep{
+		state:             state,
+		isPathDestination: len(state.Path) == 0,
+		movementSeq:       nextTile.ClientSeq,
+	}
+	return update, true, nil
+}
+
+func (m *PlayerMovementManager) isSafariEntryWarpBlocked(ctx context.Context, charID int64, sourceMapID, destMapID int, ses *session.Session) bool {
 	if sourceMapID != SafariZoneGateMapID || !IsInSafariZone(destMapID) {
 		return false
 	}
 	if m.wh != nil && m.wh.Safari != nil {
-		if safari := m.wh.Safari.GetSession(charID); safari != nil && safari.Active {
+		safari, err := m.wh.Safari.GetSession(ctx, charID)
+		if err != nil {
+			log.Printf("[Safari] Entry guard for %d: %v", charID, err)
+			if ses != nil {
+				SendSystemMessage(ses, "Safari state is unavailable. Please try again.")
+			}
+			return true
+		}
+		if safari != nil && safari.Active {
 			return false
 		}
 	}
@@ -684,61 +685,6 @@ func (m *PlayerMovementManager) isSafariEntryWarpBlocked(charID int64, sourceMap
 	return true
 }
 
-func (m *PlayerMovementManager) tryTriggerCoordinateCutscene(state *PlayerMovementState, charID int64, ses *session.Session) bool {
-	if m.wh == nil || m.wh.CoordTriggers == nil || m.wh.Cutscenes == nil || m.wh.EventFlags == nil {
-		return false
-	}
-
-	triggers := m.wh.CoordTriggers.CheckTileTriggers(state.MapID, state.CurrentX, state.CurrentY)
-	if len(triggers) == 0 {
-		return false
-	}
-
-	logutil.Debugf("[PlayerMovement] Coordinate triggers at (%d,%d) map %d: %v",
-		state.CurrentX, state.CurrentY, state.MapID, triggerLabels(triggers))
-
-	for _, trigger := range triggers {
-		cs := m.wh.Cutscenes.FindEligibleCoordCutsceneForTrigger(trigger, charID, m.wh.EventFlags, state.Direction)
-		if cs == nil {
-			continue
-		}
-
-		SendCutsceneToPlayer(ses, cs, m.wh)
-		m.mu.Lock()
-		if ps, ok := m.players[state.CharacterID]; ok {
-			ps.Path = nil
-		}
-		m.mu.Unlock()
-		return true
-	}
-
-	return false
-}
-
-func (m *PlayerMovementManager) isWildEncounterSuppressed(state *PlayerMovementState, charID int64) bool {
-	if m.wh == nil || m.wh.Cutscenes == nil || m.wh.EventFlags == nil || state == nil {
-		return false
-	}
-
-	mapName := m.wh.Cutscenes.MapNameForID(state.MapID)
-	if !strings.EqualFold(mapName, "POKEMON_TOWER_5F") {
-		return false
-	}
-
-	const purifiedZoneFlag = "EVENT_IN_PURIFIED_ZONE"
-	if isPokemonTower5FPurifiedZone(mapName, state.CurrentX, state.CurrentY) {
-		return true
-	}
-
-	if m.wh.EventFlags.CheckFlag(charID, purifiedZoneFlag) {
-		if err := m.wh.EventFlags.ResetFlag(charID, purifiedZoneFlag); err != nil {
-			log.Printf("[PlayerMovement] Failed to reset %s for player %d outside Pokemon Tower 5F purified zone: %v",
-				purifiedZoneFlag, charID, err)
-		}
-	}
-	return false
-}
-
 func isPokemonTower5FPurifiedZone(mapName string, x, y int) bool {
 	if !strings.EqualFold(mapName, "POKEMON_TOWER_5F") {
 		return false
@@ -746,40 +692,69 @@ func isPokemonTower5FPurifiedZone(mapName string, x, y int) bool {
 	return (x == 10 || x == 11) && (y == 8 || y == 9)
 }
 
-func triggerLabels(triggers []CoordinateTrigger) []string {
-	labels := make([]string, len(triggers))
-	for i, trigger := range triggers {
-		labels[i] = trigger.Label
+// Surf entry shares position/Repel/encounter/blackout commit with movement,
+// preserving its existing wild-only policy. The handler publishes effects.
+func (m *PlayerMovementManager) SurfTo(ctx context.Context, ses *session.Session, req PokeSurfingRequestPayload) (movementStepResult, SurfResponse, bool, error) {
+	charID := int(ses.Client.CharData().ID)
+	var state *PlayerMovementState
+	var result movementStepResult
+	input, err := json.Marshal(req)
+	if err != nil {
+		return result, SurfResponse{}, false, err
 	}
-	return labels
-}
-
-func (m *PlayerMovementManager) MovePlayerTo(charID int, x, y, mapID int, direction string, isSurfing bool) bool {
-	normalizedDirection := normalizeWarpDirection(direction)
-	if normalizedDirection == "" {
-		normalizedDirection = "DOWN"
-	}
-
-	m.mu.Lock()
-	state, ok := m.players[charID]
-	if !ok {
+	encoded, replay, err := db.ExecuteFieldCommand(ctx, m.wh.database, int64(charID), "surf", req.RequestID, req.CommandRevision, input, func(tx db.DBTX) ([]byte, error) {
+		m.mu.Lock()
+		state = m.players[charID]
+		if state == nil || state.SessionID != ses.SessionID || len(state.Path) != 0 || state.activePlayerStep(time.Now()) != nil {
+			m.mu.Unlock()
+			return nil, fmt.Errorf("SURF movement owner absent")
+		}
+		sourceMap, sourceX, sourceY := state.MapID, state.CurrentX, state.CurrentY
 		m.mu.Unlock()
-		return false
+		if sourceMap != *req.MapID || sourceX != *req.FromX || sourceY != *req.FromY {
+			return nil, fmt.Errorf("SURF source changed")
+		}
+		direction := directionFromAdjacentTiles(sourceX, sourceY, *req.TargetX, *req.TargetY)
+		if req.Direction != "" && normalizeWarpDirection(req.Direction) != direction {
+			return nil, fmt.Errorf("SURF facing disagrees with target")
+		}
+		var err error
+		result, err = commitMovementStepOn(ctx, tx, m.wh, int64(charID), movementStepCandidate{SourceMap: sourceMap, SourceX: sourceX, SourceY: sourceY, MapID: *req.MapID, X: *req.TargetX, Y: *req.TargetY, Direction: direction, SurfEntry: true})
+		if err != nil {
+			return nil, err
+		}
+		return json.Marshal(SurfResponse{SurfIdentity: req.SurfIdentity, Success: true, Encounter: result.Wild.Battle != nil || result.Wild.Blackout != nil, Blackout: result.Wild.Blackout != nil})
+	})
+	if err != nil {
+		return movementStepResult{}, SurfResponse{}, false, err
 	}
-	state.CurrentX = x
-	state.CurrentY = y
-	state.MapID = mapID
-	state.Direction = normalizedDirection
-	state.Path = nil
-	state.IsSurfing = isSurfing
-	m.applyBicycleMapRules(state)
+	var receipt struct {
+		SurfIdentity
+		Success   bool  `json:"success"`
+		Encounter *bool `json:"encounter"`
+		Blackout  *bool `json:"blackout"`
+	}
+	if err := json.Unmarshal(encoded, &receipt); err != nil || !receipt.Success || receipt.SurfIdentity != req.SurfIdentity || receipt.Encounter == nil || receipt.Blackout == nil {
+		return movementStepResult{}, SurfResponse{}, false, fmt.Errorf("invalid committed SURF receipt")
+	}
+	outcome := SurfResponse{SurfIdentity: receipt.SurfIdentity, Success: true, Encounter: *receipt.Encounter, Blackout: *receipt.Blackout}
+	// Replay acknowledges history without reviving its pose, battle or effects.
+	if replay {
+		return movementStepResult{}, outcome, true, nil
+	}
+	m.projectCommittedPosition(charID, result.X, result.Y, result.MapID, result.Direction, result.Surfing)
+	m.mu.Lock()
+	if current := m.players[charID]; current == state {
+		current.Path = nil
+		current.pendingStep = nil
+		m.applyBicycleMapRules(current)
+	}
 	m.mu.Unlock()
-
-	m.syncSessionPosition(state)
-
-	m.savePosition(state)
-	m.broadcastPosition(state, 0)
-	return true
+	publishCommittedPlayerLocation(ses, m.wh, result.MapID, result.X, result.Y)
+	if !result.Teleport {
+		m.broadcastPosition(state, 0)
+	}
+	return result, outcome, false, nil
 }
 
 func (m *PlayerMovementManager) syncSessionPosition(state *PlayerMovementState) {
@@ -803,10 +778,10 @@ func (m *PlayerMovementManager) syncSessionPosition(state *PlayerMovementState) 
 
 // broadcastPosition sends position update to all relevant clients
 func (m *PlayerMovementManager) broadcastPosition(state *PlayerMovementState, movementSeq int) {
-	m.broadcastSnapshot(m.snapshotForState(state, movementSeq))
+	m.broadcastSnapshot(m.snapshotForState(state, movementSeq), true)
 }
 
-func (m *PlayerMovementManager) broadcastSnapshot(snapshot playerMovementSnapshot) {
+func (m *PlayerMovementManager) broadcastSnapshot(snapshot playerMovementSnapshot, serverControlled bool) {
 	if m.wh == nil || m.actorManager == nil {
 		return
 	}
@@ -818,8 +793,14 @@ func (m *PlayerMovementManager) broadcastSnapshot(snapshot playerMovementSnapsho
 	// Broadcast to nearby players.
 	m.actorManager.broadcastActorUpdate(playerActor, ses.SessionID)
 
+	// Cosmetic refreshes must not retire a local issued animation. Only committed
+	// server path points (or a stopped path) carry authoritative projection.
+	if !serverControlled {
+		ses.SendStreamJSON(StructToMap(*playerActor), opcodes.PhaserActorPositionUpdate)
+		return
+	}
 	// Forced server-side movement also updates the origin client.
-	ses.SendStreamJSON(StructToMap(*playerActor), opcodes.PhaserActorPositionUpdate)
+	ses.SendStreamJSON(protocol.ServerPlayerMovementNotify{SpriteName: *playerActor.SpriteName, ActorID: playerActor.ID, MapID: snapshot.MapID, X: snapshot.CurrentX, Y: snapshot.CurrentY, Direction: snapshot.Direction, MoveSpeed: int(snapshot.MoveSpeed.Milliseconds()), PathFinished: snapshot.PathFinished}, opcodes.ServerPlayerMovementNotify)
 }
 
 func (m *PlayerMovementManager) playerActorForSnapshot(snapshot playerMovementSnapshot) (*session.Session, *PhaserActor, bool) {
@@ -844,6 +825,7 @@ func (m *PlayerMovementManager) playerActorForSnapshot(snapshot playerMovementSn
 	char.MapID = uint32(snapshot.MapID)
 
 	spriteName := playerSpriteName(char.Gender, snapshot.Bicycle, snapshot.Surfing)
+	name := char.Name
 
 	x := snapshot.CurrentX
 	y := snapshot.CurrentY
@@ -862,47 +844,13 @@ func (m *PlayerMovementManager) playerActorForSnapshot(snapshot playerMovementSn
 		MapID:           snapshot.MapID,
 		ObjectType:      "player",
 		SpriteName:      &spriteName,
-		Name:            &char.Name,
+		Name:            &name,
 		ActionDirection: &snapshot.Direction,
 		MovementType:    &both,
 		MoveSpeed:       int(snapshot.MoveSpeed.Milliseconds()),
 		MovementSeq:     movementSeq,
 	}
 	return ses, &playerActor, true
-}
-
-// savePosition persists position to database
-func (m *PlayerMovementManager) savePosition(state *PlayerMovementState) {
-	err := db_character.UpdateCharacterPosition(
-		int32(state.CharacterID),
-		uint32(state.MapID),
-		float64(state.CurrentX),
-		float64(state.CurrentY),
-		0, // Z
-		0, // Heading
-	)
-	if err != nil {
-		log.Printf("[PlayerMovement] Failed to save position for player %d: %v", state.CharacterID, err)
-	}
-}
-
-// findPath delegates to the shared A* implementation on PhaserActorManager.
-func (m *PlayerMovementManager) findPath(charID int, mapID, startX, startY, endX, endY int) []PathNode {
-	logutil.Debugf("[PlayerMovement] Finding path from (%d,%d) to (%d,%d) on map %d",
-		startX, startY, endX, endY, mapID)
-	if m.wh != nil && m.wh.EventFlags != nil {
-		return m.actorManager.FindPathForCharacterWithOptions(
-			int64(charID),
-			mapID,
-			startX,
-			startY,
-			endX,
-			endY,
-			m.wh.EventFlags,
-			pathfindOptions{AllowWater: m.isPlayerSurfing(charID)},
-		)
-	}
-	return m.actorManager.FindPath(mapID, startX, startY, endX, endY)
 }
 
 func (m *PlayerMovementManager) isPlayerSurfing(charID int) bool {

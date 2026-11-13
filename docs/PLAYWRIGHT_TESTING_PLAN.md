@@ -360,3 +360,71 @@ Store Playwright reports and traces only on failure. Do not commit
   pass.
 - The local dev server is stopped after the run.
 - No deployment happens unless explicitly requested.
+
+
+## Isolated server-process crash recovery
+
+Run the dedicated lane with:
+
+```bash
+CQ_E2E_CRASH_RECOVERY=true bash scripts/testing/run-isolated-e2e.sh
+```
+
+It defaults to `server-process-recovery.spec.ts` and
+`movement-process-recovery.spec.ts`, and accepts normal Playwright file and grep
+arguments. The runner creates a matched private PostgreSQL runtime under
+`/var/tmp`, records its exact server/client/Playwright PIDs and owns server signals.
+A test writes the expected current server PID atomically to `crash-request`; the
+shell rejects a different PID, kills/reaps only its current child, restarts the same
+binary without reimporting data, waits for readiness and publishes an atomic
+`restart-receipt.json`. The test verifies the receipt and executable identity.
+All task-owned processes and the private cluster are cleaned up when the run ends;
+logs, database files, receipts and `process-recovery-evidence.json` remain for audit.
+Do not run this lane against an existing application or production database.
+
+The current cases verify committed terminal Safari Run and party/PC catches through
+SIGKILL, a fresh server, a fresh page and authenticated character entry. They compare
+actual Pokémon row IDs/content, Pokédex, position and Safari state, and require
+explicit correlated dismissal without replaying the mutation. The shared rendered
+Safari helper uses real capture/flee rolls and independent fixtures after a flee.
+Screenshot artifacts supplement automated state/DOM assertions; test success does
+not depend on manual screenshot interpretation. Automatic live-page reconnect,
+crashes during database transactions and remaining script/movement plans need
+separate cases.
+
+Two move-choice cases also crash twice: after the earned-EXP turn commits with
+`pendingMove`, and after an explicit learn/skip choice commits while its reply is
+withheld. Fresh authenticated entry restores the pending choice, then the settled
+terminal state; the normal dismissal runs once. Full database rows, stable Pokémon
+IDs, EXP, move slots and action/choice/close counts prove settlement without replay.
+The same crash helper reads `current-server.pid` for each generation, so a second
+crash never targets the original retired PID.
+
+The issued-cutscene case crashes before first delivery and again after real
+browser completion commits while its acknowledgement is held. Fresh entry must
+resume the original token/actions, then retain the resolved outcome without
+reissuing the script. A completed-token replay after an ordinary step must leave
+current position, flags, visibility and saved party unchanged. The scenario has
+an intentionally empty party, so this also guards against login fixture seeding.
+Queued plans, source/catalog changes and crashes during presentation need their
+own acceptance cases.
+
+The walking case withholds an issued reply before completion, crashes and requires
+fresh entry to preserve the source and reject that retired session token. It then
+withholds an actual committed completion reply for a second crash. Fresh entry
+retains the position, Safari counter and latest receipt; explicit retries cannot
+repeat the counter or rewind a later warp. Owned reads distinguish current
+position from the historical receipt. A newer step replaces the bounded receipt
+and the superseded token must fail without effects. The shared helper and default
+lane keep exact PID ownership checks identical across the two specs.
+
+Shutdown mode remains separate:
+
+```bash
+CQ_E2E_SHUTDOWN_MODE=success bash scripts/testing/run-isolated-e2e.sh
+CQ_E2E_SHUTDOWN_MODE=failure bash scripts/testing/run-isolated-e2e.sh
+```
+
+These modes verify orderly shutdown and final-save outcomes; crash and shutdown
+flags cannot be combined. Evidence and remaining scope are in
+[`SERVER_FOUNDATIONS.md`](SERVER_FOUNDATIONS.md).

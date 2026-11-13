@@ -1,0 +1,12 @@
+{
+  "name": "debug_escape_rope_ready",
+  "description": "Stand on a source-catalog Mt Moon tile with two Escape Ropes for owned field-command acceptance.",
+  "fixture": {
+    "characterName": "DebugEscapeRopeReady",
+    "mapName": "MT_MOON_1F", "x": 9, "y": 9, "direction": "DOWN",
+    "party": [{ "speciesId": 1, "level": 12 }],
+    "inventory": [{ "itemId": 29, "quantity": 2 }], "hiddenObjects": []
+  },
+  "trigger": { "type": "fixture_state", "mapName": "MT_MOON_1F" },
+  "expect": { "scriptLabel": "FixtureState", "finalX": 9, "finalY": 9, "finalDirection": "DOWN", "activeBattleAbsent": true }
+}

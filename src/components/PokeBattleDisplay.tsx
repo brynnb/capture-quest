@@ -2,15 +2,15 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import styled, { keyframes } from "styled-components";
 import usePokeBattleStore from "@stores/PokeBattleStore";
 import type { BattleEvent } from "@stores/PokeBattleStore";
-import useGameStatusStore from "@stores/GameStatusStore";
 import useCQInventoryStore, {
   type CQInventoryItem,
   ITEM_TYPE_BATTLE_ITEM,
   ITEM_TYPE_MEDICINE,
 } from "@stores/CQInventoryStore";
 import type { PokemonDTO } from "@/net/generated/world_api";
-import { WorldSocket, OpCodes } from "@/net";
-import { sendCQInventoryRequest, sendSafariAction } from "@/phaser-game/services/PhaserNetworkService";
+import { sendSafariAction } from "@/phaser-game/services/BattleCommandService";
+import { sendCQInventoryRequest } from "@/phaser-game/services/PhaserNetworkService";
+import { sendBattleAction, sendBattleSwitch, sendMoveLearningChoice } from "@/phaser-game/services/BattleCommandService";
 import AudioManager from "@/services/audio/AudioManager";
 import { sfxPathForConstant } from "@/services/audio/pokemonMusic";
 
@@ -966,6 +966,9 @@ const MoveLearnPanel: React.FC<{
 const PokeBattleDisplay: React.FC = () => {
   const {
     isInBattle,
+    battleCommandPending,
+    recoveredDismissal,
+    commandError,
     phase,
     playerPokemon,
     enemyPokemon,
@@ -1021,12 +1024,13 @@ const PokeBattleDisplay: React.FC = () => {
     (canRunFromFaintSwitch ? 1 : 0) +
     (hasPokemonMenuBack ? 1 : 0);
 
-  // Auto-close battle on win (prize money message was the last thing shown)
+  // A recovered terminal snapshot needs dismissal without replaying its text.
+  // Wait for the preceding coordinator to finish projection before taking its slot.
   useEffect(() => {
-    if (phase === "battle_end" && battleResult === "win") {
+    if (phase === "battle_end" && !battleCommandPending && !commandError && (battleResult === "win" || (recoveredDismissal && battleResult !== "caught"))) {
       closeBattle();
     }
-  }, [phase, battleResult, closeBattle]);
+  }, [phase, battleResult, recoveredDismissal, battleCommandPending, commandError, closeBattle]);
 
   useEffect(() => {
     if (!isInBattle) return;
@@ -1178,21 +1182,13 @@ const PokeBattleDisplay: React.FC = () => {
   const blackoutWarp = usePokeBattleStore((s) => s.blackoutWarp);
 
   const handleTextClick = useCallback(() => {
+    if (battleCommandPending || commandError) return;
     if (phase === "animating") {
       advanceEvent();
     } else if (phase === "battle_end") {
-      if (battleResult === "lose" && blackoutWarp) {
-        useGameStatusStore
-          .getState()
-          .triggerBlackoutWarp(
-            blackoutWarp.mapId,
-            blackoutWarp.x,
-            blackoutWarp.y,
-          );
-      }
       closeBattle();
     }
-  }, [phase, battleResult, blackoutWarp, advanceEvent, closeBattle]);
+  }, [phase, battleCommandPending, commandError, advanceEvent, closeBattle]);
 
   const handleFight = useCallback(() => {
     setPhase("move_select");
@@ -1210,31 +1206,29 @@ const PokeBattleDisplay: React.FC = () => {
 
   const handleUseBall = useCallback(
     (itemId: number) => {
-      WorldSocket.sendJsonMessage(OpCodes.PokeBattleActionRequest, {
+      sendBattleAction( {
         action: "item",
         moveSlot: 0,
         itemId,
       });
-      setPhase("animating");
     },
     [setPhase],
   );
 
   const handleUseItem = useCallback(
     (itemId: number) => {
-      WorldSocket.sendJsonMessage(OpCodes.PokeBattleActionRequest, {
+      sendBattleAction( {
         action: "item",
         moveSlot: 0,
         itemId,
         targetSlot: -1,
       });
-      setPhase("animating");
     },
     [setPhase],
   );
 
   const handleRun = useCallback(() => {
-    WorldSocket.sendJsonMessage(OpCodes.PokeBattleActionRequest, {
+    sendBattleAction( {
       action: "run",
       moveSlot: 0,
     });
@@ -1259,11 +1253,10 @@ const PokeBattleDisplay: React.FC = () => {
 
   const handleMoveSelect = useCallback(
     (slot: number) => {
-      WorldSocket.sendJsonMessage(OpCodes.PokeBattleActionRequest, {
+      sendBattleAction( {
         action: "fight",
         moveSlot: slot,
       });
-      setPhase("animating");
     },
     [setPhase],
   );
@@ -1274,28 +1267,26 @@ const PokeBattleDisplay: React.FC = () => {
 
   const handleFaintSwitch = useCallback(
     (partyIndex: number) => {
-      WorldSocket.sendJsonMessage(OpCodes.PokeBattleSwitchRequest, {
+      sendBattleSwitch( {
         partyIndex,
         action: "switch",
       });
-      setPhase("animating");
     },
     [setPhase],
   );
 
   const handleBattleSwitch = useCallback(
     (partyIndex: number) => {
-      WorldSocket.sendJsonMessage(OpCodes.PokeBattleActionRequest, {
+      sendBattleAction( {
         action: "switch",
         moveSlot: partyIndex,
       });
-      setPhase("animating");
     },
     [setPhase],
   );
 
   const handleFaintRun = useCallback(() => {
-    WorldSocket.sendJsonMessage(OpCodes.PokeBattleSwitchRequest, {
+    sendBattleSwitch( {
       partyIndex: 0,
       action: "run",
     });
@@ -1305,7 +1296,7 @@ const PokeBattleDisplay: React.FC = () => {
 
   const handleForgetMove = useCallback(
     (slot: number) => {
-      WorldSocket.sendJsonMessage(OpCodes.PokeMoveLearnRequest, {
+      sendMoveLearningChoice( {
         forgetSlot: slot,
       });
     },
@@ -1313,31 +1304,27 @@ const PokeBattleDisplay: React.FC = () => {
   );
 
   const handleSkipLearn = useCallback(() => {
-    WorldSocket.sendJsonMessage(OpCodes.PokeMoveLearnRequest, {
+    sendMoveLearningChoice( {
       forgetSlot: -1,
     });
   }, []);
 
   // Safari Zone action handlers
   const handleSafariBall = useCallback(() => {
-    sendSafariAction("ball");
-    setPhase("animating");
-  }, [setPhase]);
+    void sendSafariAction("ball");
+  }, []);
 
   const handleSafariBait = useCallback(() => {
-    sendSafariAction("bait");
-    setPhase("animating");
-  }, [setPhase]);
+    void sendSafariAction("bait");
+  }, []);
 
   const handleSafariRock = useCallback(() => {
-    sendSafariAction("rock");
-    setPhase("animating");
-  }, [setPhase]);
+    void sendSafariAction("rock");
+  }, []);
 
   const handleSafariRun = useCallback(() => {
-    sendSafariAction("run");
-    setPhase("animating");
-  }, [setPhase]);
+    void sendSafariAction("run");
+  }, []);
 
   const navigateBattleMenu = useCallback(
     (direction: MenuDirection) => {
@@ -1664,11 +1651,11 @@ const PokeBattleDisplay: React.FC = () => {
         </BattleScene>
 
         {/* Text / Events display */}
-        {phase === "animating" && (
+        {(phase === "animating" || commandError) && (
           <TextBox data-testid="battle-text-box" onClick={handleTextClick}>
             <MessageText>
-              {displayMessage}
-              <TextArrow>▼</TextArrow>
+              {commandError ?? (battleCommandPending ? "Waiting for the battle…" : displayMessage)}
+              {!battleCommandPending && !commandError && <TextArrow>▼</TextArrow>}
             </MessageText>
           </TextBox>
         )}

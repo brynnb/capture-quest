@@ -65,7 +65,7 @@ function createHarness(viewOnly = false) {
   let nextTileId = 1;
 
   const fetchTilesInBounds = vi.fn(
-    async (mapId: number, bounds: InclusiveTileBounds) => {
+    async (mapId: number, bounds: InclusiveTileBounds, _signal?: AbortSignal) => {
       expect(mapId).toBe(UNIFIED_OVERWORLD_MAP_ID);
       const key = chunkKeyForBounds(bounds);
       events.push(`fetch:${key}`);
@@ -674,4 +674,96 @@ describe("OverworldChunkStream", () => {
       Promise.all([first, second, obsoleteQueued, latest]),
     ).resolves.toEqual([false, false, false, true]);
   });
+});
+
+test("stopping the stream aborts its owned pending tile query without an error log",async()=>{
+ const harness=createHarness();let signal:AbortSignal|undefined;
+ harness.fetchTilesInBounds.mockImplementation((_map,bounds,owned)=>{
+  void bounds;signal=owned;
+  return new Promise((_,reject)=>owned?.addEventListener("abort",()=>reject(new DOMException("retired","AbortError")),{once:true}));
+ });
+ const log=vi.spyOn(console,"error").mockImplementation(()=>{});
+ const load=harness.stream.initialize(tileCamera(7,7));
+ await vi.waitFor(()=>expect(signal).toBeDefined());harness.stream.stop();await load;
+ expect(signal?.aborted).toBe(true);expect(log).not.toHaveBeenCalled();log.mockRestore();
+});
+test("resident recovery rereads required chunks and removes stale collision residency",async()=>{
+ const harness=createHarness();await harness.stream.initialize(tileCamera(7,7));
+ const before=harness.fetchTilesInBounds.mock.calls.length;
+ const resident = harness.emittedTiles.at(-1)!;
+ harness.movementController.removeCollisionTiles.mockClear();
+ harness.movementController.addCollisionTiles.mockClear();
+ harness.fetchTilesInBounds.mockResolvedValue([]);
+ await harness.stream.reconcileResidentView(new AbortController().signal);
+ expect(harness.fetchTilesInBounds.mock.calls.length).toBeGreaterThan(before);
+ expect(harness.emittedTiles.at(-1)).toEqual([]);
+ expect(harness.movementController.removeCollisionTiles.mock.calls.flatMap(([tiles]) => tiles)).toEqual(resident);
+ expect(harness.movementController.addCollisionTiles.mock.calls.every(([tiles]) => tiles.length === 0)).toBe(true);
+});
+
+
+test.each(["caller", "stream"])("%s retirement prevents recovery publication", async (owner) => {
+  const harness = createHarness();
+  await harness.stream.initialize(tileCamera(7, 7));
+  const resident = harness.emittedTiles.at(-1);
+  harness.mapRenderer.upsertTileChunk.mockClear();
+  harness.movementController.removeCollisionTiles.mockClear();
+  let pendingSignal: AbortSignal | undefined;
+  harness.fetchTilesInBounds.mockImplementation((_map, _bounds, signal) => {
+    pendingSignal = signal;
+    return new Promise((_, reject) => signal?.addEventListener("abort", () => {
+      reject(new DOMException("retired", "AbortError"));
+    }, { once: true }));
+  });
+  const caller = new AbortController();
+  const recovery = harness.stream.reconcileResidentView(caller.signal);
+  const rejected = expect(recovery).rejects.toMatchObject({ name: "AbortError" });
+  await vi.waitFor(() => expect(pendingSignal).toBeDefined());
+  if (owner === "caller") caller.abort();
+  else harness.stream.stop();
+  await rejected;
+  expect(pendingSignal?.aborted).toBe(true);
+  expect(harness.mapRenderer.upsertTileChunk).not.toHaveBeenCalled();
+  if (owner === "caller") {
+    expect(harness.emittedTiles.at(-1)).toEqual(resident);
+    expect(harness.movementController.removeCollisionTiles).not.toHaveBeenCalled();
+  } else {
+    // Stream retirement deliberately unloads its old residency.
+    expect(harness.emittedTiles.at(-1)).toEqual([]);
+  }
+});
+
+test.each([true, false])("resident recovery shares admission while queued (cancel=%s)", async (cancel) => {
+  const harness = createHarness();
+  await harness.stream.initialize(tileCamera(7, 7));
+  harness.fetchTilesInBounds.mockClear();
+  const gates: Array<ReturnType<typeof deferred<PhaserTile[]>>> = [];
+  harness.fetchTilesInBounds.mockImplementation(async (_map, bounds) => {
+    // Superseded explicit reads may legitimately retry after recovery advances
+    // the generation. Gate only the first two requests, not those fresh retries.
+    if (gates.length >= 2) return [makeTile(bounds, 100)];
+    const gate = deferred<PhaserTile[]>();
+    gates.push(gate);
+    return gate.promise;
+  });
+  const first = harness.stream.ensureTileAvailable(263, 7);
+  const second = harness.stream.ensureTileAvailable(327, 7);
+  await vi.waitFor(() => expect(gates).toHaveLength(2));
+  const caller = new AbortController();
+  const recovery = harness.stream.reconcileResidentView(caller.signal);
+  const settlement = cancel
+    ? expect(recovery).rejects.toMatchObject({ name: "AbortError" })
+    : expect(recovery).resolves.toBeUndefined();
+  // Both network slots are already occupied; recovery must stay in the queue.
+  expect(harness.fetchTilesInBounds).toHaveBeenCalledTimes(2);
+  if (cancel) {
+    caller.abort();
+    await settlement;
+  }
+  for (const gate of gates) gate.resolve([]);
+  await Promise.all([first, second, settlement]);
+  // Cancellation removes the queued resident-chunk read rather than leaving it
+  // to run when a slot becomes available. Only distant explicit reads may retry.
+  const residentReads = harness.fetchTilesInBounds.mock.calls.filter(([, bounds]) => bounds.minX === 0);
+  expect(residentReads).toHaveLength(cancel ? 0 : 1);
 });

@@ -5,10 +5,12 @@ import "math/rand"
 // Pokemon represents a single Pokémon in battle with all its runtime state.
 type Pokemon struct {
 	// Identity
-	ID     int    // Database ID (species)
-	Name   string // Species name (e.g. "PIKACHU")
-	Level  int
-	IsWild bool // True for wild encounters, false for trainer/player Pokémon
+	RowID    int64  `json:"rowId,omitempty"` // Stable character_pokemon row; zero before acquisition.
+	Nickname string `json:"nickname,omitempty"`
+	ID       int    // Database ID (species)
+	Name     string // Species name (e.g. "PIKACHU")
+	Level    int
+	IsWild   bool // True for wild encounters, false for trainer/player Pokémon
 
 	// Types
 	Type1 PokemonType

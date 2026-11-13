@@ -1,6 +1,7 @@
 package world
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -263,7 +264,7 @@ func HandleDebugSceneJumpRequest(ses *session.Session, payload []byte, wh *World
 	charID := int64(ses.Client.CharData().ID)
 	if req.ResetAll {
 		log.Printf("[DebugScene] Resetting player %d to fresh-world baseline", charID)
-		mapID, x, y, err := resetDebugCharacterToFreshStart(charID, wh)
+		mapID, x, y, err := resetDebugCharacterToFreshStart(ses.CommandContext(), charID, wh)
 		if err != nil {
 			log.Printf("[DebugScene] Failed to reset player %d: %v", charID, err)
 			ses.SendStreamJSON(map[string]interface{}{
@@ -273,7 +274,10 @@ func HandleDebugSceneJumpRequest(ses *session.Session, payload []byte, wh *World
 			return false
 		}
 
-		sendDebugSceneTeleport(ses, wh, charID, mapID, x, y, DefaultSpawnDirection)
+		if err := sendDebugSceneTeleport(ses, wh, charID, mapID, x, y, DefaultSpawnDirection); err != nil {
+			ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.DebugSceneJumpResponse)
+			return false
+		}
 		sendDebugFreshStartHiddenActorDespawns(ses, wh, "REDS_HOUSE_2F")
 		sendDebugFixtureSnapshots(ses, charID)
 		ses.SendStreamJSON(map[string]interface{}{
@@ -297,7 +301,7 @@ func HandleDebugSceneJumpRequest(ses *session.Session, payload []byte, wh *World
 	}
 
 	log.Printf("[DebugScene] Applying scenario %s to player %d", scenario.Scenario.Name, charID)
-	mapID, x, y, err := applyDebugScenarioFixture(charID, scenario.Scenario.Fixture, wh)
+	mapID, x, y, err := applyDebugScenarioFixture(ses.CommandContext(), charID, scenario.Scenario.Fixture, wh)
 	if err != nil {
 		log.Printf("[DebugScene] Failed to apply %s: %v", scenario.Scenario.Name, err)
 		ses.SendStreamJSON(map[string]interface{}{
@@ -307,7 +311,10 @@ func HandleDebugSceneJumpRequest(ses *session.Session, payload []byte, wh *World
 		return false
 	}
 
-	sendDebugSceneTeleport(ses, wh, charID, mapID, x, y, scenario.Scenario.Fixture.Direction)
+	if err := sendDebugSceneTeleport(ses, wh, charID, mapID, x, y, scenario.Scenario.Fixture.Direction); err != nil {
+		ses.SendStreamJSON(map[string]interface{}{"success": false, "error": err.Error()}, opcodes.DebugSceneJumpResponse)
+		return false
+	}
 	sendDebugFixtureSnapshots(ses, charID)
 	sendDebugSafariState(ses, charID, wh, mapID)
 
@@ -320,7 +327,7 @@ func HandleDebugSceneJumpRequest(ses *session.Session, payload []byte, wh *World
 		"scriptLabel":  scene.ScriptLabel,
 	}, opcodes.DebugSceneJumpResponse)
 
-	if err := sendDebugActiveBattle(ses, charID, scenario.Scenario.Fixture.ActiveBattle); err != nil {
+	if err := sendDebugActiveBattle(ses, wh, charID, scenario.Scenario.Fixture.ActiveBattle); err != nil {
 		log.Printf("[DebugScene] Failed to start active battle for %s: %v", scenario.Scenario.Name, err)
 		ses.SendStreamJSON(map[string]interface{}{
 			"success": false,
@@ -332,8 +339,8 @@ func HandleDebugSceneJumpRequest(ses *session.Session, payload []byte, wh *World
 }
 
 func sendDebugFixtureSnapshots(ses *session.Session, charID int64) {
-	sendPCUpdate(ses, charID, debugCurrentPCBox(charID))
-	sendCQInventorySnapshot(ses, int32(charID))
+	notifyResourceChange(ses)
+	notifyResourceChange(ses)
 }
 
 // HandleDebugWarpProbeCasesRequest returns test-only warp cases for Playwright's
@@ -797,11 +804,7 @@ func HandleDebugGivePowerPokemonRequest(ses *session.Session, payload []byte, wh
 	if !addedToParty {
 		location = "pc"
 	}
-	refreshBox := box
-	if refreshBox < 0 {
-		refreshBox = debugCurrentPCBox(charID)
-	}
-	sendPCUpdate(ses, charID, refreshBox)
+	notifyResourceChange(ses)
 	ses.SendStreamJSON(map[string]interface{}{
 		"success":      true,
 		"speciesId":    debugPowerPokemonSpeciesID,
@@ -817,17 +820,6 @@ func HandleDebugGivePowerPokemonRequest(ses *session.Session, payload []byte, wh
 	return false
 }
 
-func debugCurrentPCBox(charID int64) int {
-	var currentBox int
-	if err := db.GlobalWorldDB.DB.QueryRow(
-		`SELECT current_box FROM character_pc_state WHERE character_id = $1`,
-		charID,
-	).Scan(&currentBox); err != nil {
-		return 0
-	}
-	return currentBox
-}
-
 func debugPowerPokemonMessage(name string, level int, addedToParty bool, box, slot int) string {
 	if addedToParty {
 		return fmt.Sprintf("Added %s L%d to party.", name, level)
@@ -835,18 +827,16 @@ func debugPowerPokemonMessage(name string, level int, addedToParty bool, box, sl
 	return fmt.Sprintf("Party full; sent %s L%d to PC box %d slot %d.", name, level, box+1, slot+1)
 }
 
-func sendDebugSceneTeleport(ses *session.Session, wh *WorldHandler, charID int64, mapID, x, y int, direction string) {
+func sendDebugSceneTeleport(ses *session.Session, wh *WorldHandler, charID int64, mapID, x, y int, direction string) error {
 	if direction == "" {
 		direction = "DOWN"
 	}
-	setServerTeleportedPlayerPosition(ses, wh, mapID, x, y, direction)
+	if _, err := setServerTeleportedPlayerPosition(ses, wh, mapID, x, y, direction); err != nil {
+		return err
+	}
 
-	ses.SendStreamJSON(map[string]interface{}{
-		"mapId":     mapID,
-		"x":         x,
-		"y":         y,
-		"direction": direction,
-	}, opcodes.WarpTileTeleportNotify)
+	sendCommittedWarpNotification(ses, mapID, x, y, direction)
+	return nil
 }
 
 func sendDebugFreshStartHiddenActorDespawns(ses *session.Session, wh *WorldHandler, mapName string) {
@@ -1055,7 +1045,7 @@ func debugSceneCategory(s debugScenario, scriptLabel string) string {
 	return ""
 }
 
-func applyDebugScenarioFixture(charID int64, f debugFixture, wh *WorldHandler) (int, int, int, error) {
+func applyDebugScenarioFixture(ctx context.Context, charID int64, f debugFixture, wh *WorldHandler) (int, int, int, error) {
 	if f.MapName == "" {
 		return 0, 0, 0, fmt.Errorf("fixture mapName is required")
 	}
@@ -1063,7 +1053,7 @@ func applyDebugScenarioFixture(charID int64, f debugFixture, wh *WorldHandler) (
 	if err != nil {
 		return 0, 0, 0, err
 	}
-	if err := resetDebugCharacterState(charID, wh); err != nil {
+	if err := resetDebugCharacterState(ctx, charID, wh); err != nil {
 		return 0, 0, 0, err
 	}
 	if _, err := db.GlobalWorldDB.DB.Exec(
@@ -1071,7 +1061,7 @@ func applyDebugScenarioFixture(charID int64, f debugFixture, wh *WorldHandler) (
 		mapID, x, y, charID); err != nil {
 		return 0, 0, 0, fmt.Errorf("set debug fixture position: %w", err)
 	}
-	if err := seedDebugFlags(charID, f.Flags, wh); err != nil {
+	if err := seedDebugFlags(ctx, charID, f.Flags, wh); err != nil {
 		return 0, 0, 0, err
 	}
 	for _, pokemon := range f.Party {
@@ -1100,7 +1090,7 @@ func applyDebugScenarioFixture(charID int64, f debugFixture, wh *WorldHandler) (
 		if quantity <= 0 {
 			quantity = 1
 		}
-		if _, err := cqitems.AddItemToInventory(int32(charID), int32(itemID), uint16(quantity)); err != nil {
+		if _, err := cqitems.NewStore(db.GlobalWorldDB.DB).AddItemToInventory(int32(charID), int32(itemID), uint16(quantity)); err != nil {
 			return 0, 0, 0, fmt.Errorf("seed item %d x%d: %w", itemID, quantity, err)
 		}
 	}
@@ -1199,46 +1189,43 @@ func seedDebugSafariSession(charID int64, fixture *debugSafariFixture, wh *World
 		if !fixture.Active {
 			return fmt.Errorf("safari battle fixture requires active safari session")
 		}
-		wild, err := pokebattle.BuildWildPokemon(db.GlobalWorldDB.DB, fixture.Battle.PokemonID, fixture.Battle.Level)
+		wild, err := pokebattle.BuildWildPokemon(wh.Safari.database, fixture.Battle.PokemonID, fixture.Battle.Level)
 		if err != nil {
 			return fmt.Errorf("build safari battle pokemon #%d L%d: %w", fixture.Battle.PokemonID, fixture.Battle.Level, err)
 		}
 		session.Battle = pokebattle.NewSafariBattle(wild, fixture.BallsLeft, fixture.StepsLeft)
 	}
-	wh.Safari.SetSession(charID, session)
-	return nil
+	return wh.Safari.SetSession(context.Background(), charID, session)
 }
 
 func sendDebugSafariState(ses *session.Session, charID int64, wh *WorldHandler, mapID int) {
 	if wh == nil || wh.Safari == nil {
 		return
 	}
-	session := wh.Safari.GetSession(charID)
+	session, err := wh.Safari.GetSession(ses.CommandContext(), charID)
+	if err != nil {
+		safariStorageError(ses, charID, err, opcodes.SafariZoneEnterResponse)
+		return
+	}
 	if session == nil || !session.Active {
 		if IsInSafariZone(mapID) {
 			ses.SendStreamJSON(map[string]interface{}{
-				"success": false,
+				"success": false, "characterId": charID, "refresh": true,
 				"message": "no active safari session",
 			}, opcodes.SafariZoneEnterResponse)
 		}
 		return
 	}
 
-	ses.SendStreamJSON(map[string]interface{}{
-		"success":   true,
-		"ballsLeft": session.BallsLeft,
-		"stepsLeft": session.StepsLeft,
-	}, opcodes.SafariZoneEnterResponse)
-	ses.SendStreamJSON(map[string]interface{}{
-		"stepsLeft": session.StepsLeft,
-		"ballsLeft": session.BallsLeft,
-	}, opcodes.SafariZoneStepUpdate)
+	sendSafariVisitState(ses, charID, session, opcodes.SafariZoneEnterResponse)
+	sendSafariVisitState(ses, charID, session, opcodes.SafariZoneStepUpdate)
 
 	if session.Battle == nil || session.Battle.IsOver() {
 		return
 	}
 	wild := session.Battle.WildPokemon
 	ses.SendStreamJSON(map[string]interface{}{
+		"battleId": session.Battle.BattleID, "revision": session.Battle.Revision,
 		"pokemon": map[string]interface{}{
 			"id":        wild.ID,
 			"name":      wild.Name,
@@ -1253,7 +1240,7 @@ func sendDebugSafariState(ses *session.Session, charID int64, wh *WorldHandler, 
 	}, opcodes.SafariBattleStartNotify)
 }
 
-func sendDebugActiveBattle(ses *session.Session, charID int64, fixture *debugFixtureActiveBattle) error {
+func sendDebugActiveBattle(ses *session.Session, wh *WorldHandler, charID int64, fixture *debugFixtureActiveBattle) error {
 	if fixture == nil {
 		return nil
 	}
@@ -1269,7 +1256,7 @@ func sendDebugActiveBattle(ses *session.Session, charID int64, fixture *debugFix
 		if fixture.PokemonID <= 0 || fixture.Level <= 0 {
 			return fmt.Errorf("activeBattle wild fixture requires pokemonId and level")
 		}
-		battle, events, err = StartScriptedWildBattle(charID, ScriptedWildBattleSpec{
+		battle, events, err = StartScriptedWildBattle(ses.CommandContext(), wh.database, charID, ScriptedWildBattleSpec{
 			PokemonID:       fixture.PokemonID,
 			Level:           fixture.Level,
 			WinFlag:         fixture.WinFlag,
@@ -1282,7 +1269,7 @@ func sendDebugActiveBattle(ses *session.Session, charID int64, fixture *debugFix
 		if fixture.TrainerClass == "" || fixture.PartyIndex <= 0 {
 			return fmt.Errorf("activeBattle trainer fixture requires trainerClass and partyIndex")
 		}
-		battle, events, err = StartScriptedTrainerBattle(charID, ScriptedTrainerBattleSpec{
+		battle, events, err = StartScriptedTrainerBattle(ses.CommandContext(), wh.database, charID, ScriptedTrainerBattleSpec{
 			TrainerClass:     fixture.TrainerClass,
 			PartyIndex:       fixture.PartyIndex,
 			TrainerName:      fixture.TrainerName,
@@ -1312,8 +1299,8 @@ func sendDebugActiveBattle(ses *session.Session, charID int64, fixture *debugFix
 	return nil
 }
 
-func resetDebugCharacterToFreshStart(charID int64, wh *WorldHandler) (int, int, int, error) {
-	if err := resetDebugCharacterState(charID, wh); err != nil {
+func resetDebugCharacterToFreshStart(ctx context.Context, charID int64, wh *WorldHandler) (int, int, int, error) {
+	if err := resetDebugCharacterState(ctx, charID, wh); err != nil {
 		return 0, 0, 0, err
 	}
 
@@ -1360,14 +1347,16 @@ func resetDebugCharacterToFreshStart(charID int64, wh *WorldHandler) (int, int, 
 	return storedMapID, x, y, nil
 }
 
-func resetDebugCharacterState(charID int64, wh *WorldHandler) error {
+func resetDebugCharacterState(ctx context.Context, charID int64, wh *WorldHandler) error {
 	ClearBattleForCharacter(charID)
 	if wh != nil && wh.Safari != nil {
-		wh.Safari.EndSession(charID)
+		if err := wh.Safari.EndSession(context.Background(), charID); err != nil {
+			return err
+		}
 	}
 	if wh != nil && wh.EventFlags != nil {
 		for _, flag := range wh.EventFlags.GetAllFlags(charID) {
-			if err := wh.EventFlags.ResetFlag(charID, flag); err != nil {
+			if err := wh.EventFlags.ResetFlag(ctx, charID, flag); err != nil {
 				return fmt.Errorf("reset debug flag %s: %w", flag, err)
 			}
 		}
@@ -1379,6 +1368,8 @@ func resetDebugCharacterState(charID int64, wh *WorldHandler) error {
 		`DELETE FROM character_pokemon WHERE character_id = $1`,
 		`DELETE FROM character_pc_state WHERE character_id = $1`,
 		`DELETE FROM character_field_move_state WHERE character_id = $1`,
+		`DELETE FROM character_repels WHERE character_id = $1`,
+		`DELETE FROM character_safari_state WHERE character_id = $1`,
 		`DELETE FROM character_object_positions WHERE character_id = $1`,
 		`DELETE FROM character_object_visibility_overrides WHERE character_id = $1`,
 		`DELETE FROM character_collected_items WHERE character_id = $1`,
@@ -1390,6 +1381,7 @@ func resetDebugCharacterState(charID int64, wh *WorldHandler) error {
 		`DELETE FROM cq_item_instances WHERE id IN (SELECT item_instance_id FROM cq_character_inventory WHERE character_id = $1)`,
 		`DELETE FROM cq_character_inventory WHERE character_id = $1`,
 		`DELETE FROM character_battle_state WHERE character_id = $1`,
+		`DELETE FROM character_movement_routes WHERE character_id = $1`,
 	}
 	for _, stmt := range statements {
 		if _, err := db.GlobalWorldDB.DB.Exec(stmt, charID); err != nil {
@@ -1399,12 +1391,12 @@ func resetDebugCharacterState(charID int64, wh *WorldHandler) error {
 	return nil
 }
 
-func seedDebugFlags(charID int64, flags []string, wh *WorldHandler) error {
+func seedDebugFlags(ctx context.Context, charID int64, flags []string, wh *WorldHandler) error {
 	if len(flags) == 0 {
 		return nil
 	}
 	if wh != nil && wh.EventFlags != nil {
-		return wh.EventFlags.SetFlagBatch(charID, flags)
+		return wh.EventFlags.SetFlagBatch(ctx, charID, flags)
 	}
 	for _, flag := range flags {
 		if _, err := db.GlobalWorldDB.DB.Exec(

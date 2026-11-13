@@ -1,6 +1,14 @@
+import type { GameCornerSlotResultResponse } from "@/net/generated/world_api";
 import React, { useEffect, useRef, useCallback, useState } from "react";
 import styled, { keyframes, css } from "styled-components";
 import useSlotMachineStore from "@/stores/SlotMachineStore";
+import useCQInventoryStore from "@/stores/CQInventoryStore";
+import { playSlotCommand } from "@/phaser-game/services/GameCornerCommandService";
+import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
+import useGameScreenStore from "@/stores/GameScreenStore";
+import { WorldSocket } from "@/net";
+import { refreshSlotCoinBalance } from "@/phaser-game/services/CoinBalanceService";
+import { watchInteractionPosition } from "@/phaser-game/services/InventoryCommandService";
 import {
   WHEELS,
   WHEEL_SIZE,
@@ -9,16 +17,19 @@ import {
   PAYOUT_TABLE,
   SlotSymbol,
 } from "@/game/SlotMachineEngine";
-import {
-  playSlotMachine,
-  requestCoinBalance,
-} from "@/phaser-game/services/PhaserNetworkService";
 import useChatStore, { MessageType } from "@/stores/ChatStore";
 import { GameFrameOverlay } from "@/components/Interface/GameFrameOverlay";
 
 const SPIN_INTERVAL_MS = 60;
 const NUM_CHASE_LIGHTS = 24;
 const NUM_WIN_PARTICLES = 30;
+
+// Auto block margins center a fitting cabinet and collapse to zero when it
+// overflows. The bounded overlay is the only vertical scroll owner, so its
+// heading and balance can never be centered above the reachable scroll area.
+const SlotOverlay = styled(GameFrameOverlay)`
+  align-items: flex-start;
+`;
 
 // --- Chase lights around the cabinet border ---
 const chaseAnim = keyframes`
@@ -170,7 +181,7 @@ const WinBanner = styled.div`
     100% { transform: translate(-50%, -50%) scale(1) rotate(0deg); opacity: 1; }
   `} 0.5s ease-out;
 
-  @media (max-width: 600px), (pointer: coarse) {
+  @media (max-width: 600px), (pointer: coarse), (max-height: 800px) {
     width: calc(100% - 24px);
     font-size: 28px;
     text-align: center;
@@ -187,6 +198,9 @@ const sparkle = keyframes`
 const Cabinet = styled.div<{ $winning: boolean }>`
   width: 840px;
   max-width: 100%;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  margin-block: auto;
   background: linear-gradient(180deg, #c41e3a 0%, #8b0000 100%);
   border: 6px solid #ffd700;
   border-radius: 20px;
@@ -199,15 +213,13 @@ const Cabinet = styled.div<{ $winning: boolean }>`
 
   @media (max-width: 850px), (pointer: coarse), (max-height: 700px) {
     width: 100%;
-    max-height: calc(var(--cq-viewport-height, 100dvh) - 24px);
     border-width: 4px;
     border-radius: 14px;
-    overflow-x: hidden;
-    overflow-y: auto;
   }
 `;
 
-const Header = styled.div<{ $winning: boolean }>`
+const Header = styled.h2<{ $winning: boolean }>`
+  margin: 0;
   background: linear-gradient(180deg, #ffd700 0%, #daa520 100%);
   border-bottom: 4px solid #8b6914;
   padding: 16px 32px;
@@ -221,7 +233,7 @@ const Header = styled.div<{ $winning: boolean }>`
     ? css`animation: ${sparkle} 1s ease-in-out infinite;`
     : css`text-shadow: 2px 2px 0 rgba(255, 255, 255, 0.4);`}
 
-  @media (max-width: 600px), (pointer: coarse) {
+  @media (max-width: 600px), (pointer: coarse), (max-height: 800px) {
     padding: 13px 54px 13px 16px;
     font-size: 24px;
     letter-spacing: 2px;
@@ -237,7 +249,7 @@ const CoinDisplay = styled.div`
   color: #ffd700;
   font-weight: bold;
 
-  @media (max-width: 600px), (pointer: coarse) {
+  @media (max-width: 600px), (pointer: coarse), (max-height: 800px) {
     gap: 8px;
     padding: 10px 12px;
     font-size: 15px;
@@ -252,7 +264,7 @@ const CoinBox = styled.div`
   min-width: 160px;
   text-align: center;
 
-  @media (max-width: 600px), (pointer: coarse) {
+  @media (max-width: 600px), (pointer: coarse), (max-height: 800px) {
     min-width: 0;
     flex: 1;
     padding: 7px 6px;
@@ -276,7 +288,7 @@ const ReelWindow = styled.div<{ $winning: boolean }>`
   position: relative;
   ${(p) => p.$winning && css`animation: ${reelGlow} 0.6s ease-in-out infinite;`}
 
-  @media (max-width: 600px), (pointer: coarse) {
+  @media (max-width: 600px), (pointer: coarse), (max-height: 800px) {
     gap: 4px;
     margin: 0 10px;
     padding: 10px 9px 10px 24px;
@@ -295,7 +307,7 @@ const ReelColumn = styled.div<{ $stopped: boolean }>`
     opacity: ${(p) => (p.$stopped ? 1 : 0.85)};
   }
 
-  @media (max-width: 600px), (pointer: coarse) {
+  @media (max-width: 600px), (pointer: coarse), (max-height: 800px) {
     width: auto;
     min-width: 0;
     flex: 1;
@@ -324,7 +336,7 @@ const SymbolCell = styled.div<{ $highlight: boolean; $isMiddle: boolean }>`
       animation: ${flash} 0.5s ease-in-out infinite;
     `}
 
-  @media (max-width: 600px), (pointer: coarse) {
+  @media (max-width: 600px), (pointer: coarse), (max-height: 800px) {
     width: 100%;
     height: 72px;
     box-sizing: border-box;
@@ -358,7 +370,7 @@ const Controls = styled.div`
   gap: 16px;
   padding: 20px 32px;
 
-  @media (max-width: 600px), (pointer: coarse) {
+  @media (max-width: 600px), (pointer: coarse), (max-height: 800px) {
     flex-wrap: wrap;
     gap: 9px;
     padding: 12px;
@@ -400,7 +412,7 @@ const Button = styled.button<{ $variant?: string }>`
     animation: none;
   }
 
-  @media (max-width: 600px), (pointer: coarse) {
+  @media (max-width: 600px), (pointer: coarse), (max-height: 800px) {
     min-width: 0;
     flex: 1;
     padding: 11px 9px;
@@ -418,7 +430,7 @@ const BetSelector = styled.div`
   font-size: 24px;
   font-weight: bold;
 
-  @media (max-width: 600px), (pointer: coarse) {
+  @media (max-width: 600px), (pointer: coarse), (max-height: 800px) {
     gap: 7px;
     padding: 0 12px 6px;
     font-size: 17px;
@@ -440,7 +452,7 @@ const BetButton = styled.button<{ $active: boolean }>`
     border-color: #ffd700;
   }
 
-  @media (max-width: 600px), (pointer: coarse) {
+  @media (max-width: 600px), (pointer: coarse), (max-height: 800px) {
     width: 52px;
     height: 42px;
     font-size: 18px;
@@ -455,7 +467,7 @@ const PayoutTable = styled.div`
   font-size: 20px;
   color: #ddd;
 
-  @media (max-width: 600px), (pointer: coarse) {
+  @media (max-width: 600px), (pointer: coarse), (max-height: 800px) {
     grid-template-columns: 1fr;
     padding: 8px 12px 14px;
     font-size: 15px;
@@ -485,7 +497,7 @@ const MessageBar = styled.div<{ $winning: boolean }>`
     text-shadow: 0 0 10px #ffd700;
   `}
 
-  @media (max-width: 600px), (pointer: coarse) {
+  @media (max-width: 600px), (pointer: coarse), (max-height: 800px) {
     min-height: 24px;
     margin: 7px 10px;
     padding: 8px;
@@ -517,7 +529,7 @@ const CloseButton = styled.button`
   }
   transition: all 0.15s;
 
-  @media (max-width: 600px), (pointer: coarse) {
+  @media (max-width: 600px), (pointer: coarse), (max-height: 800px) {
     top: 7px;
     right: 7px;
     width: 40px;
@@ -526,30 +538,14 @@ const CloseButton = styled.button`
   }
 `;
 
-// Server response shape from GameCornerSlotResultResponse
-interface SlotResultEvent {
-  detail: {
-    success: boolean;
-    reelPositions?: number[];
-    payout?: number;
-    matchLine?: string;
-    coins?: number;
-    bet?: number;
-    error?: string;
-  };
-}
-
-// Server response shape from GameCornerCoinBalanceResponse
-interface CoinBalanceEvent {
-  detail: {
-    coins: number;
-  };
-}
-
 const SlotMachine: React.FC = () => {
+  const inventoryPending = useCQInventoryStore(state => state.inventoryCommandPending);
   const {
     isOpen,
     coins,
+    coinsReady,
+    coinsLoading,
+    openVersion,
     bet,
     isSpinning,
     reelPositions,
@@ -562,8 +558,9 @@ const SlotMachine: React.FC = () => {
     isLuckyMachine,
   } = useSlotMachineStore();
 
+  const coinReadRef = useRef<AbortController | null>(null);
   const spinTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const serverResultRef = useRef<SlotResultEvent["detail"] | null>(null);
+  const serverResultRef = useRef<GameCornerSlotResultResponse | null>(null);
   const cabinetRef = useRef<HTMLDivElement>(null);
   const [leverPulling, setLeverPulling] = useState(false);
   const [showWinCelebration, setShowWinCelebration] = useState(false);
@@ -588,73 +585,52 @@ const SlotMachine: React.FC = () => {
     return cleanup;
   }, [cleanup]);
 
-  // Request coin balance when opening
+  // A cabinet belongs to one character, scene, transport and source position.
+  // Retire the read and view together; an old balance cannot reach a reopened UI.
   useEffect(() => {
-    if (isOpen) {
-      requestCoinBalance();
-    }
-  }, [isOpen]);
-
-  // Listen for server coin balance responses
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const evt = e as unknown as CoinBalanceEvent;
-      if (evt.detail?.coins !== undefined) {
-        useSlotMachineStore.getState().setCoins(evt.detail.coins);
-      }
-    };
-    window.addEventListener("gameCornerCoinBalance", handler);
-    return () => window.removeEventListener("gameCornerCoinBalance", handler);
-  }, []);
-
-  // Listen for server slot result responses
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const evt = e as unknown as SlotResultEvent;
-      const data = evt.detail;
-      if (!data) return;
-
-      const store = useSlotMachineStore.getState();
-
-      if (!data.success) {
-        // Error (e.g. not enough coins)
-        useChatStore.getState().addMessage(data.error || "Error!", MessageType.SYSTEM);
-        store.setMessage("");
-        store.setIsSpinning(false);
-        if (data.coins !== undefined) store.setCoins(data.coins);
-        cleanup();
-        return;
-      }
-
-      // Store the server result — the animation loop will use it
-      serverResultRef.current = data;
-
-      // Update coins immediately (server already deducted the bet)
-      if (data.coins !== undefined) {
-        // The server returns final coins (after payout), but during animation
-        // we show the pre-payout amount. We'll update to final after animation.
-        const prePayoutCoins = data.coins - (data.payout || 0);
-        store.setCoins(prePayoutCoins >= 0 ? prePayoutCoins : 0);
-      }
-    };
-    window.addEventListener("gameCornerSlotResult", handler);
-    return () => window.removeEventListener("gameCornerSlotResult", handler);
-  }, [cleanup]);
+    setShowWinCelebration(false);
+    setLeverPulling(false);
+    if (winTimerRef.current) clearTimeout(winTimerRef.current);
+    if (!isOpen) return;
+    const controller = new AbortController();
+    coinReadRef.current = controller;
+    const characterId = usePlayerCharacterStore.getState().characterProfile.id;
+    const retire = () => { controller.abort(); useSlotMachineStore.getState().closeSlotMachine(); };
+    const stops = [
+      watchInteractionPosition(retire),
+      WorldSocket.subscribeSessionRetirement(retire),
+      usePlayerCharacterStore.subscribe(state => { if (state.characterProfile.id !== characterId) retire(); }),
+      useGameScreenStore.subscribe(state => { if (state.currentScreen !== "game") retire(); }),
+    ];
+    void refreshSlotCoinBalance(controller.signal);
+    return () => { controller.abort(); stops.forEach(stop => stop()); if (coinReadRef.current === controller) coinReadRef.current = null; };
+  }, [isOpen, openVersion]);
 
   // Spin animation loop — reels spin until server result arrives, then stop sequentially
   useEffect(() => {
-    if (!isSpinning) {
+    if (!isOpen || !isSpinning) {
+      serverResultRef.current = null;
       cleanup();
       return;
     }
 
     if (!spinTimerRef.current) {
-      serverResultRef.current = null;
+      const view = openVersion;
+      const characterId = usePlayerCharacterStore.getState().characterProfile.id;
+      const transport = WorldSocket.sessionGeneration;
       let ticksSinceResult = 0;
       const TICKS_BETWEEN_STOPS = 8; // frames between each reel stopping
 
       spinTimerRef.current = setInterval(() => {
         const store = useSlotMachineStore.getState();
+        if (!store.isOpen || !store.isSpinning || store.openVersion !== view
+            || WorldSocket.sessionGeneration !== transport
+            || useGameScreenStore.getState().currentScreen !== "game"
+            || usePlayerCharacterStore.getState().characterProfile.id !== characterId) {
+          cleanup();
+          serverResultRef.current = null;
+          return;
+        }
         const pos = [...store.reelPositions] as [number, number, number];
         const stopped = [...store.reelStopped] as [boolean, boolean, boolean];
         const result = serverResultRef.current;
@@ -701,7 +677,7 @@ const SlotMachine: React.FC = () => {
             const payout = result.payout || 0;
             store.setPayout(payout);
             store.setMatchLine(result.matchLine || "");
-            if (result.coins !== undefined) store.setCoins(result.coins);
+            store.setCoins(useCQInventoryStore.getState().coins);
 
             const chat = useChatStore.getState();
             if (payout > 0) {
@@ -721,15 +697,24 @@ const SlotMachine: React.FC = () => {
         }
       }, SPIN_INTERVAL_MS);
     }
-  }, [isSpinning, cleanup]);
+    return cleanup;
+  }, [isOpen, openVersion, isSpinning, cleanup]);
 
   const handleSpin = useCallback(() => {
-    if (isSpinning) return;
+    if (isSpinning || useCQInventoryStore.getState().inventoryCommandPending) return;
     const store = useSlotMachineStore.getState();
+    if (!store.coinsReady) {
+      if (coinReadRef.current) void refreshSlotCoinBalance(coinReadRef.current.signal);
+      return;
+    }
     if (store.coins < store.bet) {
       useChatStore.getState().addMessage("Not enough coins!", MessageType.SYSTEM);
       return;
     }
+    if (store.machineX === null || store.machineY === null) return;
+    // Clear the last receipt before admission; an immediate reply must not be
+    // erased when React starts the animation effect.
+    serverResultRef.current = null;
     // Start local animation
     setShowWinCelebration(false);
     setLeverPulling(true);
@@ -739,8 +724,12 @@ const SlotMachine: React.FC = () => {
     store.setPayout(0);
     store.setMatchLine("");
     store.setMessage("Spinning...");
-    // Send request to server — result will arrive via event listener
-    playSlotMachine(store.bet, store.isLuckyMachine);
+    // The shared resource owner waits for a correlated receipt and current
+    // balances. Only this still-open cabinet may animate the frozen outcome.
+    void playSlotCommand(store.bet, store.machineX, store.machineY, result => {
+      useSlotMachineStore.getState().setIsLuckyMachine(result.isLucky);
+      serverResultRef.current = result;
+    });
   }, [isSpinning]);
 
   const handleClose = useCallback(() => {
@@ -828,7 +817,7 @@ const SlotMachine: React.FC = () => {
   }));
 
   return (
-    <GameFrameOverlay
+    <SlotOverlay
       $tint="rgba(0, 0, 0, 0.6)"
       $zIndex={5000}
       data-testid="slot-machine-overlay"
@@ -876,7 +865,7 @@ const SlotMachine: React.FC = () => {
         </Header>
 
         <CoinDisplay>
-          <CoinBox data-testid="slot-machine-coins">COINS: {coins}</CoinBox>
+          <CoinBox data-testid="slot-machine-coins">COINS: {coinsReady ? coins : "—"}</CoinBox>
           <CoinBox data-testid="slot-machine-payout">PAYOUT: {payout}</CoinBox>
         </CoinDisplay>
 
@@ -931,9 +920,9 @@ const SlotMachine: React.FC = () => {
             data-testid="slot-machine-spin"
             $variant="spin"
             onClick={handleSpin}
-            disabled={isSpinning || coins < bet}
+            disabled={isSpinning || inventoryPending || coinsLoading || (coinsReady && coins < bet)}
           >
-            {isSpinning ? "SPINNING..." : `SPIN (${bet} coin${bet > 1 ? "s" : ""})`}
+            {isSpinning ? "SPINNING..." : coinsLoading ? "LOADING..." : !coinsReady ? "RETRY" : `SPIN (${bet} coin${bet > 1 ? "s" : ""})`}
           </Button>
           <Button
             data-testid="slot-machine-quit"
@@ -958,7 +947,7 @@ const SlotMachine: React.FC = () => {
           })}
         </PayoutTable>
       </Cabinet>
-    </GameFrameOverlay>
+    </SlotOverlay>
   );
 };
 

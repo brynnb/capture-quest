@@ -1,6 +1,8 @@
 package main
 
 import (
+	"capturequest/internal/phaserdata"
+	"capturequest/internal/testdb"
 	"database/sql"
 	"os"
 	"path/filepath"
@@ -158,12 +160,40 @@ func TestBlocksetTilesetIDRemapsSharedGraphicsTilesets(t *testing.T) {
 	}{
 		{tilesetID: 2, want: 6},
 		{tilesetID: 5, want: 7},
+		{tilesetID: 4, want: 1},
+		{tilesetID: 9, want: 12},
+		{tilesetID: 10, want: 12},
 		{tilesetID: 21, want: 21},
 	}
 
 	for _, tt := range tests {
-		if got := blocksetTilesetID(tt.tilesetID); got != tt.want {
+		if got := phaserdata.BlocksetTilesetID(tt.tilesetID); got != tt.want {
 			t.Fatalf("blocksetTilesetID(%d) = %d, want %d", tt.tilesetID, got, tt.want)
 		}
+	}
+}
+
+func TestImportedAliasImageRetainsNativeFootMetadata(t *testing.T) {
+	source, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	if _, err = source.Exec(`CREATE TABLE blocksets(tileset_id INTEGER,block_index INTEGER,block_data BLOB); CREATE TABLE tile_images(id INTEGER,image_path TEXT,tileset_id INTEGER,block_index INTEGER,position INTEGER); INSERT INTO tile_images VALUES(77,'tile_76.png',5,49,0)`); err != nil {
+		t.Fatal(err)
+	}
+	data := make([]byte, 16)
+	data[4] = 23
+	if _, err = source.Exec(`INSERT INTO blocksets VALUES(7,49,?)`, data); err != nil {
+		t.Fatal(err)
+	}
+	database := testdb.Postgres(t)
+	metadata, err := importTileImagesPostgres(source, database)
+	if err != nil || !metadata[77].RawFootTileID.Valid || metadata[77].RawFootTileID.Int64 != 23 {
+		t.Fatalf("alias metadata import: %+v %v", metadata, err)
+	}
+	var tileset, foot int
+	if err := database.QueryRow(`SELECT tileset_id,raw_foot_tile_id FROM phaser_tile_images WHERE id=77`).Scan(&tileset, &foot); err != nil || tileset != 5 || foot != 23 {
+		t.Fatalf("original image identity/source metadata lost: %d %d %v", tileset, foot, err)
 	}
 }

@@ -1,0 +1,44 @@
+{
+  "name": "active_battle_fixture_blackout_recovery",
+  "description": "Reply-loss acceptance fixture: a level-one Magikarp faces the extracted Bruno party, with a blackout destination in a different map.",
+  "fixture": {
+    "characterName": "ScriptSimBlackoutRecovery",
+    "mapName": "PEWTER_GYM",
+    "x": 4,
+    "y": 2,
+    "direction": "UP",
+    "flags": [],
+    "inventory": [],
+    "money": 999,
+    "party": [
+      {
+        "speciesId": 129,
+        "level": 1,
+        "moves": [
+          "SPLASH"
+        ]
+      }
+    ],
+    "activeBattle": {
+      "type": "trainer",
+      "trainerClass": "BRUNO",
+      "partyIndex": 1,
+      "trainerName": "BRUNO"
+    }
+  },
+  "trigger": {
+    "type": "active_battle_state"
+  },
+  "expect": {
+    "scriptLabel": "ActiveBattleState",
+    "activeBattleType": "trainer",
+    "activeBattleTrainerClass": "BRUNO",
+    "activeBattleEnemySpecies": [
+      95,
+      107,
+      106,
+      95,
+      68
+    ]
+  }
+}

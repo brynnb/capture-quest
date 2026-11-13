@@ -3,8 +3,10 @@ package world
 import (
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
+	"capturequest/internal/logutil"
 	"capturequest/internal/session"
 	"container/heap"
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -12,15 +14,6 @@ import (
 	"sync"
 	"time"
 )
-
-// ActorPathState tracks an actor that is being A*-pathed to a destination.
-type ActorPathState struct {
-	Actor        *PhaserActor
-	Path         []PathNode
-	LastMoveTime time.Time
-	MoveSpeed    time.Duration
-	OnComplete   func() // optional callback when path finishes
-}
 
 const (
 	collisionBlocked = 0
@@ -38,16 +31,15 @@ type tilePosition struct {
 }
 
 type PhaserActorManager struct {
-	wh              *WorldHandler
-	walkingActors   map[int]*PhaserActor
-	actorPaths      map[int]*ActorPathState // actorID -> pathed movement state
-	collisionMap    map[int]map[string]int  // mapID -> "x,y" -> collisionType
-	rawFootTileMap  map[int]map[string]int  // mapID -> "x,y" -> original 8x8 feet tile ID
-	overworldMapIds map[int]bool            // Set of map IDs that are part of the overworld
-	mu              sync.RWMutex
-	movementTicker  *time.Ticker
-	stopChan        chan struct{}
-	nextActionTimes map[int]time.Time
+	wh                *WorldHandler
+	walkingActors     map[int]*PhaserActor
+	collisionMap      map[int]map[string]int // mapID -> "x,y" -> collisionType
+	rawFootTileMap    map[int]map[string]int // mapID -> "x,y" -> original 8x8 feet tile ID
+	overworldMapIds   map[int]bool           // Set of map IDs that are part of the overworld
+	collisionRevision uint64                 // Invalidates pending base-cache publications.
+	mu                sync.RWMutex
+	worker            periodicWorker
+	nextActionTimes   map[int]time.Time
 }
 
 // NewPhaserActorManager creates and initializes the actor manager
@@ -55,44 +47,45 @@ func NewPhaserActorManager(wh *WorldHandler) *PhaserActorManager {
 	mgr := &PhaserActorManager{
 		wh:              wh,
 		walkingActors:   make(map[int]*PhaserActor),
-		actorPaths:      make(map[int]*ActorPathState),
 		collisionMap:    make(map[int]map[string]int),
 		rawFootTileMap:  make(map[int]map[string]int),
 		overworldMapIds: make(map[int]bool),
-		stopChan:        make(chan struct{}),
 		nextActionTimes: make(map[int]time.Time),
 	}
 	return mgr
 }
 
 // Start begins the actor simulation
-func (m *PhaserActorManager) Start() {
-	m.loadOverworldMapIds()
-	m.loadWalkingActors()
-
-	// Start movement ticker (staggered - check every 250ms)
-	m.movementTicker = time.NewTicker(250 * time.Millisecond)
-	go func() {
-		for {
-			select {
-			case <-m.movementTicker.C:
-				m.simulateMovement()
-			case <-m.stopChan:
-				return
-			}
-		}
-	}()
-
-	log.Printf("[PhaserActorManager] Started simulation for %d actors", len(m.walkingActors))
-}
-
-// Stop stops the actor simulation
-func (m *PhaserActorManager) Stop() {
-	if m.movementTicker != nil {
-		m.movementTicker.Stop()
+func (m *PhaserActorManager) Load(ctx context.Context) error {
+	if m.wh == nil || m.wh.database == nil {
+		return fmt.Errorf("actor preload database unavailable")
 	}
-	close(m.stopChan)
+	staged := NewPhaserActorManager(m.wh)
+	if err := staged.loadOverworldMapIds(ctx); err != nil {
+		return err
+	}
+	if err := staged.loadWalkingActors(ctx); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	m.overworldMapIds, m.walkingActors = staged.overworldMapIds, staged.walkingActors
+	m.collisionRevision++
+	m.collisionMap, m.rawFootTileMap = staged.collisionMap, staged.rawFootTileMap
+	m.nextActionTimes = staged.nextActionTimes
+	m.mu.Unlock()
+	log.Printf("[PhaserActorManager] Loaded simulation for %d actors", len(staged.walkingActors))
+	return nil
 }
+
+func (m *PhaserActorManager) Start() {
+	m.worker.start(250*time.Millisecond, nil, m.simulateMovement)
+}
+
+// Stop waits for the actor simulation and its current callback to finish.
+func (m *PhaserActorManager) Stop() { m.worker.stop() }
 
 // IsOverworld returns true if the map ID is part of the overworld
 func (m *PhaserActorManager) IsOverworld(mapID int) bool {
@@ -125,19 +118,35 @@ func (m *PhaserActorManager) shouldSendActorToSessionMap(actor *PhaserActor, ses
 	return isOverworldActor && actor.ObjectType == "npc"
 }
 
+// Direct command callers own ses; cross-session broadcasts use Presence instead.
 func (m *PhaserActorManager) actorForSession(actor *PhaserActor, ses *session.Session) (PhaserActor, bool) {
-	if actor == nil || ses == nil || !m.shouldSendActorToSessionMap(actor, ses.MapID) {
+	if ses == nil || actor == nil || !m.shouldSendActorToSessionMap(actor, ses.MapID) {
 		return PhaserActor{}, false
 	}
-
 	if !eventVisibilityAppliesToActor(actor) {
 		return *actor, true
 	}
-	if !ses.HasValidClient() {
+	if !ses.HasValidClient() || m.wh == nil || m.wh.database == nil {
 		return PhaserActor{}, false
 	}
+	result, visible, err := m.actorForCharacterContext(ses.CommandContext(), m.wh.database, *actor, int64(ses.Client.CharData().ID))
+	if err != nil {
+		return PhaserActor{}, false
+	}
+	return result, visible
+}
 
-	return m.actorForCharacter(*actor, int64(ses.Client.CharData().ID))
+func (m *PhaserActorManager) actorForPresence(actor *PhaserActor, p session.Presence) (PhaserActor, bool) {
+	if actor == nil || !m.shouldSendActorToSessionMap(actor, p.MapID) {
+		return PhaserActor{}, false
+	}
+	if !eventVisibilityAppliesToActor(actor) {
+		return *actor, true
+	}
+	if p.CharacterID == 0 {
+		return PhaserActor{}, false
+	}
+	return m.actorForCharacter(*actor, int64(p.CharacterID))
 }
 
 func eventVisibilityAppliesToActor(actor *PhaserActor) bool {
@@ -148,23 +157,42 @@ func eventVisibilityAppliesToActor(actor *PhaserActor) bool {
 }
 
 func (m *PhaserActorManager) actorForCharacter(actor PhaserActor, charID int64) (PhaserActor, bool) {
-	if eventVisibilityAppliesToActor(&actor) {
-		var efm *EventFlagManager
-		if m != nil && m.wh != nil {
-			efm = m.wh.EventFlags
-		}
-		visibleActors := ApplyEventObjectVisibilityToActors(charID, actor.MapID, efm, []PhaserActor{actor})
-		if len(visibleActors) == 0 {
-			return PhaserActor{}, false
-		}
-		actor = visibleActors[0]
-	}
-
-	actors := ApplyCharacterObjectPositions(charID, []PhaserActor{actor})
-	if len(actors) == 0 {
+	if m == nil || m.wh == nil || m.wh.database == nil {
 		return PhaserActor{}, false
 	}
-	return actors[0], true
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	result, visible, err := m.actorForCharacterContext(ctx, m.wh.database, actor, charID)
+	if err != nil {
+		logutil.Debugf("[Actors] Viewer %d projection for actor %d: %v", charID, actor.ID, err)
+		return PhaserActor{}, false
+	}
+	return result, visible
+}
+
+func (m *PhaserActorManager) actorForCharacterContext(ctx context.Context, database db.ContextDBTX, actor PhaserActor, charID int64) (PhaserActor, bool, error) {
+	if eventVisibilityAppliesToActor(&actor) {
+		var flags *EventFlagManager
+		if m.wh != nil {
+			flags = m.wh.EventFlags
+		}
+		visible, err := applyEventObjectVisibilityContext(ctx, database, charID, actor.MapID, flags, []PhaserActor{actor})
+		if err != nil {
+			return PhaserActor{}, false, err
+		}
+		if len(visible) == 0 {
+			return PhaserActor{}, false, nil
+		}
+		actor = visible[0]
+	}
+	actors, err := applyCharacterObjectPositionsContext(ctx, database, charID, []PhaserActor{actor})
+	if err != nil {
+		return PhaserActor{}, false, err
+	}
+	if len(actors) == 0 {
+		return PhaserActor{}, false, nil
+	}
+	return actors[0], true, nil
 }
 
 func cloneIntPtr(v *int) *int {
@@ -239,31 +267,34 @@ func (m *PhaserActorManager) applyRuntimeActorState(actor *PhaserActor) {
 	}
 }
 
-func (m *PhaserActorManager) loadOverworldMapIds() {
+func (m *PhaserActorManager) loadOverworldMapIds(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	rows, err := db.GlobalWorldDB.DB.Query("SELECT id FROM phaser_maps WHERE is_overworld = 1")
+	rows, err := m.wh.database.QueryContext(ctx, "SELECT id FROM phaser_maps WHERE is_overworld = 1")
 	if err != nil {
-		log.Printf("[PhaserActorManager] Error loading overworld map IDs: %v", err)
-		return
+		return fmt.Errorf("[PhaserActorManager] Error loading overworld map IDs: %w", err)
 	}
 	defer rows.Close()
 
 	for rows.Next() {
 		var id int
-		if err := rows.Scan(&id); err == nil {
-			m.overworldMapIds[id] = true
+		if err := rows.Scan(&id); err != nil {
+			return fmt.Errorf("scan overworld map: %w", err)
 		}
+		m.overworldMapIds[id] = true
 	}
-	log.Printf("[PhaserActorManager] Loaded %d overworld map IDs", len(m.overworldMapIds))
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read overworld maps: %w", err)
+	}
+	return nil
 }
 
-func (m *PhaserActorManager) loadWalkingActors() {
+func (m *PhaserActorManager) loadWalkingActors(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	rows, err := db.GlobalWorldDB.DB.Query(`
+	rows, err := m.wh.database.QueryContext(ctx, `
 		SELECT po.id, po.map_id,
 			COALESCE(po.x, po.local_x) as x,
 			COALESCE(po.y, po.local_y) as y,
@@ -273,8 +304,7 @@ func (m *PhaserActorManager) loadWalkingActors() {
 		JOIN phaser_maps pm ON po.map_id = pm.id
 		WHERE po.object_type = 'npc' AND po.sprite_name IS NOT NULL`)
 	if err != nil {
-		log.Printf("[PhaserActorManager] Error loading walking actors: %v", err)
-		return
+		return fmt.Errorf("[PhaserActorManager] Error loading walking actors: %w", err)
 	}
 	defer rows.Close()
 
@@ -283,8 +313,10 @@ func (m *PhaserActorManager) loadWalkingActors() {
 		var n PhaserActor
 		var x, y sql.NullInt64
 		if err := rows.Scan(&n.ID, &n.MapID, &x, &y, &n.ObjectType, &n.SpriteName, &n.Name, &n.ActionType, &n.ActionDirection, &n.MovementType, &n.Text, &n.TrainerClass, &n.TrainerPartyIndex, &n.ItemID); err != nil {
-			log.Printf("[PhaserActorManager] Error scanning actor: %v", err)
-			continue
+			return fmt.Errorf("[PhaserActorManager] Error scanning actor: %w", err)
+		}
+		if !x.Valid || !y.Valid {
+			return fmt.Errorf("actor %d on map %d has no coordinates", n.ID, n.MapID)
 		}
 
 		if x.Valid {
@@ -312,19 +344,26 @@ func (m *PhaserActorManager) loadWalkingActors() {
 		// Initialize next action time with a random offset to stagger them immediately
 		m.nextActionTimes[n.ID] = time.Now().Add(time.Duration(rand.Intn(2000)) * time.Millisecond)
 
-		// Ensure walkable map for this map is loaded
-		if !loadedMaps[n.MapID] {
-			m.ensureWalkableMapLoaded(n.MapID)
-			loadedMaps[n.MapID] = true
-		}
+		loadedMaps[n.MapID] = true
 	}
 
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("read actors: %w", err)
+	}
+	// Exhaust the actor cursor before issuing collision queries, including when
+	// the database pool permits only one active connection.
+	for mapID := range loadedMaps {
+		if err := m.ensureWalkableMapLoadedLockedIn(ctx, m.wh.database, mapID); err != nil {
+			return fmt.Errorf("actor map %d collision: %w", mapID, err)
+		}
+	}
 	if len(loadedMaps) > 0 {
 		log.Printf("[PhaserActorManager] Pre-loaded collision maps for %d maps", len(loadedMaps))
 	}
+	return nil
 }
 
-func (m *PhaserActorManager) ensureWalkableMapLoaded(mapID int) {
+func (m *PhaserActorManager) ensureWalkableMapLoadedLockedIn(ctx context.Context, database db.ContextDBTX, mapID int) error {
 	if m.collisionMap == nil {
 		m.collisionMap = make(map[int]map[string]int)
 	}
@@ -332,38 +371,53 @@ func (m *PhaserActorManager) ensureWalkableMapLoaded(mapID int) {
 		m.rawFootTileMap = make(map[int]map[string]int)
 	}
 	if _, ok := m.collisionMap[mapID]; ok {
-		return
+		return nil
 	}
 
-	m.collisionMap[mapID] = make(map[string]int)
-	m.rawFootTileMap[mapID] = make(map[string]int)
+	collisions, feet, err := loadBaseCollision(ctx, database, mapID, m.overworldMapIds[mapID] || mapID == 0 || mapID == UnifiedOverworldMapID)
+	if err != nil {
+		return err
+	}
+	m.installBaseCollisionLocked(mapID, collisions, feet)
+	return nil
+}
+
+// Bootstrap calls the same row reader on a private staging manager. Runtime
+// readers never hold the shared actor lock during database I/O.
+func loadBaseCollision(ctx context.Context, database db.ContextDBTX, mapID int, overworld bool) (map[string]int, map[string]int, error) {
+	if database == nil {
+		return nil, nil, fmt.Errorf("collision database unavailable")
+	}
+	if pool, ok := database.(*sql.DB); ok && pool == nil {
+		return nil, nil, fmt.Errorf("collision database unavailable")
+	}
+	collisions := make(map[string]int)
+	feet := make(map[string]int)
 
 	var rows *sql.Rows
 	var err error
 
 	// For overworld (map 9999 or any overworld map piece), load ALL overworld tiles
 	// since they're stitched together with global coordinates
-	if m.overworldMapIds[mapID] || mapID == 0 || mapID == UnifiedOverworldMapID {
+	if overworld {
 		// Overworld tiles use global coordinates and have map_id IS NULL.
-		rows, err = db.GlobalWorldDB.DB.Query(`
+		rows, err = database.QueryContext(ctx, `
 				SELECT x, y, collision_type, raw_foot_tile_id
 				FROM phaser_tiles
 				WHERE map_id IS NULL
 				  AND is_tile_erased = 0`)
 		if err != nil {
-			log.Printf("[PhaserActorManager] Error loading overworld walkable maps: %v", err)
-			return
+			return nil, nil, fmt.Errorf("[PhaserActorManager] Error loading overworld walkable maps: %w", err)
 		}
 	} else {
 		// For interior maps, just load that specific map
-		rows, err = db.GlobalWorldDB.DB.Query(`
+		rows, err = database.QueryContext(ctx, `
 				SELECT x, y, collision_type, raw_foot_tile_id
 				FROM phaser_tiles
 				WHERE map_id = $1
 				  AND is_tile_erased = 0`, mapID)
 		if err != nil {
-			log.Printf("[PhaserActorManager] Error loading walkable map %d: %v", mapID, err)
-			return
+			return nil, nil, fmt.Errorf("[PhaserActorManager] Error loading walkable map %d: %w", mapID, err)
 		}
 	}
 	defer rows.Close()
@@ -372,21 +426,111 @@ func (m *PhaserActorManager) ensureWalkableMapLoaded(mapID int) {
 		var x, y, collisionType int
 		var rawFootTileID sql.NullInt64
 		if err := rows.Scan(&x, &y, &collisionType, &rawFootTileID); err != nil {
-			continue
+			return nil, nil, fmt.Errorf("scan collision map %d: %w", mapID, err)
 		}
 		key := fmt.Sprintf("%d,%d", x, y)
-		m.collisionMap[mapID][key] = collisionType
+		collisions[key] = collisionType
 		if rawFootTileID.Valid {
-			m.rawFootTileMap[mapID][key] = int(rawFootTileID.Int64)
+			feet[key] = int(rawFootTileID.Int64)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, fmt.Errorf("read collision map %d: %w", mapID, err)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	return collisions, feet, nil
+}
+
+func (m *PhaserActorManager) baseCollision(ctx context.Context, database db.ContextDBTX, mapID int, publish bool, snapshotRevision ...uint64) (map[string]int, map[string]int, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	m.mu.RLock()
+	collision, exists := m.collisionMap[mapID]
+	raw := m.rawFootTileMap[mapID]
+	revision := m.collisionRevision
+	overworld := m.overworldMapIds[mapID] || mapID == 0 || mapID == UnifiedOverworldMapID
+	m.mu.RUnlock()
+	if len(snapshotRevision) > 0 && revision != snapshotRevision[0] {
+		return nil, nil, fmt.Errorf("collision map %d snapshot retired", mapID)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	if exists {
+		return collision, raw, nil
+	}
+	collision, raw, err := loadBaseCollision(ctx, database, mapID, overworld)
+	if err != nil {
+		return nil, nil, err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	if m.collisionRevision != revision {
+		return nil, nil, fmt.Errorf("collision map %d invalidated during read", mapID)
+	}
+	if publish {
+		if m.collisionMap == nil {
+			m.collisionMap = make(map[int]map[string]int)
+		}
+		if m.rawFootTileMap == nil {
+			m.rawFootTileMap = make(map[int]map[string]int)
+		}
+		m.installBaseCollisionLocked(mapID, collision, raw)
+	}
+	return collision, raw, nil
+}
+
+// All overworld aliases share the same immutable stitched-corpus maps. A lazy
+// reload must also warm source-map keys used by ambient NPC simulation.
+func (m *PhaserActorManager) installBaseCollisionLocked(mapID int, collision, raw map[string]int) {
+	m.collisionMap[mapID], m.rawFootTileMap[mapID] = collision, raw
+	if mapID == 0 || m.isOverworldMapLocked(mapID) {
+		m.collisionMap[0], m.rawFootTileMap[0] = collision, raw
+		m.collisionMap[UnifiedOverworldMapID], m.rawFootTileMap[UnifiedOverworldMapID] = collision, raw
+		for id, overworld := range m.overworldMapIds {
+			if overworld {
+				m.collisionMap[id], m.rawFootTileMap[id] = collision, raw
+			}
 		}
 	}
 }
 
-// InvalidateCollisionMap removes the cached collision map for a given mapID,
-// forcing it to reload from the database on the next pathfinding request.
+func (m *PhaserActorManager) ensureWalkableMapLoaded(mapID int) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	var database db.ContextDBTX
+	if m.wh != nil && m.wh.database != nil {
+		database = m.wh.database
+	} else if db.GlobalWorldDB != nil {
+		database = db.GlobalWorldDB.DB
+	}
+	if database == nil {
+		return fmt.Errorf("collision database unavailable")
+	}
+	_, _, err := m.baseCollision(ctx, database, mapID, true)
+	return err
+}
+
+// Overworld map IDs all read the same stitched tile corpus. Invalidating one
+// must retire every cached alias and any read that started before the edit.
 func (m *PhaserActorManager) InvalidateCollisionMap(mapID int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.collisionRevision++
+	if mapID == 0 || m.isOverworldMapLocked(mapID) {
+		for id := range m.collisionMap {
+			if id == 0 || m.isOverworldMapLocked(id) {
+				delete(m.collisionMap, id)
+				delete(m.rawFootTileMap, id)
+			}
+		}
+		return
+	}
 	delete(m.collisionMap, mapID)
 	delete(m.rawFootTileMap, mapID)
 }
@@ -400,9 +544,6 @@ func (m *PhaserActorManager) simulateMovement() {
 	}
 
 	now := time.Now()
-
-	// Process A*-pathed actors first (cutscene NPCs, scripted movement)
-	m.processPathedMovement(now)
 
 	if captureQuestTestModeEnabled() {
 		return
@@ -418,11 +559,6 @@ func (m *PhaserActorManager) simulateMovement() {
 	for id, actor := range m.walkingActors {
 		// Only simulate actors that have global coordinates assigned
 		if actor.X == nil || actor.Y == nil {
-			continue
-		}
-
-		// Skip actors that are being A*-pathed (they're handled by processPathedMovement)
-		if _, pathed := m.actorPaths[id]; pathed {
 			continue
 		}
 
@@ -611,7 +747,8 @@ func (m *PhaserActorManager) calculateNextMove(actor *PhaserActor) (int, int, st
 
 func (m *PhaserActorManager) broadcastActorSpawn(actor *PhaserActor, originSessionID int) {
 	m.wh.sessionManager.ForEachSession(func(ses *session.Session) {
-		if !ses.Authenticated {
+		presence := ses.Presence()
+		if !presence.Authenticated {
 			return
 		}
 
@@ -620,15 +757,16 @@ func (m *PhaserActorManager) broadcastActorSpawn(actor *PhaserActor, originSessi
 			return
 		}
 
-		if actorForSession, ok := m.actorForSession(actor, ses); ok {
-			ses.SendStreamJSON(StructToMap([]PhaserActor{actorForSession}), opcodes.PhaserActorsResponse)
+		if actorForSession, ok := m.actorForPresence(actor, presence); ok {
+			ses.SendStreamJSON(actorForSession, opcodes.PhaserActorPositionUpdate)
 		}
 	})
 }
 
 func (m *PhaserActorManager) broadcastActorUpdate(actor *PhaserActor, originSessionID int) {
 	m.wh.sessionManager.ForEachSession(func(ses *session.Session) {
-		if !ses.Authenticated {
+		presence := ses.Presence()
+		if !presence.Authenticated {
 			return
 		}
 
@@ -637,7 +775,7 @@ func (m *PhaserActorManager) broadcastActorUpdate(actor *PhaserActor, originSess
 			return
 		}
 
-		if actorForSession, ok := m.actorForSession(actor, ses); ok {
+		if actorForSession, ok := m.actorForPresence(actor, presence); ok {
 			// Using SendStreamJSON for reliability as position updates are important
 			ses.SendStreamJSON(StructToMap(&actorForSession), opcodes.PhaserActorPositionUpdate)
 		}
@@ -649,7 +787,7 @@ func (m *PhaserActorManager) SendObjectActorToSession(objectID int, ses *session
 		return nil
 	}
 
-	actor, err := m.loadPhaserObjectActor(objectID)
+	actor, err := m.loadPhaserObjectActorContext(ses.CommandContext(), m.wh.database, objectID)
 	if err != nil {
 		return err
 	}
@@ -658,14 +796,14 @@ func (m *PhaserActorManager) SendObjectActorToSession(objectID int, ses *session
 		return nil
 	}
 
-	ses.SendStreamJSON(StructToMap([]PhaserActor{actor}), opcodes.PhaserActorsResponse)
+	ses.SendStreamJSON(actor, opcodes.PhaserActorPositionUpdate)
 	return nil
 }
 
-func (m *PhaserActorManager) loadPhaserObjectActor(objectID int) (PhaserActor, error) {
+func (m *PhaserActorManager) loadPhaserObjectActorContext(ctx context.Context, database db.ContextDBTX, objectID int) (PhaserActor, error) {
 	var actor PhaserActor
 	var x, y sql.NullInt64
-	if err := db.GlobalWorldDB.DB.QueryRow(`
+	if err := database.QueryRowContext(ctx, `
 		SELECT id, map_id,
 			COALESCE(x, local_x) AS x,
 			COALESCE(y, local_y) AS y,
@@ -711,31 +849,88 @@ func (m *PhaserActorManager) loadPhaserObjectActor(objectID int) (PhaserActor, e
 	return actor, nil
 }
 
-// FindPath runs A* pathfinding on the collision map. Shared by player and actor movement.
-func (m *PhaserActorManager) FindPath(mapID, startX, startY, endX, endY int) []PathNode {
-	collisionMap := m.collisionMapForMap(mapID)
-	if collisionMap == nil {
-		return nil
-	}
-	return findPathOnCollisionMap(collisionMap, nil, startX, startY, endX, endY)
+func (m *PhaserActorManager) FindPathForCharacter(ctx context.Context, database db.ReadDBTX, charID int64, mapID, startX, startY, endX, endY int, efm *EventFlagManager) ([]PathNode, error) {
+	return m.FindPathForCharacterWithOptions(ctx, database, charID, mapID, startX, startY, endX, endY, efm, pathfindOptions{})
 }
 
-func (m *PhaserActorManager) FindPathForCharacter(charID int64, mapID, startX, startY, endX, endY int, efm *EventFlagManager) []PathNode {
-	return m.FindPathForCharacterWithOptions(charID, mapID, startX, startY, endX, endY, efm, pathfindOptions{})
+func (m *PhaserActorManager) FindPathForCharacterWithOptions(ctx context.Context, database db.ReadDBTX, charID int64, mapID, startX, startY, endX, endY int, efm *EventFlagManager, opts pathfindOptions) ([]PathNode, error) {
+	if database == nil {
+		return nil, fmt.Errorf("pathfinding database is required")
+	}
+	collisionMap, rawFootTileMap, err := m.characterCollision(ctx, database, charID, mapID, startX, startY, efm)
+	if err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	path := findPathOnCollisionMapWithOptions(collisionMap, rawFootTileMap, startX, startY, endX, endY, opts)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return path, nil
 }
 
-func (m *PhaserActorManager) FindPathForCharacterWithOptions(charID int64, mapID, startX, startY, endX, endY int, efm *EventFlagManager, opts pathfindOptions) []PathNode {
-	collisionMap := m.collisionMapForMap(mapID)
-	if collisionMap == nil {
-		return nil
+// characterCollision is shared by pathfinding and issued player steps. A failed
+// dynamic blocker read must never authorize movement through that blocker.
+func (m *PhaserActorManager) characterCollision(ctx context.Context, database db.ReadDBTX, charID int64, mapID, startX, startY int, efm *EventFlagManager) (map[string]int, map[string]int, error) {
+	if pool, ok := database.(*sql.DB); ok {
+		// Capture before opening the snapshot: its first flag query can precede
+		// an edit even when the subsequent cold base query follows invalidation.
+		m.mu.RLock()
+		revision := m.collisionRevision
+		m.mu.RUnlock()
+		type view struct{ collision, raw map[string]int }
+		result, err := db.ReadSnapshot(ctx, pool, func(ctx context.Context, q db.ReadDBTX) (view, error) {
+			collision, raw, err := m.characterCollisionIn(ctx, q, charID, mapID, startX, startY, efm, true, revision)
+			return view{collision, raw}, err
+		})
+		if err == nil {
+			m.mu.RLock()
+			current := m.collisionRevision == revision
+			m.mu.RUnlock()
+			if !current {
+				return nil, nil, fmt.Errorf("collision map %d snapshot retired", mapID)
+			}
+		}
+		return result.collision, result.raw, err
 	}
-	var rawFootTileMap map[string]int
-	if m.IsOverworld(mapID) {
-		rawFootTileMap = m.rawFootTileMapForMap(mapID)
-	}
-	var overrides map[string]int
+	return m.characterCollisionIn(ctx, database, charID, mapID, startX, startY, efm, false)
+}
+
+func (m *PhaserActorManager) characterCollisionIn(ctx context.Context, database db.ReadDBTX, charID int64, mapID, startX, startY int, efm *EventFlagManager, publishBase bool, snapshotRevision ...uint64) (map[string]int, map[string]int, error) {
+	// Player collision and presentation must select rules from durable flags in
+	// the same owned snapshot. A stale cache is not movement authorization.
 	if efm != nil {
-		overrides = EventTileCollisionOverrides(charID, mapID, efm)
+		flags, err := eventFlagSnapshotIn(database, charID)
+		if err != nil {
+			return nil, nil, err
+		}
+		efm = flags
+	}
+	// A cold gameplay-transaction read may include uncommitted rows; it must
+	// remain local to that transaction rather than warming the shared cache.
+	collisionMap, rawFootTileMap, err := m.baseCollision(ctx, database, mapID, publishBase, snapshotRevision...)
+	if err != nil {
+		return nil, nil, err
+	}
+	m.mu.RLock()
+	overworld := m.isOverworldMapLocked(mapID)
+	m.mu.RUnlock()
+	if !overworld {
+		rawFootTileMap = nil
+	}
+	var tileOverrides []eventTileOverride
+	if efm != nil {
+		tileOverrides, err = eventTileOverridesForMapContext(ctx, database, mapID)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	selected := eligibleEventTileOverrides(charID, efm, tileOverrides)
+	overrides := make(map[string]int)
+	for key, override := range selected {
+		overrides[key] = override.CollisionType
 	}
 	if len(overrides) > 0 {
 		withOverrides := copyCollisionMap(collisionMap, len(overrides))
@@ -757,7 +952,14 @@ func (m *PhaserActorManager) FindPathForCharacterWithOptions(charID int64, mapID
 	if rawFootTileMap != nil {
 		var rawOverrides map[string]*int
 		if efm != nil {
-			rawOverrides = EventTileRawFootTileOverrides(charID, mapID, efm)
+			rawOverrides = make(map[string]*int)
+			for _, override := range selected {
+				props, err := tileRuntimePropertiesForTileImageContext(ctx, database, override.TileImageID)
+				if err != nil {
+					return nil, nil, fmt.Errorf("collision event tile map=%d coordinate=(%d,%d) image=%d: %w", mapID, override.X, override.Y, override.TileImageID, err)
+				}
+				rawOverrides[tileKey(override.X, override.Y)] = props.RawFootTileID
+			}
 		}
 		if len(rawOverrides) > 0 {
 			withOverrides := copyRawFootTileMap(rawFootTileMap, 0)
@@ -786,9 +988,8 @@ func (m *PhaserActorManager) FindPathForCharacterWithOptions(charID int64, mapID
 		}
 	}
 	var boulders []BoulderObjectState
-	var err error
 	if efm != nil {
-		boulders, err = BoulderObjectsForCharacter(charID, mapID, efm)
+		boulders, err = boulderObjectsForCharacterContext(ctx, database, charID, mapID, efm)
 	}
 	if err == nil && len(boulders) > 0 {
 		withBoulders := copyCollisionMap(collisionMap, len(boulders))
@@ -803,13 +1004,16 @@ func (m *PhaserActorManager) FindPathForCharacterWithOptions(charID int64, mapID
 		}
 		collisionMap = withBoulders
 	} else if err != nil {
-		log.Printf("[ActorManager] Failed to apply boulder collision for char %d map %d: %v", charID, mapID, err)
+		return nil, nil, fmt.Errorf("boulder collision for char %d map %d: %w", charID, mapID, err)
 	}
-	blockers := m.NPCBlockingPositionsForCharacter(charID, mapID, efm)
+	blockers, err := m.npcBlockingPositionsContext(ctx, database, charID, mapID, efm)
+	if err != nil {
+		return nil, nil, err
+	}
 	if len(blockers) > 0 {
 		collisionMap = collisionMapWithBlockedPositions(collisionMap, blockers, startX, startY)
 	}
-	return findPathOnCollisionMapWithOptions(collisionMap, rawFootTileMap, startX, startY, endX, endY, opts)
+	return collisionMap, rawFootTileMap, nil
 }
 
 func collisionMapWithBlockedPositions(collisionMap map[string]int, blockers []tilePosition, startX, startY int) map[string]int {
@@ -848,7 +1052,10 @@ func (m *PhaserActorManager) collisionMapForMap(mapID int) map[string]int {
 	m.mu.RUnlock()
 
 	if !exists {
-		m.ensureWalkableMapLoaded(mapID)
+		if err := m.ensureWalkableMapLoaded(mapID); err != nil {
+			log.Printf("[PhaserActorManager] Collision load failed: %v", err)
+			return nil
+		}
 		m.mu.RLock()
 		collisionMap = m.collisionMap[mapID]
 		m.mu.RUnlock()
@@ -866,22 +1073,16 @@ func (m *PhaserActorManager) rawFootTileMapForMap(mapID int) map[string]int {
 	m.mu.RUnlock()
 
 	if !exists {
-		m.ensureWalkableMapLoaded(mapID)
+		if err := m.ensureWalkableMapLoaded(mapID); err != nil {
+			log.Printf("[PhaserActorManager] Collision load failed: %v", err)
+			return nil
+		}
 		m.mu.RLock()
 		rawFootTileMap = m.rawFootTileMap[mapID]
 		m.mu.RUnlock()
 	}
 
 	return rawFootTileMap
-}
-
-func (m *PhaserActorManager) TileExists(mapID, x, y int) bool {
-	collisionMap := m.collisionMapForMap(mapID)
-	if collisionMap == nil {
-		return false
-	}
-	_, exists := collisionMap[fmt.Sprintf("%d,%d", x, y)]
-	return exists
 }
 
 func (m *PhaserActorManager) CollisionTypeAt(mapID, x, y int) (int, bool) {
@@ -906,18 +1107,37 @@ func (m *PhaserActorManager) NPCBlockingPositionsForCharacter(charID int64, mapI
 	if m == nil || db.GlobalWorldDB == nil || db.GlobalWorldDB.DB == nil {
 		return nil
 	}
-
-	actors, err := m.npcBlockingActors(mapID)
+	positions, err := m.npcBlockingPositionsContext(context.Background(), db.GlobalWorldDB.DB, charID, mapID, efm)
 	if err != nil {
-		log.Printf("[ActorManager] Failed to load NPC blockers for char %d map %d: %v", charID, mapID, err)
+		log.Printf("[ActorManager] NPC collision: %v", err)
 		return nil
+	}
+	return positions
+}
+
+func (m *PhaserActorManager) npcBlockingPositionsContext(ctx context.Context, database db.ContextDBTX, charID int64, mapID int, efm *EventFlagManager) ([]tilePosition, error) {
+	actors, err := m.npcBlockingActorsContext(ctx, database, mapID)
+	if err != nil {
+		return nil, err
 	}
 	if len(actors) == 0 {
-		return nil
+		return nil, nil
 	}
 
-	actors = ApplyEventObjectVisibilityToActors(charID, mapID, efm, actors)
-	actors = ApplyCharacterObjectPositions(charID, actors)
+	actors, err = applyEventObjectVisibilityContext(ctx, database, charID, mapID, efm, actors)
+	if err != nil {
+		return nil, err
+	}
+	positionsByID, err := characterObjectPositionsContext(ctx, database, charID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range actors {
+		if pos, ok := positionsByID[actors[i].DbID]; ok {
+			x, y := pos.X, pos.Y
+			actors[i].X, actors[i].Y = &x, &y
+		}
+	}
 
 	positions := make([]tilePosition, 0, len(actors))
 	for _, actor := range actors {
@@ -926,10 +1146,14 @@ func (m *PhaserActorManager) NPCBlockingPositionsForCharacter(charID int64, mapI
 		}
 		positions = append(positions, tilePosition{X: *actor.X, Y: *actor.Y})
 	}
-	return positions
+	return positions, nil
 }
 
 func (m *PhaserActorManager) npcBlockingActors(mapID int) ([]PhaserActor, error) {
+	return m.npcBlockingActorsContext(context.Background(), db.GlobalWorldDB.DB, mapID)
+}
+
+func (m *PhaserActorManager) npcBlockingActorsContext(ctx context.Context, database db.ContextDBTX, mapID int) ([]PhaserActor, error) {
 	query := `
 		SELECT po.id, po.map_id,
 			COALESCE(po.x, po.local_x) AS x,
@@ -956,7 +1180,7 @@ func (m *PhaserActorManager) npcBlockingActors(mapID int) ([]PhaserActor, error)
 		args = nil
 	}
 
-	rows, err := db.GlobalWorldDB.DB.Query(query, args...)
+	rows, err := database.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1029,13 +1253,14 @@ func (m *PhaserActorManager) isPlayerBlockingTile(mapID, x, y int) bool {
 	}
 	blocked := false
 	m.wh.sessionManager.ForEachSession(func(ses *session.Session) {
-		if blocked || !ses.HasValidClient() {
+		presence := ses.Presence()
+		if blocked || presence.CharacterID == 0 {
 			return
 		}
-		if !m.actorSharesMovementMapLocked(ses.MapID, mapID) {
+		if !m.actorSharesMovementMapLocked(presence.MapID, mapID) {
 			return
 		}
-		if int(ses.X) == x && int(ses.Y) == y {
+		if int(presence.X) == x && int(presence.Y) == y {
 			blocked = true
 		}
 	})
@@ -1211,123 +1436,12 @@ func (m *PhaserActorManager) DespawnTemporaryActor(actorID int) {
 		mapID = actor.MapID
 	}
 	delete(m.walkingActors, actorID)
-	delete(m.actorPaths, actorID)
 	delete(m.nextActionTimes, actorID)
 	m.mu.Unlock()
 
 	if ok {
 		m.broadcastActorDespawn(actorID, mapID)
 		log.Printf("[ActorManager] Despawned temporary actor id=%d", actorID)
-	}
-}
-
-// RequestActorMove paths an actor to a destination using A* pathfinding.
-// The actor will be moved tile-by-tile in the simulation tick with proper
-// broadcast updates so the client animates the walk.
-// An optional onComplete callback fires when the actor reaches the destination.
-func (m *PhaserActorManager) RequestActorMove(actorID, destX, destY int, onComplete func()) {
-	m.mu.RLock()
-	actor, ok := m.walkingActors[actorID]
-	m.mu.RUnlock()
-	if !ok || actor.X == nil || actor.Y == nil {
-		log.Printf("[ActorManager] RequestActorMove: actor %d not found or has no position", actorID)
-		if onComplete != nil {
-			onComplete()
-		}
-		return
-	}
-
-	path := m.FindPath(actor.MapID, *actor.X, *actor.Y, destX, destY)
-	if len(path) == 0 {
-		log.Printf("[ActorManager] No path for actor %d from (%d,%d) to (%d,%d)", actorID, *actor.X, *actor.Y, destX, destY)
-		if onComplete != nil {
-			onComplete()
-		}
-		return
-	}
-
-	speed := time.Duration(actor.MoveSpeed) * time.Millisecond
-	if speed == 0 {
-		speed = 300 * time.Millisecond
-	}
-
-	m.mu.Lock()
-	m.actorPaths[actorID] = &ActorPathState{
-		Actor:        actor,
-		Path:         path,
-		LastMoveTime: time.Now(),
-		MoveSpeed:    speed,
-		OnComplete:   onComplete,
-	}
-	m.mu.Unlock()
-
-	log.Printf("[ActorManager] Actor %d pathing from (%d,%d) to (%d,%d), %d steps",
-		actorID, *actor.X, *actor.Y, destX, destY, len(path))
-}
-
-// processPathedMovement advances all A*-pathed actors by one tick.
-// Called from simulateMovement on every tick.
-func (m *PhaserActorManager) processPathedMovement(now time.Time) {
-	m.mu.Lock()
-	var completed []int
-	var updates []*PhaserActor
-
-	for id, ps := range m.actorPaths {
-		if len(ps.Path) == 0 {
-			completed = append(completed, id)
-			continue
-		}
-		if now.Sub(ps.LastMoveTime) < ps.MoveSpeed {
-			continue
-		}
-
-		next := ps.Path[0]
-		ps.Path = ps.Path[1:]
-		ps.LastMoveTime = now
-
-		// Calculate direction
-		dir := "DOWN"
-		if ps.Actor.X != nil && ps.Actor.Y != nil {
-			if next.X > *ps.Actor.X {
-				dir = "RIGHT"
-			} else if next.X < *ps.Actor.X {
-				dir = "LEFT"
-			} else if next.Y > *ps.Actor.Y {
-				dir = "DOWN"
-			} else if next.Y < *ps.Actor.Y {
-				dir = "UP"
-			}
-		}
-
-		newX, newY := next.X, next.Y
-		ps.Actor.X = &newX
-		ps.Actor.Y = &newY
-		ps.Actor.ActionDirection = &dir
-		updates = append(updates, ps.Actor)
-
-		if len(ps.Path) == 0 {
-			completed = append(completed, id)
-		}
-	}
-
-	// Collect callbacks before releasing lock
-	var callbacks []func()
-	for _, id := range completed {
-		if ps, ok := m.actorPaths[id]; ok && ps.OnComplete != nil {
-			callbacks = append(callbacks, ps.OnComplete)
-		}
-		delete(m.actorPaths, id)
-	}
-	m.mu.Unlock()
-
-	// Broadcast position updates
-	for _, actor := range updates {
-		m.broadcastActorUpdate(actor, 0)
-	}
-
-	// Fire completion callbacks outside the lock
-	for _, cb := range callbacks {
-		cb()
 	}
 }
 
@@ -1341,7 +1455,8 @@ func (m *PhaserActorManager) broadcastActorDespawnExcept(actorID int, mapID int,
 	m.mu.RUnlock()
 
 	m.wh.sessionManager.ForEachSession(func(ses *session.Session) {
-		if !ses.Authenticated {
+		presence := ses.Presence()
+		if !presence.Authenticated {
 			return
 		}
 		if excludedSessionID != 0 && ses.SessionID == excludedSessionID {
@@ -1349,10 +1464,10 @@ func (m *PhaserActorManager) broadcastActorDespawnExcept(actorID int, mapID int,
 		}
 
 		m.mu.RLock()
-		playerOnOverworld := ses.MapID == UnifiedOverworldMapID || m.overworldMapIds[ses.MapID]
+		playerOnOverworld := presence.MapID == UnifiedOverworldMapID || m.overworldMapIds[presence.MapID]
 		m.mu.RUnlock()
 
-		shouldSend := ses.MapID == mapID || (isOverworldMap && playerOnOverworld)
+		shouldSend := presence.MapID == mapID || (isOverworldMap && playerOnOverworld)
 
 		if shouldSend {
 			ses.SendStreamJSON(map[string]interface{}{

@@ -1,12 +1,21 @@
+import {watchInteractionPosition} from "../services/InventoryCommandService";
+import {recoverFieldPublication,suspendBattleCommandForEmergency} from "../services/BattleCommandService";
+import type { OwnedPlayerPositionResponse, PlayerStepResponse, PlayerStepError } from "@/net/generated/protocol";
+import { readWarpHomeRevision, requestWarpHome, requestElevator, requestCut, requestStateField, requestSurf, requestFishing, requestEscapeRope, requestBicycleState, requestPlayerFacing, requestPlayerStep, completePlayerStep, readOwnedPlayerPosition } from "../services/PlayerMovementService";
+import { WorldSocket } from "@/net/index";
+import useGameScreenStore from "@/stores/GameScreenStore";
+import { CorrelatedResponseError, readForCurrentCharacter } from "../services/CorrelatedRequest";
 import { Scene } from "phaser";
 import { PhaserActor, PhaserTile, PhaserWarp } from "@/net/generated/world_api";
 import { TILE_SIZE, UNIFIED_OVERWORLD_MAP_ID } from "../constants";
-import * as PhaserNet from "../services/PhaserNetworkService";
 import { isWorldInputFrozen } from "../utils/worldInputGuard";
 import usePokemonDialogueStore from "@/stores/PokemonDialogueStore";
 import usePokemonPartyStore from "@/stores/PokemonPartyStore";
 import usePlayerCharacterStore from "@/stores/PlayerCharacterStore";
+import { readCurrentGameplayState, applyGameplayResourceSnapshot } from "../services/GameplayRecoveryService";
+import useCQInventoryStore from "@/stores/CQInventoryStore";
 import useAudioActivityStore from "@/stores/AudioActivityStore";
+import useChatStore, { MessageType } from "@/stores/ChatStore";
 import useGameStatusStore from "@/stores/GameStatusStore";
 import { emitCaptureQuestTestEvent } from "@/testing/capturequestTestBridge";
 import type { MapRenderer } from "../renderers/MapRenderer";
@@ -108,6 +117,315 @@ export class PlayerMovementController {
 
   // Current path (array of tile coordinates)
   private currentPath: MovementPathStep[] = [];
+  private serverMovementInProgress = false;
+  private serverPathFinished = true;
+  private facingAbort: AbortController | null = null;
+  private facingRequestKey: string | null = null;
+  private stepAbort: AbortController | null = null;
+  private issuedStep: PlayerStepResponse | null = null;
+  private actorReconciler: (signal: AbortSignal) => Promise<void> = async () => {};
+  setActorReconciler(reconcile: (signal: AbortSignal) => Promise<void>): void { this.actorReconciler = reconcile; }
+  reconcileActors(signal: AbortSignal): Promise<void> { return this.actorReconciler(signal); }
+  private tileReconciler:(mapId:number,x:number,y:number,scope:string,signal:AbortSignal)=>Promise<boolean>=async()=>{throw new Error("Tile recovery is not bound");};
+  setTileReconciler(reconcile:(mapId:number,x:number,y:number,scope:string,signal:AbortSignal)=>Promise<boolean>):void{this.tileReconciler=reconcile;}
+  private fieldCommandAbort: AbortController | null = null;
+  private fieldCommandKind:"ordinary"|"emergency"|null=null;
+  private fieldCommandsRetired = false;
+
+  retireFieldCommands(): void {
+    this.fieldCommandsRetired = true;
+    this.fieldCommandAbort?.abort();
+  }
+
+  private async runOwnedFieldCommand(operation: (characterId: number, signal: AbortSignal, current: () => boolean) => Promise<void>, kind:"ordinary"|"emergency"="ordinary"): Promise<void> {
+    if(this.fieldCommandsRetired || this.playerId===null || this.fieldCommandKind==="emergency")return;
+    if(kind==="ordinary" && (this.fieldCommandAbort || this.movementRecoveryRequired))return;
+    const characterId = usePlayerCharacterStore.getState().characterProfile.id;
+    if (!characterId) return;
+    if(kind==="emergency")this.fieldCommandAbort?.abort();
+    const abort = new AbortController();
+    this.fieldCommandAbort = abort;this.fieldCommandKind=kind;
+    try {
+      await readForCurrentCharacter(async (owner, signal) => {
+        const current = () => !signal.aborted && !this.fieldCommandsRetired
+          && usePlayerCharacterStore.getState().characterProfile.id === owner;
+        await operation(owner, signal, current);
+      }, abort.signal);
+    } catch (error) {
+      // Retirement ends presentation, not the server mutation. A fresh scene
+      // recovers durable state; it must never revive this owner's callback.
+      if (!(error instanceof DOMException && error.name === "AbortError")) throw error;
+    } finally {
+      if (this.fieldCommandAbort === abort){this.fieldCommandAbort = null;this.fieldCommandKind=null;}
+    }
+  }
+
+  private async reconcileTravelPublication(signal:AbortSignal,current:()=>boolean,rejection?:string):Promise<void>{
+    const recovered=await recoverFieldPublication(signal);if(!current())return;
+    if(!recovered){this.movementRecoveryRequired=true;useChatStore.getState().addMessage("Travel state could not be recovered. Reconnect before moving.",MessageType.SYSTEM_ERROR);}
+    else if(rejection)usePokemonDialogueStore.getState().openDialogue([rejection]);
+  }
+
+  async warpHome():Promise<void>{
+    return this.runOwnedFieldCommand(async(characterId,signal,current)=>{
+      // Cancel local callbacks, not their possibly committed server effects.
+      this.stopMovement(true);const release=suspendBattleCommandForEmergency();
+      signal.addEventListener("abort",release,{once:true});if(signal.aborted)release();
+      try {let rejection:string|undefined;
+      try{
+        const before=await readWarpHomeRevision(characterId,signal);if(!current())return;
+        const commandRevision=before.revision;if(before.current!==true || before.characterId!==characterId || !Number.isSafeInteger(commandRevision)||commandRevision<0)throw new Error("Invalid recovery travel revision");
+        const reply=await requestWarpHome({characterId,commandRevision},signal);if(!current())return;
+        if(reply.current!==false || reply.revision!==commandRevision+1 || reply.characterId!==characterId || reply.moveName!=="WARP_HOME" || !Number.isSafeInteger(reply.mapId)||reply.mapId<=0)throw new Error("Invalid recovery travel outcome");
+      }catch(error){if(!current())return;if(error instanceof CorrelatedResponseError)rejection=error.message;}
+      release();const recovered=await recoverFieldPublication(signal,true);if(!current())return;
+      if(!recovered){this.movementRecoveryRequired=true;useChatStore.getState().addMessage("Current state could not be recovered. Reconnect or try Warp Home again.",MessageType.SYSTEM_ERROR);}
+      else if(rejection)usePokemonDialogueStore.getState().openDialogue([rejection]);
+      }finally{signal.removeEventListener("abort",release);release();}
+    },"emergency");
+  }
+
+  async useElevator(choose:(floors:import("@/net/generated/world_api").ElevatorFloor[],signal:AbortSignal)=>Promise<number|undefined>):Promise<void>{
+    if(this.isMoving || this.issuedStep || this.serverMovementInProgress)return;
+    return this.runOwnedFieldCommand(async(characterId,signal,current)=>{
+      const source={mapId:this.currentMapId,fromX:this.currentTileX,fromY:this.currentTileY};
+      const atSource=()=>current() && this.currentMapId===source.mapId && this.currentTileX===source.fromX && this.currentTileY===source.fromY && !this.isMoving && !this.issuedStep && !this.serverMovementInProgress;
+      let list;let floorMapId:number|undefined;
+      const sourceRead=new AbortController();const abortSource=()=>sourceRead.abort();
+      const stopSource=watchInteractionPosition(abortSource,true);signal.addEventListener("abort",abortSource,{once:true});if(signal.aborted)abortSource();
+      try {
+      try{list=await requestElevator({...source,characterId},false,sourceRead.signal);}
+      catch(error){if(atSource() && !sourceRead.signal.aborted)useChatStore.getState().addMessage(error instanceof Error?error.message:"Elevator unavailable",MessageType.SYSTEM_ERROR);return;}
+      if(!atSource() || sourceRead.signal.aborted)return;
+      if(list.kind!=="list" || list.characterId!==characterId || list.mapId!==source.mapId || !Array.isArray(list.floors) || list.floors.some(floor=>!Number.isSafeInteger(floor.floorMapId)||floor.floorMapId<=0||typeof floor.floorLabel!=="string"||!floor.floorLabel))throw new Error("Invalid elevator list");
+      if(list.floors.length===0){if(list.message)usePokemonDialogueStore.getState().openDialogue([list.message]);return;}
+      floorMapId=await choose(list.floors,sourceRead.signal);if(floorMapId===undefined || !atSource() || sourceRead.signal.aborted)return;
+      if(!list.floors.some(floor=>floor.floorMapId===floorMapId))throw new Error("Invalid elevator selection");
+      }finally{stopSource();signal.removeEventListener("abort",abortSource);}
+      if(sourceRead.signal.aborted || floorMapId===undefined || !atSource())return;
+      let rejection:string|undefined;
+      try{
+        const before=await readCurrentGameplayState(signal);if(!atSource())return;
+        const commandRevision=before.fieldCommands?.travel??0;if(!before.fieldCommands || !Number.isSafeInteger(commandRevision)||commandRevision<0)throw new Error("Missing travel revision");
+        const reply=await requestElevator({...source,characterId,commandRevision,floorMapId},true,signal);if(!current())return;
+        if(reply.kind!=="select" || reply.characterId!==characterId || !Number.isSafeInteger(reply.mapId)||reply.mapId<=0)throw new Error("Invalid elevator result");
+      }catch(error){if(!current())return;if(error instanceof CorrelatedResponseError)rejection=error.message;}
+      await this.reconcileTravelPublication(signal,current,rejection);
+    });
+  }
+
+  async travelByMove(moveName:"DIG"|"TELEPORT"|"FLY",destination?:{mapId:number;x:number;y:number}):Promise<void>{
+    if(this.isMoving || this.issuedStep || this.serverMovementInProgress)return;
+    return this.runOwnedFieldCommand(async(characterId,signal,current)=>{
+      const source={mapId:this.currentMapId,fromX:this.currentTileX,fromY:this.currentTileY};let rejection:string|undefined;
+      try{
+        const before=await readCurrentGameplayState(signal);if(!current())return;if(!before.fieldCommands)throw new Error("Missing travel revision");
+        const commandRevision=before.fieldCommands.travel??0;if(!Number.isSafeInteger(commandRevision) || commandRevision<0)throw new Error("Invalid travel revision");
+        const reply=await requestStateField({...source,characterId,commandRevision,moveName,...(destination?{destinationMapId:destination.mapId,targetX:destination.x,targetY:destination.y}:{})},signal);if(!current())return;
+        if(reply.characterId!==characterId || reply.moveName!==moveName || !Number.isSafeInteger(reply.mapId) || reply.mapId<=0 || typeof reply.message!=="string")throw new Error("Invalid travel outcome");
+      }catch(error){if(!current())return;if(error instanceof CorrelatedResponseError)rejection=error.message;}
+      await this.reconcileTravelPublication(signal,current,rejection);
+    });
+  }
+
+  async cut(targetX:number,targetY:number,direction:string):Promise<void>{
+    if(this.isMoving || this.issuedStep || this.serverMovementInProgress)return;
+    return this.runOwnedFieldCommand(async(characterId,signal,current)=>{
+      const source={mapId:this.currentMapId,fromX:this.currentTileX,fromY:this.currentTileY};
+      let cutScope="";let message:string|undefined;
+      try{
+        const before=await readCurrentGameplayState(signal);if(!current())return;
+        cutScope=before.cutScope;
+        if(typeof cutScope!=="string" || !cutScope || !before.fieldCommands)throw new Error("CUT scope/revision missing");
+        const commandRevision=before.fieldCommands.cut??0;if(!Number.isSafeInteger(commandRevision) || commandRevision<0)throw new Error("CUT revision invalid");
+        const reply=await requestCut({...source,characterId,commandRevision,cutScope,moveName:"CUT",targetX,targetY,direction},signal);if(!current())return;
+        if(reply.characterId!==characterId || reply.cutScope!==cutScope || reply.mapId!==source.mapId || reply.targetX!==targetX || reply.targetY!==targetY || reply.moveName!=="CUT" || typeof reply.message!=="string")throw new Error("CUT outcome differs from source");
+        message=reply.message;
+      }catch(error){if(!current())return;if(error instanceof CorrelatedResponseError)message=error.message;}
+      try{
+        const owned=await readCurrentGameplayState(signal,()=>this.capturePositionView());if(!current())return;
+        if(!cutScope || owned.cutScope!==cutScope || owned.position.mapId!==source.mapId)return;
+        applyGameplayResourceSnapshot(owned);
+        if(!(await this.tileReconciler(source.mapId,targetX,targetY,cutScope,signal)) || !current())return;
+        usePokemonDialogueStore.getState().openDialogue([message??"CUT state refreshed. Check the current tile before trying again."]);
+      }catch{if(current()){this.movementRecoveryRequired=true;useChatStore.getState().addMessage("CUT state could not be recovered. Reconnect before moving.",MessageType.SYSTEM_ERROR);}}
+    });
+  }
+
+  async activateFieldState(moveName:"STRENGTH"|"FLASH"):Promise<void>{
+    if(this.isMoving || this.issuedStep || this.serverMovementInProgress)return;
+    return this.runOwnedFieldCommand(async(characterId,signal,current)=>{
+      const source={mapId:this.currentMapId,fromX:this.currentTileX,fromY:this.currentTileY};
+      let message:string|undefined;let accepted=false;
+      try{
+        const before=await readCurrentGameplayState(signal);if(!current())return;
+        if(!before.fieldCommands)throw new Error("Missing field revisions");
+        const commandRevision=before.fieldCommands["field-state"]??0;
+        if(!Number.isSafeInteger(commandRevision) || commandRevision<0)throw new Error("Invalid field revision");
+        const reply=await requestStateField({...source,characterId,commandRevision,moveName},signal);
+        if(!current())return;
+        if(reply.characterId!==characterId || reply.moveName!==moveName || reply.mapId!==source.mapId || typeof reply.message!=="string")throw new Error("Invalid field outcome");
+        message=reply.message;accepted=true;
+      }catch(error){if(!current())return;if(error instanceof CorrelatedResponseError)message=error.message;}
+      try{
+        const owned=await readCurrentGameplayState(signal,()=>this.capturePositionView());if(!current())return;
+        if(!owned.fieldState || owned.fieldState.mapId!==owned.position.mapId || typeof owned.fieldState.strength!=="boolean" || typeof owned.fieldState.flash!=="boolean")throw new Error("Invalid owned field state");
+        applyGameplayResourceSnapshot(owned);
+        this.projectOwnedPosition(owned.position);
+        const active=moveName==="STRENGTH"?owned.fieldState.strength:owned.fieldState.flash;
+        const presentation=accepted && (!active || owned.fieldState.mapId!==source.mapId) ? `${moveName} state refreshed for your current location.` : message??`${moveName} state refreshed. Check your current location before trying again.`;
+        if(current())usePokemonDialogueStore.getState().openDialogue([presentation]);
+      }catch{if(current()){this.movementRecoveryRequired=true;useChatStore.getState().addMessage("Field move state could not be recovered. Reconnect before moving.",MessageType.SYSTEM_ERROR);}}
+    });
+  }
+
+  async surf(targetX: number, targetY: number, direction: string): Promise<void> {
+    if (this.isMoving || this.issuedStep || this.serverMovementInProgress) return;
+    return this.runOwnedFieldCommand(async (characterId, signal, current) => {
+      let rejection: string | undefined;
+      try {
+        const source={mapId:this.currentMapId,fromX:this.currentTileX,fromY:this.currentTileY,targetX,targetY,direction};
+        const before=await readCurrentGameplayState(signal);
+        if (!current()) return;
+        if (!before.fieldCommands || typeof before.fieldCommands!=="object") throw new Error("Missing field command revisions");
+        const commandRevision=before.fieldCommands.surf??0;
+        if (!Number.isSafeInteger(commandRevision) || commandRevision<0) throw new Error("Invalid SURF command revision");
+        const reply = await requestSurf({...source,characterId,commandRevision}, signal);
+        if (!current()) return;
+        if (reply.characterId !== characterId || typeof reply.encounter !== "boolean" || typeof reply.blackout !== "boolean") throw new Error("Invalid SURF response identity");
+      } catch (error) {
+        if (!current()) return;
+        if (error instanceof CorrelatedResponseError) rejection = error.message;
+        // Unknown delivery never authorizes another entry or encounter roll.
+      }
+      const recovered = await recoverFieldPublication(signal);
+      if (!current()) return;
+      if (!recovered) {
+        this.movementRecoveryRequired = true;
+        useChatStore.getState().addMessage("SURF state could not be recovered. Reconnect before moving.", MessageType.SYSTEM_ERROR);
+      } else if (rejection) usePokemonDialogueStore.getState().openDialogue([rejection]);
+    });
+  }
+
+  async fish(instanceId:number):Promise<void>{
+    if(this.isMoving || this.facingAbort || this.issuedStep || this.serverMovementInProgress)return;
+    return this.runOwnedFieldCommand(async(characterId,signal,current)=>{
+      const source={mapId:this.currentMapId,x:this.currentTileX,y:this.currentTileY,direction:this.currentDirection};
+      const reconcile=()=>recoverFieldPublication(signal);
+      try{
+        const before=await readCurrentGameplayState(signal);
+        if(!current())return;
+        if(!before.fieldCommands || typeof before.fieldCommands!=="object")throw new Error("Missing field command revisions");
+        const commandRevision=before.fieldCommands.fishing??0;
+        if(!Number.isSafeInteger(commandRevision) || commandRevision<0)throw new Error("Invalid fishing command revision");
+        const reply=await requestFishing({...source,characterId,instanceId,itemId:0,commandRevision},signal);
+        if(!current())return;
+        if(reply.characterId!==characterId || reply.instanceId!==instanceId || typeof reply.hooked!=="boolean" || typeof reply.message!=="string")throw new Error("Invalid fishing response identity");
+        useChatStore.getState().addMessage(reply.message,MessageType.SYSTEM);
+        if(reply.hooked && !(await reconcile()))this.movementRecoveryRequired=true;
+      }catch(error){
+        if(!current())return;
+        try{if(!(await reconcile()))this.movementRecoveryRequired=true;if(current() && error instanceof CorrelatedResponseError)useChatStore.getState().addMessage(error.message,MessageType.SYSTEM_ERROR);}
+        catch{if(current()){this.movementRecoveryRequired=true;useChatStore.getState().addMessage("Fishing state could not be recovered. Reconnect before moving.",MessageType.SYSTEM_ERROR);}}
+      }
+    });
+  }
+
+  async changeBicyclePreference(instanceId: number): Promise<void> {
+    return this.runOwnedFieldCommand(async (characterId, signal, current) => {
+      const apply = (reply: import("@/net/generated/world_api").BicycleStateResponse) => {
+        if (reply.characterId !== characterId || !Number.isSafeInteger(reply.bicycle?.revision)
+          || reply.bicycle.revision < 0 || typeof reply.bicycle.wantsRiding !== "boolean"
+          || typeof reply.bicycle.activeRiding !== "boolean"
+          || typeof reply.bicycle.forcedRiding !== "boolean") {
+          throw new Error("Invalid Bicycle state");
+        }
+        useAudioActivityStore.getState().setBicycleState(reply.bicycle);
+      };
+      try {
+        const before = await requestBicycleState(characterId, signal);
+        if (!current()) return;
+        apply(before);
+        const result = await requestBicycleState(characterId, signal, {
+          instanceId, wantsRiding: !before.bicycle.wantsRiding, revision: before.bicycle.revision,
+        });
+        if (current()) {
+          apply(result);
+          const bike = result.bicycle;
+          const message = bike.forcedRiding ? "You can't get off here."
+            : bike.wantsRiding ? (bike.activeRiding ? "You got on the Bicycle!"
+              : "You'll get on the Bicycle when you go outside.") : "You got off the Bicycle.";
+          useChatStore.getState().addMessage(message, MessageType.SYSTEM);
+        }
+      } catch {
+        if (!current()) return;
+        // An uncertain setter is reconciled by reading; never toggle or retry it.
+        try {
+          const owned = await requestBicycleState(characterId, signal);
+          if (current()) apply(owned);
+        } catch {
+          if (current()) console.warn("[Movement] Bicycle state unavailable; reconnect before trying again.");
+        }
+      }
+    });
+  }
+  async useEscapeRope(instanceId: number): Promise<void> {
+    if (this.getIsMoving()) return;
+    return this.runOwnedFieldCommand(async (characterId, signal, current) => {
+      const source = { mapId: this.currentMapId, x: this.currentTileX, y: this.currentTileY };
+      let accepted = false;
+      let rejection: string | undefined;
+      try {
+        const reply = await requestEscapeRope({ ...source, instanceId,
+          command: { characterId, revision: useCQInventoryStore.getState().commandRevision } }, signal);
+        if (reply.characterId !== characterId) throw new Error("Escape Rope owner mismatch");
+        accepted = true;
+      } catch (error) {
+        if (!current()) return;
+        if (error instanceof CorrelatedResponseError) rejection = error.message;
+        // The mutation may have committed. Recover once; never resend it.
+      }
+      try {
+        const snapshot = await readCurrentGameplayState(signal, () => this.movementGeneration);
+        if (!current()) return;
+        applyGameplayResourceSnapshot(snapshot);
+        const position = snapshot.position;
+        if (accepted) useChatStore.getState().addMessage("You escaped from the dungeon.", MessageType.SYSTEM);
+        else if (rejection) useChatStore.getState().addMessage(rejection, MessageType.SYSTEM);
+        this.projectOwnedPosition(position);
+      } catch {
+        if (current()) {
+          this.movementRecoveryRequired = true;
+          console.warn("[Movement] Escape Rope recovery unavailable; reconnect before moving.");
+        }
+      }
+    });
+  }
+  getPositionGeneration(): number { return this.movementGeneration; }
+
+  // Retiring a route is only one change to ownership. Reads also need to notice
+  // ordinary predicted movement/facing and a newly issued step before snapping.
+  capturePositionView(): string {
+    return `${this.movementGeneration}:${this.currentMapId}:${this.currentTileX}:${this.currentTileY}:${this.currentDirection}:${this.isMoving}:${this.issuedStep?.stepToken ?? ""}:${!!this.facingAbort}:${!!this.fieldCommandAbort}`;
+  }
+
+  // Call only after an owned, validated current read. Visual/server notifications
+  // can be missed while a scene binds; resource and plan publication stay outside.
+  projectOwnedPosition(position: OwnedPlayerPositionResponse): void {
+    if (this.fieldCommandsRetired) return;
+    this.movementRecoveryRequired = false;
+    this.stopMovement(true);
+    if (position.mapId === this.currentMapId) {
+      this.syncPosition(position.x, position.y);
+      this.syncDirection(position.direction);
+      if (this.playerId !== null) this.mapRenderer?.snapActorPosition(this.playerId, position.x, position.y, position.direction);
+      if (position.serverMovementPending) this.beginServerMovement(false);
+    } else {
+      window.dispatchEvent(new CustomEvent("warpTileTeleport", { detail: { ...position, serverCommitted: true } }));
+    }
+  }
+
+  private movementGeneration = 0;
   private isMoving: boolean = false;
   private activeMoveDestination: {
     x: number;
@@ -124,7 +442,9 @@ export class PlayerMovementController {
 
   // Callback fired when player arrives at a destination (used for warp pathing)
   private arrivalCallback: ((x: number, y: number) => boolean) | null = null;
-  private inputFrozenChecker: () => boolean = () => isWorldInputFrozen();
+  private inputFreezeProvider: () => boolean = () => isWorldInputFrozen();
+  private movementRecoveryRequired = false;
+  private inputFrozenChecker = (): boolean => this.movementRecoveryRequired || this.fieldCommandAbort !== null || this.inputFreezeProvider();
   private warpTileChecker: (x: number, y: number) => boolean = () => false;
   private warpAtProvider: (x: number, y: number) => PhaserWarp | null =
     () => null;
@@ -139,10 +459,14 @@ export class PlayerMovementController {
 
   constructor(scene: Scene) {
     this.scene = scene;
+    scene.events?.once?.("shutdown", () => {
+      this.retireFieldCommands();
+      this.stopMovement(true);
+    });
   }
 
   setInputFrozenChecker(checker: () => boolean): void {
-    this.inputFrozenChecker = checker;
+    this.inputFreezeProvider = checker;
   }
 
   setWarpTileChecker(checker: (x: number, y: number) => boolean): void {
@@ -283,7 +607,7 @@ export class PlayerMovementController {
     inputSource: "click" | "keyboard" = "click",
     activateWarpId?: number,
   ): boolean {
-    if (this.inputFrozenChecker()) return false;
+    if (this.inputFrozenChecker() || this.facingAbort || this.serverMovementInProgress) return false;
     if (this.playerId === null || !this.mapRenderer) return false;
 
     const path = this.findPath(this.currentTileX, this.currentTileY, destX, destY);
@@ -310,7 +634,7 @@ export class PlayerMovementController {
     onReach: () => void,
     inputSource: "click" | "keyboard" = "click",
   ): boolean {
-    if (this.inputFrozenChecker()) return false;
+    if (this.inputFrozenChecker() || this.facingAbort || this.serverMovementInProgress) return false;
     if (this.playerId === null || !this.mapRenderer) return false;
     if (!this.isWalkable(destX, destY)) return false;
 
@@ -695,11 +1019,23 @@ export class PlayerMovementController {
       return false;
     }
 
+    // The prompt starts its own facing request. Its settlement may change the
+    // transient view without changing the shore that authorized this choice.
+    const source = { generation: this.movementGeneration, mapId: this.currentMapId,
+      x: this.currentTileX, y: this.currentTileY };
+    const characterId = usePlayerCharacterStore.getState().characterProfile.id;
+    const transport = WorldSocket.sessionGeneration;
     usePokemonDialogueStore.getState().showChoice(
       "The water is calm. Want to SURF?",
       (yes) => {
-        if (!yes) return;
-        PhaserNet.requestSurf(waterX, waterY, this.currentMapId, direction);
+        if (!yes || this.fieldCommandsRetired || this.inputFrozenChecker()
+          || this.movementGeneration !== source.generation
+          || this.currentMapId !== source.mapId || this.currentTileX !== source.x || this.currentTileY !== source.y
+          || this.isMoving || this.issuedStep !== null || this.serverMovementInProgress
+          || usePlayerCharacterStore.getState().characterProfile.id !== characterId
+          || useGameScreenStore.getState().currentScreen !== "game"
+          || WorldSocket.sessionGeneration !== transport) return;
+        void this.surf(waterX, waterY, direction);
       },
     );
     return true;
@@ -837,13 +1173,7 @@ export class PlayerMovementController {
     direction: MovementDirection,
   ): boolean {
     if (this.inputFrozenChecker()) return false;
-    PhaserNet.requestFieldMoveUse(
-      "CUT",
-      targetX,
-      targetY,
-      this.currentMapId,
-      direction,
-    );
+    void this.cut(targetX,targetY,direction);
     return true;
   }
 
@@ -882,7 +1212,7 @@ export class PlayerMovementController {
   }
 
   handleFieldMoveInteractionInFront(): boolean {
-    if (this.inputFrozenChecker()) return false;
+    if (this.inputFrozenChecker() || this.facingAbort || this.serverMovementInProgress) return false;
     if (this.playerId === null || !this.mapRenderer) return false;
     if (this.isMoving) return false;
 
@@ -917,17 +1247,69 @@ export class PlayerMovementController {
     }
   }
 
+  private requestFacing(direction: MovementDirection): void {
+    if (this.playerId === null || this.stepAbort || this.serverMovementInProgress) return;
+    const characterId = usePlayerCharacterStore.getState().characterProfile.id;
+    const request = { mapId: this.currentMapId, fromX: this.currentTileX, fromY: this.currentTileY, direction };
+    const key = [request.mapId, request.fromX, request.fromY, direction].join(":");
+    if (this.facingAbort && key === this.facingRequestKey) return;
+    this.facingAbort?.abort();
+    const abort = new AbortController();
+    this.facingAbort = abort;
+    this.facingRequestKey = key;
+    const current = () => !abort.signal.aborted && !this.fieldCommandsRetired
+      && usePlayerCharacterStore.getState().characterProfile.id === characterId;
+    void requestPlayerFacing(request, abort.signal).then((result) => {
+      if (!current()) return;
+      if (result.serverMovementPending && result.mapId === this.currentMapId && result.x === this.currentTileX && result.y === this.currentTileY) {
+        // Boulder updates can arrive before the first committed path point.
+        // Preserve that server-owned phase instead of issuing an ordinary step
+        // into the now visually unoccupied tile during this interval.
+        this.beginServerMovement(false);
+      }
+    }).catch(async (error: unknown) => {
+      if (!current()) return;
+      if (!(error instanceof CorrelatedResponseError)) {
+        // A turn can commit a boulder push and its route. Unknown transport
+        // outcomes require a current read, never a facing retry or error pose.
+        this.movementRecoveryRequired = true;
+        try {
+          await this.actorReconciler(abort.signal);
+          if (!current()) return;
+          const snapshot = await readCurrentGameplayState(abort.signal, () => this.movementGeneration);
+          if (!current()) return;
+          applyGameplayResourceSnapshot(snapshot);
+          this.projectOwnedPosition(snapshot.position);
+        } catch {
+          if (current()) console.warn("[PlayerMovement] Facing recovery unavailable; reconnect before moving.");
+        }
+        return;
+      }
+      // Explicit rejection does not confirm a movement commit. Keep its
+      // presentation directional and source-matching.
+      if (error instanceof CorrelatedResponseError && !this.isMoving) {
+        const owned = error.response as PlayerStepError;
+        if (owned.mapId === this.currentMapId && owned.x === this.currentTileX && owned.y === this.currentTileY) {
+          this.syncDirection(owned.direction);
+          if (this.playerId !== null) this.mapRenderer?.getMovementController()?.handleDirectionUpdate(this.playerId, owned.direction);
+        }
+      }
+      console.warn("[PlayerMovement] Facing was not accepted:", error);
+    }).finally(() => {
+      if (this.facingAbort === abort) {
+        this.facingAbort = null;
+        this.facingRequestKey = null;
+      }
+    });
+  }
+
   private faceDirection(direction: MovementDirection): void {
     const movementController = this.mapRenderer?.getMovementController();
     if (movementController && this.playerId !== null) {
       movementController.handleDirectionUpdate(this.playerId, direction);
     }
-    PhaserNet.sendDirectionUpdate(
-      this.currentTileX,
-      this.currentTileY,
-      this.currentMapId,
-      direction,
-    );
+    this.requestFacing(direction);
+    this.emitPlayerPositionChanged();
   }
 
   private directionToAdjacentTile(
@@ -1042,16 +1424,7 @@ export class PlayerMovementController {
     if (!direction) return false;
 
     this.currentDirection = direction;
-    const movementController = this.mapRenderer?.getMovementController();
-    if (movementController && this.playerId !== null) {
-      movementController.handleDirectionUpdate(this.playerId, direction);
-    }
-    PhaserNet.sendDirectionUpdate(
-      this.currentTileX,
-      this.currentTileY,
-      this.currentMapId,
-      direction,
-    );
+    this.faceDirection(direction);
     return true;
   }
 
@@ -1323,7 +1696,9 @@ export class PlayerMovementController {
    * Handle click on a tile using client-side pathing.
    */
   handleTileClick(worldX: number, worldY: number): void {
-    if (this.inputFrozenChecker()) {
+    // A new click cannot replace a server-issued step while its animation or
+    // completion is outstanding. Scene snaps retire it explicitly instead.
+    if (this.stepAbort || this.facingAbort || this.serverMovementInProgress || this.inputFrozenChecker()) {
       return;
     }
 
@@ -1419,16 +1794,7 @@ export class PlayerMovementController {
       }
       if (direction) {
         this.currentDirection = direction;
-        const movementController = this.mapRenderer.getMovementController();
-        if (movementController && this.playerId !== null) {
-          movementController.handleDirectionUpdate(this.playerId, direction);
-        }
-        PhaserNet.sendDirectionUpdate(
-          this.currentTileX,
-          this.currentTileY,
-          this.currentMapId,
-          direction,
-        );
+        this.faceDirection(direction);
         this.scene.events.emit(
           "playerFacedDirection",
           direction,
@@ -1477,24 +1843,73 @@ export class PlayerMovementController {
     x: number,
     y: number,
     completedDirection: string,
+    kind: "step" | "snap" | "serverStep" = "step",
   ): void {
+    void this.finishVisualStep(actorId, x, y, completedDirection, kind).catch((error: unknown) => this.handleStepFailure(error));
+  }
+
+  private async finishVisualStep(actorId: number, x: number, y: number, completedDirection: string, kind: "step" | "snap" | "serverStep"): Promise<void> {
     if (this.playerId === actorId) {
-      // ActorMovementController derives this from the actual completed tile
-      // delta. Use it as the authoritative facing direction before reporting
-      // the position; this controller's cache can still contain the spawn
-      // default during scripted/server-driven movement.
+      // ActorMovementController derives visual facing from the completed tile
+      // delta; the cache can still contain the spawn default.
       this.currentDirection = completedDirection;
       this.currentTileX = x;
       this.currentTileY = y;
       this.updateSurfingStateForTile(x, y);
       this.updateTravelMapForTile(x, y);
       this.emitPlayerPositionChanged();
-      PhaserNet.sendPlayerPosition(
-        x,
-        y,
-        this.currentMapId,
-        this.currentDirection,
-      );
+      // A snap projects a server position; it is not a new completed move.
+      // Keep local context fresh without echoing a write or activating a warp.
+      if (kind === "snap") {
+        this.stopMovement(true);
+        return;
+      }
+      if (kind === "serverStep") {
+        // The server has already committed this path point. Projection never
+        // acknowledges through the legacy coordinate writer or local warp path.
+        if (this.serverPathFinished) this.stopMovement(true);
+        return;
+      }
+      const issued = this.issuedStep;
+      if (issued) {
+        const abort = this.stepAbort;
+        const generation = this.movementGeneration;
+        if (!abort || issued.x !== x || issued.y !== y || issued.mapId !== this.currentMapId) {
+          throw new Error("Movement animation disagrees with the issued step");
+        }
+        const result = await completePlayerStep(issued.stepToken, abort.signal);
+        if (generation !== this.movementGeneration || abort.signal.aborted) return;
+        if (result.replayed) {
+          // A receipt is historical. Read the current owned location before
+          // projecting recovery, and discard future path/arrival callbacks.
+          let owned;
+          try { owned = await readOwnedPlayerPosition(abort.signal, issued.stepToken); }
+          catch (error) {
+            if (generation !== this.movementGeneration || abort.signal.aborted) return;
+            this.movementRecoveryRequired = true;
+            this.currentPath = [];
+            this.arrivalCallback = null;
+            throw error;
+          }
+          if (generation !== this.movementGeneration || abort.signal.aborted) return;
+          this.stopMovement(true);
+          if (owned.mapId === this.currentMapId) {
+            this.syncPosition(owned.x, owned.y);
+            this.syncDirection(owned.direction);
+            this.mapRenderer?.snapActorPosition(actorId, owned.x, owned.y, owned.direction);
+            if (owned.serverMovementPending) this.beginServerMovement(false);
+          } else {
+            window.dispatchEvent(new CustomEvent("warpTileTeleport", { detail: { ...owned, serverCommitted: true, sfxAlreadyPlayed: true } }));
+          }
+          return;
+        }
+        this.issuedStep = null;
+        this.stepAbort = null;
+      } else {
+        // Only an issued step may trigger acknowledgement and local arrival
+        // effects. Server animations must explicitly use serverStep.
+        throw new Error("Movement animation completed without an issued step");
+      }
 
       // Finish the current visual step, then discard any queued user path as
       // soon as a panel, dialogue, battle, shop, or modal takes input focus.
@@ -1607,20 +2022,44 @@ export class PlayerMovementController {
     else if (nextTile.y > this.currentTileY) direction = "DOWN";
     else if (nextTile.y < this.currentTileY) direction = "UP";
 
-    this.currentDirection = direction;
+    const sourceX = this.currentTileX;
+    const sourceY = this.currentTileY;
+    const mapId = this.currentMapId;
+    const generation = this.movementGeneration;
+    const abort = new AbortController();
+    this.stepAbort = abort;
+    void requestPlayerStep({ mapId, fromX: sourceX, fromY: sourceY, direction }, abort.signal).then((step) => {
+      if (abort.signal.aborted || generation !== this.movementGeneration) return;
+      if (step.mapId !== mapId || step.x !== nextTile.x || step.y !== nextTile.y) {
+        throw new Error("Movement destination disagrees with server collision data");
+      }
+      this.issuedStep = step;
+      this.currentDirection = step.direction;
+      mapRenderer.updateActorPosition(playerId, sourceX, sourceY, step.x, step.y, step.direction, undefined, step.ledgeJump ? { ledgeJump: true } : undefined);
+    }).catch((error: unknown) => {
+      if (generation === this.movementGeneration && !abort.signal.aborted) this.handleStepFailure(error);
+    });
+  }
 
-    // Trigger local movement update (so we see ourselves move immediately)
-    // This adds to the ActorMovementController queue via MapRenderer
-    mapRenderer.updateActorPosition(
-      playerId,
-      this.currentTileX,
-      this.currentTileY,
-      nextTile.x,
-      nextTile.y,
-      direction,
-      undefined,
-      nextTile.ledgeJump ? { ledgeJump: true } : undefined,
-    );
+  private handleStepFailure(error: unknown): void {
+    if (error instanceof DOMException && error.name === "AbortError") return;
+    if (this.movementRecoveryRequired) {
+      console.error("[PlayerMovement] Could not recover movement; input remains locked until scene/session retirement", error);
+      return;
+    }
+    this.stopMovement(true);
+    if (error instanceof CorrelatedResponseError) {
+      const owned = error.response as PlayerStepError;
+      if (owned.mapId === this.currentMapId && this.playerId !== null) {
+        this.syncPosition(owned.x, owned.y);
+        this.syncDirection(owned.direction);
+        this.mapRenderer?.snapActorPosition(this.playerId, owned.x, owned.y, owned.direction);
+        if (owned.serverMovementPending) this.beginServerMovement(false);
+      }
+    }
+    // A timeout does not prove rollback. Stop the path instead of animating or
+    // replaying an unconfirmed result; reconnect/reload recovers owned position.
+    console.error("[PlayerMovement] Movement request failed", error);
   }
 
   /**
@@ -1747,7 +2186,7 @@ export class PlayerMovementController {
    * Returns true if the move was initiated, false if blocked.
    */
   handleKeyboardMove(direction: "UP" | "DOWN" | "LEFT" | "RIGHT"): boolean {
-    if (this.inputFrozenChecker()) return false;
+    if (this.inputFrozenChecker() || this.facingAbort || this.serverMovementInProgress) return false;
     if (this.playerId === null || !this.mapRenderer) return false;
     if (this.isMoving) return false;
 
@@ -1851,18 +2290,8 @@ export class PlayerMovementController {
         return true;
       }
 
-      // Visually turn the sprite to face the blocked direction
-      const movementController = this.mapRenderer.getMovementController();
-      if (movementController && this.playerId !== null) {
-        movementController.handleDirectionUpdate(this.playerId, direction);
-      }
-      // Notify server so other players see the turn
-      PhaserNet.sendDirectionUpdate(
-        this.currentTileX,
-        this.currentTileY,
-        this.currentMapId,
-        direction,
-      );
+      // Publish the same facing context used by click and source interactions.
+      this.faceDirection(direction);
       // Emit event so warp manager can check
       this.scene.events.emit(
         "playerFacedDirection",
@@ -1882,9 +2311,36 @@ export class PlayerMovementController {
     return true;
   }
 
-  stopMovement(): void {
+  beginServerMovement(pathFinished: boolean): void {
+    this.stopMovement(true);
+    this.serverMovementInProgress = true;
+    this.serverPathFinished = pathFinished;
+    this.isMoving = true;
+  }
+
+  stopMovement(retireIssued = false): void {
+    if (retireIssued) {
+      // Retiring prediction or receiving an actor snap does not prove current
+      // command/resources recovery. A failed read keeps this owner locked; a
+      // replacement scene creates a fresh owner after loading owned state.
+      this.serverMovementInProgress = false;
+      this.serverPathFinished = true;
+      this.facingAbort?.abort();
+      this.facingAbort = null;
+      this.facingRequestKey = null;
+    }
+    // Input focus discards the future path but lets the current issued animation
+    // finish and acknowledge through its issued token.
+    // Scene retirement and authoritative snaps explicitly retire that animation.
+    if (retireIssued || !this.issuedStep) {
+      this.movementGeneration++;
+      this.stepAbort?.abort();
+      this.stepAbort = null;
+      this.issuedStep = null;
+    }
     this.currentPath = [];
-    this.isMoving = false;
+    // Keep the current issued animation/completion exclusive until its response.
+    this.isMoving = this.issuedStep !== null || this.serverMovementInProgress;
     this.arrivalCallback = null;
     this.activeMoveDestination = null;
   }
@@ -1932,63 +2388,6 @@ export class PlayerMovementController {
     this.emitPlayerPositionChanged();
   }
 
-  applySurfingSuccess(
-    x: number,
-    y: number,
-    mapId: number,
-    direction?: string,
-  ): void {
-    if (this.playerId === null || !this.mapRenderer) return;
-
-    const normalizedDirection =
-      direction != null ? this.normalizeDirection(direction) : null;
-    if (normalizedDirection) {
-      this.currentDirection = normalizedDirection;
-    }
-
-    this.currentPath = [];
-    this.activeMoveDestination = { x, y, mapId };
-    this.currentMapId = mapId;
-    this.setSurfingActive(true);
-    this.updateTravelMapForTile(x, y);
-
-    if (this.currentTileX === x && this.currentTileY === y) {
-      this.isMoving = false;
-      this.activeMoveDestination = null;
-      this.emitPlayerPositionChanged();
-      return;
-    }
-
-    const oldX = this.currentTileX;
-    const oldY = this.currentTileY;
-    const isAdjacent = Math.abs(x - oldX) + Math.abs(y - oldY) === 1;
-    if (isAdjacent) {
-      this.isMoving = true;
-      this.mapRenderer.updateActorPosition(
-        this.playerId,
-        oldX,
-        oldY,
-        x,
-        y,
-        this.currentDirection,
-      );
-      return;
-    }
-
-    this.isMoving = false;
-    this.currentTileX = x;
-    this.currentTileY = y;
-    this.mapRenderer.snapActorPosition(
-      this.playerId,
-      x,
-      y,
-      this.currentDirection,
-    );
-    this.updateSurfingStateForTile(x, y);
-    this.updateTravelMapForTile(x, y);
-    this.emitPlayerPositionChanged();
-  }
-
   /**
    * Set a persistent callback checked on each visual step completion (tween finish).
    * The callback should return true when the player has arrived (to consume it),
@@ -2001,12 +2400,11 @@ export class PlayerMovementController {
   }
 
   /**
-   * Animate a visual-only step toward a target tile, bypassing collision checks
-   * and server updates. Used by WarpManager to show the player stepping into
-   * a door before the warp transition.
+   * Project a step toward an already committed warp destination. The native
+   * entrance tile is animation metadata, never a new position command.
    * Returns a promise that resolves when the step animation completes.
    */
-  animateStepToward(targetX: number, targetY: number, overrideDirection?: string): Promise<void> {
+  animateCommittedStepToward(targetX: number, targetY: number, overrideDirection?: string): Promise<void> {
     return new Promise<void>((resolve) => {
       if (this.playerId === null || !this.mapRenderer) {
         resolve();
@@ -2035,7 +2433,7 @@ export class PlayerMovementController {
       // If already on the target, resolve immediately
       if (stepX === this.currentTileX && stepY === this.currentTileY) {
         debugPlayerMovement(
-          `[PlayerMovement] animateStepToward: already at target, resolving`,
+          `[PlayerMovement] animateCommittedStepToward: already at target, resolving`,
         );
         resolve();
         return;
@@ -2045,30 +2443,32 @@ export class PlayerMovementController {
       const sprite = this.mapRenderer.getActorSprite(this.playerId);
       if (!sprite) {
         debugPlayerMovement(
-          `[PlayerMovement] animateStepToward: no sprite found, resolving`,
+          `[PlayerMovement] animateCommittedStepToward: no sprite found, resolving`,
         );
         resolve();
         return;
       }
 
       debugPlayerMovement(
-        `[PlayerMovement] animateStepToward: tweening from (${this.currentTileX},${this.currentTileY}) to (${stepX},${stepY}), direction=${direction}`,
+        `[PlayerMovement] animateCommittedStepToward: tweening from (${this.currentTileX},${this.currentTileY}) to (${stepX},${stepY}), direction=${direction}`,
       );
 
-      // Stop any existing movement
-      this.stopMovement();
+      this.beginServerMovement(true);
+      const generation = this.movementGeneration;
 
       // Safety timeout — if the tween doesn't complete in 1s, resolve anyway
       let resolved = false;
       const timeout = setTimeout(() => {
         if (!resolved) {
           console.warn(
-            `[PlayerMovement] animateStepToward: tween timed out, resolving`,
+            `[PlayerMovement] animateCommittedStepToward: tween timed out, resolving`,
           );
           resolved = true;
-          this.currentTileX = stepX;
-          this.currentTileY = stepY;
-          this.emitPlayerPositionChanged();
+          if (generation === this.movementGeneration) {
+            this.syncPosition(stepX, stepY);
+            this.mapRenderer?.snapActorPosition(this.playerId!, stepX, stepY, direction);
+            this.stopMovement(true);
+          }
           resolve();
         }
       }, 1000);
@@ -2082,17 +2482,20 @@ export class PlayerMovementController {
           stepX,
           stepY,
           direction,
+          undefined,
+          { serverControlled: true },
         );
         void this.mapRenderer.waitForActorIdle(this.playerId).then(() => {
           if (!resolved) {
             resolved = true;
             clearTimeout(timeout);
             debugPlayerMovement(
-              `[PlayerMovement] animateStepToward: tween complete at (${stepX},${stepY})`,
+              `[PlayerMovement] animateCommittedStepToward: tween complete at (${stepX},${stepY})`,
             );
-            this.currentTileX = stepX;
-            this.currentTileY = stepY;
-            this.emitPlayerPositionChanged();
+            if (generation === this.movementGeneration) {
+              this.syncPosition(stepX, stepY);
+              this.stopMovement(true);
+            }
             resolve();
           }
         });
@@ -2113,11 +2516,12 @@ export class PlayerMovementController {
             resolved = true;
             clearTimeout(timeout);
             debugPlayerMovement(
-              `[PlayerMovement] animateStepToward: fallback tween complete at (${stepX},${stepY})`,
+              `[PlayerMovement] animateCommittedStepToward: fallback tween complete at (${stepX},${stepY})`,
             );
-            this.currentTileX = stepX;
-            this.currentTileY = stepY;
-            this.emitPlayerPositionChanged();
+            if (generation === this.movementGeneration) {
+              this.syncPosition(stepX, stepY);
+              this.stopMovement(true);
+            }
             resolve();
           }
         },
@@ -2126,7 +2530,8 @@ export class PlayerMovementController {
   }
 
   clear(): void {
-    this.stopMovement();
+    this.retireFieldCommands();
+    this.stopMovement(true);
     this.arrivalCallback = null;
     this.collisionMap.clear();
     this.rawFootTileMap.clear();

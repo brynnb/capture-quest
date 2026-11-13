@@ -1,5 +1,5 @@
 import { Scene } from "phaser";
-import { TrainerEncounterNotifyPayload } from "@/net/generated/world_api";
+import { TrainerEncounterNotifyPayload } from "@/net/generated/protocol";
 import { TILE_SIZE } from "../../constants";
 import { MapRenderer } from "../../renderers/MapRenderer";
 import * as PhaserNet from "../../services/PhaserNetworkService";
@@ -13,6 +13,8 @@ interface TrainerEncounterPresenterDeps {
 export class TrainerEncounterPresenter {
   private activeTrainerActorId: number | null = null;
   private activeExclamation: Phaser.GameObjects.Text | null = null;
+  private generation = 0;
+  private cancelDelay: (() => void) | null = null;
 
   constructor(private readonly deps: TrainerEncounterPresenterDeps) {}
 
@@ -28,12 +30,14 @@ export class TrainerEncounterPresenter {
       return;
     }
 
+    const generation = ++this.generation;
     this.activeTrainerActorId = data.trainerActorId;
     this.deps.setInputLocked(true);
 
     try {
       this.showExclamation(data.trainerActorId);
       await this.delayMs(450);
+      if (generation !== this.generation) return;
       this.destroyExclamation();
 
       const path = this.buildApproachPath(data);
@@ -46,16 +50,29 @@ export class TrainerEncounterPresenter {
       await this.deps
         .mapRenderer()
         .animateActorLocalPath(data.trainerActorId, path, finalDirection);
+      if (generation !== this.generation) return;
+      PhaserNet.sendTrainerEncounterReady(data.trainerActorId, data.encounterToken);
+    } catch (error) {
+      if (generation === this.generation) {
+        console.warn(
+          "[TrainerEncounter] Approach interrupted; pending encounter can resume on session/map recovery",
+          error,
+        );
+      }
     } finally {
+      if (generation !== this.generation) return;
       this.destroyExclamation();
       this.deps.setInputLocked(false);
       this.activeTrainerActorId = null;
-      PhaserNet.sendTrainerEncounterReady(data.trainerActorId);
     }
   }
 
   cleanup(): void {
+    this.generation++;
+    this.cancelDelay?.();
+    this.cancelDelay = null;
     this.destroyExclamation();
+    this.deps.setInputLocked(false);
     this.activeTrainerActorId = null;
   }
 
@@ -156,7 +173,14 @@ export class TrainerEncounterPresenter {
 
   private delayMs(ms: number): Promise<void> {
     return new Promise((resolve) => {
-      this.deps.scene.time.delayedCall(ms, () => resolve());
+      const timer = this.deps.scene.time.delayedCall(ms, () => {
+        this.cancelDelay = null;
+        resolve();
+      });
+      this.cancelDelay = () => {
+        timer.remove(false);
+        resolve();
+      };
     });
   }
 }

@@ -20,7 +20,7 @@
   },
   "trigger": { "type": "map_script", "mapName": "FUCHSIA_GYM" },
   "expect": {
-    "scriptLabel": "FuchsiaGymKogaPostBattle",
+    "scriptLabel": "FuchsiaGymReceiveTM06",
     "flagsPresent": ["EVENT_BEAT_KOGA", "EVENT_GOT_SOULBADGE", "EVENT_GOT_TM06"],
     "inventoryContains": [{ "itemId": 94, "quantity": 1 }],
     "actionTypesContains": ["dialogue", "setFlag", "giveItem"],

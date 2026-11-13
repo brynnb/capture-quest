@@ -1,6 +1,7 @@
 package world
 
 import (
+	db_character "capturequest/internal/db/character"
 	"encoding/binary"
 	"encoding/json"
 	"testing"
@@ -46,12 +47,11 @@ func (c *testSessionClient) SetShowNetworkStatsEnabled(bool) {}
 func (c *testSessionClient) AllowTrainerRebattles() bool     { return false }
 func (c *testSessionClient) SetAllowTrainerRebattlesEnabled(bool) {
 }
-func (c *testSessionClient) Options() interface{}              { return nil }
-func (c *testSessionClient) SaveOptions() error                { return nil }
-func (c *testSessionClient) SendSystemMessage(string)          {}
-func (c *testSessionClient) SendSpecialMessage(string, string) {}
-func (c *testSessionClient) SendStateUpdate()                  {}
-func (c *testSessionClient) Shutdown()                         {}
+func (c *testSessionClient) Options() *db_character.CharacterOptions { return nil }
+func (c *testSessionClient) SendSystemMessage(string)                {}
+func (c *testSessionClient) SendSpecialMessage(string, string)       {}
+func (c *testSessionClient) SendStateUpdate()                        {}
+func (c *testSessionClient) Shutdown()                               {}
 
 func TestShouldSendActorToSessionMapKeepsOverworldNPCsWarmIndoors(t *testing.T) {
 	mgr := &PhaserActorManager{
@@ -124,6 +124,7 @@ func TestBroadcastActorDespawnExceptRemovesPlayerFromPreviousMapViewers(t *testi
 	newMapViewer.Authenticated = true
 	newMapViewer.MapID = 63
 
+	sessionManager.ForEachSession(func(s *session.Session) { s.PublishPresence() })
 	mgr := &PhaserActorManager{
 		wh:              &WorldHandler{sessionManager: sessionManager},
 		overworldMapIds: map[int]bool{},
@@ -172,6 +173,7 @@ func TestBroadcastPlayerVisibleMapChangeDespawnsOldMapAndUpdatesNewMap(t *testin
 	newMapViewer.MapID = 63
 
 	wh := &WorldHandler{sessionManager: sessionManager}
+	sessionManager.ForEachSession(func(s *session.Session) { s.PublishPresence() })
 	mgr := &PhaserActorManager{
 		wh:              wh,
 		overworldMapIds: map[int]bool{},

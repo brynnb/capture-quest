@@ -1,12 +1,15 @@
 package scriptsim
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
 
 	"capturequest/internal/api/opcodes"
 	"capturequest/internal/db"
+	"capturequest/internal/db/cqitems"
 	"capturequest/internal/pokebattle"
 	"capturequest/internal/world"
 )
@@ -129,121 +132,131 @@ type RepelSummary struct {
 	ItemID           int
 }
 
-func Run(scenario *Scenario) (*Result, error) {
+func Run(ctx context.Context, database *sql.DB, scenario *Scenario) (*Result, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	// Fixture writers are still global. Until they migrate, reject a mismatched
+	// target before any mutation rather than reading one database and writing another.
+	if database == nil || db.GlobalWorldDB == nil || db.GlobalWorldDB.DB != database {
+		return nil, fmt.Errorf("simulator requires its initialized disposable database")
+	}
 	applied, err := ApplyFixture(scenario.Fixture)
 	if err != nil {
 		return nil, err
 	}
 
-	efm := world.NewEventFlagManager(db.GlobalWorldDB.DB)
-	if err := efm.LoadFlags(applied.CharacterID); err != nil {
+	efm := world.NewEventFlagManager(database)
+	if err := efm.LoadFlagsContext(ctx, applied.CharacterID); err != nil {
 		return nil, err
 	}
-	cutscenes := world.NewCutsceneManager(db.GlobalWorldDB.DB)
-	cutscenes.Load()
+	cutscenes := world.NewCutsceneManager(database)
+	if err := cutscenes.Load(ctx); err != nil {
+		return nil, fmt.Errorf("load cutscenes: %w", err)
+	}
 
-	initial, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	initial, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}
 	if scenario.Trigger.Type == "safari_enter" {
-		return runSafariEnter(scenario, applied, initial)
+		return runSafariEnter(ctx, database, scenario, applied, initial)
 	}
 	if scenario.Trigger.Type == "safari_step" {
-		return runSafariStep(scenario, applied, initial)
+		return runSafariStep(ctx, database, scenario, applied, initial)
 	}
 	if scenario.Trigger.Type == "safari_battle_action" {
-		return runSafariBattleAction(scenario, applied, initial)
+		return runSafariBattleAction(ctx, database, scenario, applied, initial)
 	}
 	if scenario.Trigger.Type == "daycare_deposit" {
-		return runDayCareDeposit(scenario, applied, initial)
+		return runDayCareDeposit(ctx, database, scenario, applied, initial)
 	}
 	if scenario.Trigger.Type == "daycare_step" {
-		return runDayCareStep(scenario, applied, initial)
+		return runDayCareStep(ctx, database, scenario, applied, initial)
 	}
 	if scenario.Trigger.Type == "daycare_withdraw" {
-		return runDayCareWithdraw(scenario, applied, initial)
+		return runDayCareWithdraw(ctx, database, scenario, applied, initial)
 	}
 	if scenario.Trigger.Type == "repel_use" {
-		return runRepelUse(scenario, applied, initial)
+		return runRepelUse(ctx, database, scenario, applied, initial)
 	}
 	if scenario.Trigger.Type == "repel_step" {
-		return runRepelStep(scenario, applied, initial)
+		return runRepelStep(ctx, database, scenario, applied, initial)
 	}
 	if scenario.Trigger.Type == "active_battle_state" {
-		return runActiveBattleState(scenario, applied, initial)
+		return runActiveBattleState(ctx, database, scenario, applied, initial)
 	}
 	if scenario.Trigger.Type == "fixture_state" {
-		return runFixtureState(scenario, applied, initial)
+		return runFixtureState(ctx, database, scenario, applied, initial)
 	}
 	if scenario.Trigger.Type == "resolve_active_battle" {
-		return runResolveActiveBattle(scenario, applied, initial, efm)
+		return runResolveActiveBattle(ctx, database, scenario, applied, initial, efm)
 	}
 	if scenario.Trigger.Type == "gamecorner_buy_coins" {
-		return runGameCornerBuyCoins(scenario, applied, initial)
+		return runGameCornerBuyCoins(ctx, database, scenario, applied, initial)
 	}
 	if scenario.Trigger.Type == "gamecorner_slot_play" {
-		return runGameCornerSlotPlay(scenario, applied, initial)
+		return runGameCornerSlotPlay(ctx, database, scenario, applied, initial)
 	}
 	if scenario.Trigger.Type == "gamecorner_prize_list" {
-		return runGameCornerPrizeList(scenario, applied, initial)
+		return runGameCornerPrizeList(ctx, database, scenario, applied, initial)
 	}
 	if scenario.Trigger.Type == "gamecorner_prize_buy" {
-		return runGameCornerPrizeBuy(scenario, applied, initial)
+		return runGameCornerPrizeBuy(ctx, database, scenario, applied, initial)
 	}
 	if scenario.Trigger.Type == "gamecorner_hidden_coin" {
-		return runGameCornerHiddenCoin(scenario, applied, initial)
+		return runGameCornerHiddenCoin(ctx, database, scenario, applied, initial)
 	}
 	if scenario.Trigger.Type == "field_move_permission" {
-		return runFieldMovePermission(scenario, applied, initial, efm)
+		return runFieldMovePermission(ctx, database, scenario, applied, initial, efm)
 	}
 	if scenario.Trigger.Type == "boulder_push" {
-		return runBoulderPush(scenario, applied, initial, efm)
+		return runBoulderPush(ctx, database, scenario, applied, initial, efm)
 	}
 	if scenario.Trigger.Type == "runtime_boulder_push" {
-		return runRuntimeBoulderPush(scenario, applied, initial, efm)
+		return runRuntimeBoulderPush(ctx, database, scenario, applied, initial, efm)
 	}
 	if scenario.Trigger.Type == "pathfind" {
-		return runPathfind(scenario, applied, initial, efm)
+		return runPathfind(ctx, database, scenario, applied, initial, efm)
 	}
 	if scenario.Trigger.Type == "vermilion_gym_trash" {
-		return runVermilionGymTrash(scenario, applied, initial, efm)
+		return runVermilionGymTrash(ctx, database, scenario, applied, initial, efm)
 	}
 	if scenario.Trigger.Type == "silph_card_key" {
-		return runSilphCardKey(scenario, applied, initial, efm)
+		return runSilphCardKey(ctx, database, scenario, applied, initial, efm)
 	}
 	if scenario.Trigger.Type == "seafoam_boulder_hole" {
-		return runSeafoamBoulderHole(scenario, applied, initial, efm)
+		return runSeafoamBoulderHole(ctx, database, scenario, applied, initial, efm)
 	}
 	if scenario.Trigger.Type == "seafoam_current" {
-		return runSeafoamCurrent(scenario, applied, initial, efm)
+		return runSeafoamCurrent(ctx, database, scenario, applied, initial, efm)
 	}
 	if scenario.Trigger.Type == "seafoam_surf_check" {
-		return runSeafoamSurfCheck(scenario, applied, initial, efm)
+		return runSeafoamSurfCheck(ctx, database, scenario, applied, initial, efm)
 	}
 	if scenario.Trigger.Type == "elevator_floors" {
-		return runElevatorFloors(scenario, applied, initial, efm)
+		return runElevatorFloors(ctx, database, scenario, applied, initial, efm)
 	}
 	if scenario.Trigger.Type == "elevator_select" {
-		return runElevatorSelect(scenario, applied, initial, efm)
+		return runElevatorSelect(ctx, database, scenario, applied, initial, efm)
 	}
 	if scenario.Trigger.Type == "dialogue_choice" {
-		return runDialogueChoice(scenario, applied, initial, efm)
+		return runDialogueChoice(ctx, database, scenario, applied, initial, efm)
 	}
 	if scenario.Trigger.Type == "map_load" {
-		return runMapLoad(scenario, applied, initial, efm)
+		return runMapLoad(ctx, database, scenario, applied, initial, efm)
 	}
 	if scenario.Trigger.Type == "tile_state" {
-		return runTileState(scenario, applied, initial, efm)
+		return runTileState(ctx, database, scenario, applied, initial, efm)
 	}
 	if scenario.Trigger.Type == "event_object_state" {
-		return runEventObjectState(scenario, applied, initial, efm)
+		return runEventObjectState(ctx, database, scenario, applied, initial, efm)
 	}
 	if scenario.Trigger.Type == "click_no_script" {
-		return runClickNoScript(scenario, applied, initial, cutscenes, efm)
+		return runClickNoScript(ctx, database, scenario, applied, initial, cutscenes, efm)
 	}
 	if scenario.Trigger.Type == "coord_no_script" {
-		return runCoordNoScript(scenario, applied, initial, cutscenes, efm)
+		return runCoordNoScript(ctx, database, scenario, applied, initial, cutscenes, efm)
 	}
 
 	cs, err := resolveScript(scenario, applied, cutscenes, efm)
@@ -269,7 +282,7 @@ func Run(scenario *Scenario) (*Result, error) {
 		effects = append(effects, battleEffects...)
 	}
 
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}
@@ -288,7 +301,11 @@ func Run(scenario *Scenario) (*Result, error) {
 		ObjectStates:  objectStates,
 	}
 	if scenarioWorld != nil && scenarioWorld.Safari != nil {
-		result.Safari = safariSummaryFromSession(scenarioWorld.Safari.GetSession(applied.CharacterID))
+		saved, err := scenarioWorld.Safari.GetSession(context.Background(), applied.CharacterID)
+		if err != nil {
+			return nil, err
+		}
+		result.Safari = safariSummaryFromSession(saved)
 	}
 	if err := result.ValidateExpectations(); err != nil {
 		return result, err
@@ -296,7 +313,7 @@ func Run(scenario *Scenario) (*Result, error) {
 	return result, nil
 }
 
-func runVermilionGymTrash(scenario *Scenario, applied *AppliedFixture, initial *Snapshot, efm *world.EventFlagManager) (*Result, error) {
+func runVermilionGymTrash(ctx context.Context, database *sql.DB, scenario *Scenario, applied *AppliedFixture, initial *Snapshot, efm *world.EventFlagManager) (*Result, error) {
 	outcome, err := world.HandleVermilionGymTrashCanWithPicker(
 		applied.CharacterID,
 		scenario.Trigger.TrashCanIndex,
@@ -319,7 +336,7 @@ func runVermilionGymTrash(scenario *Scenario, applied *AppliedFixture, initial *
 		return nil, err
 	}
 
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}
@@ -342,7 +359,7 @@ func runVermilionGymTrash(scenario *Scenario, applied *AppliedFixture, initial *
 	return result, nil
 }
 
-func runSilphCardKey(scenario *Scenario, applied *AppliedFixture, initial *Snapshot, efm *world.EventFlagManager) (*Result, error) {
+func runSilphCardKey(ctx context.Context, database *sql.DB, scenario *Scenario, applied *AppliedFixture, initial *Snapshot, efm *world.EventFlagManager) (*Result, error) {
 	if scenario.Trigger.TextConstant == "" {
 		return nil, fmt.Errorf("silph_card_key trigger requires textConstant")
 	}
@@ -365,7 +382,7 @@ func runSilphCardKey(scenario *Scenario, applied *AppliedFixture, initial *Snaps
 	if err != nil {
 		return nil, err
 	}
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}
@@ -388,11 +405,11 @@ func runSilphCardKey(scenario *Scenario, applied *AppliedFixture, initial *Snaps
 	return result, nil
 }
 
-func runSeafoamBoulderHole(scenario *Scenario, applied *AppliedFixture, initial *Snapshot, efm *world.EventFlagManager) (*Result, error) {
+func runSeafoamBoulderHole(ctx context.Context, database *sql.DB, scenario *Scenario, applied *AppliedFixture, initial *Snapshot, efm *world.EventFlagManager) (*Result, error) {
 	if scenario.Trigger.HoleIndex <= 0 {
 		return nil, fmt.Errorf("seafoam_boulder_hole trigger requires holeIndex")
 	}
-	outcome, err := world.HandleSeafoamBoulderHole(applied.CharacterID, scenario.Trigger.MapName, scenario.Trigger.HoleIndex, efm)
+	outcome, err := world.HandleSeafoamBoulderHole(context.Background(), applied.CharacterID, scenario.Trigger.MapName, scenario.Trigger.HoleIndex, efm)
 	if err != nil {
 		return nil, err
 	}
@@ -413,7 +430,7 @@ func runSeafoamBoulderHole(scenario *Scenario, applied *AppliedFixture, initial 
 	if err != nil {
 		return nil, err
 	}
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}
@@ -436,7 +453,7 @@ func runSeafoamBoulderHole(scenario *Scenario, applied *AppliedFixture, initial 
 	return result, nil
 }
 
-func runSeafoamCurrent(scenario *Scenario, applied *AppliedFixture, initial *Snapshot, efm *world.EventFlagManager) (*Result, error) {
+func runSeafoamCurrent(ctx context.Context, database *sql.DB, scenario *Scenario, applied *AppliedFixture, initial *Snapshot, efm *world.EventFlagManager) (*Result, error) {
 	x, y := triggerOrFixturePosition(scenario)
 	current, ok := world.SeafoamCurrentAt(applied.CharacterID, scenario.Trigger.MapName, x, y, efm)
 	if !ok {
@@ -449,7 +466,7 @@ func runSeafoamCurrent(scenario *Scenario, applied *AppliedFixture, initial *Sna
 		return nil, fmt.Errorf("apply Seafoam current final position: %w", err)
 	}
 
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}
@@ -476,10 +493,10 @@ func runSeafoamCurrent(scenario *Scenario, applied *AppliedFixture, initial *Sna
 	return result, nil
 }
 
-func runSeafoamSurfCheck(scenario *Scenario, applied *AppliedFixture, initial *Snapshot, efm *world.EventFlagManager) (*Result, error) {
+func runSeafoamSurfCheck(ctx context.Context, database *sql.DB, scenario *Scenario, applied *AppliedFixture, initial *Snapshot, efm *world.EventFlagManager) (*Result, error) {
 	x, y := triggerOrFixturePosition(scenario)
 	blocked := world.SeafoamSurfBlocked(applied.CharacterID, scenario.Trigger.MapName, x, y, efm)
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}
@@ -513,8 +530,13 @@ func triggerOrFixturePosition(scenario *Scenario) (int, int) {
 	return x, y
 }
 
-func runElevatorFloors(scenario *Scenario, applied *AppliedFixture, initial *Snapshot, efm *world.EventFlagManager) (*Result, error) {
-	access, err := world.AvailableElevatorFloors(applied.CharacterID, applied.MapID, efm)
+func runElevatorFloors(ctx context.Context, database *sql.DB, scenario *Scenario, applied *AppliedFixture, initial *Snapshot, efm *world.EventFlagManager) (*Result, error) {
+	var access world.ElevatorAccess
+	err := db.Transaction(ctx, database, func(tx db.DBTX) error {
+		var err error
+		access, err = world.AvailableElevatorFloors(tx, applied.CharacterID, applied.MapID)
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -527,7 +549,7 @@ func runElevatorFloors(scenario *Scenario, applied *AppliedFixture, initial *Sna
 	if summary.Message != "" {
 		detail = fmt.Sprintf("%s message=%q", detail, summary.Message)
 	}
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}
@@ -553,7 +575,7 @@ func runElevatorFloors(scenario *Scenario, applied *AppliedFixture, initial *Sna
 	return result, nil
 }
 
-func runElevatorSelect(scenario *Scenario, applied *AppliedFixture, initial *Snapshot, efm *world.EventFlagManager) (*Result, error) {
+func runElevatorSelect(ctx context.Context, database *sql.DB, scenario *Scenario, applied *AppliedFixture, initial *Snapshot, efm *world.EventFlagManager) (*Result, error) {
 	if scenario.Trigger.FloorMapName == "" {
 		return nil, fmt.Errorf("elevator_select trigger requires floorMapName")
 	}
@@ -561,21 +583,15 @@ func runElevatorSelect(scenario *Scenario, applied *AppliedFixture, initial *Sna
 	if err != nil {
 		return nil, err
 	}
-	floor, err := world.ElevatorDestination(applied.CharacterID, applied.MapID, floorMapID, efm)
+	floor, err := world.UseElevator(ctx, database, applied.CharacterID, applied.MapID, initial.X, initial.Y, floorMapID, func(id int) int { return id })
 	if err != nil {
 		return nil, err
 	}
-	if _, err := db.GlobalWorldDB.DB.Exec(
-		`UPDATE character_data SET map_id = $1, x = $2, y = $3 WHERE id = $4`,
-		floor.FloorMapID, floor.DestX, floor.DestY, applied.CharacterID); err != nil {
-		return nil, fmt.Errorf("apply elevator destination: %w", err)
-	}
-
 	selected, err := elevatorFloorSummary(*floor)
 	if err != nil {
 		return nil, err
 	}
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}
@@ -633,13 +649,13 @@ func elevatorFloorSummary(floor world.ElevatorFloor) (ElevatorFloorSummary, erro
 	}, nil
 }
 
-func runTileState(scenario *Scenario, applied *AppliedFixture, initial *Snapshot, efm *world.EventFlagManager) (*Result, error) {
+func runTileState(ctx context.Context, database *sql.DB, scenario *Scenario, applied *AppliedFixture, initial *Snapshot, efm *world.EventFlagManager) (*Result, error) {
 	tileStates, err := eventTileStates(applied, efm)
 	if err != nil {
 		return nil, err
 	}
 
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}
@@ -662,13 +678,13 @@ func runTileState(scenario *Scenario, applied *AppliedFixture, initial *Snapshot
 	return result, nil
 }
 
-func runEventObjectState(scenario *Scenario, applied *AppliedFixture, initial *Snapshot, efm *world.EventFlagManager) (*Result, error) {
+func runEventObjectState(ctx context.Context, database *sql.DB, scenario *Scenario, applied *AppliedFixture, initial *Snapshot, efm *world.EventFlagManager) (*Result, error) {
 	objectStates, err := objectStatesForMaps(applied, efm, scenario.Trigger.MapName)
 	if err != nil {
 		return nil, err
 	}
 
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}
@@ -691,7 +707,7 @@ func runEventObjectState(scenario *Scenario, applied *AppliedFixture, initial *S
 	return result, nil
 }
 
-func runMapLoad(scenario *Scenario, applied *AppliedFixture, initial *Snapshot, efm *world.EventFlagManager) (*Result, error) {
+func runMapLoad(ctx context.Context, database *sql.DB, scenario *Scenario, applied *AppliedFixture, initial *Snapshot, efm *world.EventFlagManager) (*Result, error) {
 	mapName := scenario.Trigger.MapName
 	if mapName == "" {
 		mapName = scenario.Fixture.MapName
@@ -708,7 +724,7 @@ func runMapLoad(scenario *Scenario, applied *AppliedFixture, initial *Snapshot, 
 	if err != nil {
 		return nil, err
 	}
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}
@@ -734,7 +750,7 @@ func runMapLoad(scenario *Scenario, applied *AppliedFixture, initial *Snapshot, 
 }
 
 func eventTileStates(applied *AppliedFixture, efm *world.EventFlagManager) ([]TileState, error) {
-	states, err := world.EventTileStatesForCharacter(applied.CharacterID, applied.MapID, efm)
+	states, err := world.EventTileStatesForCharacter(context.Background(), db.GlobalWorldDB.DB, applied.CharacterID, applied.MapID)
 	if err != nil {
 		return nil, err
 	}
@@ -746,6 +762,7 @@ func eventTileStates(applied *AppliedFixture, efm *world.EventFlagManager) ([]Ti
 			TileImageID:   state.TileImageID,
 			CollisionType: state.CollisionType,
 			Label:         state.Label,
+			Erased:        state.Erased,
 		})
 	}
 	return tileStates, nil
@@ -811,7 +828,7 @@ func objectStatesForExpectedMaps(scenario *Scenario, applied *AppliedFixture, ef
 	return objectStatesForMaps(applied, efm, mapNames...)
 }
 
-func runDialogueChoice(scenario *Scenario, applied *AppliedFixture, initial *Snapshot, efm *world.EventFlagManager) (*Result, error) {
+func runDialogueChoice(ctx context.Context, database *sql.DB, scenario *Scenario, applied *AppliedFixture, initial *Snapshot, efm *world.EventFlagManager) (*Result, error) {
 	if scenario.Trigger.TextConstant == "" {
 		return nil, fmt.Errorf("dialogue_choice trigger requires textConstant")
 	}
@@ -845,7 +862,7 @@ func runDialogueChoice(scenario *Scenario, applied *AppliedFixture, initial *Sna
 		effects = append(effects, battleEffects...)
 	}
 
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}
@@ -867,14 +884,14 @@ func runDialogueChoice(scenario *Scenario, applied *AppliedFixture, initial *Sna
 	return result, nil
 }
 
-func runGameCornerBuyCoins(scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
+func runGameCornerBuyCoins(ctx context.Context, database *sql.DB, scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
 	purchase := world.TryBuyGameCornerCoins(applied.CharacterID)
 	detail := fmt.Sprintf("success=%t money=%d coins=%d", purchase.Success, purchase.Money, purchase.Coins)
 	if purchase.Message != "" {
 		detail = fmt.Sprintf("%s message=%q", detail, purchase.Message)
 	}
 
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}
@@ -900,7 +917,7 @@ func runGameCornerBuyCoins(scenario *Scenario, applied *AppliedFixture, initial 
 	return result, nil
 }
 
-func runGameCornerSlotPlay(scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
+func runGameCornerSlotPlay(ctx context.Context, database *sql.DB, scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
 	rng := &fixedGameCornerRandom{values: scenario.Trigger.RandomValues}
 	slot := world.TryPlayGameCornerSlot(applied.CharacterID, scenario.Trigger.Bet, scenario.Trigger.IsLucky, rng)
 	summary := gameCornerSlotSummary(slot)
@@ -917,7 +934,7 @@ func runGameCornerSlotPlay(scenario *Scenario, applied *AppliedFixture, initial 
 		detail = fmt.Sprintf("%s message=%q", detail, summary.Message)
 	}
 
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}
@@ -936,7 +953,7 @@ func runGameCornerSlotPlay(scenario *Scenario, applied *AppliedFixture, initial 
 	return result, nil
 }
 
-func runGameCornerPrizeList(scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
+func runGameCornerPrizeList(ctx context.Context, database *sql.DB, scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
 	prizes, err := world.AvailableGameCornerPrizes(applied.CharacterID)
 	if err != nil {
 		return nil, err
@@ -947,7 +964,7 @@ func runGameCornerPrizeList(scenario *Scenario, applied *AppliedFixture, initial
 		detail = fmt.Sprintf("%s message=%q", detail, summary.Message)
 	}
 
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}
@@ -966,7 +983,7 @@ func runGameCornerPrizeList(scenario *Scenario, applied *AppliedFixture, initial
 	return result, nil
 }
 
-func runGameCornerPrizeBuy(scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
+func runGameCornerPrizeBuy(ctx context.Context, database *sql.DB, scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
 	if scenario.Trigger.PrizeName == "" {
 		return nil, fmt.Errorf("gamecorner_prize_buy trigger requires prizeName")
 	}
@@ -980,7 +997,7 @@ func runGameCornerPrizeBuy(scenario *Scenario, applied *AppliedFixture, initial 
 		detail = fmt.Sprintf("%s level=%d", detail, summary.PrizeLevel)
 	}
 
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}
@@ -999,7 +1016,7 @@ func runGameCornerPrizeBuy(scenario *Scenario, applied *AppliedFixture, initial 
 	return result, nil
 }
 
-func runGameCornerHiddenCoin(scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
+func runGameCornerHiddenCoin(ctx context.Context, database *sql.DB, scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
 	x, y := triggerOrFixturePosition(scenario)
 	attempts := scenario.Trigger.Repeat
 	if attempts <= 0 {
@@ -1028,7 +1045,7 @@ func runGameCornerHiddenCoin(scenario *Scenario, applied *AppliedFixture, initia
 		detail = fmt.Sprintf("%s alreadyFound=true", detail)
 	}
 
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}
@@ -1145,9 +1162,12 @@ func gameCornerPrizeSummary(prize world.GameCornerPrize) GameCornerPrizeSummary 
 	return summary
 }
 
-func runSafariEnter(scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
-	safari := world.NewSafariZoneManager()
-	entry := world.TryStartSafariZoneVisit(applied.CharacterID, safari)
+func runSafariEnter(ctx context.Context, database *sql.DB, scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
+	safari := world.NewSafariZoneManager(db.GlobalWorldDB.DB)
+	entry, err := world.TryStartSafariZoneVisit(context.Background(), applied.CharacterID, safari)
+	if err != nil {
+		return nil, err
+	}
 	detail := fmt.Sprintf("success=%t money=%d", entry.Success, entry.Money)
 	if entry.Message != "" {
 		detail = fmt.Sprintf("%s message=%q", detail, entry.Message)
@@ -1156,13 +1176,17 @@ func runSafariEnter(scenario *Scenario, applied *AppliedFixture, initial *Snapsh
 		detail = fmt.Sprintf("%s balls=%d steps=%d", detail, entry.BallsLeft, entry.StepsLeft)
 	}
 
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}
 
 	summary := &SafariSummary{}
-	if session := safari.GetSession(applied.CharacterID); session != nil {
+	session, err := safari.GetSession(context.Background(), applied.CharacterID)
+	if err != nil {
+		return nil, err
+	}
+	if session != nil {
 		summary.Active = session.Active
 		summary.BallsLeft = session.BallsLeft
 		summary.StepsLeft = session.StepsLeft
@@ -1190,7 +1214,7 @@ func runSafariEnter(scenario *Scenario, applied *AppliedFixture, initial *Snapsh
 	return result, nil
 }
 
-func runSafariStep(scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
+func runSafariStep(ctx context.Context, database *sql.DB, scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
 	wh, err := newSafariScenarioWorld(scenario, applied.CharacterID)
 	if err != nil {
 		return nil, err
@@ -1204,11 +1228,18 @@ func runSafariStep(scenario *Scenario, applied *AppliedFixture, initial *Snapsho
 	ballsLeft := 0
 	expired := false
 	for i := 0; i < repeat; i++ {
-		stepsLeft, ballsLeft, expired = safari.DecrementStep(applied.CharacterID)
+		stepsLeft, ballsLeft, expired, err = safari.DecrementStep(context.Background(), applied.CharacterID)
+		if err != nil {
+			return nil, err
+		}
 	}
-	summary := safariSummaryFromSession(safari.GetSession(applied.CharacterID))
+	saved, err := safari.GetSession(context.Background(), applied.CharacterID)
+	if err != nil {
+		return nil, err
+	}
+	summary := safariSummaryFromSession(saved)
 
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}
@@ -1236,7 +1267,7 @@ func runSafariStep(scenario *Scenario, applied *AppliedFixture, initial *Snapsho
 	return result, nil
 }
 
-func runSafariBattleAction(scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
+func runSafariBattleAction(ctx context.Context, database *sql.DB, scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
 	if scenario.Trigger.Action == "" {
 		return nil, fmt.Errorf("safari_battle_action trigger requires action")
 	}
@@ -1244,7 +1275,11 @@ func runSafariBattleAction(scenario *Scenario, applied *AppliedFixture, initial 
 	if err != nil {
 		return nil, err
 	}
-	before := safariSummaryFromSession(wh.Safari.GetSession(applied.CharacterID))
+	saved, err := wh.Safari.GetSession(context.Background(), applied.CharacterID)
+	if err != nil {
+		return nil, err
+	}
+	before := safariSummaryFromSession(saved)
 	ses, recorder := NewRecordedSession(
 		applied.CharacterID,
 		initial.CharacterName,
@@ -1252,7 +1287,11 @@ func runSafariBattleAction(scenario *Scenario, applied *AppliedFixture, initial 
 		initial.X,
 		initial.Y,
 	)
-	payload, err := json.Marshal(map[string]string{"action": scenario.Trigger.Action})
+	if saved == nil || saved.Battle == nil {
+		return nil, fmt.Errorf("safari_battle_action requires a persisted encounter")
+	}
+	request := world.SafariBattleActionRequest{RequestID: "scriptsim-safari-action", Action: scenario.Trigger.Action, Battle: world.BattleCommandIdentity{BattleID: saved.Battle.BattleID, Revision: saved.Battle.Revision}}
+	payload, err := json.Marshal(request)
 	if err != nil {
 		return nil, err
 	}
@@ -1261,24 +1300,32 @@ func runSafariBattleAction(scenario *Scenario, applied *AppliedFixture, initial 
 	if message == nil {
 		return nil, fmt.Errorf("safari_battle_action did not emit SafariBattleActionResponse")
 	}
-	action, err := parseSafariBattleActionResponse(message.Payload)
+	var action world.SafariBattleActionResponse
+	if err := json.Unmarshal(message.Payload, &action); err != nil {
+		return nil, fmt.Errorf("parse SafariBattleActionResponse: %w", err)
+	}
+	if !action.Success || action.RequestID != request.RequestID || action.BattleID != request.Battle.BattleID || action.Revision != request.Battle.Revision+1 || !action.Position.Success || action.Position.RequestID != request.RequestID {
+		return nil, fmt.Errorf("Safari action did not acknowledge requested identity: %s", message.Payload)
+	}
+	saved, err = wh.Safari.GetSession(context.Background(), applied.CharacterID)
 	if err != nil {
 		return nil, err
 	}
-	summary := safariSummaryFromSession(wh.Safari.GetSession(applied.CharacterID))
+	summary := safariSummaryFromSession(saved)
 
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
+	}
+	if action.Position.MapID != final.MapID || action.Position.X != final.X || action.Position.Y != final.Y {
+		return nil, fmt.Errorf("Safari response position differs from committed character position")
 	}
 	detail := fmt.Sprintf("action=%s success=%t active=%t balls=%d steps=%d isOver=%t caught=%t fled=%t",
 		scenario.Trigger.Action, action.Success, summary.Active, summary.BallsLeft, summary.StepsLeft, action.IsOver, action.Caught, action.Fled)
 	if before.Battle != nil {
 		detail = fmt.Sprintf("%s battleBefore=#%d L%d", detail, before.Battle.PokemonID, before.Battle.Level)
 	}
-	if action.Message != "" {
-		detail = fmt.Sprintf("%s message=%q", detail, action.Message)
-	}
+	detail = fmt.Sprintf("%s message=%q", detail, "ok")
 	result := &Result{
 		Scenario:    scenario,
 		CharacterID: applied.CharacterID,
@@ -1303,40 +1350,8 @@ func runSafariBattleAction(scenario *Scenario, applied *AppliedFixture, initial 
 	return result, nil
 }
 
-type safariBattleActionResponse struct {
-	Success bool
-	Message string
-	IsOver  bool
-	Caught  bool
-	Fled    bool
-}
-
-func parseSafariBattleActionResponse(payload []byte) (safariBattleActionResponse, error) {
-	var response struct {
-		Success bool   `json:"success"`
-		Error   string `json:"error"`
-		IsOver  bool   `json:"isOver"`
-		Caught  bool   `json:"caught"`
-		Fled    bool   `json:"fled"`
-	}
-	if err := json.Unmarshal(payload, &response); err != nil {
-		return safariBattleActionResponse{}, fmt.Errorf("parse SafariBattleActionResponse: %w", err)
-	}
-	message := response.Error
-	if message == "" && response.Success {
-		message = "ok"
-	}
-	return safariBattleActionResponse{
-		Success: response.Success,
-		Message: message,
-		IsOver:  response.IsOver,
-		Caught:  response.Caught,
-		Fled:    response.Fled,
-	}, nil
-}
-
 func newSafariScenarioWorld(scenario *Scenario, charID int64) (*world.WorldHandler, error) {
-	safari := world.NewSafariZoneManager()
+	safari := world.NewSafariZoneManager(db.GlobalWorldDB.DB)
 	if fixture := scenario.Fixture.Safari; fixture != nil {
 		session := world.SafariSession{
 			Active:    fixture.Active,
@@ -1352,8 +1367,13 @@ func newSafariScenarioWorld(scenario *Scenario, charID int64) (*world.WorldHandl
 				return nil, fmt.Errorf("build safari battle pokemon #%d L%d: %w", fixture.Battle.PokemonID, fixture.Battle.Level, err)
 			}
 			session.Battle = pokebattle.NewSafariBattle(wild, fixture.BallsLeft, fixture.StepsLeft)
+			// A freshly replaced simulator fixture has a stable identity for golden
+			// output. Commands still read and submit the actual persisted identity.
+			session.Battle.BattleID = "scriptsim:" + scenario.Name
 		}
-		safari.SetSession(charID, session)
+		if err := safari.SetSession(context.Background(), charID, session); err != nil {
+			return nil, err
+		}
 	}
 	return &world.WorldHandler{Safari: safari}, nil
 }
@@ -1380,11 +1400,14 @@ func safariSummaryFromSession(session *world.SafariSession) *SafariSummary {
 	return summary
 }
 
-func runRepelUse(scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
+func runRepelUse(ctx context.Context, database *sql.DB, scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
 	if scenario.Trigger.ItemID <= 0 {
 		return nil, fmt.Errorf("repel_use trigger requires itemId")
 	}
-	wh, summary := newRepelScenarioWorld(scenario, applied.CharacterID)
+	wh, summary, err := newRepelScenarioWorld(scenario, applied.CharacterID)
+	if err != nil {
+		return nil, err
+	}
 	summary.ItemID = scenario.Trigger.ItemID
 
 	ses, recorder := NewRecordedSession(
@@ -1394,7 +1417,21 @@ func runRepelUse(scenario *Scenario, applied *AppliedFixture, initial *Snapshot)
 		initial.X,
 		initial.Y,
 	)
-	payload, err := json.Marshal(map[string]int{"itemId": scenario.Trigger.ItemID})
+	// Fixtures name catalog items; runtime commands target the owned instance
+	// and current durable revision, exactly as the inventory UI does.
+	snapshot, err := cqitems.NewStore(db.GlobalWorldDB.DB).GetCharacterSnapshot(context.Background(), int32(applied.CharacterID))
+	if err != nil {
+		return nil, err
+	}
+	var instanceID int32
+	for _, item := range snapshot.Items {
+		if item.Item.ID == int32(scenario.Trigger.ItemID) {
+			instanceID = item.Instance.ID
+			break
+		}
+	}
+	payload, err := json.Marshal(world.RepelUseRequest{RequestID: "repel-use", InstanceID: instanceID,
+		Command: &world.InventoryCommandIdentity{CharacterID: applied.CharacterID, Revision: &snapshot.CommandRevision}})
 	if err != nil {
 		return nil, err
 	}
@@ -1410,11 +1447,14 @@ func runRepelUse(scenario *Scenario, applied *AppliedFixture, initial *Snapshot)
 	summary.Success = success
 	summary.Message = responseText
 
-	status := wh.WildEncounter.RepelStatus(applied.CharacterID)
+	status, err := wh.WildEncounter.RepelStatus(context.Background(), applied.CharacterID)
+	if err != nil {
+		return nil, err
+	}
 	summary.Active = status.Active
 	summary.StepsLeft = status.StepsLeft
 
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}
@@ -1470,23 +1510,33 @@ func parseRepelUseResponse(payload []byte) (bool, string, error) {
 	return response.Success, response.Error, nil
 }
 
-func runRepelStep(scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
-	wh, summary := newRepelScenarioWorld(scenario, applied.CharacterID)
+func runRepelStep(ctx context.Context, database *sql.DB, scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
+	wh, summary, err := newRepelScenarioWorld(scenario, applied.CharacterID)
+	if err != nil {
+		return nil, err
+	}
 	repeat := scenario.Trigger.Repeat
 	if repeat <= 0 {
 		repeat = 1
 	}
 	for i := 0; i < repeat; i++ {
-		if wh.WildEncounter.AdvanceRepelStep(applied.CharacterID) {
+		wore, err := wh.WildEncounter.AdvanceRepelStep(context.Background(), applied.CharacterID)
+		if err != nil {
+			return nil, err
+		}
+		if wore {
 			summary.WoreOff = true
 			summary.Message = "REPEL's effect wore off!"
 		}
 	}
-	status := wh.WildEncounter.RepelStatus(applied.CharacterID)
+	status, err := wh.WildEncounter.RepelStatus(context.Background(), applied.CharacterID)
+	if err != nil {
+		return nil, err
+	}
 	summary.Active = status.Active
 	summary.StepsLeft = status.StepsLeft
 
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}
@@ -1517,8 +1567,8 @@ func runRepelStep(scenario *Scenario, applied *AppliedFixture, initial *Snapshot
 	return result, nil
 }
 
-func runActiveBattleState(scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+func runActiveBattleState(ctx context.Context, database *sql.DB, scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}
@@ -1539,8 +1589,20 @@ func runActiveBattleState(scenario *Scenario, applied *AppliedFixture, initial *
 	return result, nil
 }
 
-func runFixtureState(scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+func runFixtureState(ctx context.Context, database *sql.DB, scenario *Scenario, applied *AppliedFixture, initial *Snapshot) (*Result, error) {
+	var safari *SafariSummary
+	if scenario.Fixture.Safari != nil {
+		wh, err := newSafariScenarioWorld(scenario, applied.CharacterID)
+		if err != nil {
+			return nil, err
+		}
+		saved, err := wh.Safari.GetSession(context.Background(), applied.CharacterID)
+		if err != nil {
+			return nil, err
+		}
+		safari = safariSummaryFromSession(saved)
+	}
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}
@@ -1554,6 +1616,7 @@ func runFixtureState(scenario *Scenario, applied *AppliedFixture, initial *Snaps
 		},
 		Initial: initial,
 		Final:   final,
+		Safari:  safari,
 	}
 	if err := result.ValidateExpectations(); err != nil {
 		return result, err
@@ -1561,7 +1624,7 @@ func runFixtureState(scenario *Scenario, applied *AppliedFixture, initial *Snaps
 	return result, nil
 }
 
-func runResolveActiveBattle(scenario *Scenario, applied *AppliedFixture, initial *Snapshot, efm *world.EventFlagManager) (*Result, error) {
+func runResolveActiveBattle(ctx context.Context, database *sql.DB, scenario *Scenario, applied *AppliedFixture, initial *Snapshot, efm *world.EventFlagManager) (*Result, error) {
 	if scenario.ResolveBattle == nil {
 		return nil, fmt.Errorf("resolve_active_battle requires resolveBattle")
 	}
@@ -1569,7 +1632,7 @@ func runResolveActiveBattle(scenario *Scenario, applied *AppliedFixture, initial
 	if err != nil {
 		return nil, err
 	}
-	final, err := CaptureSnapshot(applied.CharacterID, scenario.Fixture.MapName)
+	final, err := CaptureSnapshot(ctx, database, applied.CharacterID, scenario.Fixture.MapName)
 	if err != nil {
 		return nil, err
 	}
@@ -1591,19 +1654,24 @@ func runResolveActiveBattle(scenario *Scenario, applied *AppliedFixture, initial
 	return result, nil
 }
 
-func newRepelScenarioWorld(scenario *Scenario, charID int64) (*world.WorldHandler, *RepelSummary) {
+func newRepelScenarioWorld(scenario *Scenario, charID int64) (*world.WorldHandler, *RepelSummary, error) {
 	wh := &world.WorldHandler{}
-	wh.WildEncounter = world.NewWildEncounterManager(wh)
+	wh.WildEncounter = world.NewWildEncounterManager(wh, db.GlobalWorldDB.DB)
 	if scenario.Fixture.Repel != nil {
-		wh.WildEncounter.SetRepelSteps(charID, scenario.Fixture.Repel.StepsLeft)
+		if err := wh.WildEncounter.SetRepelSteps(context.Background(), charID, scenario.Fixture.Repel.StepsLeft); err != nil {
+			return nil, nil, err
+		}
 	}
-	status := wh.WildEncounter.RepelStatus(charID)
+	status, err := wh.WildEncounter.RepelStatus(context.Background(), charID)
+	if err != nil {
+		return nil, nil, err
+	}
 	return wh, &RepelSummary{
 		InitialActive:    status.Active,
 		InitialStepsLeft: status.StepsLeft,
 		Active:           status.Active,
 		StepsLeft:        status.StepsLeft,
-	}
+	}, nil
 }
 
 func resolveScript(s *Scenario, applied *AppliedFixture, cutscenes *world.CutsceneManager, efm *world.EventFlagManager) (*world.CutsceneScript, error) {
@@ -1638,7 +1706,9 @@ func resolveScript(s *Scenario, applied *AppliedFixture, cutscenes *world.Cutsce
 		return cs, nil
 	case "coord":
 		triggers := world.NewCoordinateTriggerManager(db.GlobalWorldDB.DB)
-		triggers.Load()
+		if err := triggers.Load(context.Background()); err != nil {
+			return nil, fmt.Errorf("load coordinate triggers: %w", err)
+		}
 		x, y := s.Trigger.X, s.Trigger.Y
 		if x == 0 && y == 0 {
 			x, y = s.Fixture.X, s.Fixture.Y
@@ -1975,6 +2045,9 @@ func (r *Result) ValidateExpectations() error {
 		}
 	}
 	for _, expected := range exp.TileStates {
+		if expected.Source != nil && expected.TileImageID <= 0 {
+			return fmt.Errorf("unresolved native tile expectation at (%d,%d)", expected.X, expected.Y)
+		}
 		if !hasTileState(r.TileStates, expected) {
 			return fmt.Errorf("expected tile state (%d,%d) tile=%d collision=%d", expected.X, expected.Y, expected.TileImageID, expected.CollisionType)
 		}
@@ -2271,7 +2344,7 @@ func validateSafariBattleExpectation(summary *SafariSummary, expected SafariBatt
 		battle = summary.Battle
 	}
 	if expected.Active != nil {
-		active := battle != nil
+		active := battle != nil && !battle.IsOver
 		if active != *expected.Active {
 			return fmt.Errorf("expected safari battle active %t, got %t", *expected.Active, active)
 		}

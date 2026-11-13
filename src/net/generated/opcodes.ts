@@ -52,6 +52,9 @@ export const PhaserMapInfoRequest: OpCode = 34;
 export const PhaserMapInfoResponse: OpCode = 35;
 export const PhaserTilesRequest: OpCode = 36;
 export const PhaserTilesResponse: OpCode = 37;
+/**
+ * Reserved: region metadata comes from the shared static catalog.
+ */
 export const PhaserOverworldMapsRequest: OpCode = 38;
 export const PhaserOverworldMapsResponse: OpCode = 39;
 export const PhaserActorsRequest: OpCode = 40;
@@ -59,7 +62,7 @@ export const PhaserActorsResponse: OpCode = 41;
 export const PhaserWarpsRequest: OpCode = 42;
 export const PhaserWarpsResponse: OpCode = 43;
 export const PhaserActorPositionUpdate: OpCode = 44;
-export const PhaserPlayerPositionUpdate: OpCode = 45;
+export const PhaserPlayerPositionUpdate: OpCode = 45; // Retired client coordinate setter; reserved and rejected.
 export const PhaserActorDespawn: OpCode = 47;
 export const PhaserDialogueRequest: OpCode = 48;
 export const PhaserDialogueResponse: OpCode = 49;
@@ -79,6 +82,9 @@ export const PhaserItemDataRequest: OpCode = 62;
 export const PhaserItemDataResponse: OpCode = 63;
 export const PhaserHiddenObjectsRequest: OpCode = 64;
 export const PhaserHiddenObjectsResponse: OpCode = 65;
+/**
+ * Reserved: map music is provided by the canonical browser audio manifest.
+ */
 export const PhaserMapMusicRequest: OpCode = 66;
 export const PhaserMapMusicResponse: OpCode = 67;
 /**
@@ -213,8 +219,35 @@ export const ScriptedEventInteractResponse: OpCode = 172;
 export const WarpHomeRequest: OpCode = 173;
 export const WarpHomeResponse: OpCode = 174;
 export const CharacterQuitRequest: OpCode = 175;
-export const MapChangeRequest: OpCode = 176;
+export const MapChangeRequest: OpCode = 176; // Reserved retired legacy map setter; never reuse this wire number.
 export const FieldMoveUseRequest: OpCode = 177;
 export const FieldMoveUseResponse: OpCode = 178;
 export const DebugWarpProbeCasesRequest: OpCode = 179;
 export const DebugWarpProbeCasesResponse: OpCode = 180;
+export const PhaserMapLoadRequest: OpCode = 181;
+export const PhaserMapLoadResponse: OpCode = 182;
+export const PhaserWarpActivateRequest: OpCode = 183;
+export const PhaserWarpActivateResponse: OpCode = 184;
+export const PhaserInstantWarpRequest: OpCode = 185;
+export const PhaserInstantWarpResponse: OpCode = 186;
+export const PlayerStepRequest: OpCode = 187;
+export const PlayerStepResponse: OpCode = 188;
+export const PlayerStepCompleteRequest: OpCode = 189;
+export const PlayerStepCompleteResponse: OpCode = 190;
+export const PlayerFacingRequest: OpCode = 191;
+export const PlayerFacingResponse: OpCode = 192;
+export const ServerPlayerMovementNotify: OpCode = 193;
+export const CutsceneEndResponse: OpCode = 194;
+export const OwnedPlayerPositionRequest: OpCode = 195;
+export const OwnedPlayerPositionResponse: OpCode = 196;
+export const GameplayStateRequest: OpCode = 197;
+export const GameplayStateResponse: OpCode = 198;
+export const PokeBattleCloseResponse: OpCode = 199;
+export const ResourcesChangedNotify: OpCode = 200;
+export const BicycleStateRequest: OpCode = 201;
+export const BicycleStateResponse: OpCode = 202;
+export const EscapeRopeUseRequest: OpCode = 203;
+export const EscapeRopeUseResponse: OpCode = 204;
+export const CharacterListRequest: OpCode = 205;
+export const CharacterListResponse: OpCode = 206;
+export const CharacterDeleteResponse: OpCode = 207;

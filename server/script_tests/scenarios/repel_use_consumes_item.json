@@ -28,7 +28,8 @@
         "opcode": 144,
         "payloadContains": [
           "\"success\":true",
-          "\"newQuantity\":1",
+          "\"commandRevision\":1",
+          "\"quantity\":1",
           "\"stepsLeft\":100"
         ]
       }

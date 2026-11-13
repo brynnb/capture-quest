@@ -143,3 +143,24 @@ func TestCheckEligibleRequiresAllFlagArrayConditions(t *testing.T) {
 		t.Fatalf("expected script to be ineligible when a required-array flag is missing")
 	}
 }
+
+func TestMapScriptSelectionSharesSpecificityAndStopsCompletedReward(t *testing.T) {
+	flag, received := "EVENT_BEAT_BLAINE", "EVENT_GOT_TM38"
+	reset := &CutsceneScript{ScriptLabel: "Reset", TriggerType: "map_script"}
+	reward := &CutsceneScript{ScriptLabel: "Reward", TriggerType: "map_script", RequiresFlag: &flag, RequiresFlagAbst: &received}
+	manager := &CutsceneManager{byMap: map[string][]*CutsceneScript{"ROOM": {reset, reward}}}
+	flags := NewEventFlagManager(nil)
+	flags.flags[42] = map[string]bool{flag: true}
+	selected, err := manager.findEligibleMapScriptCutsceneIn(nil, "ROOM", 42, flags)
+	if err != nil || selected != reward {
+		t.Fatalf("generic reset starved reward: %+v %v", selected, err)
+	}
+	flags.flags[42][received] = true
+	selected, err = manager.findEligibleMapScriptCutsceneIn(nil, "ROOM", 42, flags)
+	if err != nil || selected != reset {
+		t.Fatalf("completed reward remained eligible: %+v %v", selected, err)
+	}
+	if manager.byMap["ROOM"][0] != reset {
+		t.Fatal("selection reordered shared cache in place")
+	}
+}

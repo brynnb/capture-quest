@@ -4,6 +4,7 @@ import "./index.css";
 import Layout from "./pages/Layout";
 import useGameStatusStore from "./stores/GameStatusStore";
 import useGameScreenStore from "./stores/GameScreenStore";
+import useCharacterSelectStore from "./stores/CharacterSelectStore";
 import { WorldSocket } from "./net";
 import { NetworkBridge } from "./net/NetworkBridge";
 import { installCaptureQuestTestBridge } from "./testing/capturequestTestBridge";
@@ -23,6 +24,7 @@ const App = () => {
     // Handle global disconnection by returning to the title screen.
     WorldSocket.onDisconnect = () => {
       console.log("Disconnected from the Pokémon world - returning to title");
+      useCharacterSelectStore.getState().reset();
       useGameScreenStore.getState().setScreen("title");
       useGameStatusStore.setState({ currentMap: null });
     };

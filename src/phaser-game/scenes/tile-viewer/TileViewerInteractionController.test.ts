@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import useGameStatusStore from "@/stores/GameStatusStore";
 import { TileViewerInteractionController } from "./TileViewerInteractionController";
+import type { PhaserInstantWarpResponse } from "@/net/generated/protocol";
 
 describe("TileViewerInteractionController editor gesture handoff", () => {
   afterEach(() => {
@@ -36,6 +37,59 @@ function deferred<T>() {
   });
   return { promise, resolve };
 }
+
+describe("Instant Warp committed response presentation", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    useGameStatusStore.setState({ isWarpMode: false });
+  });
+
+  function pendingActivation() {
+    const response = deferred<PhaserInstantWarpResponse>();
+    const instantWarp = vi.fn(() => response.promise);
+    const active = { value: true };
+    const stopMovement = vi.fn();
+    const controller = new TileViewerInteractionController({
+      scene: { sys: { isActive: () => active.value } },
+      getPlayerActor: () => null,
+      playerMovementController: () => ({ stopMovement, getCurrentDirection: () => "LEFT", getCurrentMapId: () => 38 }),
+      mapDataService: () => ({ instantWarp }),
+    } as never);
+    const activate = (controller as unknown as {
+      commitInstantWarp: (target: { mapId: number; x: number; y: number }) => Promise<void>;
+    }).commitInstantWarp.bind(controller);
+    return { controller, response, instantWarp, active, stopMovement, activate };
+  }
+
+  it("publishes only the committed result and rejects concurrent activation", async () => {
+    const dispatch = vi.spyOn(window, "dispatchEvent");
+    const { controller, response, instantWarp, activate } = pendingActivation();
+    useGameStatusStore.setState({ isWarpMode: true });
+    const pending = activate({ mapId: 50, x: 3, y: 4 });
+    await activate({ mapId: 60, x: 5, y: 6 });
+    expect(instantWarp).toHaveBeenCalledOnce();
+    expect(controller.isInstantWarpPending()).toBe(true);
+    expect(useGameStatusStore.getState().isWarpMode).toBe(true);
+    expect(dispatch).not.toHaveBeenCalled();
+    const result = { success: true as const, requestId: "owned", mapId: 50, x: 3, y: 4, direction: "LEFT" };
+    response.resolve(result);
+    await pending;
+    expect(controller.isInstantWarpPending()).toBe(false);
+    expect(useGameStatusStore.getState().isWarpMode).toBe(false);
+    expect((dispatch.mock.calls[0][0] as CustomEvent).detail).toEqual({ ...result, serverCommitted: true });
+  });
+
+  it("does not present a response after its scene has retired", async () => {
+    const dispatch = vi.spyOn(window, "dispatchEvent");
+    const { controller, response, active, activate } = pendingActivation();
+    const pending = activate({ mapId: 50, x: 3, y: 4 });
+    active.value = false;
+    response.resolve({ success: true, requestId: "retired", mapId: 50, x: 3, y: 4, direction: "LEFT" });
+    await pending;
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(controller.isInstantWarpPending()).toBe(false);
+  });
+});
 
 function createInstantWarpController(
   ensureDisplayedTileAvailable: (x: number, y: number) => Promise<boolean>,
@@ -231,4 +285,55 @@ describe("TileViewerInteractionController streamed instant warp", () => {
       "Couldn't verify that tile. Tap Confirm Warp to retry.",
     );
   });
+});
+
+
+describe("actor dialogue demand ownership",()=>{
+ afterEach(()=>vi.restoreAllMocks());
+ it("superseded dialogue and moved sources cannot open a stale box",async()=>{
+ const dialogue=await import("../../services/DialogueService");
+ const net=await import("../../services/PhaserNetworkService");
+ const store=(await import("@/stores/PokemonDialogueStore")).default;
+ vi.spyOn(net,"tryScriptedEventInteraction").mockResolvedValue(false);
+ const pending=deferred<import("../../services/DialogueService").DialogueResult>();
+ const fetch=vi.spyOn(dialogue,"fetchDialogueWithBranching").mockReturnValue(pending.promise);
+ const open=vi.spyOn(store.getState(),"openDialogue");
+ const actor={id:7,x:1,y:0,mapId:1,text:"TEXT",objectType:"sign"};
+ const controller=new TileViewerInteractionController({isWorldInputFrozen:()=>false,currentActorById:()=>actor,getDisplayedMapId:()=>1,playerMovementController:()=>({getCurrentPosition:()=>({x:0,y:0})})} as never);
+ const internal=controller as unknown as {ensureActorInteractionReachable:()=>Promise<boolean>;handleActorClicked:(actor:unknown)=>Promise<void>};
+ vi.spyOn(internal,"ensureActorInteractionReachable").mockResolvedValue(true);
+ const first=internal.handleActorClicked(actor);
+ await vi.waitFor(()=>expect(fetch).toHaveBeenCalledOnce());
+ const signal=fetch.mock.calls[0][1]!;
+ actor.x=3;
+ pending.resolve({lines:["Old"],hasBranching:false,branchingPrompt:null});await first;
+ expect(open).not.toHaveBeenCalled();expect(signal.aborted).toBe(false);
+ const held=deferred<import("../../services/DialogueService").DialogueResult>();fetch.mockReturnValueOnce(held.promise).mockResolvedValue({lines:[],hasBranching:false,branchingPrompt:null});
+ const old=internal.handleActorClicked(actor);await vi.waitFor(()=>expect(fetch).toHaveBeenCalledTimes(2));
+ const oldSignal=fetch.mock.calls[1][1]!;
+ await internal.handleActorClicked(actor);expect(oldSignal.aborted).toBe(true);
+ held.resolve({lines:["Old"],hasBranching:false,branchingPrompt:null});await old;expect(open).not.toHaveBeenCalled();
+ });
+});
+
+describe("trainer dialogue source ownership",()=>{
+ afterEach(()=>vi.restoreAllMocks());
+ it("rejects late moved-source replies and fences the later battle callback",async()=>{
+ const trainer=await import("../../services/TrainerInteractionService");
+ const net=await import("../../services/PhaserNetworkService");
+ const store=(await import("@/stores/PokemonDialogueStore")).default;
+ vi.spyOn(net,"tryScriptedEventInteraction").mockResolvedValue(false);
+ const send=vi.spyOn(net,"sendTrainerBattleStart").mockImplementation(()=>{});
+ const open=vi.spyOn(store.getState(),"openDialogue").mockImplementation(()=>{});
+ const actor={id:7,x:1,y:0,mapId:1,text:"TEXT",objectType:"npc",trainerClass:"YOUNGSTER",trainerPartyIndex:1};
+ const reply={success:true as const,requestId:"owned",characterId:42,trainerActorId:7,trainerName:"Trainer",trainerClass:"YOUNGSTER",dialogue:"Battle!",shouldBattle:true,defeated:false};
+ const pending=deferred<typeof reply>();const read=vi.spyOn(trainer,"readTrainerInteraction").mockReturnValueOnce(pending.promise).mockResolvedValue(reply);
+ const controller=new TileViewerInteractionController({isWorldInputFrozen:()=>false,currentActorById:()=>actor,getDisplayedMapId:()=>1,playerMovementController:()=>({getCurrentPosition:()=>({x:0,y:0})})} as never);
+ const internal=controller as unknown as {ensureActorInteractionReachable:()=>Promise<boolean>;handleActorClicked:(actor:unknown)=>Promise<void>};
+ vi.spyOn(internal,"ensureActorInteractionReachable").mockResolvedValue(true);
+ const first=internal.handleActorClicked(actor);await vi.waitFor(()=>expect(read).toHaveBeenCalledOnce());actor.x=3;pending.resolve(reply);await first;expect(open).not.toHaveBeenCalled();
+ actor.x=1;await internal.handleActorClicked(actor);const stale=open.mock.calls.at(-1)![3]!;actor.x=3;stale();expect(send).not.toHaveBeenCalled();
+ actor.x=1;await internal.handleActorClicked(actor);const current=open.mock.calls.at(-1)![3]!;current();expect(send).toHaveBeenCalledTimes(1);expect(send).toHaveBeenCalledWith(7);
+ await internal.handleActorClicked(actor);current();expect(send).toHaveBeenCalledTimes(1);
+ });
 });

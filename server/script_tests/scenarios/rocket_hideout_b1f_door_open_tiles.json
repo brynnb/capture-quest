@@ -15,10 +15,10 @@
   "expect": {
     "scriptLabel": "TileState:ROCKET_HIDEOUT_B1F",
     "tileStates": [
-      { "x": 24, "y": 16, "tileImageId": 758, "collisionType": 1, "label": "RocketHideoutB1FDoorOpen_0_0" },
-      { "x": 24, "y": 17, "tileImageId": 758, "collisionType": 1, "label": "RocketHideoutB1FDoorOpen_0_1" },
-      { "x": 25, "y": 16, "tileImageId": 758, "collisionType": 1, "label": "RocketHideoutB1FDoorOpen_1_0" },
-      { "x": 25, "y": 17, "tileImageId": 758, "collisionType": 1, "label": "RocketHideoutB1FDoorOpen_1_1" }
+      { "x": 24, "y": 16, "source": {"mapName":"RocketHideoutB1F","blockId":14,"position":0}, "collisionType": 1, "label": "RocketHideoutB1FDoorOpen_0_0" },
+      { "x": 24, "y": 17, "source": {"mapName":"RocketHideoutB1F","blockId":14,"position":2}, "collisionType": 1, "label": "RocketHideoutB1FDoorOpen_0_1" },
+      { "x": 25, "y": 16, "source": {"mapName":"RocketHideoutB1F","blockId":14,"position":1}, "collisionType": 1, "label": "RocketHideoutB1FDoorOpen_1_0" },
+      { "x": 25, "y": 17, "source": {"mapName":"RocketHideoutB1F","blockId":14,"position":3}, "collisionType": 1, "label": "RocketHideoutB1FDoorOpen_1_1" }
     ],
     "activeBattleAbsent": true
   }

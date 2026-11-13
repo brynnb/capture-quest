@@ -15,7 +15,46 @@ export interface ActorRegistry {
 }
 
 //////////
-// source: battle_item_use.go
+// source: battle_response.go
+
+export interface BattleCommandResponse {
+  success: true;
+  requestId: string;
+  battle?: GameplayBattleState | null;
+  position: import("./protocol").OwnedPlayerPositionResponse;
+  events: import("./battle_events").BattleEvent[];
+  end?: BattleEndOutcome;
+  learning?: BattleLearningOutcome;
+}
+export interface BattleCommandError {
+  success: false;
+  requestId: string;
+  error: string;
+}
+export interface BattleEndOutcome {
+  playerWon: boolean;
+  sentToPC?: boolean;
+  pcBox?: number /* int */;
+  blackout?: boolean;
+  lossMessage?: string;
+  blackoutMapId: number /* int */;
+  blackoutX: number /* int */;
+  blackoutY: number /* int */;
+  money?: number /* int */;
+  moneyLost?: number /* int */;
+}
+export interface BattleLearningOutcome {
+  skipped: boolean;
+  message: string;
+  updatedPokemon?: PokemonDTO;
+  forgetSlot?: number /* int */;
+  newMoveId?: number /* int */;
+  newMoveName?: string;
+  postEvents?: import("./battle_events").BattleEvent[];
+}
+
+//////////
+// source: battle_turn.go
 
 
 //////////
@@ -60,6 +99,52 @@ export interface BoulderObjectState {
   y: number /* int */;
   visible: boolean;
   label: string;
+}
+
+//////////
+// source: character_creation.go
+
+
+//////////
+// source: character_owner.go
+
+
+//////////
+// source: character_roster.go
+
+export interface CharacterSelectEntry {
+  id: number /* uint32 */;
+  name: string;
+  factionId: number /* uint16 */;
+  class: number /* uint8 */;
+  mapId: number /* uint32 */;
+  gender: number /* uint8 */;
+  lastLogin: number /* uint32 */;
+}
+export interface CharacterListRequest {
+  requestId: string;
+}
+export interface CharacterListResponse {
+  success: true;
+  requestId: string;
+  accountId: number /* int64 */;
+  characters: CharacterSelectEntry[];
+}
+export interface CharacterDeleteRequest {
+  requestId: string;
+  characterId: number /* int64 */;
+}
+export interface CharacterDeleteResponse {
+  success: true;
+  requestId: string;
+  accountId: number /* int64 */;
+  characterId: number /* int64 */;
+  characters: CharacterSelectEntry[];
+}
+export interface CharacterCommandError {
+  success: false;
+  requestId: string;
+  error: string;
 }
 
 //////////
@@ -131,6 +216,10 @@ export interface CutTileManager {
 }
 
 //////////
+// source: cutscene_issuance.go
+
+
+//////////
 // source: cutscene_manager.go
 
 /**
@@ -167,6 +256,10 @@ export interface CutsceneScript {
  */
 export interface CutsceneManager {
 }
+
+//////////
+// source: cutscene_transaction.go
+
 
 //////////
 // source: cycling_road.go
@@ -251,7 +344,12 @@ export interface EventTileState {
   rawFootTileId?: number /* int */;
   talkOverTile: boolean;
   label: string;
+  erased?: boolean;
 }
+
+//////////
+// source: field_effect_transactions.go
+
 
 //////////
 // source: field_moves.go
@@ -272,6 +370,86 @@ export interface FieldMoveUseResult {
   message: string;
   moveName: string;
   mapId: number /* int */;
+}
+export interface FieldStateSnapshot {
+  mapId: number /* int */;
+  strength: boolean;
+  flash: boolean;
+}
+
+//////////
+// source: gamecorner_commands.go
+
+/**
+ * Source coordinates are expectations, never a client-authored movement update.
+ * The inventory command revision owns both Game Corner mutations and their
+ * bounded latest outcome receipt.
+ */
+export interface GameCornerSlotPlayRequest {
+  requestId: string;
+  command?: InventoryCommandIdentity;
+  mapId?: number;
+  fromX?: number;
+  fromY?: number;
+  bet: number /* int */;
+  machineX?: number;
+  machineY?: number;
+}
+export interface GameCornerSlotResultResponse {
+  success: true;
+  version: 1;
+  kind: 'slot';
+  requestId: string;
+  characterId: number /* int64 */;
+  commandRevision: number /* int64 */;
+  machineX: number /* int */;
+  machineY: number /* int */;
+  bet: number /* int */;
+  reelPositions: number /* int */[];
+  reels: string[][];
+  payout: number /* int */;
+  matchLine: string;
+  isLucky: boolean;
+}
+export interface GameCornerPrizeBuyRequest {
+  requestId: string;
+  command?: InventoryCommandIdentity;
+  mapId?: number;
+  fromX?: number;
+  fromY?: number;
+  prizeId: number /* int */;
+}
+export interface GameCornerPrizeBuyResponse {
+  success: true;
+  version: 1;
+  kind: 'prize';
+  requestId: string;
+  characterId: number /* int64 */;
+  commandRevision: number /* int64 */;
+  prizeId: number /* int */;
+  prize: GameCornerPrize;
+  prizeName: string;
+  prizeLevel: number /* int */;
+  addedToParty: boolean;
+  pcBox: number /* int */;
+  pcSlot: number /* int */;
+  message: string;
+}
+export interface GameCornerPrizeListRequest {
+  requestId: string;
+  characterId: number /* int64 */;
+  mapId?: number;
+  fromX?: number;
+  fromY?: number;
+  prizeWindow: number /* int */;
+}
+export interface GameCornerPrizeListResponse {
+  success: true;
+  requestId: string;
+  characterId: number /* int64 */;
+  prizeWindow: number /* int */;
+  prizes: GameCornerPrize[];
+  snapshot: GameplayStateResponse;
 }
 
 //////////
@@ -332,84 +510,185 @@ export interface GameCornerSlotPlayResult {
 }
 
 //////////
+// source: gameplay_recovery.go
+
+/**
+ * Gameplay recovery reads current authority, never a historical notification.
+ * Explicit JSON names also drive the generated TypeScript contract.
+ */
+export interface GameplayStateRequest {
+  requestId: string;
+  mapId?: number /* int */;
+  current?: boolean;
+}
+export interface GameplayBattleState {
+  caught?: boolean;
+  capture?: GameplayCapturePlacement;
+  needsDismissal?: boolean;
+  battleId: string;
+  revision: number /* int64 */;
+  phase: string;
+  turnNumber: number /* int */;
+  playerPokemon: PokemonDTO;
+  enemyPokemon: PokemonDTO;
+  playerParty: PokemonDTO[];
+  playerActive: number /* int */;
+  battleType: string;
+  allowedActions: string[];
+  guaranteedCatch: boolean;
+  trainerClass: string;
+  trainerName: string;
+  pendingMove?: GameplayPendingMove;
+}
+export interface GameplayCapturePlacement {
+  sentToPC: boolean;
+  pcBox: number /* int */; // One-based presentation box, matching BattleEndOutcome.
+}
+export interface GameplayPendingMove {
+  moveId: number /* int */;
+  moveName: string;
+  pokemonIndex: number /* int */;
+}
+export interface SafariRecoveryPokemon {
+  id: number /* int */;
+  name: string;
+  level: number /* int */;
+  hp: number /* int */;
+  maxHp: number /* int */;
+}
+export interface SafariRecoveryState {
+  visitId: string;
+  visitRevision: number /* int64 */;
+  exitMessage?: string;
+  isOver?: boolean;
+  caught?: boolean;
+  fled?: boolean;
+  sentToPC?: boolean;
+  pcBox?: number /* int */;
+  playerParty?: PokemonDTO[];
+  battleId?: string;
+  revision?: number /* int64 */;
+  active: boolean;
+  ballsLeft: number /* int */;
+  stepsLeft: number /* int */;
+  pokemon?: SafariRecoveryPokemon;
+}
+export interface GameplayStateResponse {
+  cutScope: string;
+  fieldState: FieldStateSnapshot;
+  fieldCommands: { [key: string]: number /* int64 */};
+  pc: PCStorageSnapshot;
+  commandRevision: number /* int64 */;
+  inventory: import("./cqitems").CQInventoryItem[];
+  wallet: import("./models").CharacterWallet;
+  coins: number /* int */;
+  party: PokemonDTO[];
+  eventFlags: string[];
+  success: true;
+  requestId: string;
+  position: import("./protocol").OwnedPlayerPositionResponse;
+  battle?: GameplayBattleState | null;
+  safari?: SafariRecoveryState | null;
+  trainer?: import("./protocol").TrainerEncounterNotifyPayload | null;
+  cutscene?: import("./protocol").CutsceneStartNotify | null;
+}
+
+//////////
 // source: gym_leader_metadata.go
 
 
 //////////
 // source: handler-cqitems.go
 
-
-//////////
-// source: handler-cutscene.go
-
-/**
- * CutsceneEndRequest is sent when the client finishes playing a cutscene.
- */
-export interface CutsceneEndRequest {
-  scriptLabel: string; // The cutscene that was completed
+export interface InventoryCommandIdentity {
+  characterId: number /* int64 */;
+  revision?: number;
 }
-export interface CutsceneAction {
-  type: string;
-  speaker?: string;
-  lines?: string[];
-  actor?: string;
-  sprite?: string;
-  movements?: string[];
-  pokemonId?: number /* int */;
-  speciesId?: number /* int */;
-  pokemonName?: string;
-  pokemonConstant?: string;
-  sfxConstant?: string;
-  musicConstant?: string;
-  musicPath?: string;
-  loop?: boolean;
-  volume?: number /* float64 */;
-  level?: number /* int */;
-  flag?: string;
-  message?: string;
-  money?: number /* int */;
-  coins?: number /* int */;
-  itemId?: number /* int */;
-  itemName?: string;
-  quantity?: number /* int */;
+export interface CQMerchantBuyRequest {
+  actorId: number /* int */;
+  requestId: string;
+  command?: InventoryCommandIdentity;
+  merchantId: number /* int32 */;
+  itemId: number /* int32 */;
+  quantity: number /* uint16 */;
+}
+export interface CQMerchantSellRequest {
+  actorId: number /* int */;
+  requestId: string;
+  command?: InventoryCommandIdentity;
+  instanceId: number /* int32 */;
+}
+export interface InventoryCommandError {
+  success: false;
+  requestId: string;
+  error: string;
+}
+/**
+ * These tagged contracts replace map-shaped bag and shop mutation successes.
+ */
+export interface CQMerchantBuyResponse {
+  requestId: string;
+  success: true;
+  itemId: number /* int32 */;
+  quantity: number /* uint16 */;
+  instanceId: number /* int32 */;
+  money: number /* int64 */;
+  inventory: import("./cqitems").CQInventorySnapshot;
+}
+export interface CQMerchantSellResponse {
+  requestId: string;
+  success: true;
+  instanceId: number /* int32 */;
+  itemName: string;
+  sellPrice: number /* int64 */;
+  money: number /* int64 */;
+  inventory: import("./cqitems").CQInventorySnapshot;
+}
+export interface CQMerchantOpenRequest {
+  requestId: string;
+  characterId: number /* int64 */;
+  actorId: number /* int */;
+}
+export interface CQMerchantOpenResponse {
+  success: true;
+  requestId: string;
+  characterId: number /* int64 */;
+  merchantId: number /* int32 */;
+  name: string;
+  items: import("./cqitems").CQMerchantItem[];
+  money: number /* int64 */;
+}
+export interface CQPartyItemUseResponse {
+  requestId: string;
+  success: true;
+  inventory: import("./cqitems").CQInventorySnapshot;
+  party: PokemonDTO[];
+  outcome: import("./itemuse").PartyUse;
+}
+export interface CQItemUseRequest {
+  requestId?: string;
+  command?: InventoryCommandIdentity;
+  pokemonRowId?: number /* int64 */;
+  instanceId: number /* int32 */; // Item instance ID in inventory
+  partySlot: number /* int */; // Target Pokémon party slot (0-5)
+  moveSlot: number /* int */; // For move-targeted items: which move slot (0-3), -1 otherwise
   mapId?: number /* int */;
   x?: number /* int */;
   y?: number /* int */;
   direction?: string;
-  objectId?: number /* int */;
-  objectKey?: string;
-  objectMapName?: string;
-  triggerLabel?: string;
-  textConstant?: string;
-  prompt?: string;
-  yesLines?: string[];
-  noLines?: string[];
-  continueOnNo?: boolean;
-  stopOnYes?: boolean;
-  actorId?: number /* int */;
-  trainerClass?: string;
-  partyIndex?: number /* int */;
-  partyByFlag?: { [key: string]: number /* int */};
-  trainerName?: string;
-  trainerObjectId?: number /* int */;
-  winFlag?: string;
-  loseFlag?: string;
-  lossMessage?: string;
-  noBlackoutOnLoss?: boolean;
-  postWinActions?: CutsceneAction[];
-  postLoseActions?: CutsceneAction[];
-  allowedActions?: string[];
-  guaranteedCatch?: boolean;
-  prizeWindow?: number /* int */;
-  actions?: CutsceneAction[];
-  ms?: number /* int */;
 }
+
+//////////
+// source: handler-cutscene.go
+
+export type CutsceneAction = import("./scriptedactions").Action;
 export interface CutsceneActionEffect {
   type: string;
   detail: string;
   changed: boolean;
 }
 export interface CutsceneActionContext {
+  database?: any /* sql.DB */;
   session?: any /* session.Session */;
   worldHandler?: WorldHandler;
   eventFlags?: EventFlagManager;
@@ -523,22 +802,61 @@ export interface ElevatorFloor {
   requiresItemId?: number /* int */;
 }
 /**
- * ElevatorFloorsRequestPayload is sent by the client when clicking an elevator panel.
+ * ElevatorFloorsRequestPayload binds reads and selections to their expected source.
  */
 export interface ElevatorFloorsRequestPayload {
-  mapId: number /* int */; // The elevator room's map ID
+  requestId: string;
+  characterId: number /* int64 */;
+  mapId?: number /* int */;
+  fromX?: number /* int */;
+  fromY?: number /* int */;
+}
+export interface ElevatorSelectRequestPayload {
+  requestId: string;
+  characterId: number /* int64 */;
+  mapId?: number /* int */;
+  fromX?: number /* int */;
+  fromY?: number /* int */;
+  commandRevision?: number /* int64 */;
+  floorMapId: number /* int */;
 }
 /**
- * ElevatorSelectRequestPayload is sent when the client picks a floor.
+ * Both policies use the existing response opcode, with explicit kind identity.
  */
-export interface ElevatorSelectRequestPayload {
-  floorMapId: number /* int */; // The selected floor's map ID
+export interface ElevatorResponse {
+  success: true;
+  requestId: string;
+  characterId: number /* int64 */;
+  kind: string;
+  mapId: number /* int */;
+  floors: ElevatorFloor[];
+  message: string;
 }
 
 //////////
 // source: handler-field-move.go
 
+export interface StateFieldResponse {
+  success: true;
+  requestId: string;
+  characterId: number /* int64 */;
+  moveName: string;
+  mapId: number /* int */;
+  message: string;
+}
+export interface CutFieldResponse extends StateFieldResponse {
+  cutScope: string;
+  targetX: number /* int */;
+  targetY: number /* int */;
+}
 export interface FieldMoveUseRequestPayload {
+  destinationMapId?: number /* int */;
+  cutScope?: string;
+  requestId?: string;
+  characterId?: number /* int64 */;
+  commandRevision?: number /* int64 */;
+  fromX?: number /* int */;
+  fromY?: number /* int */;
   moveName: string;
   targetX?: number /* int */;
   targetY?: number /* int */;
@@ -560,7 +878,11 @@ export interface FieldMoveUseResponsePayload {
 // source: handler-fishing.go
 
 export interface PokeFishingRequestPayload {
-  itemId: number /* int32 */; // Fallback rod item Id: 76=Old Rod, 77=Good Rod, 78=Super Rod
+  commandRevision: number;
+  requestId: string;
+  characterId: number /* int64 */;
+  instanceId: number /* int32 */;
+  itemId?: number /* int32 */; // Optional consistency hint; ownership is resolved by instance.
   rodType?: string;
   mapId?: number /* int */;
   x?: number /* int */;
@@ -588,13 +910,41 @@ export type GameCornerRandom = any;
 //////////
 // source: handler-item-pickup.go
 
+export interface ItemPickupRequest {
+  requestId: string;
+  actorId: number /* int */;
+  command?: InventoryCommandIdentity;
+}
+export interface ItemPickupResponse {
+  success: true;
+  requestId: string;
+  characterId: number /* int64 */;
+  actorId: number /* int */;
+  itemName: string;
+  itemId: number /* int32 */;
+  instanceId: number /* int32 */;
+  message: string;
+  inventory: import("./cqitems").CQInventorySnapshot;
+}
+
+//////////
+// source: handler-party-commands.go
+
+export interface PokemonPartyReorderRequest {
+  requestId: string;
+  command?: InventoryCommandIdentity;
+  pokemonIds: number /* int64 */[];
+}
+export interface PokemonPartyReorderResponse {
+  success: true;
+  requestId: string;
+  inventory: import("./cqitems").CQInventorySnapshot;
+  party: PokemonDTO[];
+}
 
 //////////
 // source: handler-phaser-data.go
 
-export interface PhaserDialogueRequest {
-  textConstant: string; // e.g. "TEXT_PALLETTOWN_FISHER"
-}
 export interface PhaserWildEncountersRequest {
   mapId: number /* int */;
 }
@@ -602,34 +952,10 @@ export interface PhaserTrainerDataRequest {
   trainerClass: string; // e.g. "BUG_CATCHER"
   trainerPartyIndex: number /* int */; // party index within the class
 }
-export interface PhaserPokemonDataRequest {
-  pokemonId: number /* int */;
-}
-export interface PhaserMoveDataRequest {
-  moveId: number /* int */;
-}
-export interface PhaserMapScriptsRequest {
-  mapName: string; // CamelCase map name e.g. "PalletTown"
-}
-export interface PhaserLearnsetRequest {
-  pokemonId: number /* int */;
-}
-export interface PhaserItemDataRequest {
-  itemId: number /* int */;
-}
 export interface PhaserHiddenObjectsRequest {
   mapId: number /* int */;
 }
-export interface PhaserMapMusicRequest {
-  mapId: number /* int */;
-}
-export interface PhaserDialogueEntry {
-  label: string;
-  sourceFile: string;
-  dialogue: string;
-  isTrainer: number /* int */;
-  mapName?: string;
-}
+export type PhaserDialogueEntry = import("./protocol").PhaserDialogueEntry;
 export interface PhaserWildEncounter {
   id: number /* int */;
   mapName: string;
@@ -671,92 +997,6 @@ export interface PhaserTrainerDataResponse {
   party: PhaserTrainerPartyPokemon[];
   header?: PhaserTrainerHeader;
   success: boolean;
-}
-export interface PhaserPokemonFull {
-  id: number /* int */;
-  name: string;
-  hp: number /* int */;
-  atk: number /* int */;
-  def: number /* int */;
-  spd: number /* int */;
-  spc: number /* int */;
-  type1: string;
-  type2?: string;
-  catchRate: number /* int */;
-  baseExp: number /* int */;
-  defaultMove1Id?: string;
-  defaultMove2Id?: string;
-  defaultMove3Id?: string;
-  defaultMove4Id?: string;
-  baseCry?: number /* int */;
-  cryPitch?: number /* int */;
-  cryLength?: number /* int */;
-  pokedexType?: string;
-  height?: string;
-  weight?: number /* int */;
-  pokedexText?: string;
-  evolveLevel?: number /* int */;
-  evolvePokemon?: string;
-  evolvesFromTrade?: number /* int */;
-  iconImage?: string;
-  paletteType?: string;
-}
-export interface PhaserMoveFull {
-  id: number /* int */;
-  name: string;
-  shortName: string;
-  effect?: string;
-  power?: number /* int */;
-  type?: string;
-  accuracy?: number /* int */;
-  pp?: number /* int */;
-  battleAnimation?: string;
-  battleSound?: string;
-  isHm: number /* int */;
-  fieldMoveEffect?: number /* int */;
-}
-export interface PhaserItemFull {
-  id: number /* int */;
-  name: string;
-  shortName: string;
-  price?: number /* int */;
-  isUsable: number /* int */;
-  usesPartyMenu: number /* int */;
-  vendingPrice?: number /* int */;
-  moveId?: number /* int */;
-  isGuardDrink: number /* int */;
-  isKeyItem: number /* int */;
-}
-export interface PhaserLearnsetEntry {
-  level: number /* int */;
-  moveName: string;
-  moveId?: number /* int */;
-}
-export interface PhaserTMHMEntry {
-  tmHmName: string;
-  moveName: string;
-  moveId?: number /* int */;
-  isHm: number /* int */;
-}
-export interface PhaserMapScript {
-  scriptIndex: number /* int */;
-  scriptLabel: string;
-  scriptConstant: string;
-  rawAsm?: string;
-}
-export interface PhaserEventFlag {
-  flagName: string;
-  operation: string;
-  contextLabel?: string;
-}
-export interface PhaserCoordinateTrigger {
-  label: string;
-  x: number /* int */;
-  y: number /* int */;
-}
-export interface PhaserNPCMovement {
-  label: string;
-  movements: string; // JSON array string
 }
 export interface PhaserHiddenItem {
   id: number /* int */;
@@ -853,21 +1093,6 @@ export interface TilePropertyUpdateReq {
 // source: handler-phaser.go
 
 /**
- * PhaserMapInfo represents a map in the 2D Phaser game
- */
-export interface PhaserMapInfo {
-  id: number /* int */;
-  name: string;
-  width: number /* int */;
-  height: number /* int */;
-  tilesetId?: number /* int */;
-  isOverworld: number /* int */;
-  tileMinX?: number /* int */;
-  tileMinY?: number /* int */;
-  tileMaxX?: number /* int */;
-  tileMaxY?: number /* int */;
-}
-/**
  * PhaserTile represents a single tile in the game
  */
 export interface PhaserTile {
@@ -934,14 +1159,6 @@ export interface PhaserWarp {
   warpDirection?: string;
 }
 /**
- * PhaserMapInfoRequest is the request payload
- */
-export interface PhaserMapInfoRequest {
-  mapId: number /* int */;
-  destX?: number /* int */;
-  destY?: number /* int */;
-}
-/**
  * PhaserTilesRequest is the request payload
  */
 export interface PhaserTilesRequest {
@@ -955,6 +1172,8 @@ export interface PhaserTilesRequest {
   limit?: number /* int */;
 }
 export interface PhaserTilesResponse {
+  success: true;
+  characterId: number /* int64 */;
   mapId: number /* int */;
   requestId: string;
   tiles: PhaserTile[];
@@ -966,22 +1185,33 @@ export interface PhaserTilesResponse {
  * PhaserActorsRequest is the request payload
  */
 export interface PhaserActorsRequest {
+  requestId: string;
+  characterId: number /* int64 */;
   mapId: number /* int */;
+}
+export interface PhaserActorsResponse {
+  success: true;
+  requestId: string;
+  characterId: number /* int64 */;
+  mapId: number /* int */;
+  actors: PhaserActor[];
 }
 /**
  * PhaserWarpsRequest is the request payload
  */
 export interface PhaserWarpsRequest {
+  requestId: string;
   mapId: number /* int */;
 }
 /**
- * PhaserPlayerPositionUpdateRequest is the request payload from client.
+ * HandlePhaserWarpsRequest returns warps for a specific map
  */
-export interface PhaserPlayerPositionUpdateRequest {
-  x: number /* int */;
-  y: number /* int */;
+export interface PhaserWarpsResponse {
+  success: true;
+  requestId: string;
+  characterId: number /* int64 */;
   mapId: number /* int */;
-  direction: string;
+  warps: PhaserWarp[];
 }
 
 //////////
@@ -994,6 +1224,7 @@ export interface PokeBattleStartRequest {
  * PokemonDTO is the client-facing representation of a Pokémon in battle and party.
  */
 export interface PokemonDTO {
+  rowId?: number /* int64 */;
   id: number /* int */;
   name: string;
   level: number /* int */;
@@ -1027,105 +1258,117 @@ export interface MoveDTO {
   moveSfxPitch?: number /* int */;
   moveSfxTempo?: number /* int */;
 }
+export interface BattleCommandIdentity {
+  battleId: string;
+  revision: number /* int64 */;
+}
+export interface PokeBattleCloseRequest {
+  requestId: string;
+  battle: BattleCommandIdentity;
+}
+export interface PokeMoveLearnRequest {
+  requestId: string;
+  battle: BattleCommandIdentity;
+  forgetSlot: number /* int */;
+}
 export interface PokeBattleActionRequest {
+  requestId: string;
+  battle: BattleCommandIdentity;
   action: string; // "fight", "run", "switch", "item"
-  moveSlot: number /* int */; // 0-3 for fight, party index for switch
-  itemId: number /* int32 */; // Item template ID (for "item" action)
-  instanceId: number /* int32 */; // Concrete inventory instance (optional)
-  targetSlot: number /* int */; // Party slot index for medicine items (-1 = active Pokémon)
+  moveSlot?: number /* int */; // 0-3 for fight, party index for switch
+  itemId?: number /* int32 */; // Item template ID (for "item" action)
+  instanceId?: number /* int32 */; // Concrete inventory instance (optional)
+  targetSlot?: number /* int */; // Party slot index for medicine items (-1 = active Pokémon)
 }
 export interface PokeBattleSwitchRequest {
+  requestId: string;
+  battle: BattleCommandIdentity;
   partyIndex: number /* int */;
   action: string; // "switch" (default) or "run" (wild only)
 }
 export interface CQBattleItemUseRequest {
+  requestId: string;
+  battle: BattleCommandIdentity;
   itemId: number /* int32 */;
-  instanceId: number /* int32 */;
-  targetSlot: number /* int */;
-  moveSlot: number /* int */;
-}
-
-//////////
-// source: handler-pokecenter.go
-
-/**
- * PokeCenterHealRequest is sent by the client when the player interacts with Nurse Joy.
- */
-export interface PokeCenterHealRequest {
-  mapId: number /* int */; // The map the player is currently on (should be a Pokémon Center)
-}
-
-//////////
-// source: handler-pokedex.go
-
-export interface PokedexSpeciesEntry {
-  id: number /* int */;
-  name: string;
-  type1: string;
-  type2?: string;
-  pokedexType?: string;
-  height?: string;
-  weight?: number /* int */;
-  pokedexText?: string;
-  iconImage?: string;
-  crySfx?: string;
-  cryPitch?: number /* int */;
-  cryLength?: number /* int */;
-}
-export interface PokedexStatusEntry {
-  pokemonId: number /* int */;
-  seen: boolean;
-  caught: boolean;
-}
-export interface TrainerCardResponse {
-  name: string;
-  money: number /* int */;
-  timePlayed: number /* int */;
-  badges: string[];
-  badgeCount: number /* int */;
-  pokedexSeen: number /* int */;
-  pokedexCaught: number /* int */;
+  instanceId?: number /* int32 */;
+  targetSlot?: number /* int */;
+  moveSlot?: number /* int */;
 }
 
 //////////
 // source: handler-pokemon-pc.go
 
+export interface PokemonPCOpenRequest {
+  requestId: string;
+  characterId: number /* int64 */;
+  sourceId: number /* int */;
+}
+export interface PokemonPCCommandRequest {
+  requestId: string;
+  command?: InventoryCommandIdentity;
+  sourceId: number /* int */;
+  pokemonRowId: number /* int64 */;
+  box?: number /* int */;
+}
+export interface PokemonPCResponse {
+  success: true;
+  requestId: string;
+  characterId: number /* int64 */;
+  sourceId: number /* int */;
+  pc: PCStorageSnapshot;
+  party: PokemonDTO[];
+  inventory: import("./cqitems").CQInventorySnapshot;
+}
+
+//////////
+// source: handler-repel.go
+
+export interface RepelUseRequest {
+  requestId: string;
+  command?: InventoryCommandIdentity;
+  instanceId: number /* int32 */;
+}
+export interface RepelUseResponse {
+  success: true;
+  requestId: string;
+  instanceId: number /* int32 */;
+  message: string;
+  stepsLeft: number /* int */;
+  inventory: import("./cqitems").CQInventorySnapshot;
+}
 
 //////////
 // source: handler-safari.go
 
-export const SafariZoneEntryFee = 500;
-export const SafariZoneMaxBalls = 30;
-export const SafariZoneMaxSteps = 500;
-export const SafariZoneGateMapID = 156; // SAFARI_ZONE_GATE
-export const SafariZoneCenterMapID = 220;
-export const SafariZoneDefaultEntryX = 14;
-export const SafariZoneDefaultEntryY = 25;
-export const SafariZoneGateReturnX = 3;
-export const SafariZoneGateReturnY = 4;
-export const EventInSafariZone = "EVENT_IN_SAFARI_ZONE";
-export const EventSafariGameOver = "EVENT_SAFARI_GAME_OVER";
 /**
- * SafariSession tracks a player's current Safari Zone visit.
+ * HandleSafariBattleAction processes a safari battle action (ball, bait, rock, run).
  */
-export interface SafariSession {
+export interface SafariBattleActionRequest {
+  requestId: string;
+  battle: BattleCommandIdentity;
+  action: string;
+}
+export interface SafariBattleActionResponse {
+  characterId: number /* int64 */;
+  visitId: string;
+  visitRevision: number /* int64 */;
+  exitMessage?: string;
+  playerParty?: PokemonDTO[];
+  success: true;
+  requestId: string;
+  battleId: string;
+  revision: number /* int64 */;
+  position: import("./protocol").OwnedPlayerPositionResponse;
+  events: import("./battle_events").SafariBattleEvent[];
   ballsLeft: number /* int */;
   stepsLeft: number /* int */;
-  active: boolean;
-  battle?: any /* pokebattle.SafariBattleState */; // Non-nil if in a safari battle
-}
-export interface SafariEntryResult {
-  success: boolean;
-  message: string;
-  money: number /* int */;
-  ballsLeft: number /* int */;
-  stepsLeft: number /* int */;
-  alreadyActive: boolean;
-}
-/**
- * SafariZoneManager manages active Safari Zone sessions per player.
- */
-export interface SafariZoneManager {
+  isOver: boolean;
+  caught: boolean;
+  fled: boolean;
+  closed?: boolean;
+  sentToPC?: boolean;
+  pcBox?: number /* int */;
+  safariOver?: boolean;
 }
 
 //////////
@@ -1152,29 +1395,33 @@ export interface ScriptedEventInteractResponse {
 //////////
 // source: handler-surfing.go
 
-export interface PokeSurfingRequestPayload {
-  targetX?: number /* int */;
-  targetY?: number /* int */;
-  mapId?: number /* int */;
+export interface SurfIdentity {
+  requestId: string;
+  characterId: number /* int64 */;
+}
+export interface SurfResponse extends SurfIdentity {
+  success: true;
+  encounter: boolean;
+  blackout: boolean;
+}
+export interface SurfError extends SurfIdentity {
+  success: false;
+  error: string;
+}
+export interface PokeSurfingRequestPayload extends SurfIdentity {
+  commandRevision: number;
+  fromX: number;
+  fromY: number;
+  targetX: number;
+  targetY: number;
+  mapId: number;
   direction?: string;
 }
 
 //////////
 // source: handler-trainer-interact.go
 
-export interface TrainerInteractRequest {
-  actorId: number /* int */;
-}
-export interface TrainerInteractResponse {
-  success: boolean;
-  error?: string;
-  trainerActorId?: number /* int */;
-  trainerName?: string;
-  trainerClass?: string;
-  dialogue?: string;
-  shouldBattle: boolean;
-  defeated: boolean;
-}
+export type TrainerInteractResponse = import("./protocol").TrainerInteractResponse;
 export interface TrainerBattleStartRequest {
   trainerActorId: number /* int */;
 }
@@ -1182,13 +1429,63 @@ export interface TrainerBattleStartRequest {
 //////////
 // source: handler-warp-home.go
 
+export interface WarpHomeRequest {
+  requestId: string;
+  characterId: number /* int64 */;
+  commandRevision?: number /* int64 */;
+  current?: boolean;
+}
+export interface WarpHomeResponse {
+  success: true;
+  requestId: string;
+  characterId: number /* int64 */;
+  moveName: string;
+  mapId: number /* int */;
+  message: string;
+  current: boolean;
+  revision: number /* int64 */;
+}
+
+//////////
+// source: handler_bicycle.go
+
+export interface BicycleStateRequest {
+  requestId: string;
+  characterId: number /* int64 */;
+  instanceId?: number /* int32 */;
+  wantsRiding?: boolean;
+  revision?: number /* int64 */;
+}
+export interface BicycleStateResponse {
+  success: true;
+  requestId: string;
+  characterId: number /* int64 */;
+  bicycle: BicycleToggleState;
+}
+
+//////////
+// source: handler_escape_rope.go
+
+export interface EscapeRopeUseRequest {
+  requestId: string;
+  command?: InventoryCommandIdentity;
+  instanceId: number /* int32 */;
+  mapId: number /* int */;
+  x?: number /* int */;
+  y?: number /* int */;
+}
+/**
+ * This acknowledges commit only. Current position and resources are recovered
+ * together through GameplayStateRequest; historical replies never teleport.
+ */
+export interface EscapeRopeUseResponse {
+  success: true;
+  requestId: string;
+  characterId: number /* int64 */;
+}
 
 //////////
 // source: in_game_trades.go
-
-
-//////////
-// source: item_effects.go
 
 
 //////////
@@ -1197,10 +1494,6 @@ export interface TrainerBattleStartRequest {
 
 //////////
 // source: local_dev_fixtures.go
-
-
-//////////
-// source: map_display_names.go
 
 
 //////////
@@ -1237,20 +1530,44 @@ export interface MapScriptManager {
 }
 
 //////////
+// source: movement_receipt.go
+
+
+//////////
+// source: movement_routes.go
+
+
+//////////
+// source: movement_step.go
+
+
+//////////
 // source: npc-manager-phaser.go
 
-/**
- * ActorPathState tracks an actor that is being A*-pathed to a destination.
- */
-export interface ActorPathState {
-  actor?: PhaserActor;
-  path: PathNode[];
-  lastMoveTime: any /* time.Time */;
-  moveSpeed: any /* time.Duration */;
-  onComplete: any; // optional callback when path finishes
-}
 export interface PhaserActorManager {
 }
+
+//////////
+// source: pc_state.go
+
+export interface PCInteractionSource {
+  id: number /* int */;
+  mapId: number /* int */;
+  x: number /* int */;
+  y: number /* int */;
+  direction: string;
+}
+export interface PCStorageSnapshot {
+  currentBox: number /* int */;
+  boxCount: number /* int */;
+  boxSize: number /* int */;
+  box: PokemonDTO[];
+  sources: PCInteractionSource[];
+}
+
+//////////
+// source: periodic_worker.go
+
 
 //////////
 // source: phaser_warps.go
@@ -1273,12 +1590,14 @@ export interface PlayerMovementState {
   path: PathNode[]; // Remaining path to destination
   isSurfing?: boolean;
   wantsBicycle?: boolean;
+  bicycleRevision: number /* int64 */;
   forcedBicycle?: boolean;
   lastMoveTime: any /* time.Time */;
   lastSaveTime: any /* time.Time */; // Last time we persisted to DB
   moveSpeed: any /* time.Duration */; // Time per tile, including runtime movement effects
 }
 export interface BicycleToggleState {
+  revision: number /* int64 */;
   wantsRiding: boolean;
   activeRiding: boolean;
   forcedRiding: boolean;
@@ -1314,17 +1633,101 @@ export interface AStarNode {
 export type PriorityQueue = (AStarNode | undefined)[];
 
 //////////
+// source: player_steps.go
+
+
+//////////
 // source: pokemon_tower7f_postwin.go
 
+
+//////////
+// source: preference_commands.go
+
+export interface PreferenceRequest {
+  requestId: string;
+  characterId: number /* int64 */;
+  current?: boolean;
+  revision: number /* int64 */;
+  optionId: number;
+  value: number /* int */;
+}
+export interface PreferenceResponse {
+  success: true;
+  requestId: string;
+  characterId: number /* int64 */;
+  revision: number /* int64 */;
+  showNetworkStats: boolean;
+  allowTrainerRebattles: boolean;
+}
 
 //////////
 // source: repel_inventory.go
 
 export interface RepelUseResult {
   message: string;
-  newQuantity: number /* uint16 */;
   stepsLeft: number /* int */;
+  inventory: import("./cqitems").CQInventorySnapshot;
 }
+
+//////////
+// source: resource_changes.go
+
+/**
+ * Post-commit notices carry no historical resource projection. The current
+ * scene reconciles through its owned, locked gameplay read.
+ */
+export interface ResourceChangeNotify {
+  success: true;
+  resourcesChanged: true;
+  characterId: number /* int64 */;
+}
+
+//////////
+// source: safari_state.go
+
+export const SafariZoneEntryFee = 500;
+export const SafariZoneMaxBalls = 30;
+export const SafariZoneMaxSteps = 500;
+export const SafariZoneGateMapID = 156; // SAFARI_ZONE_GATE
+export const SafariZoneCenterMapID = 220;
+export const SafariZoneDefaultEntryX = 14;
+export const SafariZoneDefaultEntryY = 25;
+export const SafariZoneGateReturnX = 3;
+export const SafariZoneGateReturnY = 4;
+export const EventInSafariZone = "EVENT_IN_SAFARI_ZONE";
+export const EventSafariGameOver = "EVENT_SAFARI_GAME_OVER";
+export const SafariExpiryMessage = "PA: Ding-dong! Your SAFARI GAME is over!";
+/**
+ * SafariSession tracks a player's current Safari Zone visit.
+ */
+export interface SafariSession {
+  visitId: string;
+  revision: number /* int64 */;
+  ballsLeft: number /* int */;
+  stepsLeft: number /* int */;
+  active: boolean;
+  battle?: any /* pokebattle.SafariBattleState */; // Non-nil if in a safari battle
+  capture?: any /* pokebattle.CapturePlacement */;
+}
+export interface SafariEntryResult {
+  visit?: SafariSession;
+  success: boolean;
+  message: string;
+  money: number /* int */;
+  ballsLeft: number /* int */;
+  stepsLeft: number /* int */;
+  alreadyActive: boolean;
+}
+/**
+ * Safari has one durable owner. Returned snapshots are independent decoded
+ * values; mutation always reloads under the shared character lock.
+ */
+export interface SafariZoneManager {
+}
+
+//////////
+// source: script_interaction.go
+
 
 //////////
 // source: scripted_battle.go
@@ -1460,35 +1863,14 @@ export interface SpinTileManager {
 // source: trainer-encounter.go
 
 /**
- * TrainerEncounterNotifyPayload is sent to the client when a trainer spots the player.
- * The client should show "!" and animate the trainer locally to ApproachToX/Y.
- * The player position remains client-owned and does not get force-walked.
- */
-export interface TrainerEncounterNotifyPayload {
-  trainerActorId: number /* int */; // Runtime actor ID (from ActorRegistry)
-  trainerX: number /* int */; // Trainer's current position
-  trainerY: number /* int */;
-  playerX: number /* int */;
-  playerY: number /* int */;
-  approachToX: number /* int */; // Client-only trainer destination adjacent to the player
-  approachToY: number /* int */;
-  walkToX: number /* int */; // Legacy: current player tile so old clients do not force-walk
-  walkToY: number /* int */;
-  trainerClass: string;
-  trainerName: string;
-}
-/**
- * TrainerEncounterReadyRequest is sent by the client when the local trainer
- * approach animation finishes and the battle can start.
- */
-export interface TrainerEncounterReadyRequest {
-  trainerActorId: number /* int */;
-}
-/**
  * TrainerEncounterManager handles trainer sight range checks and encounter initiation.
  */
 export interface TrainerEncounterManager {
 }
+
+//////////
+// source: trainer_transactions.go
+
 
 //////////
 // source: vermilion_gym_trash.go
@@ -1529,11 +1911,6 @@ export interface VictoryRoadBoulderTarget {
   sourceObjectName: string;
   destinationMapName: string;
   destinationObjectName: string;
-}
-export interface VictoryRoadBoulderOutcome {
-  target: VictoryRoadBoulderTarget;
-  alreadySet: boolean;
-  changed: boolean;
 }
 
 //////////
@@ -1618,9 +1995,6 @@ export interface EnterWorldRequest {
 export interface SimpleSuccessResponse {
   value: number /* int32 */;
 }
-export interface CharacterDeleteRequest {
-  value: string;
-}
 export interface SendChatMessageRequest {
   text: string;
 }
@@ -1679,10 +2053,6 @@ export interface CharacterCreateProfile {
 }
 
 //////////
-// source: world-db.go
-
-
-//////////
 // source: world-handler-registry.go
 
 /**
@@ -1694,6 +2064,25 @@ export type DatagramHandler = any;
  */
 export interface HandlerRegistry {
   wH?: WorldHandler;
+}
+
+//////////
+// source: world-handlers.go
+
+
+//////////
+// source: world-query-handlers.go
+
+export interface StaticDataRequest {
+  requestId: string;
+}
+export interface StaticDataResponse {
+  requestId: string;
+  success: true;
+  classes: import("./staticdata").ClassInfo[];
+  factions: import("./staticdata").FactionInfo[];
+  maps: import("./staticdata").MapInfo[];
+  startCities: import("./staticdata").StartCityInfo[];
 }
 
 //////////

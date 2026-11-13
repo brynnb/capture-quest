@@ -1,10 +1,12 @@
 package pokebattle
 
 import (
+	"capturequest/internal/db"
+	"context"
 	"database/sql"
 	"testing"
 
-	_ "modernc.org/sqlite"
+	"capturequest/internal/testdb"
 )
 
 func TestDepositToPCMovesPokemonAndCompactsParty(t *testing.T) {
@@ -13,7 +15,7 @@ func TestDepositToPCMovesPokemonAndCompactsParty(t *testing.T) {
 	seedPCPokemon(t, db, 42, 1, BoxParty, 1, 4)
 	seedPCPokemon(t, db, 42, 2, BoxParty, 2, 7)
 
-	boxSlot, err := DepositToPC(db, 42, 1, 0)
+	boxSlot, err := commitFixturePCDeposit(db, 42, fixturePokemonID(t, db, 42, 4), 0)
 	if err != nil {
 		t.Fatalf("DepositToPC failed: %v", err)
 	}
@@ -32,7 +34,7 @@ func TestWithdrawFromPCUsesFirstOpenPartySlot(t *testing.T) {
 	seedPCPokemon(t, db, 42, 2, BoxParty, 2, 4)
 	seedPCPokemon(t, db, 42, 0, 0, 0, 7)
 
-	partySlot, err := WithdrawFromPC(db, 42, 0, 0)
+	partySlot, err := commitFixturePCWithdrawal(db, 42, fixturePokemonID(t, db, 42, 7), 0)
 	if err != nil {
 		t.Fatalf("WithdrawFromPC failed: %v", err)
 	}
@@ -49,7 +51,7 @@ func TestWithdrawFromPCRejectsFullParty(t *testing.T) {
 	}
 	seedPCPokemon(t, db, 42, 0, 0, 0, 7)
 
-	if _, err := WithdrawFromPC(db, 42, 0, 0); err == nil {
+	if _, err := commitFixturePCWithdrawal(db, 42, fixturePokemonID(t, db, 42, 7), 0); err == nil {
 		t.Fatal("expected full party error")
 	}
 }
@@ -58,7 +60,9 @@ func TestReleasePokemonRequiresExistingPCPokemon(t *testing.T) {
 	db := openPCTestDB(t)
 	seedPCPokemon(t, db, 42, 0, 0, 0, 7)
 
-	if err := ReleasePokemon(db, 42, 0, 0); err != nil {
+	target := fixturePokemonID(t, db, 42, 7)
+
+	if err := commitFixturePCRelease(db, 42, target, 0); err != nil {
 		t.Fatalf("ReleasePokemon failed: %v", err)
 	}
 	var count int
@@ -69,92 +73,20 @@ func TestReleasePokemonRequiresExistingPCPokemon(t *testing.T) {
 		t.Fatalf("released pokemon count = %d, want 0", count)
 	}
 
-	if err := ReleasePokemon(db, 42, 0, 0); err == nil {
+	if err := commitFixturePCRelease(db, 42, target, 0); err == nil {
 		t.Fatal("expected missing pokemon error")
 	}
 }
 
 func openPCTestDB(t *testing.T) *sql.DB {
 	t.Helper()
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
-	t.Cleanup(func() { db.Close() })
-
-	if _, err := db.Exec(`
-		CREATE TABLE phaser_pokemon (
-			id INTEGER PRIMARY KEY,
-			name TEXT NOT NULL,
-			type_1 TEXT NOT NULL,
-			type_2 TEXT,
-			hp INTEGER NOT NULL,
-			atk INTEGER NOT NULL,
-			def INTEGER NOT NULL,
-			spd INTEGER NOT NULL,
-			spc INTEGER NOT NULL,
-			catch_rate INTEGER NOT NULL,
-			base_exp INTEGER NOT NULL,
-			growth_rate TEXT NOT NULL,
-			default_move_1_id TEXT,
-			default_move_2_id TEXT,
-			default_move_3_id TEXT,
-			default_move_4_id TEXT,
-			base_cry INTEGER,
-			cry_pitch INTEGER,
-			cry_length INTEGER,
-			evolve_level INTEGER,
-			evolve_pokemon TEXT
-		);
-		CREATE TABLE character_pokemon (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			character_id INTEGER NOT NULL,
-			party_slot INTEGER,
-			box INTEGER NOT NULL DEFAULT -1,
-			box_slot INTEGER NOT NULL DEFAULT -1,
-			pokemon_id INTEGER NOT NULL,
-			nickname TEXT DEFAULT '',
-			level INTEGER NOT NULL DEFAULT 5,
-			exp INTEGER NOT NULL DEFAULT 0,
-			growth_rate TEXT NOT NULL DEFAULT 'MEDIUM_FAST',
-			cur_hp INTEGER NOT NULL,
-			max_hp INTEGER NOT NULL,
-			iv_atk INTEGER NOT NULL DEFAULT 0,
-			iv_def INTEGER NOT NULL DEFAULT 0,
-			iv_spd INTEGER NOT NULL DEFAULT 0,
-			iv_spc INTEGER NOT NULL DEFAULT 0,
-			ev_hp INTEGER NOT NULL DEFAULT 0,
-			ev_atk INTEGER NOT NULL DEFAULT 0,
-			ev_def INTEGER NOT NULL DEFAULT 0,
-			ev_spd INTEGER NOT NULL DEFAULT 0,
-			ev_spc INTEGER NOT NULL DEFAULT 0,
-			move1_id INTEGER NOT NULL DEFAULT 0,
-			move1_pp INTEGER NOT NULL DEFAULT 0,
-			move1_pp_up INTEGER NOT NULL DEFAULT 0,
-			move2_id INTEGER NOT NULL DEFAULT 0,
-			move2_pp INTEGER NOT NULL DEFAULT 0,
-			move2_pp_up INTEGER NOT NULL DEFAULT 0,
-			move3_id INTEGER NOT NULL DEFAULT 0,
-			move3_pp INTEGER NOT NULL DEFAULT 0,
-			move3_pp_up INTEGER NOT NULL DEFAULT 0,
-			move4_id INTEGER NOT NULL DEFAULT 0,
-			move4_pp INTEGER NOT NULL DEFAULT 0,
-			move4_pp_up INTEGER NOT NULL DEFAULT 0,
-			status INTEGER NOT NULL DEFAULT 0,
-			original_trainer_id INTEGER,
-			UNIQUE (character_id, box, box_slot),
-			UNIQUE (character_id, party_slot)
-		);
-		INSERT INTO phaser_pokemon (
-			id, name, type_1, type_2, hp, atk, def, spd, spc, catch_rate, base_exp, growth_rate
-		) VALUES
-			(1, 'BULBASAUR', 'GRASS', 'POISON', 45, 49, 49, 45, 65, 45, 64, 'MEDIUM_SLOW'),
-			(4, 'CHARMANDER', 'FIRE', 'FIRE', 39, 52, 43, 65, 50, 45, 65, 'MEDIUM_SLOW'),
-			(7, 'SQUIRTLE', 'WATER', 'WATER', 44, 48, 65, 43, 50, 45, 66, 'MEDIUM_SLOW');
-	`); err != nil {
-		t.Fatalf("seed PC db: %v", err)
-	}
-	return db
+	database := testdb.Postgres(t)
+	testdb.Exec(t, database, `INSERT INTO character_data(id,name) VALUES(42,'pc-storage');
+ INSERT INTO phaser_pokemon(id,name,type_1,type_2,hp,atk,def,spd,spc,catch_rate,base_exp,growth_rate) VALUES
+ (1,'BULBASAUR','GRASS','POISON',45,49,49,45,65,45,64,'MEDIUM_SLOW'),
+ (4,'CHARMANDER','FIRE','FIRE',39,52,43,65,50,45,65,'MEDIUM_SLOW'),
+ (7,'SQUIRTLE','WATER','WATER',44,48,65,43,50,45,66,'MEDIUM_SLOW')`)
+	return database
 }
 
 func seedPCPokemon(t *testing.T, db *sql.DB, charID int64, partySlot int, box int, boxSlot int, speciesID int) {
@@ -205,4 +137,42 @@ func assertPokemonStorage(t *testing.T, db *sql.DB, charID int64, speciesID int,
 			wantBoxSlot,
 		)
 	}
+}
+
+// Fixture transactions exercise the stable-ID primitive; they never implement
+// slot intent or resolve a live target after admission.
+func fixturePokemonID(t *testing.T, database DBTX, charID int64, species int) int64 {
+	t.Helper()
+	var id int64
+	if err := database.QueryRow(`SELECT id FROM character_pokemon WHERE character_id=$1 AND pokemon_id=$2 ORDER BY id LIMIT 1`, charID, species).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+func commitFixturePCDeposit(database DBTX, charID, rowID int64, box int) (int, error) {
+	slot := -1
+	err := db.Transaction(context.Background(), database, func(tx db.DBTX) error {
+		var err error
+		slot, err = DepositPokemonToPCInTransaction(tx, charID, rowID, box)
+		return err
+	})
+	if err != nil {
+		return -1, err
+	}
+	return slot, nil
+}
+func commitFixturePCWithdrawal(database DBTX, charID, rowID int64, box int) (int, error) {
+	slot := -1
+	err := db.Transaction(context.Background(), database, func(tx db.DBTX) error {
+		var err error
+		slot, err = WithdrawPokemonFromPCInTransaction(tx, charID, rowID, box)
+		return err
+	})
+	if err != nil {
+		return -1, err
+	}
+	return slot, nil
+}
+func commitFixturePCRelease(database DBTX, charID, rowID int64, box int) error {
+	return db.Transaction(context.Background(), database, func(tx db.DBTX) error { return ReleasePokemonFromPCInTransaction(tx, charID, rowID, box) })
 }
